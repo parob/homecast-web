@@ -1,0 +1,16 @@
+name: Notify Cloud Deploy
+on:
+  push:
+    branches:
+      - main
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cloud staging deploy
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: token ${{ secrets.PROMOTE_PAT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/parob/homecast-cloud/dispatches \
+            -d '{"event_type":"web-updated"}'
