@@ -89,10 +89,43 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const checkAuth = async () => {
-    const token = localStorage.getItem('homecast-token');
+    let token = localStorage.getItem('homecast-token');
+
+    // Relay Mac: auto-login as the owner directly via IndexedDB.
+    // No HTTP round-trip needed — the relay has direct access to user data.
+    if (isRelayRef.current) {
+      try {
+        const { getUsers, generateToken } = await import('@/server/local-auth');
+        const users = await getUsers();
+        const owner = users.find((u: any) => u.role === 'owner');
+        if (owner) {
+          // Generate/refresh token
+          if (!token || token === 'community') {
+            token = await generateToken(owner.id, owner.name, owner.role);
+            localStorage.setItem('homecast-token', token);
+          }
+          // Set user directly — no HTTP needed on relay Mac
+          setUser({
+            id: owner.id,
+            email: owner.name,
+            name: owner.name,
+            isAdmin: true,
+            accountType: 'standard',
+            stagingAccess: false,
+            createdAt: owner.createdAt || new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          });
+          setIsLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error('[Auth] Relay auto-login failed:', e);
+      }
+    }
+
+    // External browser: verify token via HTTP
     if (token && token !== 'community') {
       try {
-        // Verify token by fetching user info from the Mac's server
         const result = await fetch(config.graphqlUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

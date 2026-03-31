@@ -5,6 +5,7 @@
  */
 
 import { executeHomeKitAction } from '../relay/local-handler';
+import { communityRequest } from './connection';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -136,7 +137,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
       return result?.accessory || null;
     }
     case 'set_characteristic': {
-      await executeHomeKitAction('characteristic.set', {
+      await communityRequest('characteristic.set', {
         accessoryId: args.accessory_id,
         characteristicType: args.characteristic_type,
         value: args.value,
@@ -144,7 +145,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
       return { success: true };
     }
     case 'set_state': {
-      await executeHomeKitAction('state.set', { state: args.state, homeId: args.home_id });
+      await communityRequest('state.set', { state: args.state, homeId: args.home_id });
       return { success: true };
     }
     case 'list_scenes': {

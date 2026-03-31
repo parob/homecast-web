@@ -54,6 +54,25 @@ export function initLocalServer(): void {
 
   console.log('[LocalServer] Initializing request handler');
 
+  // Auto-login: if a user exists but no token, generate one for the owner.
+  // The relay Mac has physical access — password entry is unnecessary friction.
+  if (!localStorage.getItem('homecast-token')) {
+    (async () => {
+      try {
+        const { getUsers, generateToken } = await import('./local-auth');
+        const users = await getUsers();
+        const owner = users.find((u: any) => u.role === 'owner');
+        if (owner) {
+          const token = await generateToken(owner.id, owner.name, owner.role);
+          localStorage.setItem('homecast-token', token);
+          console.log('[LocalServer] Auto-login as owner:', owner.name);
+        }
+      } catch (e) {
+        console.error('[LocalServer] Auto-login failed:', e);
+      }
+    })();
+  }
+
   w.__localserver_handler = (clientId: string, msg: ProtocolMessage) => {
     handleRequest(clientId, msg);
   };
@@ -68,7 +87,11 @@ export function initLocalServer(): void {
   // Only operations needed for the login flow and status checks
   // Login/Signup are exempt so external browsers can authenticate AFTER relay is ready
   // The Login page UI gates on relayReady to prevent access when relay isn't signed in
-  const AUTH_EXEMPT_OPS = new Set(['IsOnboarded', 'GetVersion']);
+  const AUTH_EXEMPT_OPS = new Set([
+    'IsOnboarded', 'GetVersion',
+    // Shared entity operations — accessed by unauthenticated visitors
+    'GetPublicEntity', 'GetPublicEntityAccessories', 'PublicEntitySetCharacteristic',
+  ]);
 
   w.__localserver_graphql_handler = async (clientId: string, request) => {
     const win = window as Window & { webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } } };

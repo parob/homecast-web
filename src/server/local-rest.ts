@@ -4,6 +4,7 @@
  */
 
 import { executeHomeKitAction } from '../relay/local-handler';
+import { communityRequest } from './connection';
 
 interface HTTPRequest {
   method: string;
@@ -58,7 +59,7 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         // Accept both flat dict and { state: ... } format
         const state = body.state || body;
         const homeId = body.homeId || body.home_id;
-        await executeHomeKitAction('state.set', { state, homeId });
+        await communityRequest('state.set', { state, homeId });
         return { success: true };
       }
 

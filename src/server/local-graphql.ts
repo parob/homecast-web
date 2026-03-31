@@ -8,6 +8,7 @@
 import * as db from './local-db';
 import * as auth from './local-auth';
 import { executeHomeKitAction } from '../relay/local-handler';
+import { communityRequest } from './connection';
 
 interface GraphQLRequest {
   operationName?: string;
@@ -71,11 +72,27 @@ async function resolveOperation(
       return { signup: { success: true, token: result.token, error: null, message: 'Account created', __typename: 'SignupResult' } };
     }
 
-    case 'IsOnboarded':
+    case 'IsOnboarded': {
+      const onboarded = await auth.isOnboarded();
+      // Relay auto-login: if a user exists but no token, auto-authenticate as the owner.
+      // The relay Mac has physical access — password entry is unnecessary friction.
+      if (onboarded && !localStorage.getItem('homecast-token') && (window as any).isHomeKitRelayCapable) {
+        try {
+          const users = await auth.getUsers();
+          const owner = users.find(u => u.role === 'owner');
+          if (owner) {
+            const token = await auth.generateToken(owner.id, owner.name, owner.role);
+            localStorage.setItem('homecast-token', token);
+          }
+        } catch (e) {
+          console.error('[LocalGraphQL] Auto-login failed:', e);
+        }
+      }
       return {
-        isOnboarded: await auth.isOnboarded(),
+        isOnboarded: onboarded,
         relayReady: !!localStorage.getItem('homecast-token'),
       };
+    }
 
     // --- Community User Management ---
     case 'GetCommunityUsers':
@@ -398,25 +415,41 @@ async function resolveOperation(
     // --- Public Entity (shared links) ---
     case 'GetPublicEntity': {
       const allAccess = await db.getEntityAccess();
-      const access = allAccess.find(a => a.shareHash === variables.shareHash);
-      if (!access) return { publicEntity: null };
-      // Check passcode if required
-      if (access.hasPasscode && access.passcode) {
-        const hasPasscodeAccess = allAccess.some(a =>
-          a.shareHash === variables.shareHash && a.accessType === 'passcode' && a.passcode === variables.passcode
-        );
-        if (!hasPasscodeAccess && access.accessType === 'passcode' && access.passcode !== variables.passcode) {
-          return { publicEntity: { requiresPasscode: true, entityType: access.entityType, entityId: access.entityId, entityName: access.entityName, role: null, data: null, canUpgradeWithPasscode: false, __typename: 'PublicEntity' } };
+      const matching = allAccess.filter(a => a.shareHash === variables.shareHash);
+      if (matching.length === 0) return { publicEntity: null };
+
+      // Base access record (non-passcode, or first if all are passcode-gated)
+      const baseAccess = matching.find(a => a.accessType !== 'passcode') || matching[0];
+      // Passcode-gated access record (grants higher role, e.g. control)
+      const passcodeAccess = matching.find(a => a.accessType === 'passcode');
+      const canUpgradeWithPasscode = !!passcodeAccess;
+
+      // Determine effective role: if passcode provided and matches, use the passcode record's role
+      let effectiveRole = baseAccess.role;
+      let requiresPasscode = false;
+
+      if (passcodeAccess) {
+        if (variables.passcode && passcodeAccess.passcode === variables.passcode) {
+          // Correct passcode — grant the passcode record's role
+          effectiveRole = passcodeAccess.role;
+        } else if (!baseAccess || baseAccess.accessType === 'passcode') {
+          // No base (view) access — passcode is required to access at all
+          requiresPasscode = true;
+          if (variables.passcode) {
+            // Wrong passcode provided
+            return { publicEntity: { requiresPasscode: true, entityType: baseAccess.entityType, entityId: baseAccess.entityId, entityName: baseAccess.entityName, role: null, data: null, canUpgradeWithPasscode: false, __typename: 'PublicEntity' } };
+          }
         }
       }
+
       return {
         publicEntity: {
-          entityType: access.entityType,
-          entityId: access.entityId,
-          entityName: access.entityName || access.name,
-          role: access.role,
-          requiresPasscode: false,
-          canUpgradeWithPasscode: allAccess.some(a => a.shareHash === variables.shareHash && a.accessType === 'passcode'),
+          entityType: baseAccess.entityType,
+          entityId: baseAccess.entityId,
+          entityName: baseAccess.entityName || baseAccess.name,
+          role: effectiveRole,
+          requiresPasscode,
+          canUpgradeWithPasscode,
           data: null,
           __typename: 'PublicEntity',
         },
@@ -470,15 +503,22 @@ async function resolveOperation(
     }
 
     case 'PublicEntitySetCharacteristic': {
-      // Validate the share hash and role
+      // Validate the share hash and role — check passcode-gated access too
       const allAccess = await db.getEntityAccess();
-      const access = allAccess.find(a => a.shareHash === variables.shareHash);
-      if (!access || access.role === 'view') {
+      const matching = allAccess.filter(a => a.shareHash === variables.shareHash);
+      const baseAccess = matching.find(a => a.accessType !== 'passcode') || matching[0];
+      const passcodeAccess = matching.find(a => a.accessType === 'passcode');
+      // Determine effective role
+      let effectiveRole = baseAccess?.role;
+      if (passcodeAccess && variables.passcode && passcodeAccess.passcode === variables.passcode) {
+        effectiveRole = passcodeAccess.role;
+      }
+      if (!baseAccess || effectiveRole === 'view') {
         return { publicEntitySetCharacteristic: { success: false, error: 'Access denied' } };
       }
       // Actually execute the HomeKit command
       try {
-        await executeHomeKitAction('characteristic.set', {
+        await communityRequest('characteristic.set', {
           accessoryId: variables.accessoryId,
           characteristicType: variables.characteristicType,
           value: variables.value,

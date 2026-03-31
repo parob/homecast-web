@@ -103,8 +103,16 @@ function communityCacheKey(action: string, payload: Record<string, unknown>): st
   return parts.join('|');
 }
 
+/**
+ * Broadcast an update to external WebSocket clients via the Swift bridge.
+ */
+function broadcastToExternalClients(message: Record<string, unknown>): void {
+  const broadcast = (window as Window & { __localserver_broadcast?: (msg: unknown) => void }).__localserver_broadcast;
+  if (broadcast) broadcast(message);
+}
+
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-  // Write operations: execute immediately and invalidate relevant cache entries
+  // Write operations: execute immediately, broadcast, and invalidate cache
   if (INVALIDATING_ACTIONS.has(action)) {
     const result = await executeHomeKitAction(action, payload);
     // Invalidate accessories cache for the affected home
@@ -114,6 +122,54 @@ export async function communityRequest<T>(action: string, payload: Record<string
         communityCache.delete(key);
       }
     }
+
+    // Broadcast write results to all clients (mirrors websocket.ts:280-336 in cloud mode)
+    // HomeKit doesn't fire events back to the app that made the change, so we do it manually.
+    if (action === 'characteristic.set') {
+      const msg: BroadcastMessage = {
+        type: 'characteristic_update',
+        accessoryId: payload.accessoryId as string,
+        homeId: (payload.homeId as string) ?? null,
+        characteristicType: payload.characteristicType as string,
+        value: payload.value,
+      };
+      broadcastToExternalClients(msg);
+      serverConnection.emitBroadcast(msg);
+    } else if (action === 'serviceGroup.set') {
+      const resultObj = result as { affectedCount?: number; successCount?: number } | undefined;
+      const affectedCount = resultObj?.affectedCount ?? resultObj?.successCount ?? 0;
+      const msg: BroadcastMessage = {
+        type: 'service_group_update',
+        groupId: payload.groupId as string,
+        homeId: (payload.homeId as string) ?? null,
+        characteristicType: payload.characteristicType as string,
+        value: payload.value,
+        affectedCount,
+      };
+      broadcastToExternalClients(msg);
+      serverConnection.emitBroadcast(msg);
+    } else if (action === 'state.set') {
+      // Bulk operation: broadcast individual characteristic updates
+      const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
+      if (state) {
+        for (const [accessoryId, services] of Object.entries(state)) {
+          for (const chars of Object.values(services)) {
+            for (const [characteristicType, value] of Object.entries(chars)) {
+              const msg: BroadcastMessage = {
+                type: 'characteristic_update',
+                accessoryId,
+                homeId: (payload.homeId as string) ?? null,
+                characteristicType,
+                value,
+              };
+              broadcastToExternalClients(msg);
+              serverConnection.emitBroadcast(msg);
+            }
+          }
+        }
+      }
+    }
+
     return result as T;
   }
 
@@ -305,6 +361,13 @@ class ServerConnection {
     return () => {
       this.broadcastListeners.delete(listener);
     };
+  }
+
+  /**
+   * Emit a broadcast message to all listeners (used by communityRequest for write broadcasts).
+   */
+  emitBroadcast(message: BroadcastMessage): void {
+    this.notifyBroadcastListeners(message);
   }
 
   private notifyBroadcastListeners(message: BroadcastMessage): void {

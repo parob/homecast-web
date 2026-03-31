@@ -12,6 +12,7 @@ import { HomeKit } from '../native/homekit-bridge';
 import { isCommunity } from '../lib/config';
 
 let unsubscribe: (() => void) | null = null;
+let observationKeepAlive: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Start broadcasting HomeKit events to external clients.
@@ -28,6 +29,19 @@ export function initLocalBroadcast(): void {
   if (!w.isHomeKitRelayCapable) return;
 
   console.log('[LocalBroadcast] Initializing event broadcasting');
+
+  // Start HomeKit observation — in cloud mode this is done by ServerWebSocket.startRelayDuties(),
+  // but in Community mode there's no server WebSocket, so we start it here.
+  HomeKit.startObserving().catch((err) => {
+    console.error('[LocalBroadcast] Failed to start HomeKit observation:', err);
+  });
+
+  // Native observation auto-stops after 90s without a reset (HomeKitManager.swift:61).
+  // In cloud mode, the heartbeat ping resets it (websocket.ts:1106).
+  // In Community mode, we run our own keep-alive interval.
+  observationKeepAlive = setInterval(() => {
+    HomeKit.resetObservationTimeout().catch(() => {});
+  }, 60_000);
 
   unsubscribe = HomeKit.onEvent((event) => {
     const broadcast = w.__localserver_broadcast;
@@ -58,5 +72,9 @@ export function teardownLocalBroadcast(): void {
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
+  }
+  if (observationKeepAlive) {
+    clearInterval(observationKeepAlive);
+    observationKeepAlive = null;
   }
 }
