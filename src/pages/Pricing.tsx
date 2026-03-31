@@ -168,7 +168,7 @@ const Pricing = () => {
               </div>
 
               {/* Homecast Cloud Box */}
-              <div className="rounded-2xl border border-border bg-background/50 p-4 sm:p-6">
+              <div className="rounded-2xl border border-border bg-background/50 p-4 sm:p-6 order-1 lg:order-2">
                 <div className="flex items-center gap-2 mb-1">
                   <Cloud className="h-5 w-5 text-muted-foreground" />
                   <h3 className="text-lg font-semibold">Homecast Cloud</h3>
