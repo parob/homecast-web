@@ -1,0 +1,12 @@
+{
+  "name": "homecast-screenshots",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "npx playwright test",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0"
+  }
+}
