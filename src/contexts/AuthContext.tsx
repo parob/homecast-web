@@ -480,8 +480,8 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('homecast-token');
     localStorage.removeItem('homecast-selected-home');
     localStorage.removeItem('homecast-selected-room');
-    setUser(null);
     apolloClient.clearStore();
+    window.location.href = '/login';
   };
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('homecast-token') : null;

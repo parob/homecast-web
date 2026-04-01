@@ -61,11 +61,52 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
       case method === 'POST' && route === '/state': {
         if (!req.body) return { error: 'Missing body' };
         const body = JSON.parse(req.body);
-        // Accept both flat dict and { state: ... } format
-        const state = body.state || body;
-        const homeId = body.homeId || body.home_id;
-        await communityRequest('state.set', { state, homeId });
-        return { success: true };
+
+        // Community format: { state: { ... }, homeId: "..." }
+        if ('state' in body) {
+          const state = body.state;
+          const homeId = body.homeId || body.home_id;
+          await communityRequest('state.set', { state, homeId });
+          return { success: true };
+        }
+
+        // Cloud format: { home_key: { room_key: { acc_key: { on: true } } } }
+        // Resolve home slug keys to HomeKit UUIDs, pass room dict to setState
+        const homesResult = await executeHomeKitAction('homes.list') as any;
+        const homes = homesResult?.homes || [];
+        const homeKeyToId: Record<string, string> = {};
+        for (const home of homes) {
+          homeKeyToId[uniqueKey(home.name, home.id)] = home.id;
+        }
+
+        let updated = 0;
+        let failed = 0;
+        const changes: string[] = [];
+        const errors: string[] = [];
+
+        for (const [homeKey, homeData] of Object.entries(body)) {
+          if (homeKey.startsWith('_') || !homeData || typeof homeData !== 'object') continue;
+          const homeId = homeKeyToId[homeKey];
+          if (!homeId) { errors.push(`${homeKey}: home not found`); failed++; continue; }
+
+          try {
+            await communityRequest('state.set', { state: homeData, homeId });
+            for (const [roomKey, roomData] of Object.entries(homeData as Record<string, any>)) {
+              if (typeof roomData !== 'object' || roomData === null) continue;
+              for (const [accKey, props] of Object.entries(roomData as Record<string, any>)) {
+                if (typeof props !== 'object' || props === null) continue;
+                updated++;
+                const propList = Object.entries(props).filter(([k]) => k !== 'type' && k !== '_settable').map(([k, v]) => `${k}=${v}`).join(', ');
+                changes.push(`${homeKey}/${roomKey}/${accKey}: ${propList}`);
+              }
+            }
+          } catch (e: any) {
+            errors.push(`${homeKey}: ${e.message}`);
+            failed++;
+          }
+        }
+
+        return { updated, failed, changes, errors, message: updated > 0 ? `Updated ${updated} accessor${updated === 1 ? 'y' : 'ies'}` : 'No updates' };
       }
 
       // GET /rest/scenes?home=X
@@ -293,16 +334,10 @@ async function getState(params: URLSearchParams): Promise<Record<string, any>> {
       homeData[roomKey][groupKey] = groupState;
     }
 
-    // Add scenes
-    homeData.scenes = scenes.map((s: any) => s.name);
+    // Add scenes (prefixed with _ so parsers skip it)
+    homeData._scenes = scenes.map((s: any) => s.name);
 
-    // Merge into result under home key
-    if (homes.length === 1) {
-      // Single home — flatten (no home key wrapper)
-      Object.assign(result, homeData);
-    } else {
-      result[homeKey] = homeData;
-    }
+    result[homeKey] = homeData;
   }
 
   result._meta = { fetched_at: new Date().toISOString() };
