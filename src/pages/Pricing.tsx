@@ -64,8 +64,8 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
           <tr>
             <th className="w-[200px]" />
             <th />
-            <th colSpan={3} className="pb-0">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground border border-border/60 border-b-0 rounded-t-lg py-1.5 bg-muted/30 mx-0">
+            <th colSpan={3} className="border border-border/60 border-b-0 rounded-t-lg bg-muted/30 py-1.5 px-3">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Cloud className="h-3 w-3" />
                 Homecast Cloud
               </div>
