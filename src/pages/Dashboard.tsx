@@ -5256,7 +5256,7 @@ const Dashboard = () => {
         {(!isCommunity || !isRelayCapable()) && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={isCommunity ? () => { localStorage.removeItem('homecast-token'); window.location.href = '/login'; } : logout}>
+            <DropdownMenuItem onClick={logout}>
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </DropdownMenuItem>

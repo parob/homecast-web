@@ -229,6 +229,10 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     // Simple logout — just clear token, keep data
+    const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
+    if (win.webkit?.messageHandlers?.homecast) {
+      win.webkit.messageHandlers.homecast.postMessage({ action: 'logout' });
+    }
     localStorage.removeItem('homecast-token');
     setUser(null);
     window.location.href = '/login';

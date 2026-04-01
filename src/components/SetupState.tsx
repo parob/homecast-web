@@ -345,20 +345,29 @@ function WaitingForInvite({ isDarkBackground, userEmail, onSetupCloud, onSetupMa
   );
 }
 
-function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, cloudSignupsAvailable = true }: {
+function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, cloudSignupsAvailable = true }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
+  relayOffline?: boolean;
   cloudSignupsAvailable?: boolean;
 }) {
   const pricing = getPricing();
 
   return (
     <div className="space-y-5 max-w-lg mx-auto">
+      {relayOffline && (
+        <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
+          <Monitor className={`h-5 w-5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
+          <p className={`text-sm ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
+            Your Mac relay is offline. Start the Homecast app on your Mac to reconnect, or choose a different option below.
+          </p>
+        </div>
+      )}
       <div className="text-center space-y-3">
-        <img src="/icon-192.png" alt="Homecast" className="h-14 w-14 mx-auto rounded-2xl" />
+        {!relayOffline && <img src="/icon-192.png" alt="Homecast" className="h-14 w-14 mx-auto rounded-2xl" />}
         <h3 className={`text-xl font-bold ${isDarkBackground ? 'text-white' : ''}`}>
-          Welcome to Homecast
+          {relayOffline ? 'Connect your devices' : 'Welcome to Homecast'}
         </h3>
         <p className={`text-sm ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
           Choose how you'd like to connect your HomeKit devices.
@@ -441,8 +450,8 @@ export function SetupState({
     return <EnrollmentTracker isDarkBackground={isDarkBackground} pendingEnrollmentId={pendingEnrollmentId} />;
   }
 
-  // If we have homes but relay is offline, show relay offline states
-  if (homes.length > 0) {
+  // Shared homes with offline relay: user can't change relay type, show offline state
+  if (homes.length > 0 && homes.some(h => h.role && h.role !== 'owner')) {
     return <RelayOfflineState homes={homes} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
   }
 
@@ -456,7 +465,7 @@ export function SetupState({
       return <WaitingForInvite isDarkBackground={isDarkBackground} userEmail={userEmail} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} cloudSignupsAvailable={cloudSignupsAvailable} />;
     default:
       // Skipped or no setup path (returning user)
-      return <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} cloudSignupsAvailable={cloudSignupsAvailable} />;
+      return <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} cloudSignupsAvailable={cloudSignupsAvailable} />;
   }
 }
 
