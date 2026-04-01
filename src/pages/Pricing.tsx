@@ -142,7 +142,7 @@ const Pricing = () => {
                     <li className="text-sm text-zinc-400">Local network access only</li>
                     <li className="text-sm text-zinc-400">No account required</li>
                   </ul>
-                  <div className="mt-4 pt-3 border-t border-zinc-700 space-y-3">
+                  <div className="mt-4 pt-3 border-t border-zinc-700 space-y-3 pb-1">
                     <p className="text-xs text-zinc-400">
                       Remote access via Tailscale, Cloudflare Tunnel, or similar tools
                     </p>
