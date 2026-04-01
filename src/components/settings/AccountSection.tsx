@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { LogOut, Trash2, Plus, UserIcon, X, Shield } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2 } from 'lucide-react';
 import { config, isCommunity } from '@/lib/config';
 import { isRelayCapable } from '@/native/homekit-bridge';
 
@@ -121,23 +122,26 @@ export function AccountSection({
     loadAuthState();
   };
 
-  const [editingPasswordId, setEditingPasswordId] = useState<string | null>(null);
+  const [passwordDialogUser, setPasswordDialogUser] = useState<CommunityUser | null>(null);
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordError, setEditPasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
-  const changePassword = async (userId: string) => {
-    if (!editPassword.trim()) {
+  const changePassword = async () => {
+    if (!passwordDialogUser || !editPassword.trim()) {
       setEditPasswordError('Password is required');
       return;
     }
+    setChangingPassword(true);
     try {
-      await communityGraphQL('ChangeCommunityUserPassword', { userId, password: editPassword });
-      setEditingPasswordId(null);
+      await communityGraphQL('ChangeCommunityUserPassword', { userId: passwordDialogUser.id, password: editPassword });
+      setPasswordDialogUser(null);
       setEditPassword('');
       setEditPasswordError('');
     } catch (e: any) {
       setEditPasswordError(e.message || 'Failed to change password');
     }
+    setChangingPassword(false);
   };
 
   return (
@@ -175,43 +179,58 @@ export function AccountSection({
               )}
 
               {users.map(user => (
-                <div key={user.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{user.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{user.role}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => { setEditingPasswordId(editingPasswordId === user.id ? null : user.id); setEditPassword(''); setEditPasswordError(''); }}>
-                        {editingPasswordId === user.id ? 'Cancel' : 'Password'}
-                      </Button>
-                      {user.role !== 'owner' && (
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => deleteUser(user.id)}>
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
+                <div key={user.id} className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm">{user.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{user.role}</span>
                   </div>
-                  {editingPasswordId === user.id && (
-                    <div className="flex gap-1.5 px-2">
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => { setPasswordDialogUser(user); setEditPassword(''); setEditPasswordError(''); }}>
+                      <Key className="h-3 w-3 mr-1" />
+                      Change Password
+                    </Button>
+                    {user.role !== 'owner' && (
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => deleteUser(user.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Change Password Dialog */}
+              <Dialog open={!!passwordDialogUser} onOpenChange={(open) => { if (!open) setPasswordDialogUser(null); }}>
+                <DialogContent className="sm:max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>Change Password</DialogTitle>
+                    <DialogDescription>
+                      Set a new password for <span className="font-medium">{passwordDialogUser?.name}</span>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">New Password</Label>
                       <Input
                         type="password"
                         value={editPassword}
                         onChange={e => setEditPassword(e.target.value)}
-                        placeholder="New password"
-                        className="h-7 text-xs flex-1"
-                        onKeyDown={e => e.key === 'Enter' && changePassword(user.id)}
+                        placeholder="Enter new password"
+                        onKeyDown={e => e.key === 'Enter' && changePassword()}
                         autoFocus
                       />
-                      <Button size="sm" className="h-7 text-xs px-2" onClick={() => changePassword(user.id)}>
-                        Save
-                      </Button>
-                      {editPasswordError && <p className="text-xs text-destructive">{editPasswordError}</p>}
                     </div>
-                  )}
-                </div>
-              ))}
+                    {editPasswordError && <p className="text-sm text-destructive">{editPasswordError}</p>}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setPasswordDialogUser(null)}>Cancel</Button>
+                    <Button onClick={changePassword} disabled={changingPassword}>
+                      {changingPassword ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Save Password
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               {showAddUser && (
                 <div className="space-y-2 rounded-md border p-2.5">

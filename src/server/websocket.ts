@@ -623,7 +623,8 @@ export class ServerWebSocket {
                  message.type === 'service_group_update' ||
                  message.type === 'relay_status_update' ||
                  message.type === 'settings_updated' ||
-                 message.type === 'enrollment_cancelled') {
+                 message.type === 'enrollment_cancelled' ||
+                 message.type === 'auth_required') {
         // Broadcast messages from server - forward to callback
         this.callbacks.onBroadcast?.(message as BroadcastMessage);
       } else if (message.type === 'subscription_invalidated') {

@@ -83,12 +83,11 @@ async function resolveOperation(
 
     case 'SetAuthEnabled': {
       await db.setSetting('auth-enabled', variables.enabled ? 'true' : 'false');
-      // Refresh the cached flag in local-server so it takes effect immediately
-      const { refreshAuthEnabled } = await import('./local-server');
+      const { refreshAuthEnabled, clearAuthenticatedClients } = await import('./local-server');
       await refreshAuthEnabled();
       if (variables.enabled) {
         await auth.invalidateAllTokens();
-        // Broadcast to all connected clients to re-authenticate
+        clearAuthenticatedClients();
         const broadcast = (window as any).__localserver_broadcast;
         if (broadcast) broadcast({ type: 'auth_required' });
       }
@@ -116,14 +115,25 @@ async function resolveOperation(
     case 'DeleteCommunityUser': {
       const success = await auth.deleteUser(variables.userId as string);
       if (success) {
-        // Rotate JWT secret so deleted user's tokens are invalidated
         await auth.invalidateAllTokens();
+        const { clearAuthenticatedClients } = await import('./local-server');
+        clearAuthenticatedClients();
+        const broadcast = (window as any).__localserver_broadcast;
+        if (broadcast) broadcast({ type: 'auth_required' });
       }
       return { deleteCommunityUser: { success } };
     }
 
-    case 'ChangeCommunityUserPassword':
-      return { changeCommunityUserPassword: { success: await auth.changePassword(variables.userId as string, variables.password as string) } };
+    case 'ChangeCommunityUserPassword': {
+      const success = await auth.changePassword(variables.userId as string, variables.password as string);
+      if (success) {
+        const { clearAuthenticatedClients } = await import('./local-server');
+        clearAuthenticatedClients();
+        const broadcast = (window as any).__localserver_broadcast;
+        if (broadcast) broadcast({ type: 'auth_required' });
+      }
+      return { changeCommunityUserPassword: { success } };
+    }
 
     case 'UpdateCommunityUserRole':
       return { updateCommunityUserRole: { success: await auth.updateUserRole(variables.userId as string, variables.role as 'admin' | 'control' | 'view') } };

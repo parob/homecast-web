@@ -247,7 +247,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </a>
             </div>
           </div>
-        ) : (
+        ) : PlanSection ? (
           <PlanSection
             accountType={props.accountType}
             usedAccessorySlots={props.usedAccessorySlots}
@@ -264,9 +264,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
             isRelayCapable={props.isRelayCapable}
             setAccessorySelectionOpen={props.setAccessorySelectionOpen}
           />
-        );
+        ) : null;
       case 'smart-deals':
-        return (
+        return SmartDealsSection ? (
           <SmartDealsSection
             accountType={props.accountType}
             isInMacApp={props.isInMacApp}
@@ -275,7 +275,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             settingsData={props.settingsData}
             saveSettings={props.saveSettings}
           />
-        );
+        ) : null;
       case 'display':
         return (
           <DisplaySection

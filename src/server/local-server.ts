@@ -318,3 +318,11 @@ async function handleRequest(clientId: string, msg: ProtocolMessage): Promise<vo
 export function getConnectedClientCount(): number {
   return connectedClients.size;
 }
+
+/**
+ * Clear all authenticated clients. Called when auth settings change
+ * (enable auth, delete user, change password) to force re-authentication.
+ */
+export function clearAuthenticatedClients(): void {
+  authenticatedClients.clear();
+}

@@ -1118,6 +1118,12 @@ const Dashboard = () => {
 
 
   const { user, isAuthenticated, isAdmin, hasStagingAccess, isLoading: authLoading, logout, resetAndUninstall } = useAuth();
+
+  // Redirect to login if not authenticated (e.g. auth enabled in community mode)
+  if (!authLoading && !isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Check if URL has collection - if so, don't load home from localStorage
@@ -2571,7 +2577,9 @@ const Dashboard = () => {
 
   // Combined data - use relay data when connected
   const homesData = relayHomesData ? { homes: relayHomesData } : null;
-  const homesLoading = relayHomesLoading && !relayHomesData;
+  // In Community mode on relay Mac, don't block on loading — data arrives quickly via local bridge.
+  // On first launch the HomeKit bridge may take a moment; show empty sidebar rather than infinite spinner.
+  const homesLoading = relayHomesLoading && !relayHomesData && !(isCommunity && isRelayCapable());
   const refetchHomes = relayRefetchHomes;
 
   // Onboarding: check if user has completed onboarding (cloud mode only)
@@ -4838,9 +4846,6 @@ const Dashboard = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className={`relative h-10 w-10 -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
           <MoreVertical className="h-5 w-5" />
-          {!isWebSocketConnected && !accessoriesLoading && !collectionsLoading && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-amber-500/70" />
-          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[200px]">
@@ -6198,7 +6203,7 @@ const Dashboard = () => {
                     {!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
                   </p>
                 </div>
-              ) : ((sessionsLoading && !sessionsData) || !homesData) ? (
+              ) : (!isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading))) ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
