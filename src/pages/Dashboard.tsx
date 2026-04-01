@@ -55,7 +55,6 @@ import { DealBadge } from '@/components/widgets/DealBadge';
 import { findDealForAccessory } from '@/lib/deals';
 import { ErrorWithTrace } from '@/components/shared/ErrorWithTrace';
 import { getCloud } from '@/lib/cloud';
-const ManagedRelayDashboard = getCloud()?.ManagedRelayDashboard ?? null;
 import { AccessorySearch } from '@/components/AccessorySearch';
 import { AccessoryWidget, ServiceGroupWidget, getCharacteristic, getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, hasServiceType, getPrimaryServiceType, normalizeServiceType, getRoomIcon } from '@/components/widgets';
 import { SliderControl } from '@/components/widgets/shared';
@@ -137,34 +136,11 @@ import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { getAutoPresetId, PRESET_IMAGES, PRESET_SOLID_COLORS, PRESET_GRADIENTS, getDominantColor, applyBrightnessToHex } from '@/lib/colorUtils';
-// Cloud admin components — loaded dynamically if @homecast/cloud is available
-const _cloud = getCloud();
-const AdminDashboard = _cloud?.AdminDashboard ?? null;
-const AdminUsers = _cloud?.AdminUsers ?? null;
-const UserDetail = _cloud?.UserDetail ?? null;
-const AdminSessions = _cloud?.AdminSessions ?? null;
-const AdminWebhooks = _cloud?.AdminWebhooks ?? null;
-const AdminEnrollments = _cloud?.AdminEnrollments ?? null;
-const AdminDeals = _cloud?.AdminDeals ?? null;
-const AdminHomeKit = _cloud?.AdminHomeKit ?? null;
-const AdminDevices = _cloud?.AdminDevices ?? null;
-const AdminListings = _cloud?.AdminListings ?? null;
-const AdminActiveDeals = _cloud?.AdminActiveDeals ?? null;
-const AdminTasks = _cloud?.AdminTasks ?? null;
-const AdminApprovals = _cloud?.AdminApprovals ?? null;
-const AdminLogs = _cloud?.AdminLogs ?? null;
-const AdminObservability = _cloud?.AdminObservability ?? null;
-const AdminDebug = _cloud?.AdminDebug ?? null;
-const AdminDebugInfo = _cloud?.AdminDebugInfo ?? null;
-const AdminMetrics = _cloud?.AdminMetrics ?? null;
-const AdminAnalytics = _cloud?.AdminAnalytics ?? null;
-const AdminConnections = _cloud?.AdminConnections ?? null;
-const AdminSidebar = _cloud?.AdminSidebar ?? null;
-const TaskDialog = _cloud?.TaskDialog ?? null;
+// Cloud admin components — resolved at render time (not module-load time)
+// because initCloud() is async and hasn't completed when static imports run.
 import { OnboardingOverlay } from '@/components/OnboardingOverlay';
 import type { SetupPath } from '@/components/OnboardingOverlay';
 import { SetupState, EnrollmentTrackerCard } from '@/components/SetupState';
-// Admin components imported from @homecast/cloud above
 import { getPricing, getRegion } from '@/lib/pricing';
 
 const formatTimeAgo = (date: Date): string => {
@@ -1024,6 +1000,32 @@ function AccessoryDealBadge({ accessory }: { accessory: import('@/lib/graphql/ty
 }
 
 const Dashboard = () => {
+  // Cloud admin components — resolved at render time so initCloud() has completed
+  const _cloud = getCloud();
+  const AdminDashboard = _cloud?.AdminDashboard ?? null;
+  const AdminUsers = _cloud?.AdminUsers ?? null;
+  const UserDetail = _cloud?.UserDetail ?? null;
+  const AdminSessions = _cloud?.AdminSessions ?? null;
+  const AdminWebhooks = _cloud?.AdminWebhooks ?? null;
+  const AdminEnrollments = _cloud?.AdminEnrollments ?? null;
+  const AdminDeals = _cloud?.AdminDeals ?? null;
+  const AdminHomeKit = _cloud?.AdminHomeKit ?? null;
+  const AdminDevices = _cloud?.AdminDevices ?? null;
+  const AdminListings = _cloud?.AdminListings ?? null;
+  const AdminActiveDeals = _cloud?.AdminActiveDeals ?? null;
+  const AdminTasks = _cloud?.AdminTasks ?? null;
+  const AdminApprovals = _cloud?.AdminApprovals ?? null;
+  const AdminLogs = _cloud?.AdminLogs ?? null;
+  const AdminObservability = _cloud?.AdminObservability ?? null;
+  const AdminDebug = _cloud?.AdminDebug ?? null;
+  const AdminDebugInfo = _cloud?.AdminDebugInfo ?? null;
+  const AdminMetrics = _cloud?.AdminMetrics ?? null;
+  const AdminAnalytics = _cloud?.AdminAnalytics ?? null;
+  const AdminConnections = _cloud?.AdminConnections ?? null;
+  const AdminSidebar = _cloud?.AdminSidebar ?? null;
+  const TaskDialog = _cloud?.TaskDialog ?? null;
+  const ManagedRelayDashboard = _cloud?.ManagedRelayDashboard ?? null;
+
   // Check if mobile viewport
   const isMobile = useIsMobile();
   // Router hooks for admin panel
@@ -7876,7 +7878,7 @@ const Dashboard = () => {
       </AlertDialog>
 
       {/* Admin Panel Dialog - Nearly Full Screen */}
-      <Dialog open={isAdminRoute} onOpenChange={(open) => !open && navigate('/portal')}>
+      <Dialog open={isAdminRoute && !!_cloud} onOpenChange={(open) => !open && navigate('/portal')}>
         <DialogContent
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
           style={{

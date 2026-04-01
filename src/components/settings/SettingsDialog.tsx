@@ -26,12 +26,10 @@ import {
 } from 'lucide-react';
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import { isCommunity } from '@/lib/config';
-import { hasCloud, getCloud } from '@/lib/cloud';
+import { getCloud } from '@/lib/cloud';
 
-// Cloud components — loaded dynamically if @homecast/cloud is available
-const PlanSection = hasCloud() ? getCloud()!.PlanSection : null;
-const SmartDealsSection = hasCloud() ? getCloud()!.SmartDealsSection : null;
-const SelfHostedRelaySection = hasCloud() ? getCloud()!.SelfHostedRelaySection : null;
+// Cloud components — resolved at render time (not module-load time)
+// because initCloud() is async and hasn't completed when static imports run.
 import { DisplaySection } from './DisplaySection';
 
 import { ApiAccessSection } from './ApiAccessSection';
@@ -136,6 +134,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     launchAtLoginSupported,
     showSmartDeals,
   } = props;
+
+  // Cloud components — resolved at render time so initCloud() has completed
+  const _cloud = getCloud();
+  const PlanSection = _cloud?.PlanSection ?? null;
+  const SmartDealsSection = _cloud?.SmartDealsSection ?? null;
+  const SelfHostedRelaySection = _cloud?.SelfHostedRelaySection ?? null;
 
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'plan');

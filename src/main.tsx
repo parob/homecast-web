@@ -10,8 +10,8 @@ import "./index.css";
 import "./native";
 
 // Initialize cloud features (checks if @homecast/cloud is installed)
+// Must complete before React renders so getCloud() returns the correct value.
 import { initCloud } from "./lib/cloud";
-initCloud();
 
 // Initialize Community mode local server (handles external WebSocket clients)
 import { initLocalServer } from "./server/local-server";
@@ -59,12 +59,15 @@ window.addEventListener('vite:preloadError', (e) => {
   }
 });
 
-try {
-  createRoot(document.getElementById("root")!).render(<ErrorBoundary><App /></ErrorBoundary>);
-} catch (e) {
-  // Fatal error before React could mount — show visible error instead of white screen
-  const root = document.getElementById("root");
-  if (root) {
-    root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif;text-align:center;padding:24px"><div><div style="font-size:36px;margin-bottom:16px;opacity:.5">:(</div><p style="font-size:13px;opacity:.5;margin-bottom:20px">${(e as Error).message || 'Failed to load'}</p><button onclick="location.reload()" style="background:rgba(128,128,128,.1);color:inherit;border:1px solid rgba(128,128,128,.2);border-radius:8px;padding:8px 20px;font-size:14px;cursor:pointer">Reload</button></div></div>`;
+// Await cloud init before rendering so getCloud() is ready in all components
+initCloud().then(() => {
+  try {
+    createRoot(document.getElementById("root")!).render(<ErrorBoundary><App /></ErrorBoundary>);
+  } catch (e) {
+    // Fatal error before React could mount — show visible error instead of white screen
+    const root = document.getElementById("root");
+    if (root) {
+      root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif;text-align:center;padding:24px"><div><div style="font-size:36px;margin-bottom:16px;opacity:.5">:(</div><p style="font-size:13px;opacity:.5;margin-bottom:20px">${(e as Error).message || 'Failed to load'}</p><button onclick="location.reload()" style="background:rgba(128,128,128,.1);color:inherit;border:1px solid rgba(128,128,128,.2);border-radius:8px;padding:8px 20px;font-size:14px;cursor:pointer">Reload</button></div></div>`;
+    }
   }
-}
+});
