@@ -1155,17 +1155,14 @@ const Dashboard = () => {
     if (urlHome) return urlHome;
     return localStorage.getItem('homecast-selected-home');
   });
-  const [, startHomeSwitchTransition] = useTransition();
+  // Update both pending and selected home IDs synchronously.
+  // useTransition was causing 5s delays on the relay Mac because observation events
+  // (low-priority transitions) kept getting queued ahead of the home switch.
+  const isHomeSwitching = false; // No deferred state = no spinner needed
 
-  // Check if we're switching homes (pending differs from committed)
-  const isHomeSwitching = pendingHomeId !== selectedHomeId;
-
-  // Update both pending (immediate) and selected (deferred) home IDs
   const setSelectedHomeId = useCallback((homeId: string | null) => {
-    setPendingHomeId(homeId); // Immediate update for sidebar
-    startHomeSwitchTransition(() => {
-      setSelectedHomeIdRaw(homeId); // Deferred update for content
-    });
+    setPendingHomeId(homeId);
+    setSelectedHomeIdRaw(homeId);
   }, []);
 
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(() => {
