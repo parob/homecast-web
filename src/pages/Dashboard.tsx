@@ -1121,11 +1121,6 @@ const Dashboard = () => {
 
   const { user, isAuthenticated, isAdmin, hasStagingAccess, isLoading: authLoading, logout, resetAndUninstall } = useAuth();
 
-  // Redirect to login if not authenticated (e.g. auth enabled in community mode)
-  if (!authLoading && !isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Check if URL has collection - if so, don't load home from localStorage

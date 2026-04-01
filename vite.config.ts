@@ -18,11 +18,6 @@ function versionPlugin(sha: string, deployedAt: string): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  build: {
-    // TEMPORARY: preserve component names for debugging React error #300
-    minify: 'esbuild',
-    target: 'es2020',
-  },
   esbuild: {
     keepNames: true,
   },
