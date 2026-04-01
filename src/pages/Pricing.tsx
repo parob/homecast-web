@@ -1,4 +1,4 @@
-import { Cloud, Check, Monitor, AlertTriangle, Heart, X } from 'lucide-react';
+import { Laptop, Cloud, Check, Monitor, AlertTriangle, Heart, X } from 'lucide-react';
 import { FAQ, FAQItem } from '@/components/FAQ';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
@@ -125,7 +125,7 @@ const Pricing = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-6">
               {/* Community Box — dark themed */}
-              <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4 sm:p-6 order-2 lg:order-1">
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Monitor className="h-5 w-5 text-zinc-400" />
                   <h3 className="text-lg font-semibold text-zinc-100">Community</h3>
@@ -154,70 +154,81 @@ const Pricing = () => {
                       <Heart className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                       <span>Donations welcome if you'd like to support development</span>
                     </div>
-                    <a
-                      href="https://github.com/parob/homecast"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 mt-2 px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 text-sm font-medium transition-colors w-full justify-center"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-                      View on GitHub
-                    </a>
                   </div>
                 </div>
               </div>
 
               {/* Homecast Cloud Box */}
-              <div className="rounded-2xl border border-border bg-background/50 p-4 sm:p-6 order-1 lg:order-2">
+              <div className="rounded-2xl border border-border bg-background/50 p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Cloud className="h-5 w-5 text-muted-foreground" />
                   <h3 className="text-lg font-semibold">Homecast Cloud</h3>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4 sm:mb-6">Remote access, sharing &amp; API &mdash; powered by homecast.cloud</p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Basic Tier */}
-                  <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
-                    <div className="mb-3 sm:mb-4">
-                      <h5 className="text-base font-semibold mb-1">Basic</h5>
-                      <span className="text-2xl sm:text-3xl font-bold">Free</span>
+                <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+                  {/* Self-Hosted Relay Sub-box */}
+                  <div className="rounded-xl border border-border bg-background/30 p-3 sm:p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Laptop className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-semibold">Self-Hosted Relay</h4>
                     </div>
-                    <ul className="space-y-2 flex-1">
-                      <li className="text-sm text-muted-foreground">Limited to 10 accessories</li>
-                      <li className="text-sm text-muted-foreground">Ad-supported with Smart Deals</li>
-                    </ul>
-                  </div>
+                    <p className="text-xs text-muted-foreground mb-3">Run the Homecast Relay on your Mac</p>
 
-                  {/* Standard Tier */}
-                  <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
-                    <div className="mb-3 sm:mb-4">
-                      <h5 className="text-base font-semibold mb-1">Standard</h5>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl sm:text-3xl font-bold">{pricing.standard.formatted}</span>
-                        <span className="text-muted-foreground text-sm">/month</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Basic Tier */}
+                      <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
+                        <div className="mb-3 sm:mb-4">
+                          <h5 className="text-base font-semibold mb-1">Basic</h5>
+                          <span className="text-2xl sm:text-3xl font-bold">Free</span>
+                        </div>
+                        <ul className="space-y-2 flex-1">
+                          <li className="text-sm text-muted-foreground">Limited to 10 accessories</li>
+                          <li className="text-sm text-muted-foreground">Ad-supported with Smart Deals</li>
+                        </ul>
+                      </div>
+
+                      {/* Standard Tier */}
+                      <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
+                        <div className="mb-3 sm:mb-4">
+                          <h5 className="text-base font-semibold mb-1">Standard</h5>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-2xl sm:text-3xl font-bold">{pricing.standard.formatted}</span>
+                            <span className="text-muted-foreground text-sm">/month</span>
+                          </div>
+                        </div>
+                        <ul className="space-y-2 flex-1">
+                          <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
+                          <CheckItem>Smart Deals optional</CheckItem>
+                        </ul>
                       </div>
                     </div>
-                    <ul className="space-y-2 flex-1">
-                      <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
-                      <CheckItem>Smart Deals optional</CheckItem>
-                    </ul>
                   </div>
 
-                  {/* Cloud Tier */}
-                  <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
-                    <div className="mb-3 sm:mb-4">
-                      <h5 className="text-base font-semibold mb-1">Cloud</h5>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl sm:text-3xl font-bold">{pricing.cloud.formatted}</span>
-                        <span className="text-muted-foreground text-sm">/month</span>
-                      </div>
+                  {/* Cloud Relay Sub-box */}
+                  <div className="rounded-xl border border-border bg-background/30 p-3 sm:p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Cloud className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-semibold">Cloud Relay</h4>
                     </div>
-                    <ul className="space-y-2 flex-1">
-                      <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
-                      <CheckItem>No Mac required</CheckItem>
-                      <CheckItem>Smart Deals optional</CheckItem>
-                    </ul>
-                    <p className="text-xs text-muted-foreground mt-3">Requires an Apple Home Hub (Apple TV or HomePod) on your home network.</p>
+                    <p className="text-xs text-muted-foreground mb-3">We run it for you</p>
+
+                    {/* Cloud Tier */}
+                    <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col h-[calc(100%-52px)]">
+                      <div className="mb-3 sm:mb-4">
+                        <h5 className="text-base font-semibold mb-1">Cloud</h5>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl sm:text-3xl font-bold">{pricing.cloud.formatted}</span>
+                          <span className="text-muted-foreground text-sm">/month</span>
+                        </div>
+                      </div>
+                      <ul className="space-y-2 flex-1">
+                        <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
+                        <CheckItem>No Mac required</CheckItem>
+                        <CheckItem>Smart Deals optional</CheckItem>
+                      </ul>
+                      <p className="text-xs text-muted-foreground mt-3">Requires an Apple Home Hub (Apple TV or HomePod) on your home network.</p>
+                    </div>
                   </div>
                 </div>
               </div>
