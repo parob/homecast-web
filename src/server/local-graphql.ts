@@ -72,12 +72,6 @@ async function resolveOperation(
       return { signup: { success: true, token: result.token, error: null, message: 'Account created', __typename: 'SignupResult' } };
     }
 
-    case 'DebugCache': {
-      // Temporary: expose DataCache + communityCache state for diagnostics
-      const { getDataCacheKeys } = await import('@/hooks/useHomeKitData');
-      return { debugCache: getDataCacheKeys() };
-    }
-
     case 'IsOnboarded': {
       const onboarded = await auth.isOnboarded();
       // Relay auto-login: if a user exists but no token, auto-authenticate as the owner.

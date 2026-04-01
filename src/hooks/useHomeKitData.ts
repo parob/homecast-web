@@ -137,16 +137,6 @@ class DataCache {
 
 const cache = new DataCache();
 
-// Debug: expose DataCache keys for diagnostics
-export function getDataCacheKeys(): Record<string, { stale: boolean; size: number }> {
-  const result: Record<string, { stale: boolean; size: number }> = {};
-  for (const [key] of cache.getSnapshot()) {
-    const data = cache.get(key);
-    result[key] = { stale: cache.isStale(key), size: Array.isArray(data) ? data.length : -1 };
-  }
-  return result;
-}
-
 // ============================================================================
 // Pending updates tracker - prevents stale server updates from overwriting
 // optimistic updates during rapid toggling
