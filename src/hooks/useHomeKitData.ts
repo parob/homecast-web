@@ -5,7 +5,7 @@
  * - Browser mode: WebSocket to server, routed to relay
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 
@@ -36,19 +36,6 @@ class DataCache {
   set<T>(key: string, data: T): void {
     this.cache.set(key, { data, timestamp: Date.now() });
     this.notify(key);
-  }
-
-  /**
-   * Update data in-place without triggering notifications/re-renders.
-   * Used for high-frequency observation events (characteristic updates) that would
-   * otherwise interrupt React transitions and cause slow home switching.
-   * The updated data is visible on the next natural re-render.
-   */
-  silentUpdate<T>(key: string, updater: (data: T) => T): boolean {
-    const entry = this.cache.get(key);
-    if (!entry) return false;
-    entry.data = updater(entry.data as T);
-    return true;
   }
 
   isStale(key: string): boolean {
@@ -383,14 +370,12 @@ function useCachedData<T>(
 
   // Subscribe to cache changes for this specific key only
   // Also refetch if the cache entry was invalidated (deleted)
-  // Use startTransition for the re-render so observation events (characteristic updates,
-  // reachability) don't interrupt useTransition-based home switches in the Dashboard.
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
   useEffect(() => {
     const unsubscribe = cache.subscribe(() => {
       if (mountedRef.current) {
-        startTransition(() => { forceUpdate(n => n + 1); });
+        forceUpdate(n => n + 1);
         // If cache entry was deleted (invalidated), trigger a refetch
         if (!cache.get(cacheKey)) {
           fetchDataRef.current(true);
@@ -816,29 +801,8 @@ function updateCharacteristicInCacheKey(
   cacheKey: string,
   accessoryId: string,
   characteristicType: string,
-  jsonEncodedValue: string,
-  silent: boolean
+  jsonEncodedValue: string
 ): boolean {
-  if (silent) {
-    // Silent: mutate in-place without triggering React re-renders.
-    // Used for observation events — the value is updated for the next natural render.
-    return cache.silentUpdate<HomeKitAccessory[]>(cacheKey, (accessories) => {
-      for (const acc of accessories) {
-        if (acc.id !== accessoryId) continue;
-        for (const service of acc.services) {
-          for (const char of service.characteristics) {
-            if (char.characteristicType === characteristicType) {
-              char.value = jsonEncodedValue;
-              return accessories; // same reference, mutated in-place
-            }
-          }
-        }
-      }
-      return accessories;
-    });
-  }
-
-  // Non-silent: create new array and notify subscribers (triggers re-render)
   const accessories = cache.get<HomeKitAccessory[]>(cacheKey);
   if (!accessories) return false;
 
@@ -888,18 +852,13 @@ export function updateAccessoryCharacteristicInCache(
   // JSON-stringify the value to match the format from HomeKit
   const jsonEncodedValue = JSON.stringify(value);
 
-  // Server updates (observation events, WebSocket broadcasts) use silent mode to avoid
-  // triggering React re-renders that interrupt home switch transitions.
-  // Optimistic updates (user interactions) use loud mode for immediate visual feedback.
-  const silent = isServerUpdate;
-
   // Update home-specific cache
   const homeKey = `accessories:${homeId}`;
-  const homeUpdated = updateCharacteristicInCacheKey(homeKey, accessoryId, characteristicType, jsonEncodedValue, silent);
+  const homeUpdated = updateCharacteristicInCacheKey(homeKey, accessoryId, characteristicType, jsonEncodedValue);
 
   // Also update the "all accessories" cache used by collections
   const allKey = 'accessories:all';
-  const allUpdated = updateCharacteristicInCacheKey(allKey, accessoryId, characteristicType, jsonEncodedValue, silent);
+  const allUpdated = updateCharacteristicInCacheKey(allKey, accessoryId, characteristicType, jsonEncodedValue);
 
   if (import.meta.env.DEV) console.log(`[DataCache] updateCharacteristic: ${accessoryId.slice(0, 8)}:${characteristicType}=${value}, home=${homeUpdated}, all=${allUpdated}${isServerUpdate ? ' (server)' : ' (optimistic)'}`);
 }
