@@ -63,9 +63,9 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
         <thead>
           <tr>
             <th className="w-[200px]" />
-            <th className="px-3" />
-            <th colSpan={3} className="px-3 pb-0">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground border border-border/60 border-b-0 rounded-t-lg py-1.5 bg-muted/30">
+            <th />
+            <th colSpan={3} className="pb-0">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground border border-border/60 border-b-0 rounded-t-lg py-1.5 bg-muted/30 mx-0">
                 <Cloud className="h-3 w-3" />
                 Homecast Cloud
               </div>
@@ -75,8 +75,8 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
             <th className="text-left py-3 pr-4 font-medium text-muted-foreground w-[200px]" />
             <th className="py-3 px-3 font-semibold text-center">Community</th>
             <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Basic</th>
-            <th className="py-3 px-3 font-semibold text-center bg-muted/30">Standard</th>
-            <th className="py-3 px-3 font-semibold text-center border-r border-border/60 bg-muted/30">Cloud</th>
+            <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Standard</th>
+            <th className="py-3 px-3 font-semibold text-center border-x border-border/60 bg-muted/30">Cloud</th>
           </tr>
         </thead>
         <tbody>
