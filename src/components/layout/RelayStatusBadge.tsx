@@ -230,12 +230,14 @@ export function RelayStatusBadge({ isDarkBackground, accountType, accessoryLimit
                   </span>
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subscriptions</span>
-                  <span className={cn("font-medium", subscriptionCount > 0 ? "text-green-600" : "text-muted-foreground")}>
-                    {subscriptionCount > 0 ? `${subscriptionCount} active` : 'None'}
-                  </span>
-                </div>
+                {!(isCommunity && isRelayCapable()) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subscriptions</span>
+                    <span className={cn("font-medium", subscriptionCount > 0 ? "text-green-600" : "text-muted-foreground")}>
+                      {subscriptionCount > 0 ? `${subscriptionCount} active` : 'None'}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Webhooks</span>

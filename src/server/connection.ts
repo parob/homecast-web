@@ -119,6 +119,8 @@ function broadcastToExternalClients(message: Record<string, unknown>): void {
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+  recordCommunityActivity();
+
   // Value-only writes: execute + broadcast, but preserve the cache.
   // These change characteristic values without altering the accessories list structure.
   if (VALUE_WRITE_ACTIONS.has(action)) {
@@ -223,15 +225,52 @@ export async function communityRequest<T>(action: string, payload: Record<string
 // Avoids the race condition where isRelayCapable() returns false during bridge init
 // In client mode (connecting to a remote relay), never confirm — use WebSocket path instead
 let communityRelayConfirmed = false;
+
+// Community relay stats (no WebSocket to cloud, so we track locally)
+let communityStartedAt: number | null = null;
+let communityConnectedClientCount = 0;
+const communityActivityBuckets = new Array<number>(60).fill(0);
+let communityActivityBucketMinute = -1;
+
+/** Update the connected client count (called by local-server.ts to avoid circular import). */
+export function setCommunityClientCount(count: number): void {
+  communityConnectedClientCount = count;
+}
+
 if (isCommunity && !isClientMode()) {
   const checkBridge = () => {
     if (isRelayCapable()) {
       communityRelayConfirmed = true;
+      communityStartedAt = Date.now();
     } else {
       setTimeout(checkBridge, 50);
     }
   };
   checkBridge();
+}
+
+/** Record a community relay activity tick (rolling 60-minute window). */
+export function recordCommunityActivity(): void {
+  const now = Math.floor(Date.now() / 60000);
+  if (communityActivityBucketMinute === -1) {
+    communityActivityBucketMinute = now;
+    communityActivityBuckets[59] = 1;
+    return;
+  }
+  const elapsed = now - communityActivityBucketMinute;
+  if (elapsed === 0) {
+    communityActivityBuckets[59]++;
+  } else if (elapsed > 0) {
+    const shift = Math.min(elapsed, 60);
+    if (shift >= 60) {
+      communityActivityBuckets.fill(0);
+    } else {
+      communityActivityBuckets.copyWithin(0, shift);
+      communityActivityBuckets.fill(0, 60 - shift);
+    }
+    communityActivityBucketMinute = now;
+    communityActivityBuckets[59] = 1;
+  }
 }
 
 // Get device name (hostname or generic name)
@@ -314,6 +353,16 @@ class ServerConnection {
    * Shows whether server has notified us of active web clients or webhooks.
    */
   getSubscriberStatus(): { webClientsListening: boolean; webhooksActive: boolean; webClientCount: number; webhookCount: number; subscriptionCount: number } | null {
+    if (communityRelayConfirmed) {
+      const clientCount = communityConnectedClientCount;
+      return {
+        webClientsListening: clientCount > 0,
+        webhooksActive: false,
+        webClientCount: clientCount,
+        webhookCount: 0,
+        subscriptionCount: 0,
+      };
+    }
     if (!this.websocket) {
       return null;
     }
@@ -324,6 +373,9 @@ class ServerConnection {
    * Get the timestamp when the WebSocket connection was established.
    */
   getConnectedAt(): number | null {
+    if (communityRelayConfirmed) {
+      return communityStartedAt;
+    }
     if (!this.websocket) {
       return null;
     }
@@ -334,6 +386,24 @@ class ServerConnection {
    * Get per-minute WebSocket activity counts for the last 60 minutes.
    */
   getActivityHistory(): number[] {
+    if (communityRelayConfirmed) {
+      // Advance buckets to current time so idle gaps show as zeros
+      if (communityActivityBucketMinute !== -1) {
+        const now = Math.floor(Date.now() / 60000);
+        const elapsed = now - communityActivityBucketMinute;
+        if (elapsed > 0) {
+          const shift = Math.min(elapsed, 60);
+          if (shift >= 60) {
+            communityActivityBuckets.fill(0);
+          } else {
+            communityActivityBuckets.copyWithin(0, shift);
+            communityActivityBuckets.fill(0, 60 - shift);
+          }
+          communityActivityBucketMinute = now;
+        }
+      }
+      return [...communityActivityBuckets];
+    }
     return this.websocket?.getActivityHistory() ?? new Array(60).fill(0);
   }
 

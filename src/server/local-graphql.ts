@@ -392,6 +392,27 @@ async function resolveOperation(
       await db.deleteEntityAccess(variables.accessId as string);
       return { deleteEntityAccess: { success: true, error: null, __typename: 'DeleteResult' } };
 
+    case 'GetMySharedEntities': {
+      const allAccess = await db.getEntityAccess();
+      return {
+        mySharedEntities: allAccess.map(a => ({
+          id: a.id,
+          entityType: a.entityType,
+          entityId: a.entityId,
+          entityName: a.entityName || null,
+          accessType: a.accessType,
+          role: a.role,
+          name: a.name || null,
+          userEmail: a.userEmail || null,
+          hasPasscode: !!a.hasPasscode,
+          shareUrl: a.shareHash ? `${window.location.origin}/s/${a.shareHash}` : null,
+          accessSchedule: a.accessSchedule || null,
+          createdAt: a.createdAt || null,
+          __typename: 'EntityAccess',
+        })),
+      };
+    }
+
     // --- Home Members ---
     case 'GetHomeMembers': {
       const members = await db.getHomeMembers();

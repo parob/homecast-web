@@ -9,7 +9,7 @@
  * This runs inside the Mac app's WKWebView — NOT in external browsers.
  */
 
-import { communityRequest } from './connection';
+import { communityRequest, recordCommunityActivity, setCommunityClientCount } from './connection';
 import { isCommunity } from '../lib/config';
 import { handleGraphQL } from './local-graphql';
 import { handleREST } from './local-rest';
@@ -97,6 +97,7 @@ export function initLocalServer(): void {
   w.__localserver_disconnect_handler = (clientId: string) => {
     connectedClients.delete(clientId);
     authenticatedClients.delete(clientId);
+    setCommunityClientCount(connectedClients.size);
     console.log(`[LocalServer] Client disconnected: ${clientId} (${connectedClients.size} remaining)`);
   };
 
@@ -105,6 +106,7 @@ export function initLocalServer(): void {
   // Swift doesn't pass the HTTP Authorization header to the JS bridge, so we can't
   // validate tokens on GraphQL requests. GraphQL ops are mostly UI/settings data.
   w.__localserver_graphql_handler = async (clientId: string, request) => {
+    recordCommunityActivity();
     const win = window as Window & { webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } } };
 
     // Gate: relay must be set up (except status check ops)
@@ -126,6 +128,7 @@ export function initLocalServer(): void {
 
   // HTTP handler — called by Swift for REST, MCP, OAuth requests
   w.__localserver_http_handler = async (clientId: string, request) => {
+    recordCommunityActivity();
     const win = window as Window & { webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } } };
 
     // Gate: relay must be set up
@@ -204,7 +207,9 @@ export function initLocalServer(): void {
 }
 
 async function handleRequest(clientId: string, msg: ProtocolMessage): Promise<void> {
+  const wasNew = !connectedClients.has(clientId);
   connectedClients.add(clientId);
+  if (wasNew) setCommunityClientCount(connectedClients.size);
 
   const respond = (window as any).__localserver_respond;
 

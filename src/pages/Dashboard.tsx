@@ -6255,9 +6255,15 @@ const Dashboard = () => {
               ) : accessoriesError && !accessoriesData ? (
                 <ErrorWithTrace
                   title="Unable to load accessories"
-                  message={accessoriesError.message.includes('timed out')
+                  message={
+                    (accessoriesError as HomecastError)?.code === 'NO_DEVICE'
+                    ? 'The Homecast Relay is offline. Make sure the Relay is running and connected.'
+                    : (accessoriesError as HomecastError)?.code === 'AUTH_REQUIRED'
+                    ? 'Authentication is required. Please sign in.'
+                    : accessoriesError.message.includes('timed out')
                     ? 'The request timed out. The relay may be slow to respond.'
-                    : 'Something went wrong while fetching your accessories.'}
+                    : 'Something went wrong while fetching your accessories.'
+                  }
                   errorCode={(accessoriesError as HomecastError)?.code}
                   trace={(accessoriesError as HomecastError)?.trace}
                   className={isDarkBackground ? "bg-black/30 border-white/20" : ""}

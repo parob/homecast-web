@@ -329,6 +329,17 @@ export function useSharedWebSocket(
 }
 
 /**
+ * Parse a broadcast value to a raw JS value matching the format HomeKit
+ * returns (boolean, number, string). Broadcast values may arrive as raw
+ * values or as JSON-encoded strings (e.g. "true" instead of true) depending
+ * on the code path (relay vs GraphQL mutation).
+ */
+function parseValue(value: any): any {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+/**
  * Helper to apply a characteristic update to an accessories array
  */
 export function applyCharacteristicUpdate(
@@ -337,8 +348,7 @@ export function applyCharacteristicUpdate(
   characteristicType: string,
   value: any
 ): HomeKitAccessory[] {
-  // JSON-stringify the value to match GraphQL format
-  const jsonEncodedValue = JSON.stringify(value);
+  const parsed = parseValue(value);
 
   return accessories.map(acc => {
     if (acc.id !== accessoryId) return acc;
@@ -348,7 +358,7 @@ export function applyCharacteristicUpdate(
         ...service,
         characteristics: service.characteristics.map(char => {
           if (char.characteristicType !== characteristicType) return char;
-          return { ...char, value: jsonEncodedValue };
+          return { ...char, value: parsed };
         })
       }))
     };
@@ -385,7 +395,7 @@ export function applyServiceGroupUpdate(
   if (!group) return accessories;
 
   const memberIds = new Set(group.accessoryIds.map(id => id.replace(/-/g, '').toLowerCase()));
-  const jsonEncodedValue = JSON.stringify(value);
+  const parsed = parseValue(value);
 
   // For power-related characteristics, update both 'on' and 'power_state'
   const charTypes = (characteristicType === 'on' || characteristicType === 'power_state')
@@ -401,7 +411,7 @@ export function applyServiceGroupUpdate(
         ...service,
         characteristics: service.characteristics.map(char => {
           if (!charTypes.includes(char.characteristicType)) return char;
-          return { ...char, value: jsonEncodedValue };
+          return { ...char, value: parsed };
         })
       }))
     };
