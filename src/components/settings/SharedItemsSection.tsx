@@ -13,6 +13,7 @@ import type {
   GetCachedHomesResponse,
 } from '@/lib/graphql/types';
 import { WELL_KNOWN_CLIENTS } from '@/lib/oauth-clients';
+import { isCommunity } from '@/lib/config';
 import {
   Dialog,
   DialogContent,
@@ -305,7 +306,7 @@ export function SharedItemsSection() {
                 );
               });
             })()}
-            {(() => {
+            {!isCommunity && (() => {
               const memberEntries = entity.accessEntries.filter(a => a.accessType === 'member');
               if (memberEntries.length === 0) return null;
               const pendingCount = memberEntries.filter(a => a.accessSchedule === 'pending').length;

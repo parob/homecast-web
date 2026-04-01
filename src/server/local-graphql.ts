@@ -269,8 +269,15 @@ async function resolveOperation(
       return { removeSession: { success: true } };
 
     // --- Empty responses for cloud-only features ---
-    case 'GetCachedHomes':
-      return { cachedHomes: [] };
+    case 'GetCachedHomes': {
+      try {
+        const homesResult = await executeHomeKitAction('homes.list', {}) as any;
+        const homes = homesResult?.homes || [];
+        return { cachedHomes: homes.map((h: any) => ({ id: h.id, name: h.name, updatedAt: new Date().toISOString(), __typename: 'CachedHome' })) };
+      } catch {
+        return { cachedHomes: [] };
+      }
+    }
     case 'GetPendingInvitations':
       return { pendingInvitations: [] };
     case 'GetMySharedHomes':
@@ -279,8 +286,100 @@ async function resolveOperation(
       return { myEnrollments: [] };
     case 'GetActiveDeals':
       return { activeDeals: [] };
-    case 'GetWebhooks':
-      return { webhooks: [] };
+    case 'GetWebhooks': {
+      const { webhookToInfo } = await import('./local-webhooks');
+      const webhooks = await db.getWebhooks();
+      return { webhooks: webhooks.map(webhookToInfo) };
+    }
+
+    case 'GetWebhook': {
+      const wh = await db.getWebhook(variables.webhookId as string);
+      if (!wh) return { webhook: null };
+      const { webhookToInfo: toInfo } = await import('./local-webhooks');
+      return { webhook: toInfo(wh) };
+    }
+
+    case 'CreateWebhook': {
+      const { createWebhook } = await import('./local-webhooks');
+      const result = await createWebhook({
+        name: variables.name as string,
+        url: variables.url as string,
+        eventTypes: variables.eventTypes as string[] | undefined,
+        homeIds: variables.homeIds as string[] | undefined,
+        roomIds: variables.roomIds as string[] | undefined,
+        accessoryIds: variables.accessoryIds as string[] | undefined,
+        collectionIds: variables.collectionIds as string[] | undefined,
+        maxRetries: variables.maxRetries as number | undefined,
+        rateLimitPerMinute: variables.rateLimitPerMinute as number | undefined,
+        timeoutMs: variables.timeoutMs as number | undefined,
+      });
+      const { webhookToInfo: toInfoC } = await import('./local-webhooks');
+      return { createWebhook: { success: true, webhook: toInfoC(result.webhook), rawSecret: result.rawSecret, error: null, __typename: 'CreateWebhookResult' } };
+    }
+
+    case 'UpdateWebhook': {
+      const { updateWebhook, webhookToInfo: toInfoU } = await import('./local-webhooks');
+      const updated = await updateWebhook(variables.webhookId as string, {
+        name: variables.name as string | undefined,
+        url: variables.url as string | undefined,
+        eventTypes: variables.eventTypes as string[] | undefined,
+        homeIds: variables.homeIds as string[] | undefined,
+        roomIds: variables.roomIds as string[] | undefined,
+        accessoryIds: variables.accessoryIds as string[] | undefined,
+        collectionIds: variables.collectionIds as string[] | undefined,
+        maxRetries: variables.maxRetries as number | undefined,
+        rateLimitPerMinute: variables.rateLimitPerMinute as number | undefined,
+        timeoutMs: variables.timeoutMs as number | undefined,
+      });
+      if (!updated) return { updateWebhook: { success: false, webhook: null, error: 'Webhook not found', __typename: 'UpdateWebhookResult' } };
+      return { updateWebhook: { success: true, webhook: toInfoU(updated), error: null, __typename: 'UpdateWebhookResult' } };
+    }
+
+    case 'DeleteWebhook': {
+      const { deleteWebhookById } = await import('./local-webhooks');
+      await deleteWebhookById(variables.webhookId as string);
+      return { deleteWebhook: { success: true, error: null, __typename: 'DeleteWebhookResult' } };
+    }
+
+    case 'PauseWebhook': {
+      const { pauseWebhook, webhookToInfo: toInfoP } = await import('./local-webhooks');
+      const paused = await pauseWebhook(variables.webhookId as string);
+      if (!paused) return { pauseWebhook: { success: false, webhook: null, error: 'Not found', __typename: 'UpdateWebhookResult' } };
+      return { pauseWebhook: { success: true, webhook: toInfoP(paused), error: null, __typename: 'UpdateWebhookResult' } };
+    }
+
+    case 'ResumeWebhook': {
+      const { resumeWebhook, webhookToInfo: toInfoR } = await import('./local-webhooks');
+      const resumed = await resumeWebhook(variables.webhookId as string);
+      if (!resumed) return { resumeWebhook: { success: false, webhook: null, error: 'Not found', __typename: 'UpdateWebhookResult' } };
+      return { resumeWebhook: { success: true, webhook: toInfoR(resumed), error: null, __typename: 'UpdateWebhookResult' } };
+    }
+
+    case 'RotateWebhookSecret': {
+      const { rotateWebhookSecret, webhookToInfo: toInfoS } = await import('./local-webhooks');
+      const rotated = await rotateWebhookSecret(variables.webhookId as string);
+      if (!rotated) return { rotateWebhookSecret: { success: false, webhook: null, rawSecret: null, error: 'Not found', __typename: 'RotateSecretResult' } };
+      return { rotateWebhookSecret: { success: true, webhook: toInfoS(rotated.webhook), rawSecret: rotated.rawSecret, error: null, __typename: 'RotateSecretResult' } };
+    }
+
+    case 'TestWebhook': {
+      const { testWebhook } = await import('./local-webhooks');
+      const testResult = await testWebhook(variables.webhookId as string);
+      return { testWebhook: { ...testResult, __typename: 'TestWebhookResult' } };
+    }
+
+    case 'GetWebhookDeliveryHistory': {
+      const deliveries = await db.getWebhookDeliveries(variables.webhookId as string, (variables.limit as number) || 50);
+      return {
+        webhookDeliveryHistory: {
+          deliveries: deliveries.map((d: any) => ({ ...d, __typename: 'WebhookDelivery' })),
+          total: deliveries.length,
+          offset: (variables.offset as number) || 0,
+          limit: (variables.limit as number) || 50,
+          __typename: 'DeliveryHistoryResult',
+        },
+      };
+    }
     case 'GetAccessTokens': {
       const { getTokens } = await import('./local-tokens');
       const tokens = await getTokens();
@@ -302,8 +401,48 @@ async function resolveOperation(
       await revokeToken(variables.tokenId as string);
       return { revokeAccessToken: { success: true, __typename: 'RevokeResult' } };
     }
-    case 'GetAuthorizedApps':
-      return { authorizedApps: [] };
+    case 'GetAuthorizedApps': {
+      const consents = await db.getAllUserConsents();
+      const clients = await db.getAllOAuthClients();
+      const clientMap = new Map(clients.map((c: any) => [c.client_id, c]));
+      return {
+        authorizedApps: consents.map((c: any) => {
+          const client = clientMap.get(c.client_id);
+          return {
+            clientId: c.client_id,
+            clientName: client?.client_name || c.client_id,
+            clientUri: client?.client_uri || null,
+            logoUri: client?.logo_uri || null,
+            scope: c.scope,
+            homePermissions: JSON.stringify(c.home_permissions || {}),
+            createdAt: c.created_at,
+            __typename: 'AuthorizedApp',
+          };
+        }),
+      };
+    }
+
+    case 'RevokeAuthorizedApp': {
+      const clientId = variables.clientId as string;
+      const consents = await db.getAllUserConsents();
+      const consent = consents.find((c: any) => c.client_id === clientId);
+      if (consent) await db.deleteUserConsent(consent.id);
+      return { revokeAuthorizedApp: { success: true, error: null, __typename: 'RevokeAuthorizedAppResult' } };
+    }
+
+    case 'UpdateAuthorizedApp': {
+      const clientId = variables.clientId as string;
+      const consents = await db.getAllUserConsents();
+      const consent = consents.find((c: any) => c.client_id === clientId);
+      if (consent) {
+        if (variables.homePermissions) {
+          try { consent.home_permissions = JSON.parse(variables.homePermissions as string); } catch {}
+        }
+        await db.putUserConsent(consent);
+      }
+      return { updateAuthorizedApp: { success: true, error: null, __typename: 'UpdateAuthorizedAppResult' } };
+    }
+
     case 'GetBackgroundPresets':
       return { backgroundPresets: [] };
     case 'GetUserBackgrounds':
@@ -625,7 +764,9 @@ async function resolveOperation(
       }
     }
     case 'GetWebhookEventTypes':
-      return { webhookEventTypes: [] };
+      return { webhookEventTypes: [
+        { eventType: 'state.changed', displayName: 'State Changed', description: 'Fired when a device characteristic changes', category: 'Device', __typename: 'WebhookEventTypeInfo' },
+      ] };
 
     default:
       // Return empty data for unknown operations (prevents Apollo errors)

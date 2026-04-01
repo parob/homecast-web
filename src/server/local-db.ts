@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'homecast-local';
-const DB_VERSION = 4; // v4: added access_tokens
+const DB_VERSION = 6; // v6: added OAuth stores
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -78,6 +78,22 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('access_tokens')) {
         db.createObjectStore('access_tokens', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('webhook_deliveries')) {
+        const deliveryStore = db.createObjectStore('webhook_deliveries', { keyPath: 'id' });
+        deliveryStore.createIndex('webhookId', 'webhookId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('oauth_clients')) {
+        db.createObjectStore('oauth_clients', { keyPath: 'client_id' });
+      }
+      if (!db.objectStoreNames.contains('authorization_codes')) {
+        db.createObjectStore('authorization_codes', { keyPath: 'code' });
+      }
+      if (!db.objectStoreNames.contains('refresh_tokens')) {
+        db.createObjectStore('refresh_tokens', { keyPath: 'token_hash' });
+      }
+      if (!db.objectStoreNames.contains('user_consents')) {
+        db.createObjectStore('user_consents', { keyPath: 'id' });
       }
     };
 
@@ -389,4 +405,113 @@ export async function putHomeMember(member: any): Promise<any> {
 
 export async function deleteHomeMember(id: string): Promise<void> {
   await remove('home_members', id);
+}
+
+// --- Webhook Deliveries ---
+
+export async function getWebhookDeliveries(webhookId: string, limit = 50): Promise<any[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('webhook_deliveries', 'readonly');
+    const index = tx.objectStore('webhook_deliveries').index('webhookId');
+    const req = index.getAll(webhookId);
+    req.onsuccess = () => {
+      const results = req.result
+        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .slice(0, limit);
+      resolve(results);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putWebhookDelivery(delivery: any): Promise<any> {
+  return put('webhook_deliveries', delivery);
+}
+
+export async function deleteWebhookDeliveriesForWebhook(webhookId: string): Promise<void> {
+  const deliveries = await getWebhookDeliveries(webhookId, Infinity);
+  const db = await openDB();
+  const tx = db.transaction('webhook_deliveries', 'readwrite');
+  for (const d of deliveries) {
+    tx.objectStore('webhook_deliveries').delete(d.id);
+  }
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// --- OAuth Clients ---
+
+export async function getOAuthClient(clientId: string): Promise<any | undefined> {
+  return getById('oauth_clients', clientId);
+}
+
+export async function putOAuthClient(client: any): Promise<any> {
+  return put('oauth_clients', client);
+}
+
+export async function getAllOAuthClients(): Promise<any[]> {
+  return getAll('oauth_clients');
+}
+
+// --- Authorization Codes ---
+
+export async function getAuthorizationCode(code: string): Promise<any | undefined> {
+  return getById('authorization_codes', code);
+}
+
+export async function putAuthorizationCode(authCode: any): Promise<any> {
+  return put('authorization_codes', authCode);
+}
+
+export async function deleteAuthorizationCode(code: string): Promise<void> {
+  await remove('authorization_codes', code);
+}
+
+// --- Refresh Tokens ---
+
+export async function getRefreshToken(tokenHash: string): Promise<any | undefined> {
+  return getById('refresh_tokens', tokenHash);
+}
+
+export async function putRefreshToken(token: any): Promise<any> {
+  return put('refresh_tokens', token);
+}
+
+export async function deleteRefreshToken(tokenHash: string): Promise<void> {
+  await remove('refresh_tokens', tokenHash);
+}
+
+export async function deleteRefreshTokensByFamily(family: string): Promise<void> {
+  const all = await getAll<any>('refresh_tokens');
+  const matching = all.filter(t => t.family === family);
+  const database = await openDB();
+  const tx = database.transaction('refresh_tokens', 'readwrite');
+  for (const t of matching) {
+    tx.objectStore('refresh_tokens').delete(t.token_hash);
+  }
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// --- User Consents ---
+
+export async function getUserConsent(id: string): Promise<any | undefined> {
+  return getById('user_consents', id);
+}
+
+export async function putUserConsent(consent: any): Promise<any> {
+  return put('user_consents', consent);
+}
+
+export async function getAllUserConsents(): Promise<any[]> {
+  return getAll('user_consents');
+}
+
+export async function deleteUserConsent(id: string): Promise<void> {
+  await remove('user_consents', id);
 }

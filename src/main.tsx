@@ -16,8 +16,10 @@ import { initCloud } from "./lib/cloud";
 // Initialize Community mode local server (handles external WebSocket clients)
 import { initLocalServer } from "./server/local-server";
 import { initLocalBroadcast } from "./server/local-broadcast";
+import { initWebhooks } from "./server/local-webhooks";
 initLocalServer();
 initLocalBroadcast();
+initWebhooks();
 
 // Touch press feedback — JS-based because CSS :active is unreliable in iOS WKWebView
 // (isTextInteractionEnabled=false suppresses :active, Tailwind preflight kills tap-highlight)

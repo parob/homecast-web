@@ -188,7 +188,8 @@ export function initLocalServer(): void {
         }
         result = await handleREST(request);
       } else if (path.startsWith('/oauth/') || path === '/register' || path.startsWith('/.well-known/')) {
-        result = { error: 'OAuth not yet implemented in Community mode' };
+        const { handleOAuth } = await import('./local-oauth');
+        result = await handleOAuth(request);
       } else {
         result = { error: 'Not found' };
       }

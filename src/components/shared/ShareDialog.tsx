@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { CREATE_ENTITY_ACCESS, UPDATE_ENTITY_ACCESS, DELETE_ENTITY_ACCESS, INVITE_HOME_MEMBER, UPDATE_HOME_MEMBER_ROLE, REMOVE_HOME_MEMBER } from '@/lib/graphql/mutations';
 import { GET_ENTITY_ACCESS, GET_SHARING_INFO, GET_HOME_MEMBERS } from '@/lib/graphql/queries';
-import { config } from '@/lib/config';
+import { config, isCommunity } from '@/lib/config';
 import type {
   EntityType,
   AccessRole,
@@ -881,8 +881,8 @@ export function ShareDialog({
           </div>
           )}
 
-          {/* Members Section (homes only) */}
-          {isHome && canManageMembers && (
+          {/* Members Section (homes only, not in Community mode — roles are global) */}
+          {isHome && canManageMembers && !isCommunity && (
             <>
               <div className="border-t" />
               <div className="space-y-3">

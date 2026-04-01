@@ -96,6 +96,38 @@ export async function generateToken(userId: string, name: string, role: string):
   return `${header}.${payload}.${base64url(new Uint8Array(sig))}`;
 }
 
+/** Generate a JWT with custom claims and expiry (used by OAuth). */
+export async function generateCustomToken(claims: Record<string, unknown>, expirySeconds: number): Promise<string> {
+  const secret = await getJwtSecret();
+  const header = base64url(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({
+    ...claims,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + expirySeconds,
+  })));
+  const data = new TextEncoder().encode(`${header}.${payload}`);
+  const sig = await crypto.subtle.sign('HMAC', secret, data);
+  return `${header}.${payload}.${base64url(new Uint8Array(sig))}`;
+}
+
+/** Verify a JWT and return its full payload. */
+export async function verifyTokenFull(token: string): Promise<Record<string, unknown> | null> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const secret = await getJwtSecret();
+    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const sig = base64urlDecode(parts[2]);
+    const valid = await crypto.subtle.verify('HMAC', secret, sig, data);
+    if (!valid) return null;
+    const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[1])));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifyToken(token: string): Promise<{ sub: string; name: string; role: string } | null> {
   try {
     const parts = token.split('.');
