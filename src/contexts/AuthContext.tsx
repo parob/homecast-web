@@ -336,7 +336,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
           // Token removed (e.g., signed out from Mac menu)
           console.log('[Homecast] Token removed by native app, clearing session...');
           setUser(null);
-          apolloClient.resetStore();
+          apolloClient.clearStore();
         }
       }
     };
@@ -481,7 +481,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('homecast-selected-home');
     localStorage.removeItem('homecast-selected-room');
     setUser(null);
-    apolloClient.resetStore();
+    apolloClient.clearStore();
   };
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('homecast-token') : null;
