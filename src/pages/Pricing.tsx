@@ -132,7 +132,7 @@ const Pricing = () => {
                 </div>
                 <p className="text-sm text-zinc-400 mb-4 sm:mb-6">Local only</p>
 
-                <div className="relative rounded-xl border border-zinc-700 bg-zinc-800 p-4 sm:p-5 flex flex-col h-[calc(100%-68px)]">
+                <div className="relative rounded-xl border border-zinc-700 bg-zinc-800 p-4 sm:p-5 flex flex-col">
                   <div className="mb-3 sm:mb-4">
                     <h4 className="text-base font-semibold text-zinc-100 mb-1">Community</h4>
                     <span className="text-2xl sm:text-3xl font-bold text-zinc-100">Free</span>
@@ -142,7 +142,7 @@ const Pricing = () => {
                     <li className="text-sm text-zinc-400">Local network access only</li>
                     <li className="text-sm text-zinc-400">No account required</li>
                   </ul>
-                  <div className="mt-4 pt-3 border-t border-zinc-700 space-y-3 pb-1">
+                  <div className="mt-4 pt-3 border-t border-zinc-700 space-y-3">
                     <p className="text-xs text-zinc-400">
                       Remote access via Tailscale, Cloudflare Tunnel, or similar tools
                     </p>
