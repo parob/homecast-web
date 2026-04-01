@@ -480,7 +480,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('homecast-token');
     localStorage.removeItem('homecast-selected-home');
     localStorage.removeItem('homecast-selected-room');
-    apolloClient.clearStore();
+    // Hard redirect — full page reload clears Apollo cache and all React state
     window.location.href = '/login';
   };
 
