@@ -86,9 +86,16 @@ const CACHEABLE_ACTIONS = new Set([
   'automations.list', 'automation.get',
 ]);
 
-// Actions that should invalidate cache
-const INVALIDATING_ACTIONS = new Set([
+// Value-only writes: change characteristic values but not the accessories list structure.
+// Execute + broadcast, but do NOT clear the communityCache — the DataCache handles
+// real-time value updates via broadcasts, and the communityCache serves the list structure.
+const VALUE_WRITE_ACTIONS = new Set([
   'characteristic.set', 'serviceGroup.set', 'state.set',
+]);
+
+// Structure-changing writes: may add/remove accessories or change state unpredictably.
+// These clear the communityCache so the next read re-fetches from HomeKit.
+const CACHE_INVALIDATING_ACTIONS = new Set([
   'scene.execute', 'accessory.refresh',
   'automation.create', 'automation.update', 'automation.delete',
   'automation.enable', 'automation.disable',
@@ -112,16 +119,10 @@ function broadcastToExternalClients(message: Record<string, unknown>): void {
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-  // Write operations: execute immediately, broadcast, and invalidate cache
-  if (INVALIDATING_ACTIONS.has(action)) {
+  // Value-only writes: execute + broadcast, but preserve the cache.
+  // These change characteristic values without altering the accessories list structure.
+  if (VALUE_WRITE_ACTIONS.has(action)) {
     const result = await executeHomeKitAction(action, payload);
-    // Invalidate accessories cache for the affected home
-    for (const [key] of communityCache) {
-      if (key.startsWith('accessories.list') || key.startsWith('serviceGroups.list') ||
-          key.startsWith('accessory.get') || key.startsWith('automations.list')) {
-        communityCache.delete(key);
-      }
-    }
 
     // Broadcast write results to all clients (mirrors websocket.ts:280-336 in cloud mode)
     // HomeKit doesn't fire events back to the app that made the change, so we do it manually.
@@ -149,7 +150,6 @@ export async function communityRequest<T>(action: string, payload: Record<string
       broadcastToExternalClients(msg);
       serverConnection.emitBroadcast(msg);
     } else if (action === 'state.set') {
-      // Bulk operation: broadcast individual characteristic updates
       const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
       if (state) {
         for (const [accessoryId, services] of Object.entries(state)) {
@@ -173,6 +173,18 @@ export async function communityRequest<T>(action: string, payload: Record<string
     return result as T;
   }
 
+  // Structure-changing writes: execute and clear the cache so next read re-fetches.
+  if (CACHE_INVALIDATING_ACTIONS.has(action)) {
+    const result = await executeHomeKitAction(action, payload);
+    for (const [key] of communityCache) {
+      if (key.startsWith('accessories.list') || key.startsWith('serviceGroups.list') ||
+          key.startsWith('accessory.get') || key.startsWith('automations.list')) {
+        communityCache.delete(key);
+      }
+    }
+    return result as T;
+  }
+
   // Non-cacheable actions: execute directly
   if (!CACHEABLE_ACTIONS.has(action)) {
     return executeHomeKitAction(action, payload) as Promise<T>;
@@ -184,13 +196,11 @@ export async function communityRequest<T>(action: string, payload: Record<string
 
   // Fresh cache hit: return immediately
   if (cached && (now - cached.timestamp) < CACHE_TTL) {
-    if (import.meta.env.DEV) console.log(`[CommunityCache] HIT (fresh): ${key}`);
     return cached.data as T;
   }
 
   // Stale cache hit: return stale data AND refresh in background
   if (cached) {
-    if (import.meta.env.DEV) console.log(`[CommunityCache] HIT (stale, refreshing): ${key}`);
     if (!cached.pending) {
       cached.pending = executeHomeKitAction(action, payload).then(result => {
         communityCache.set(key, { data: result, timestamp: Date.now() });
@@ -204,7 +214,6 @@ export async function communityRequest<T>(action: string, payload: Record<string
   }
 
   // No cache: fetch and cache
-  if (import.meta.env.DEV) console.log(`[CommunityCache] MISS: ${key}`);
   const result = await executeHomeKitAction(action, payload);
   communityCache.set(key, { data: result, timestamp: now });
   return result as T;

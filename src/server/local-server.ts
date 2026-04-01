@@ -91,6 +91,7 @@ export function initLocalServer(): void {
     'IsOnboarded', 'GetVersion',
     // Shared entity operations — accessed by unauthenticated visitors
     'GetPublicEntity', 'GetPublicEntityAccessories', 'PublicEntitySetCharacteristic',
+    'DebugCache',
   ]);
 
   w.__localserver_graphql_handler = async (clientId: string, request) => {

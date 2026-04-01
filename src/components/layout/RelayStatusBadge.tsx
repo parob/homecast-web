@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { serverConnection } from '@/server/connection';
-import { HomeKit } from '@/native/homekit-bridge';
+import { HomeKit, isRelayCapable } from '@/native/homekit-bridge';
+import { isCommunity } from '@/lib/config';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { HomeKitStats } from '@/native/homekit-bridge';
 import { useHomes } from '@/hooks/useHomeKitData';
@@ -143,7 +144,10 @@ export function RelayStatusBadge({ isDarkBackground, accountType, accessoryLimit
     }
   }, [isOpen]);
 
-  const effectiveState = getEffectiveState(connectionState, relayStatus);
+  // Community mode on relay Mac: always active (direct HomeKit access, no server WebSocket)
+  const effectiveState = (isCommunity && isRelayCapable())
+    ? 'connected_active' as EffectiveState
+    : getEffectiveState(connectionState, relayStatus);
   const isStandby = effectiveState === 'connected_standby';
   const isCloudStandby = isStandby && selectedHomeRelayType === 'cloud-managed';
   const allHomesCloudManaged = effectiveState === 'connected_active' && homes != null && homes.length > 0 && selfHostedHomeCount === 0;
