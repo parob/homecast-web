@@ -176,7 +176,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
     items.push({ id: 'sharing', label: 'Sharing', group: 'Integrations', icon: Share2 });
 
-    if (isRelayCapable()) {
+    if (isRelayCapable() && SelfHostedRelaySection) {
       items.push({ id: 'self-hosted-relay', label: 'Relay', group: 'Device', icon: Cloud });
     }
 
@@ -330,10 +330,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
           />
         );
       case 'self-hosted-relay':
-        return (
+        return SelfHostedRelaySection ? (
           <SelfHostedRelaySection
             accountType={props.accountType}
           />
+        ) : (
+          <div className="text-sm text-muted-foreground p-4">Relay settings are not available in Community mode.</div>
         );
       case 'mac-app':
         return (

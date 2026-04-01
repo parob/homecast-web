@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Home, Loader2, Shield } from 'lucide-react';
+import { Home, Loader2, Shield, Wifi } from 'lucide-react';
 import { useMutation } from '@apollo/client/react';
 import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 
-import { config, isCommunity } from '@/lib/config';
+import { config, isCommunity, getCommunityMode, isRelaySetupComplete } from '@/lib/config';
 
 const API_URL = config.apiUrl;
 
@@ -25,14 +25,44 @@ const Login = () => {
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
-  // Community mode: check if this is first-time setup (no owner) or login
-  const [communitySetup, setCommunitySetup] = useState(false);
+  // Community mode state
   const [communityChecked, setCommunityChecked] = useState(!isCommunity);
   const [relayNotReady, setRelayNotReady] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Setup flow: relay vs client choice
+  const [showSetup, setShowSetup] = useState(false);
+  const [connectMode, setConnectMode] = useState(false);
+  const [relayAddress, setRelayAddress] = useState('');
+  const [connectError, setConnectError] = useState('');
+  const [connecting, setConnecting] = useState(false);
+
+  const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
+
   useEffect(() => {
     if (!isCommunity) return;
-    // Check onboarding status via HTTP endpoint (always routes to Mac's IndexedDB)
+
+    const mode = getCommunityMode();
+
+    // No mode chosen yet → show setup
+    if (!mode) {
+      // Relay-capable: show "Start Relay" / "Connect to Relay"
+      // Non-relay: show "Connect to Relay" only
+      if (!isOnRelayMac) {
+        setConnectMode(true); // Skip straight to connect form
+      }
+      setShowSetup(true);
+      setCommunityChecked(true);
+      return;
+    }
+
+    // Relay mode + setup complete → AuthContext auto-authenticates
+    if (mode === 'relay' && isRelaySetupComplete()) {
+      setCommunityChecked(true);
+      return;
+    }
+
+    // Client mode or external browser: check relay status
     fetch(config.graphqlUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -40,28 +70,56 @@ const Login = () => {
     })
       .then(r => r.json())
       .then(result => {
-        const onboarded = result?.data?.isOnboarded ?? false;
         const relayReady = result?.data?.relayReady ?? false;
-        setCommunitySetup(!onboarded);
-        // External browser: if relay Mac isn't authenticated, block everything
-        if (!(window as any).isHomeKitRelayCapable && !relayReady) {
-          setRelayNotReady(true);
-        }
+        if (!relayReady) setRelayNotReady(true);
         setCommunityChecked(true);
       })
       .catch(() => {
-        setCommunitySetup(true);
+        setRelayNotReady(true);
         setCommunityChecked(true);
       });
   }, []);
+
+  // Handle "Start Relay"
+  const handleStartRelay = () => {
+    localStorage.setItem('homecast-mode', 'relay');
+    localStorage.setItem('homecast-relay-setup', 'true');
+    const win = window as any;
+    win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'authSuccess' });
+    window.location.href = '/portal';
+  };
+
+  // Handle "Connect to Relay" — validate and save address
+  const handleConnectToRelay = async () => {
+    if (!relayAddress.trim()) {
+      setConnectError('Enter the relay address (e.g. 192.168.1.50 or mymac.local:5656)');
+      return;
+    }
+    setConnecting(true);
+    setConnectError('');
+    const addr = relayAddress.trim().includes(':') ? relayAddress.trim() : `${relayAddress.trim()}:5656`;
+    try {
+      const resp = await fetch(`http://${addr}/health`, { signal: AbortSignal.timeout(5000) });
+      const data = await resp.json();
+      if (data.status !== 'ok' || data.mode !== 'community') {
+        setConnectError('Not a Homecast Community relay');
+        setConnecting(false);
+        return;
+      }
+      localStorage.setItem('homecast-mode', 'client');
+      localStorage.setItem('homecast-relay-address', addr);
+      window.location.reload(); // Reload with new config pointing to relay
+    } catch {
+      setConnectError('Could not connect. Check the address and make sure the relay is running.');
+      setConnecting(false);
+    }
+  };
 
   // OAuth flow detection
   const isOAuthFlow = searchParams.get('oauth_flow') === 'true';
   const oauthParams = searchParams.get('oauth_params');
   const redirectTo = searchParams.get('redirect');
 
-  // After successful login in OAuth flow, redirect back to authorize endpoint
-  // This allows the server to check for existing consent and skip the consent screen
   useEffect(() => {
     if (isAuthenticated && isOAuthFlow && oauthParams && token) {
       const params = new URLSearchParams(oauthParams);
@@ -80,8 +138,7 @@ const Login = () => {
     );
   }
 
-  // Normal flow: redirect to portal if authenticated
-  // OAuth flow: handled by useEffect above
+  // Redirect to portal if authenticated
   if (isAuthenticated && !isOAuthFlow) {
     const destination = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/portal';
     return <Navigate to={destination} replace />;
@@ -94,26 +151,10 @@ const Login = () => {
     setError('');
     setResendMessage('');
     setIsLoading(true);
-
-    if (isCommunity && communitySetup) {
-      // First-time setup: create owner account
-      const result = await signup(email, password);
-      if (!result.success) {
-        if (result.error?.includes('disabled') || result.error?.includes('already exists')) {
-          // Owner already exists — switch to login mode
-          setCommunitySetup(false);
-          setError('An account already exists. Please sign in.');
-        } else {
-          setError(result.error || 'Setup failed');
-        }
-      }
-    } else {
-      const result = await login(email, password);
-      if (!result.success) {
-        setError(result.error || 'Login failed');
-      }
+    const result = await login(email, password);
+    if (!result.success) {
+      setError(result.error || 'Login failed');
     }
-    // OAuth flow redirect is handled by useEffect
     setIsLoading(false);
   };
 
@@ -140,7 +181,7 @@ const Login = () => {
         <div className="absolute top-1/4 right-1/4 w-1/2 h-1/2 bg-gradient-to-bl from-primary/20 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
       </div>
 
-      {/* Content */}
+      {/* Logo */}
       <div className="relative z-10 mb-8 flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
           <Home className="h-6 w-6 text-primary-foreground" />
@@ -152,151 +193,245 @@ const Login = () => {
       </div>
 
       <Card className="relative z-10 w-full max-w-md border-white/20 bg-background/80 backdrop-blur-xl shadow-2xl">
-        {isCommunity && relayNotReady ? (
+        {/* --- Community: Setup flow (first launch) --- */}
+        {isCommunity && showSetup ? (
+          <>
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl">{connectMode ? 'Connect to Relay' : 'Get Started'}</CardTitle>
+              <CardDescription>
+                {connectMode
+                  ? 'Enter the address of your Homecast relay'
+                  : 'Control your Apple Home devices from anywhere'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {connectMode ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="relay-address">Relay Address</Label>
+                    <Input
+                      id="relay-address"
+                      type="text"
+                      placeholder="192.168.1.50 or mymac.local"
+                      value={relayAddress}
+                      onChange={(e) => setRelayAddress(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleConnectToRelay()}
+                      autoFocus
+                    />
+                  </div>
+                  {connectError && (
+                    <p className="text-sm text-destructive">{connectError}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">
+                  Set up this Mac as a relay, or connect to an existing one on your network.
+                </p>
+              )}
+            </CardContent>
+            <CardFooter className="flex flex-col gap-2">
+              {connectMode ? (
+                <>
+                  <Button className="w-full" onClick={handleConnectToRelay} disabled={connecting}>
+                    {connecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
+                    Connect
+                  </Button>
+                  {isOnRelayMac && (
+                    <Button variant="ghost" className="w-full" onClick={() => { setConnectMode(false); setConnectError(''); }}>
+                      Back
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Button className="w-full" onClick={handleStartRelay}>
+                    <Home className="mr-2 h-4 w-4" />
+                    Start Relay
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={() => setConnectMode(true)}>
+                    <Wifi className="mr-2 h-4 w-4" />
+                    Connect to Relay
+                  </Button>
+                </>
+              )}
+            </CardFooter>
+          </>
+
+        /* --- Community: Relay not ready --- */
+        ) : isCommunity && relayNotReady ? (
           <CardHeader className="text-center pb-6">
-            <CardTitle className="text-xl">Server not ready</CardTitle>
+            <CardTitle className="text-xl">Relay not ready</CardTitle>
             <CardDescription className="mt-2">
-              {communitySetup
-                ? 'This Homecast server hasn\'t been configured yet. Set up an account from the Homecast Mac app first.'
-                : 'The Homecast Mac app needs to be signed in before other devices can connect.'}
+              The Homecast relay hasn't been set up yet. Open the Homecast app on the relay Mac first.
             </CardDescription>
           </CardHeader>
-        ) : isCommunity && communitySetup ? (
-          <CardHeader className="text-center">
-            <CardDescription>Create your account to get started</CardDescription>
-          </CardHeader>
+
+        /* --- Community: Auth-enabled login form --- */
         ) : isCommunity ? (
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
-            <CardDescription>Sign in to your Homecast server</CardDescription>
-          </CardHeader>
-        ) : isOAuthFlow ? (
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <Shield className="h-5 w-5 text-primary" />
-            </div>
-            <CardTitle className="text-2xl">Sign in to continue</CardTitle>
-            <CardDescription>An application is requesting access to your Homecast account</CardDescription>
-          </CardHeader>
-        ) : null}
-        {!(isCommunity && relayNotReady) && !(isCommunity && communitySetup && !(window as any).isHomeKitRelayCapable) && (
-        <form onSubmit={handleSubmit}>
-          <CardContent className={`space-y-4 ${!isOAuthFlow ? 'pt-6' : ''}`}>
-            {error && (
-              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive space-y-2">
-                <p>{error}</p>
-                {!isCommunity && isVerificationError && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={handleResend}
-                      disabled={resending}
-                      className="text-primary hover:underline font-medium"
-                    >
-                      {resending ? 'Sending...' : 'Resend verification email'}
-                    </button>
-                    {resendMessage && (
-                      <p className="text-xs text-muted-foreground mt-1">{resendMessage}</p>
+          <>
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl">Sign In</CardTitle>
+              <CardDescription>Authentication is enabled on this relay</CardDescription>
+            </CardHeader>
+            <form onSubmit={handleSubmit}>
+              <CardContent className="space-y-4">
+                {error && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                    <p>{error}</p>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Username</Label>
+                  <Input
+                    id="email"
+                    type="text"
+                    placeholder="admin"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value.replace(/\s/g, ''))}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </CardContent>
+              <CardFooter className="flex flex-col gap-4">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Sign In
+                </Button>
+                {(window as any).isHomeKitRelayCapable && !showResetConfirm && (
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(true)}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Reset all data
+                  </button>
+                )}
+                {showResetConfirm && (window as any).isHomeKitRelayCapable && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2 text-sm">
+                    <p className="text-destructive font-medium">Reset Homecast?</p>
+                    <p className="text-xs text-muted-foreground">
+                      This will permanently delete all data including users, settings, collections, and automations.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={isLoading}
+                        onClick={async () => {
+                          setIsLoading(true);
+                          localStorage.clear();
+                          sessionStorage.clear();
+                          try {
+                            const { wipeAllData } = await import('@/server/local-db');
+                            await wipeAllData();
+                          } catch {}
+                          const win = window as any;
+                          win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'resetMode' });
+                        }}
+                      >
+                        {isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                        Reset all data
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setShowResetConfirm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardFooter>
+            </form>
+          </>
+
+        /* --- Cloud mode --- */
+        ) : (
+          <>
+            {isOAuthFlow ? (
+              <CardHeader className="text-center">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <Shield className="h-5 w-5 text-primary" />
+                </div>
+                <CardTitle className="text-2xl">Sign in to continue</CardTitle>
+                <CardDescription>An application is requesting access to your Homecast account</CardDescription>
+              </CardHeader>
+            ) : null}
+            <form onSubmit={handleSubmit}>
+              <CardContent className={`space-y-4 ${!isOAuthFlow ? 'pt-6' : ''}`}>
+                {error && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive space-y-2">
+                    <p>{error}</p>
+                    {isVerificationError && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleResend}
+                          disabled={resending}
+                          className="text-primary hover:underline font-medium"
+                        >
+                          {resending ? 'Sending...' : 'Resend verification email'}
+                        </button>
+                        {resendMessage && (
+                          <p className="text-xs text-muted-foreground mt-1">{resendMessage}</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">{isCommunity ? 'Username' : 'Email'}</Label>
-              <Input
-                id="email"
-                type={isCommunity ? 'text' : 'email'}
-                placeholder={isCommunity ? 'admin' : 'you@example.com'}
-                value={email}
-                onChange={(e) => setEmail(isCommunity ? e.target.value.replace(/\s/g, '') : e.target.value)}
-                autoCapitalize={isCommunity ? 'none' : undefined}
-                autoCorrect={isCommunity ? 'off' : undefined}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                {!isCommunity && (
-                  <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
-                    Forgot password?
-                  </Link>
-                )}
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isCommunity && communitySetup ? 'Create Account' : 'Sign In'}
-            </Button>
-            {isCommunity && !communitySetup && !showResetConfirm && (window as any).isHomeKitRelayCapable && (
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(true)}
-                className="text-xs text-muted-foreground hover:text-destructive"
-              >
-                Forgot password? Reset all data
-              </button>
-            )}
-            {isCommunity && showResetConfirm && (window as any).isHomeKitRelayCapable && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2 text-sm">
-                <p className="text-destructive font-medium">Reset Homecast?</p>
-                <p className="text-xs text-muted-foreground">
-                  This will permanently delete all data including users, settings, collections, and automations. This cannot be undone.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    disabled={isLoading}
-                    onClick={async () => {
-                      setIsLoading(true);
-                      localStorage.clear();
-                      sessionStorage.clear();
-                      try {
-                        const { wipeAllData } = await import('@/server/local-db');
-                        await wipeAllData();
-                      } catch {}
-                      // Now trigger the mode reset
-                      const win = window as any;
-                      win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'resetMode' });
-                    }}
-                  >
-                    {isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                    Reset all data
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowResetConfirm(false)}
-                  >
-                    Cancel
-                  </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
-              </div>
-            )}
-            {!isCommunity && (
-              <p className="text-sm text-muted-foreground">
-                Don't have an account?{' '}
-                <Link to={redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : '/signup'} className="text-primary hover:underline">
-                  Sign up
-                </Link>
-              </p>
-            )}
-          </CardFooter>
-        </form>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </CardContent>
+              <CardFooter className="flex flex-col gap-4">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Sign In
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Don't have an account?{' '}
+                  <Link to={redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : '/signup'} className="text-primary hover:underline">
+                    Sign up
+                  </Link>
+                </p>
+              </CardFooter>
+            </form>
+          </>
         )}
       </Card>
     </div>

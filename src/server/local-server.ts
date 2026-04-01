@@ -27,11 +27,11 @@ interface ProtocolMessage {
 const connectedClients = new Set<string>();
 
 /**
- * Check if the relay Mac owner is authenticated.
+ * Check if the relay has been set up.
  * If not, the entire Community system is "offline" — external clients get errors.
  */
 function isRelayAuthenticated(): boolean {
-  return !!localStorage.getItem('homecast-token');
+  return !!localStorage.getItem('homecast-relay-setup');
 }
 
 /**
@@ -53,25 +53,6 @@ export function initLocalServer(): void {
   if (!w.isHomeKitRelayCapable) return;
 
   console.log('[LocalServer] Initializing request handler');
-
-  // Auto-login: if a user exists but no token, generate one for the owner.
-  // The relay Mac has physical access — password entry is unnecessary friction.
-  if (!localStorage.getItem('homecast-token')) {
-    (async () => {
-      try {
-        const { getUsers, generateToken } = await import('./local-auth');
-        const users = await getUsers();
-        const owner = users.find((u: any) => u.role === 'owner');
-        if (owner) {
-          const token = await generateToken(owner.id, owner.name, owner.role);
-          localStorage.setItem('homecast-token', token);
-          console.log('[LocalServer] Auto-login as owner:', owner.name);
-        }
-      } catch (e) {
-        console.error('[LocalServer] Auto-login failed:', e);
-      }
-    })();
-  }
 
   w.__localserver_handler = (clientId: string, msg: ProtocolMessage) => {
     handleRequest(clientId, msg);

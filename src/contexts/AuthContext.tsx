@@ -6,7 +6,7 @@ import { apolloClient } from '@/lib/apollo';
 import type { User, GetMeResponse, LoginResponse, SignupResponse } from '@/lib/graphql/types';
 import { serverConnection } from '@/server';
 import { isRelayCapable } from '@/relay';
-import { isCommunity, config } from '@/lib/config';
+import { isCommunity, config, isRelaySetupComplete, isRelayMode } from '@/lib/config';
 import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 
@@ -89,41 +89,62 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const checkAuth = async () => {
-    let token = localStorage.getItem('homecast-token');
-
-    // Relay Mac: auto-login as the owner directly via IndexedDB.
-    // No HTTP round-trip needed — the relay has direct access to user data.
+    // Relay Mac: always authenticated as owner. No tokens, no passwords.
     if (isRelayRef.current) {
-      try {
-        const { getUsers, generateToken } = await import('@/server/local-auth');
-        const users = await getUsers();
-        const owner = users.find((u: any) => u.role === 'owner');
-        if (owner) {
-          // Generate/refresh token
-          if (!token || token === 'community') {
-            token = await generateToken(owner.id, owner.name, owner.role);
-            localStorage.setItem('homecast-token', token);
-          }
-          // Set user directly — no HTTP needed on relay Mac
-          setUser({
-            id: owner.id,
-            email: owner.name,
-            name: owner.name,
-            isAdmin: true,
-            accountType: 'standard',
-            stagingAccess: false,
-            createdAt: owner.createdAt || new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-          });
-          setIsLoading(false);
-          return;
-        }
-      } catch (e) {
-        console.error('[Auth] Relay auto-login failed:', e);
-      }
+      setUser({
+        id: 'relay-owner',
+        email: 'owner',
+        name: 'Owner',
+        isAdmin: true,
+        accountType: 'standard',
+        stagingAccess: false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      });
+      setIsLoading(false);
+      return;
     }
 
-    // External browser: verify token via HTTP
+    // External browser: check if relay requires auth
+    try {
+      const status = await fetch(config.graphqlUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
+      }).then(r => r.json());
+
+      const authEnabled = status?.data?.authEnabled ?? false;
+      const relayReady = status?.data?.relayReady ?? false;
+
+      if (!relayReady) {
+        // Relay not set up yet — stay unauthenticated (Login page will handle)
+        setIsLoading(false);
+        return;
+      }
+
+      if (!authEnabled) {
+        // Auth disabled — everyone gets guest access, straight to Dashboard
+        setUser({
+          id: 'guest',
+          email: 'guest',
+          name: 'Guest',
+          isAdmin: false,
+          accountType: 'standard',
+          stagingAccess: false,
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+        });
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      // Can't reach relay — stay unauthenticated
+      setIsLoading(false);
+      return;
+    }
+
+    // Auth enabled: verify token via HTTP
+    const token = localStorage.getItem('homecast-token');
     if (token && token !== 'community') {
       try {
         const result = await fetch(config.graphqlUrl, {

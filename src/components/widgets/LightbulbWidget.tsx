@@ -114,8 +114,8 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
                 step={colorTempChar.characteristic?.stepValue ?? 10}
                 unit="K"
                 onCommit={(v) => onSlider(accessory.id, 'color_temperature', v)}
-                trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-200/60 to-sky-200/60" : "bg-muted/25"}
-                trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-400 to-sky-400" : undefined}
+                trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
+                trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
                 fixedGradient={iconStyle === 'colourful'}
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">

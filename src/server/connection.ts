@@ -67,7 +67,7 @@ export function getBrowserSessionId(): string | undefined {
   return sessionId;
 }
 
-import { config, isCommunity } from '@/lib/config';
+import { config, isCommunity, isClientMode } from '@/lib/config';
 
 const WS_URL = config.wsUrl;
 
@@ -221,8 +221,9 @@ export async function communityRequest<T>(action: string, payload: Record<string
 
 // Stable relay detection for Community mode — set once, stays true forever
 // Avoids the race condition where isRelayCapable() returns false during bridge init
+// In client mode (connecting to a remote relay), never confirm — use WebSocket path instead
 let communityRelayConfirmed = false;
-if (isCommunity) {
+if (isCommunity && !isClientMode()) {
   const checkBridge = () => {
     if (isRelayCapable()) {
       communityRelayConfirmed = true;

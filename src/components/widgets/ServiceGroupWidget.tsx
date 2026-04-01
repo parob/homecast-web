@@ -484,8 +484,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               unit="K"
               onCommit={(v) => onSlider('color_temperature', v)}
               disabled={effectiveDisabled}
-              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-200/60 to-sky-200/60" : "bg-muted/25"}
-              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-400 to-sky-400" : undefined}
+              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
+              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
               fixedGradient={iconStyle === 'colourful'}
             />
           )}
@@ -721,8 +721,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               unit="K"
               onCommit={(v) => onSlider('color_temperature', v)}
               disabled={effectiveDisabled}
-              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-200/60 to-sky-200/60" : "bg-muted/25"}
-              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-400 to-sky-400" : undefined}
+              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
+              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
               fixedGradient={iconStyle === 'colourful'}
             />
           )}

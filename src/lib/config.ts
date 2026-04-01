@@ -17,9 +17,27 @@ export const isCommunity: boolean =
   window.location.hostname.endsWith('.local') ||
   isPrivateIP(window.location.hostname);
 
+// --- Community mode: relay vs client ---
+// Set during first-launch setup. 'relay' = this device runs the relay.
+// 'client' = this device connects to a remote relay.
+export function getCommunityMode(): 'relay' | 'client' | null {
+  if (!isCommunity) return null;
+  return (localStorage.getItem('homecast-mode') as 'relay' | 'client') || null;
+}
+export function isRelayMode(): boolean { return getCommunityMode() === 'relay'; }
+export function isClientMode(): boolean { return getCommunityMode() === 'client'; }
+export function isRelaySetupComplete(): boolean { return !!localStorage.getItem('homecast-relay-setup'); }
+export function getRelayAddress(): string | null { return localStorage.getItem('homecast-relay-address'); }
+
 function resolveApiBase(): string {
   // Build-time override (local dev)
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+
+  // Community client mode: point to the remote relay
+  if (isCommunity && isClientMode()) {
+    const addr = getRelayAddress();
+    if (addr) return `http://${addr}`;
+  }
 
   // Community mode: API is on the same origin as the web app
   if (isCommunity) return `${window.location.protocol}//${window.location.host}`;
@@ -47,6 +65,14 @@ const WS_BASE = API_BASE.replace(/^https?:/, isLocal ? 'ws:' : 'wss:');
 // In Community mode, WebSocket runs on HTTP port + 1 (separate NWProtocolWebSocket listener)
 function resolveWsUrl(): string {
   if (isCommunity) {
+    // Client mode: connect to the remote relay's WebSocket
+    if (isClientMode()) {
+      const addr = getRelayAddress();
+      if (addr) {
+        const [host, port] = addr.includes(':') ? addr.split(':') : [addr, '5656'];
+        return `ws://${host}:${parseInt(port, 10) + 1}/ws`;
+      }
+    }
     const host = window.location.hostname;
     const httpPort = parseInt(window.location.port || '5656', 10);
     return `ws://${host}:${httpPort + 1}/ws`;

@@ -182,7 +182,7 @@ function ReadingList({ title, readings, formatValue, getItemVariant, isDarkBackg
               <div className={cn('font-medium', mutedTextClass)}>
                 {roomName}
               </div>
-              <div className={cn('mt-0.5 space-y-0.5 border-l pl-2 ml-1', borderClass)}>
+              <div className={cn('mt-0.5 space-y-0.5 pl-2 ml-1')}>
                 {roomReadings.map(renderReading)}
               </div>
             </div>
@@ -190,7 +190,7 @@ function ReadingList({ title, readings, formatValue, getItemVariant, isDarkBackg
         </div>
       ) : (
         // Flat list for single room
-        <div className={cn('text-xs space-y-0.5 ml-2 border-l pl-2', borderClass)}>
+        <div className="text-xs space-y-0.5 ml-2 pl-2">
           {readings.map(renderReading)}
         </div>
       )}

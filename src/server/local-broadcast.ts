@@ -9,7 +9,7 @@
  */
 
 import { HomeKit } from '../native/homekit-bridge';
-import { isCommunity } from '../lib/config';
+import { isCommunity, isClientMode } from '../lib/config';
 
 let unsubscribe: (() => void) | null = null;
 let observationKeepAlive: ReturnType<typeof setInterval> | null = null;
@@ -19,7 +19,7 @@ let observationKeepAlive: ReturnType<typeof setInterval> | null = null;
  * Called once when the web app starts in Community mode on the relay Mac.
  */
 export function initLocalBroadcast(): void {
-  if (!isCommunity) return;
+  if (!isCommunity || isClientMode()) return;
 
   const w = window as Window & {
     isHomeKitRelayCapable?: boolean;

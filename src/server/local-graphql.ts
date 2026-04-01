@@ -73,24 +73,11 @@ async function resolveOperation(
     }
 
     case 'IsOnboarded': {
-      const onboarded = await auth.isOnboarded();
-      // Relay auto-login: if a user exists but no token, auto-authenticate as the owner.
-      // The relay Mac has physical access — password entry is unnecessary friction.
-      if (onboarded && !localStorage.getItem('homecast-token') && (window as any).isHomeKitRelayCapable) {
-        try {
-          const users = await auth.getUsers();
-          const owner = users.find(u => u.role === 'owner');
-          if (owner) {
-            const token = await auth.generateToken(owner.id, owner.name, owner.role);
-            localStorage.setItem('homecast-token', token);
-          }
-        } catch (e) {
-          console.error('[LocalGraphQL] Auto-login failed:', e);
-        }
-      }
+      const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
       return {
-        isOnboarded: onboarded,
-        relayReady: !!localStorage.getItem('homecast-token'),
+        isOnboarded: !!localStorage.getItem('homecast-relay-setup'),
+        relayReady: !!localStorage.getItem('homecast-relay-setup'),
+        authEnabled,
       };
     }
 
