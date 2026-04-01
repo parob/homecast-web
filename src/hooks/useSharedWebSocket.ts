@@ -214,6 +214,9 @@ export function useSharedWebSocket(
           console.log(`[SharedWS] ServiceGroup: ${message.groupId.slice(0, 8)} → ${message.characteristicType} = ${JSON.stringify(message.value)} (${message.affectedCount} affected)`);
           // Service group updates are not buffered - notify immediately
           onServiceGroupUpdateRef.current?.(message.groupId, message.homeId, message.characteristicType, message.value, message.affectedCount);
+        } else if (message.type === 'auth_required') {
+          // Relay enabled authentication — redirect to login
+          window.location.href = '/login';
         } else if (message.type === 'ping') {
           // Server ping - respond with pong
           ws.send(JSON.stringify({ type: 'pong' }));

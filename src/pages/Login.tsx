@@ -38,18 +38,17 @@ const Login = () => {
   const [connecting, setConnecting] = useState(false);
 
   const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
+  const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp || !!(window as any).isHomecastAndroidApp;
 
   useEffect(() => {
     if (!isCommunity) return;
 
     const mode = getCommunityMode();
 
-    // No mode chosen yet → show setup
-    if (!mode) {
-      // Relay-capable: show "Start Relay" / "Connect to Relay"
-      // Non-relay: show "Connect to Relay" only
+    // Native apps only: show setup/connect flow on first launch
+    if (!mode && isNativeApp) {
       if (!isOnRelayMac) {
-        setConnectMode(true); // Skip straight to connect form
+        setConnectMode(true); // Non-relay native apps: straight to connect form
       }
       setShowSetup(true);
       setCommunityChecked(true);
@@ -62,7 +61,7 @@ const Login = () => {
       return;
     }
 
-    // Client mode or external browser: check relay status
+    // External browser or connected client: check relay status
     fetch(config.graphqlUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -186,10 +185,12 @@ const Login = () => {
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
           <Home className="h-6 w-6 text-primary-foreground" />
         </div>
-        <span className="text-2xl font-bold">Homecast</span>
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${isCommunity ? 'bg-[hsl(222,47%,8%)] text-[hsl(210,40%,98%)] border border-[hsl(217,32%,17%)]' : 'bg-primary/10 text-primary'}`}>
-          {isCommunity ? 'Community' : 'Cloud'}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-2xl font-bold" style={{ lineHeight: 1.2 }}>Homecast</span>
+          {isCommunity && (
+            <span className="text-xs text-muted-foreground font-medium">Community Edition</span>
+          )}
+        </div>
       </div>
 
       <Card className="relative z-10 w-full max-w-md border-white/20 bg-background/80 backdrop-blur-xl shadow-2xl">

@@ -89,8 +89,8 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const checkAuth = async () => {
-    // Relay Mac: always authenticated as owner. No tokens, no passwords.
-    if (isRelayRef.current) {
+    // Relay Mac: always authenticated as owner — but only after first-launch setup.
+    if (isRelayRef.current && isRelaySetupComplete()) {
       setUser({
         id: 'relay-owner',
         email: 'owner',

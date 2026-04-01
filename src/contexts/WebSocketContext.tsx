@@ -158,6 +158,10 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       wsLog.serviceGroup(message.groupId, message.characteristicType, message.value, message.affectedCount);
       // Service group updates are not buffered - notify immediately
       notifyServiceGroupUpdate(message.groupId, message.homeId, message.characteristicType, message.value, message.affectedCount);
+    } else if (message.type === 'auth_required') {
+      // Relay enabled authentication — kick guest sessions to login
+      localStorage.removeItem('homecast-token');
+      window.location.href = '/login';
     } else if (message.type === 'relay_status_update') {
       // Relay came online/offline for a shared home — re-fetch homes list
       invalidateHomeKitCache();

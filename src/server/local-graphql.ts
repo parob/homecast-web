@@ -81,6 +81,25 @@ async function resolveOperation(
       };
     }
 
+    case 'SetAuthEnabled': {
+      await db.setSetting('auth-enabled', variables.enabled ? 'true' : 'false');
+      // Refresh the cached flag in local-server so it takes effect immediately
+      const { refreshAuthEnabled } = await import('./local-server');
+      await refreshAuthEnabled();
+      if (variables.enabled) {
+        await auth.invalidateAllTokens();
+        // Broadcast to all connected clients to re-authenticate
+        const broadcast = (window as any).__localserver_broadcast;
+        if (broadcast) broadcast({ type: 'auth_required' });
+      }
+      return { setAuthEnabled: { success: true, enabled: !!variables.enabled } };
+    }
+
+    case 'GetAuthEnabled': {
+      const enabled = (await db.getSetting('auth-enabled')) === 'true';
+      return { authEnabled: enabled };
+    }
+
     // --- Community User Management ---
     case 'GetCommunityUsers':
       return { communityUsers: await auth.getUsers() };
@@ -94,8 +113,17 @@ async function resolveOperation(
       return { createCommunityUser: { id: user.id, name: user.name, role: user.role, createdAt: user.createdAt } };
     }
 
-    case 'DeleteCommunityUser':
-      return { deleteCommunityUser: { success: await auth.deleteUser(variables.userId as string) } };
+    case 'DeleteCommunityUser': {
+      const success = await auth.deleteUser(variables.userId as string);
+      if (success) {
+        // Rotate JWT secret so deleted user's tokens are invalidated
+        await auth.invalidateAllTokens();
+      }
+      return { deleteCommunityUser: { success } };
+    }
+
+    case 'ChangeCommunityUserPassword':
+      return { changeCommunityUserPassword: { success: await auth.changePassword(variables.userId as string, variables.password as string) } };
 
     case 'UpdateCommunityUserRole':
       return { updateCommunityUserRole: { success: await auth.updateUserRole(variables.userId as string, variables.role as 'admin' | 'control' | 'view') } };
@@ -465,8 +493,50 @@ async function resolveOperation(
         } else if (access.entityType === 'room') {
           const result = await executeHomeKitAction('accessories.list', { roomId: access.entityId, includeValues: true, includeAll: true }) as any;
           accessories = result?.accessories || [];
-        } else if (access.entityType === 'accessory_group' || access.entityType === 'collection') {
-          // For groups/collections, try to get accessories from the stored entity data
+        } else if (access.entityType === 'accessory_group') {
+          // Fetch service group from HomeKit to get member accessory IDs
+          // Search the specified home, or all homes if homeId is missing
+          try {
+            const homeIds: string[] = [];
+            if (access.homeId) {
+              homeIds.push(access.homeId);
+            } else {
+              const homesResult = await executeHomeKitAction('homes.list') as any;
+              homeIds.push(...(homesResult?.homes || []).map((h: any) => h.id));
+            }
+            for (const hid of homeIds) {
+              const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: hid }) as any;
+              const group = (sgResult?.serviceGroups || []).find((g: any) => g.id === access.entityId);
+              if (group?.accessoryIds?.length) {
+                const results = await Promise.all(
+                  group.accessoryIds.map((id: string) =>
+                    executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
+                  )
+                );
+                accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
+                serviceGroups = [group];
+                break;
+              }
+            }
+          } catch {}
+          // Fallback: try stored entity data
+          if (accessories.length === 0) {
+            const entities = await db.getStoredEntities();
+            const entity = entities.find(e => e.entityId === access.entityId);
+            if (entity?.data) {
+              try {
+                const parsed = JSON.parse(entity.data);
+                const accessoryIds = parsed.accessoryIds || parsed.items?.map((i: any) => i.accessoryId) || [];
+                const results = await Promise.all(
+                  accessoryIds.map((id: string) =>
+                    executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
+                  )
+                );
+                accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
+              } catch {}
+            }
+          }
+        } else if (access.entityType === 'collection') {
           const entities = await db.getStoredEntities();
           const entity = entities.find(e => e.entityId === access.entityId);
           if (entity?.data) {

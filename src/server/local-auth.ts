@@ -185,6 +185,25 @@ export async function deleteUser(userId: string): Promise<boolean> {
   return true;
 }
 
+/** Rotate the JWT secret, invalidating all existing tokens. */
+export async function invalidateAllTokens(): Promise<void> {
+  jwtSecret = await crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const exported = await crypto.subtle.exportKey('raw', jwtSecret);
+  await db.setSetting('jwt-secret', btoa(String.fromCharCode(...new Uint8Array(exported))));
+}
+
+export async function changePassword(userId: string, newPassword: string): Promise<boolean> {
+  const users = await db.getUsers();
+  const user = users.find(u => u.id === userId) as LocalUser | undefined;
+  if (!user) return false;
+  const { hash, salt } = await hashPassword(newPassword);
+  user.passwordHash = hash;
+  user.salt = salt;
+  await db.putUser(user);
+  await invalidateAllTokens();
+  return true;
+}
+
 export async function updateUserRole(userId: string, role: 'admin' | 'control' | 'view'): Promise<boolean> {
   const users = await db.getUsers();
   const user = users.find(u => u.id === userId) as LocalUser | undefined;

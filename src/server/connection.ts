@@ -421,6 +421,13 @@ class ServerConnection {
         { token, deviceId, deviceName, browserSessionId, wsUrl: WS_URL },
         {
           onStateChange: (connectionState) => {
+            // In community mode, authenticate with the relay as soon as connected
+            if (isCommunity && connectionState === 'connected' && this.websocket) {
+              const token = localStorage.getItem('homecast-token');
+              if (token && token !== 'community') {
+                this.websocket.request('authenticate', { token }).catch(() => {});
+              }
+            }
             const updates: Partial<ServerConnectionState> = { connectionState };
             // Clear local subscription tracking on disconnect - server has already cleared them
             if (connectionState === 'disconnected' || connectionState === 'reconnecting') {

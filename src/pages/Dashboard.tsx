@@ -1046,7 +1046,7 @@ const Dashboard = () => {
   // In Community mode, there's no cloud WebSocket — the relay talks to HomeKit directly
   // Initialize from current relay state in case component mounts after relay is already connected
   const [serverConnected, setServerConnected] = useState(() => {
-    if (isCommunity) return true; // Community mode: always "connected" (local HomeKit)
+    if (isCommunity && isRelayCapable()) return true; // Relay Mac: always "connected" (local HomeKit)
     const state = serverConnection.getState();
     if (import.meta.env.DEV) console.log('[Dashboard] Initial relay state:', state.connectionState, 'relayStatus:', state.relayStatus);
     // For relay-capable devices, wait until relay role is assigned before considering
@@ -1092,12 +1092,12 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Subscribe to relay connection state (for Mac app mode)
-  // In Community mode, skip — we're always "connected" via local HomeKit bridge
+  // Subscribe to relay connection state
+  // In Community mode on relay Mac, skip — always "connected" via local HomeKit bridge
   useEffect(() => {
-    if (isCommunity) {
+    if (isCommunity && isRelayCapable()) {
       setServerConnected(true);
-      setIsActiveRelay(isRelayCapable());
+      setIsActiveRelay(true);
       return;
     }
     if (import.meta.env.DEV) console.log('[Dashboard] Subscribing to relay state');
@@ -2570,13 +2570,13 @@ const Dashboard = () => {
   }, [hasDeviceAccess, selectedHomeId, relayRefetchHomes, relayRefetchRooms, relayRefetchAccessories, relayRefetchServiceGroups, refetchAllAccessories, refetchAllServiceGroups]);
 
   // Combined data - use relay data when connected
-  // In Community mode without a relay (browser client), show empty homes rather than infinite loading
-  const homesData = relayHomesData ? { homes: relayHomesData } : (isCommunity ? { homes: [] } : null);
-  const homesLoading = relayHomesLoading && !relayHomesData && !isCommunity;
+  const homesData = relayHomesData ? { homes: relayHomesData } : null;
+  const homesLoading = relayHomesLoading && !relayHomesData;
   const refetchHomes = relayRefetchHomes;
 
-  // Onboarding: check if user has completed onboarding
+  // Onboarding: check if user has completed onboarding (cloud mode only)
   useEffect(() => {
+    if (isCommunity) return; // Community mode doesn't need cloud onboarding
     if (!settingsData?.settings?.data || !isAuthenticated) return;
     // Wait for homes to load before deciding — a shared home member
     // who never did onboarding shouldn't see the overlay
@@ -5306,7 +5306,7 @@ const Dashboard = () => {
           />
 
 
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><CommunityBadge isDarkBackground={isDarkBackground} /><StagingSyncLabel isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-3 md:gap-3">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -5324,7 +5324,12 @@ const Dashboard = () => {
                         <div className="flex items-center justify-center rounded-lg bg-primary" style={{ height: 32, width: 32 }}>
                           <Home className="text-primary-foreground" style={{ height: 16, width: 16 }} />
                         </div>
-                        <span className={`font-semibold ${isDarkBackground ? 'text-white' : ''}`} style={{ fontSize: 16 }}>Homecast</span>
+                        <div className="flex flex-col">
+                          <span className={`font-semibold ${isDarkBackground ? 'text-white' : ''}`} style={{ fontSize: 16, lineHeight: 1.2 }}>Homecast</span>
+                          {isCommunity && (
+                            <span className={`text-[10px] font-medium ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground'}`}>Community Edition</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className={`p-3 overflow-y-auto flex-1 ${isDarkBackground ? 'text-white' : ''}`}>
@@ -5786,7 +5791,12 @@ const Dashboard = () => {
                 <div className="flex items-center justify-center rounded-[10px] transition-colors duration-300 bg-primary" style={{ height: 32, width: 32 }}>
                   <Home className="transition-colors duration-300 text-primary-foreground" style={{ height: 16, width: 16 }} />
                 </div>
-                <span className="font-semibold" style={{ fontSize: 16 }}>Homecast</span>
+                <div className="flex flex-col">
+                  <span className="font-semibold" style={{ fontSize: 16, lineHeight: 1.2 }}>Homecast</span>
+                  {isCommunity && (
+                    <span className={`text-[10px] font-medium ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground'}`}>Community Edition</span>
+                  )}
+                </div>
               </div>
               {/* Homes Section */}
               <div className="mb-6">
