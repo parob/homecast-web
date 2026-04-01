@@ -105,40 +105,48 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // External browser: check if relay requires auth
-    try {
-      const status = await fetch(config.graphqlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
-      }).then(r => r.json());
-
-      const authEnabled = status?.data?.authEnabled ?? false;
-      const relayReady = status?.data?.relayReady ?? false;
-
-      if (!relayReady) {
-        // Relay not set up yet — stay unauthenticated (Login page will handle)
-        setIsLoading(false);
-        return;
+    // Check if relay requires auth — retry up to 3 times (relay may still be starting)
+    let status: { data?: { authEnabled?: boolean; relayReady?: boolean } } | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        status = await fetch(config.graphqlUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
+        }).then(r => r.json());
+        break; // Success
+      } catch {
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
       }
+    }
 
-      if (!authEnabled) {
-        // Auth disabled — everyone gets guest access, straight to Dashboard
-        setUser({
-          id: 'guest',
-          email: 'guest',
-          name: 'Guest',
-          isAdmin: false,
-          accountType: 'standard',
-          stagingAccess: false,
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        });
-        setIsLoading(false);
-        return;
-      }
-    } catch {
-      // Can't reach relay — stay unauthenticated
+    if (!status) {
+      // Can't reach relay after retries — stay unauthenticated
+      setIsLoading(false);
+      return;
+    }
+
+    const authEnabled = status?.data?.authEnabled ?? false;
+    const relayReady = status?.data?.relayReady ?? false;
+
+    if (!relayReady) {
+      // Relay not set up yet — stay unauthenticated (Login page will handle)
+      setIsLoading(false);
+      return;
+    }
+
+    if (!authEnabled) {
+      // Auth disabled — everyone gets guest access, straight to Dashboard
+      setUser({
+        id: 'guest',
+        email: 'guest',
+        name: 'Guest',
+        isAdmin: false,
+        accountType: 'standard',
+        stagingAccess: false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      });
       setIsLoading(false);
       return;
     }
@@ -229,10 +237,6 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     // Simple logout — just clear token, keep data
-    const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
-    if (win.webkit?.messageHandlers?.homecast) {
-      win.webkit.messageHandlers.homecast.postMessage({ action: 'logout' });
-    }
     localStorage.removeItem('homecast-token');
     setUser(null);
     window.location.href = '/login';
@@ -242,13 +246,17 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   const resetAndUninstall = async () => {
     localStorage.clear();
     sessionStorage.clear();
-    setUser(null);
     try {
       const { wipeAllData } = await import('@/server/local-db');
       await wipeAllData();
     } catch {}
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
-    win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'resetMode' });
+    if (win.webkit?.messageHandlers?.homecast) {
+      win.webkit.messageHandlers.homecast.postMessage({ action: 'resetMode' });
+    } else {
+      // Full reload clears cached config (relay URL etc)
+      window.location.reload();
+    }
   };
 
   return (

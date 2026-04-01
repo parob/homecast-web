@@ -5256,7 +5256,7 @@ const Dashboard = () => {
         {(!isCommunity || !isRelayCapable()) && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout}>
+            <DropdownMenuItem onClick={isCommunity ? resetAndUninstall : logout}>
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </DropdownMenuItem>

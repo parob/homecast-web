@@ -26,3 +26,4 @@ dist-ssr
 
 # Cloud-specific components (private, pulled from homecast-cloud for full builds)
 src/cloud/
+screenshots/test-results/.last-run 2.json

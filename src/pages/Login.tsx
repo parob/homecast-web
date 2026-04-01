@@ -9,9 +9,26 @@ import { Home, Loader2, Shield, Wifi } from 'lucide-react';
 import { useMutation } from '@apollo/client/react';
 import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 
-import { config, isCommunity, getCommunityMode, isRelaySetupComplete } from '@/lib/config';
+import { config, isCommunity, getCommunityMode, getRelayAddress, isRelaySetupComplete } from '@/lib/config';
 
 const API_URL = config.apiUrl;
+
+const isInNativeApp = !!(window as any).webkit?.messageHandlers?.homecast;
+const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
+
+function switchMode() {
+  localStorage.clear();
+  sessionStorage.clear();
+  const win = window as any;
+  if (win.webkit?.messageHandlers?.homecast) {
+    win.webkit.messageHandlers.homecast.postMessage({ action: 'resetMode' });
+  } else {
+    // Browser client: reload to show setup flow
+    window.location.reload();
+  }
+}
+
+const switchModeLabel = isOnRelayMac ? 'Change install type' : 'Change relay connection';
 
 const Login = () => {
   const { login, signup, isAuthenticated, isLoading: authLoading, token } = useAuth();
@@ -33,7 +50,7 @@ const Login = () => {
   // Setup flow: relay vs client choice
   const [showSetup, setShowSetup] = useState(false);
   const [connectMode, setConnectMode] = useState(false);
-  const [relayAddress, setRelayAddress] = useState('');
+  const [relayAddress, setRelayAddress] = useState('http://localhost:5656');
   const [connectError, setConnectError] = useState('');
   const [connecting, setConnecting] = useState(false);
 
@@ -45,10 +62,11 @@ const Login = () => {
 
     const mode = getCommunityMode();
 
-    // Native apps only: show setup/connect flow on first launch
-    if (!mode && isNativeApp) {
+    // Mac app only: show setup/connect flow on first launch
+    // (iOS handles relay connection natively before loading the web app)
+    if (!mode && isNativeApp && !!(window as any).isHomecastMacApp) {
       if (!isOnRelayMac) {
-        setConnectMode(true); // Non-relay native apps: straight to connect form
+        setConnectMode(true); // Non-relay Mac: straight to connect form
       }
       setShowSetup(true);
       setCommunityChecked(true);
@@ -61,22 +79,28 @@ const Login = () => {
       return;
     }
 
-    // External browser or connected client: check relay status
-    fetch(config.graphqlUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
-    })
-      .then(r => r.json())
-      .then(result => {
-        const relayReady = result?.data?.relayReady ?? false;
-        if (!relayReady) setRelayNotReady(true);
-        setCommunityChecked(true);
-      })
-      .catch(() => {
-        setRelayNotReady(true);
-        setCommunityChecked(true);
-      });
+    // Check relay status — retry up to 3 times (relay may still be starting)
+    const checkRelay = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch(config.graphqlUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
+          });
+          const result = await r.json();
+          const relayReady = result?.data?.relayReady ?? false;
+          if (!relayReady) setRelayNotReady(true);
+          setCommunityChecked(true);
+          return;
+        } catch {
+          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      setRelayNotReady(true);
+      setCommunityChecked(true);
+    };
+    checkRelay();
   }, []);
 
   // Handle "Start Relay"
@@ -91,12 +115,26 @@ const Login = () => {
   // Handle "Connect to Relay" — validate and save address
   const handleConnectToRelay = async () => {
     if (!relayAddress.trim()) {
-      setConnectError('Enter the relay address (e.g. 192.168.1.50 or mymac.local:5656)');
+      setConnectError('Enter the relay URL (e.g. http://192.168.1.50:5656)');
       return;
     }
     setConnecting(true);
     setConnectError('');
-    const addr = relayAddress.trim().includes(':') ? relayAddress.trim() : `${relayAddress.trim()}:5656`;
+    // Normalize: strip trailing slash, ensure protocol
+    let url = relayAddress.trim().replace(/\/+$/, '');
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `http://${url}`;
+    }
+    // Extract host:port for storage (config expects host:port, not full URL)
+    let addr: string;
+    try {
+      const parsed = new URL(url);
+      addr = parsed.port ? `${parsed.hostname}:${parsed.port}` : `${parsed.hostname}:5656`;
+    } catch {
+      setConnectError('Invalid URL. Use a format like http://192.168.1.50:5656');
+      setConnecting(false);
+      return;
+    }
     try {
       const resp = await fetch(`http://${addr}/health`, { signal: AbortSignal.timeout(5000) });
       const data = await resp.json();
@@ -109,7 +147,7 @@ const Login = () => {
       localStorage.setItem('homecast-relay-address', addr);
       window.location.reload(); // Reload with new config pointing to relay
     } catch {
-      setConnectError('Could not connect. Check the address and make sure the relay is running.');
+      setConnectError('Could not connect. Check the URL and make sure the relay is running.');
       setConnecting(false);
     }
   };
@@ -212,8 +250,8 @@ const Login = () => {
                     <Label htmlFor="relay-address">Relay Address</Label>
                     <Input
                       id="relay-address"
-                      type="text"
-                      placeholder="192.168.1.50 or mymac.local"
+                      type="url"
+                      placeholder="http://192.168.1.50:5656"
                       value={relayAddress}
                       onChange={(e) => setRelayAddress(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleConnectToRelay()}
@@ -255,24 +293,46 @@ const Login = () => {
                   </Button>
                 </>
               )}
+              {(isInNativeApp || isCommunity) && (
+                <div className="w-full border-t pt-3 mt-1">
+                  <Button variant="outline" size="sm" className="w-full" onClick={switchMode}>
+                    {switchModeLabel}
+                  </Button>
+                </div>
+              )}
             </CardFooter>
           </>
 
         /* --- Community: Relay not ready --- */
         ) : isCommunity && relayNotReady ? (
-          <CardHeader className="text-center pb-6">
-            <CardTitle className="text-xl">Relay not ready</CardTitle>
-            <CardDescription className="mt-2">
-              The Homecast relay hasn't been set up yet. Open the Homecast app on the relay Mac first.
-            </CardDescription>
-          </CardHeader>
+          <>
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Relay not ready</CardTitle>
+              <CardDescription className="mt-2">
+                {getRelayAddress()
+                  ? <>Could not connect to <span className="font-mono text-foreground">{getRelayAddress()}</span>. Make sure the relay is running.</>
+                  : 'The Homecast relay hasn\'t been set up yet. Open the Homecast app on the relay Mac first.'}
+              </CardDescription>
+            </CardHeader>
+            <CardFooter className="flex flex-col gap-3 pt-0">
+              <div className="w-full border-t pt-3">
+                <Button variant="outline" size="sm" className="w-full" onClick={switchMode}>
+                  {switchModeLabel}
+                </Button>
+              </div>
+            </CardFooter>
+          </>
 
         /* --- Community: Auth-enabled login form --- */
         ) : isCommunity ? (
           <>
             <CardHeader className="text-center">
               <CardTitle className="text-2xl">Sign In</CardTitle>
-              <CardDescription>Authentication is enabled on this relay</CardDescription>
+              <CardDescription>
+                {getRelayAddress()
+                  ? <>Connected to <span className="font-mono text-foreground">{getRelayAddress()}</span></>
+                  : 'Authentication is enabled on this relay'}
+              </CardDescription>
             </CardHeader>
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
@@ -311,6 +371,11 @@ const Login = () => {
                   {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Sign In
                 </Button>
+                <div className="w-full border-t pt-3">
+                  <Button variant="outline" size="sm" className="w-full" type="button" onClick={switchMode}>
+                    {switchModeLabel}
+                  </Button>
+                </div>
                 {(window as any).isHomeKitRelayCapable && !showResetConfirm && (
                   <button
                     type="button"
@@ -430,6 +495,13 @@ const Login = () => {
                     Sign up
                   </Link>
                 </p>
+                {isInNativeApp && (
+                  <div className="w-full border-t pt-3">
+                    <Button variant="outline" size="sm" className="w-full" type="button" onClick={switchMode}>
+                      Change connection mode
+                    </Button>
+                  </div>
+                )}
               </CardFooter>
             </form>
           </>

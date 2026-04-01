@@ -33,7 +33,7 @@ const MarketingHeader = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto grid h-16 max-w-7xl grid-cols-3 items-center px-3 sm:px-6">
+      <div className="mx-auto grid h-16 max-w-7xl grid-cols-2 sm:grid-cols-3 items-center px-3 sm:px-6">
         <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
             <Home className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
@@ -76,7 +76,7 @@ const MarketingHeader = () => {
         </div>
 
         {/* Mobile nav */}
-        <div className="flex sm:hidden items-center gap-1.5">
+        <div className="flex sm:hidden items-center justify-end gap-1.5">
           <StagingSyncLabel />
           {authButton('text-[15px] px-2.5 h-8')}
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>

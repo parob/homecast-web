@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2 } from 'lucide-react';
-import { config, isCommunity } from '@/lib/config';
+import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
 import { isRelayCapable } from '@/native/homekit-bridge';
 
 interface CommunityUser {
@@ -146,6 +146,14 @@ export function AccountSection({
 
   return (
     <div className="space-y-6">
+      {/* Relay connection info (community client mode) */}
+      {isCommunity && isClientMode() && getRelayAddress() && (
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Connected Relay</p>
+          <p className="text-xs font-mono text-muted-foreground">{getRelayAddress()}</p>
+        </div>
+      )}
+
       {/* Community auth management */}
       {showAuthManagement && !authLoading && (
         <div className="space-y-4">

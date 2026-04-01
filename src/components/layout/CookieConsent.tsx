@@ -128,6 +128,17 @@ export function CookieConsent() {
   const [policyOpen, setPolicyOpen] = useState(false);
 
   useEffect(() => {
+    // Never show in native app webviews or community mode — no third-party cookies to consent to
+    const isNativeApp = !!(window as any).webkit?.messageHandlers?.homecast
+      || !!(window as any).isHomecastMacApp
+      || !!(window as any).isHomecastIOSApp
+      || !!(window as any).isHomecastAndroidApp
+      || !!(window as any).__HOMECAST_COMMUNITY__;
+    if (isNativeApp) {
+      localStorage.setItem(STORAGE_KEY, 'granted');
+      grantConsent();
+      return;
+    }
     if (!localStorage.getItem(STORAGE_KEY)) {
       setVisible(true);
     }
@@ -138,7 +149,7 @@ export function CookieConsent() {
   return (
     <>
       <div className="fixed bottom-0 left-0 right-0 z-[10002] p-4 pointer-events-none" style={{ paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 16px)' }}>
-        <div className="pointer-events-auto mx-auto max-w-lg rounded-lg border border-border bg-card p-4 shadow-lg">
+        <div className="pointer-events-auto mx-auto max-w-lg rounded-2xl border border-border bg-card p-4 shadow-lg">
           <p className="text-sm text-muted-foreground mb-3">
             We use cookies and analytics to improve your experience.{' '}
             <button onClick={() => setPolicyOpen(true)} className="text-primary hover:underline">
