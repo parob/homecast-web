@@ -70,6 +70,7 @@ const MainRoutes = () => (
               <Route path="/pricing" element={<ToPortal />} />
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
+              <Route path="/oauth/consent" element={<OAuthConsent />} />
               <Route path="*" element={<ToPortal />} />
             </>
           ) : (

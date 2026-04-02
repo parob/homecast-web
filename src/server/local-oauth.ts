@@ -20,7 +20,7 @@ import { verifyToken, generateCustomToken } from './local-auth';
 
 // --- Helpers ---
 
-const SCOPES_SUPPORTED = ['mcp:read', 'mcp:write', 'mcp:admin'];
+const SCOPES_SUPPORTED = ['read', 'write', 'admin'];
 const AUTH_CODE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const ACCESS_TOKEN_EXPIRY_S = 3600; // 1 hour
 const REFRESH_TOKEN_EXPIRY_MS = 90 * 24 * 3600 * 1000; // 90 days
@@ -262,8 +262,10 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
   }
 
   // Check authentication
-  if (!_token) {
-    // Not authenticated — redirect to login with OAuth params
+  const authEnabled = await db.getSetting('auth-enabled');
+
+  if (!_token && authEnabled === 'true') {
+    // Auth is enabled and no token — redirect to login with OAuth params
     const oauthParams = new URLSearchParams({
       client_id, redirect_uri, code_challenge, code_challenge_method: 'S256',
       scope: scope || '', state: state || '', resource: resource || '',
@@ -275,17 +277,24 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
     return redirect(`${baseUrl()}/login?oauth_flow=true&oauth_params=${encodeURIComponent(oauthParams.toString())}`);
   }
 
-  // Verify the token
-  const user = await verifyToken(_token);
-  if (!user) {
-    return errorRedirect(redirect_uri, 'access_denied', 'Invalid or expired token', state);
+  // Verify the token if provided, otherwise use guest for no-auth servers
+  let user: { sub: string; name: string; role: string } | null = null;
+  if (_token) {
+    user = await verifyToken(_token);
+    if (!user) {
+      return errorRedirect(redirect_uri, 'access_denied', 'Invalid or expired token', state);
+    }
+  } else {
+    // No auth — auto-approve as guest
+    user = { sub: 'guest', name: 'Guest', role: 'admin' };
   }
 
-  // Check for existing consent
+  // Check for existing consent (or auto-approve if auth is disabled)
   const consentId = `${user.sub}:${client_id}`;
   const consent = await db.getUserConsent(consentId);
+  const autoApprove = authEnabled !== 'true';
 
-  if (consent) {
+  if (consent || autoApprove) {
     // Has existing consent — create auth code directly
     const code = randomHex(32);
     await db.putAuthorizationCode({
@@ -296,8 +305,8 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
       user_id: user.sub,
       user_name: user.name,
       user_role: user.role,
-      scope: scope || consent.scope || SCOPES_SUPPORTED.join(' '),
-      home_permissions: consent.home_permissions,
+      scope: scope || consent?.scope || SCOPES_SUPPORTED.join(' '),
+      home_permissions: consent?.home_permissions || {},
       resource: resource || null,
       expires_at: new Date(Date.now() + AUTH_CODE_EXPIRY_MS).toISOString(),
       created_at: new Date().toISOString(),

@@ -5,6 +5,7 @@
 
 import { executeHomeKitAction } from '../relay/local-handler';
 import { communityRequest } from './connection';
+import { verifyTokenFull } from './local-auth';
 
 interface HTTPRequest {
   method: string;
@@ -32,7 +33,7 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
 
       // GET /rest/state?home=X&room=X&type=X&name=X
       case method === 'GET' && (route === '/state' || route === ''): {
-        return getState(params);
+        return getState(params, req.authorization);
       }
 
       // GET /rest/accessories?home=X&room=X&type=X&name=X
@@ -252,15 +253,32 @@ function simplifyAccessory(accessory: any): Record<string, any> {
   return result;
 }
 
-async function getState(params: URLSearchParams): Promise<Record<string, any>> {
+async function getState(params: URLSearchParams, authorization?: string): Promise<Record<string, any>> {
   const homeFilter = params.get('home')?.toLowerCase() || null;
   const roomFilter = params.get('room')?.toLowerCase() || null;
   const typeFilter = params.get('type')?.toLowerCase() || null;
   const nameFilter = params.get('name')?.toLowerCase() || null;
 
+  // Extract home_permissions from OAuth token (if present)
+  let allowedHomeIds: Set<string> | null = null;
+  if (authorization) {
+    const token = authorization.replace(/^Bearer\s+/i, '');
+    if (token && !token.startsWith('hc_')) {
+      const payload = await verifyTokenFull(token);
+      if (payload?.home_permissions && typeof payload.home_permissions === 'object' && Object.keys(payload.home_permissions).length > 0) {
+        allowedHomeIds = new Set(Object.keys(payload.home_permissions as Record<string, string>));
+      }
+    }
+  }
+
   // Get all homes
   const homesResult = await executeHomeKitAction('homes.list') as any;
-  const homes = homesResult?.homes || [];
+  let homes = homesResult?.homes || [];
+
+  // Filter by OAuth home permissions
+  if (allowedHomeIds) {
+    homes = homes.filter((h: any) => allowedHomeIds!.has(h.id));
+  }
 
   const result: Record<string, any> = {};
 

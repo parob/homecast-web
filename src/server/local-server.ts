@@ -131,7 +131,37 @@ export function initLocalServer(): void {
     recordCommunityActivity();
     const win = window as Window & { webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } } };
 
-    // Gate: relay must be set up
+    // OAuth API endpoints are always accessible (needed before setup)
+    const httpPath = request.path.split('?')[0];
+
+    // /oauth/consent is a frontend SPA route — tell Swift to serve index.html
+    if (httpPath === '/oauth/consent') {
+      win.webkit?.messageHandlers?.localServer?.postMessage({
+        action: 'httpResponse', clientId,
+        response: JSON.stringify({ _serveSPA: true }),
+      });
+      return;
+    }
+
+    const isOAuthAPI = httpPath.startsWith('/oauth/') || httpPath === '/register' || httpPath.startsWith('/.well-known/');
+    if (isOAuthAPI) {
+      try {
+        const { handleOAuth } = await import('./local-oauth');
+        const result = await handleOAuth(request);
+        win.webkit?.messageHandlers?.localServer?.postMessage({
+          action: 'httpResponse', clientId,
+          response: JSON.stringify(result),
+        });
+      } catch (e: any) {
+        win.webkit?.messageHandlers?.localServer?.postMessage({
+          action: 'httpResponse', clientId,
+          response: JSON.stringify({ error: e.message || 'Internal error' }),
+        });
+      }
+      return;
+    }
+
+    // Gate: relay must be set up (OAuth exempted above)
     if (!isRelaySetUp()) {
       win.webkit?.messageHandlers?.localServer?.postMessage({
         action: 'httpResponse', clientId,
@@ -187,9 +217,6 @@ export function initLocalServer(): void {
           }
         }
         result = await handleREST(request);
-      } else if (path.startsWith('/oauth/') || path === '/register' || path.startsWith('/.well-known/')) {
-        const { handleOAuth } = await import('./local-oauth');
-        result = await handleOAuth(request);
       } else {
         result = { error: 'Not found' };
       }

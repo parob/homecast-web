@@ -136,6 +136,11 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (!authEnabled) {
       // Auth disabled — everyone gets guest access, straight to Dashboard
+      // Ensure relay-setup flag is set so the HTTP server gate passes
+      if (isRelayRef.current) {
+        localStorage.setItem('homecast-relay-setup', 'true');
+        localStorage.setItem('homecast-mode', 'relay');
+      }
       setUser({
         id: 'guest',
         email: 'guest',
