@@ -59,7 +59,14 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm table-fixed">
+        <colgroup>
+          <col className="w-[200px]" />
+          <col />
+          <col />
+          <col />
+          <col />
+        </colgroup>
         <thead>
           <tr>
             <th className="w-[200px]" />

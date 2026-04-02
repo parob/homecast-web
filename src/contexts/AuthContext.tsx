@@ -12,11 +12,7 @@ import { handleGraphQL } from '@/server/local-graphql';
 
 // Check if we might be in a Mac app (before native bridge is fully ready)
 function mightBeMacApp(): boolean {
-  const w = window as Window & {
-    isHomecastMacApp?: boolean;
-    webkit?: { messageHandlers?: { homecast?: unknown } };
-  };
-  return !!(w.isHomecastMacApp || w.webkit?.messageHandlers?.homecast);
+  return !!(window as any).isHomecastMacApp;
 }
 
 // Wait for native bridge to be ready (Mac app only)
@@ -105,19 +101,22 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Check if relay requires auth — retry up to 3 times (relay may still be starting)
+    // Check if relay requires auth — retry up to 5 times (bridge may still be initializing)
     let status: { data?: { authEnabled?: boolean; relayReady?: boolean } } | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        status = await fetch(config.graphqlUrl, {
+        const r = await fetch(config.graphqlUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
-        }).then(r => r.json());
-        break; // Success
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`); // 503 = bridge not ready, retry
+        status = await r.json();
+        if (status?.data?.relayReady) break; // Got a real response
       } catch {
-        if (attempt < 2) await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+        // Network error or 503 — retry
       }
+      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     if (!status) {
@@ -199,24 +198,62 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       // Relay Mac: call directly (same IndexedDB)
       return handleGraphQL({ operationName, variables });
     }
-    // External browser: HTTP POST to the Mac's server
-    const res = await fetch(config.graphqlUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operationName, query: '', variables }),
-    });
-    return res.json();
+    // External browser/iOS client: HTTP POST to the relay server
+    // Retry on 503 (bridge still initializing)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(config.graphqlUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operationName, query: '', variables }),
+        });
+        console.log(`[communityGraphQL] ${operationName} attempt ${attempt + 1}: HTTP ${res.status}`);
+        if (res.ok) return res.json();
+        if (res.status === 503 && attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        const text = await res.text();
+        console.log(`[communityGraphQL] ${operationName} error body: ${text.slice(0, 200)}`);
+        try { return JSON.parse(text); } catch { return { errors: [{ message: `HTTP ${res.status}: ${text.slice(0, 100)}` }] }; }
+      } catch (e) {
+        console.log(`[communityGraphQL] ${operationName} attempt ${attempt + 1} failed: ${e}`);
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 1000)); continue; }
+        throw e;
+      }
+    }
   };
 
   const login = async (email: string, password: string) => {
-    const result = await communityGraphQL('Login', { email, password }) as any;
+    let result: any;
+    try {
+      result = await communityGraphQL('Login', { email, password });
+    } catch (e) {
+      return { success: false, error: `Network error: ${e}` };
+    }
+    if (!result) return { success: false, error: 'No response from relay' };
     const loginResult = result?.data?.login;
+    if (!loginResult) {
+      return { success: false, error: `Relay response: ${JSON.stringify(result).slice(0, 500)}` };
+    }
     if (loginResult?.success && loginResult.token) {
       localStorage.setItem('homecast-token', loginResult.token);
-      // Notify native app to hide back button
       const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
       win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'authSuccess' });
-      await checkAuth();
+      // Set user directly — don't re-verify via checkAuth which can fail on flaky connections
+      setUser({
+        id: 'authenticated',
+        email: email,
+        name: email,
+        isAdmin: false,
+        accountType: 'standard',
+        stagingAccess: false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      });
+      setIsLoading(false);
+      // Fetch full user info in background (non-blocking)
+      checkAuth();
       return { success: true };
     }
     return { success: false, error: loginResult?.error || 'Login failed' };
@@ -229,7 +266,18 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('homecast-token', signupResult.token);
       const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
       win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'authSuccess' });
-      await checkAuth();
+      setUser({
+        id: 'authenticated',
+        email: email,
+        name: email,
+        isAdmin: false,
+        accountType: 'standard',
+        stagingAccess: false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      });
+      setIsLoading(false);
+      checkAuth();
       return { success: true, message: signupResult.message };
     }
     return { success: false, error: signupResult?.error || 'Signup failed' };
@@ -239,6 +287,9 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
     // Simple logout — just clear token, keep data
     localStorage.removeItem('homecast-token');
     setUser(null);
+    // Notify Swift so it shows "Change install type" on the login page
+    const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
+    win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'logout' });
     window.location.href = '/login';
   };
 

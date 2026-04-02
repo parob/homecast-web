@@ -64,7 +64,7 @@ async function verifyClientToken(token: string | undefined): Promise<{ sub: stri
 
 // GraphQL operations that never require auth
 const AUTH_EXEMPT_OPS = new Set([
-  'IsOnboarded', 'GetVersion',
+  'IsOnboarded', 'GetVersion', 'Login', 'Signup', 'GetAuthEnabled',
 ]);
 
 /**

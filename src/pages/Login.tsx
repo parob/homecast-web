@@ -79,9 +79,11 @@ const Login = () => {
       return;
     }
 
-    // Check relay status — retry up to 3 times (relay may still be starting)
+    // Check relay status — poll every 5s until relay is ready
+    let cancelled = false;
     const checkRelay = async () => {
-      for (let attempt = 0; attempt < 3; attempt++) {
+      let attempt = 0;
+      while (!cancelled) {
         try {
           const r = await fetch(config.graphqlUrl, {
             method: 'POST',
@@ -90,17 +92,20 @@ const Login = () => {
           });
           const result = await r.json();
           const relayReady = result?.data?.relayReady ?? false;
-          if (!relayReady) setRelayNotReady(true);
-          setCommunityChecked(true);
-          return;
+          if (relayReady) {
+            setRelayNotReady(false);
+            setCommunityChecked(true);
+            return;
+          }
         } catch {
-          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000));
         }
+        setRelayNotReady(true);
+        setCommunityChecked(true);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
-      setRelayNotReady(true);
-      setCommunityChecked(true);
     };
     checkRelay();
+    return () => { cancelled = true; };
   }, []);
 
   // Handle "Start Relay"
@@ -309,8 +314,11 @@ const Login = () => {
             <CardHeader className="text-center">
               <CardTitle className="text-xl">Relay not ready</CardTitle>
               <CardDescription className="mt-2">
+                {(getRelayAddress() || config.apiUrl) && (
+                  <span className="font-mono text-foreground block mb-1">{getRelayAddress() || config.apiUrl}</span>
+                )}
                 {getRelayAddress()
-                  ? <>Could not connect to <span className="font-mono text-foreground">{getRelayAddress()}</span>. Make sure the relay is running.</>
+                  ? 'Could not connect. Make sure the relay is running.'
                   : 'The Homecast relay hasn\'t been set up yet. Open the Homecast app on the relay Mac first.'}
               </CardDescription>
             </CardHeader>

@@ -79,7 +79,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Badge variant="default" className="text-xs px-2 py-0.5 bg-blue-600 cursor-pointer hover:bg-blue-700 inline-flex items-center gap-1.5">
-                Connected via Cloud Relay
+                Cloud Relay
                 <X className="h-3.5 w-3.5 rounded-full hover:bg-white/20 p-0.5" />
               </Badge>
             </AlertDialogTrigger>
@@ -189,7 +189,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud }: { home: HomeKitHome; onSw
             </Badge>
           )}
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${isCloud ? 'border-blue-500/50 text-blue-600 dark:text-blue-400' : ''}`}>
-            {isCloud ? 'Connected via Cloud Relay' : 'Self-hosted'}
+            {isCloud ? 'Cloud Relay' : 'Self-hosted Relay'}
           </Badge>
         </div>
       </div>

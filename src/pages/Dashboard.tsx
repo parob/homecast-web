@@ -715,7 +715,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
                     <TooltipTrigger asChild>
                       <span className="inline-flex"><Cloud className={`h-3 w-3 ${isDarkBackground ? 'text-white/50' : isSelected && !hasSelectedChild ? 'text-primary-foreground/60' : 'text-muted-foreground'}`} /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom"><p className="text-xs">Connected via Cloud Relay{home.ownerEmail ? ` · ${home.ownerEmail}` : ''}</p></TooltipContent>
+                    <TooltipContent side="bottom"><p className="text-xs">Cloud Relay{home.ownerEmail ? ` · ${home.ownerEmail}` : ''}</p></TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               : <TooltipProvider delayDuration={300}>
@@ -6270,6 +6270,20 @@ const Dashboard = () => {
                     </Button>
                   }
                 />
+              ) : filteredRooms.length === 0 && homes.length === 0 && (homesLoading || !homesData) ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
+                    Loading homes…
+                  </p>
+                </div>
+              ) : filteredRooms.length === 0 && (accessoriesLoading || roomsLoading) ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
+                    Loading accessories…
+                  </p>
+                </div>
               ) : filteredRooms.length === 0 ? (
                 <Card className={isDarkBackground ? "bg-black/30 border-white/20" : ""}>
                   <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? "text-white" : ""}`}>

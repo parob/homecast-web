@@ -74,9 +74,11 @@ async function resolveOperation(
 
     case 'IsOnboarded': {
       const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
+      // If the server is running and handling this request, the relay is ready.
+      // Don't check localStorage — it may have been wiped during a mode reset.
       return {
-        isOnboarded: !!localStorage.getItem('homecast-relay-setup'),
-        relayReady: !!localStorage.getItem('homecast-relay-setup'),
+        isOnboarded: true,
+        relayReady: true,
         authEnabled,
       };
     }

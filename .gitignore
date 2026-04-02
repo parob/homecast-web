@@ -26,4 +26,12 @@ dist-ssr
 
 # Cloud-specific components (private, pulled from homecast-cloud for full builds)
 src/cloud/
+
+# Cloud-specific pages (belong in homecast-cloud/app-web/)
+src/pages/ForgotPassword.tsx
+src/pages/ResetPassword.tsx
+src/pages/VerifyEmail.tsx
+src/pages/Subscribe.tsx
+src/pages/ManagedRelayDashboard.tsx
+src/pages/managed-relay/
 screenshots/test-results/.last-run 2.json
