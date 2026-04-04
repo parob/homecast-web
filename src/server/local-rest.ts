@@ -358,6 +358,8 @@ async function getState(params: URLSearchParams, authorization?: string): Promis
     result[homeKey] = homeData;
   }
 
+  // Include home key → UUID mapping so clients can subscribe with full UUIDs
+  result._homes = Object.fromEntries(homes.map((h: any) => [uniqueKey(h.name, h.id), h.id]));
   result._meta = { fetched_at: new Date().toISOString() };
   return result;
 }
