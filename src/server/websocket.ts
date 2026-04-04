@@ -334,32 +334,28 @@ export class ServerWebSocket {
             affectedCount,
           });
         } else if (action === 'state.set') {
-          const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
-          if (state) {
-            for (const [, accessories] of Object.entries(state)) {
-              for (const [accKey, chars] of Object.entries(accessories)) {
-                for (const [characteristicType, value] of Object.entries(chars)) {
-                  if (characteristicType === 'type' || characteristicType === '_settable') continue;
-                  this.sendEvent({
-                    id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                    type: 'event',
-                    action: 'characteristic.updated',
-                    payload: {
-                      accessoryId: accKey,
-                      characteristicType,
-                      value,
-                      ...(homeId && { homeId }),
-                    },
-                  });
-                  this.callbacks.onBroadcast?.({
-                    type: 'characteristic_update',
-                    accessoryId: accKey,
-                    homeId: homeId ?? null,
-                    characteristicType,
-                    value,
-                  });
-                }
-              }
+          // Broadcast each successful change using resolved UUIDs from the result
+          const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
+          if (changes) {
+            for (const change of changes) {
+              this.sendEvent({
+                id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+                type: 'event',
+                action: 'characteristic.updated',
+                payload: {
+                  accessoryId: change.accessoryId,
+                  characteristicType: change.characteristicType,
+                  value: change.value,
+                  ...(homeId && { homeId }),
+                },
+              });
+              this.callbacks.onBroadcast?.({
+                type: 'characteristic_update',
+                accessoryId: change.accessoryId,
+                homeId: homeId ?? null,
+                characteristicType: change.characteristicType,
+                value: change.value,
+              });
             }
           }
         }
@@ -969,36 +965,30 @@ export class ServerWebSocket {
           affectedCount,
         });
       } else if (message.action === 'state.set') {
-        // state.set uses slug keys: {state: {roomKey: {accKey: {prop: val}}}, homeId}
-        // Broadcast each characteristic change individually
+        // Broadcast each successful change using resolved UUIDs from the result
         const payload = message.payload || {};
-        const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
         const homeId = payload.homeId as string | undefined;
-        if (state) {
-          for (const [, accessories] of Object.entries(state)) {
-            for (const [accKey, chars] of Object.entries(accessories)) {
-              for (const [characteristicType, value] of Object.entries(chars)) {
-                if (characteristicType === 'type' || characteristicType === '_settable') continue;
-                this.sendEvent({
-                  id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                  type: 'event',
-                  action: 'characteristic.updated',
-                  payload: {
-                    accessoryId: accKey,
-                    characteristicType,
-                    value,
-                    ...(homeId && { homeId }),
-                  },
-                });
-                this.callbacks.onBroadcast?.({
-                  type: 'characteristic_update',
-                  accessoryId: accKey,
-                  homeId: homeId ?? null,
-                  characteristicType,
-                  value,
-                });
-              }
-            }
+        const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
+        if (changes) {
+          for (const change of changes) {
+            this.sendEvent({
+              id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+              type: 'event',
+              action: 'characteristic.updated',
+              payload: {
+                accessoryId: change.accessoryId,
+                characteristicType: change.characteristicType,
+                value: change.value,
+                ...(homeId && { homeId }),
+              },
+            });
+            this.callbacks.onBroadcast?.({
+              type: 'characteristic_update',
+              accessoryId: change.accessoryId,
+              homeId: homeId ?? null,
+              characteristicType: change.characteristicType,
+              value: change.value,
+            });
           }
         }
       }
