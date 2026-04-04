@@ -201,17 +201,14 @@ export async function executeHomeKitAction(
         state: Record<string, Record<string, Record<string, unknown>>>;
         homeId?: string;
       };
-      // Filter state to only allowed accessories
-      if (accessoryLimit !== null && allowedAccessoryIds && allowedAccessoryIds.size > 0) {
-        const filteredState: Record<string, Record<string, Record<string, unknown>>> = {};
-        for (const [accId, chars] of Object.entries(state)) {
-          if (allowedAccessoryIds.has(accId)) {
-            filteredState[accId] = chars;
-          }
-        }
-        return await HomeKit.setState(filteredState, homeId);
-      }
-      return await HomeKit.setState(state, homeId);
+      // Note: free-tier filtering is NOT applied here because state.set uses
+      // slug keys (room/accessory), not HomeKit UUIDs. The Swift setState()
+      // resolves slug keys internally. Limit enforcement happens at the
+      // characteristic.set level for individual accessory control.
+      console.log('[state.set] state:', JSON.stringify(state), 'homeId:', homeId);
+      const result = await HomeKit.setState(state, homeId);
+      console.log('[state.set] result:', JSON.stringify(result));
+      return result;
     }
 
     case 'observe.start':
