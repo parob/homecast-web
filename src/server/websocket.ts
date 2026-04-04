@@ -969,7 +969,6 @@ export class ServerWebSocket {
         const payload = message.payload || {};
         const homeId = payload.homeId as string | undefined;
         const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
-        console.log('[state.set] broadcast: changes=', changes?.length ?? 'none', 'hasCallback=', !!this.callbacks.onBroadcast);
         if (changes) {
           for (const change of changes) {
             this.sendEvent({
@@ -992,6 +991,8 @@ export class ServerWebSocket {
             });
           }
         }
+        // Also invalidate the DataCache so group widgets and list views refresh
+        invalidateHomeKitCache();
       }
     } catch (error) {
       // Swift bridge rejects with plain {code, message} objects, not Error instances.
