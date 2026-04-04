@@ -333,6 +333,35 @@ export class ServerWebSocket {
             value: payload.value,
             affectedCount,
           });
+        } else if (action === 'state.set') {
+          const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
+          if (state) {
+            for (const [, accessories] of Object.entries(state)) {
+              for (const [accKey, chars] of Object.entries(accessories)) {
+                for (const [characteristicType, value] of Object.entries(chars)) {
+                  if (characteristicType === 'type' || characteristicType === '_settable') continue;
+                  this.sendEvent({
+                    id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+                    type: 'event',
+                    action: 'characteristic.updated',
+                    payload: {
+                      accessoryId: accKey,
+                      characteristicType,
+                      value,
+                      ...(homeId && { homeId }),
+                    },
+                  });
+                  this.callbacks.onBroadcast?.({
+                    type: 'characteristic_update',
+                    accessoryId: accKey,
+                    homeId: homeId ?? null,
+                    characteristicType,
+                    value,
+                  });
+                }
+              }
+            }
+          }
         }
 
         return result as T;
@@ -939,6 +968,39 @@ export class ServerWebSocket {
           value: payload.value,
           affectedCount,
         });
+      } else if (message.action === 'state.set') {
+        // state.set uses slug keys: {state: {roomKey: {accKey: {prop: val}}}, homeId}
+        // Broadcast each characteristic change individually
+        const payload = message.payload || {};
+        const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
+        const homeId = payload.homeId as string | undefined;
+        if (state) {
+          for (const [, accessories] of Object.entries(state)) {
+            for (const [accKey, chars] of Object.entries(accessories)) {
+              for (const [characteristicType, value] of Object.entries(chars)) {
+                if (characteristicType === 'type' || characteristicType === '_settable') continue;
+                this.sendEvent({
+                  id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+                  type: 'event',
+                  action: 'characteristic.updated',
+                  payload: {
+                    accessoryId: accKey,
+                    characteristicType,
+                    value,
+                    ...(homeId && { homeId }),
+                  },
+                });
+                this.callbacks.onBroadcast?.({
+                  type: 'characteristic_update',
+                  accessoryId: accKey,
+                  homeId: homeId ?? null,
+                  characteristicType,
+                  value,
+                });
+              }
+            }
+          }
+        }
       }
     } catch (error) {
       // Swift bridge rejects with plain {code, message} objects, not Error instances.
