@@ -8,6 +8,23 @@
 
 import { HomeKit } from '../native/homekit-bridge';
 
+/** Standard error codes matching the Cloud Edition */
+export const ErrorCode = {
+  INVALID_REQUEST: 'INVALID_REQUEST',
+  UNKNOWN_ACTION: 'UNKNOWN_ACTION',
+  HOME_NOT_FOUND: 'HOME_NOT_FOUND',
+  ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
+  ACCESSORY_NOT_FOUND: 'ACCESSORY_NOT_FOUND',
+  SCENE_NOT_FOUND: 'SCENE_NOT_FOUND',
+  CHARACTERISTIC_NOT_FOUND: 'CHARACTERISTIC_NOT_FOUND',
+  CHARACTERISTIC_NOT_WRITABLE: 'CHARACTERISTIC_NOT_WRITABLE',
+  ACCESSORY_UNREACHABLE: 'ACCESSORY_UNREACHABLE',
+  INVALID_VALUE: 'INVALID_VALUE',
+  HOMEKIT_ERROR: 'HOMEKIT_ERROR',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+} as const;
+
 // Accessory limit enforcement state
 let allowedAccessoryIds: Set<string> | null = null;
 let accessoryLimit: number | null = null;
@@ -112,7 +129,7 @@ export async function executeHomeKitAction(
     case 'accessory.get': {
       const { accessoryId } = payload as { accessoryId: string };
       if (!isAccessoryAllowed(accessoryId)) {
-        throw Object.assign(new Error('Accessory not included in your plan'), { code: 'ACCESSORY_NOT_FOUND' });
+        throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
       return { accessory: await HomeKit.getAccessory(accessoryId) };
     }
@@ -120,7 +137,7 @@ export async function executeHomeKitAction(
     case 'accessory.refresh': {
       const { accessoryId } = payload as { accessoryId: string };
       if (!isAccessoryAllowed(accessoryId)) {
-        throw Object.assign(new Error('Accessory not included in your plan'), { code: 'ACCESSORY_NOT_FOUND' });
+        throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
       return await HomeKit.refreshAccessory(accessoryId);
     }
@@ -131,7 +148,7 @@ export async function executeHomeKitAction(
         characteristicType: string;
       };
       if (!isAccessoryAllowed(accessoryId)) {
-        throw Object.assign(new Error('Accessory not included in your plan'), { code: 'ACCESSORY_NOT_FOUND' });
+        throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
       return await HomeKit.getCharacteristic(accessoryId, characteristicType);
     }
@@ -143,7 +160,7 @@ export async function executeHomeKitAction(
         value: unknown;
       };
       if (!isAccessoryAllowed(accessoryId)) {
-        throw Object.assign(new Error('Accessory not included in your plan'), { code: 'ACCESSORY_NOT_FOUND' });
+        throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
       return await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
     }
@@ -224,6 +241,6 @@ export async function executeHomeKitAction(
       return { pong: true, timestamp: Date.now() };
 
     default:
-      throw Object.assign(new Error(`Unknown action: ${action}`), { code: 'UNKNOWN_ACTION' });
+      throw Object.assign(new Error(`Unknown action: ${action}`), { code: ErrorCode.UNKNOWN_ACTION });
   }
 }

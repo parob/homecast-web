@@ -174,6 +174,10 @@ export class ServerWebSocket {
   // Debounce timer for homes.updated events (homeManagerDidUpdateHomes can fire multiple times)
   private homesUpdatedDebounce: ReturnType<typeof setTimeout> | null = null;
 
+  // Accessory→home/room mapping cache (avoids extra accessory.get round-trip on characteristic.set)
+  // Per-session, cleared on disconnect/reconnect — no TTL needed
+  private accessoryHomeCache = new Map<string, { homeId: string; roomId: string }>();
+
   constructor(config: ServerConfig, callbacks: ServerWebSocketCallbacks = {}) {
     this.config = {
       ...config,
@@ -278,14 +282,24 @@ export class ServerWebSocket {
         // After successful write operations, send event to server and update local UI
         // Same logic as handleIncomingRequest for consistency
         if (action === 'characteristic.set') {
-          // Look up accessory context for subscription filtering
+          // Look up accessory context for subscription filtering (cached to avoid extra round-trip)
           let homeId = payload.homeId as string | undefined;
           let roomId: string | undefined;
-          try {
-            const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId: payload.accessoryId }) as any;
-            homeId = homeId || accessory?.homeId;
-            roomId = accessory?.roomId;
-          } catch { /* use whatever context we have */ }
+          const accessoryId = payload.accessoryId as string;
+          const cached = accessoryId ? this.accessoryHomeCache.get(accessoryId) : undefined;
+          if (cached) {
+            homeId = homeId || cached.homeId;
+            roomId = cached.roomId;
+          } else {
+            try {
+              const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
+              homeId = homeId || accessory?.homeId;
+              roomId = accessory?.roomId;
+              if (accessoryId && accessory?.homeId) {
+                this.accessoryHomeCache.set(accessoryId, { homeId: accessory.homeId, roomId: accessory.roomId });
+              }
+            } catch { /* use whatever context we have */ }
+          }
           // Send event to server for broadcasting to web clients
           this.sendEvent({
             id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
@@ -908,14 +922,24 @@ export class ServerWebSocket {
       // Also trigger local onBroadcast so the Mac relay's own UI updates
       if (message.action === 'characteristic.set') {
         const payload = message.payload || {};
-        // Look up accessory context for subscription filtering
+        // Look up accessory context for subscription filtering (cached to avoid extra round-trip)
         let homeId = payload.homeId as string | undefined;
         let roomId: string | undefined;
-        try {
-          const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId: payload.accessoryId }) as any;
-          homeId = homeId || accessory?.homeId;
-          roomId = accessory?.roomId;
-        } catch { /* use whatever context we have */ }
+        const accessoryId = payload.accessoryId as string;
+        const cached = accessoryId ? this.accessoryHomeCache.get(accessoryId) : undefined;
+        if (cached) {
+          homeId = homeId || cached.homeId;
+          roomId = cached.roomId;
+        } else {
+          try {
+            const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
+            homeId = homeId || accessory?.homeId;
+            roomId = accessory?.roomId;
+            if (accessoryId && accessory?.homeId) {
+              this.accessoryHomeCache.set(accessoryId, { homeId: accessory.homeId, roomId: accessory.roomId });
+            }
+          } catch { /* use whatever context we have */ }
+        }
         // Send event to server for broadcasting to web clients
         this.sendEvent({
           id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
@@ -1270,6 +1294,9 @@ export class ServerWebSocket {
 
     // Reset relay state — will be reassigned by server on reconnect
     this.isActiveRelay = false;
+
+    // Clear per-session caches
+    this.accessoryHomeCache.clear();
 
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;

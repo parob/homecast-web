@@ -150,8 +150,9 @@ interface PendingUpdate {
 class PendingUpdatesTracker {
   private pending = new Map<string, PendingUpdate>();
   private pendingGroups = new Map<string, PendingUpdate>();
-  // Window during which server updates are ignored (ms)
-  private ignoreWindow = 2000;
+  // Window during which stale server updates are ignored (ms).
+  // Extended to 5s (from 2s) to account for slow HomeKit responses (B8 fix).
+  private ignoreWindow = 5000;
 
   private makeKey(accessoryId: string, characteristicType: string): string {
     return `${accessoryId}:${characteristicType}`;

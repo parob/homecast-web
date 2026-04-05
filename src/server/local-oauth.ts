@@ -20,10 +20,18 @@ import { verifyToken, verifyTokenFull, generateCustomToken } from './local-auth'
 
 // --- Helpers ---
 
-const SCOPES_SUPPORTED = ['read', 'write', 'admin'];
+const SCOPES_SUPPORTED = ['mcp:read', 'mcp:write', 'mcp:admin', 'read', 'write', 'admin'];
 const AUTH_CODE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const ACCESS_TOKEN_EXPIRY_S = 3600; // 1 hour
-const REFRESH_TOKEN_EXPIRY_MS = 90 * 24 * 3600 * 1000; // 90 days
+const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 3600 * 1000; // 30 days (matches cloud)
+
+/**
+ * Normalize MCP-prefixed scopes to plain scopes for internal permission checks.
+ * mcp:read → read, mcp:write → write, mcp:admin → admin.
+ */
+function normalizeScope(scope: string): string {
+  return scope.replace(/^mcp:/, '');
+}
 
 function baseUrl(): string {
   return window.location.origin;
@@ -141,9 +149,9 @@ function serverMetadata(): Record<string, unknown> {
     response_types_supported: ['code'],
     response_modes_supported: ['query'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
-    token_endpoint_auth_methods_supported: ['none'],
+    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
     code_challenge_methods_supported: ['S256'],
-    service_documentation: 'https://docs.homecast.cloud',
+    service_documentation: 'https://docs.homecast.cloud/developers/authentication',
   };
 }
 
@@ -153,6 +161,7 @@ function resourceMetadata(): Record<string, unknown> {
     resource: base,
     authorization_servers: [base],
     scopes_supported: SCOPES_SUPPORTED,
+    bearer_methods_supported: ['header'],
   };
 }
 
@@ -316,6 +325,8 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
     const redirectUrl = new URL(redirect_uri);
     redirectUrl.searchParams.set('code', code);
     if (state) redirectUrl.searchParams.set('state', state);
+    // RFC 9207: Authorization Server Issuer Identification
+    redirectUrl.searchParams.set('iss', baseUrl());
     return redirect(redirectUrl.toString());
   }
 
@@ -411,6 +422,8 @@ async function handleAuthorizeCallback(body: Record<string, any>): Promise<Recor
   const url = new URL(redirect_uri);
   url.searchParams.set('code', code);
   if (state) url.searchParams.set('state', state);
+  // RFC 9207: Authorization Server Issuer Identification
+  url.searchParams.set('iss', baseUrl());
   return { redirect_uri: url.toString() };
 }
 
@@ -467,6 +480,7 @@ async function handleAuthCodeGrant(body: Record<string, any>): Promise<Record<st
   }
 
   // Generate access token
+  const now = Math.floor(Date.now() / 1000);
   const accessToken = await generateCustomToken({
     sub: authCode.user_id,
     name: authCode.user_name,
@@ -476,6 +490,8 @@ async function handleAuthCodeGrant(body: Record<string, any>): Promise<Record<st
     home_permissions: authCode.home_permissions,
     token_type: 'access_token',
     aud: authCode.resource || baseUrl(),
+    iss: baseUrl(),
+    nbf: now,
   }, ACCESS_TOKEN_EXPIRY_S);
 
   // Generate refresh token
@@ -559,6 +575,7 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
   }
 
   // Generate new access token
+  const refreshNow = Math.floor(Date.now() / 1000);
   const accessToken = await generateCustomToken({
     sub: storedToken.user_id,
     name: storedToken.user_name,
@@ -568,6 +585,8 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
     home_permissions: storedToken.home_permissions,
     token_type: 'access_token',
     aud: storedToken.resource || baseUrl(),
+    iss: baseUrl(),
+    nbf: refreshNow,
   }, ACCESS_TOKEN_EXPIRY_S);
 
   // Generate new refresh token (same family)

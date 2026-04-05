@@ -125,6 +125,42 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         return { success: true };
       }
 
+      // POST /rest/scene — execute scene by home key + name (cloud-compatible)
+      case method === 'POST' && route === '/scene': {
+        if (!req.body) return { error: 'Missing body' };
+        const body = JSON.parse(req.body);
+        const homeKey = body.home;
+        const sceneName = body.name;
+        if (!homeKey || !sceneName) {
+          return { error: "Both 'home' and 'name' are required" };
+        }
+
+        // Resolve home slug key to UUID
+        const homesResult = await executeHomeKitAction('homes.list') as any;
+        const homes = homesResult?.homes || [];
+        const homeKeyToId: Record<string, string> = {};
+        for (const home of homes) {
+          homeKeyToId[uniqueKey(home.name, home.id)] = home.id;
+        }
+
+        const homeId = homeKeyToId[homeKey];
+        if (!homeId) {
+          return { error: `Home not found: ${homeKey}` };
+        }
+
+        // Get scenes and find by name
+        const scenesResult = await executeHomeKitAction('scenes.list', { homeId }) as any;
+        const scenes = scenesResult?.scenes || [];
+        const scene = scenes.find((s: any) => (s.name || '').toLowerCase() === sceneName.toLowerCase());
+        if (!scene) {
+          const available = scenes.map((s: any) => s.name);
+          return { error: `Scene '${sceneName}' not found. Available: ${JSON.stringify(available)}` };
+        }
+
+        await executeHomeKitAction('scene.execute', { sceneId: scene.id });
+        return { success: true };
+      }
+
       // GET /rest/rooms?home=X
       case method === 'GET' && route === '/rooms': {
         const homeId = params.get('home');
@@ -224,6 +260,9 @@ function getDeviceType(accessory: any): string {
   if (services.includes('window_covering')) return 'blind';
   if (services.includes('valve')) return 'valve';
   if (services.includes('speaker') || services.includes('microphone')) return 'speaker';
+  if (services.includes('light_sensor')) return 'light_sensor';
+  if (services.includes('doorbell')) return 'doorbell';
+  if (services.includes('stateless_programmable_switch')) return 'button';
   if (category.includes('light')) return 'light';
   if (category.includes('thermostat')) return 'climate';
   if (category.includes('lock')) return 'lock';
@@ -360,6 +399,137 @@ async function getState(params: URLSearchParams, authorization?: string): Promis
 
   // Include home key → UUID mapping so clients can subscribe with full UUIDs
   result._homes = Object.fromEntries(homes.map((h: any) => [uniqueKey(h.name, h.id), h.id]));
-  result._meta = { fetched_at: new Date().toISOString() };
+
+  // Build contextual message
+  const homeKeys = Object.keys(result).filter(k => !k.startsWith('_'));
+  let totalAccessories = 0;
+  for (const hk of homeKeys) {
+    for (const [rk, rv] of Object.entries(result[hk])) {
+      if (!rk.startsWith('_') && typeof rv === 'object' && rv !== null) {
+        totalAccessories += Object.keys(rv).length;
+      }
+    }
+  }
+  const hasFilters = !!(homeFilter || roomFilter || typeFilter || nameFilter);
+  let message: string;
+  if (homeKeys.length === 0 && homes.length === 0) {
+    message = 'No homes available. Connect a device to get started.';
+  } else if (totalAccessories === 0 && hasFilters) {
+    message = 'No accessories match filters';
+  } else if (totalAccessories === 0) {
+    message = 'No accessories found';
+  } else {
+    const homeWord = homeKeys.length === 1 ? 'home' : 'homes';
+    message = `Found ${totalAccessories} accessor${totalAccessories === 1 ? 'y' : 'ies'} across ${homeKeys.length} ${homeWord}`;
+  }
+
+  // Use seconds precision for fetched_at (matches cloud format)
+  const now = new Date();
+  const fetched_at = now.toISOString().replace(/\.\d{3}Z$/, '+00:00');
+  result._meta = { fetched_at, message };
   return result;
+}
+
+/**
+ * Get state with simple filter object (used by MCP and REST).
+ * No authorization — caller is responsible for auth checks.
+ */
+export async function handleGetState(filters: {
+  home?: string;
+  room?: string;
+  type?: string;
+  name?: string;
+}): Promise<Record<string, any>> {
+  const params = new URLSearchParams();
+  if (filters.home) params.set('home', filters.home);
+  if (filters.room) params.set('room', filters.room);
+  if (filters.type) params.set('type', filters.type);
+  if (filters.name) params.set('name', filters.name);
+  return getState(params);
+}
+
+/**
+ * Set state with flat update list (used by MCP and REST).
+ * Matches the Cloud edition's HomesAPI.set_state interface.
+ */
+export async function handleSetState(updates: Array<Record<string, unknown>>): Promise<{
+  updated: number;
+  failed: number;
+  changes: string[];
+  errors: string[];
+  message: string;
+}> {
+  // Build nested dict: { home_key: { room_key: { acc_key: { prop: val } } } }
+  const homesResult = await executeHomeKitAction('homes.list') as any;
+  const homes = homesResult?.homes || [];
+  const homeKeyToId: Record<string, string> = {};
+  for (const home of homes) {
+    homeKeyToId[uniqueKey(home.name, home.id)] = home.id;
+  }
+
+  // Group updates by home
+  const byHome: Record<string, Array<Record<string, unknown>>> = {};
+  for (const update of updates) {
+    const homeKey = update.home as string;
+    if (!byHome[homeKey]) byHome[homeKey] = [];
+    byHome[homeKey].push(update);
+  }
+
+  let updated = 0;
+  let failed = 0;
+  const changes: string[] = [];
+  const errors: string[] = [];
+
+  const settableProps = new Set([
+    'on', 'brightness', 'hue', 'saturation', 'color_temp', 'active',
+    'heat_target', 'cool_target', 'hvac_mode', 'lock_target', 'alarm_target',
+    'speed', 'volume', 'mute', 'target',
+  ]);
+
+  for (const [homeKey, homeUpdates] of Object.entries(byHome)) {
+    const homeId = homeKeyToId[homeKey];
+    if (!homeId) {
+      failed += homeUpdates.length;
+      errors.push(`${homeKey}: home not found`);
+      continue;
+    }
+
+    // Build nested state for this home
+    const homeState: Record<string, Record<string, Record<string, unknown>>> = {};
+    for (const update of homeUpdates) {
+      const room = update.room as string;
+      const acc = update.accessory as string;
+      if (!homeState[room]) homeState[room] = {};
+      const props: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(update)) {
+        if (settableProps.has(k) && v !== undefined && v !== null) {
+          props[k] = v;
+        }
+      }
+      homeState[room][acc] = props;
+    }
+
+    try {
+      await communityRequest('state.set', { state: homeState, homeId });
+      for (const update of homeUpdates) {
+        updated++;
+        const props = Object.entries(update)
+          .filter(([k]) => settableProps.has(k) && update[k] !== undefined && update[k] !== null)
+          .map(([k, v]) => `${k}=${typeof v === 'boolean' ? (v ? 'true' : 'false') : v}`)
+          .join(', ');
+        changes.push(`${homeKey}/${update.room}/${update.accessory}: ${props}`);
+      }
+    } catch (e: any) {
+      failed += homeUpdates.length;
+      errors.push(`${homeKey}: ${e.message}`);
+    }
+  }
+
+  let message: string;
+  if (updated === 0 && failed === 0) message = 'No updates provided';
+  else if (failed === 0) message = `Updated ${updated} accessor${updated === 1 ? 'y' : 'ies'}`;
+  else if (updated === 0) message = `All ${failed} updates failed`;
+  else message = `Updated ${updated} accessor${updated === 1 ? 'y' : 'ies'}, ${failed} failed`;
+
+  return { updated, failed, changes, errors, message };
 }

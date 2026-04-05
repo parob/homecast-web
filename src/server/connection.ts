@@ -11,6 +11,7 @@ import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './we
 import { isRelayCapable } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { markRecentBroadcast } from './local-broadcast';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -129,14 +130,18 @@ export async function communityRequest<T>(action: string, payload: Record<string
 
     // Broadcast write results to all clients (mirrors websocket.ts:280-336 in cloud mode)
     // HomeKit doesn't fire events back to the app that made the change, so we do it manually.
+    // Use confirmed value from result when available (B2 fix — avoids mismatch if HomeKit caps values).
     if (action === 'characteristic.set') {
+      const confirmedValue = (result as any)?.value ?? payload.value;
       const msg: BroadcastMessage = {
         type: 'characteristic_update',
         accessoryId: payload.accessoryId as string,
         homeId: (payload.homeId as string) ?? null,
         characteristicType: payload.characteristicType as string,
-        value: payload.value,
+        value: confirmedValue,
       };
+      // Mark as recently broadcast so local-broadcast.ts deduplicates the observation event (B3 fix)
+      markRecentBroadcast(payload.accessoryId as string, payload.characteristicType as string);
       broadcastToExternalClients(msg);
       serverConnection.emitBroadcast(msg);
     } else if (action === 'serviceGroup.set') {
@@ -173,12 +178,16 @@ export async function communityRequest<T>(action: string, payload: Record<string
     return result as T;
   }
 
-  // Structure-changing writes: execute and clear the cache so next read re-fetches.
+  // Structure-changing writes: execute and clear affected cache entries so next read re-fetches.
+  // Scoped invalidation: only clear entries for the affected home (B10 fix — avoids full cache nuke).
   if (CACHE_INVALIDATING_ACTIONS.has(action)) {
     const result = await executeHomeKitAction(action, payload);
+    const homeId = payload.homeId as string | undefined;
     for (const [key] of communityCache) {
       if (key.startsWith('accessories.list') || key.startsWith('serviceGroups.list') ||
           key.startsWith('accessory.get') || key.startsWith('automations.list')) {
+        // If we know which home, only invalidate that home's entries
+        if (homeId && !key.includes(`h:${homeId}`)) continue;
         communityCache.delete(key);
       }
     }

@@ -2,10 +2,15 @@
  * Community mode: MCP (Model Context Protocol) endpoint.
  * Exposes HomeKit capabilities as tools for AI assistants.
  * Uses JSON-RPC over HTTP (Streamable HTTP transport).
+ *
+ * Tools match the Cloud edition's HomesAPI (3-tool design):
+ *   - get_state: Read state across all homes
+ *   - set_state: Set accessory state with flat update list
+ *   - run_scene: Execute a scene by home + name
  */
 
+import { handleGetState, handleSetState } from './local-rest';
 import { executeHomeKitAction } from '../relay/local-handler';
-import { communityRequest } from './connection';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -28,138 +33,134 @@ const SERVER_INFO = {
 
 const TOOLS = [
   {
-    name: 'list_homes',
-    description: 'List all HomeKit homes',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'list_rooms',
-    description: 'List rooms in a home',
-    inputSchema: {
-      type: 'object',
-      properties: { home_id: { type: 'string', description: 'Home ID' } },
-      required: ['home_id'],
-    },
-  },
-  {
-    name: 'list_accessories',
-    description: 'List accessories, optionally filtered by home or room',
+    name: 'get_state',
+    description:
+      'Get state across all homes. Returns nested dict: {home_key: {room_key: {accessory_key: {type, on, brightness, ...}}}}. ' +
+      'Settable properties listed in _settable array. Scene names in _scenes per home.',
     inputSchema: {
       type: 'object',
       properties: {
-        home_id: { type: 'string', description: 'Filter by home ID' },
-        room_id: { type: 'string', description: 'Filter by room ID' },
+        filter_by_home: { type: 'string', description: 'Filter by home name substring' },
+        filter_by_room: { type: 'string', description: 'Filter by room name substring' },
+        filter_by_type: { type: 'string', description: 'Filter by device type (light, switch, climate, lock, alarm, fan, blind, etc.)' },
+        filter_by_name: { type: 'string', description: 'Filter by accessory name substring' },
       },
     },
-  },
-  {
-    name: 'get_accessory',
-    description: 'Get detailed info about a single accessory',
-    inputSchema: {
-      type: 'object',
-      properties: { accessory_id: { type: 'string', description: 'Accessory ID' } },
-      required: ['accessory_id'],
-    },
-  },
-  {
-    name: 'set_characteristic',
-    description: 'Set a characteristic value on an accessory (e.g., turn on a light)',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        accessory_id: { type: 'string', description: 'Accessory ID' },
-        characteristic_type: { type: 'string', description: 'Characteristic type (e.g., power_state, brightness)' },
-        value: { description: 'Value to set' },
-      },
-      required: ['accessory_id', 'characteristic_type', 'value'],
-    },
+    annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   },
   {
     name: 'set_state',
-    description: 'Set multiple accessories at once. State is a dict of accessory_id -> service_type -> characteristic_type -> value',
+    description:
+      'Set accessory state using a flat list of updates. Each update has home/room/accessory path and settings. ' +
+      'Settable properties by type: light (on, brightness, hue, saturation, color_temp), ' +
+      'climate (active, heat_target, cool_target, hvac_mode), switch/outlet (on), ' +
+      'lock (lock_target), alarm (alarm_target), fan (on, speed), speaker (volume, mute), ' +
+      'blind (target), valve (active). Returns {updated, failed, changes, errors, message}.',
     inputSchema: {
       type: 'object',
       properties: {
-        state: { type: 'object', description: 'Nested dict: {accessory_id: {service_type: {characteristic_type: value}}}' },
-        home_id: { type: 'string', description: 'Home ID (optional)' },
+        updates: {
+          type: 'array',
+          description: 'List of updates, each with home/room/accessory path and settings to change',
+          items: {
+            type: 'object',
+            properties: {
+              home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
+              room: { type: 'string', description: 'Room slug key (e.g., "living_a1b2")' },
+              accessory: { type: 'string', description: 'Accessory slug key (e.g., "ceiling_light_c3d4")' },
+              on: { type: 'boolean' },
+              brightness: { type: 'integer', description: '0-100' },
+              hue: { type: 'integer', description: '0-360' },
+              saturation: { type: 'integer', description: '0-100' },
+              color_temp: { type: 'integer', description: '140-500 mirek' },
+              active: { type: 'boolean' },
+              heat_target: { type: 'number' },
+              cool_target: { type: 'number' },
+              hvac_mode: { type: 'string', description: 'auto/heat/cool' },
+              lock_target: { type: 'boolean' },
+              alarm_target: { type: 'string', description: 'home/away/night/off' },
+              speed: { type: 'integer', description: '0-100' },
+              volume: { type: 'integer', description: '0-100' },
+              mute: { type: 'boolean' },
+              target: { type: 'integer', description: '0-100 (blinds)' },
+            },
+            required: ['home', 'room', 'accessory'],
+          },
+        },
       },
-      required: ['state'],
+      required: ['updates'],
     },
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
   },
   {
-    name: 'list_scenes',
-    description: 'List scenes in a home',
+    name: 'run_scene',
+    description: 'Execute a scene by name in a specific home. Use get_state to see available scenes in _scenes.',
     inputSchema: {
       type: 'object',
-      properties: { home_id: { type: 'string', description: 'Home ID' } },
-      required: ['home_id'],
+      properties: {
+        home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
+        name: { type: 'string', description: 'Scene name (e.g., "Good Morning")' },
+      },
+      required: ['home', 'name'],
     },
-  },
-  {
-    name: 'execute_scene',
-    description: 'Execute a HomeKit scene',
-    inputSchema: {
-      type: 'object',
-      properties: { scene_id: { type: 'string', description: 'Scene ID' } },
-      required: ['scene_id'],
-    },
-  },
-  {
-    name: 'list_service_groups',
-    description: 'List service groups in a home',
-    inputSchema: {
-      type: 'object',
-      properties: { home_id: { type: 'string', description: 'Home ID' } },
-      required: ['home_id'],
-    },
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
   },
 ];
 
+// Import uniqueKey for home key resolution
+function uniqueKey(name: string, uuid: string): string {
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return `${sanitized}_${uuid.slice(-4).toLowerCase()}`;
+}
+
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
-    case 'list_homes': {
-      const result = await executeHomeKitAction('homes.list') as any;
-      return result?.homes || [];
-    }
-    case 'list_rooms': {
-      const result = await executeHomeKitAction('rooms.list', { homeId: args.home_id }) as any;
-      return result?.rooms || [];
-    }
-    case 'list_accessories': {
-      const payload: Record<string, unknown> = { includeValues: true, includeAll: true };
-      if (args.home_id) payload.homeId = args.home_id;
-      if (args.room_id) payload.roomId = args.room_id;
-      const result = await executeHomeKitAction('accessories.list', payload) as any;
-      return result?.accessories || [];
-    }
-    case 'get_accessory': {
-      const result = await executeHomeKitAction('accessory.get', { accessoryId: args.accessory_id }) as any;
-      return result?.accessory || null;
-    }
-    case 'set_characteristic': {
-      await communityRequest('characteristic.set', {
-        accessoryId: args.accessory_id,
-        characteristicType: args.characteristic_type,
-        value: args.value,
+    case 'get_state': {
+      return await handleGetState({
+        home: args.filter_by_home as string | undefined,
+        room: args.filter_by_room as string | undefined,
+        type: args.filter_by_type as string | undefined,
+        name: args.filter_by_name as string | undefined,
       });
-      return { success: true };
     }
+
     case 'set_state': {
-      await communityRequest('state.set', { state: args.state, homeId: args.home_id });
-      return { success: true };
+      const updates = args.updates as Array<Record<string, unknown>>;
+      if (!updates || !Array.isArray(updates)) {
+        throw new Error('updates must be an array');
+      }
+      return await handleSetState(updates);
     }
-    case 'list_scenes': {
-      const result = await executeHomeKitAction('scenes.list', { homeId: args.home_id }) as any;
-      return result?.scenes || [];
+
+    case 'run_scene': {
+      const homeSlug = args.home as string;
+      const sceneName = args.name as string;
+      if (!homeSlug || !sceneName) {
+        throw new Error("Both 'home' and 'name' are required");
+      }
+
+      // Resolve home slug key to HomeKit UUID
+      const homesResult = await executeHomeKitAction('homes.list') as any;
+      const homes = homesResult?.homes || [];
+      const homeEntry = homes.find((h: any) => uniqueKey(h.name, h.id) === homeSlug);
+      if (!homeEntry) {
+        throw new Error(`Home not found: ${homeSlug}`);
+      }
+
+      // Find scene by name in that home
+      const scenesResult = await executeHomeKitAction('scenes.list', { homeId: homeEntry.id }) as any;
+      const scenes = scenesResult?.scenes || [];
+      const scene = scenes.find((s: any) =>
+        s.name?.toLowerCase() === sceneName.toLowerCase()
+      );
+      if (!scene) {
+        throw new Error(`Scene not found: "${sceneName}" in ${homeSlug}`);
+      }
+
+      await executeHomeKitAction('scene.execute', { sceneId: scene.id });
+      return { success: true, scene: scene.name, home: homeSlug };
     }
-    case 'execute_scene': {
-      await executeHomeKitAction('scene.execute', { sceneId: args.scene_id });
-      return { success: true };
-    }
-    case 'list_service_groups': {
-      const result = await executeHomeKitAction('serviceGroups.list', { homeId: args.home_id }) as any;
-      return result?.serviceGroups || [];
-    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -180,7 +181,6 @@ function handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcResponse> {
         };
 
       case 'notifications/initialized':
-        // Client acknowledges initialization — no response needed
         return { jsonrpc: '2.0' as const, id: request.id ?? null, result: {} };
 
       case 'tools/list':
