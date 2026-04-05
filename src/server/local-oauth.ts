@@ -566,15 +566,16 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
   storedToken.used = true;
   await db.putRefreshToken(storedToken);
 
-  // Update last_used_at on the consent record
+  // Read current consent to get latest home_permissions (may have been updated)
   const consentId = `${storedToken.user_id}:${client_id}`;
   const consent = await db.getUserConsent(consentId);
+  const currentHomePermissions = consent?.home_permissions ?? storedToken.home_permissions;
   if (consent) {
     consent.last_used_at = new Date().toISOString();
     await db.putUserConsent(consent);
   }
 
-  // Generate new access token
+  // Generate new access token with current permissions from consent
   const refreshNow = Math.floor(Date.now() / 1000);
   const accessToken = await generateCustomToken({
     sub: storedToken.user_id,
@@ -582,7 +583,7 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
     role: storedToken.user_role,
     client_id,
     scope: storedToken.scope,
-    home_permissions: storedToken.home_permissions,
+    home_permissions: currentHomePermissions,
     token_type: 'access_token',
     aud: storedToken.resource || baseUrl(),
     iss: baseUrl(),
@@ -600,7 +601,7 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
     user_name: storedToken.user_name,
     user_role: storedToken.user_role,
     scope: storedToken.scope,
-    home_permissions: storedToken.home_permissions,
+    home_permissions: currentHomePermissions,
     resource: storedToken.resource,
     family: storedToken.family,
     used: false,
