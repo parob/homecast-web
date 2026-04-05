@@ -991,8 +991,6 @@ export class ServerWebSocket {
             });
           }
         }
-        // Also invalidate the DataCache so group widgets and list views refresh
-        invalidateHomeKitCache();
       }
     } catch (error) {
       // Swift bridge rejects with plain {code, message} objects, not Error instances.

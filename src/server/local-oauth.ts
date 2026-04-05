@@ -295,6 +295,18 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
   const autoApprove = authEnabled !== 'true';
 
   if (consent || autoApprove) {
+    // Save consent if auto-approving for the first time (so it shows in Authorized Apps)
+    if (autoApprove && !consent) {
+      await db.putUserConsent({
+        id: consentId,
+        user_id: user.sub,
+        client_id,
+        scope: scope || SCOPES_SUPPORTED.join(' '),
+        home_permissions: {},
+        created_at: new Date().toISOString(),
+      });
+    }
+
     // Has existing consent — create auth code directly
     const code = randomHex(32);
     await db.putAuthorizationCode({

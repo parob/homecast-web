@@ -168,7 +168,6 @@ export async function communityRequest<T>(action: string, payload: Record<string
           serverConnection.emitBroadcast(msg);
         }
       }
-      invalidateHomeKitCache();
     }
 
     return result as T;
