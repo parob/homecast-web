@@ -10,6 +10,7 @@
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './websocket';
 import { isRelayCapable } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
+import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -152,24 +153,22 @@ export async function communityRequest<T>(action: string, payload: Record<string
       broadcastToExternalClients(msg);
       serverConnection.emitBroadcast(msg);
     } else if (action === 'state.set') {
-      const state = payload.state as Record<string, Record<string, Record<string, unknown>>> | undefined;
-      if (state) {
-        for (const [accessoryId, services] of Object.entries(state)) {
-          for (const chars of Object.values(services)) {
-            for (const [characteristicType, value] of Object.entries(chars)) {
-              const msg: BroadcastMessage = {
-                type: 'characteristic_update',
-                accessoryId,
-                homeId: (payload.homeId as string) ?? null,
-                characteristicType,
-                value,
-              };
-              broadcastToExternalClients(msg);
-              serverConnection.emitBroadcast(msg);
-            }
-          }
+      // Use resolved UUIDs from the Swift result (not slug keys from payload)
+      const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
+      if (changes) {
+        for (const change of changes) {
+          const msg: BroadcastMessage = {
+            type: 'characteristic_update',
+            accessoryId: change.accessoryId,
+            homeId: (payload.homeId as string) ?? null,
+            characteristicType: change.characteristicType,
+            value: change.value,
+          };
+          broadcastToExternalClients(msg);
+          serverConnection.emitBroadcast(msg);
         }
       }
+      invalidateHomeKitCache();
     }
 
     return result as T;
