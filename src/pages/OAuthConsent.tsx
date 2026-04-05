@@ -64,10 +64,11 @@ interface HomePermission {
 
 const OAuthConsent = () => {
   const { isAuthenticated, isLoading: authLoading, token: authToken } = useAuth();
+  const [searchParams] = useSearchParams();
   // In community mode with auth disabled, use guest token from URL params
   const guestToken = new URLSearchParams(searchParams.get('oauth_params') || '').get('_guest_token');
-  const token = authToken || guestToken;
-  const [searchParams] = useSearchParams();
+  // Prefer guest token over placeholder 'community' token
+  const token = (authToken && authToken !== 'community') ? authToken : guestToken;
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [successRedirectUri, setSuccessRedirectUri] = useState('');
@@ -121,8 +122,8 @@ const OAuthConsent = () => {
     }
   }, [searchParams]);
 
-  // If not authenticated, redirect to login
-  if (!authLoading && !isAuthenticated) {
+  // If not authenticated and no guest token, redirect to login
+  if (!authLoading && !isAuthenticated && !guestToken) {
     const oauthParamsStr = searchParams.get('oauth_params');
     return <Navigate to={`/login?oauth_flow=true&oauth_params=${encodeURIComponent(oauthParamsStr || '')}`} replace />;
   }

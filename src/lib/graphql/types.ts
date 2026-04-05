@@ -1345,6 +1345,7 @@ export interface AuthorizedAppInfo {
   scope: string | null;
   homePermissions: string | null;  // JSON string: { homeId: 'view'|'control' }
   createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface RevokeAuthorizedAppResult {

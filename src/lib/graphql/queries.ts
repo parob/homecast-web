@@ -788,6 +788,7 @@ export const GET_AUTHORIZED_APPS = gql`
       scope
       homePermissions
       createdAt
+      lastUsedAt
     }
   }
 `;

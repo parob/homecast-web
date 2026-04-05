@@ -150,6 +150,7 @@ export function SharedItemsSection() {
           );
         }
       },
+      refetchQueries: [{ query: GET_AUTHORIZED_APPS }],
       onCompleted: (result) => {
         if (result.revokeAuthorizedApp.success) {
           setRevokeTarget(null);
@@ -393,6 +394,7 @@ export function SharedItemsSection() {
           )}
           <p className="text-xs text-muted-foreground mt-1.5">
             Authorized {new Date(app.createdAt).toLocaleDateString()}
+            {app.lastUsedAt && <> · Last used {new Date(app.lastUsedAt).toLocaleDateString()}</>}
           </p>
         </div>
         <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
@@ -489,6 +491,7 @@ export function SharedItemsSection() {
                     ))}
                     <span className="text-xs text-muted-foreground">
                       · Authorized {new Date(editingApp.createdAt).toLocaleDateString()}
+                      {editingApp.lastUsedAt && <> · Last used {new Date(editingApp.lastUsedAt).toLocaleDateString()}</>}
                     </span>
                   </div>
                 </div>

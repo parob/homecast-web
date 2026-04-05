@@ -418,6 +418,7 @@ async function resolveOperation(
             scope: c.scope,
             homePermissions: JSON.stringify(c.home_permissions || {}),
             createdAt: c.created_at,
+            lastUsedAt: c.last_used_at || null,
             __typename: 'AuthorizedApp',
           };
         }),

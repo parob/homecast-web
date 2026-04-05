@@ -16,7 +16,7 @@
  */
 
 import * as db from './local-db';
-import { verifyToken, generateCustomToken } from './local-auth';
+import { verifyToken, verifyTokenFull, generateCustomToken } from './local-auth';
 
 // --- Helpers ---
 
@@ -351,8 +351,19 @@ function errorRedirect(redirectUri: string | undefined, error: string, descripti
 async function handleAuthorizeCallback(body: Record<string, any>): Promise<Record<string, unknown>> {
   const { token, approved, homePermissions, client_id, redirect_uri, code_challenge, scope, state } = body;
 
-  // Verify user token
-  const user = await verifyToken(token);
+  // Verify user token — or allow guest if auth is disabled
+  const authEnabled = await db.getSetting('auth-enabled');
+  let user: { sub: string; name: string; role: string } | null = null;
+
+  if (token) {
+    user = await verifyToken(token);
+  }
+
+  // If token verification failed but auth is disabled, allow as guest
+  if (!user && authEnabled !== 'true') {
+    user = { sub: 'guest', name: 'Guest', role: 'admin' };
+  }
+
   if (!user) {
     return { error: 'access_denied', error_description: 'Invalid or expired token' };
   }
@@ -487,6 +498,14 @@ async function handleAuthCodeGrant(body: Record<string, any>): Promise<Record<st
     created_at: new Date().toISOString(),
   });
 
+  // Update last_used_at on the consent record
+  const grantConsentId = `${authCode.user_id}:${client_id}`;
+  const grantConsent = await db.getUserConsent(grantConsentId);
+  if (grantConsent) {
+    grantConsent.last_used_at = new Date().toISOString();
+    await db.putUserConsent(grantConsent);
+  }
+
   return {
     access_token: accessToken,
     token_type: 'Bearer',
@@ -530,6 +549,14 @@ async function handleRefreshTokenGrant(body: Record<string, any>): Promise<Recor
   // Mark old token as used (for rotation/replay detection)
   storedToken.used = true;
   await db.putRefreshToken(storedToken);
+
+  // Update last_used_at on the consent record
+  const consentId = `${storedToken.user_id}:${client_id}`;
+  const consent = await db.getUserConsent(consentId);
+  if (consent) {
+    consent.last_used_at = new Date().toISOString();
+    await db.putUserConsent(consent);
+  }
 
   // Generate new access token
   const accessToken = await generateCustomToken({
