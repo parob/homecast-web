@@ -63,7 +63,10 @@ interface HomePermission {
 }
 
 const OAuthConsent = () => {
-  const { isAuthenticated, isLoading: authLoading, token } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, token: authToken } = useAuth();
+  // In community mode with auth disabled, use guest token from URL params
+  const guestToken = new URLSearchParams(searchParams.get('oauth_params') || '').get('_guest_token');
+  const token = authToken || guestToken;
   const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);

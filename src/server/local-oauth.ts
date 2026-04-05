@@ -277,16 +277,18 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
     return redirect(`${baseUrl()}/login?oauth_flow=true&oauth_params=${encodeURIComponent(oauthParams.toString())}`);
   }
 
-  // Verify the token if provided, otherwise use guest for no-auth servers
+  // Verify the token if provided, otherwise generate a guest token for no-auth servers
   let user: { sub: string; name: string; role: string } | null = null;
+  let effectiveToken = _token;
   if (_token) {
     user = await verifyToken(_token);
     if (!user) {
       return errorRedirect(redirect_uri, 'access_denied', 'Invalid or expired token', state);
     }
   } else {
-    // No auth — auto-approve as guest
+    // No auth — create a temporary guest token so the consent page can use it
     user = { sub: 'guest', name: 'Guest', role: 'admin' };
+    effectiveToken = await generateCustomToken({ sub: 'guest', name: 'Guest', role: 'admin', token_type: 'guest' }, 600);
   }
 
   // Check for existing consent — always show consent screen for new connections
@@ -325,6 +327,8 @@ async function handleAuthorize(query: Record<string, string>): Promise<Record<st
   if (client_name) oauthParams.set('client_name', client_name);
   if (logo_uri) oauthParams.set('logo_uri', logo_uri);
   if (client_uri) oauthParams.set('client_uri', client_uri);
+  // Pass guest token so consent page can authenticate the callback
+  if (effectiveToken && !_token) oauthParams.set('_guest_token', effectiveToken);
 
   return redirect(`${baseUrl()}/oauth/consent?oauth_params=${encodeURIComponent(oauthParams.toString())}`);
 }
