@@ -1759,3 +1759,74 @@ export interface AnalyticsExternalResponse {
   analyticsExternal: AnalyticsExternalData;
 }
 
+// --- Cost & Revenue Types ---
+
+export interface GCPServiceCost {
+  service: string;
+  cost: number;
+  percentage: number;
+}
+
+export interface GCPSKUCost {
+  sku: string;
+  service: string;
+  cost: number;
+}
+
+export interface GCPEnvironmentCost {
+  environment: string;
+  cost: number;
+}
+
+export interface GCPBillingData {
+  totalCost: number;
+  totalCredits: number;
+  netCost: number;
+  costByService: GCPServiceCost[];
+  costBySku: GCPSKUCost[];
+  costByEnvironment: GCPEnvironmentCost[];
+  dailyCosts: TimeseriesPoint[];
+  costPerUser: number;
+  available: boolean;
+  error: string | null;
+}
+
+export interface StripeSubscriptionBreakdown {
+  standard: number;
+  cloud: number;
+}
+
+export interface StripeRevenueData {
+  mrr: number;
+  totalRevenue: number;
+  netRevenue: number;
+  totalRefunds: number;
+  activeSubscriptions: number;
+  subscriptionBreakdown: StripeSubscriptionBreakdown | null;
+  newSubscriptions: number;
+  churnedSubscriptions: number;
+  churnRate: number;
+  revenueTimeseries: TimeseriesPoint[];
+  available: boolean;
+  error: string | null;
+}
+
+export interface ProfitLossData {
+  totalRevenue: number;
+  totalCost: number;
+  netProfit: number;
+  marginPercentage: number;
+  revenueTimeseries: TimeseriesPoint[];
+  costTimeseries: TimeseriesPoint[];
+}
+
+export interface CostRevenueData {
+  gcpBilling: GCPBillingData | null;
+  stripeRevenue: StripeRevenueData | null;
+  profitLoss: ProfitLossData | null;
+}
+
+export interface CostRevenueResponse {
+  costsAndRevenue: CostRevenueData;
+}
+

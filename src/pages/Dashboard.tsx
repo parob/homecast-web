@@ -7930,7 +7930,7 @@ const Dashboard = () => {
               )}
               <main className={cn("flex-1 overflow-auto", isMobile ? "p-4" : "p-6")}>
                 {adminSubPath === '/' && <AdminDashboard />}
-                {adminSubPath === '/analytics' && <AdminAnalytics />}
+                {adminSubPath.startsWith('/analytics') && <AdminAnalytics />}
                 {adminSubPath === '/users' && <AdminUsers />}
                 {adminSubPath.startsWith('/users/') && (
                   <UserDetail userId={adminSubPath.replace('/users/', '')} />

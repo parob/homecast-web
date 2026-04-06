@@ -668,3 +668,44 @@ export const GET_ANALYTICS_EXTERNAL = gql`
     }
   }
 `;
+
+export const GET_COSTS_AND_REVENUE = gql`
+  query GetCostsAndRevenue($days: Int) {
+    costsAndRevenue(days: $days) {
+      gcpBilling {
+        totalCost
+        totalCredits
+        netCost
+        costByService { service cost percentage }
+        costBySku { sku service cost }
+        costByEnvironment { environment cost }
+        dailyCosts { date value }
+        costPerUser
+        available
+        error
+      }
+      stripeRevenue {
+        mrr
+        totalRevenue
+        netRevenue
+        totalRefunds
+        activeSubscriptions
+        subscriptionBreakdown { standard cloud }
+        newSubscriptions
+        churnedSubscriptions
+        churnRate
+        revenueTimeseries { date value }
+        available
+        error
+      }
+      profitLoss {
+        totalRevenue
+        totalCost
+        netProfit
+        marginPercentage
+        revenueTimeseries { date value }
+        costTimeseries { date value }
+      }
+    }
+  }
+`;
