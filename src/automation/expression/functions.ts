@@ -18,6 +18,8 @@ export interface ExpressionContext {
     completed: boolean;
     trigger?: TriggerData;
   };
+  /** Per-node output data for n8n-style data flow: {{ nodes.<nodeId>.data.<field> }} */
+  nodes?: Record<string, { data: Record<string, unknown> }>;
 }
 
 export type BuiltinFunction = (args: unknown[], ctx: ExpressionContext) => unknown;

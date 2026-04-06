@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'homecast-local';
-const DB_VERSION = 6; // v6: added OAuth stores
+const DB_VERSION = 7; // v7: added execution_traces, automation_versions, credentials
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -94,6 +94,18 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('user_consents')) {
         db.createObjectStore('user_consents', { keyPath: 'id' });
+      }
+      // v7: Automation engine stores
+      if (!db.objectStoreNames.contains('execution_traces')) {
+        const traceStore = db.createObjectStore('execution_traces', { keyPath: 'id' });
+        traceStore.createIndex('automationId', 'automationId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('automation_versions')) {
+        const versionStore = db.createObjectStore('automation_versions', { keyPath: 'id' });
+        versionStore.createIndex('automationId', 'automationId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('credentials')) {
+        db.createObjectStore('credentials', { keyPath: 'id' });
       }
     };
 
@@ -318,6 +330,22 @@ export async function getHcAutomations(): Promise<HcAutomation[]> {
 export async function saveHcAutomation(homeId: string, automationId: string | null, data: string): Promise<HcAutomation> {
   const id = automationId ?? crypto.randomUUID();
   const existing = await getById<HcAutomation>('hc_automations', id);
+
+  // Snapshot current version before overwriting (auto-versioning)
+  if (existing) {
+    try {
+      const versions = await getAutomationVersions(id);
+      const nextVersion = (versions[0]?.version ?? 0) + 1;
+      await saveAutomationVersion({
+        id: crypto.randomUUID(),
+        automationId: id,
+        version: nextVersion,
+        dataJson: existing.data,
+        savedAt: new Date().toISOString(),
+      });
+    } catch { /* versioning is best-effort */ }
+  }
+
   const automation: HcAutomation = {
     id,
     homeId,
@@ -514,4 +542,143 @@ export async function getAllUserConsents(): Promise<any[]> {
 
 export async function deleteUserConsent(id: string): Promise<void> {
   await remove('user_consents', id);
+}
+
+// --- Execution Traces ---
+
+const MAX_TRACES_PER_AUTOMATION = 100;
+
+interface StoredTrace {
+  id: string;
+  automationId: string;
+  automationName: string;
+  status: string;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  triggerSummary: string;
+  traceJson: string; // Full ExecutionTrace serialized
+}
+
+export async function saveExecutionTrace(trace: StoredTrace): Promise<void> {
+  await put('execution_traces', trace);
+
+  // Prune old traces — keep last MAX_TRACES_PER_AUTOMATION per automation
+  try {
+    const db = await openDB();
+    const tx = db.transaction('execution_traces', 'readwrite');
+    const store = tx.objectStore('execution_traces');
+    const index = store.index('automationId');
+    const req = index.getAll(trace.automationId);
+    req.onsuccess = () => {
+      const traces = req.result as StoredTrace[];
+      if (traces.length > MAX_TRACES_PER_AUTOMATION) {
+        // Sort by startedAt descending, delete oldest
+        traces.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+        for (let i = MAX_TRACES_PER_AUTOMATION; i < traces.length; i++) {
+          store.delete(traces[i].id);
+        }
+      }
+    };
+  } catch { /* pruning is best-effort */ }
+}
+
+export async function getExecutionTraces(automationId: string, limit = 50): Promise<StoredTrace[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('execution_traces', 'readonly');
+    const index = tx.objectStore('execution_traces').index('automationId');
+    const req = index.getAll(automationId);
+    req.onsuccess = () => {
+      const traces = (req.result as StoredTrace[])
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+        .slice(0, limit);
+      resolve(traces);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getExecutionTrace(traceId: string): Promise<StoredTrace | undefined> {
+  return getById<StoredTrace>('execution_traces', traceId);
+}
+
+// --- Automation Versions ---
+
+interface AutomationVersion {
+  id: string;
+  automationId: string;
+  version: number;
+  dataJson: string;
+  savedAt: string;
+}
+
+export async function saveAutomationVersion(version: AutomationVersion): Promise<void> {
+  await put('automation_versions', version);
+
+  // Keep last 50 versions per automation
+  try {
+    const db = await openDB();
+    const tx = db.transaction('automation_versions', 'readwrite');
+    const store = tx.objectStore('automation_versions');
+    const index = store.index('automationId');
+    const req = index.getAll(version.automationId);
+    req.onsuccess = () => {
+      const versions = req.result as AutomationVersion[];
+      if (versions.length > 50) {
+        versions.sort((a, b) => b.version - a.version);
+        for (let i = 50; i < versions.length; i++) {
+          store.delete(versions[i].id);
+        }
+      }
+    };
+  } catch { /* pruning is best-effort */ }
+}
+
+export async function getAutomationVersions(automationId: string): Promise<AutomationVersion[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('automation_versions', 'readonly');
+    const index = tx.objectStore('automation_versions').index('automationId');
+    const req = index.getAll(automationId);
+    req.onsuccess = () => {
+      const versions = (req.result as AutomationVersion[]).sort((a, b) => b.version - a.version);
+      resolve(versions);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getAutomationVersion(versionId: string): Promise<AutomationVersion | undefined> {
+  return getById<AutomationVersion>('automation_versions', versionId);
+}
+
+// --- Credentials ---
+
+interface StoredCredential {
+  id: string;
+  name: string;
+  type: 'api_key' | 'bearer' | 'basic_auth' | 'header';
+  encryptedValue: string;
+  iv: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getCredentials(): Promise<Omit<StoredCredential, 'encryptedValue' | 'iv'>[]> {
+  const creds = await getAll<StoredCredential>('credentials');
+  // Never return encrypted values
+  return creds.map(({ encryptedValue, iv, ...rest }) => rest);
+}
+
+export async function getCredentialById(id: string): Promise<StoredCredential | undefined> {
+  return getById<StoredCredential>('credentials', id);
+}
+
+export async function saveCredential(cred: StoredCredential): Promise<void> {
+  await put('credentials', cred);
+}
+
+export async function deleteCredential(id: string): Promise<void> {
+  await remove('credentials', id);
 }

@@ -87,6 +87,7 @@ export class ExpressionEngine {
     variables: Record<string, unknown>,
     repeat?: { index: number; first: boolean; last: boolean; item?: unknown },
     wait?: { completed: boolean; trigger?: TriggerData },
+    nodes?: Record<string, { data: Record<string, unknown> }>,
   ): ExpressionContext {
     return {
       stateStore,
@@ -94,6 +95,7 @@ export class ExpressionEngine {
       variables,
       repeat: repeat ?? { index: 0, first: true, last: true },
       wait: wait ?? { completed: false },
+      nodes,
     };
   }
 

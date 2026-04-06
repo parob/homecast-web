@@ -2,7 +2,7 @@
 // Lifecycle: initialize → load → register → execute → teardown
 
 import { StateStore } from '../state/StateStore';
-import { TriggerManager } from './TriggerManager';
+import { TriggerManager, type ServiceGroupResolver } from './TriggerManager';
 import { ConditionEvaluator } from './ConditionEvaluator';
 import { ActionExecutor, StopExecutionError } from './ActionExecutor';
 import type { HomeKitBridge, EngineCallbacks } from './ActionExecutor';
@@ -18,6 +18,7 @@ const RATE_WINDOW_MS = 60_000;
 
 export interface AutomationEngineConfig {
   bridge: HomeKitBridge;
+  serviceGroupResolver?: ServiceGroupResolver;
   onTraceComplete: (trace: ExecutionTrace) => void;
   onNotify: (message: string, title?: string, data?: Record<string, unknown>) => Promise<void>;
 }
@@ -45,7 +46,7 @@ export class AutomationEngine {
   constructor(config: AutomationEngineConfig) {
     this.config = config;
     this.stateStore = new StateStore();
-    this.triggerManager = new TriggerManager(this.stateStore);
+    this.triggerManager = new TriggerManager(this.stateStore, config.serviceGroupResolver);
     this.conditionEvaluator = new ConditionEvaluator(this.stateStore);
 
     const callbacks: EngineCallbacks = {
@@ -259,6 +260,23 @@ export class AutomationEngine {
       triggerData,
       automation.variables,
     );
+
+    // Store trigger data as node output so downstream nodes can reference it
+    // via {{ nodes.<triggerId>.data.to_value }}
+    if (triggerData.triggerId) {
+      ctx.setNodeOutput(triggerData.triggerId, {
+        type: triggerData.triggerType,
+        from_value: triggerData.fromValue,
+        to_value: triggerData.toValue,
+        accessoryId: triggerData.accessoryId,
+        serviceGroupId: triggerData.serviceGroupId,
+        characteristicType: triggerData.characteristicType,
+        eventType: triggerData.eventType,
+        eventData: triggerData.eventData,
+        webhookPayload: triggerData.webhookPayload,
+        timestamp: triggerData.timestamp,
+      });
+    }
 
     // Track running execution
     let running = this.runningExecutions.get(automation.id);

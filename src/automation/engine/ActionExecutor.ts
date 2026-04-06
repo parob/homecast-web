@@ -23,6 +23,8 @@ import type {
   ToggleAutomationAction,
   CallScriptAction,
   NotifyAction,
+  CodeAction,
+  MergeAction,
   TriggerData,
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
@@ -89,7 +91,61 @@ export class ActionExecutor {
 
       if (action.enabled === false) continue;
 
+      await this.executeActionWithErrorHandling(action, ctx);
+    }
+  }
+
+  private async executeActionWithErrorHandling(action: Action, ctx: ExecutionContext): Promise<void> {
+    const errorStrategy = action.onError ?? 'stop';
+
+    if (errorStrategy === 'stop') {
+      // Default behavior — errors propagate up
+      return this.executeAction(action, ctx);
+    }
+
+    if (errorStrategy === 'retry') {
+      const maxRetries = action.maxRetries ?? 3;
+      const retryDelay = action.retryDelayMs ?? 1000;
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          await this.executeAction(action, ctx);
+          return; // Success — exit retry loop
+        } catch (e) {
+          lastError = e;
+          // StopExecutionError should not be retried
+          if (e instanceof StopExecutionError) throw e;
+
+          if (attempt < maxRetries) {
+            // Wait before retrying (with exponential backoff)
+            const delay = retryDelay * Math.pow(2, attempt);
+            await this.abortableDelay(Math.min(delay, 30_000), ctx);
+            if (ctx.isAborted) return;
+          }
+        }
+      }
+
+      // All retries exhausted — record error in output and continue
+      ctx.setNodeOutput(action.id, {
+        ...(ctx.getNodeOutput(action.id) ?? {}),
+        error: true,
+        errorMessage: String(lastError),
+        retryCount: maxRetries,
+      });
+      return;
+    }
+
+    // 'continue' — catch errors, log them, and proceed
+    try {
       await this.executeAction(action, ctx);
+    } catch (e) {
+      if (e instanceof StopExecutionError) throw e;
+      ctx.setNodeOutput(action.id, {
+        ...(ctx.getNodeOutput(action.id) ?? {}),
+        error: true,
+        errorMessage: String(e),
+      });
     }
   }
 
@@ -129,6 +185,10 @@ export class ActionExecutor {
         return this.executeWaitForTrigger(action, ctx);
       case 'wait_for_template':
         return this.executeWaitForTemplate(action, ctx);
+      case 'code':
+        return this.executeCode(action, ctx);
+      case 'merge':
+        return this.executeMerge(action, ctx);
       default:
         console.warn(`[ActionExecutor] Unsupported action type: ${(action as Action).type}`);
     }
@@ -151,8 +211,11 @@ export class ActionExecutor {
       const resolvedAccessoryId = this.resolveTemplateString(action.accessoryId, ctx);
 
       await this.bridge.setCharacteristic(resolvedAccessoryId, action.characteristicType, resolvedValue);
-      ctx.endStep(stepIdx, 'executed', { resolvedValue });
+      const output = { accessoryId: resolvedAccessoryId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, characteristicType: action.characteristicType, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -168,8 +231,11 @@ export class ActionExecutor {
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
       await this.bridge.setServiceGroup(action.groupId, action.characteristicType, resolvedValue, action.homeId);
-      ctx.endStep(stepIdx, 'executed');
+      const output = { groupId: action.groupId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { groupId: action.groupId, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -181,8 +247,11 @@ export class ActionExecutor {
 
     try {
       await this.bridge.executeScene(action.sceneId, action.homeId);
-      ctx.endStep(stepIdx, 'executed');
+      const output = { sceneId: action.sceneId, success: true };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { sceneId: action.sceneId, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -198,7 +267,9 @@ export class ActionExecutor {
       `Wait ${this.formatDuration(action.duration)}`, { durationMs: ms });
 
     await this.abortableDelay(ms, ctx);
-    ctx.endStep(stepIdx, ctx.isAborted ? 'skipped' : 'executed');
+    const output = { durationMs: ms };
+    ctx.setNodeOutput(action.id, output);
+    ctx.endStep(stepIdx, ctx.isAborted ? 'skipped' : 'executed', output);
   }
 
   private abortableDelay(ms: number, ctx: ExecutionContext): Promise<void> {
@@ -224,7 +295,9 @@ export class ActionExecutor {
       const choice = action.choices[i];
       if (this.conditionEvaluator.evaluate(choice.conditions, ctx.triggerData, ctx.variables)) {
         matched = true;
-        ctx.endStep(stepIdx, 'executed', { branch: i, alias: choice.alias });
+        const output = { branch: choice.alias ?? String(i), index: i };
+        ctx.setNodeOutput(action.id, output);
+        ctx.endStep(stepIdx, 'executed', output);
         await this.executeSequence(choice.actions, ctx);
         break;
       }
@@ -232,9 +305,12 @@ export class ActionExecutor {
 
     if (!matched) {
       if (action.default && action.default.length > 0) {
-        ctx.endStep(stepIdx, 'executed', { branch: 'default' });
+        const output = { branch: 'default', index: -1 };
+        ctx.setNodeOutput(action.id, output);
+        ctx.endStep(stepIdx, 'executed', output);
         await this.executeSequence(action.default, ctx);
       } else {
+        ctx.setNodeOutput(action.id, { branch: 'none', index: -1 });
         ctx.endStep(stepIdx, 'skipped', { reason: 'no matching branch' });
       }
     }
@@ -245,7 +321,9 @@ export class ActionExecutor {
     const stepIdx = ctx.beginStep('action', action.id, 'if_then_else',
       result ? 'If → Then' : 'If → Else', { conditionResult: result });
 
-    ctx.endStep(stepIdx, 'executed', { branch: result ? 'then' : 'else' });
+    const output = { branch: result ? 'then' : 'else', result };
+    ctx.setNodeOutput(action.id, output);
+    ctx.endStep(stepIdx, 'executed', output);
 
     if (result) {
       await this.executeSequence(action.then, ctx);
@@ -312,7 +390,9 @@ export class ActionExecutor {
       }
     }
 
-    ctx.endStep(stepIdx, 'executed', { iterations });
+    const output = { iterations };
+    ctx.setNodeOutput(action.id, output);
+    ctx.endStep(stepIdx, 'executed', output);
   }
 
   // ============================================================
@@ -339,11 +419,14 @@ export class ActionExecutor {
     const stepIdx = ctx.beginStep('action', action.id, 'variables',
       `Set ${Object.keys(action.variables).length} variable(s)`, {});
 
+    const setVars: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(action.variables)) {
       const resolved = this.resolveTemplateValue(value, ctx);
       ctx.setVariable(name, resolved);
+      setVars[name] = resolved;
     }
 
+    ctx.setNodeOutput(action.id, setVars);
     ctx.endStep(stepIdx, 'executed', { variables: { ...ctx.variables } });
   }
 
@@ -368,7 +451,9 @@ export class ActionExecutor {
       `Fire event: ${action.eventType}`, { eventType: action.eventType });
 
     this.callbacks.fireEvent(action.eventType, action.eventData);
-    ctx.endStep(stepIdx, 'executed');
+    const output = { eventType: action.eventType, eventData: action.eventData };
+    ctx.setNodeOutput(action.id, output);
+    ctx.endStep(stepIdx, 'executed', output);
   }
 
   // ============================================================
@@ -384,8 +469,11 @@ export class ActionExecutor {
 
     try {
       await this.callbacks.sendNotification(message, title, action.data);
-      ctx.endStep(stepIdx, 'executed');
+      const output = { message, title, success: true };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { message, title, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -436,8 +524,11 @@ export class ActionExecutor {
       trigger: result.triggerData,
     };
 
+    const output = { triggered: result.completed, triggerData: result.triggerData ?? null };
+    ctx.setNodeOutput(action.id, output);
+
     const stepResult = result.completed ? 'executed' : (action.continueOnTimeout !== false ? 'timeout' : 'failed');
-    ctx.endStep(stepIdx, stepResult, { completed: result.completed });
+    ctx.endStep(stepIdx, stepResult, output);
 
     // If timeout and continueOnTimeout is false, stop execution
     if (!result.completed && action.continueOnTimeout === false) {
@@ -496,7 +587,9 @@ export class ActionExecutor {
     });
 
     ctx.wait = { completed: result };
-    ctx.endStep(stepIdx, result ? 'executed' : 'timeout', { completed: result });
+    const output = { completed: result };
+    ctx.setNodeOutput(action.id, output);
+    ctx.endStep(stepIdx, result ? 'executed' : 'timeout', output);
 
     if (!result && action.continueOnTimeout === false) {
       throw new StopExecutionError('Wait for template timed out', false);
@@ -526,8 +619,28 @@ export class ActionExecutor {
         signal: AbortSignal.timeout(30_000),
       });
 
-      ctx.endStep(stepIdx, 'executed', { status: response.status });
+      // Capture response body for downstream nodes
+      let responseBody: unknown = null;
+      const contentType = response.headers.get('content-type') ?? '';
+      try {
+        if (contentType.includes('application/json')) {
+          responseBody = await response.json();
+        } else {
+          responseBody = await response.text();
+        }
+      } catch { /* ignore body parse errors */ }
+
+      const output = {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseBody,
+        headers: Object.fromEntries(response.headers.entries()),
+        ok: response.ok,
+      };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { status: 0, ok: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       // Don't throw — webhook failures shouldn't stop the automation
     }
@@ -557,8 +670,11 @@ export class ActionExecutor {
           await this.callbacks.triggerAutomation(action.automationId);
           break;
       }
-      ctx.endStep(stepIdx, 'executed');
+      const output = { automationId: action.automationId, action: action.action, success: true };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { automationId: action.automationId, action: action.action, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -586,8 +702,111 @@ export class ActionExecutor {
         ctx.setVariable(action.responseVariable, response);
       }
 
-      ctx.endStep(stepIdx, 'executed', response ? { response } : undefined);
+      const output = { response: response ?? null, scriptId: action.scriptId };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
+      ctx.setNodeOutput(action.id, { scriptId: action.scriptId, error: String(e) });
+      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      throw e;
+    }
+  }
+
+  // ============================================================
+  // Merge (combine data from multiple upstream nodes)
+  // ============================================================
+
+  private async executeMerge(action: MergeAction, ctx: ExecutionContext): Promise<void> {
+    const stepIdx = ctx.beginStep('action', action.id, 'merge',
+      `Merge (${action.mode}, ${action.inputIds.length} inputs)`, { mode: action.mode, inputIds: action.inputIds });
+
+    try {
+      // Gather outputs from input nodes
+      const inputData: Record<string, unknown>[] = [];
+      for (const nodeId of action.inputIds) {
+        const nodeOutput = ctx.getNodeOutput(nodeId);
+        if (nodeOutput) inputData.push(nodeOutput);
+      }
+
+      let merged: unknown;
+
+      switch (action.mode) {
+        case 'append':
+          // Combine all input arrays/objects into a single array
+          merged = inputData;
+          break;
+
+        case 'combine': {
+          // Merge objects by shared key field
+          const result: Record<string, unknown> = {};
+          for (const data of inputData) {
+            for (const [key, value] of Object.entries(data)) {
+              if (action.combineKey && key === action.combineKey) continue;
+              result[key] = value;
+            }
+          }
+          merged = result;
+          break;
+        }
+
+        case 'wait_all':
+          // Just gather all — the fact that we're executing means all inputs completed
+          merged = inputData;
+          break;
+      }
+
+      const output = { merged, inputCount: inputData.length };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
+    } catch (e) {
+      ctx.setNodeOutput(action.id, { error: true, errorMessage: String(e) });
+      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      throw e;
+    }
+  }
+
+  // ============================================================
+  // Code execution (sandboxed)
+  // ============================================================
+
+  private async executeCode(action: CodeAction, ctx: ExecutionContext): Promise<void> {
+    const stepIdx = ctx.beginStep('action', action.id, 'code',
+      `Code (${action.code.length} chars)`, {});
+
+    try {
+      // Build input context for the user code
+      const input = {
+        trigger: ctx.triggerData,
+        variables: { ...ctx.variables },
+        nodes: ctx.getNodeOutputsForExpressions(),
+        states: (accessoryId: string, characteristicType: string) =>
+          this.stateStore.getState(accessoryId, characteristicType),
+      };
+
+      // Execute in sandboxed Function constructor
+      // The function receives `input` and should return a value
+      const fn = new Function('input', `"use strict";\n${action.code}`);
+
+      // Run with timeout
+      const timeoutMs = action.timeout ?? 5000;
+      let result: unknown;
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Code execution timeout (${timeoutMs}ms)`)), timeoutMs),
+      );
+
+      const execPromise = Promise.resolve().then(() => fn(input));
+      result = await Promise.race([execPromise, timeoutPromise]);
+
+      // Normalize output
+      const output: Record<string, unknown> = typeof result === 'object' && result !== null
+        ? (result as Record<string, unknown>)
+        : { result };
+
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
+    } catch (e) {
+      ctx.setNodeOutput(action.id, { error: true, errorMessage: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }
@@ -615,6 +834,7 @@ export class ActionExecutor {
       ctx.variables,
       ctx.repeat,
       ctx.wait,
+      ctx.getNodeOutputsForExpressions(),
     );
   }
 

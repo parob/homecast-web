@@ -68,7 +68,8 @@ interface BaseTrigger {
 
 export interface StateTrigger extends BaseTrigger {
   type: 'state';
-  accessoryId: string;
+  accessoryId?: string;
+  serviceGroupId?: string; // Mutually exclusive with accessoryId — triggers on any accessory in group
   characteristicType: string;
   from?: unknown;
   to?: unknown;
@@ -77,7 +78,8 @@ export interface StateTrigger extends BaseTrigger {
 
 export interface NumericStateTrigger extends BaseTrigger {
   type: 'numeric_state';
-  accessoryId: string;
+  accessoryId?: string;
+  serviceGroupId?: string; // Mutually exclusive with accessoryId — triggers on any accessory in group
   characteristicType: string;
   above?: number;
   below?: number;
@@ -133,6 +135,7 @@ export interface TriggerData {
   fromValue?: unknown;
   toValue?: unknown;
   accessoryId?: string;
+  serviceGroupId?: string;
   characteristicType?: string;
   eventType?: string;
   eventData?: Record<string, unknown>;
@@ -230,7 +233,9 @@ export type Action =
   | FireWebhookAction
   | ToggleAutomationAction
   | CallScriptAction
-  | NotifyAction;
+  | NotifyAction
+  | CodeAction
+  | MergeAction;
 
 export type ActionType = Action['type'];
 
@@ -238,6 +243,12 @@ interface BaseAction {
   id: string;
   alias?: string;
   enabled?: boolean;
+  /** Error handling strategy: stop (default), continue, or retry */
+  onError?: 'stop' | 'continue' | 'retry';
+  /** Max retry attempts (only used when onError is 'retry') */
+  maxRetries?: number;
+  /** Delay between retries in ms (only used when onError is 'retry') */
+  retryDelayMs?: number;
 }
 
 export interface SetCharacteristicAction extends BaseAction {
@@ -358,6 +369,19 @@ export interface NotifyAction extends BaseAction {
   message: string; // Can contain {{ template }}
   title?: string;
   data?: Record<string, unknown>; // Platform-specific (e.g., action buttons)
+}
+
+export interface CodeAction extends BaseAction {
+  type: 'code';
+  code: string; // JavaScript source — receives `input` object, returns result
+  timeout?: number; // Max execution time in ms (default 5000)
+}
+
+export interface MergeAction extends BaseAction {
+  type: 'merge';
+  mode: 'append' | 'combine' | 'wait_all';
+  combineKey?: string; // For 'combine' mode: key field to merge on
+  inputIds: string[]; // Node IDs whose outputs to merge
 }
 
 // ============================================================

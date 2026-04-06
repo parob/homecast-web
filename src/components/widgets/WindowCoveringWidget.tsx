@@ -57,24 +57,26 @@ const CurtainVisualFull: React.FC<{
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (disabled) return;
-    handleInteraction(e.touches[0].clientY);
+    const startY = e.touches[0].clientY;
+    const startX = e.touches[0].clientX;
 
-    const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
-      handleInteraction(e.touches[0].clientY);
-    };
-    const handleTouchEnd = () => {
-      document.removeEventListener('touchmove', handleTouchMove);
+    const handleTouchEnd = (e: TouchEvent) => {
       document.removeEventListener('touchend', handleTouchEnd);
-      setDragging(prev => {
-        if (prev !== null) onChange(prev);
-        return null;
-      });
+      const touch = e.changedTouches[0];
+      const deltaX = Math.abs(touch.clientX - startX);
+      const deltaY = Math.abs(touch.clientY - startY);
+      // Only set position if it was a tap (minimal movement), not a scroll
+      if (deltaX < 10 && deltaY < 10) {
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((rect.bottom - touch.clientY) / rect.height) * 100));
+        const rounded = Math.round(pct / 5) * 5;
+        onChange(rounded);
+      }
     };
 
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [disabled, handleInteraction, onChange]);
+  }, [disabled, onChange]);
 
   // Curtain closed percentage (inverse of position - 0% open = 100% curtain showing)
   const curtainHeight = 100 - displayPosition;

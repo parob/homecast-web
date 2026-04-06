@@ -55,6 +55,7 @@ export class ExpressionEvaluator {
       case 'repeat': return ctx.repeat;
       case 'wait': return ctx.wait;
       case 'variables': return ctx.variables;
+      case 'nodes': return ctx.nodes ?? {};
     }
 
     // Zero-arg function call (e.g., `now` without parens evaluates to `now()`)

@@ -117,6 +117,13 @@ export const ACTION_NODES: NodeDefinition[] = [
     category: 'action',
     description: 'Make an HTTP request to any URL',
   },
+  {
+    type: 'code',
+    label: 'Code',
+    icon: 'Code',
+    category: 'action',
+    description: 'Run custom JavaScript to transform data',
+  },
 ];
 
 // ============================================================
@@ -137,6 +144,20 @@ export const LOGIC_NODES: NodeDefinition[] = [
     icon: 'Pause',
     category: 'logic',
     description: 'Pause until a device changes or a timeout',
+  },
+  {
+    type: 'merge',
+    label: 'Merge',
+    icon: 'GitMerge',
+    category: 'logic',
+    description: 'Combine data from multiple branches',
+  },
+  {
+    type: 'sub_workflow',
+    label: 'Sub-workflow',
+    icon: 'Workflow',
+    category: 'logic',
+    description: 'Execute another automation as a sub-flow',
   },
 ];
 
@@ -205,3 +226,78 @@ export function createDefaultNodeData(def: NodeDefinition): FlowNodeData {
     enabled: true,
   };
 }
+
+// ============================================================
+// Node output schemas (for data flow — what each node produces)
+// Used by IF node data picker to show available upstream fields
+// ============================================================
+
+export interface NodeOutputField {
+  field: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'unknown';
+  label: string;
+}
+
+export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
+  // Triggers
+  device_changed: [
+    { field: 'from_value', type: 'unknown', label: 'Previous Value' },
+    { field: 'to_value', type: 'unknown', label: 'New Value' },
+    { field: 'accessoryId', type: 'string', label: 'Accessory ID' },
+    { field: 'serviceGroupId', type: 'string', label: 'Service Group ID' },
+    { field: 'characteristicType', type: 'string', label: 'Characteristic' },
+    { field: 'timestamp', type: 'number', label: 'Timestamp' },
+  ],
+  schedule: [
+    { field: 'type', type: 'string', label: 'Trigger Type' },
+    { field: 'timestamp', type: 'number', label: 'Timestamp' },
+  ],
+  webhook: [
+    { field: 'webhookPayload', type: 'object', label: 'Request Body' },
+    { field: 'timestamp', type: 'number', label: 'Timestamp' },
+  ],
+  // Actions
+  set_device: [
+    { field: 'accessoryId', type: 'string', label: 'Accessory ID' },
+    { field: 'characteristicType', type: 'string', label: 'Characteristic' },
+    { field: 'value', type: 'unknown', label: 'Value Set' },
+    { field: 'success', type: 'boolean', label: 'Success' },
+  ],
+  run_scene: [
+    { field: 'sceneId', type: 'string', label: 'Scene ID' },
+    { field: 'success', type: 'boolean', label: 'Success' },
+  ],
+  delay: [
+    { field: 'durationMs', type: 'number', label: 'Duration (ms)' },
+  ],
+  notify: [
+    { field: 'message', type: 'string', label: 'Message' },
+    { field: 'success', type: 'boolean', label: 'Success' },
+  ],
+  http_request: [
+    { field: 'status', type: 'number', label: 'HTTP Status' },
+    { field: 'statusText', type: 'string', label: 'Status Text' },
+    { field: 'body', type: 'object', label: 'Response Body' },
+    { field: 'headers', type: 'object', label: 'Response Headers' },
+    { field: 'ok', type: 'boolean', label: 'Success (2xx)' },
+  ],
+  code: [
+    { field: 'result', type: 'unknown', label: 'Return Value' },
+  ],
+  // Logic
+  if: [
+    { field: 'branch', type: 'string', label: 'Branch Taken' },
+    { field: 'result', type: 'boolean', label: 'Condition Result' },
+  ],
+  wait: [
+    { field: 'triggered', type: 'boolean', label: 'Was Triggered' },
+    { field: 'triggerData', type: 'object', label: 'Trigger Data' },
+  ],
+  merge: [
+    { field: 'merged', type: 'object', label: 'Merged Data' },
+    { field: 'inputCount', type: 'number', label: 'Input Count' },
+  ],
+  sub_workflow: [
+    { field: 'response', type: 'object', label: 'Sub-workflow Result' },
+  ],
+};

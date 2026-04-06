@@ -13,9 +13,9 @@ import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Trash2, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CATEGORY_STYLES, type FlowNodeData } from '../constants';
+import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
-import type { HomeKitAccessory, HomeKitHome, HomeKitScene } from '@/lib/graphql/types';
+import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
 // Upstream context — what data flows into this node
@@ -51,7 +51,20 @@ function getUpstreamFields(
       const data = sourceNode.data as FlowNodeData;
       const config = data.config;
 
-      // Extract device references
+      // Add node output fields from schema registry
+      const outputSchema = NODE_OUTPUT_SCHEMAS[data.nodeType];
+      if (outputSchema) {
+        const nodeLabel = data.subtitle || data.label;
+        for (const field of outputSchema) {
+          fields.push({
+            label: `${nodeLabel} → ${field.label}`,
+            expression: `nodes['${sourceNode.id}'].data.${field.field}`,
+            nodeLabel: data.label,
+          });
+        }
+      }
+
+      // Also add legacy device state queries for backwards compatibility
       if (config.accessoryId && config.characteristicType) {
         const accName = accessories.find((a) => a.id === config.accessoryId)?.name
           ?? (config.accessoryName as string)
@@ -59,15 +72,8 @@ function getUpstreamFields(
         const charType = config.characteristicType as string;
 
         fields.push({
-          label: `${accName} → ${charType}`,
+          label: `${accName} → ${charType} (live state)`,
           expression: `states('${config.accessoryId}', '${charType}')`,
-          nodeLabel: data.label,
-        });
-
-        // Also add is_state variant
-        fields.push({
-          label: `${accName} → ${charType} == value`,
-          expression: `is_state('${config.accessoryId}', '${charType}', 1)`,
           nodeLabel: data.label,
         });
       }
@@ -112,9 +118,10 @@ interface NodeConfigPanelProps {
   accessories?: HomeKitAccessory[];
   homes?: HomeKitHome[];
   scenes?: HomeKitScene[];
+  serviceGroups?: HomeKitServiceGroup[];
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onDone, onCancel, accessories = [], homes = [], scenes = [] }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onDone, onCancel, accessories = [], homes = [], scenes = [], serviceGroups = [] }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -153,7 +160,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
 
   return (
     <>
-      <div className="w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background" data-testid="config-panel">
+      <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background" data-testid="config-panel">
         {/* Header */}
         <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
           <div className={cn('w-1.5 h-5 rounded-full', styles.borderColor.replace('border-l-', 'bg-'))} />
@@ -172,7 +179,52 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
         {/* Config form — scrollable */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 space-y-4">
-            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges)}
+            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges, serviceGroups)}
+
+            {/* Error handling section — action nodes only */}
+            {data.category === 'action' && (
+              <div className="border-t pt-3 mt-3">
+                <p className="text-[10px] text-muted-foreground font-medium mb-2">Error Handling</p>
+                <ConfigField label="On Error">
+                  <Select
+                    value={(data.config.onError as string) ?? 'stop'}
+                    onValueChange={(v) => updateConfig('onError', v === 'stop' ? undefined : v)}
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stop">Stop automation</SelectItem>
+                      <SelectItem value="continue">Continue to next node</SelectItem>
+                      <SelectItem value="retry">Retry with backoff</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </ConfigField>
+                {data.config.onError === 'retry' && (
+                  <div className="flex gap-2 mt-2">
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-muted-foreground">Max retries</Label>
+                      <Input
+                        type="number"
+                        value={(data.config.maxRetries as number) ?? 3}
+                        onChange={(e) => updateConfig('maxRetries', parseInt(e.target.value) || 3)}
+                        className="h-8 text-xs"
+                        min={1}
+                        max={10}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-muted-foreground">Delay (ms)</Label>
+                      <Input
+                        type="number"
+                        value={(data.config.retryDelayMs as number) ?? 1000}
+                        onChange={(e) => updateConfig('retryDelayMs', parseInt(e.target.value) || 1000)}
+                        className="h-8 text-xs"
+                        min={100}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -224,20 +276,58 @@ function renderConfigForm(
   nodeId?: string,
   allNodes?: Node<FlowNodeData>[],
   allEdges?: Edge[],
+  serviceGroups?: HomeKitServiceGroup[],
 ) {
   // ---- TRIGGERS ----
   if (category === 'trigger') {
     switch (nodeType) {
-      case 'device_changed':
+      case 'device_changed': {
+        const sourceMode = (config.sourceMode as string) ?? 'device';
         return (
           <>
-            <DeviceConfigFields
-              config={config}
-              updateConfig={updateConfig}
-              updateConfigBatch={updateConfigBatch}
-              accessories={accessories}
-              openDevicePicker={openDevicePicker}
-            />
+            {/* Device / Group toggle */}
+            {(serviceGroups?.length ?? 0) > 0 && (
+              <div className="flex gap-1 p-0.5 bg-muted rounded-lg mb-1">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex-1 px-2 py-1 text-xs rounded-md transition-colors',
+                    sourceMode === 'device' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => updateConfigBatch({ sourceMode: 'device', serviceGroupId: undefined, serviceGroupName: undefined })}
+                >
+                  Device
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex-1 px-2 py-1 text-xs rounded-md transition-colors',
+                    sourceMode === 'group' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => updateConfigBatch({ sourceMode: 'group', accessoryId: undefined, accessoryName: undefined })}
+                >
+                  Group
+                </button>
+              </div>
+            )}
+
+            {sourceMode === 'group' ? (
+              <GroupConfigFields
+                config={config}
+                updateConfig={updateConfig}
+                updateConfigBatch={updateConfigBatch}
+                serviceGroups={serviceGroups ?? []}
+                accessories={accessories}
+              />
+            ) : (
+              <DeviceConfigFields
+                config={config}
+                updateConfig={updateConfig}
+                updateConfigBatch={updateConfigBatch}
+                accessories={accessories}
+                openDevicePicker={openDevicePicker}
+              />
+            )}
             <ConfigField label="To value (optional)">
               <Input
                 value={String(config.to ?? '')}
@@ -281,6 +371,7 @@ function renderConfigForm(
             </div>
           </>
         );
+      }
 
       case 'schedule': {
         const mode = (config.scheduleMode as string) ?? 'time';
@@ -474,6 +565,45 @@ function renderConfigForm(
           </>
         );
 
+      case 'code':
+        return (
+          <>
+            <ConfigField label="JavaScript Code">
+              <Textarea
+                value={(config.code as string) ?? ''}
+                onChange={(e) => updateConfig('code', e.target.value)}
+                placeholder={'// Access upstream data via input.nodes\n// Access trigger via input.trigger\n// Access variables via input.variables\n// Return a value to pass downstream\n\nreturn { result: input.trigger.to_value * 2 };'}
+                className="font-mono text-xs min-h-[120px] resize-y"
+                rows={8}
+              />
+            </ConfigField>
+            <ConfigField label="Timeout (ms)">
+              <Input
+                type="number"
+                value={(config.timeout as number) ?? 5000}
+                onChange={(e) => updateConfig('timeout', parseInt(e.target.value) || 5000)}
+                className="h-8 text-xs"
+              />
+            </ConfigField>
+            {nodeId && allNodes && allEdges && (
+              <div className="border-t pt-3 mt-3">
+                <p className="text-[10px] text-muted-foreground mb-2">Available input data</p>
+                <div className="flex flex-wrap gap-1">
+                  {getUpstreamFields(nodeId, allNodes, allEdges, accessories).slice(0, 10).map((f, i) => (
+                    <button key={i} type="button" className="text-[9px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 font-mono truncate max-w-full" title={f.expression}
+                      onClick={() => {
+                        const ref = `input.${f.expression.startsWith('nodes') ? f.expression : `trigger.${f.expression.replace('trigger.', '')}`}`;
+                        updateConfig('code', ((config.code as string) ?? '') + ref);
+                      }}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        );
+
       default:
         return <p className="text-xs text-muted-foreground">Configuration for {nodeType} action</p>;
     }
@@ -542,6 +672,48 @@ function renderConfigForm(
             <ConfigField label="Continue on timeout">
               <Switch checked={(config.continueOnTimeout as boolean) ?? true} onCheckedChange={(v) => updateConfig('continueOnTimeout', v)} />
             </ConfigField>
+          </>
+        );
+
+      case 'sub_workflow':
+        return (
+          <>
+            <ConfigField label="Automation ID">
+              <Input
+                value={(config.automationId as string) ?? ''}
+                onChange={(e) => updateConfig('automationId', e.target.value)}
+                placeholder="Paste automation ID..."
+                className="h-8 text-xs font-mono"
+              />
+            </ConfigField>
+            <p className="text-[10px] text-muted-foreground">Runs another automation as a sub-flow. The sub-automation's final variables become this node's output.</p>
+          </>
+        );
+
+      case 'merge':
+        return (
+          <>
+            <ConfigField label="Merge Mode">
+              <Select value={(config.mergeMode as string) ?? 'append'} onValueChange={(v) => updateConfig('mergeMode', v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="append">Append (combine into array)</SelectItem>
+                  <SelectItem value="combine">Combine (merge objects)</SelectItem>
+                  <SelectItem value="wait_all">Wait All (wait for all inputs)</SelectItem>
+                </SelectContent>
+              </Select>
+            </ConfigField>
+            {config.mergeMode === 'combine' && (
+              <ConfigField label="Combine Key">
+                <Input
+                  value={(config.combineKey as string) ?? ''}
+                  onChange={(e) => updateConfig('combineKey', e.target.value)}
+                  placeholder="e.g., id"
+                  className="h-8 text-xs"
+                />
+              </ConfigField>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-2">Connect two branches to the input handles (A and B) at the top of this node.</p>
           </>
         );
 
@@ -826,6 +998,92 @@ function DeviceConfigFields({
   );
 }
 
+function GroupConfigFields({
+  config,
+  updateConfig,
+  updateConfigBatch,
+  serviceGroups,
+  accessories,
+}: {
+  config: Record<string, unknown>;
+  updateConfig: (key: string, value: unknown) => void;
+  updateConfigBatch?: (updates: Record<string, unknown>) => void;
+  serviceGroups: HomeKitServiceGroup[];
+  accessories: HomeKitAccessory[];
+}) {
+  const selectedGroup = serviceGroups.find((g) => g.id === config.serviceGroupId);
+
+  // Derive common characteristics from the group's member accessories
+  const groupCharacteristics = (() => {
+    if (!selectedGroup) return [];
+    const groupAccessories = accessories.filter((a) => selectedGroup.accessoryIds.includes(a.id));
+    const charSets = groupAccessories.map(
+      (a) => new Set(a.services?.flatMap((s) => s.characteristics)?.map((c) => c.characteristicType) ?? []),
+    );
+    if (charSets.length === 0) return [];
+    // Intersection of all characteristic types
+    const common = [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct)));
+    return common;
+  })();
+
+  return (
+    <>
+      <ConfigField label="Service Group">
+        <Select
+          value={(config.serviceGroupId as string) ?? ''}
+          onValueChange={(v) => {
+            const group = serviceGroups.find((g) => g.id === v);
+            if (updateConfigBatch) {
+              updateConfigBatch({ serviceGroupId: v, serviceGroupName: group?.name ?? v, characteristicType: '' });
+            } else {
+              updateConfig('serviceGroupId', v);
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 text-xs" data-testid="select-group-button">
+            <SelectValue placeholder="Select a group..." />
+          </SelectTrigger>
+          <SelectContent>
+            {serviceGroups.map((g) => (
+              <SelectItem key={g.id} value={g.id}>
+                <span>{g.name}</span>
+                <span className="ml-1.5 text-muted-foreground text-[10px]">{g.accessoryIds.length} devices</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </ConfigField>
+
+      {config.serviceGroupId && (
+        <ConfigField label="Characteristic">
+          {groupCharacteristics.length > 0 ? (
+            <Select
+              value={(config.characteristicType as string) ?? ''}
+              onValueChange={(v) => updateConfig('characteristicType', v)}
+            >
+              <SelectTrigger className="h-8 text-xs" data-testid="characteristic-select">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                {groupCharacteristics.map((ct) => (
+                  <SelectItem key={ct} value={ct}>{ct}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={(config.characteristicType as string) ?? ''}
+              onChange={(e) => updateConfig('characteristicType', e.target.value)}
+              placeholder="e.g., power_state"
+              className="h-8 text-xs"
+            />
+          )}
+        </ConfigField>
+      )}
+    </>
+  );
+}
+
 function getCharMeta(c: { validValues?: number[]; minValue?: number; maxValue?: number }): string {
   if (c.validValues && c.validValues.length === 2 && c.validValues.includes(0) && c.validValues.includes(1)) return 'on/off';
   if (c.minValue !== undefined && c.maxValue !== undefined) return `${c.minValue}–${c.maxValue}`;
@@ -888,6 +1146,14 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
   if (category === 'trigger') {
     switch (nodeType) {
       case 'device_changed':
+        if (config.serviceGroupId) {
+          const groupName = (config.serviceGroupName as string) ?? 'Group';
+          const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
+          const threshold = (config.above !== undefined || config.below !== undefined)
+            ? ` (${config.above !== undefined ? `>${config.above}` : ''}${config.below !== undefined ? `<${config.below}` : ''})`
+            : '';
+          return `${groupName}${char}${threshold}`;
+        }
         if (config.accessoryId) {
           const name = getDeviceName();
           const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
@@ -936,6 +1202,9 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
       case 'http_request':
         if (config.url) return `${config.method ?? 'POST'} ${(config.url as string).slice(0, 25)}`;
         break;
+      case 'code':
+        if (config.code) return `${(config.code as string).split('\n').length} lines`;
+        break;
     }
   }
 
@@ -946,6 +1215,11 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
         break;
       case 'wait':
         return `Timeout: ${config.timeoutSeconds ?? 30}s`;
+      case 'merge':
+        return (config.mergeMode as string) ?? 'append';
+      case 'sub_workflow':
+        if (config.automationId) return `ID: ${(config.automationId as string).slice(0, 8)}...`;
+        break;
     }
   }
 
@@ -973,7 +1247,7 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
 function isNodeConfigured(nodeType: string, category: string, config: Record<string, unknown>): boolean {
   if (category === 'trigger') {
     switch (nodeType) {
-      case 'device_changed': return !!(config.accessoryId && config.characteristicType);
+      case 'device_changed': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType);
       case 'schedule': {
         const mode = (config.scheduleMode as string) ?? 'time';
         if (mode === 'time') return !!config.at;
@@ -991,6 +1265,7 @@ function isNodeConfigured(nodeType: string, category: string, config: Record<str
       case 'delay': return !!((config.hours as number) || (config.minutes as number) || (config.seconds as number));
       case 'notify': return !!config.message;
       case 'http_request': return !!config.url;
+      case 'code': return !!config.code;
     }
   }
   if (category === 'condition') {
@@ -1000,6 +1275,9 @@ function isNodeConfigured(nodeType: string, category: string, config: Record<str
       case 'template': return !!config.expression;
     }
   }
-  if (category === 'logic') return true;
+  if (category === 'logic') {
+    if (nodeType === 'sub_workflow') return !!config.automationId;
+    return true;
+  }
   return false;
 }

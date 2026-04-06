@@ -35,6 +35,9 @@ import type {
   RepeatAction,
   ParallelAction,
   WaitForTriggerAction,
+  CodeAction,
+  MergeAction,
+  CallScriptAction,
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
 
@@ -124,12 +127,16 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
   switch (data.nodeType) {
     // Simplified: device_changed → state or numeric_state
     case 'device_changed': {
+      const isGroup = !!config.serviceGroupId;
       const hasThresholds = config.above !== undefined || config.below !== undefined;
       if (hasThresholds) {
         return {
           type: 'numeric_state',
           id: node.id,
-          accessoryId: (config.accessoryId as string) ?? '',
+          ...(isGroup
+            ? { serviceGroupId: config.serviceGroupId as string }
+            : { accessoryId: (config.accessoryId as string) ?? '' }
+          ),
           characteristicType: (config.characteristicType as string) ?? '',
           above: config.above as number | undefined,
           below: config.below as number | undefined,
@@ -138,7 +145,10 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
       return {
         type: 'state',
         id: node.id,
-        accessoryId: (config.accessoryId as string) ?? '',
+        ...(isGroup
+          ? { serviceGroupId: config.serviceGroupId as string }
+          : { accessoryId: (config.accessoryId as string) ?? '' }
+        ),
         characteristicType: (config.characteristicType as string) ?? '',
         to: config.to || undefined,
         from: config.from || undefined,
@@ -277,6 +287,28 @@ function nodeToAction(
   const data = node.data as FlowNodeData;
   const config = data.config;
 
+  const action = nodeToActionInner(node, _allNodes, _allEdges);
+  if (!action) return null;
+
+  // Apply common action fields from config
+  if (config.onError && config.onError !== 'stop') {
+    (action as any).onError = config.onError;
+  }
+  if (config.maxRetries != null) (action as any).maxRetries = config.maxRetries;
+  if (config.retryDelayMs != null) (action as any).retryDelayMs = config.retryDelayMs;
+  if (!data.enabled) (action as any).enabled = false;
+
+  return action;
+}
+
+function nodeToActionInner(
+  node: Node<FlowNodeData>,
+  _allNodes: Node<FlowNodeData>[],
+  _allEdges: Edge[],
+): Action | null {
+  const data = node.data as FlowNodeData;
+  const config = data.config;
+
   switch (data.nodeType) {
     // Simplified types → engine types
     case 'set_device':
@@ -356,6 +388,23 @@ function nodeToAction(
       return { type: 'repeat', id: node.id, mode: (config.mode as 'count' | 'while' | 'until' | 'for_each') ?? 'count', count: config.count as number | undefined, sequence: [] } satisfies RepeatAction;
     case 'parallel':
       return { type: 'parallel', id: node.id, branches: [] } satisfies ParallelAction;
+    case 'code':
+      return { type: 'code', id: node.id, code: (config.code as string) ?? '', timeout: config.timeout as number | undefined } satisfies CodeAction;
+    case 'sub_workflow':
+      return { type: 'call_script', id: node.id, scriptId: (config.automationId as string) ?? '' } satisfies CallScriptAction;
+    case 'merge': {
+      // Derive inputIds from edges targeting this node
+      const inputIds = _allEdges
+        .filter((e) => e.target === node.id)
+        .map((e) => e.source);
+      return {
+        type: 'merge',
+        id: node.id,
+        mode: (config.mergeMode as 'append' | 'combine' | 'wait_all') ?? 'append',
+        combineKey: config.combineKey as string | undefined,
+        inputIds,
+      } satisfies MergeAction;
+    }
 
     default:
       return null;

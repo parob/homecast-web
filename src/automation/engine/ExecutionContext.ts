@@ -27,6 +27,9 @@ export class ExecutionContext {
   wait: WaitResult = { completed: false };
   repeat: RepeatState = { index: 0, first: true, last: false };
 
+  // Per-node output data (n8n-style data flow between nodes)
+  readonly nodeOutputs = new Map<string, Record<string, unknown>>();
+
   // Trace recording
   private steps: TraceStep[] = [];
   private stepIndex = 0;
@@ -126,6 +129,33 @@ export class ExecutionContext {
       variables: { ...this.variables },
       error,
     };
+  }
+
+  // ============================================================
+  // Node output helpers (data flow between nodes)
+  // ============================================================
+
+  /**
+   * Store output data from a node, making it available to downstream nodes
+   * via expressions: {{ nodes.<nodeId>.data.<field> }}
+   */
+  setNodeOutput(nodeId: string, output: Record<string, unknown>): void {
+    this.nodeOutputs.set(nodeId, output);
+  }
+
+  getNodeOutput(nodeId: string): Record<string, unknown> | undefined {
+    return this.nodeOutputs.get(nodeId);
+  }
+
+  /**
+   * Get all node outputs as a plain object for expression context.
+   */
+  getNodeOutputsForExpressions(): Record<string, { data: Record<string, unknown> }> {
+    const result: Record<string, { data: Record<string, unknown> }> = {};
+    for (const [nodeId, data] of this.nodeOutputs) {
+      result[nodeId] = { data };
+    }
+    return result;
   }
 
   // ============================================================

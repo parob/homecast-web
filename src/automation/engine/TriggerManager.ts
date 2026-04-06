@@ -69,9 +69,15 @@ interface TemplateTriggerEntry {
   forTimer?: ReturnType<typeof setTimeout>;
 }
 
+/** Resolves which service groups an accessory belongs to (for group triggers) */
+export interface ServiceGroupResolver {
+  getGroupsForAccessory(accessoryId: string): string[];
+}
+
 /**
  * Manages trigger registration and evaluation.
  * Supports: state, numeric_state, time, time_pattern, sun, event, system, template triggers.
+ * Supports service group triggers via dynamic reverse-index lookup.
  */
 export class TriggerManager {
   // State triggers indexed by "accessoryId:characteristicType"
@@ -79,6 +85,10 @@ export class TriggerManager {
 
   // Numeric state triggers indexed by "accessoryId:characteristicType"
   private numericTriggers = new Map<string, NumericTriggerEntry[]>();
+
+  // Service group triggers indexed by "groupId:characteristicType"
+  private serviceGroupStateTriggers = new Map<string, StateTriggerEntry[]>();
+  private serviceGroupNumericTriggers = new Map<string, NumericTriggerEntry[]>();
 
   // Time-based triggers
   private timeSchedules = new Map<string, TimeSchedule[]>(); // automationId -> schedules
@@ -101,7 +111,10 @@ export class TriggerManager {
   // Global unsubscribe from StateStore
   private stateStoreUnsubscribe?: () => void;
 
-  constructor(private stateStore: StateStore) {}
+  constructor(
+    private stateStore: StateStore,
+    private serviceGroupResolver?: ServiceGroupResolver,
+  ) {}
 
   // ============================================================
   // Registration
@@ -162,7 +175,19 @@ export class TriggerManager {
     trigger: StateTrigger,
     callback: TriggerCallback,
   ): void {
-    const key = `${trigger.accessoryId}:${trigger.characteristicType}`;
+    // Service group trigger — register by groupId
+    if (trigger.serviceGroupId && !trigger.accessoryId) {
+      const key = `${trigger.serviceGroupId}:${trigger.characteristicType}`;
+      let entries = this.serviceGroupStateTriggers.get(key);
+      if (!entries) {
+        entries = [];
+        this.serviceGroupStateTriggers.set(key, entries);
+      }
+      entries.push({ automationId, trigger, callback });
+      return;
+    }
+
+    const key = `${trigger.accessoryId ?? ''}:${trigger.characteristicType}`;
     let entries = this.stateTriggers.get(key);
     if (!entries) {
       entries = [];
@@ -176,7 +201,25 @@ export class TriggerManager {
     trigger: NumericStateTrigger,
     callback: TriggerCallback,
   ): void {
-    const key = `${trigger.accessoryId}:${trigger.characteristicType}`;
+    // Service group trigger — register by groupId
+    if (trigger.serviceGroupId && !trigger.accessoryId) {
+      const key = `${trigger.serviceGroupId}:${trigger.characteristicType}`;
+      let entries = this.serviceGroupNumericTriggers.get(key);
+      if (!entries) {
+        entries = [];
+        this.serviceGroupNumericTriggers.set(key, entries);
+      }
+      entries.push({
+        automationId,
+        trigger,
+        callback,
+        wasAbove: undefined,
+        wasBelow: undefined,
+      });
+      return;
+    }
+
+    const key = `${trigger.accessoryId ?? ''}:${trigger.characteristicType}`;
     let entries = this.numericTriggers.get(key);
     if (!entries) {
       entries = [];
@@ -184,7 +227,9 @@ export class TriggerManager {
     }
 
     // Initialize crossing state from current value
-    const currentValue = this.stateStore.getState(trigger.accessoryId, trigger.characteristicType);
+    const currentValue = trigger.accessoryId
+      ? this.stateStore.getState(trigger.accessoryId, trigger.characteristicType)
+      : undefined;
     const numVal = typeof currentValue === 'number' ? currentValue : undefined;
     entries.push({
       automationId,
@@ -381,6 +426,32 @@ export class TriggerManager {
       this.sunSchedules.delete(automationId);
     }
 
+    // Service group state triggers
+    for (const [key, entries] of this.serviceGroupStateTriggers) {
+      const filtered = entries.filter((e) => {
+        if (e.automationId === automationId) {
+          if (e.forTimer) clearTimeout(e.forTimer);
+          return false;
+        }
+        return true;
+      });
+      if (filtered.length === 0) this.serviceGroupStateTriggers.delete(key);
+      else this.serviceGroupStateTriggers.set(key, filtered);
+    }
+
+    // Service group numeric triggers
+    for (const [key, entries] of this.serviceGroupNumericTriggers) {
+      const filtered = entries.filter((e) => {
+        if (e.automationId === automationId) {
+          if (e.forTimer) clearTimeout(e.forTimer);
+          return false;
+        }
+        return true;
+      });
+      if (filtered.length === 0) this.serviceGroupNumericTriggers.delete(key);
+      else this.serviceGroupNumericTriggers.set(key, filtered);
+    }
+
     // Template triggers
     this.templateTriggers = this.templateTriggers.filter((e) => {
       if (e.automationId === automationId) {
@@ -420,6 +491,29 @@ export class TriggerManager {
     if (numericEntries) {
       for (const entry of numericEntries) {
         this.evaluateNumericStateTrigger(entry, event);
+      }
+    }
+
+    // Check service group triggers — look up which groups contain this accessory
+    if (this.serviceGroupResolver &&
+        (this.serviceGroupStateTriggers.size > 0 || this.serviceGroupNumericTriggers.size > 0)) {
+      const groupIds = this.serviceGroupResolver.getGroupsForAccessory(event.accessoryId);
+      for (const groupId of groupIds) {
+        const groupKey = `${groupId}:${event.characteristicType}`;
+
+        const groupStateEntries = this.serviceGroupStateTriggers.get(groupKey);
+        if (groupStateEntries) {
+          for (const entry of groupStateEntries) {
+            this.evaluateStateTrigger(entry, event, groupId);
+          }
+        }
+
+        const groupNumericEntries = this.serviceGroupNumericTriggers.get(groupKey);
+        if (groupNumericEntries) {
+          for (const entry of groupNumericEntries) {
+            this.evaluateNumericStateTrigger(entry, event, groupId);
+          }
+        }
       }
     }
 
@@ -477,7 +571,7 @@ export class TriggerManager {
     );
   }
 
-  private evaluateStateTrigger(entry: StateTriggerEntry, event: StateChangeEvent): void {
+  private evaluateStateTrigger(entry: StateTriggerEntry, event: StateChangeEvent, serviceGroupId?: string): void {
     const { trigger } = entry;
 
     // Check from filter
@@ -491,6 +585,7 @@ export class TriggerManager {
       fromValue: event.oldValue,
       toValue: event.newValue,
       accessoryId: event.accessoryId,
+      serviceGroupId: serviceGroupId ?? trigger.serviceGroupId,
       characteristicType: event.characteristicType,
       timestamp: event.timestamp,
     };
@@ -499,9 +594,9 @@ export class TriggerManager {
     if (trigger.for) {
       if (entry.forTimer) clearTimeout(entry.forTimer);
       entry.forTimer = setTimeout(() => {
-        // Verify the state is still the same
+        // Verify the state is still the same (use event's accessoryId for group triggers)
         const currentValue = this.stateStore.getState(
-          trigger.accessoryId,
+          event.accessoryId,
           trigger.characteristicType,
         );
         if (trigger.to !== undefined && !this.valueMatches(currentValue, trigger.to)) return;
@@ -512,7 +607,7 @@ export class TriggerManager {
     }
   }
 
-  private evaluateNumericStateTrigger(entry: NumericTriggerEntry, event: StateChangeEvent): void {
+  private evaluateNumericStateTrigger(entry: NumericTriggerEntry, event: StateChangeEvent, serviceGroupId?: string): void {
     const { trigger } = entry;
     const newVal = typeof event.newValue === 'number' ? event.newValue : parseFloat(String(event.newValue));
     if (isNaN(newVal)) return;
@@ -540,6 +635,7 @@ export class TriggerManager {
       fromValue: event.oldValue,
       toValue: event.newValue,
       accessoryId: event.accessoryId,
+      serviceGroupId: serviceGroupId ?? trigger.serviceGroupId,
       characteristicType: event.characteristicType,
       timestamp: event.timestamp,
     };
@@ -547,7 +643,7 @@ export class TriggerManager {
     if (trigger.for) {
       if (entry.forTimer) clearTimeout(entry.forTimer);
       entry.forTimer = setTimeout(() => {
-        const currentValue = this.stateStore.getState(trigger.accessoryId, trigger.characteristicType);
+        const currentValue = this.stateStore.getState(event.accessoryId, trigger.characteristicType);
         const cv = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
         if (isNaN(cv)) return;
         if (trigger.above !== undefined && cv <= trigger.above) return;
@@ -753,6 +849,21 @@ export class TriggerManager {
       }
     }
     this.numericTriggers.clear();
+
+    // Clear service group trigger timers
+    for (const entries of this.serviceGroupStateTriggers.values()) {
+      for (const e of entries) {
+        if (e.forTimer) clearTimeout(e.forTimer);
+      }
+    }
+    this.serviceGroupStateTriggers.clear();
+
+    for (const entries of this.serviceGroupNumericTriggers.values()) {
+      for (const e of entries) {
+        if (e.forTimer) clearTimeout(e.forTimer);
+      }
+    }
+    this.serviceGroupNumericTriggers.clear();
 
     // Clear time schedules
     for (const schedules of this.timeSchedules.values()) {

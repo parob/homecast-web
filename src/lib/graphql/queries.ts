@@ -809,3 +809,61 @@ export const HC_AUTOMATIONS = gql`
     }
   }
 `;
+
+// Execution History
+export const GET_EXECUTION_HISTORY = gql`
+  query GetExecutionHistory($automationId: String!, $limit: Int) {
+    executionHistory(automationId: $automationId, limit: $limit) {
+      id
+      automationId
+      automationName
+      status
+      startedAt
+      finishedAt
+      durationMs
+      triggerSummary
+    }
+  }
+`;
+
+export const GET_EXECUTION_TRACE = gql`
+  query GetExecutionTrace($traceId: String!) {
+    executionTrace(traceId: $traceId) {
+      id
+      automationId
+      automationName
+      status
+      startedAt
+      finishedAt
+      durationMs
+      triggerSummary
+      traceJson
+    }
+  }
+`;
+
+// Automation Versions
+export const GET_AUTOMATION_VERSIONS = gql`
+  query GetAutomationVersions($automationId: String!) {
+    automationVersions(automationId: $automationId) {
+      id
+      automationId
+      version
+      dataJson
+      savedAt
+    }
+  }
+`;
+
+// Credentials
+export const GET_CREDENTIALS = gql`
+  query GetCredentials {
+    credentials {
+      id
+      name
+      type
+      createdAt
+      updatedAt
+    }
+  }
+`;

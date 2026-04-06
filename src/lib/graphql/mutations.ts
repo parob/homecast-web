@@ -800,3 +800,27 @@ export const DELETE_HC_AUTOMATION = gql`
     deleteHcAutomation(automationId: $automationId)
   }
 `;
+
+export const RESTORE_AUTOMATION_VERSION = gql`
+  mutation RestoreAutomationVersion($homeId: String!, $versionId: String!) {
+    restoreAutomationVersion(homeId: $homeId, versionId: $versionId) {
+      success
+    }
+  }
+`;
+
+export const SAVE_CREDENTIAL = gql`
+  mutation SaveCredential($id: String, $name: String!, $type: String!, $encryptedValue: String!, $iv: String!) {
+    saveCredential(id: $id, name: $name, type: $type, encryptedValue: $encryptedValue, iv: $iv) {
+      id
+      name
+      type
+    }
+  }
+`;
+
+export const DELETE_CREDENTIAL = gql`
+  mutation DeleteCredential($id: String!) {
+    deleteCredential(id: $id)
+  }
+`;

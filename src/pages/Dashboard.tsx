@@ -1302,7 +1302,7 @@ const Dashboard = () => {
   // Track which individual widget is expanded (for click-to-expand in compact mode)
   const [expandedWidgetId, setExpandedWidgetId] = useState<string | null>(null);
   // All user settings - loaded from backend, defaults applied until loaded
-  const [compactMode, setCompactModeRaw] = useState<boolean>(false);
+  const [compactMode, setCompactModeRaw] = useState<boolean>(true);
   const [isCompactModeTransitioning, startCompactModeTransition] = useTransition();
   const [hideInfoDevices, setHideInfoDevices] = useState<boolean>(true);
   const [hideAccessoryCounts, setHideAccessoryCounts] = useState<boolean>(true);
@@ -1310,7 +1310,7 @@ const Dashboard = () => {
   const [groupByRoom, setGroupByRoom] = useState<boolean>(true);
   const [groupByType, setGroupByType] = useState<boolean>(false);
   const [iconStyle, setIconStyle] = useState<'standard' | 'colourful'>('colourful');
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('large');
   const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(false);
   const [fullWidth, setFullWidth] = useState<boolean>(true);
   const [developerMode, setDeveloperMode] = useState<boolean>(false);

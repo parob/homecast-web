@@ -257,6 +257,56 @@ async function resolveOperation(
       await db.deleteHcAutomation(variables.automationId as string);
       return { deleteHcAutomation: { success: true, __typename: 'DeleteResult' } };
 
+    // --- Execution History ---
+    case 'GetExecutionHistory': {
+      const traces = await db.getExecutionTraces(
+        variables.automationId as string,
+        (variables.limit as number) ?? 50,
+      );
+      return { executionHistory: traces.map(t => ({ ...t, __typename: 'ExecutionTrace' })) };
+    }
+
+    case 'GetExecutionTrace': {
+      const trace = await db.getExecutionTrace(variables.traceId as string);
+      return { executionTrace: trace ? { ...trace, __typename: 'ExecutionTrace' } : null };
+    }
+
+    // --- Automation Versions ---
+    case 'GetAutomationVersions': {
+      const versions = await db.getAutomationVersions(variables.automationId as string);
+      return { automationVersions: versions.map(v => ({ ...v, __typename: 'AutomationVersion' })) };
+    }
+
+    case 'RestoreAutomationVersion': {
+      const version = await db.getAutomationVersion(variables.versionId as string);
+      if (version) {
+        await db.saveHcAutomation(variables.homeId as string, version.automationId, version.dataJson);
+      }
+      return { restoreAutomationVersion: { success: !!version, __typename: 'RestoreResult' } };
+    }
+
+    // --- Credentials ---
+    case 'GetCredentials':
+      return { credentials: (await db.getCredentials()).map(c => ({ ...c, __typename: 'Credential' })) };
+
+    case 'SaveCredential': {
+      const cred = {
+        id: (variables.id as string) || crypto.randomUUID(),
+        name: variables.name as string,
+        type: variables.type as 'api_key' | 'bearer' | 'basic_auth' | 'header',
+        encryptedValue: variables.encryptedValue as string,
+        iv: variables.iv as string,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.saveCredential(cred);
+      return { saveCredential: { id: cred.id, name: cred.name, type: cred.type, __typename: 'Credential' } };
+    }
+
+    case 'DeleteCredential':
+      await db.deleteCredential(variables.id as string);
+      return { deleteCredential: { success: true, __typename: 'DeleteResult' } };
+
     // --- Version ---
     case 'GetVersion': {
       const version = (window as any).homecastAppVersion || 'community';

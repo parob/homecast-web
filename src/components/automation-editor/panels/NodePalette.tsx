@@ -25,9 +25,11 @@ const ICONS: Record<string, React.ElementType> = {
 interface NodePaletteProps {
   onAddNode: (def: NodeDefinition) => void;
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
+  /** Force visible (for mobile overlay mode) */
+  forceVisible?: boolean;
 }
 
-export function NodePalette({ onAddNode, searchInputRef }: NodePaletteProps) {
+export function NodePalette({ onAddNode, searchInputRef, forceVisible }: NodePaletteProps) {
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const internalRef = useRef<HTMLInputElement>(null);
@@ -52,7 +54,7 @@ export function NodePalette({ onAddNode, searchInputRef }: NodePaletteProps) {
   };
 
   return (
-    <div className="w-56 border-r flex flex-col min-h-0 shrink-0 bg-background" data-testid="node-palette">
+    <div className={cn('w-56 border-r flex-col min-h-0 shrink-0 bg-background', forceVisible ? 'flex w-full border-r-0' : 'hidden sm:flex')} data-testid="node-palette">
       {/* Search */}
       <div className="p-2 border-b shrink-0">
         <div className="relative">

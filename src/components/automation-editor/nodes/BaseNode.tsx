@@ -1,19 +1,27 @@
 // Automation Editor - Base Node Component
 // Node-RED style: rectangular with colored left border, icon + label inline
 
-import { memo } from 'react';
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import { memo, useCallback } from 'react';
+import { Handle, Position, useReactFlow, type NodeProps, type Node } from '@xyflow/react';
 import {
   Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, Pause, AlertTriangle, Check, X, Loader2,
+  GitBranch, GitMerge, Pause, Code, Workflow,
+  AlertTriangle, Check, X, Loader2, Eye, EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
 
 const ICONS: Record<string, React.ElementType> = {
   Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, Pause,
+  GitBranch, GitMerge, Pause, Code, Workflow,
 };
+
+function getInputs(data: FlowNodeData): { id: string; label?: string }[] {
+  if (data.nodeType === 'merge') {
+    return [{ id: 'input-a', label: 'A' }, { id: 'input-b', label: 'B' }];
+  }
+  return [{ id: 'input' }];
+}
 
 function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
   if (data.nodeType === 'if') {
@@ -25,11 +33,21 @@ function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
   return [{ id: 'output' }];
 }
 
-export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
+export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const nodeData = data as FlowNodeData;
+  const { setNodes } = useReactFlow();
+
+  const toggleEnabled = useCallback(() => {
+    setNodes((nds) => nds.map((n) => {
+      if (n.id !== id) return n;
+      const d = n.data as FlowNodeData;
+      return { ...n, data: { ...d, enabled: !d.enabled } };
+    }));
+  }, [id, setNodes]);
   const styles = CATEGORY_STYLES[nodeData.category] ?? CATEGORY_STYLES.action;
   const Icon = ICONS[nodeData.icon] ?? Zap;
   const isTrigger = nodeData.category === 'trigger';
+  const inputs = getInputs(nodeData);
   const outputs = getOutputs(nodeData);
 
   const execRing =
@@ -40,19 +58,33 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
 
   return (
     <div
-      className="relative"
+      className="relative group"
       style={{ width: NODE_WIDTH }}
       data-testid={`node-${nodeData.nodeType}`}
     >
-      {/* Input handle (not for triggers) */}
-      {!isTrigger && (
+      {/* Input handle(s) (not for triggers) */}
+      {!isTrigger && inputs.length === 1 && (
         <Handle
           type="target"
           position={Position.Top}
+          id={inputs[0].id}
           className="!w-2.5 !h-2.5 !rounded-full !border-2 !border-background !bg-muted-foreground/40 !-top-1.5"
           style={{ left: '50%', transform: 'translateX(-50%)' }}
         />
       )}
+      {!isTrigger && inputs.length > 1 && inputs.map((inp, i) => {
+        const pct = i === 0 ? 35 : 65;
+        return (
+          <Handle
+            key={inp.id}
+            type="target"
+            position={Position.Top}
+            id={inp.id}
+            className="!w-2.5 !h-2.5 !rounded-full !border-2 !border-background !bg-purple-400 !-top-1.5"
+            style={{ left: `${pct}%` }}
+          />
+        );
+      })}
 
       {/* Node body — rectangular with colored left border */}
       <div
@@ -78,6 +110,21 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
           <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
         )}
       </div>
+
+      {/* Enable/disable toggle — visible on hover */}
+      <button
+        className="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-background border shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleEnabled();
+        }}
+        title={nodeData.enabled ? 'Disable node' : 'Enable node'}
+      >
+        {nodeData.enabled
+          ? <Eye className="w-2.5 h-2.5 text-muted-foreground" />
+          : <EyeOff className="w-2.5 h-2.5 text-red-400" />
+        }
+      </button>
 
       {/* Execution status badge */}
       {nodeData.executionState === 'completed' && (

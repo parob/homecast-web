@@ -48,7 +48,8 @@ function simplifyActionType(engineType: string): string {
     case 'fire_webhook': return 'http_request';
     case 'if_then_else': return 'if';
     case 'wait_for_trigger': return 'wait';
-    default: return engineType; // delay, notify pass through
+    case 'call_script': return 'sub_workflow';
+    default: return engineType; // delay, notify, code, merge pass through
   }
 }
 
@@ -131,8 +132,22 @@ function triggerToNode(trigger: Trigger, x: number, y: number): Node<FlowNodeDat
 
 function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
   switch (trigger.type) {
-    case 'state': return { accessoryId: trigger.accessoryId, characteristicType: trigger.characteristicType, to: trigger.to, from: trigger.from };
-    case 'numeric_state': return { accessoryId: trigger.accessoryId, characteristicType: trigger.characteristicType, above: trigger.above, below: trigger.below };
+    case 'state': return {
+      accessoryId: trigger.accessoryId,
+      serviceGroupId: trigger.serviceGroupId,
+      sourceMode: trigger.serviceGroupId ? 'group' : 'device',
+      characteristicType: trigger.characteristicType,
+      to: trigger.to,
+      from: trigger.from,
+    };
+    case 'numeric_state': return {
+      accessoryId: trigger.accessoryId,
+      serviceGroupId: trigger.serviceGroupId,
+      sourceMode: trigger.serviceGroupId ? 'group' : 'device',
+      characteristicType: trigger.characteristicType,
+      above: trigger.above,
+      below: trigger.below,
+    };
     case 'time': return { at: trigger.at, weekdays: trigger.weekdays };
     case 'time_pattern': return { hours: trigger.hours, minutes: trigger.minutes, seconds: trigger.seconds };
     case 'sun': return { event: trigger.event, offsetMinutes: trigger.offset?.minutes };
@@ -146,9 +161,15 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
 
 function buildTriggerSummary(trigger: Trigger, _nodeType: string): string {
   switch (trigger.type) {
-    case 'state': return `${trigger.accessoryId.slice(0, 12)}… ${trigger.characteristicType}`;
+    case 'state': {
+      const id = trigger.serviceGroupId ?? trigger.accessoryId ?? '';
+      const prefix = trigger.serviceGroupId ? 'Group ' : '';
+      return `${prefix}${id.slice(0, 12)}… ${trigger.characteristicType}`;
+    }
     case 'numeric_state': {
-      const parts: string[] = [trigger.accessoryId.slice(0, 12) + '…'];
+      const id = trigger.serviceGroupId ?? trigger.accessoryId ?? '';
+      const prefix = trigger.serviceGroupId ? 'Group ' : '';
+      const parts: string[] = [prefix + id.slice(0, 12) + '…'];
       if (trigger.above !== undefined) parts.push(`>${trigger.above}`);
       if (trigger.below !== undefined) parts.push(`<${trigger.below}`);
       return parts.join(' ');
@@ -263,6 +284,9 @@ function extractActionConfig(action: Action): Record<string, unknown> {
     case 'repeat': return { mode: action.mode, count: action.count };
     case 'wait_for_trigger': return { timeoutSeconds: action.timeout?.seconds, continueOnTimeout: action.continueOnTimeout };
     case 'if_then_else': return { expression: '' };
+    case 'code': return { code: action.code, timeout: action.timeout };
+    case 'merge': return { mergeMode: action.mode, combineKey: action.combineKey };
+    case 'call_script': return { automationId: action.scriptId };
     default: return {};
   }
 }
@@ -283,6 +307,9 @@ function buildActionSummary(action: Action): string {
     case 'repeat': return action.mode === 'count' ? `Repeat ${action.count}x` : `Repeat ${action.mode}`;
     case 'fire_webhook': return `${action.method ?? 'POST'} ${action.url.slice(0, 25)}`;
     case 'wait_for_trigger': return `Timeout: ${action.timeout?.seconds ?? 30}s`;
+    case 'code': return `${action.code.split('\n').length} lines`;
+    case 'merge': return `${action.mode} (${action.inputIds.length} inputs)`;
+    case 'call_script': return `Script ${action.scriptId.slice(0, 8)}`;
     default: return action.type;
   }
 }

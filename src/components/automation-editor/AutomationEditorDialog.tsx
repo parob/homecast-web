@@ -32,10 +32,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@apollo/client/react';
-import { GET_ACCESSORIES, GET_HOMES, GET_SCENES } from '@/lib/graphql/queries';
-import type { HomeKitAccessory, HomeKitHome, HomeKitScene } from '@/lib/graphql/types';
+import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS } from '@/lib/graphql/queries';
+import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2 } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
+import { ExecutionHistoryPanel } from './panels/ExecutionHistoryPanel';
 
 import { BaseNode } from './nodes/BaseNode';
 import { ControlFlowEdge } from './edges/ControlFlowEdge';
@@ -98,9 +99,14 @@ function AutomationEditorInner({
     GET_SCENES,
     { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
   );
+  const { data: serviceGroupsData } = useQuery<{ serviceGroups: HomeKitServiceGroup[] }>(
+    GET_SERVICE_GROUPS,
+    { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
+  );
   const accessories = accessoriesData?.accessories || [];
   const homes = homesData?.homes || [];
   const scenes = scenesData?.scenes || [];
+  const serviceGroups = serviceGroupsData?.serviceGroups || [];
 
   // GraphQL
   const [saveHcAutomation] = useMutation(SAVE_HC_AUTOMATION);
@@ -112,6 +118,8 @@ function AutomationEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showMobilePalette, setShowMobilePalette] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
@@ -329,32 +337,44 @@ function AutomationEditorInner({
   return (
     <div className="flex flex-col h-full" data-testid="automation-editor">
       {/* Toolbar */}
-      <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
-        <img src="/icon-192.png" alt="Homecast" className="h-5 w-5 shrink-0 rounded-sm opacity-50" />
+      <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
+        {/* Mobile palette toggle */}
+        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setShowMobilePalette(!showMobilePalette)}>
+          <Plus className="h-4 w-4" />
+        </Button>
+        <img src="/icon-192.png" alt="Homecast" className="h-5 w-5 shrink-0 rounded-sm opacity-50 hidden sm:block" />
         <Input
           value={automationName}
           onChange={(e) => { setAutomationName(e.target.value); setIsDirty(true); }}
           placeholder="Automation name..."
-          className="h-8 w-48 text-sm font-medium"
+          className="h-8 w-28 sm:w-48 text-sm font-medium"
           data-testid="automation-name-input"
         />
-        <div className="h-5 w-px bg-border mx-1" />
+        <div className="h-5 w-px bg-border mx-0.5 sm:mx-1 hidden sm:block" />
         <Tooltip><TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 hidden sm:flex">
             <Undo2 className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Undo (⌘Z)</TooltipContent></Tooltip>
         <Tooltip><TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={redo} disabled={historyIndex >= history.length - 1} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={redo} disabled={historyIndex >= history.length - 1} className="h-8 w-8 hidden sm:flex">
             <Redo2 className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent></Tooltip>
         <div className="flex-1" />
+        {!isNew && (
+          <Tooltip><TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowHistory(!showHistory)}>
+              <History className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">History</span>
+            </Button>
+          </TooltipTrigger><TooltipContent side="bottom">Execution History</TooltipContent></Tooltip>
+        )}
         {!isNew && onDelete && (
           <Button
             variant="ghost"
-            size="sm"
-            className="h-8 text-muted-foreground hover:text-destructive"
+            size="icon"
+            className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground hover:text-destructive"
             onClick={() => {
               if (confirm('Delete this automation?')) {
                 onDelete(existingIdRef.current ?? '');
@@ -362,8 +382,8 @@ function AutomationEditorInner({
               }
             }}
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-            Delete
+            <Trash2 className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Delete</span>
           </Button>
         )}
         <Button
@@ -371,9 +391,10 @@ function AutomationEditorInner({
           onClick={handleSave}
           disabled={isSaving || !isDirty || !automationName.trim()}
           data-testid="save-button"
+          className="h-8"
         >
-          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-          Save
+          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 sm:mr-1.5" />}
+          <span className="hidden sm:inline">Save</span>
         </Button>
         <Button
           variant="ghost"
@@ -387,9 +408,24 @@ function AutomationEditorInner({
       </div>
 
       {/* Main content: left palette | canvas | right config tray */}
-      <div className="flex-1 flex min-h-0">
-        {/* Left: Always-visible node palette */}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Left: Always-visible node palette (hidden on mobile via CSS in NodePalette) */}
         <NodePalette onAddNode={addNewNode} />
+
+        {/* Mobile palette overlay */}
+        {showMobilePalette && (
+          <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm sm:hidden flex flex-col">
+            <div className="p-3 border-b flex items-center justify-between">
+              <span className="text-sm font-medium">Add Node</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMobilePalette(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <NodePalette forceVisible onAddNode={(def) => { addNewNode(def); setShowMobilePalette(false); }} />
+            </div>
+          </div>
+        )}
 
         {/* Center: React Flow canvas */}
         <div className="flex-1 relative min-h-0" onDragOver={onDragOver} onDrop={onDrop}>
@@ -434,8 +470,19 @@ function AutomationEditorInner({
           </ReactFlow>
         </div>
 
-        {/* Right: Config tray (opens on double-click) */}
+        {/* Right: History panel (full-width overlay on mobile, sidebar on desktop) */}
+        {showHistory && !configNode && existingAutomation?.id && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
+            <ExecutionHistoryPanel
+              automationId={existingAutomation.id}
+              onClose={() => setShowHistory(false)}
+            />
+          </div>
+        )}
+
+        {/* Right: Config tray (full-width overlay on mobile, sidebar on desktop) */}
         {configNode && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
           <NodeConfigPanel
             node={configNode}
             allNodes={nodes}
@@ -447,7 +494,9 @@ function AutomationEditorInner({
             accessories={accessories}
             homes={homes}
             scenes={scenes}
+            serviceGroups={serviceGroups}
           />
+          </div>
         )}
       </div>
 
@@ -551,10 +600,10 @@ export function AutomationEditorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 gap-0 flex flex-col overflow-hidden"
+        className="!max-w-[100vw] sm:!max-w-[calc(100vw-48px)] !w-[100vw] sm:!w-[calc(100vw-48px)] !rounded-none sm:!rounded-lg p-0 gap-0 flex flex-col overflow-hidden"
         style={{
-          height: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
-          maxHeight: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
+          height: 'calc(100vh - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
+          maxHeight: 'calc(100vh - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
