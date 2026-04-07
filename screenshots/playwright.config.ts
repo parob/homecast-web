@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['capture.spec.ts', 'automation-editor.spec.ts', 'login-flows.spec.ts'],
+  testMatch: ['capture.spec.ts', 'automation-editor.spec.ts', 'login-flows.spec.ts', 'tutorial.spec.ts'],
   timeout: 60_000,
   retries: 0,
   workers: 1,

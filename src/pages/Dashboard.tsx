@@ -29,9 +29,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
-import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME } from '@/lib/graphql/mutations';
-import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
+import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS, GET_PUSH_TOKENS, GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
+import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME, REGISTER_PUSH_TOKEN, UNREGISTER_PUSH_TOKEN, SET_NOTIFICATION_PREFERENCE, SEND_TEST_NOTIFICATION } from '@/lib/graphql/mutations';
+import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse, GetPushTokensResponse, GetNotificationPreferencesResponse, RegisterPushTokenResponse, SetNotificationPreferenceResponse, SendTestNotificationResponse } from '@/lib/graphql/types';
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { serverConnection, getDeviceId } from '@/server/connection';
@@ -2042,6 +2042,14 @@ const Dashboard = () => {
   const [dismissHomeMutation] = useMutation(DISMISS_HOME);
   const pendingInvitations = pendingInvitationsData?.pendingInvitations ?? [];
   const [pendingInvitationsOpen, setPendingInvitationsOpen] = useState(false);
+
+  // Push notifications (cloud only)
+  const { data: pushTokensData, refetch: refetchPushTokens } = useQuery<GetPushTokensResponse>(GET_PUSH_TOKENS, { skip: isCommunity });
+  const { data: notifPrefsData, refetch: refetchNotifPrefs } = useQuery<GetNotificationPreferencesResponse>(GET_NOTIFICATION_PREFERENCES, { skip: isCommunity });
+  const [registerPushTokenMutation] = useMutation<RegisterPushTokenResponse>(REGISTER_PUSH_TOKEN);
+  const [unregisterPushTokenMutation] = useMutation(UNREGISTER_PUSH_TOKEN);
+  const [setNotifPrefMutation] = useMutation<SetNotificationPreferenceResponse>(SET_NOTIFICATION_PREFERENCE);
+  const [sendTestNotifMutation] = useMutation<SendTestNotificationResponse>(SEND_TEST_NOTIFICATION);
 
   // Auto-open/close invitations modal based on pending invitations
   useEffect(() => {
@@ -5741,6 +5749,23 @@ const Dashboard = () => {
               onReplayTutorial={() => {
                 setSettingsOpen(false);
                 setTimeout(() => setShowTutorial(true), 300);
+              }}
+              notificationProps={isCommunity ? undefined : {
+                pushTokens: pushTokensData?.pushTokens ?? [],
+                preferences: notifPrefsData?.notificationPreferences ?? [],
+                refetch: () => { refetchPushTokens(); refetchNotifPrefs(); },
+                registerPushToken: async (vars) => {
+                  await registerPushTokenMutation({ variables: vars });
+                },
+                unregisterPushToken: async (vars) => {
+                  await unregisterPushTokenMutation({ variables: vars });
+                },
+                setNotificationPreference: async (vars) => {
+                  await setNotifPrefMutation({ variables: vars });
+                },
+                sendTestNotification: async () => {
+                  await sendTestNotifMutation();
+                },
               }}
             />
           </div>

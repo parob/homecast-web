@@ -11,11 +11,13 @@ const isPrivateIP = (h: string) =>
  * Fallback: hostname detection (localhost, .local, private IPs).
  */
 export const isCommunity: boolean =
-  !!(window as any).__HOMECAST_COMMUNITY__ ||
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1' ||
-  window.location.hostname.endsWith('.local') ||
-  isPrivateIP(window.location.hostname);
+  !(window as any).__HOMECAST_FORCE_CLOUD__ && (
+    !!(window as any).__HOMECAST_COMMUNITY__ ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.endsWith('.local') ||
+    isPrivateIP(window.location.hostname)
+  );
 
 // --- Community mode: relay vs client ---
 // Set during first-launch setup. 'relay' = this device runs the relay.

@@ -380,6 +380,12 @@ export function getEntityLayout(entityType?: string, entityId?: string) {
 
 export async function setupMocks(page: Page) {
   await injectAuth(page);
+  // Force cloud mode so the app connects WS to localhost:8080 (not 8081).
+  // Community mode uses httpPort+1 for WS, but Playwright can't intercept cross-port WS.
+  await page.addInitScript(() => {
+    // Override hostname to prevent community mode detection (config.ts checks window.location.hostname)
+    Object.defineProperty(window, '__HOMECAST_FORCE_CLOUD__', { value: true });
+  });
   await mockGraphQL(page);
   await mockWebSocket(page);
   // NOTE: call injectScreenshotStyles(page) AFTER page.goto() for transparent
