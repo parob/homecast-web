@@ -74,24 +74,25 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 sm:w-96 max-h-96 overflow-y-auto p-0 !z-[10060]"
+        className="w-[340px] sm:w-[440px] p-0 !z-[10060] flex flex-col"
+        style={{ maxHeight: 'min(70vh, 600px)' }}
         side="right"
         align="start"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-3 py-2 border-b sticky top-0 bg-popover z-10">
+        {/* Header — fixed */}
+        <div className="px-4 py-2.5 border-b shrink-0">
           <div className="font-medium text-sm">{def?.label ?? nodeType}</div>
           {def?.description && (
-            <div className="text-[10px] text-muted-foreground mt-0.5">{def.description}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{def.description}</div>
           )}
         </div>
 
-        {/* Content */}
-        <div className="px-3 py-2">
+        {/* Content — scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
           {loading && (
-            <div className="flex items-center gap-2 py-4 text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-xs">Loading documentation...</span>
             </div>
           )}
@@ -101,22 +102,22 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
           )}
 
           {!loading && !content && (
-            <p className="text-xs text-muted-foreground py-2">
+            <p className="text-xs text-muted-foreground py-4">
               {def?.description ?? 'No documentation available.'}
             </p>
           )}
         </div>
 
-        {/* Footer — link to full docs */}
-        <div className="px-3 py-2 border-t bg-muted/30">
+        {/* Footer — fixed */}
+        <div className="px-4 py-2 border-t bg-muted/30 shrink-0">
           <a
             href={`${DOCS_GUIDE_BASE}/${filename}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-primary hover:underline flex items-center gap-1"
+            className="text-[11px] text-primary hover:underline flex items-center gap-1"
           >
             View full documentation
-            <ExternalLink className="h-2.5 w-2.5" />
+            <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       </PopoverContent>
