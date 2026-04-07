@@ -30,9 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Copy, Plus, AlertTriangle } from 'lucide-react';
+import { Check, Copy, Plus, AlertTriangle, Radio, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { config } from '@/lib/config';
+import { config, isCommunity } from '@/lib/config';
 import { GET_ACCESS_TOKENS } from '@/lib/graphql/queries';
 import { CREATE_ACCESS_TOKEN, REVOKE_ACCESS_TOKEN } from '@/lib/graphql/mutations';
 import type {
@@ -45,9 +45,11 @@ import type {
 interface ApiAccessSectionProps {
   homes: HomeKitHome[];
   copyToClipboard: (text: string) => boolean;
+  accountType?: string;
 }
 
-export function ApiAccessSection({ homes, copyToClipboard }: ApiAccessSectionProps) {
+export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAccessSectionProps) {
+  const isCloudPlan = accountType === 'cloud';
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [createTokenDialogOpen, setCreateTokenDialogOpen] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
@@ -180,6 +182,53 @@ export function ApiAccessSection({ homes, copyToClipboard }: ApiAccessSectionPro
       </div>
 
       <Separator />
+
+      {/* MQTT Broker Section */}
+      {!isCommunity && (
+        <>
+          <div className={`space-y-2 ${!isCloudPlan ? 'opacity-50' : ''}`}>
+            <div className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">MQTT Broker</p>
+              {!isCloudPlan && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Cloud plan</span>
+              )}
+            </div>
+            <div className="rounded-md border bg-muted/30 px-2.5 py-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-medium text-muted-foreground w-14 shrink-0">MQTT</span>
+                <code className={`flex-1 text-[11px] font-mono truncate ${isCloudPlan ? 'text-foreground/80' : 'text-muted-foreground'} selectable`}>
+                  mqtt.homecast.cloud:8883
+                </code>
+                {isCloudPlan && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => copyUrl('mqtt.homecast.cloud:8883', 'mqtt', 'MQTT')}
+                  >
+                    {copiedUrl === 'mqtt' ? (
+                      <Check className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-start gap-2 mt-1.5">
+              <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                {isCloudPlan
+                  ? 'Enable the Homecast MQTT Broker for each home in Settings \u2192 Homes \u2192 [Home] \u2192 MQTT Brokers. Uses your API credentials for authentication.'
+                  : 'The managed MQTT broker is available on the Cloud plan. Upgrade to connect Home Assistant, Node-RED, and other MQTT clients to your homes.'}
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+        </>
+      )}
 
       {/* Access Tokens Section */}
       <div className="space-y-3">

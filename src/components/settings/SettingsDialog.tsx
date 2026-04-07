@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -23,6 +24,7 @@ import {
   ChevronRight,
   ArrowLeft,
   Tag,
+  Bell,
 } from 'lucide-react';
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import { isCommunity } from '@/lib/config';
@@ -40,8 +42,9 @@ import { HomesSection } from './HomesSection';
 import { MacAppSection } from './MacAppSection';
 import { TabBarSection } from './TabBarSection';
 import { AccountSection } from './AccountSection';
+import { NotificationsSection } from './NotificationsSection';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'mac-app' | 'tab-bar' | 'account';
+export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'mac-app' | 'tab-bar' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -121,6 +124,8 @@ export interface SettingsDialogProps {
   handleReorderTabs: (reordered: PinnedTab[]) => void;
   maxPinnedTabs: number;
   onReplayTutorial?: () => void;
+  // Notifications (cloud-only)
+  notificationProps?: React.ComponentProps<typeof NotificationsSection>;
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
@@ -172,6 +177,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
 
     items.push({ id: 'display', label: 'Display', group: 'General', icon: Monitor });
+
+    if (!isCommunity) {
+      items.push({ id: 'notifications', label: 'Notifications', group: 'General', icon: Bell });
+    }
+
     items.push({ id: 'homes', label: 'Homes', group: 'General', icon: HomeIcon });
 
     if (developerMode) {
@@ -229,12 +239,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 Homecast Community is free and open. If you find it useful, consider supporting the project.
               </p>
               <a
-                href="https://homecast.cloud/donate"
+                href={GITHUB_SPONSORS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
-                Donate →
+                Sponsor on GitHub →
               </a>
             </div>
             <div className="rounded-lg border p-3 space-y-2">
@@ -314,6 +324,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <ApiAccessSection
             homes={props.homes}
             copyToClipboard={props.copyToClipboard}
+            accountType={props.accountType}
           />
         );
       case 'webhooks':
@@ -342,6 +353,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
         ) : (
           <div className="text-sm text-muted-foreground p-4">Relay settings are not available in Community mode.</div>
         );
+      case 'notifications':
+        return props.notificationProps ? (
+          <NotificationsSection {...props.notificationProps} />
+        ) : null;
       case 'mac-app':
         return (
           <MacAppSection
