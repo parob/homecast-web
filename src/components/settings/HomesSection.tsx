@@ -61,15 +61,20 @@ function statusBadge(status: string) {
   }
 }
 
-function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, developerMode }: {
+function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, developerMode, onClick }: {
   enrollment: CustomerEnrollmentInfo;
   onCancel: () => void;
   onConfirmInvite: () => void;
   onResetInvite: () => void;
   developerMode?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+    <div
+      className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -100,6 +105,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
             </AlertDialogContent>
           </AlertDialog>
         ) : statusBadge(enrollment.status)}
+        {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
       </div>
       <div className="space-y-0.5">
         <p className="text-xs text-muted-foreground">
@@ -224,11 +230,6 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
   const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
-
-  // If a home is selected, show its detail view
-  if (selectedHome) {
-    return <HomeDetailView home={selectedHome} onBack={() => setSelectedHome(null)} />;
-  }
   const [loading, setLoading] = useState(false);
   const pricing = getPricing();
   const pricingRegion = getRegion();
@@ -331,6 +332,11 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
     }
   }, [homeName, pricingRegion, createCheckout, refetch]);
 
+  // If a home is selected, show its detail view (must be after all hooks)
+  if (selectedHome) {
+    return <HomeDetailView home={selectedHome} onBack={() => setSelectedHome(null)} />;
+  }
+
   if (!isCloudPlan) {
     return (
       <div className="space-y-3">
@@ -391,7 +397,10 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
               <p className="text-xs text-muted-foreground py-4 text-center">No homes connected yet.</p>
             )}
 
-            {!isCommunity && enrollments.map((enrollment) => (
+            {!isCommunity && enrollments.map((enrollment) => {
+              // Find matching HomeKitHome for this enrollment (by name match)
+              const matchedHome = homes.find(h => h.name.toLowerCase() === (enrollment.matchedHomeName || enrollment.homeName).toLowerCase());
+              return (
               <EnrollmentCard
                 key={enrollment.id}
                 enrollment={enrollment}
@@ -399,8 +408,10 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
                 onConfirmInvite={() => handleConfirmInvite(enrollment.id)}
                 onResetInvite={() => handleResetInvite(enrollment.id)}
                 developerMode={developerMode}
+                onClick={matchedHome ? () => setSelectedHome(matchedHome) : undefined}
               />
-            ))}
+              );
+            })}
 
             {ownedSelfHostedHomes.map((home) => (
               <SelfHostedHomeCard
