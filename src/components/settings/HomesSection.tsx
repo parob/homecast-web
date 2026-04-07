@@ -15,7 +15,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Cloud, Plus, Home as HomeIcon, Info, X } from 'lucide-react';
+import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-react';
+import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
 import { getPricing, getRegion } from '@/lib/pricing';
 import { isCommunity } from '@/lib/config';
@@ -172,11 +173,15 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
 
 const ROLE_LABELS: Record<string, string> = { owner: 'Owner', admin: 'Admin', control: 'Control', view: 'View' };
 
-function SelfHostedHomeCard({ home, onSwitchToCloud }: { home: HomeKitHome; onSwitchToCloud?: () => void }) {
+function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitHome; onSwitchToCloud?: () => void; onClick?: () => void }) {
   const isCloud = home.isCloudManaged;
   const isOwner = !home.role || home.role === 'owner';
   return (
-    <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+    <div
+      className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -191,6 +196,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud }: { home: HomeKitHome; onSw
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${isCloud ? 'border-blue-500/50 text-blue-600 dark:text-blue-400' : ''}`}>
             {isCloud ? 'Cloud Relay' : 'Self-hosted Relay'}
           </Badge>
+          {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
         </div>
       </div>
       {isOwner ? (
@@ -204,7 +210,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud }: { home: HomeKitHome; onSw
       )}
       {onSwitchToCloud && !isCloud && (
         <div className="flex justify-end">
-          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onSwitchToCloud}>
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={(e) => { e.stopPropagation(); onSwitchToCloud(); }}>
             Switch to Cloud Relay
           </Button>
         </div>
@@ -217,6 +223,12 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
+  const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
+
+  // If a home is selected, show its detail view
+  if (selectedHome) {
+    return <HomeDetailView home={selectedHome} onBack={() => setSelectedHome(null)} />;
+  }
   const [loading, setLoading] = useState(false);
   const pricing = getPricing();
   const pricingRegion = getRegion();
@@ -349,7 +361,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Your Homes</p>
             {ownedHomes.map((home) => (
-              <SelfHostedHomeCard key={home.id} home={home} />
+              <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
             ))}
           </div>
         )}
@@ -358,7 +370,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Homes shared with you</p>
             {sharedHomes.map((home) => (
-              <SelfHostedHomeCard key={home.id} home={home} />
+              <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
             ))}
           </div>
         )}
@@ -395,6 +407,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
                 key={home.id}
                 home={home}
                 onSwitchToCloud={() => { setHomeName(home.name); setAddDialogOpen(true); }}
+                onClick={() => setSelectedHome(home)}
               />
             ))}
 
@@ -402,7 +415,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
               <>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-1">Homes shared with you</p>
                 {sharedSelfHostedHomes.map((home) => (
-                  <SelfHostedHomeCard key={home.id} home={home} />
+                  <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
                 ))}
               </>
             )}
