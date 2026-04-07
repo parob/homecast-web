@@ -53,6 +53,9 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
     { label: 'REST & GraphQL API', community: '✓ **', basic: true, standard: true, cloud: true },
     { label: 'MCP (AI assistants)', community: '✓ **', basic: true, standard: true, cloud: true },
     { label: 'Webhooks', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'MQTT', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'Home Assistant', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
 
     { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
     { label: 'Ad-free', community: true, basic: false, standard: true, cloud: true },
@@ -208,6 +211,8 @@ const Pricing = () => {
                         <ul className="space-y-2 flex-1">
                           <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
                           <CheckItem>Smart Deals optional</CheckItem>
+                          <CheckItem>Push notifications</CheckItem>
+                          <CheckItem>MQTT broker</CheckItem>
                         </ul>
                       </div>
                     </div>
@@ -234,6 +239,8 @@ const Pricing = () => {
                         <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
                         <CheckItem>No Mac required</CheckItem>
                         <CheckItem>Smart Deals optional</CheckItem>
+                        <CheckItem>Push notifications</CheckItem>
+                        <CheckItem>MQTT broker</CheckItem>
                       </ul>
                       <p className="text-xs text-muted-foreground mt-3">Requires an Apple Home Hub (Apple TV or HomePod) on your home network.</p>
                     </div>
