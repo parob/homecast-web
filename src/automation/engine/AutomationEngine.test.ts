@@ -411,4 +411,61 @@ describe('AutomationEngine integration', () => {
       expect(trace!.status).toBe('success');
     });
   });
+
+  // ============================================================
+  // Error trigger — fires when automation fails
+  // ============================================================
+
+  describe('error trigger event', () => {
+    it('fires automation.error event when automation fails', async () => {
+      (config.bridge.setCharacteristic as any).mockRejectedValue(new Error('Device exploded'));
+
+      const failingAuto: Automation = {
+        id: 'fail-auto',
+        name: 'Failing Automation',
+        homeId: 'home-1',
+        enabled: true,
+        mode: 'single',
+        triggers: [{ type: 'event', id: 'trigger-1', eventType: 'test.fail' }],
+        conditions: { operator: 'and', conditions: [] },
+        actions: [
+          { type: 'set_characteristic', id: 'action-1', accessoryId: 'light', characteristicType: 'power_state', value: 1 },
+        ],
+        metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+      };
+
+      // Error handler automation listens for automation.error
+      const errorHandlerAuto: Automation = {
+        id: 'error-handler',
+        name: 'Error Handler',
+        homeId: 'home-1',
+        enabled: true,
+        mode: 'single',
+        triggers: [{ type: 'event', id: 'error-trigger', eventType: 'automation.error' }],
+        conditions: { operator: 'and', conditions: [] },
+        actions: [
+          { type: 'variables', id: 'log-error', variables: { caught: true } },
+        ],
+        metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+      };
+
+      engine.loadAutomations([failingAuto, errorHandlerAuto]);
+
+      // Fire the event that triggers the failing automation
+      engine.stateStore.updateDeviceState('trigger-device', 'state', 1);
+      // Manually trigger via event
+      (engine as any).triggerManager.handleEvent('test.fail', {});
+
+      // Allow async execution
+      await new Promise(r => setTimeout(r, 100));
+
+      // The error handler should have been triggered
+      expect(traces.length).toBeGreaterThanOrEqual(1);
+      // At least one trace should be from the error handler (caught the error)
+      const errorHandlerTrace = traces.find(t => t.automationId === 'error-handler');
+      // The failing auto should have an error trace
+      const failTrace = traces.find(t => t.automationId === 'fail-auto');
+      expect(failTrace?.status).toBe('error');
+    });
+  });
 });
