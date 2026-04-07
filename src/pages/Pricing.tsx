@@ -53,7 +53,7 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
     { label: 'REST & GraphQL API', community: '✓ **', basic: true, standard: true, cloud: true },
     { label: 'MCP (AI assistants)', community: '✓ **', basic: true, standard: true, cloud: true },
     { label: 'Webhooks', community: '✓ **', basic: true, standard: true, cloud: true },
-    { label: 'MQTT', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'MQTT', community: '✓ **', basic: false, standard: true, cloud: true },
     { label: 'Home Assistant', community: '✓ **', basic: true, standard: true, cloud: true },
     { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
 
