@@ -332,6 +332,15 @@ export class AutomationEngine {
       automation.metadata.lastTriggeredAt = new Date().toISOString();
       automation.metadata.triggerCount++;
 
+      // Fire error event so error triggers can catch it
+      if (status === 'error' && error) {
+        this.fireEvent('automation.error', {
+          automationId: automation.id,
+          automationName: automation.name,
+          error,
+        });
+      }
+
       // Build and emit trace
       const trace = ctx.buildTrace(status, error);
       this.config.onTraceComplete(trace);

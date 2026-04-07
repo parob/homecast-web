@@ -4,8 +4,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import {
-  Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow, Search, ChevronRight,
+  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
+  GitBranch, GitMerge, Pause, Code, Workflow, StickyNote, Search, ChevronRight,
 } from 'lucide-react';
 import { NodeInfoPopover } from './NodeInfoPopover';
 import { cn } from '@/lib/utils';
@@ -19,8 +19,8 @@ import {
 } from '../constants';
 
 const ICONS: Record<string, React.ElementType> = {
-  Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow,
+  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
+  GitBranch, GitMerge, Pause, Code, Workflow, StickyNote,
 };
 
 interface NodePaletteProps {

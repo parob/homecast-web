@@ -191,6 +191,13 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
         webhookId: (config.webhookId as string) ?? '',
       } satisfies WebhookTrigger;
 
+    case 'error':
+      return {
+        type: 'event',
+        id: node.id,
+        eventType: 'automation.error',
+      } satisfies EventTrigger;
+
     // Legacy engine types (for loading existing automations)
     case 'state':
       return {

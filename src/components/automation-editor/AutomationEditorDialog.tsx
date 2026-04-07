@@ -35,10 +35,13 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { ExecutionHistoryPanel } from './panels/ExecutionHistoryPanel';
+import { VersionHistoryPanel } from './panels/VersionHistoryPanel';
 
 import { BaseNode } from './nodes/BaseNode';
+import { StickyNoteNode } from './nodes/StickyNoteNode';
 import { ControlFlowEdge } from './edges/ControlFlowEdge';
 import { NodePalette } from './panels/NodePalette';
 import { NodeConfigPanel } from './panels/NodeConfigPanel';
@@ -51,6 +54,7 @@ import type { Automation } from '@/automation/types/automation';
 
 const nodeTypes: NodeTypes = {
   automationNode: BaseNode,
+  stickyNote: StickyNoteNode,
 };
 
 const edgeTypes = {
@@ -134,6 +138,8 @@ function AutomationEditorInner({
   const [isDirty, setIsDirty] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showMobilePalette, setShowMobilePalette] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [showVersions, setShowVersions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
@@ -195,8 +201,38 @@ function AutomationEditorInner({
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
-    // Don't close config tray on pane click (Node-RED keeps it open)
+    setContextMenu(null);
   }, []);
+
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  const duplicateNode = useCallback((nodeId: string) => {
+    const original = nodes.find((n) => n.id === nodeId);
+    if (!original) return;
+    const newId = crypto.randomUUID();
+    const newNode: Node<FlowNodeData> = {
+      ...original,
+      id: newId,
+      position: { x: original.position.x + 40, y: original.position.y + 40 },
+      selected: false,
+    };
+    setNodes((nds) => [...nds, newNode]);
+    setIsDirty(true);
+    setContextMenu(null);
+  }, [nodes, setNodes]);
+
+  const toggleNodeEnabled = useCallback((nodeId: string) => {
+    setNodes((nds) => nds.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as FlowNodeData;
+      return { ...n, data: { ...d, enabled: !d.enabled } };
+    }));
+    setIsDirty(true);
+    setContextMenu(null);
+  }, [setNodes]);
 
   // Config tray actions
   const handleConfigDone = useCallback(() => {
@@ -250,7 +286,7 @@ function AutomationEditorInner({
 
       const newNode: Node<FlowNodeData> = {
         id,
-        type: 'automationNode',
+        type: def.category === 'annotation' ? 'stickyNote' : 'automationNode',
         position: pos,
         data: createDefaultNodeData(def),
       };
@@ -380,12 +416,20 @@ function AutomationEditorInner({
         </TooltipTrigger><TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent></Tooltip>
         <div className="flex-1" />
         {!isNew && (
-          <Tooltip><TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowHistory(!showHistory)}>
-              <History className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">History</span>
-            </Button>
-          </TooltipTrigger><TooltipContent side="bottom">Execution History</TooltipContent></Tooltip>
+          <>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowHistory(!showHistory)}>
+                <History className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">History</span>
+              </Button>
+            </TooltipTrigger><TooltipContent side="bottom">Execution History</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowVersions(!showVersions)}>
+                <GitCommitVertical className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Versions</span>
+              </Button>
+            </TooltipTrigger><TooltipContent side="bottom">Version History</TooltipContent></Tooltip>
+          </>
         )}
         {!isNew && onDelete && (
           <Button
@@ -455,6 +499,7 @@ function AutomationEditorInner({
             onNodeClick={onNodeClick}
             onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
+            onNodeContextMenu={onNodeContextMenu}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
@@ -485,14 +530,53 @@ function AutomationEditorInner({
               }}
             />
           </ReactFlow>
+
+          {/* Context menu */}
+          {contextMenu && (
+            <div
+              className="fixed z-[10060] bg-popover border rounded-lg shadow-lg py-1 min-w-[140px]"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              {[
+                { label: 'Configure', action: () => { const n = nodes.find(n => n.id === contextMenu.nodeId); if (n) { setSelectedNodeId(n.id); setConfigNodeId(n.id); configSnapshotRef.current = { ...(n.data as FlowNodeData).config }; } setContextMenu(null); } },
+                { label: 'Duplicate', action: () => duplicateNode(contextMenu.nodeId) },
+                { label: (nodes.find(n => n.id === contextMenu.nodeId)?.data as FlowNodeData)?.enabled === false ? 'Enable' : 'Disable', action: () => toggleNodeEnabled(contextMenu.nodeId) },
+                { label: 'Delete', action: () => { deleteNode(contextMenu.nodeId); setContextMenu(null); }, destructive: true },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className={cn(
+                    'w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors',
+                    (item as any).destructive && 'text-destructive hover:text-destructive',
+                  )}
+                  onClick={item.action}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right: History panel (full-width overlay on mobile, sidebar on desktop) */}
-        {showHistory && !configNode && existingAutomation?.id && (
+        {showHistory && !showVersions && !configNode && existingAutomation?.id && (
           <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
             <ExecutionHistoryPanel
               automationId={existingAutomation.id}
               onClose={() => setShowHistory(false)}
+            />
+          </div>
+        )}
+
+        {/* Right: Version history panel */}
+        {showVersions && !configNode && existingAutomation?.id && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
+            <VersionHistoryPanel
+              automationId={existingAutomation.id}
+              homeId={homeId}
+              onClose={() => setShowVersions(false)}
+              onRestored={() => { setShowVersions(false); onClose(); }}
             />
           </div>
         )}

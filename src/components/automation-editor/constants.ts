@@ -6,7 +6,7 @@
 // Node Categories
 // ============================================================
 
-export type NodeCategory = 'trigger' | 'condition' | 'action' | 'logic';
+export type NodeCategory = 'trigger' | 'condition' | 'action' | 'logic' | 'annotation';
 
 export interface NodeDefinition {
   type: string;
@@ -47,6 +47,12 @@ export const CATEGORY_STYLES: Record<NodeCategory, {
     text: 'text-purple-700',
     miniMapColor: '#a855f7',
   },
+  annotation: {
+    borderColor: 'border-l-amber-400',
+    iconBg: 'bg-amber-100 text-amber-600',
+    text: 'text-amber-700',
+    miniMapColor: '#f59e0b',
+  },
 };
 
 // ============================================================
@@ -74,6 +80,13 @@ export const TRIGGER_NODES: NodeDefinition[] = [
     icon: 'Globe',
     category: 'trigger',
     description: 'When an HTTP request is received',
+  },
+  {
+    type: 'error',
+    label: 'Error',
+    icon: 'AlertCircle',
+    category: 'trigger',
+    description: 'When another automation fails',
   },
 ];
 
@@ -162,19 +175,35 @@ export const LOGIC_NODES: NodeDefinition[] = [
 ];
 
 // ============================================================
-// All nodes (palette uses these 3 categories only)
+// Annotations (editor-only, not serialized)
+// ============================================================
+
+export const ANNOTATION_NODES: NodeDefinition[] = [
+  {
+    type: 'sticky_note',
+    label: 'Sticky Note',
+    icon: 'StickyNote',
+    category: 'annotation',
+    description: 'Add a note to the canvas (not part of the automation)',
+  },
+];
+
+// ============================================================
+// All nodes
 // ============================================================
 
 export const ALL_NODE_DEFINITIONS: NodeDefinition[] = [
   ...TRIGGER_NODES,
   ...ACTION_NODES,
   ...LOGIC_NODES,
+  ...ANNOTATION_NODES,
 ];
 
 export const NODE_DEFINITIONS_BY_CATEGORY: Partial<Record<NodeCategory, NodeDefinition[]>> = {
   trigger: TRIGGER_NODES,
   action: ACTION_NODES,
   logic: LOGIC_NODES,
+  annotation: ANNOTATION_NODES,
 };
 
 export const CATEGORY_LABELS: Record<NodeCategory, string> = {
@@ -182,10 +211,11 @@ export const CATEGORY_LABELS: Record<NodeCategory, string> = {
   condition: 'Conditions',
   action: 'Actions',
   logic: 'Logic',
+  annotation: 'Annotations',
 };
 
-// Palette only shows these 3 categories (conditions are inside IF node)
-export const PALETTE_CATEGORIES: NodeCategory[] = ['trigger', 'action', 'logic'];
+// Palette categories
+export const PALETTE_CATEGORIES: NodeCategory[] = ['trigger', 'action', 'logic', 'annotation'];
 
 // ============================================================
 // Node dimensions — Node-RED rectangular style
@@ -259,6 +289,10 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
   ],
   webhook: [
     { field: 'webhookPayload', type: 'object', label: 'Request Body' },
+    { field: 'timestamp', type: 'number', label: 'Timestamp' },
+  ],
+  error: [
+    { field: 'eventData', type: 'object', label: 'Error Details' },
     { field: 'timestamp', type: 'number', label: 'Timestamp' },
   ],
   // Actions

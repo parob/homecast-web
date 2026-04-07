@@ -4,7 +4,7 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import {
-  Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
+  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow,
   AlertTriangle, Check, X, Loader2,
 } from 'lucide-react';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
 
 const ICONS: Record<string, React.ElementType> = {
-  Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
+  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow,
 };
 

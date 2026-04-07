@@ -594,6 +594,18 @@ function renderConfigForm(
         );
       }
 
+      case 'error':
+        return (
+          <>
+            <p className="text-xs text-muted-foreground">Fires when any automation fails. Use downstream nodes to handle the error (notify, retry, etc.)</p>
+            <div className="p-2 bg-muted rounded-md mt-2">
+              <p className="text-[10px] text-muted-foreground">Available in downstream nodes:</p>
+              <code className="text-[10px] font-mono">trigger.event_data.automationName</code><br />
+              <code className="text-[10px] font-mono">trigger.event_data.error</code>
+            </div>
+          </>
+        );
+
       default:
         return <p className="text-xs text-muted-foreground">Configuration for {nodeType} trigger</p>;
     }
@@ -633,22 +645,26 @@ function renderConfigForm(
 
       case 'delay':
         return (
-          <ConfigField label="Duration">
-            <div className="flex gap-2">
+          <>
+          <ConfigField label="Minutes">
+            <Input type="number" min={0} value={(config.minutes as number) ?? 0} onChange={(e) => updateConfig('minutes', parseInt(e.target.value) || 0)} className="h-8 text-xs" placeholder="0" />
+          </ConfigField>
+          <details open={!!((config.hours as number) || (config.seconds as number))} className="border-t pt-2 mt-2">
+            <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+              Hours &amp; seconds {((config.hours as number) || (config.seconds as number)) ? `(${config.hours ? `${config.hours}h` : ''}${config.seconds ? ` ${config.seconds}s` : ''})` : ''}
+            </summary>
+            <div className="mt-2 flex gap-2">
               <div className="flex-1">
                 <Label className="text-[10px] text-muted-foreground">Hours</Label>
                 <Input type="number" min={0} value={(config.hours as number) ?? 0} onChange={(e) => updateConfig('hours', parseInt(e.target.value) || 0)} className="h-8 text-xs" />
-              </div>
-              <div className="flex-1">
-                <Label className="text-[10px] text-muted-foreground">Minutes</Label>
-                <Input type="number" min={0} value={(config.minutes as number) ?? 0} onChange={(e) => updateConfig('minutes', parseInt(e.target.value) || 0)} className="h-8 text-xs" />
               </div>
               <div className="flex-1">
                 <Label className="text-[10px] text-muted-foreground">Seconds</Label>
                 <Input type="number" min={0} value={(config.seconds as number) ?? 0} onChange={(e) => updateConfig('seconds', parseInt(e.target.value) || 0)} className="h-8 text-xs" />
               </div>
             </div>
-          </ConfigField>
+          </details>
+          </>
         );
 
       case 'notify':
