@@ -106,24 +106,30 @@ export function NodePalette({ onAddNode, searchInputRef, forceVisible }: NodePal
                   {filtered.map((def) => {
                     const Icon = ICONS[def.icon] ?? Zap;
                     return (
-                      <button
+                      <div
                         key={`${def.category}:${def.type}`}
-                        type="button"
                         draggable
                         onDragStart={(e) => handleDragStart(e, def)}
                         className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing"
-                        onClick={() => onAddNode(def)}
-                        title={def.description}
                         data-testid={`palette-node-${def.category}-${def.type}`}
                       >
-                        <div className={cn('w-6 h-6 rounded flex items-center justify-center shrink-0', catStyles.iconBg)}>
-                          <Icon className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium truncate">{def.label}</div>
+                        <div
+                          className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+                          onClick={() => onAddNode(def)}
+                          title={def.description}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter') onAddNode(def); }}
+                        >
+                          <div className={cn('w-6 h-6 rounded flex items-center justify-center shrink-0', catStyles.iconBg)}>
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium truncate">{def.label}</div>
+                          </div>
                         </div>
                         <NodeInfoPopover nodeType={def.type} />
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
