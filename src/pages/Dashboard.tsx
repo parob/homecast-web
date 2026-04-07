@@ -6139,7 +6139,7 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Content */}
-        <main data-tour="widget-area" className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
+        <main className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
           <div
             className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pt-[80px] pb-16'}`}
             style={isInMobileApp ? {
@@ -6478,7 +6478,8 @@ const Dashboard = () => {
                   <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} />
                 )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
-                  {(groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
+                  {(() => { let visibleRoomIdx = 0; return (
+                  (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
                     const aCat = getAccessoryCategory(a);
                     const bCat = getAccessoryCategory(b);
                     const aIdx = CATEGORY_ORDER.indexOf(aCat);
@@ -6497,8 +6498,11 @@ const Dashboard = () => {
                     // Hide room if it has no visible items (unless showHiddenItems is on)
                     if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0) return null;
 
+                    const isFirstVisibleRoom = visibleRoomIdx === 0;
+                    visibleRoomIdx++;
+
                     return (
-                    <div key={roomName} data-room-container data-room-name={roomName}>
+                    <div key={roomName} data-room-container data-room-name={roomName} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
                       {groupByRoom && !selectedRoomId && (() => {
                         return (
@@ -7417,7 +7421,8 @@ const Dashboard = () => {
                       })()}
                     </div>
                     );
-                  })}
+                  }))
+                  ; })()}
                 </div>
                 </div>
               )}
