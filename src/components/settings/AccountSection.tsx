@@ -16,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2 } from 'lucide-react';
+import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2, BookOpen } from 'lucide-react';
 import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
 import { isRelayCapable } from '@/native/homekit-bridge';
 
@@ -35,6 +35,7 @@ interface AccountSectionProps {
   logout: () => void;
   resetAndUninstall?: () => Promise<void>;
   serverVersion: string | undefined;
+  onReplayTutorial?: () => void;
 }
 
 async function communityGraphQL(operationName: string, variables: Record<string, unknown> = {}) {
@@ -59,6 +60,7 @@ export function AccountSection({
   logout,
   resetAndUninstall,
   serverVersion,
+  onReplayTutorial,
 }: AccountSectionProps) {
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
@@ -318,6 +320,18 @@ export function AccountSection({
             />
           </div>
         </div>
+        {onReplayTutorial && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">App Tutorial</p>
+              <p className="text-xs text-muted-foreground">Learn how to use Homecast</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onReplayTutorial}>
+              <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+              Replay
+            </Button>
+          </div>
+        )}
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="outline" size="sm" className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground">

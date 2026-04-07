@@ -139,6 +139,7 @@ import { getAutoPresetId, PRESET_IMAGES, PRESET_SOLID_COLORS, PRESET_GRADIENTS, 
 // Cloud admin components — resolved at render time (not module-load time)
 // because initCloud() is async and hasn't completed when static imports run.
 import { OnboardingOverlay } from '@/components/OnboardingOverlay';
+import { TutorialDialog } from '@/components/TutorialDialog';
 import type { SetupPath } from '@/components/OnboardingOverlay';
 import { SetupState, EnrollmentTrackerCard } from '@/components/SetupState';
 import { getPricing, getRegion } from '@/lib/pricing';
@@ -1603,6 +1604,8 @@ const Dashboard = () => {
   const [cloudCheckoutJustCompleted, setCloudCheckoutJustCompleted] = useState(false);
   // State for onboarding overlay
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // State for tutorial walkthrough
+  const [showTutorial, setShowTutorial] = useState(false);
   // Track which setting failed to save (for showing error tooltip)
   const [settingSaveError, setSettingSaveError] = useState<string | null>(null);
 
@@ -2596,6 +2599,21 @@ const Dashboard = () => {
       }
     } catch { /* ignore parse errors */ }
   }, [settingsData, isAuthenticated, accountType, user?.isAdmin, homesData, homesLoading]);
+
+  // Tutorial: show after setup is complete and user has homes
+  useEffect(() => {
+    if (!settingsData?.settings?.data || !isAuthenticated) return;
+    if (homesLoading || showOnboarding) return;
+    try {
+      const parsed = JSON.parse(settingsData.settings.data) as import('@/lib/graphql/types').UserSettingsData;
+      if (parsed.tutorialCompleted) return;
+      // In cloud mode, wait for onboarding to be done first
+      if (!isCommunity && !parsed.onboarding?.completed && !parsed.onboardingCompleted) return;
+      // Only show if user has at least one home
+      if (!homesData || homesData.homes.length === 0) return;
+      setShowTutorial(true);
+    } catch { /* ignore parse errors */ }
+  }, [settingsData, isAuthenticated, homesLoading, showOnboarding, homesData]);
 
   const roomsData = relayRoomsData ? { rooms: relayRoomsData } : null;
   const roomsLoading = relayRoomsLoading && !relayRoomsData;
@@ -4682,6 +4700,16 @@ const Dashboard = () => {
     } catch { /* ignore save errors */ }
   }, [settingsData, updateSettingsMutation]);
 
+  // Tutorial completion handler
+  const handleTutorialComplete = useCallback(async () => {
+    setShowTutorial(false);
+    try {
+      const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
+      const updated = { ...currentSettings, tutorialCompleted: true };
+      await updateSettingsMutation({ variables: { data: JSON.stringify(updated) } });
+    } catch { /* ignore save errors */ }
+  }, [settingsData, updateSettingsMutation]);
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -5710,6 +5738,10 @@ const Dashboard = () => {
               handleUpdateTabName={handleUpdateTabName}
               handleReorderTabs={handleReorderTabs}
               maxPinnedTabs={MAX_PINNED_TABS}
+              onReplayTutorial={() => {
+                setSettingsOpen(false);
+                setTimeout(() => setShowTutorial(true), 300);
+              }}
             />
           </div>
       </AppHeader>
@@ -8018,6 +8050,13 @@ const Dashboard = () => {
           cloudSignupsAvailable={cloudSignupsAvailable}
         />
       )}
+
+      {/* Tutorial Walkthrough */}
+      <TutorialDialog
+        open={showTutorial}
+        onOpenChange={(open) => { if (!open) handleTutorialComplete(); }}
+        onComplete={handleTutorialComplete}
+      />
         </div>{/* close main container */}
     {/* Loading overlay */}
     <div className={cn(

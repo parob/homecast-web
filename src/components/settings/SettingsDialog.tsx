@@ -120,6 +120,7 @@ export interface SettingsDialogProps {
   handleUpdateTabName: (type: string, id: string, customName: string | undefined) => void;
   handleReorderTabs: (reordered: PinnedTab[]) => void;
   maxPinnedTabs: number;
+  onReplayTutorial?: () => void;
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
@@ -368,6 +369,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             logout={props.logout}
             resetAndUninstall={props.resetAndUninstall}
             serverVersion={props.serverVersion}
+            onReplayTutorial={props.onReplayTutorial}
           />
         );
       default:

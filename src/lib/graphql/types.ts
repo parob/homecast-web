@@ -649,6 +649,7 @@ export interface UserSettingsData {
     setupPath?: 'mac-relay' | 'cloud-relay' | 'shared-home' | 'skipped';
     pendingEnrollmentId?: string;
   };
+  tutorialCompleted?: boolean;
 }
 
 export interface UserSettings {
