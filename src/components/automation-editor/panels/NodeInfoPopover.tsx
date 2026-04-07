@@ -74,7 +74,7 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 sm:w-96 max-h-96 overflow-y-auto p-0"
+        className="w-80 sm:w-96 max-h-96 overflow-y-auto p-0 !z-[10060]"
         side="right"
         align="start"
         onClick={(e) => e.stopPropagation()}
