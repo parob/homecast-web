@@ -229,7 +229,7 @@ export function AccessoryPicker({
   // Home name lookup (used for filtering and display)
   const homeNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const home of homes) {
+    for (const home of homes ?? []) {
       map.set(home.id, home.name);
     }
     return map;

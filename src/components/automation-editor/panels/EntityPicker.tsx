@@ -75,8 +75,9 @@ export function DevicePicker({
           <DialogTitle className="sr-only">Select Device</DialogTitle>
           <AccessoryPicker
             accessories={accessories}
-            selectedAccessoryIds={value ? new Set([value]) : new Set()}
-            onToggleAccessory={(id) => {
+            homes={[]}
+            selectedIds={value ? new Set([value]) : new Set()}
+            onToggle={(id) => {
               const acc = accessories.find((a) => a.id === id);
               if (acc) {
                 onChange(acc.id, acc.name);
