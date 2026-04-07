@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { NodeInfoPopover } from './NodeInfoPopover';
+import { DevicePicker, GroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
@@ -317,22 +318,73 @@ function renderConfigForm(
               </div>
             )}
 
+            {/* Unified entity selection — same UI pattern for device and group */}
             {sourceMode === 'group' ? (
-              <GroupConfigFields
-                config={config}
-                updateConfig={updateConfig}
-                updateConfigBatch={updateConfigBatch}
-                serviceGroups={serviceGroups ?? []}
-                accessories={accessories}
-              />
+              <>
+                <ConfigField label="Service Group">
+                  <GroupPicker
+                    value={config.serviceGroupId as string | undefined}
+                    serviceGroups={serviceGroups ?? []}
+                    onChange={(id, name) => {
+                      if (updateConfigBatch) {
+                        updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, characteristicType: '' });
+                      } else {
+                        updateConfig('serviceGroupId', id);
+                      }
+                    }}
+                  />
+                </ConfigField>
+                {config.serviceGroupId && (() => {
+                  const selectedGroup = (serviceGroups ?? []).find((g) => g.id === config.serviceGroupId);
+                  const groupAccessories = accessories.filter((a) => selectedGroup?.accessoryIds.includes(a.id));
+                  const charSets = groupAccessories.map(
+                    (a) => new Set(a.services?.flatMap((s) => s.characteristics)?.map((c) => c.characteristicType) ?? []),
+                  );
+                  const commonChars = charSets.length > 0
+                    ? [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct)))
+                    : [];
+                  return (
+                    <ConfigField label="Characteristic">
+                      <CharacteristicPicker
+                        value={config.characteristicType as string | undefined}
+                        characteristics={commonChars.map((ct) => ({ type: ct }))}
+                        onChange={(v) => updateConfig('characteristicType', v)}
+                      />
+                    </ConfigField>
+                  );
+                })()}
+              </>
             ) : (
-              <DeviceConfigFields
-                config={config}
-                updateConfig={updateConfig}
-                updateConfigBatch={updateConfigBatch}
-                accessories={accessories}
-                openDevicePicker={openDevicePicker}
-              />
+              <>
+                <ConfigField label="Device">
+                  <DevicePicker
+                    value={config.accessoryId as string | undefined}
+                    accessories={accessories}
+                    onChange={(id, name) => {
+                      if (updateConfigBatch) {
+                        updateConfigBatch({ accessoryId: id, accessoryName: name, characteristicType: '' });
+                      } else {
+                        updateConfig('accessoryId', id);
+                      }
+                    }}
+                  />
+                </ConfigField>
+                {config.accessoryId && (() => {
+                  const selectedAcc = accessories.find((a) => a.id === config.accessoryId);
+                  const chars = selectedAcc?.services
+                    ?.flatMap((s) => s.characteristics)
+                    ?.filter((c) => c.isWritable || c.isReadable) ?? [];
+                  return (
+                    <ConfigField label="Characteristic">
+                      <CharacteristicPicker
+                        value={config.characteristicType as string | undefined}
+                        characteristics={chars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+                        onChange={(v) => updateConfig('characteristicType', v)}
+                      />
+                    </ConfigField>
+                  );
+                })()}
+              </>
             )}
             {/* Trigger condition — pick ONE filter type */}
             {(config.accessoryId || config.serviceGroupId) && config.characteristicType && (
@@ -561,6 +613,7 @@ function renderConfigForm(
             accessories={accessories}
             openDevicePicker={openDevicePicker}
             showValue
+            useEntityPicker
           />
         );
 
@@ -568,17 +621,11 @@ function renderConfigForm(
         return (
           <ConfigField label="Scene">
             {scenes.length > 0 ? (
-              <Select value={(config.sceneId as string) ?? ''} onValueChange={(v) => updateConfig('sceneId', v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select a scene..." /></SelectTrigger>
-                <SelectContent>
-                  {scenes.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span>{s.name}</span>
-                      <span className="ml-1.5 text-muted-foreground text-[10px]">{s.actionCount} action{s.actionCount !== 1 ? 's' : ''}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ScenePicker
+                value={config.sceneId as string | undefined}
+                scenes={scenes}
+                onChange={(id) => updateConfig('sceneId', id)}
+              />
             ) : (
               <p className="text-xs text-muted-foreground">No scenes available. Create scenes in Apple Home first.</p>
             )}
@@ -944,6 +991,7 @@ function DeviceConfigFields({
   accessories,
   openDevicePicker,
   showValue,
+  useEntityPicker,
 }: {
   config: Record<string, unknown>;
   updateConfig: (key: string, value: unknown) => void;
@@ -951,6 +999,7 @@ function DeviceConfigFields({
   accessories: HomeKitAccessory[];
   openDevicePicker: (onSelect: (a: HomeKitAccessory) => void) => void;
   showValue?: boolean;
+  useEntityPicker?: boolean;
 }) {
   const selectedAccessory = accessories.find((a) => a.id === config.accessoryId);
   const characteristics = selectedAccessory?.services
@@ -960,26 +1009,46 @@ function DeviceConfigFields({
   return (
     <>
       <ConfigField label="Device">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start h-8 text-xs font-normal"
-          onClick={() => openDevicePicker((acc) => {
-            if (updateConfigBatch) {
-              updateConfigBatch({ accessoryId: acc.id, accessoryName: acc.name, characteristicType: '' });
-            } else {
-              updateConfig('accessoryId', acc.id);
-            }
-          })}
-          data-testid="select-device-button"
-        >
-          {selectedAccessory?.name ?? (config.accessoryId ? String(config.accessoryId).slice(0, 12) + '...' : 'Select a device...')}
-        </Button>
+        {useEntityPicker ? (
+          <DevicePicker
+            value={config.accessoryId as string | undefined}
+            accessories={accessories}
+            onChange={(id, name) => {
+              if (updateConfigBatch) {
+                updateConfigBatch({ accessoryId: id, accessoryName: name, characteristicType: '' });
+              } else {
+                updateConfig('accessoryId', id);
+              }
+            }}
+          />
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start h-8 text-xs font-normal"
+            onClick={() => openDevicePicker((acc) => {
+              if (updateConfigBatch) {
+                updateConfigBatch({ accessoryId: acc.id, accessoryName: acc.name, characteristicType: '' });
+              } else {
+                updateConfig('accessoryId', acc.id);
+              }
+            })}
+            data-testid="select-device-button"
+          >
+            {selectedAccessory?.name ?? (config.accessoryId ? String(config.accessoryId).slice(0, 12) + '...' : 'Select a device...')}
+          </Button>
+        )}
       </ConfigField>
 
       {config.accessoryId && (
         <ConfigField label="Characteristic">
-          {characteristics.length > 0 ? (
+          {useEntityPicker ? (
+            <CharacteristicPicker
+              value={config.characteristicType as string | undefined}
+              characteristics={characteristics.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+              onChange={(v) => updateConfig('characteristicType', v)}
+            />
+          ) : characteristics.length > 0 ? (
             <Select
               value={(config.characteristicType as string) ?? ''}
               onValueChange={(v) => updateConfig('characteristicType', v)}
