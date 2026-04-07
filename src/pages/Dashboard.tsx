@@ -5350,7 +5350,7 @@ const Dashboard = () => {
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className={`h-8 w-8 bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-8 w-8 bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
@@ -5372,7 +5372,7 @@ const Dashboard = () => {
                     </div>
                     <div className={`p-3 overflow-y-auto flex-1 ${isDarkBackground ? 'text-white' : ''}`}>
                     {/* Homes Section */}
-                    <div className="mb-6">
+                    <div className="mb-6" data-tour="sidebar-homes">
                       {homesLoading ? (
                         <div className="flex items-center justify-center py-4">
                           <Loader2 className="h-4 w-4 animate-spin text-white" />
@@ -5595,6 +5595,7 @@ const Dashboard = () => {
                     </div>
 
                     {/* Collections Section */}
+                    <div data-tour="sidebar-collections">
                     <CollectionList
                       selectedId={selectedCollectionId}
                       onSelect={(collection) => {
@@ -5672,6 +5673,7 @@ const Dashboard = () => {
                         </DndContext>
                       ) : undefined}
                     />
+                    </div>
                     </div>
                   </div>
                 </SheetContent>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -17,8 +18,10 @@ function openDocLink(path: string) {
 
 interface TourStep {
   target: string; // data-tour attribute value, or '' for centered card
+  mobileTarget?: string; // Alternative target on mobile (e.g., hamburger button instead of sidebar)
   title: string;
   description: string;
+  mobileDescription?: string; // Alternative description on mobile
   docPath?: string;
   // Position hint for the floating card relative to the highlighted element
   position?: 'bottom' | 'right' | 'left' | 'center';
@@ -33,8 +36,10 @@ const STEPS: TourStep[] = [
   },
   {
     target: 'sidebar-homes',
+    mobileTarget: 'sidebar-menu',
     title: 'Your Homes',
     description: 'Your Apple Home houses appear here. Select a home to see its rooms, then pick a room to filter your devices.',
+    mobileDescription: 'Tap this menu to see your homes and rooms. Select a home, then pick a room to filter your devices.',
     docPath: '/getting-started/dashboard',
     position: 'right',
   },
@@ -47,8 +52,10 @@ const STEPS: TourStep[] = [
   },
   {
     target: 'sidebar-collections',
+    mobileTarget: 'sidebar-menu',
     title: 'Collections',
     description: 'Group devices from different rooms into custom views. Right-click a home or use the menu to create one — great for "All Lights" or "Bedtime" shortcuts.',
+    mobileDescription: 'Open the menu to find Collections below your homes. Group devices from different rooms into custom views like "All Lights" or "Bedtime".',
     docPath: '/guides/collections',
     position: 'right',
   },
@@ -81,19 +88,20 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   const rafRef = useRef<number>(0);
 
   const currentStep = STEPS[step];
-  const isCenter = !currentStep.target || !targetRect;
+  // On mobile, use mobileTarget if available (e.g., hamburger button instead of sidebar)
+  const effectiveTarget = (isMobile && currentStep.mobileTarget) || currentStep.target;
+  const isCenter = !effectiveTarget || !targetRect;
 
   // Measure and track the target element
   useEffect(() => {
     if (!open) return;
-    const target = currentStep.target;
-    if (!target) {
+    if (!effectiveTarget) {
       setTargetRect(null);
       return;
     }
 
     const measure = () => {
-      const el = document.querySelector(`[data-tour="${target}"]`);
+      const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
       if (el) {
         const rect = el.getBoundingClientRect();
         setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -107,7 +115,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       rafRef.current = requestAnimationFrame(measure);
     };
 
-    // Small delay so layout settles after step change
     const timer = setTimeout(() => {
       measure();
     }, 100);
@@ -116,7 +123,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       clearTimeout(timer);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [open, step, currentStep.target]);
+  }, [open, step, effectiveTarget]);
 
   const handleNext = useCallback(() => {
     if (step < STEPS.length - 1) {
@@ -172,7 +179,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   const spotlightPad = 8;
   const spotlightRadius = 12;
 
-  return (
+  // Render via portal so the overlay sits at body level, above Sheet portals
+  return createPortal(
     <div className="fixed inset-0" style={{ zIndex: 10040 }}>
       {/* Overlay with spotlight cutout */}
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
@@ -215,10 +223,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         />
       )}
 
-      {/* Floating card */}
+      {/* Floating card — z-index must be above Sheet overlay (10015) */}
       <div
         className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
-        style={cardStyle}
+        style={{ ...cardStyle, zIndex: 10050 }}
       >
         {/* Close button */}
         <button
@@ -239,7 +247,9 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
 
         <div className={isCenter && step === 0 ? 'text-center' : ''}>
           <h3 className="text-base font-semibold pr-6">{currentStep.title}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{currentStep.description}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {(isMobile && currentStep.mobileDescription) || currentStep.description}
+          </p>
         </div>
 
         {currentStep.docPath && (
@@ -283,6 +293,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

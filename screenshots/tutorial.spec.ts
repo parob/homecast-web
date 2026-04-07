@@ -98,3 +98,72 @@ test.describe('Tutorial Spotlight Tour', () => {
     await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible();
   });
 });
+
+// ── Mobile Tutorial Tests ─────────────────────────────────────────────────────
+
+test.describe('Tutorial Spotlight Tour (Mobile)', () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'iPhone only');
+    await setupMocks(page);
+    await page.goto('/portal');
+    await page.waitForTimeout(3000);
+  });
+
+  async function openTutorialMobile(page: Page) {
+    // On mobile, open the three-dots menu
+    await page.locator('[data-tour="header-menu"]').click();
+    await page.waitForTimeout(300);
+
+    // Click "Settings"
+    await page.locator('[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForTimeout(500);
+
+    // Mobile settings uses drill-down nav — tap "Account" row
+    await page.locator('button:has-text("Account")').click();
+    await page.waitForTimeout(300);
+
+    // Click "Replay" button
+    await page.locator('button:has-text("Replay")').click();
+    await page.waitForTimeout(600);
+  }
+
+  test('mobile tutorial walkthrough with screenshots', async ({ page }) => {
+    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 10000 });
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-0-dashboard.png' });
+
+    await openTutorialMobile(page);
+
+    // Step 0: Welcome
+    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-1-welcome.png' });
+
+    // Step 1: Your Homes — spotlights hamburger menu button on mobile
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(600);
+    await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-2-homes.png' });
+
+    // Step 2: Device Widgets
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(600);
+    await expect(page.locator('h3:has-text("Device Widgets")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-3-widgets.png' });
+
+    // Step 3: Collections — spotlights hamburger menu button on mobile
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(600);
+    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-4-collections.png' });
+
+    // Step 4: Settings & More
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(600);
+    await expect(page.locator('h3:has-text("Settings & More")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-5-settings.png' });
+
+    // Done
+    await page.click('button:has-text("Done")');
+    await page.waitForTimeout(500);
+    await expect(page.locator('h3:has-text("Settings & More")')).not.toBeVisible();
+  });
+});
