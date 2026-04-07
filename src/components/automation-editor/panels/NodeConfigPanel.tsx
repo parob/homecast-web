@@ -15,6 +15,7 @@ import { Trash2, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
+import { NodeInfoPopover } from './NodeInfoPopover';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
@@ -165,6 +166,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
         <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
           <div className={cn('w-1.5 h-5 rounded-full', styles.borderColor.replace('border-l-', 'bg-'))} />
           <span className="text-sm font-medium flex-1 truncate">{data.label}</span>
+          <NodeInfoPopover nodeType={data.nodeType} />
         </div>
 
         {/* Enabled toggle */}

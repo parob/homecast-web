@@ -5,8 +5,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, Pause, Search, ChevronRight,
+  GitBranch, GitMerge, Pause, Code, Workflow, Search, ChevronRight,
 } from 'lucide-react';
+import { NodeInfoPopover } from './NodeInfoPopover';
 import { cn } from '@/lib/utils';
 import {
   PALETTE_CATEGORIES,
@@ -19,7 +20,7 @@ import {
 
 const ICONS: Record<string, React.ElementType> = {
   Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, Pause,
+  GitBranch, GitMerge, Pause, Code, Workflow,
 };
 
 interface NodePaletteProps {
@@ -121,6 +122,7 @@ export function NodePalette({ onAddNode, searchInputRef, forceVisible }: NodePal
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-medium truncate">{def.label}</div>
                         </div>
+                        <NodeInfoPopover nodeType={def.type} />
                       </button>
                     );
                   })}
