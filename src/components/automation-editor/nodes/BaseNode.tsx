@@ -1,5 +1,5 @@
 // Automation Editor - Base Node Component
-// Node-RED style: rectangular with colored left border, icon + label inline
+// Clean card style with colored icon circle
 
 import { memo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
@@ -53,7 +53,7 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
       style={{ width: NODE_WIDTH }}
       data-testid={`node-${nodeData.nodeType}`}
     >
-      {/* Input handle(s) (not for triggers) */}
+      {/* Input handle(s) */}
       {!isTrigger && inputs.length === 1 && (
         <Handle
           type="target"
@@ -77,35 +77,36 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
         );
       })}
 
-      {/* Node body — rectangular with colored left border */}
+      {/* Node body — clean card with colored icon */}
       <div
         className={cn(
-          'flex items-center gap-2.5 px-2.5 rounded-lg border border-l-4 bg-background transition-shadow',
-          styles.borderColor,
+          'flex items-center gap-2.5 px-3 rounded-xl border bg-background shadow-sm transition-shadow',
           selected && 'ring-2 ring-primary/40 shadow-md',
           execRing,
           !nodeData.enabled && 'opacity-40 grayscale',
-          !nodeData.isConfigured && 'border-dashed',
+          !nodeData.isConfigured && 'border-dashed border-muted-foreground/30',
         )}
         style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
       >
-        <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 py-1.5">
+        {/* Colored icon circle */}
+        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', styles.iconBg)}>
+          <Icon className={cn('w-3.5 h-3.5', styles.iconColor)} />
+        </div>
+
+        <div className="min-w-0 flex-1 py-2">
           <div className="text-xs font-medium truncate leading-tight">{nodeData.label}</div>
           {nodeData.subtitle ? (
-            <div className="text-[10px] text-muted-foreground line-clamp-2 leading-tight">{nodeData.subtitle}</div>
+            <div className="text-[10px] text-muted-foreground line-clamp-2 leading-tight mt-0.5">{nodeData.subtitle}</div>
           ) : !nodeData.isConfigured ? (
-            <div className="text-[10px] text-amber-500/70 leading-tight">Click to configure</div>
+            <div className="text-[10px] text-muted-foreground/50 leading-tight mt-0.5">Click to configure</div>
           ) : null}
         </div>
 
-        {/* Unconfigured warning dot */}
+        {/* Unconfigured indicator */}
         {!nodeData.isConfigured && (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         )}
       </div>
-
-      {/* Disabled indicator (no toggle — use config panel enabled switch) */}
 
       {/* Execution status badge */}
       {nodeData.executionState === 'completed' && (
@@ -154,7 +155,7 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
 
       {/* Output labels for multi-output nodes */}
       {outputs.length > 1 && (
-        <div className="flex justify-between px-4 mt-0.5" style={{ width: NODE_WIDTH }}>
+        <div className="flex justify-between px-6 mt-0.5" style={{ width: NODE_WIDTH }}>
           {outputs.map((out, i) => (
             <span
               key={out.id}

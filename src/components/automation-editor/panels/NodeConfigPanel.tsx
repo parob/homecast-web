@@ -166,7 +166,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
       <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background" data-testid="config-panel">
         {/* Header */}
         <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
-          <div className={cn('w-1.5 h-5 rounded-full', styles.borderColor.replace('border-l-', 'bg-'))} />
+          <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center shrink-0', styles.iconBg)} />
           <span className="text-sm font-medium flex-1 truncate">{data.label}</span>
           <NodeInfoPopover nodeType={data.nodeType} />
         </div>
@@ -667,7 +667,8 @@ function renderConfigForm(
           </>
         );
 
-      case 'notify':
+      case 'notify': {
+        const actions = (config.actions as Array<{ action: string; title: string }>) ?? [];
         return (
           <>
             <ConfigField label="Title">
@@ -676,8 +677,58 @@ function renderConfigForm(
             <ConfigField label="Message">
               <Textarea value={(config.message as string) ?? ''} onChange={(e) => updateConfig('message', e.target.value)} placeholder="Notification message..." className="text-xs min-h-[60px]" />
             </ConfigField>
+            <ConfigField label="Action Buttons" hint="Optional buttons shown on the notification (max 3)">
+              <div className="space-y-2">
+                {actions.map((act, i) => (
+                  <div key={i} className="flex gap-1.5 items-center">
+                    <Input
+                      value={act.title}
+                      onChange={(e) => {
+                        const updated = [...actions];
+                        updated[i] = { ...updated[i], title: e.target.value };
+                        updateConfig('actions', updated);
+                      }}
+                      placeholder="Button label"
+                      className="h-7 text-xs flex-1"
+                    />
+                    <Input
+                      value={act.action}
+                      onChange={(e) => {
+                        const updated = [...actions];
+                        updated[i] = { ...updated[i], action: e.target.value };
+                        updateConfig('actions', updated);
+                      }}
+                      placeholder="Action ID"
+                      className="h-7 text-xs w-24"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        const updated = actions.filter((_, j) => j !== i);
+                        updateConfig('actions', updated);
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+                {actions.length < 3 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs w-full"
+                    onClick={() => updateConfig('actions', [...actions, { action: '', title: '' }])}
+                  >
+                    + Add Button
+                  </Button>
+                )}
+              </div>
+            </ConfigField>
           </>
         );
+      }
 
       case 'http_request':
         return (

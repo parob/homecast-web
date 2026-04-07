@@ -145,6 +145,7 @@ function AutomationEditorInner({
 
   // Snapshot for config cancel/revert
   const configSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const handleSaveRef = useRef<(() => void) | null>(null);
 
   // Existing automation ID for update
   const existingIdRef = useRef(existingAutomation?.id);
@@ -355,6 +356,10 @@ function AutomationEditorInner({
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveRef.current?.();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -386,6 +391,9 @@ function AutomationEditorInner({
       setIsSaving(false);
     }
   }, [automationName, homeId, nodes, edges, saveHcAutomation, onSaved]);
+
+  // Keep ref in sync for keyboard shortcut
+  handleSaveRef.current = handleSave;
 
   return (
     <div className="flex flex-col h-full" data-testid="automation-editor">

@@ -16,40 +16,40 @@ export interface NodeDefinition {
   description: string;
 }
 
-// Category visual config — Node-RED style: colored left border
+// Category visual config
 export const CATEGORY_STYLES: Record<NodeCategory, {
-  borderColor: string; // For node left border (border-l-4)
-  iconBg: string;      // For palette icon background
+  iconBg: string;      // Icon circle background
+  iconColor: string;   // Icon color
   text: string;
   miniMapColor: string;
 }> = {
   trigger: {
-    borderColor: 'border-l-emerald-500',
-    iconBg: 'bg-emerald-100 text-emerald-600',
+    iconBg: 'bg-emerald-500',
+    iconColor: 'text-white',
     text: 'text-emerald-700',
     miniMapColor: '#10b981',
   },
   condition: {
-    borderColor: 'border-l-amber-500',
-    iconBg: 'bg-amber-100 text-amber-600',
+    iconBg: 'bg-amber-500',
+    iconColor: 'text-white',
     text: 'text-amber-700',
     miniMapColor: '#f59e0b',
   },
   action: {
-    borderColor: 'border-l-blue-500',
-    iconBg: 'bg-blue-100 text-blue-600',
+    iconBg: 'bg-blue-500',
+    iconColor: 'text-white',
     text: 'text-blue-700',
     miniMapColor: '#3b82f6',
   },
   logic: {
-    borderColor: 'border-l-purple-500',
-    iconBg: 'bg-purple-100 text-purple-600',
+    iconBg: 'bg-purple-500',
+    iconColor: 'text-white',
     text: 'text-purple-700',
     miniMapColor: '#a855f7',
   },
   annotation: {
-    borderColor: 'border-l-amber-400',
-    iconBg: 'bg-amber-100 text-amber-600',
+    iconBg: 'bg-amber-400',
+    iconColor: 'text-white',
     text: 'text-amber-700',
     miniMapColor: '#f59e0b',
   },
