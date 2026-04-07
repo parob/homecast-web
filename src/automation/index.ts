@@ -27,7 +27,7 @@ export interface InitOptions {
   bridge: HomeKitBridge;
   transport: SyncTransport;
   subscribeToHomeKit: (handler: (event: HomeKitEvent) => void) => () => void;
-  onNotify: (message: string, title?: string, data?: Record<string, unknown>) => Promise<void>;
+  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
 }
 
 /**

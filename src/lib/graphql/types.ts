@@ -1831,3 +1831,59 @@ export interface CostRevenueResponse {
   costsAndRevenue: CostRevenueData;
 }
 
+// ---- Push Notifications ----
+
+export interface PushTokenInfo {
+  id: string;
+  platform: string;
+  deviceName: string | null;
+  deviceFingerprint: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface NotificationPreferenceInfo {
+  id: string;
+  scope: string;
+  scopeId: string | null;
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  localEnabled: boolean;
+}
+
+export interface NotificationLogInfo {
+  id: string;
+  automationId: string | null;
+  homeId: string | null;
+  title: string | null;
+  message: string;
+  channelsSent: string;
+  channelsFailed: string | null;
+  rateLimited: boolean;
+  createdAt: string;
+}
+
+export interface GetPushTokensResponse {
+  pushTokens: PushTokenInfo[];
+}
+
+export interface GetNotificationPreferencesResponse {
+  notificationPreferences: NotificationPreferenceInfo[];
+}
+
+export interface GetNotificationHistoryResponse {
+  notificationHistory: NotificationLogInfo[];
+}
+
+export interface RegisterPushTokenResponse {
+  registerPushToken: { success: boolean; error: string | null };
+}
+
+export interface SetNotificationPreferenceResponse {
+  setNotificationPreference: { success: boolean; error: string | null };
+}
+
+export interface SendTestNotificationResponse {
+  sendTestNotification: boolean;
+}
+

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Home, Mail } from 'lucide-react';
+import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 
 const MarketingFooter = () => {
   return (
@@ -27,6 +28,7 @@ const MarketingFooter = () => {
               <li><Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link></li>
               <li><a href="https://docs.homecast.cloud" className="hover:text-foreground transition-colors">Documentation</a></li>
               <li><a href="https://docs.homecast.cloud/developers/overview" className="hover:text-foreground transition-colors">API Reference</a></li>
+              <li><a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Sponsor</a></li>
             </ul>
           </div>
 

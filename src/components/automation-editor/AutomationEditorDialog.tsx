@@ -35,7 +35,13 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical, Bell, Mail, Monitor } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
+import { isCommunity } from '@/lib/config';
+import { GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
+import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE } from '@/lib/graphql/mutations';
+import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { cn } from '@/lib/utils';
 import { ExecutionHistoryPanel } from './panels/ExecutionHistoryPanel';
 import { VersionHistoryPanel } from './panels/VersionHistoryPanel';
@@ -423,6 +429,9 @@ function AutomationEditorInner({
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent></Tooltip>
         <div className="flex-1" />
+        {!isNew && !isCommunity && (
+          <AutomationNotificationPrefs automationId={existingIdRef.current ?? ''} />
+        )}
         {!isNew && (
           <>
             <Tooltip><TooltipTrigger asChild>
@@ -728,6 +737,101 @@ export function AutomationEditorDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AutomationNotificationPrefs({ automationId }: { automationId: string }) {
+  const { data, refetch } = useQuery<GetNotificationPreferencesResponse>(GET_NOTIFICATION_PREFERENCES);
+  const [setPrefMutation] = useMutation<SetNotificationPreferenceResponse>(SET_NOTIFICATION_PREFERENCE);
+  const [deletePrefMutation] = useMutation(DELETE_NOTIFICATION_PREFERENCE);
+  const [saving, setSaving] = useState(false);
+
+  const pref = data?.notificationPreferences?.find(p => p.scope === 'automation' && p.scopeId === automationId);
+  const hasOverride = !!pref;
+
+  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled' | 'localEnabled', value: boolean) => {
+    setSaving(true);
+    try {
+      await setPrefMutation({
+        variables: {
+          scope: 'automation',
+          scopeId: automationId,
+          pushEnabled: field === 'pushEnabled' ? value : (pref?.pushEnabled ?? true),
+          emailEnabled: field === 'emailEnabled' ? value : (pref?.emailEnabled ?? false),
+          localEnabled: field === 'localEnabled' ? value : (pref?.localEnabled ?? true),
+        },
+      });
+      refetch();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setSaving(true);
+    try {
+      await deletePrefMutation({ variables: { scope: 'automation', scopeId: automationId } });
+      refetch();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className={cn("h-8 w-8", hasOverride && "text-blue-600 dark:text-blue-400")}>
+              <Bell className="h-3.5 w-3.5" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Notification Preferences</TooltipContent>
+      </Tooltip>
+      <PopoverContent className="w-56 p-3" side="bottom" align="end">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium">Notifications</p>
+            {hasOverride && (
+              <button
+                onClick={handleReset}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+                disabled={saving}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {hasOverride ? 'Custom for this automation.' : 'Using home/global defaults.'}
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Bell className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs">Push</span>
+              </div>
+              <Switch checked={pref?.pushEnabled ?? true} onCheckedChange={(v) => handleToggle('pushEnabled', v)} disabled={saving} />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Mail className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs">Email</span>
+              </div>
+              <Switch checked={pref?.emailEnabled ?? false} onCheckedChange={(v) => handleToggle('emailEnabled', v)} disabled={saving} />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Monitor className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs">Local</span>
+              </div>
+              <Switch checked={pref?.localEnabled ?? true} onCheckedChange={(v) => handleToggle('localEnabled', v)} disabled={saving} />
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

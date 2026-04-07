@@ -41,7 +41,7 @@ export interface HomeKitBridge {
 /** Interface for the engine to fire events, notifications, and automation control */
 export interface EngineCallbacks {
   fireEvent(eventType: string, eventData?: Record<string, unknown>): void;
-  sendNotification(message: string, title?: string, data?: Record<string, unknown>): Promise<void>;
+  sendNotification(message: string, title?: string, data?: Record<string, unknown>, automationId?: string): Promise<void>;
   setAutomationEnabled(automationId: string, enabled: boolean): void;
   triggerAutomation(automationId: string): Promise<void>;
   executeScript(scriptId: string, variables?: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
@@ -468,7 +468,7 @@ export class ActionExecutor {
       `Notify: ${message.slice(0, 50)}`, { message, title });
 
     try {
-      await this.callbacks.sendNotification(message, title, action.data);
+      await this.callbacks.sendNotification(message, title, action.data, ctx.automationId);
       const output = { message, title, success: true };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);

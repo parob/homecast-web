@@ -347,13 +347,18 @@ function nodeToActionInner(
         },
       } satisfies DelayAction;
 
-    case 'notify':
+    case 'notify': {
+      const actions = config.actions as Array<{ action: string; title: string }> | undefined;
+      const data: Record<string, unknown> | undefined =
+        actions && actions.length > 0 ? { actions } : undefined;
       return {
         type: 'notify',
         id: node.id,
         message: (config.message as string) ?? '',
         title: config.title as string | undefined,
+        data,
       } satisfies NotifyAction;
+    }
 
     case 'http_request':
     case 'fire_webhook':

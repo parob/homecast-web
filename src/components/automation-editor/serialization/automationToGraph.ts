@@ -277,7 +277,7 @@ function extractActionConfig(action: Action): Record<string, unknown> {
     case 'set_characteristic': return { accessoryId: action.accessoryId, characteristicType: action.characteristicType, value: action.value };
     case 'execute_scene': return { sceneId: action.sceneId };
     case 'delay': return { hours: action.duration.hours, minutes: action.duration.minutes, seconds: action.duration.seconds };
-    case 'notify': return { message: action.message, title: action.title };
+    case 'notify': return { message: action.message, title: action.title, actions: action.data?.actions };
     case 'fire_event': return { eventType: action.eventType };
     case 'fire_webhook': return { url: action.url, method: action.method };
     case 'stop': return { reason: action.reason };

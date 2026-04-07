@@ -592,12 +592,17 @@ export class ServerWebSocket {
         (action, payload) => this.request(action, payload),
       ),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
-      onNotify: async (message, title, data) => {
+      onNotify: async (message, title, data, automationId) => {
+        // Show local macOS notification immediately on the relay
+        if (HomeKit.isAvailable()) {
+          HomeKit.showNotification(title, message, data).catch(() => {});
+        }
+        // Send to cloud server for push/email delivery to other devices
         this.sendEvent({
           id: `evt_${Date.now()}_notify`,
           type: 'automation',
           action: 'automation.notify',
-          payload: { message, title, data },
+          payload: { message, title, data, automationId },
         });
       },
     }).catch((err) => {
@@ -619,6 +624,40 @@ export class ServerWebSocket {
     }).catch((err) => {
       console.error('[ServerWS] Failed to declare relay homes:', err);
     });
+
+    // Register APNs token for native push notifications (cloud mode only)
+    this.registerAPNsToken();
+  }
+
+  private async registerAPNsToken(): Promise<void> {
+    if (!HomeKit.isAvailable()) return;
+    try {
+      // Request notification permission (may already be granted)
+      const permResult = await HomeKit.requestNotificationPermission();
+      if (!permResult?.granted) return;
+
+      // Get the APNs device token
+      const tokenResult = await HomeKit.getAPNsToken();
+      const apnsToken = tokenResult?.token;
+      if (!apnsToken) return;
+
+      // Register with server via GraphQL
+      const { apolloClient } = await import('@/lib/apollo');
+      const { REGISTER_PUSH_TOKEN } = await import('@/lib/graphql/mutations');
+      await apolloClient.mutate({
+        mutation: REGISTER_PUSH_TOKEN,
+        variables: {
+          token: apnsToken,
+          platform: 'macos',
+          deviceFingerprint: `macos-${apnsToken.slice(0, 16)}`,
+          deviceName: 'Homecast Relay (Mac)',
+        },
+      });
+      console.log('[ServerWS] Registered APNs token with server');
+    } catch (err) {
+      // Non-fatal — push notifications are optional
+      console.warn('[ServerWS] APNs token registration failed:', err);
+    }
   }
 
   /**

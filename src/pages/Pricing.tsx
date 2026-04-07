@@ -4,6 +4,7 @@ import MarketingHeader from '@/components/marketing/MarketingHeader';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import { Link } from 'react-router-dom';
 import { getPricing } from '@/lib/pricing';
+import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 
 const CheckItem = ({ children }: { children: React.ReactNode }) => (
   <li className="flex items-center gap-2 text-sm">
@@ -317,8 +318,8 @@ const Pricing = () => {
               </FAQItem>
               <FAQItem question="Can I donate to support Homecast?">
                 Yes! The Community Edition is free and always will be. If you find it useful
-                and want to support ongoing development, donations are welcome via
-                GitHub Sponsors on the Homecast repository.
+                and want to support ongoing development, you can{' '}
+                <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">sponsor us on GitHub</a>.
               </FAQItem>
             </FAQ>
             <div className="mt-10 text-center">

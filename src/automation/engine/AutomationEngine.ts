@@ -20,7 +20,7 @@ export interface AutomationEngineConfig {
   bridge: HomeKitBridge;
   serviceGroupResolver?: ServiceGroupResolver;
   onTraceComplete: (trace: ExecutionTrace) => void;
-  onNotify: (message: string, title?: string, data?: Record<string, unknown>) => Promise<void>;
+  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
 }
 
 /**
@@ -51,7 +51,7 @@ export class AutomationEngine {
 
     const callbacks: EngineCallbacks = {
       fireEvent: (type, data) => this.fireEvent(type, data),
-      sendNotification: (msg, title, data) => this.config.onNotify(msg, title, data),
+      sendNotification: (msg, title, data, automationId) => this.config.onNotify(msg, title, data, automationId),
       setAutomationEnabled: (id, enabled) => this.setEnabled(id, enabled),
       triggerAutomation: (id) => this.manualTrigger(id).then(() => {}),
       executeScript: (id, vars) => this.scriptRunner.execute(id, vars),

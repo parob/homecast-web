@@ -236,6 +236,23 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [handleBroadcast, scheduleFlush]);
 
+  // Forward notification action events from service worker to server
+  useEffect(() => {
+    const handleNotificationAction = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.action) {
+        serverConnection.request('automation.notification_response', {
+          action: detail.action,
+          data: detail.data ?? {},
+        }).catch((err) => {
+          console.warn('[WS] Failed to forward notification action:', err);
+        });
+      }
+    };
+    window.addEventListener('homecast-notification-action', handleNotificationAction);
+    return () => window.removeEventListener('homecast-notification-action', handleNotificationAction);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {

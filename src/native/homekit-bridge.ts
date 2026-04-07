@@ -476,6 +476,35 @@ export const HomeKit = {
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call('settings.setLaunchAtLogin', { enabled });
   },
+
+  // ---- Notifications ----
+
+  /**
+   * Show a local notification on macOS
+   */
+  async showNotification(title: string | undefined, message: string, data?: Record<string, unknown>): Promise<{ success: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('notification.show', { title, message, data });
+  },
+
+  /**
+   * Request notification permission
+   */
+  async requestNotificationPermission(): Promise<{ granted: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('notification.requestPermission');
+  },
+
+  /**
+   * Get the APNs device token (null if not registered)
+   */
+  async getAPNsToken(): Promise<{ token: string | null }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('notification.getAPNsToken');
+  },
 };
 
 // Debug types

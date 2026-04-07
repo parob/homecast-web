@@ -266,10 +266,16 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         const [y, m, d] = triggerDate.split('-').map(Number);
         return { type: 'event', events: [{ type: 'calendar', calendarComponents: { hour, minute, ...(y && { year: y }), ...(m && { month: m }), ...(d && { day: d }) } }] };
       }
-      let recurrence: Record<string, number> | null = null;
-      if (recurrenceType === 'daily' || recurrenceType === 'weekdays') recurrence = { day: 1 };
-      else if (recurrenceType === 'weekly') recurrence = { weekOfYear: 1 };
-      return { type: 'event', events: [{ type: 'calendar', calendarComponents: { hour, minute } }], ...(recurrence && { recurrences: [recurrence] }) };
+      // HMEventTrigger recurrences use weekday components (1=Sun..7=Sat) to restrict firing days.
+      // Daily needs no recurrences — HMCalendarEvent with just {hour, minute} already fires every day.
+      let recurrences: Array<Record<string, number>> | null = null;
+      if (recurrenceType === 'weekdays') {
+        recurrences = [{ weekday: 2 }, { weekday: 3 }, { weekday: 4 }, { weekday: 5 }, { weekday: 6 }];
+      } else if (recurrenceType === 'weekly') {
+        const jsDay = new Date().getDay(); // 0=Sun..6=Sat
+        recurrences = [{ weekday: jsDay + 1 }]; // Apple: 1=Sun..7=Sat
+      }
+      return { type: 'event', events: [{ type: 'calendar', calendarComponents: { hour, minute } }], ...(recurrences && { recurrences }) };
     }
     if (triggerCategory === 'time' && timeSubType === 'sun') {
       return { type: 'event', events: [{ type: 'significantTime', significantEvent: sigEvent, ...(offsetMinutes !== 0 && { offsetMinutes }) }] };

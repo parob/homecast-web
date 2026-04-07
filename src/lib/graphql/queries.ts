@@ -867,3 +867,47 @@ export const GET_CREDENTIALS = gql`
     }
   }
 `;
+
+// ---- Push Notifications ----
+
+export const GET_PUSH_TOKENS = gql`
+  query GetPushTokens {
+    pushTokens {
+      id
+      platform
+      deviceName
+      deviceFingerprint
+      createdAt
+      lastUsedAt
+    }
+  }
+`;
+
+export const GET_NOTIFICATION_PREFERENCES = gql`
+  query GetNotificationPreferences {
+    notificationPreferences {
+      id
+      scope
+      scopeId
+      pushEnabled
+      emailEnabled
+      localEnabled
+    }
+  }
+`;
+
+export const GET_NOTIFICATION_HISTORY = gql`
+  query GetNotificationHistory($limit: Int, $offset: Int, $automationId: String) {
+    notificationHistory(limit: $limit, offset: $offset, automationId: $automationId) {
+      id
+      automationId
+      homeId
+      title
+      message
+      channelsSent
+      channelsFailed
+      rateLimited
+      createdAt
+    }
+  }
+`;
