@@ -116,7 +116,6 @@ export function NodePalette({ onAddNode, searchInputRef, forceVisible }: NodePal
                         <div
                           className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
                           onClick={() => onAddNode(def)}
-                          title={def.description}
                           role="button"
                           tabIndex={0}
                           onKeyDown={(e) => { if (e.key === 'Enter') onAddNode(def); }}
@@ -126,6 +125,7 @@ export function NodePalette({ onAddNode, searchInputRef, forceVisible }: NodePal
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="text-xs font-medium truncate">{def.label}</div>
+                            <div className="text-[10px] text-muted-foreground truncate leading-tight">{def.description}</div>
                           </div>
                         </div>
                         <NodeInfoPopover nodeType={def.type} />

@@ -94,20 +94,23 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
           selected && 'ring-2 ring-primary/40 shadow-md',
           execRing,
           !nodeData.enabled && 'opacity-40 grayscale',
+          !nodeData.isConfigured && 'border-dashed',
         )}
-        style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
+        style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
       >
         <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 py-1.5">
           <div className="text-xs font-medium truncate leading-tight">{nodeData.label}</div>
-          {nodeData.subtitle && (
-            <div className="text-[10px] text-muted-foreground truncate leading-tight">{nodeData.subtitle}</div>
-          )}
+          {nodeData.subtitle ? (
+            <div className="text-[10px] text-muted-foreground line-clamp-2 leading-tight">{nodeData.subtitle}</div>
+          ) : !nodeData.isConfigured ? (
+            <div className="text-[10px] text-amber-500/70 leading-tight">Click to configure</div>
+          ) : null}
         </div>
 
         {/* Unconfigured warning dot */}
         {!nodeData.isConfigured && (
-          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         )}
       </div>
 

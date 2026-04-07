@@ -191,8 +191,8 @@ export const PALETTE_CATEGORIES: NodeCategory[] = ['trigger', 'action', 'logic']
 // Node dimensions — Node-RED rectangular style
 // ============================================================
 
-export const NODE_WIDTH = 180;
-export const NODE_HEIGHT = 40;
+export const NODE_WIDTH = 220;
+export const NODE_HEIGHT = 40; // Minimum height — expands with subtitle
 export const GRID_SIZE = 16;
 
 // ============================================================

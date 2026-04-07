@@ -183,10 +183,13 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
           <div className="p-4 space-y-4">
             {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges, serviceGroups)}
 
-            {/* Error handling section — action nodes only */}
+            {/* Error handling section — action nodes only, collapsed by default */}
             {data.category === 'action' && (
-              <div className="border-t pt-3 mt-3">
-                <p className="text-[10px] text-muted-foreground font-medium mb-2">Error Handling</p>
+              <details open={!!(data.config.onError && data.config.onError !== 'stop')} className="border-t pt-2 mt-3">
+                <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                  Error handling {data.config.onError && data.config.onError !== 'stop' ? `(${data.config.onError})` : ''}
+                </summary>
+                <div className="mt-2">
                 <ConfigField label="On Error">
                   <Select
                     value={(data.config.onError as string) ?? 'stop'}
@@ -225,7 +228,8 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              </details>
             )}
           </div>
         </div>
@@ -330,25 +334,36 @@ function renderConfigForm(
                 openDevicePicker={openDevicePicker}
               />
             )}
-            <ConfigField label="To value (optional)">
-              <Input
-                value={String(config.to ?? '')}
-                onChange={(e) => updateConfig('to', e.target.value || undefined)}
-                placeholder="Any value change"
-                className="h-8 text-xs"
-              />
-            </ConfigField>
-            <ConfigField label="From value (optional)">
-              <Input
-                value={String(config.from ?? '')}
-                onChange={(e) => updateConfig('from', e.target.value || undefined)}
-                placeholder="Any previous value"
-                className="h-8 text-xs"
-              />
-            </ConfigField>
-            <div className="border-t pt-3 mt-3">
-              <p className="text-[10px] text-muted-foreground mb-2">Numeric thresholds (optional — for temperature, brightness, etc.)</p>
-              <div className="flex gap-2">
+            {/* Filters — collapsed by default unless configured */}
+            <details open={!!(config.to || config.from)} className="border-t pt-2 mt-3">
+              <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                Filters {(config.to || config.from) ? `(${[config.to && 'to', config.from && 'from'].filter(Boolean).join(', ')})` : ''}
+              </summary>
+              <div className="mt-2 space-y-3">
+                <ConfigField label="To value">
+                  <Input
+                    value={String(config.to ?? '')}
+                    onChange={(e) => updateConfig('to', e.target.value || undefined)}
+                    placeholder="Any value change"
+                    className="h-8 text-xs"
+                  />
+                </ConfigField>
+                <ConfigField label="From value">
+                  <Input
+                    value={String(config.from ?? '')}
+                    onChange={(e) => updateConfig('from', e.target.value || undefined)}
+                    placeholder="Any previous value"
+                    className="h-8 text-xs"
+                  />
+                </ConfigField>
+              </div>
+            </details>
+            {/* Numeric thresholds — collapsed by default unless configured */}
+            <details open={!!(config.above !== undefined || config.below !== undefined)} className="border-t pt-2 mt-2">
+              <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                Numeric thresholds {(config.above !== undefined || config.below !== undefined) ? `(${[config.above !== undefined && `>${config.above}`, config.below !== undefined && `<${config.below}`].filter(Boolean).join(', ')})` : ''}
+              </summary>
+              <div className="mt-2 flex gap-2">
                 <div className="flex-1">
                   <Label className="text-[10px] text-muted-foreground">Above</Label>
                   <Input
@@ -370,7 +385,7 @@ function renderConfigForm(
                   />
                 </div>
               </div>
-            </div>
+            </details>
           </>
         );
       }
