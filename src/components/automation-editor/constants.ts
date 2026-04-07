@@ -216,12 +216,17 @@ export interface FlowNodeData {
 }
 
 export function createDefaultNodeData(def: NodeDefinition): FlowNodeData {
+  // Default config for specific node types
+  const defaultConfigs: Record<string, Record<string, unknown>> = {
+    webhook: { webhookId: crypto.randomUUID().slice(0, 8) },
+  };
+
   return {
     category: def.category,
     nodeType: def.type,
     label: def.label,
     icon: def.icon,
-    config: {},
+    config: defaultConfigs[def.type] ?? {},
     isConfigured: false,
     enabled: true,
   };

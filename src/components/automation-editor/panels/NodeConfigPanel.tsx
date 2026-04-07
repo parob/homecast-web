@@ -121,9 +121,10 @@ interface NodeConfigPanelProps {
   homes?: HomeKitHome[];
   scenes?: HomeKitScene[];
   serviceGroups?: HomeKitServiceGroup[];
+  availableAutomations?: { id: string; name: string }[];
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onDone, onCancel, accessories = [], homes = [], scenes = [], serviceGroups = [] }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onDone, onCancel, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [] }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -182,7 +183,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
         {/* Config form — scrollable */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 space-y-4">
-            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges, serviceGroups)}
+            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges, serviceGroups, availableAutomations)}
 
             {/* Error handling section — action nodes only, collapsed by default */}
             {data.category === 'action' && (
@@ -284,6 +285,7 @@ function renderConfigForm(
   allNodes?: Node<FlowNodeData>[],
   allEdges?: Edge[],
   serviceGroups?: HomeKitServiceGroup[],
+  availableAutomations?: { id: string; name: string }[],
 ) {
   // ---- TRIGGERS ----
   if (category === 'trigger') {
@@ -577,10 +579,6 @@ function renderConfigForm(
       case 'webhook': {
         // Auto-fill webhook ID on first render
         const webhookId = (config.webhookId as string) || '';
-        if (!webhookId) {
-          // Schedule auto-fill (can't call updateConfig during render)
-          setTimeout(() => updateConfig('webhookId', crypto.randomUUID().slice(0, 8)), 0);
-        }
         return (
           <>
             <ConfigField label="Webhook ID">
@@ -682,6 +680,50 @@ function renderConfigForm(
                 </SelectContent>
               </Select>
             </ConfigField>
+            {/* Auth — collapsed by default */}
+            <details open={!!(config.authMode && config.authMode !== 'none')} className="border-t pt-2 mt-3">
+              <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                Authentication {config.authMode && config.authMode !== 'none' ? `(${config.authMode})` : ''}
+              </summary>
+              <div className="mt-2 space-y-2">
+                <ConfigField label="Auth type">
+                  <Select value={(config.authMode as string) ?? 'none'} onValueChange={(v) => updateConfig('authMode', v === 'none' ? undefined : v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="bearer">Bearer Token</SelectItem>
+                      <SelectItem value="api_key">API Key (header)</SelectItem>
+                      <SelectItem value="basic">Basic Auth</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </ConfigField>
+                {config.authMode === 'bearer' && (
+                  <ConfigField label="Token">
+                    <Input type="password" value={(config.authToken as string) ?? ''} onChange={(e) => updateConfig('authToken', e.target.value)} placeholder="Bearer token..." className="h-8 text-xs" />
+                  </ConfigField>
+                )}
+                {config.authMode === 'api_key' && (
+                  <>
+                    <ConfigField label="Header name">
+                      <Input value={(config.authHeaderName as string) ?? 'X-API-Key'} onChange={(e) => updateConfig('authHeaderName', e.target.value)} className="h-8 text-xs" />
+                    </ConfigField>
+                    <ConfigField label="API Key">
+                      <Input type="password" value={(config.authHeaderValue as string) ?? ''} onChange={(e) => updateConfig('authHeaderValue', e.target.value)} placeholder="Your API key..." className="h-8 text-xs" />
+                    </ConfigField>
+                  </>
+                )}
+                {config.authMode === 'basic' && (
+                  <>
+                    <ConfigField label="Username">
+                      <Input value={(config.authUsername as string) ?? ''} onChange={(e) => updateConfig('authUsername', e.target.value)} className="h-8 text-xs" />
+                    </ConfigField>
+                    <ConfigField label="Password">
+                      <Input type="password" value={(config.authPassword as string) ?? ''} onChange={(e) => updateConfig('authPassword', e.target.value)} className="h-8 text-xs" />
+                    </ConfigField>
+                  </>
+                )}
+              </div>
+            </details>
           </>
         );
 
@@ -798,15 +840,31 @@ function renderConfigForm(
       case 'sub_workflow':
         return (
           <>
-            <ConfigField label="Automation ID">
-              <Input
-                value={(config.automationId as string) ?? ''}
-                onChange={(e) => updateConfig('automationId', e.target.value)}
-                placeholder="Paste automation ID..."
-                className="h-8 text-xs font-mono"
-              />
+            <ConfigField label="Automation">
+              {(availableAutomations?.length ?? 0) > 0 ? (
+                <Select
+                  value={(config.automationId as string) ?? ''}
+                  onValueChange={(v) => {
+                    const auto = availableAutomations?.find((a) => a.id === v);
+                    if (updateConfigBatch) {
+                      updateConfigBatch({ automationId: v, automationName: auto?.name ?? v });
+                    } else {
+                      updateConfig('automationId', v);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select an automation..." /></SelectTrigger>
+                  <SelectContent>
+                    {availableAutomations?.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-muted-foreground py-1">No other automations found. Create one first.</p>
+              )}
             </ConfigField>
-            <p className="text-[10px] text-muted-foreground">Runs another automation as a sub-flow. The sub-automation's final variables become this node's output.</p>
+            <p className="text-[10px] text-muted-foreground">Runs another automation as a sub-flow. Its output becomes this node's data.</p>
           </>
         );
 

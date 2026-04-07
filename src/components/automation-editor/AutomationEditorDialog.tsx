@@ -32,7 +32,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@apollo/client/react';
-import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS } from '@/lib/graphql/queries';
+import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
@@ -103,10 +103,24 @@ function AutomationEditorInner({
     GET_SERVICE_GROUPS,
     { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
   );
+  const { data: automationsData } = useQuery<{ hcAutomations: { id: string; dataJson: string }[] }>(
+    HC_AUTOMATIONS,
+    { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
+  );
   const accessories = accessoriesData?.accessories || [];
   const homes = homesData?.homes || [];
   const scenes = scenesData?.scenes || [];
   const serviceGroups = serviceGroupsData?.serviceGroups || [];
+  const availableAutomations = useMemo(() => {
+    return (automationsData?.hcAutomations ?? []).map((a) => {
+      try {
+        const parsed = JSON.parse(a.dataJson);
+        return { id: parsed.id ?? a.id, name: parsed.name ?? 'Untitled' };
+      } catch {
+        return { id: a.id, name: 'Untitled' };
+      }
+    });
+  }, [automationsData]);
 
   // GraphQL
   const [saveHcAutomation] = useMutation(SAVE_HC_AUTOMATION);
@@ -498,6 +512,7 @@ function AutomationEditorInner({
             homes={homes}
             scenes={scenes}
             serviceGroups={serviceGroups}
+            availableAutomations={availableAutomations}
           />
           </div>
         )}
