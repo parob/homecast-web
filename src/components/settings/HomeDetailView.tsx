@@ -17,7 +17,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail, Monitor } from 'luc
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE } from '@/lib/graphql/mutations';
+import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { getMQTTBrokers, removeMQTTBroker, isMQTTAvailable } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
@@ -117,6 +117,9 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const available = isMQTTAvailable();
+  const [mqttEnabled, setMqttEnabled] = useState(false);
+  const [mqttToggling, setMqttToggling] = useState(false);
+  const [setHomeMqttEnabled] = useMutation(SET_HOME_MQTT_ENABLED);
 
   const loadBrokers = useCallback(async () => {
     if (!available) {
@@ -197,6 +200,70 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
           </>
         )}
       </div>
+
+      {/* Homecast MQTT Broker (cloud only) */}
+      {!isCommunity && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Homecast MQTT Broker</p>
+          {mqttEnabled ? (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Radio className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">mqtt.homecast.cloud</span>
+                </div>
+                <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600">Enabled</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Port 8883 (TLS) · Authenticate with your API access token as the password
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  disabled={mqttToggling}
+                  onClick={async () => {
+                    setMqttToggling(true);
+                    try {
+                      await setHomeMqttEnabled({ variables: { homeId: home.id, enabled: false } });
+                      setMqttEnabled(false);
+                      toast.success('Homecast MQTT broker disabled');
+                    } catch { toast.error('Failed to disable MQTT broker'); }
+                    finally { setMqttToggling(false); }
+                  }}
+                >
+                  Disable
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Enable the managed MQTT broker to connect Home Assistant, Node-RED, and other MQTT clients to this home via mqtt.homecast.cloud.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={mqttToggling}
+                onClick={async () => {
+                  setMqttToggling(true);
+                  try {
+                    await setHomeMqttEnabled({ variables: { homeId: home.id, enabled: true } });
+                    setMqttEnabled(true);
+                    toast.success('Homecast MQTT broker enabled');
+                  } catch { toast.error('Failed to enable MQTT broker'); }
+                  finally { setMqttToggling(false); }
+                }}
+              >
+                <Radio className="h-4 w-4 mr-2" />
+                Enable Homecast Broker
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notification Preferences (cloud only) */}
       {!isCommunity && <HomeNotificationPreferences homeId={home.id} />}

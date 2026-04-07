@@ -824,3 +824,47 @@ export const DELETE_CREDENTIAL = gql`
     deleteCredential(id: $id)
   }
 `;
+
+// ---- Push Notifications ----
+
+export const REGISTER_PUSH_TOKEN = gql`
+  mutation RegisterPushToken($token: String!, $platform: String!, $deviceFingerprint: String!, $deviceName: String) {
+    registerPushToken(token: $token, platform: $platform, deviceFingerprint: $deviceFingerprint, deviceName: $deviceName) {
+      success
+      error
+    }
+  }
+`;
+
+export const UNREGISTER_PUSH_TOKEN = gql`
+  mutation UnregisterPushToken($deviceFingerprint: String!) {
+    unregisterPushToken(deviceFingerprint: $deviceFingerprint)
+  }
+`;
+
+export const SET_NOTIFICATION_PREFERENCE = gql`
+  mutation SetNotificationPreference($scope: String!, $pushEnabled: Boolean!, $emailEnabled: Boolean!, $localEnabled: Boolean!, $scopeId: String) {
+    setNotificationPreference(scope: $scope, pushEnabled: $pushEnabled, emailEnabled: $emailEnabled, localEnabled: $localEnabled, scopeId: $scopeId) {
+      success
+      error
+    }
+  }
+`;
+
+export const DELETE_NOTIFICATION_PREFERENCE = gql`
+  mutation DeleteNotificationPreference($scope: String!, $scopeId: String) {
+    deleteNotificationPreference(scope: $scope, scopeId: $scopeId)
+  }
+`;
+
+export const SEND_TEST_NOTIFICATION = gql`
+  mutation SendTestNotification {
+    sendTestNotification
+  }
+`;
+
+export const SET_HOME_MQTT_ENABLED = gql`
+  mutation SetHomeMqttEnabled($homeId: String!, $enabled: Boolean!) {
+    setHomeMqttEnabled(homeId: $homeId, enabled: $enabled)
+  }
+`;
