@@ -1,9 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Home, Lightbulb, LayoutGrid, Play, Share2, Settings, Sparkles, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
-import { AccessoryWidget } from '@/components/widgets';
-import type { HomeKitAccessory } from '@/lib/graphql/types';
+import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const DOCS_BASE = 'https://docs.homecast.cloud';
 
@@ -17,19 +15,51 @@ function openDocLink(path: string) {
   }
 }
 
-// Demo accessories for the tutorial — inline subset of screenshots/fixtures.ts
-function ch(type: string, value: string | number | boolean | null, opts: { writable?: boolean; min?: number; max?: number; step?: number; validValues?: string[] } = {}) {
-  return { id: `tut-${type}-${Math.random().toString(36).slice(2, 8)}`, characteristicType: type, value: value != null ? String(value) : null, isReadable: true, isWritable: opts.writable ?? true, minValue: opts.min, maxValue: opts.max, minStep: opts.step, validValues: opts.validValues, __typename: 'HomeKitCharacteristic' as const };
-}
-function svc(name: string, type: string, chars: ReturnType<typeof ch>[]) {
-  return { id: `tut-svc-${Math.random().toString(36).slice(2, 8)}`, name, serviceType: type, characteristics: chars, __typename: 'HomeKitService' as const };
+interface TourStep {
+  target: string; // data-tour attribute value, or '' for centered card
+  title: string;
+  description: string;
+  docPath?: string;
+  // Position hint for the floating card relative to the highlighted element
+  position?: 'bottom' | 'right' | 'left' | 'center';
 }
 
-const DEMO_ACCESSORIES_BASE: HomeKitAccessory[] = [
-  { id: 'tut-light', name: 'Ceiling Light', category: 'Lightbulb', isReachable: true, roomId: 'tut-room', roomName: 'Living Room', services: [svc('Ceiling Light', 'lightbulb', [ch('power_state', true), ch('brightness', 80, { min: 0, max: 100, step: 1 })])], __typename: 'HomeKitAccessory' },
-  { id: 'tut-lock', name: 'Front Door', category: 'Door Lock', isReachable: true, roomId: 'tut-room2', roomName: 'Front Door', services: [svc('Front Door', 'lock_mechanism', [ch('lock_current_state', 1, { writable: false }), ch('lock_target_state', 1, { min: 0, max: 1 })])], __typename: 'HomeKitAccessory' },
-  { id: 'tut-thermo', name: 'Thermostat', category: 'Thermostat', isReachable: true, roomId: 'tut-room', roomName: 'Living Room', services: [svc('Thermostat', 'thermostat', [ch('current_temperature', 20.5, { writable: false }), ch('target_temperature', 21, { min: 10, max: 30, step: 0.5 }), ch('heating_cooling_current', 1, { writable: false }), ch('heating_cooling_target', 1, { min: 0, max: 3, validValues: ['0', '1', '2', '3'] })])], __typename: 'HomeKitAccessory' },
-] as any;
+const STEPS: TourStep[] = [
+  {
+    target: '',
+    title: 'Welcome to Homecast',
+    description: "Let's take a quick tour of your dashboard. We'll highlight the key areas so you know where everything is.",
+    position: 'center',
+  },
+  {
+    target: 'sidebar-homes',
+    title: 'Your Homes',
+    description: 'Your Apple Home houses appear here. Select a home to see its rooms, then pick a room to filter your devices.',
+    docPath: '/getting-started/dashboard',
+    position: 'right',
+  },
+  {
+    target: 'widget-area',
+    title: 'Device Widgets',
+    description: 'Each device appears as a widget. Tap toggles to switch devices on or off, and drag sliders to adjust brightness, temperature, or position.',
+    docPath: '/getting-started/dashboard',
+    position: 'bottom',
+  },
+  {
+    target: 'sidebar-collections',
+    title: 'Collections',
+    description: 'Group devices from different rooms into custom views. Right-click a home or use the menu to create one — great for "All Lights" or "Bedtime" shortcuts.',
+    docPath: '/guides/collections',
+    position: 'right',
+  },
+  {
+    target: 'header-menu',
+    title: 'Settings & More',
+    description: 'Open this menu to access Settings, where you can customise your layout, backgrounds, icon styles, sharing, and more. You can also replay this tutorial from Settings → Account.',
+    docPath: '/getting-started/account',
+    position: 'bottom',
+  },
+];
 
 interface TutorialDialogProps {
   open: boolean;
@@ -37,61 +67,59 @@ interface TutorialDialogProps {
   onComplete: () => void;
 }
 
-const TOTAL_STEPS = 7;
+interface TargetRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
 
 export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialogProps) {
   const [step, setStep] = useState(0);
+  const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
+  const isMobile = useIsMobile();
+  const rafRef = useRef<number>(0);
 
-  // Local state for interactive demo widgets
-  const [demoOverrides, setDemoOverrides] = useState<Record<string, Record<string, string>>>({});
+  const currentStep = STEPS[step];
+  const isCenter = !currentStep.target || !targetRect;
 
-  const demoAccessories = useMemo(() => {
-    return DEMO_ACCESSORIES_BASE.map(acc => {
-      const overrides = demoOverrides[acc.id];
-      if (!overrides) return acc;
-      return {
-        ...acc,
-        services: acc.services.map(svc => ({
-          ...svc,
-          characteristics: svc.characteristics.map(ch => {
-            const ov = overrides[ch.characteristicType];
-            return ov !== undefined ? { ...ch, value: ov } : ch;
-          }),
-        })),
-      };
-    });
-  }, [demoOverrides]);
+  // Measure and track the target element
+  useEffect(() => {
+    if (!open) return;
+    const target = currentStep.target;
+    if (!target) {
+      setTargetRect(null);
+      return;
+    }
 
-  const handleDemoToggle = useCallback((accessoryId: string, characteristicType: string, currentValue: boolean) => {
-    setDemoOverrides(prev => ({
-      ...prev,
-      [accessoryId]: {
-        ...(prev[accessoryId] || {}),
-        [characteristicType]: String(!currentValue),
-        // Sync lock display state
-        ...(characteristicType === 'lock_target_state'
-          ? { lock_current_state: String(currentValue ? 1 : 0) }
-          : {}),
-      },
-    }));
-  }, []);
+    const measure = () => {
+      const el = document.querySelector(`[data-tour="${target}"]`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+        // Scroll into view if needed
+        if (rect.top < 0 || rect.bottom > window.innerHeight) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } else {
+        setTargetRect(null);
+      }
+      rafRef.current = requestAnimationFrame(measure);
+    };
 
-  const handleDemoSlider = useCallback((accessoryId: string, characteristicType: string, value: number) => {
-    setDemoOverrides(prev => ({
-      ...prev,
-      [accessoryId]: {
-        ...(prev[accessoryId] || {}),
-        [characteristicType]: String(value),
-      },
-    }));
-  }, []);
+    // Small delay so layout settles after step change
+    const timer = setTimeout(() => {
+      measure();
+    }, 100);
 
-  const getEffectiveValue = useCallback((_accessoryId: string, _charType: string, serverValue: any) => {
-    return serverValue;
-  }, []);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [open, step, currentStep.target]);
 
   const handleNext = useCallback(() => {
-    if (step < TOTAL_STEPS - 1) {
+    if (step < STEPS.length - 1) {
       setStep(s => s + 1);
     } else {
       onComplete();
@@ -106,267 +134,129 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     onComplete();
   }, [onComplete]);
 
-  const handleClose = useCallback((isOpen: boolean) => {
-    if (!isOpen) onComplete();
-    onOpenChange(isOpen);
-  }, [onComplete, onOpenChange]);
+  if (!open) return null;
 
-  const renderStep = () => {
-    switch (step) {
-      case 0:
-        return (
-          <div className="flex flex-col items-center text-center space-y-4 py-4">
-            <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Sparkles className="h-7 w-7 text-primary" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold">Welcome to Homecast</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Let's take a quick tour of how to control your smart home. This will only take a minute.
-              </p>
-            </div>
-          </div>
-        );
+  // Compute card position
+  const PAD = 12;
+  const cardStyle: React.CSSProperties = {};
 
-      case 1:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Home className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Your Dashboard</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your homes and rooms are in the sidebar. Select a home to see its rooms, then pick a room to see its devices.
-                </p>
-              </div>
-            </div>
-            {/* Mini sidebar mockup */}
-            <div className="rounded-xl border bg-muted/30 p-3 space-y-1.5 text-sm max-w-[280px] mx-auto">
-              <div className="font-medium text-xs text-muted-foreground uppercase tracking-wider px-1">Homes</div>
-              <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 font-medium flex items-center gap-2">
-                <Home className="h-3.5 w-3.5 text-primary" />
-                My Home
-              </div>
-              <div className="pl-4 space-y-0.5">
-                <div className="rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted/50 flex items-center gap-2">
-                  <span className="text-xs">Living Room</span>
-                  <span className="text-[10px] text-muted-foreground/60 ml-auto">4</span>
-                </div>
-                <div className="rounded-md px-3 py-1.5 bg-muted/50 font-medium flex items-center gap-2">
-                  <span className="text-xs">Bedroom</span>
-                  <span className="text-[10px] text-muted-foreground/60 ml-auto">3</span>
-                </div>
-                <div className="rounded-md px-3 py-1.5 text-muted-foreground flex items-center gap-2">
-                  <span className="text-xs">Kitchen</span>
-                  <span className="text-[10px] text-muted-foreground/60 ml-auto">2</span>
-                </div>
-              </div>
-            </div>
-            <DocLink path="/getting-started/dashboard" />
-          </div>
-        );
-
-      case 2:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Lightbulb className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Control Your Devices</h3>
-                <p className="text-sm text-muted-foreground">
-                  Each device appears as a widget. Try it — tap the toggle or drag the slider.
-                </p>
-              </div>
-            </div>
-            {/* Live interactive widgets */}
-            <div className="grid grid-cols-3 gap-2">
-              {demoAccessories.map(acc => (
-                <AccessoryWidget
-                  key={acc.id}
-                  accessory={acc}
-                  onToggle={handleDemoToggle}
-                  onSlider={handleDemoSlider}
-                  getEffectiveValue={getEffectiveValue}
-                  compact
-                />
-              ))}
-            </div>
-            <DocLink path="/getting-started/dashboard" />
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <LayoutGrid className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Collections</h3>
-                <p className="text-sm text-muted-foreground">
-                  Group devices from different rooms into custom views. Create an "All Lights" collection, a "Bedtime" shortcut, or anything you like.
-                </p>
-              </div>
-            </div>
-            {/* Collection illustration */}
-            <div className="rounded-xl border bg-muted/30 p-3 space-y-2 max-w-[300px] mx-auto">
-              <div className="font-medium text-xs text-muted-foreground uppercase tracking-wider px-1">Collections</div>
-              {[
-                { name: 'All Lights', count: 8, icon: '💡' },
-                { name: 'Bedtime', count: 4, icon: '🌙' },
-                { name: 'Away Mode', count: 6, icon: '🔒' },
-              ].map(c => (
-                <div key={c.name} className="rounded-lg border bg-background/60 px-3 py-2 flex items-center gap-2 text-sm">
-                  <span>{c.icon}</span>
-                  <span className="font-medium">{c.name}</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">{c.count} devices</span>
-                </div>
-              ))}
-            </div>
-            <DocLink path="/guides/collections" />
-          </div>
-        );
-
-      case 4:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Play className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Scenes</h3>
-                <p className="text-sm text-muted-foreground">
-                  Scenes control multiple devices at once. They sync automatically from your Apple Home app — just tap to run them.
-                </p>
-              </div>
-            </div>
-            {/* Scene cards illustration */}
-            <div className="grid grid-cols-2 gap-2 max-w-[300px] mx-auto">
-              {[
-                { name: 'Good Morning', icon: '☀️' },
-                { name: 'Good Night', icon: '🌙' },
-                { name: 'Movie Time', icon: '🎬' },
-                { name: 'Away', icon: '🏠' },
-              ].map(s => (
-                <div key={s.name} className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-muted/50 transition-colors cursor-default">
-                  <span>{s.icon}</span>
-                  <span className="font-medium text-xs">{s.name}</span>
-                </div>
-              ))}
-            </div>
-            <DocLink path="/getting-started/dashboard" />
-          </div>
-        );
-
-      case 5:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Share2 className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Share Your Home</h3>
-                <p className="text-sm text-muted-foreground">
-                  Invite family members, create shareable links, or grant per-device access to guests. You control who sees and controls what.
-                </p>
-              </div>
-            </div>
-            {/* Sharing options illustration */}
-            <div className="rounded-xl border bg-muted/30 p-3 space-y-2 max-w-[300px] mx-auto">
-              {[
-                { label: 'Invite members', desc: 'Full or view-only access', icon: '👤' },
-                { label: 'Share link', desc: 'Anyone with the link', icon: '🔗' },
-                { label: 'Passcode link', desc: 'Protected with a code', icon: '🔑' },
-              ].map(o => (
-                <div key={o.label} className="rounded-lg border bg-background/60 px-3 py-2 flex items-center gap-3 text-sm">
-                  <span className="text-base">{o.icon}</span>
-                  <div className="min-w-0">
-                    <div className="font-medium text-xs">{o.label}</div>
-                    <div className="text-[10px] text-muted-foreground">{o.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <DocLink path="/guides/sharing" />
-          </div>
-        );
-
-      case 6:
-        return (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Settings className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">Make It Yours</h3>
-                <p className="text-sm text-muted-foreground">
-                  Customise your layout, choose background images, adjust icon styles, and more in Settings.
-                </p>
-              </div>
-            </div>
-            {/* Settings options illustration */}
-            <div className="rounded-xl border bg-muted/30 p-3 space-y-1.5 text-sm max-w-[300px] mx-auto">
-              {[
-                { label: 'Layout', value: 'Grid / Masonry' },
-                { label: 'Backgrounds', value: 'Per home or room' },
-                { label: 'Icon style', value: 'Standard / Colourful' },
-                { label: 'Compact mode', value: 'Smaller widgets' },
-              ].map(s => (
-                <div key={s.label} className="flex items-center justify-between px-2 py-1.5 rounded-md">
-                  <span className="text-xs font-medium">{s.label}</span>
-                  <span className="text-[10px] text-muted-foreground">{s.value}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground text-center">
-              You can replay this tutorial anytime from Settings → Account.
-            </p>
-            <DocLink path="/getting-started/account" />
-          </div>
-        );
-
-      default:
-        return null;
+  if (isCenter) {
+    // Centered card
+    cardStyle.top = '50%';
+    cardStyle.left = '50%';
+    cardStyle.transform = 'translate(-50%, -50%)';
+  } else if (targetRect) {
+    const pos = currentStep.position || 'bottom';
+    if (pos === 'right') {
+      cardStyle.top = Math.max(PAD, targetRect.top);
+      cardStyle.left = targetRect.left + targetRect.width + PAD;
+      // On mobile or if card would overflow right, position below instead
+      if (isMobile || cardStyle.left + 340 > window.innerWidth) {
+        cardStyle.top = targetRect.top + targetRect.height + PAD;
+        cardStyle.left = Math.max(PAD, Math.min(targetRect.left, window.innerWidth - 340 - PAD));
+      }
+    } else if (pos === 'bottom') {
+      cardStyle.top = targetRect.top + targetRect.height + PAD;
+      cardStyle.left = Math.max(PAD, Math.min(targetRect.left, window.innerWidth - 340 - PAD));
+    } else if (pos === 'left') {
+      cardStyle.top = Math.max(PAD, targetRect.top);
+      cardStyle.left = Math.max(PAD, targetRect.left - 340 - PAD);
     }
-  };
+    // Clamp to viewport
+    if (typeof cardStyle.top === 'number' && cardStyle.top + 250 > window.innerHeight) {
+      cardStyle.top = Math.max(PAD, window.innerHeight - 280);
+    }
+  }
+
+  // SVG mask for spotlight cutout
+  const spotlightPad = 8;
+  const spotlightRadius = 12;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent
-        className="sm:max-w-md max-h-[85vh] overflow-y-auto"
-        style={{ zIndex: 10050 }}
-      >
-        <DialogHeader>
-          <DialogTitle className="sr-only">Homecast Tutorial</DialogTitle>
-          <DialogDescription className="sr-only">Learn how to use Homecast</DialogDescription>
-        </DialogHeader>
+    <div className="fixed inset-0" style={{ zIndex: 10040 }}>
+      {/* Overlay with spotlight cutout */}
+      <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+        <defs>
+          <mask id="tour-spotlight-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {targetRect && (
+              <rect
+                x={targetRect.left - spotlightPad}
+                y={targetRect.top - spotlightPad}
+                width={targetRect.width + spotlightPad * 2}
+                height={targetRect.height + spotlightPad * 2}
+                rx={spotlightRadius}
+                fill="black"
+              />
+            )}
+          </mask>
+        </defs>
+        <rect
+          width="100%"
+          height="100%"
+          fill="rgba(0, 0, 0, 0.5)"
+          mask="url(#tour-spotlight-mask)"
+        />
+      </svg>
 
-        <div className="py-1">
-          {renderStep()}
+      {/* Clickable overlay (outside spotlight) to prevent interaction */}
+      <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
+
+      {/* Spotlight ring highlight */}
+      {targetRect && (
+        <div
+          className="absolute rounded-xl ring-2 ring-primary/60 pointer-events-none transition-all duration-300"
+          style={{
+            top: targetRect.top - spotlightPad,
+            left: targetRect.left - spotlightPad,
+            width: targetRect.width + spotlightPad * 2,
+            height: targetRect.height + spotlightPad * 2,
+          }}
+        />
+      )}
+
+      {/* Floating card */}
+      <div
+        className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
+        style={cardStyle}
+      >
+        {/* Close button */}
+        <button
+          onClick={handleSkip}
+          className="absolute top-3 right-3 p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Welcome icon for centered step */}
+        {isCenter && step === 0 && (
+          <div className="flex justify-center pb-1">
+            <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+        )}
+
+        <div className={isCenter && step === 0 ? 'text-center' : ''}>
+          <h3 className="text-base font-semibold pr-6">{currentStep.title}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{currentStep.description}</p>
         </div>
 
-        {/* Footer: skip / dots / back+next */}
-        <div className="flex items-center justify-between pt-2 border-t">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSkip}
-            className="text-xs text-muted-foreground"
+        {currentStep.docPath && (
+          <button
+            onClick={() => openDocLink(currentStep.docPath!)}
+            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
           >
-            Skip
-          </Button>
+            Learn more
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        )}
 
+        {/* Footer: dots + navigation */}
+        <div className="flex items-center justify-between pt-1 border-t">
           {/* Step dots */}
           <div className="flex gap-1.5">
-            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+            {STEPS.map((_, i) => (
               <div
                 key={i}
                 className={`h-1.5 rounded-full transition-all duration-200 ${
@@ -378,12 +268,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
 
           <div className="flex gap-1.5">
             {step > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleBack}>
+              <Button variant="ghost" size="sm" onClick={handleBack} className="h-8">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             )}
-            <Button size="sm" onClick={handleNext}>
-              {step === TOTAL_STEPS - 1 ? 'Done' : (
+            <Button size="sm" onClick={handleNext} className="h-8">
+              {step === STEPS.length - 1 ? 'Done' : (
                 <>
                   Next
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -392,19 +282,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DocLink({ path }: { path: string }) {
-  return (
-    <button
-      onClick={() => openDocLink(path)}
-      className="flex items-center gap-1.5 text-xs text-primary hover:underline mx-auto"
-    >
-      Learn more
-      <ExternalLink className="h-3 w-3" />
-    </button>
+      </div>
+    </div>
   );
 }

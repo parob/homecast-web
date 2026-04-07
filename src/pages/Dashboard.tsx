@@ -4869,7 +4869,7 @@ const Dashboard = () => {
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className={`relative h-10 w-10 -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
+        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-10 w-10 -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
@@ -5833,7 +5833,7 @@ const Dashboard = () => {
                 </div>
               </div>
               {/* Homes Section */}
-              <div className="mb-6">
+              <div className="mb-6" data-tour="sidebar-homes">
                 {homesLoading ? (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className={`h-4 w-4 animate-spin ${isDarkBackground ? 'text-white' : ''}`} />
@@ -6037,6 +6037,7 @@ const Dashboard = () => {
               </div>
 
               {/* Collections Section - after Homes */}
+              <div data-tour="sidebar-collections">
               <CollectionList
                 selectedId={selectedCollectionId}
                 onSelect={handleSelectCollection}
@@ -6105,12 +6106,13 @@ const Dashboard = () => {
                   </DndContext>
                 ) : undefined}
               />
+              </div>
             </div>
           </div>
         </aside>
 
         {/* Main Content */}
-        <main className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
+        <main data-tour="widget-area" className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
           <div
             className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pt-[80px] pb-16'}`}
             style={isInMobileApp ? {
