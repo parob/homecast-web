@@ -1,12 +1,12 @@
 // Automation Editor - Base Node Component
 // Node-RED style: rectangular with colored left border, icon + label inline
 
-import { memo, useCallback } from 'react';
-import { Handle, Position, useReactFlow, type NodeProps, type Node } from '@xyflow/react';
+import { memo } from 'react';
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import {
   Zap, Clock, Globe, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow,
-  AlertTriangle, Check, X, Loader2, Eye, EyeOff,
+  AlertTriangle, Check, X, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
@@ -33,17 +33,8 @@ function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
   return [{ id: 'output' }];
 }
 
-export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
+export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
   const nodeData = data as FlowNodeData;
-  const { setNodes } = useReactFlow();
-
-  const toggleEnabled = useCallback(() => {
-    setNodes((nds) => nds.map((n) => {
-      if (n.id !== id) return n;
-      const d = n.data as FlowNodeData;
-      return { ...n, data: { ...d, enabled: !d.enabled } };
-    }));
-  }, [id, setNodes]);
   const styles = CATEGORY_STYLES[nodeData.category] ?? CATEGORY_STYLES.action;
   const Icon = ICONS[nodeData.icon] ?? Zap;
   const isTrigger = nodeData.category === 'trigger';
@@ -114,20 +105,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         )}
       </div>
 
-      {/* Enable/disable toggle — visible on hover */}
-      <button
-        className="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-background border shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleEnabled();
-        }}
-        title={nodeData.enabled ? 'Disable node' : 'Enable node'}
-      >
-        {nodeData.enabled
-          ? <Eye className="w-2.5 h-2.5 text-muted-foreground" />
-          : <EyeOff className="w-2.5 h-2.5 text-red-400" />
-        }
-      </button>
+      {/* Disabled indicator (no toggle — use config panel enabled switch) */}
 
       {/* Execution status badge */}
       {nodeData.executionState === 'completed' && (

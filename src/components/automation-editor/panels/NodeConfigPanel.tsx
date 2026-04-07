@@ -334,58 +334,114 @@ function renderConfigForm(
                 openDevicePicker={openDevicePicker}
               />
             )}
-            {/* Filters — collapsed by default unless configured */}
-            <details open={!!(config.to || config.from)} className="border-t pt-2 mt-3">
-              <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
-                Filters {(config.to || config.from) ? `(${[config.to && 'to', config.from && 'from'].filter(Boolean).join(', ')})` : ''}
-              </summary>
-              <div className="mt-2 space-y-3">
-                <ConfigField label="To value">
-                  <Input
-                    value={String(config.to ?? '')}
-                    onChange={(e) => updateConfig('to', e.target.value || undefined)}
-                    placeholder="Any value change"
-                    className="h-8 text-xs"
-                  />
+            {/* Trigger condition — pick ONE filter type */}
+            {(config.accessoryId || config.serviceGroupId) && config.characteristicType && (
+              <div className="border-t pt-3 mt-3">
+                <ConfigField label="Trigger when">
+                  <Select
+                    value={(config.filterMode as string) ?? 'any'}
+                    onValueChange={(v) => {
+                      // Clear other filter values when switching mode
+                      if (updateConfigBatch) {
+                        const clear: Record<string, unknown> = { filterMode: v };
+                        if (v !== 'value') { clear.to = undefined; clear.from = undefined; }
+                        if (v !== 'above') { clear.above = undefined; }
+                        if (v !== 'below') { clear.below = undefined; }
+                        if (v !== 'range') { if (v !== 'above') clear.above = undefined; if (v !== 'below') clear.below = undefined; }
+                        updateConfigBatch(clear);
+                      } else {
+                        updateConfig('filterMode', v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any change</SelectItem>
+                      <SelectItem value="value">Changes to a specific value</SelectItem>
+                      <SelectItem value="above">Goes above a threshold</SelectItem>
+                      <SelectItem value="below">Goes below a threshold</SelectItem>
+                      <SelectItem value="range">Enters a range (above AND below)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </ConfigField>
-                <ConfigField label="From value">
-                  <Input
-                    value={String(config.from ?? '')}
-                    onChange={(e) => updateConfig('from', e.target.value || undefined)}
-                    placeholder="Any previous value"
-                    className="h-8 text-xs"
-                  />
-                </ConfigField>
+
+                {config.filterMode === 'value' && (
+                  <div className="mt-2 space-y-2">
+                    <ConfigField label="To value">
+                      <Input
+                        value={String(config.to ?? '')}
+                        onChange={(e) => updateConfig('to', e.target.value || undefined)}
+                        placeholder="e.g., 1 (on) or 0 (off)"
+                        className="h-8 text-xs"
+                      />
+                    </ConfigField>
+                    <ConfigField label="From value (optional)">
+                      <Input
+                        value={String(config.from ?? '')}
+                        onChange={(e) => updateConfig('from', e.target.value || undefined)}
+                        placeholder="Any previous value"
+                        className="h-8 text-xs"
+                      />
+                    </ConfigField>
+                  </div>
+                )}
+
+                {config.filterMode === 'above' && (
+                  <div className="mt-2">
+                    <ConfigField label="Above">
+                      <Input
+                        type="number"
+                        value={(config.above as number) ?? ''}
+                        onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)}
+                        placeholder="e.g., 25"
+                        className="h-8 text-xs"
+                      />
+                    </ConfigField>
+                  </div>
+                )}
+
+                {config.filterMode === 'below' && (
+                  <div className="mt-2">
+                    <ConfigField label="Below">
+                      <Input
+                        type="number"
+                        value={(config.below as number) ?? ''}
+                        onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)}
+                        placeholder="e.g., 10"
+                        className="h-8 text-xs"
+                      />
+                    </ConfigField>
+                  </div>
+                )}
+
+                {config.filterMode === 'range' && (
+                  <div className="mt-2 flex gap-2">
+                    <div className="flex-1">
+                      <ConfigField label="Above">
+                        <Input
+                          type="number"
+                          value={(config.above as number) ?? ''}
+                          onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)}
+                          placeholder="Min"
+                          className="h-8 text-xs"
+                        />
+                      </ConfigField>
+                    </div>
+                    <div className="flex-1">
+                      <ConfigField label="Below">
+                        <Input
+                          type="number"
+                          value={(config.below as number) ?? ''}
+                          onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)}
+                          placeholder="Max"
+                          className="h-8 text-xs"
+                        />
+                      </ConfigField>
+                    </div>
+                  </div>
+                )}
               </div>
-            </details>
-            {/* Numeric thresholds — collapsed by default unless configured */}
-            <details open={!!(config.above !== undefined || config.below !== undefined)} className="border-t pt-2 mt-2">
-              <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
-                Numeric thresholds {(config.above !== undefined || config.below !== undefined) ? `(${[config.above !== undefined && `>${config.above}`, config.below !== undefined && `<${config.below}`].filter(Boolean).join(', ')})` : ''}
-              </summary>
-              <div className="mt-2 flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Above</Label>
-                  <Input
-                    type="number"
-                    value={(config.above as number) ?? ''}
-                    onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)}
-                    placeholder="—"
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Below</Label>
-                  <Input
-                    type="number"
-                    value={(config.below as number) ?? ''}
-                    onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)}
-                    placeholder="—"
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </div>
-            </details>
+            )}
           </>
         );
       }
