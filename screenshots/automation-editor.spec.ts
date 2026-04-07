@@ -75,9 +75,11 @@ test.describe('Automation Editor', () => {
     const nodes = page.locator('.react-flow__node');
     await expect(nodes).toHaveCount(1);
 
-    // Single-click should NOT open config panel (only double-click does)
+    // Single-click opens the config panel
+    await page.locator('.react-flow__node').first().click();
+    await page.waitForTimeout(300);
     const configPanel = page.getByTestId('config-panel');
-    await expect(configPanel).not.toBeVisible();
+    await expect(configPanel).toBeVisible();
   });
 
   test('adds multiple node types from palette', async ({ page }) => {
@@ -104,16 +106,16 @@ test.describe('Automation Editor', () => {
   // Flow 3: Double-click opens config tray
   // ============================================================
 
-  test('double-click opens config tray for Set Device', async ({ page }) => {
+  test('clicking a node opens config tray for Set Device', async ({ page }) => {
     await openEditor(page);
 
     // Add a Set Device action node
     await page.getByTestId('palette-node-action-set_device').click();
     await page.waitForTimeout(300);
 
-    // Double-click the node to open config
+    // Click the node to open config
     const node = page.locator('.react-flow__node').first();
-    await node.dblclick();
+    await node.click();
     await page.waitForTimeout(300);
 
     // Config panel should now be open with "Select a device..." button

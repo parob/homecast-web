@@ -162,9 +162,12 @@ function AutomationEditorInner({
     [setEdges],
   );
 
-  // Single-click: select only (no config panel)
+  // Single-click: select + open config panel
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
+    setConfigNodeId(node.id);
+    const data = node.data as FlowNodeData;
+    configSnapshotRef.current = { ...data.config };
   }, []);
 
   // Double-click: open config tray
