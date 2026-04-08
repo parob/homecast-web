@@ -5768,6 +5768,7 @@ const Dashboard = () => {
                 sendTestNotification: async () => {
                   await sendTestNotifMutation();
                 },
+                userEmail: user?.email,
               }}
             />
           </div>

@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, BellOff, Smartphone, Mail, Monitor, Trash2, Loader2, Clock, ChevronDown } from 'lucide-react';
+import { Bell, BellOff, Smartphone, Mail, Trash2, Loader2, Clock, ChevronDown, CheckCircle2, Globe } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useQuery } from '@apollo/client/react';
@@ -28,13 +28,9 @@ interface NotificationPreferenceInfo {
 }
 
 interface NotificationsSectionProps {
-  /** Fetched push tokens for the user */
   pushTokens: PushTokenInfo[];
-  /** Fetched notification preferences */
   preferences: NotificationPreferenceInfo[];
-  /** Refetch data after mutations */
   refetch: () => void;
-  /** GraphQL mutations */
   registerPushToken: (vars: {
     token: string;
     platform: string;
@@ -50,6 +46,7 @@ interface NotificationsSectionProps {
     localEnabled: boolean;
   }) => Promise<unknown>;
   sendTestNotification: () => Promise<unknown>;
+  userEmail?: string;
 }
 
 export function NotificationsSection({
@@ -60,6 +57,7 @@ export function NotificationsSection({
   unregisterPushToken,
   setNotificationPreference,
   sendTestNotification,
+  userEmail,
 }: NotificationsSectionProps) {
   const {
     permission,
@@ -72,7 +70,6 @@ export function NotificationsSection({
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSavingPref, setIsSavingPref] = useState(false);
 
-  // Find global preference (or use defaults)
   const globalPref = preferences.find(p => p.scope === 'global') ?? {
     pushEnabled: true,
     emailEnabled: false,
@@ -98,8 +95,8 @@ export function NotificationsSection({
     }
   }, [sendTestNotification]);
 
-  const handleToggleGlobalPref = useCallback(async (
-    field: 'pushEnabled' | 'emailEnabled' | 'localEnabled',
+  const handleTogglePref = useCallback(async (
+    field: 'pushEnabled' | 'emailEnabled',
     value: boolean,
   ) => {
     setIsSavingPref(true);
@@ -108,7 +105,7 @@ export function NotificationsSection({
         scope: 'global',
         pushEnabled: field === 'pushEnabled' ? value : globalPref.pushEnabled,
         emailEnabled: field === 'emailEnabled' ? value : globalPref.emailEnabled,
-        localEnabled: field === 'localEnabled' ? value : globalPref.localEnabled,
+        localEnabled: true, // always on — relay alerts are automatic
       });
       refetch();
     } finally {
@@ -125,92 +122,108 @@ export function NotificationsSection({
   }
 
   const currentFingerprint = localStorage.getItem('homecast-push-fingerprint');
+  const thisBrowserRegistered = pushTokens.some(t => t.deviceFingerprint === currentFingerprint);
+  const otherDevices = pushTokens.filter(t => t.deviceFingerprint !== currentFingerprint);
 
   return (
     <div className="space-y-6">
-      {/* Push Permission */}
-      {isAvailable && permission !== 'granted' && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-4">
-          <div className="flex items-start gap-3">
-            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">Enable Push Notifications</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Receive alerts when your automations trigger notification actions.
+      {/* Intro */}
+      <p className="text-xs text-muted-foreground">
+        When an automation runs a <strong>Notify</strong> action, Homecast delivers alerts through the channels below.
+        The relay Mac always shows an alert instantly.
+      </p>
+
+      {/* This Browser */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">This Browser</p>
+        {thisBrowserRegistered ? (
+          <div className="flex items-center gap-2 py-2 px-3 rounded-md border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
+            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm">Registered for notifications</p>
+              <p className="text-xs text-muted-foreground">
+                {pushTokens.find(t => t.deviceFingerprint === currentFingerprint)?.deviceName || 'This browser'}
               </p>
-              <Button
-                size="sm"
-                className="mt-3"
-                onClick={handleEnablePush}
-                disabled={isRegistering || permission === 'denied'}
-              >
-                {isRegistering ? (
-                  <><Loader2 className="h-3 w-3 animate-spin mr-1.5" /> Enabling...</>
-                ) : permission === 'denied' ? (
-                  'Blocked by browser'
-                ) : (
-                  'Enable Notifications'
-                )}
-              </Button>
-              {permission === 'denied' && (
-                <p className="text-xs text-destructive mt-2">
-                  Notifications are blocked. Reset in your browser&apos;s site settings.
-                </p>
-              )}
             </div>
           </div>
-        </div>
-      )}
+        ) : isAvailable ? (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-4">
+            <div className="flex items-start gap-3">
+              <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">This browser isn&apos;t receiving notifications</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Allow notifications so this browser shows alerts when your automations fire.
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-3"
+                  onClick={handleEnablePush}
+                  disabled={isRegistering || permission === 'denied'}
+                >
+                  {isRegistering ? (
+                    <><Loader2 className="h-3 w-3 animate-spin mr-1.5" /> Registering...</>
+                  ) : permission === 'denied' ? (
+                    'Blocked by browser'
+                  ) : (
+                    'Allow Browser Notifications'
+                  )}
+                </Button>
+                {permission === 'denied' && (
+                  <p className="text-xs text-destructive mt-2">
+                    Notifications are blocked. Reset in your browser&apos;s site settings.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground py-2">
+            Browser notifications are not supported in this context.
+          </p>
+        )}
+      </div>
 
-      {/* Global Channel Preferences */}
+      {/* Delivery Channels */}
       <div>
-        <h3 className="text-sm font-medium mb-3">Notification Channels</h3>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Delivery Channels</p>
         <p className="text-xs text-muted-foreground mb-3">
           Global defaults. Override per-home or per-automation in their settings.
         </p>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bell className="h-4 w-4 text-muted-foreground" />
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Bell className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
               <div>
-                <p className="text-sm">Push Notifications</p>
-                <p className="text-xs text-muted-foreground">Browser and app notifications</p>
+                <p className="text-sm">Push</p>
+                <p className="text-xs text-muted-foreground">
+                  Web Push to registered browsers (via FCM) and native notifications to the Homecast Mac and iOS apps (via APNs).
+                </p>
               </div>
             </div>
             <Switch
               checked={globalPref.pushEnabled}
-              onCheckedChange={(v) => handleToggleGlobalPref('pushEnabled', v)}
+              onCheckedChange={(v) => handleTogglePref('pushEnabled', v)}
               disabled={isSavingPref}
+              className="shrink-0"
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
               <div>
-                <p className="text-sm">Email Notifications</p>
-                <p className="text-xs text-muted-foreground">Sent to your account email</p>
+                <p className="text-sm">Email</p>
+                <p className="text-xs text-muted-foreground">
+                  Sends to {userEmail || 'your account email'} when an automation fires a Notify action.
+                </p>
               </div>
             </div>
             <Switch
               checked={globalPref.emailEnabled}
-              onCheckedChange={(v) => handleToggleGlobalPref('emailEnabled', v)}
+              onCheckedChange={(v) => handleTogglePref('emailEnabled', v)}
               disabled={isSavingPref}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Monitor className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm">Local Notifications</p>
-                <p className="text-xs text-muted-foreground">macOS/iOS native alerts on the relay</p>
-              </div>
-            </div>
-            <Switch
-              checked={globalPref.localEnabled}
-              onCheckedChange={(v) => handleToggleGlobalPref('localEnabled', v)}
-              disabled={isSavingPref}
+              className="shrink-0"
             />
           </div>
         </div>
@@ -218,13 +231,13 @@ export function NotificationsSection({
 
       {/* Registered Devices */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium">Registered Devices</h3>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Registered Devices</p>
           {pushTokens.length > 0 && (
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs"
+              className="h-6 text-[10px] px-2"
               onClick={handleTestNotification}
               disabled={isSendingTest}
             >
@@ -236,43 +249,50 @@ export function NotificationsSection({
             </Button>
           )}
         </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Devices that receive push notifications when the toggle above is enabled.
+        </p>
 
         {pushTokens.length === 0 ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
             <BellOff className="h-4 w-4" />
-            <span>No devices registered for push notifications.</span>
+            <span>No browsers or apps registered. Enable browser notifications above, or open Homecast on your Mac to register automatically.</span>
           </div>
         ) : (
           <div className="space-y-2">
-            {pushTokens.map((token) => (
-              <div
-                key={token.id}
-                className="flex items-center justify-between py-2 px-3 rounded-md border bg-muted/30"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">
-                      {token.deviceName || token.platform}
-                      {token.deviceFingerprint === currentFingerprint && (
-                        <span className="ml-1.5 text-xs text-blue-600 dark:text-blue-400">(this device)</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {token.platform} &middot; registered {new Date(token.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={() => handleRemoveDevice(token.deviceFingerprint)}
+            {pushTokens.map((token) => {
+              const isThisBrowser = token.deviceFingerprint === currentFingerprint;
+              return (
+                <div
+                  key={token.id}
+                  className="flex items-center justify-between py-2 px-3 rounded-md border bg-muted/30"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm truncate">
+                        {token.deviceName || token.platform}
+                        {isThisBrowser && (
+                          <span className="ml-1.5 text-xs text-blue-600 dark:text-blue-400">(this browser)</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {token.platform === 'web' ? 'Web Push' : token.platform === 'macos' ? 'APNs (macOS)' : token.platform === 'ios' ? 'APNs (iOS)' : token.platform}
+                        {' '}&middot; registered {new Date(token.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() => handleRemoveDevice(token.deviceFingerprint)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -280,11 +300,10 @@ export function NotificationsSection({
       {/* Notification History */}
       <NotificationHistory />
 
-      {/* Rate Limits Info */}
+      {/* Rate Limits */}
       <div className="rounded-md border border-muted p-3">
         <p className="text-xs text-muted-foreground">
-          <strong>Rate limits:</strong> Push notifications are limited to 30/hour per automation and 200/day per user.
-          Email notifications are limited to 5/hour per automation and 50/day per user.
+          <strong>Rate limits:</strong> Push: 30/hr per automation, 200/day per user. Email: 5/hr per automation, 50/day per user.
         </p>
       </div>
     </div>
@@ -302,9 +321,7 @@ function NotificationHistory() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">Recent Notifications</h3>
-      </div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Recent Notifications</p>
 
       {loading && logs.length === 0 ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">

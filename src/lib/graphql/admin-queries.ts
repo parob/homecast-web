@@ -709,3 +709,15 @@ export const GET_COSTS_AND_REVENUE = gql`
     }
   }
 `;
+
+export const ADMIN_SEND_NOTIFICATION = gql`
+  mutation AdminSendNotification($userId: String!, $title: String!, $message: String!) {
+    adminSendNotification(userId: $userId, title: $title, message: $message) {
+      success
+      sentPush
+      sentEmail
+      failed
+      error
+    }
+  }
+`;

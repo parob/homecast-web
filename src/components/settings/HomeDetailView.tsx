@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail, Monitor } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
@@ -289,7 +289,7 @@ function HomeNotificationPreferences({ homeId }: { homeId: string }) {
   const homePref = data?.notificationPreferences?.find(p => p.scope === 'home' && p.scopeId === homeId);
   const hasOverride = !!homePref;
 
-  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled' | 'localEnabled', value: boolean) => {
+  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled', value: boolean) => {
     setSaving(true);
     try {
       await setPrefMutation({
@@ -298,7 +298,7 @@ function HomeNotificationPreferences({ homeId }: { homeId: string }) {
           scopeId: homeId,
           pushEnabled: field === 'pushEnabled' ? value : (homePref?.pushEnabled ?? true),
           emailEnabled: field === 'emailEnabled' ? value : (homePref?.emailEnabled ?? false),
-          localEnabled: field === 'localEnabled' ? value : (homePref?.localEnabled ?? true),
+          localEnabled: true,
         },
       });
       refetch();
@@ -354,17 +354,6 @@ function HomeNotificationPreferences({ homeId }: { homeId: string }) {
           <Switch
             checked={homePref?.emailEnabled ?? false}
             onCheckedChange={(v) => handleToggle('emailEnabled', v)}
-            disabled={saving}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Monitor className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm">Local</span>
-          </div>
-          <Switch
-            checked={homePref?.localEnabled ?? true}
-            onCheckedChange={(v) => handleToggle('localEnabled', v)}
             disabled={saving}
           />
         </div>

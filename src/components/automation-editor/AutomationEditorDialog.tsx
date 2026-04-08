@@ -35,7 +35,7 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical, Bell, Mail, Monitor } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical, Bell, Mail } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { isCommunity } from '@/lib/config';
@@ -749,7 +749,7 @@ function AutomationNotificationPrefs({ automationId }: { automationId: string })
   const pref = data?.notificationPreferences?.find(p => p.scope === 'automation' && p.scopeId === automationId);
   const hasOverride = !!pref;
 
-  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled' | 'localEnabled', value: boolean) => {
+  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled', value: boolean) => {
     setSaving(true);
     try {
       await setPrefMutation({
@@ -758,7 +758,7 @@ function AutomationNotificationPrefs({ automationId }: { automationId: string })
           scopeId: automationId,
           pushEnabled: field === 'pushEnabled' ? value : (pref?.pushEnabled ?? true),
           emailEnabled: field === 'emailEnabled' ? value : (pref?.emailEnabled ?? false),
-          localEnabled: field === 'localEnabled' ? value : (pref?.localEnabled ?? true),
+          localEnabled: true,
         },
       });
       refetch();
@@ -820,13 +820,6 @@ function AutomationNotificationPrefs({ automationId }: { automationId: string })
                 <span className="text-xs">Email</span>
               </div>
               <Switch checked={pref?.emailEnabled ?? false} onCheckedChange={(v) => handleToggle('emailEnabled', v)} disabled={saving} />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Monitor className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs">Local</span>
-              </div>
-              <Switch checked={pref?.localEnabled ?? true} onCheckedChange={(v) => handleToggle('localEnabled', v)} disabled={saving} />
             </div>
           </div>
         </div>
