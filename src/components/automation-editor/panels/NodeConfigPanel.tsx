@@ -428,22 +428,16 @@ function renderConfigForm(
         const mode = (config.scheduleMode as string) ?? 'time';
         return (
           <>
-            {/* Mode tabs */}
-            <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
-              {(['time', 'interval', 'sun'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={cn(
-                    'flex-1 px-2 py-1 text-xs rounded-md transition-colors',
-                    mode === m ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => updateConfig('scheduleMode', m)}
-                >
-                  {m === 'time' ? 'Time' : m === 'interval' ? 'Interval' : 'Sun'}
-                </button>
-              ))}
-            </div>
+            <ConfigField label="Trigger type">
+              <Select value={mode} onValueChange={(v) => updateConfig('scheduleMode', v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time">At a specific time</SelectItem>
+                  <SelectItem value="interval">Repeating interval</SelectItem>
+                  <SelectItem value="sun">Sunrise / Sunset</SelectItem>
+                </SelectContent>
+              </Select>
+            </ConfigField>
 
             {mode === 'time' && (
               <>
@@ -521,7 +515,20 @@ function renderConfigForm(
       case 'error':
         return (
           <>
-            <p className="text-xs text-muted-foreground">Fires when any automation fails. Use downstream nodes to handle the error (notify, retry, etc.)</p>
+            <ConfigField label="Watch automation">
+              <Select
+                value={(config.watchAutomationId as string) ?? ''}
+                onValueChange={(v) => updateConfig('watchAutomationId', v || undefined)}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All automations" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All automations</SelectItem>
+                  {(availableAutomations ?? []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ConfigField>
             <div className="p-2 bg-muted rounded-md mt-2">
               <p className="text-[10px] text-muted-foreground">Available in downstream nodes:</p>
               <code className="text-[10px] font-mono">trigger.event_data.automationName</code><br />
@@ -708,6 +715,23 @@ function renderConfigForm(
                 </SelectContent>
               </Select>
             </ConfigField>
+            {/* Body — shown for POST/PUT, collapsed by default */}
+            {((config.method as string) ?? 'POST') !== 'GET' && ((config.method as string) ?? 'POST') !== 'DELETE' && (
+              <details open={!!config.body} className="border-t pt-2 mt-3">
+                <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                  Request body {config.body ? '(set)' : ''}
+                </summary>
+                <div className="mt-2">
+                  <Textarea
+                    value={(config.body as string) ?? ''}
+                    onChange={(e) => updateConfig('body', e.target.value || undefined)}
+                    placeholder='{"key": "value"}'
+                    className="font-mono text-xs min-h-[80px] resize-y"
+                    rows={4}
+                  />
+                </div>
+              </details>
+            )}
             {/* Auth — collapsed by default */}
             <details open={!!(config.authMode && config.authMode !== 'none')} className="border-t pt-2 mt-3">
               <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
@@ -802,17 +826,43 @@ function renderConfigForm(
   // ---- CONDITION (for loaded automations with condition nodes) ----
   if (category === 'condition') {
     switch (nodeType) {
-      case 'state':
+      case 'state': {
+        const condChars = (() => {
+          const acc = accessories.find((a) => a.id === config.accessoryId);
+          if (acc) return acc.services?.flatMap((s) => s.characteristics)?.filter((c) => c.isWritable || c.isReadable) ?? [];
+          return [];
+        })();
+        const condChar = condChars.find((c) => c.characteristicType === config.characteristicType);
         return (
-          <DeviceConfigFields
-            config={config}
-            updateConfig={updateConfig}
-            updateConfigBatch={updateConfigBatch}
-            accessories={accessories}
-            openDevicePicker={openDevicePicker}
-            showValue
-          />
+          <>
+            <ConfigField label="Device">
+              <DevicePicker
+                value={config.accessoryId as string | undefined}
+                accessories={accessories}
+                homes={homes}
+                onChange={(id, name) => {
+                  if (updateConfigBatch) updateConfigBatch({ accessoryId: id, accessoryName: name, characteristicType: '' });
+                  else updateConfig('accessoryId', id);
+                }}
+              />
+            </ConfigField>
+            {config.accessoryId && (
+              <ConfigField label="Characteristic">
+                <CharacteristicPicker
+                  value={config.characteristicType as string | undefined}
+                  characteristics={condChars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+                  onChange={(v) => updateConfig('characteristicType', v)}
+                />
+              </ConfigField>
+            )}
+            {config.characteristicType && (
+              <ConfigField label="Equals">
+                <SmartValueInput char={condChar} value={config.value} onChange={(v) => updateConfig('value', v)} />
+              </ConfigField>
+            )}
+          </>
         );
+      }
       case 'time':
         return (
           <>
@@ -1226,91 +1276,7 @@ function DeviceConfigFields({
   );
 }
 
-function GroupConfigFields({
-  config,
-  updateConfig,
-  updateConfigBatch,
-  serviceGroups,
-  accessories,
-}: {
-  config: Record<string, unknown>;
-  updateConfig: (key: string, value: unknown) => void;
-  updateConfigBatch?: (updates: Record<string, unknown>) => void;
-  serviceGroups: HomeKitServiceGroup[];
-  accessories: HomeKitAccessory[];
-}) {
-  const selectedGroup = serviceGroups.find((g) => g.id === config.serviceGroupId);
-
-  // Derive common characteristics from the group's member accessories
-  const groupCharacteristics = (() => {
-    if (!selectedGroup) return [];
-    const groupAccessories = accessories.filter((a) => selectedGroup.accessoryIds.includes(a.id));
-    const charSets = groupAccessories.map(
-      (a) => new Set(a.services?.flatMap((s) => s.characteristics)?.map((c) => c.characteristicType) ?? []),
-    );
-    if (charSets.length === 0) return [];
-    // Intersection of all characteristic types
-    const common = [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct)));
-    return common;
-  })();
-
-  return (
-    <>
-      <ConfigField label="Service Group">
-        <Select
-          value={(config.serviceGroupId as string) ?? ''}
-          onValueChange={(v) => {
-            const group = serviceGroups.find((g) => g.id === v);
-            if (updateConfigBatch) {
-              updateConfigBatch({ serviceGroupId: v, serviceGroupName: group?.name ?? v, characteristicType: '' });
-            } else {
-              updateConfig('serviceGroupId', v);
-            }
-          }}
-        >
-          <SelectTrigger className="h-8 text-xs" data-testid="select-group-button">
-            <SelectValue placeholder="Select a group..." />
-          </SelectTrigger>
-          <SelectContent>
-            {serviceGroups.map((g) => (
-              <SelectItem key={g.id} value={g.id}>
-                <span>{g.name}</span>
-                <span className="ml-1.5 text-muted-foreground text-[10px]">{g.accessoryIds.length} devices</span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </ConfigField>
-
-      {config.serviceGroupId && (
-        <ConfigField label="Characteristic">
-          {groupCharacteristics.length > 0 ? (
-            <Select
-              value={(config.characteristicType as string) ?? ''}
-              onValueChange={(v) => updateConfig('characteristicType', v)}
-            >
-              <SelectTrigger className="h-8 text-xs" data-testid="characteristic-select">
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent>
-                {groupCharacteristics.map((ct) => (
-                  <SelectItem key={ct} value={ct}>{ct}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={(config.characteristicType as string) ?? ''}
-              onChange={(e) => updateConfig('characteristicType', e.target.value)}
-              placeholder="e.g., power_state"
-              className="h-8 text-xs"
-            />
-          )}
-        </ConfigField>
-      )}
-    </>
-  );
-}
+// GroupConfigFields removed — replaced by DeviceOrGroupPicker
 
 function getCharMeta(c: { validValues?: number[]; minValue?: number; maxValue?: number }): string {
   if (c.validValues && c.validValues.length === 2 && c.validValues.includes(0) && c.validValues.includes(1)) return 'on/off';
@@ -1417,24 +1383,20 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
 
   if (category === 'trigger') {
     switch (nodeType) {
-      case 'device_changed':
-        if (config.serviceGroupId) {
-          const groupName = (config.serviceGroupName as string) ?? 'Group';
-          const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
-          const threshold = (config.above !== undefined || config.below !== undefined)
-            ? ` (${config.above !== undefined ? `>${config.above}` : ''}${config.below !== undefined ? `<${config.below}` : ''})`
-            : '';
-          return `${groupName}${char}${threshold}`;
-        }
-        if (config.accessoryId) {
-          const name = getDeviceName();
-          const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
-          const threshold = (config.above !== undefined || config.below !== undefined)
-            ? ` (${config.above !== undefined ? `>${config.above}` : ''}${config.below !== undefined ? `<${config.below}` : ''})`
-            : '';
-          return `${name}${char}${threshold}`;
-        }
-        break;
+      case 'device_changed': {
+        const entityName = config.serviceGroupId
+          ? ((config.serviceGroupName as string) ?? 'Group')
+          : config.accessoryId ? getDeviceName() : '';
+        if (!entityName) break;
+        const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
+        const filterMode = (config.filterMode as string) ?? 'any';
+        let filter = '';
+        if (filterMode === 'value' && config.to !== undefined) filter = ` → ${config.to}`;
+        else if (filterMode === 'above' && config.above !== undefined) filter = ` > ${config.above}`;
+        else if (filterMode === 'below' && config.below !== undefined) filter = ` < ${config.below}`;
+        else if (filterMode === 'range' && config.above !== undefined && config.below !== undefined) filter = ` ${config.above}–${config.below}`;
+        return `${entityName}${char}${filter}`;
+      }
       case 'schedule': {
         const mode = (config.scheduleMode as string) ?? 'time';
         if (mode === 'time' && config.at) return `At ${config.at}`;
@@ -1455,9 +1417,13 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
 
   if (category === 'action') {
     switch (nodeType) {
-      case 'set_device':
-        if (config.accessoryId) return `Set ${getDeviceName()} to ${config.value ?? '?'}`;
+      case 'set_device': {
+        const target = config.serviceGroupId
+          ? ((config.serviceGroupName as string) ?? 'Group')
+          : config.accessoryId ? getDeviceName() : '';
+        if (target) return `Set ${target} to ${config.value ?? '?'}`;
         break;
+      }
       case 'run_scene':
         if (config.sceneId) return `Scene ${(config.sceneId as string).slice(0, 12)}…`;
         break;
