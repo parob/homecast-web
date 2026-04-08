@@ -82,8 +82,6 @@ export function usePushNotifications(
 
     const handleSWMessage = (event: MessageEvent) => {
       if (event.data?.type === 'notification_action') {
-        // Forward the action to the server via WebSocket
-        // The WebSocketContext will pick this up and send automation.notification_response
         window.dispatchEvent(
           new CustomEvent('homecast-notification-action', {
             detail: {
@@ -98,6 +96,45 @@ export function usePushNotifications(
     navigator.serviceWorker.addEventListener('message', handleSWMessage);
     return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
   }, [isAvailable]);
+
+  // Handle foreground FCM messages — when the tab is focused, FCM delivers via
+  // onMessage instead of the service worker's onBackgroundMessage. We show the
+  // notification via the service worker registration so it appears as a system notification.
+  useEffect(() => {
+    if (!isAvailable || permission !== 'granted') return;
+
+    let unsubscribe: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const { FIREBASE_CONFIG, VAPID_KEY } = await import('../lib/firebase');
+        const { initializeApp, getApps } = await import('firebase/app');
+        const { getMessaging, onMessage } = await import('firebase/messaging');
+
+        const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+        const messaging = getMessaging(app);
+
+        unsubscribe = onMessage(messaging, (payload) => {
+          const title = payload.notification?.title || 'Homecast';
+          const body = payload.notification?.body || '';
+          const data = payload.data || {};
+
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.showNotification(title, {
+              body,
+              icon: '/icon-192.png',
+              data,
+              tag: `homecast-${data.automationId || 'notification'}`,
+            });
+          });
+        });
+      } catch {
+        // Firebase not initialized yet — will be set up on next permission grant
+      }
+    })();
+
+    return () => { unsubscribe?.(); };
+  }, [isAvailable, permission]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!isAvailable || !registerTokenMutation) return false;
