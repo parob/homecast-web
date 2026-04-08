@@ -896,6 +896,12 @@ export const GET_NOTIFICATION_PREFERENCES = gql`
   }
 `;
 
+export const GET_HOME_MQTT_ENABLED = gql`
+  query GetHomeMqttEnabled($homeId: String!) {
+    homeMqttEnabled(homeId: $homeId)
+  }
+`;
+
 export const GET_NOTIFICATION_HISTORY = gql`
   query GetNotificationHistory($limit: Int, $offset: Int, $automationId: String) {
     notificationHistory(limit: $limit, offset: $offset, automationId: $automationId) {

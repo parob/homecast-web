@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
+import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { getMQTTBrokers, removeMQTTBroker, isMQTTAvailable } from '@/lib/mqtt-bridge';
@@ -117,9 +117,26 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const available = isMQTTAvailable();
-  const [mqttEnabled, setMqttEnabled] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabled] = useMutation(SET_HOME_MQTT_ENABLED);
+
+  // Load mqtt_enabled state from server (cloud only)
+  const { data: mqttData, refetch: refetchMqtt } = useQuery(GET_HOME_MQTT_ENABLED, {
+    variables: { homeId: home.id },
+    skip: isCommunity,
+    fetchPolicy: 'network-only',
+  });
+  const mqttEnabled = mqttData?.homeMqttEnabled ?? false;
+
+  const handleToggleMqtt = async (enabled: boolean) => {
+    setMqttToggling(true);
+    try {
+      await setHomeMqttEnabled({ variables: { homeId: home.id, enabled } });
+      await refetchMqtt();
+      toast.success(enabled ? 'MQTT broker enabled' : 'MQTT broker disabled');
+    } catch { toast.error('Failed to update MQTT broker'); }
+    finally { setMqttToggling(false); }
+  };
 
   const loadBrokers = useCallback(async () => {
     if (!available) {
@@ -138,7 +155,6 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
 
   useEffect(() => {
     loadBrokers();
-    // Poll for status updates every 5s while the view is open
     const interval = setInterval(loadBrokers, 5000);
     return () => clearInterval(interval);
   }, [loadBrokers]);
@@ -153,119 +169,54 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
         {home.name}
       </button>
 
-      {/* Connection info */}
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Connection</p>
-        <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="text-sm">
-            {home.isCloudManaged ? 'Cloud Relay' : 'Self-hosted Relay'}
-            <span className="text-muted-foreground"> · </span>
-            <span className="text-xs text-muted-foreground">{home.isCloudManaged ? 'Hosted by Homecast' : 'Connected via your Mac'}</span>
-          </p>
-        </div>
-      </div>
+      {/* MQTT */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
 
-      {/* Homecast MQTT Broker (cloud only — shown first since it's the primary option) */}
-      {!isCommunity && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Homecast MQTT Broker</p>
-          {mqttEnabled ? (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Radio className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">mqtt.homecast.cloud</span>
-                </div>
-                <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600">Enabled</Badge>
-              </div>
+        {/* Homecast Broker (cloud only) */}
+        {!isCommunity && (
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-sm font-medium">Homecast Broker</p>
               <p className="text-xs text-muted-foreground">
-                Port 8883 (TLS) · Authenticate with your API access token as the password
+                {mqttEnabled ? 'mqtt.homecast.cloud:8883 · Use API token as password' : 'Publish device state to mqtt.homecast.cloud'}
               </p>
-              <div className="flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs text-destructive hover:text-destructive"
-                  disabled={mqttToggling}
-                  onClick={async () => {
-                    setMqttToggling(true);
-                    try {
-                      await setHomeMqttEnabled({ variables: { homeId: home.id, enabled: false } });
-                      setMqttEnabled(false);
-                      toast.success('Homecast MQTT broker disabled');
-                    } catch { toast.error('Failed to disable MQTT broker'); }
-                    finally { setMqttToggling(false); }
-                  }}
-                >
-                  Disable
-                </Button>
-              </div>
             </div>
-          ) : (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Enable the managed MQTT broker to connect Home Assistant, Node-RED, and other MQTT clients to this home via mqtt.homecast.cloud.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={mqttToggling}
-                onClick={async () => {
-                  setMqttToggling(true);
-                  try {
-                    await setHomeMqttEnabled({ variables: { homeId: home.id, enabled: true } });
-                    setMqttEnabled(true);
-                    toast.success('Homecast MQTT broker enabled');
-                  } catch { toast.error('Failed to enable MQTT broker'); }
-                  finally { setMqttToggling(false); }
-                }}
-              >
-                <Radio className="h-4 w-4 mr-2" />
-                Enable Homecast Broker
+            <Switch
+              checked={mqttEnabled}
+              disabled={mqttToggling}
+              onCheckedChange={handleToggleMqtt}
+            />
+          </div>
+        )}
+
+        {/* Custom Brokers (requires Mac app bridge) */}
+        {available && (
+          <>
+            <div className="flex items-center justify-between py-1">
+              <p className="text-sm font-medium">{isCommunity ? 'MQTT Brokers' : 'Custom Brokers'}</p>
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Custom MQTT Brokers (requires Mac app bridge) */}
-      {available && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {isCommunity ? 'MQTT Brokers' : 'Additional Brokers'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {isCommunity
-              ? 'Homecast publishes device state and accepts commands from these brokers.'
-              : 'Connect additional MQTT brokers alongside the Homecast broker.'}
-          </p>
-
-          {loading ? (
-            <p className="text-xs text-muted-foreground py-3 text-center">Loading...</p>
-          ) : (
-            <>
-              {brokers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-3 text-center">No brokers configured.</p>
-              )}
-
-              {brokers.map((broker) => (
+            {loading ? (
+              <p className="text-xs text-muted-foreground py-2 text-center">Loading...</p>
+            ) : brokers.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2 text-center">No brokers configured.</p>
+            ) : (
+              brokers.map((broker) => (
                 <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={loadBrokers} />
-              ))}
+              ))
+            )}
+          </>
+        )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setAddOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Broker
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+        {/* Community mode without Mac app — nothing to show */}
+        {isCommunity && !available && (
+          <p className="text-xs text-muted-foreground py-2">MQTT brokers can be configured when running in the Mac app.</p>
+        )}
+      </div>
 
       {/* Notification Preferences (cloud only) */}
       {!isCommunity && <HomeNotificationPreferences homeId={home.id} />}
