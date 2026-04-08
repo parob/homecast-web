@@ -39,6 +39,7 @@ const MarketingFooter = () => {
               <li><Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link></li>
               <li><Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
               <li><Link to="/cookies" className="hover:text-foreground transition-colors">Cookie Policy</Link></li>
+              <li><Link to="/delete-account" className="hover:text-foreground transition-colors">Delete Account</Link></li>
             </ul>
             <h3 className="font-semibold mb-4 mt-8">Contact</h3>
             <a href="mailto:rob@homecast.cloud" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
