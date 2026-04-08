@@ -19,7 +19,7 @@ import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
-import { getMQTTBrokers, removeMQTTBroker, isMQTTAvailable } from '@/lib/mqtt-bridge';
+import { isMQTTAvailable } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import type { HomeKitHome } from '@/lib/graphql/types';
@@ -46,18 +46,8 @@ function statusBadge(status: string | undefined) {
   }
 }
 
-function BrokerCard({ broker, homeId, onRefresh }: { broker: MQTTBrokerConfig; homeId: string; onRefresh: () => void }) {
+function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBrokerConfig; homeId: string; onRefresh: () => void; onRemove: (id: string) => void }) {
   const [editOpen, setEditOpen] = useState(false);
-
-  const handleRemove = async () => {
-    try {
-      await removeMQTTBroker(homeId, broker.id);
-      toast.success('Broker removed');
-      onRefresh();
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to remove broker');
-    }
-  };
 
   return (
     <>
@@ -92,7 +82,7 @@ function BrokerCard({ broker, homeId, onRefresh }: { broker: MQTTBrokerConfig; h
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                <AlertDialogAction onClick={() => onRemove(broker.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                   Remove
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -199,7 +189,7 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
               <p className="text-xs text-muted-foreground py-2 text-center">No custom brokers configured.</p>
             ) : (
               brokers.map((broker: any) => (
-                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokers()} />
+                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokers()} onRemove={handleRemoveBroker} />
               ))
             )}
           </>
