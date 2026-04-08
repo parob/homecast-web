@@ -16,8 +16,8 @@ import { Switch } from '@/components/ui/switch';
 import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED } from '@/lib/graphql/mutations';
+import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
+import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { getMQTTBrokers, removeMQTTBroker, isMQTTAvailable } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
@@ -113,12 +113,10 @@ function BrokerCard({ broker, homeId, onRefresh }: { broker: MQTTBrokerConfig; h
 }
 
 export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
-  const [brokers, setBrokers] = useState<MQTTBrokerConfig[]>([]);
   const [addOpen, setAddOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const available = isMQTTAvailable();
   const [mqttToggling, setMqttToggling] = useState(false);
-  const [setHomeMqttEnabled] = useMutation(SET_HOME_MQTT_ENABLED);
+  const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
+  const [removeHomeMqttBrokerMut] = useMutation(REMOVE_HOME_MQTT_BROKER);
 
   // Load mqtt_enabled state from server (cloud only)
   const { data: mqttData, refetch: refetchMqtt } = useQuery(GET_HOME_MQTT_ENABLED, {
@@ -128,36 +126,31 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
   });
   const mqttEnabled = mqttData?.homeMqttEnabled ?? false;
 
+  // Load custom brokers from server
+  const { data: brokersData, refetch: refetchBrokers, loading: brokersLoading } = useQuery(GET_HOME_MQTT_BROKERS, {
+    variables: { homeId: home.id },
+    skip: isCommunity,
+    fetchPolicy: 'network-only',
+  });
+  const brokers: MQTTBrokerConfig[] = brokersData?.homeMqttBrokers ?? [];
+
   const handleToggleMqtt = async (enabled: boolean) => {
     setMqttToggling(true);
     try {
-      await setHomeMqttEnabled({ variables: { homeId: home.id, enabled } });
+      await setHomeMqttEnabledMut({ variables: { homeId: home.id, enabled } });
       await refetchMqtt();
       toast.success(enabled ? 'MQTT broker enabled' : 'MQTT broker disabled');
     } catch { toast.error('Failed to update MQTT broker'); }
     finally { setMqttToggling(false); }
   };
 
-  const loadBrokers = useCallback(async () => {
-    if (!available) {
-      setLoading(false);
-      return;
-    }
+  const handleRemoveBroker = async (brokerId: string) => {
     try {
-      const all = await getMQTTBrokers();
-      setBrokers(all[home.id] || []);
-    } catch {
-      // Bridge not ready yet
-    } finally {
-      setLoading(false);
-    }
-  }, [home.id, available]);
-
-  useEffect(() => {
-    loadBrokers();
-    const interval = setInterval(loadBrokers, 5000);
-    return () => clearInterval(interval);
-  }, [loadBrokers]);
+      await removeHomeMqttBrokerMut({ variables: { homeId: home.id, brokerId } });
+      await refetchBrokers();
+      toast.success('Broker removed');
+    } catch { toast.error('Failed to remove broker'); }
+  };
 
   return (
     <div className="space-y-4">
@@ -190,31 +183,26 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
           </div>
         )}
 
-        {/* Custom Brokers (community mode only — cloud custom brokers not yet supported) */}
-        {available && isCommunity && (
+        {/* Custom Brokers */}
+        {!isCommunity && (
           <>
             <div className="flex items-center justify-between py-1">
-              <p className="text-sm font-medium">{isCommunity ? 'MQTT Brokers' : 'Custom Brokers'}</p>
+              <p className="text-sm font-medium">Custom Brokers</p>
               <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>
             </div>
 
-            {loading ? (
+            {brokersLoading ? (
               <p className="text-xs text-muted-foreground py-2 text-center">Loading...</p>
             ) : brokers.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-2 text-center">No brokers configured.</p>
+              <p className="text-xs text-muted-foreground py-2 text-center">No custom brokers configured.</p>
             ) : (
-              brokers.map((broker) => (
-                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={loadBrokers} />
+              brokers.map((broker: any) => (
+                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokers()} />
               ))
             )}
           </>
-        )}
-
-        {/* Community mode without Mac app — nothing to show */}
-        {isCommunity && !available && (
-          <p className="text-xs text-muted-foreground py-2">MQTT brokers can be configured when running in the Mac app.</p>
         )}
       </div>
 

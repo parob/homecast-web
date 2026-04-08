@@ -868,3 +868,15 @@ export const SET_HOME_MQTT_ENABLED = gql`
     setHomeMqttEnabled(homeId: $homeId, enabled: $enabled)
   }
 `;
+
+export const ADD_HOME_MQTT_BROKER = gql`
+  mutation AddHomeMqttBroker($homeId: String!, $name: String!, $host: String!, $port: Int, $username: String, $password: String, $useTls: Boolean, $topicPrefix: String, $haDiscovery: Boolean) {
+    addHomeMqttBroker(homeId: $homeId, name: $name, host: $host, port: $port, username: $username, password: $password, useTls: $useTls, topicPrefix: $topicPrefix, haDiscovery: $haDiscovery)
+  }
+`;
+
+export const REMOVE_HOME_MQTT_BROKER = gql`
+  mutation RemoveHomeMqttBroker($homeId: String!, $brokerId: String!) {
+    removeHomeMqttBroker(homeId: $homeId, brokerId: $brokerId)
+  }
+`;
