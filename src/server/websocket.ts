@@ -593,11 +593,7 @@ export class ServerWebSocket {
       ),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
       onNotify: async (message, title, data, automationId) => {
-        // Show local macOS notification immediately on the relay
-        if (HomeKit.isAvailable()) {
-          HomeKit.showNotification(title, message, data).catch(() => {});
-        }
-        // Send to cloud server for push/email delivery to other devices
+        // Send to cloud server for push/email/APNs delivery to all devices
         this.sendEvent({
           id: `evt_${Date.now()}_notify`,
           type: 'automation',
