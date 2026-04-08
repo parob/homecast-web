@@ -165,43 +165,7 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
         </div>
       </div>
 
-      {/* MQTT Brokers */}
-      <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT Brokers</p>
-        <p className="text-xs text-muted-foreground">
-          Homecast publishes device state and accepts commands from these brokers.
-        </p>
-
-        {!available ? (
-          <p className="text-xs text-muted-foreground py-3 text-center">
-            MQTT is available when running in the Mac app.
-          </p>
-        ) : loading ? (
-          <p className="text-xs text-muted-foreground py-3 text-center">Loading...</p>
-        ) : (
-          <>
-            {brokers.length === 0 && (
-              <p className="text-xs text-muted-foreground py-3 text-center">No brokers configured for this home.</p>
-            )}
-
-            {brokers.map((broker) => (
-              <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={loadBrokers} />
-            ))}
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => setAddOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Broker
-            </Button>
-          </>
-        )}
-      </div>
-
-      {/* Homecast MQTT Broker (cloud only) */}
+      {/* Homecast MQTT Broker (cloud only — shown first since it's the primary option) */}
       {!isCommunity && (
         <div className="space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Homecast MQTT Broker</p>
@@ -261,6 +225,44 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
                 Enable Homecast Broker
               </Button>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Custom MQTT Brokers (requires Mac app bridge) */}
+      {available && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {isCommunity ? 'MQTT Brokers' : 'Additional Brokers'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {isCommunity
+              ? 'Homecast publishes device state and accepts commands from these brokers.'
+              : 'Connect additional MQTT brokers alongside the Homecast broker.'}
+          </p>
+
+          {loading ? (
+            <p className="text-xs text-muted-foreground py-3 text-center">Loading...</p>
+          ) : (
+            <>
+              {brokers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-3 text-center">No brokers configured.</p>
+              )}
+
+              {brokers.map((broker) => (
+                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={loadBrokers} />
+              ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setAddOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Broker
+              </Button>
+            </>
           )}
         </div>
       )}
