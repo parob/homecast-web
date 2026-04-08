@@ -863,6 +863,12 @@ export const SEND_TEST_NOTIFICATION = gql`
   }
 `;
 
+export const CLEAR_NOTIFICATION_HISTORY = gql`
+  mutation ClearNotificationHistory {
+    clearNotificationHistory
+  }
+`;
+
 export const SET_HOME_MQTT_ENABLED = gql`
   mutation SetHomeMqttEnabled($homeId: String!, $enabled: Boolean!) {
     setHomeMqttEnabled(homeId: $homeId, enabled: $enabled)

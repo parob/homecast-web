@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Bell, BellOff, Smartphone, Mail, Trash2, Loader2, Clock, ChevronDown, CheckCircle2, Globe } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { useQuery } from '@apollo/client/react';
+import { toast } from 'sonner';
+import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_HISTORY } from '@/lib/graphql/queries';
+import { CLEAR_NOTIFICATION_HISTORY } from '@/lib/graphql/mutations';
 import type { GetNotificationHistoryResponse, NotificationLogInfo } from '@/lib/graphql/types';
 
 interface PushTokenInfo {
@@ -69,6 +71,7 @@ export function NotificationsSection({
 
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSavingPref, setIsSavingPref] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   const globalPref = preferences.find(p => p.scope === 'global') ?? {
     pushEnabled: true,
@@ -89,7 +92,15 @@ export function NotificationsSection({
   const handleTestNotification = useCallback(async () => {
     setIsSendingTest(true);
     try {
-      await sendTestNotification();
+      const result = await sendTestNotification();
+      setHistoryRefresh((n) => n + 1);
+      if (result) {
+        toast.success('Test notification sent');
+      } else {
+        toast.error('No notifications delivered — check your channel settings and registered devices');
+      }
+    } catch {
+      toast.error('Failed to send test notification');
     } finally {
       setIsSendingTest(false);
     }
@@ -127,12 +138,6 @@ export function NotificationsSection({
 
   return (
     <div className="space-y-6">
-      {/* Intro */}
-      <p className="text-xs text-muted-foreground">
-        When an automation runs a <strong>Notify</strong> action, Homecast delivers alerts through the channels below.
-        The relay Mac always shows an alert instantly.
-      </p>
-
       {/* This Browser */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">This Browser</p>
@@ -298,30 +303,45 @@ export function NotificationsSection({
       </div>
 
       {/* Notification History */}
-      <NotificationHistory />
+      <NotificationHistory refreshTrigger={historyRefresh} />
 
-      {/* Rate Limits */}
-      <div className="rounded-md border border-muted p-3">
-        <p className="text-xs text-muted-foreground">
-          <strong>Rate limits:</strong> Push: 30/hr per automation, 200/day per user. Email: 5/hr per automation, 50/day per user.
-        </p>
-      </div>
     </div>
   );
 }
 
-function NotificationHistory() {
+function NotificationHistory({ refreshTrigger }: { refreshTrigger: number }) {
   const [limit, setLimit] = useState(10);
-  const { data, loading } = useQuery<GetNotificationHistoryResponse>(GET_NOTIFICATION_HISTORY, {
+  const { data, loading, refetch } = useQuery<GetNotificationHistoryResponse>(GET_NOTIFICATION_HISTORY, {
     variables: { limit },
     fetchPolicy: 'cache-and-network',
   });
+  const [clearHistory] = useMutation(CLEAR_NOTIFICATION_HISTORY);
+
+  // Refetch when triggered (e.g., after sending a test notification)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      const timer = setTimeout(() => refetch(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [refreshTrigger, refetch]);
 
   const logs = data?.notificationHistory ?? [];
 
+  const handleClear = async () => {
+    await clearHistory();
+    refetch();
+  };
+
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Recent Notifications</p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent Notifications</p>
+        {logs.length > 0 && (
+          <button onClick={handleClear} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+            Clear
+          </button>
+        )}
+      </div>
 
       {loading && logs.length === 0 ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">

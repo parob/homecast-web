@@ -5766,7 +5766,8 @@ const Dashboard = () => {
                   await setNotifPrefMutation({ variables: vars });
                 },
                 sendTestNotification: async () => {
-                  await sendTestNotifMutation();
+                  const { data } = await sendTestNotifMutation();
+                  return data?.sendTestNotification ?? false;
                 },
                 userEmail: user?.email,
               }}
