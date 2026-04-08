@@ -115,9 +115,9 @@ export function usePushNotifications(
         const messaging = getMessaging(app);
 
         unsubscribe = onMessage(messaging, (payload) => {
-          const title = payload.notification?.title || 'Homecast';
-          const body = payload.notification?.body || '';
           const data = payload.data || {};
+          const title = data.title || payload.notification?.title || 'Homecast';
+          const body = data.body || payload.notification?.body || '';
 
           navigator.serviceWorker.ready.then((reg) => {
             reg.showNotification(title, {
