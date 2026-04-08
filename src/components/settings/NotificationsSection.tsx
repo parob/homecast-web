@@ -132,7 +132,7 @@ export function NotificationsSection({
     );
   }
 
-  const isWKWebView = !!(window as any).webkit?.messageHandlers?.homekit;
+  const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp;
   const currentFingerprint = localStorage.getItem('homecast-push-fingerprint');
   const thisBrowserRegistered = pushTokens.some(t => t.deviceFingerprint === currentFingerprint);
   const otherDevices = pushTokens.filter(t => t.deviceFingerprint !== currentFingerprint);
@@ -140,7 +140,7 @@ export function NotificationsSection({
   return (
     <div className="space-y-6">
       {/* This Browser (hidden in Mac app WKWebView — relay gets local notifications automatically) */}
-      {!isWKWebView && <div>
+      {!isNativeApp && <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">This Browser</p>
         {thisBrowserRegistered ? (
           <div className="flex items-center gap-2 py-2 px-3 rounded-md border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
