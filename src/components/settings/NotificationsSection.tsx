@@ -182,11 +182,7 @@ export function NotificationsSection({
               </div>
             </div>
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground py-2">
-            Browser notifications are not supported in this context.
-          </p>
-        )}
+        ) : null}
       </div>
 
       {/* Delivery Channels */}
