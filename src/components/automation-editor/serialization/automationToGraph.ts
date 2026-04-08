@@ -44,6 +44,7 @@ function simplifyTriggerType(engineType: string): { nodeType: string; extraConfi
 function simplifyActionType(engineType: string): string {
   switch (engineType) {
     case 'set_characteristic': return 'set_device';
+    case 'set_service_group': return 'set_device';
     case 'execute_scene': return 'run_scene';
     case 'fire_webhook': return 'http_request';
     case 'if_then_else': return 'if';
@@ -275,6 +276,7 @@ function actionToNode(action: Action, x: number, y: number): Node<FlowNodeData> 
 function extractActionConfig(action: Action): Record<string, unknown> {
   switch (action.type) {
     case 'set_characteristic': return { accessoryId: action.accessoryId, characteristicType: action.characteristicType, value: action.value };
+    case 'set_service_group': return { serviceGroupId: action.groupId, characteristicType: action.characteristicType, value: action.value };
     case 'execute_scene': return { sceneId: action.sceneId };
     case 'delay': return { hours: action.duration.hours, minutes: action.duration.minutes, seconds: action.duration.seconds };
     case 'notify': return { message: action.message, title: action.title, actions: action.data?.actions };

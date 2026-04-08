@@ -1,13 +1,13 @@
-// Unified entity picker — consistent selection UI for devices, groups, and scenes
+// Unified entity pickers — consistent selection UI for devices, groups, and scenes
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Lightbulb, Users, Play, ChevronDown } from 'lucide-react';
+import { Lightbulb, Play, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
-import type { HomeKitAccessory, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
+import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
 // Shared picker button style
@@ -46,16 +46,18 @@ function PickerButton({
 }
 
 // ============================================================
-// Device Picker
+// Device Picker (accessories only — for Set Device action)
 // ============================================================
 
 export function DevicePicker({
   value,
   accessories,
+  homes,
   onChange,
 }: {
   value: string | undefined;
   accessories: HomeKitAccessory[];
+  homes?: HomeKitHome[];
   onChange: (id: string, name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -71,20 +73,22 @@ export function DevicePicker({
         testId="select-device-button"
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="!max-w-md p-0 gap-0 !z-[10060]" hideCloseButton>
+        <DialogContent className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
           <DialogTitle className="sr-only">Select Device</DialogTitle>
-          <AccessoryPicker
-            accessories={accessories}
-            homes={[]}
-            selectedIds={value ? new Set([value]) : new Set()}
-            onToggle={(id) => {
-              const acc = accessories.find((a) => a.id === id);
-              if (acc) {
-                onChange(acc.id, acc.name);
-                setOpen(false);
-              }
-            }}
-          />
+          <div className="max-h-[65vh] overflow-y-auto">
+            <AccessoryPicker
+              accessories={accessories}
+              homes={homes ?? []}
+              selectedIds={value ? new Set([value]) : new Set()}
+              onToggle={(id) => {
+                const acc = accessories.find((a) => a.id === id);
+                if (acc) {
+                  onChange(acc.id, acc.name);
+                  setOpen(false);
+                }
+              }}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </>
@@ -92,41 +96,72 @@ export function DevicePicker({
 }
 
 // ============================================================
-// Service Group Picker
+// Device or Group Picker (unified — for triggers)
+// Shows both accessories and service groups in one dialog
 // ============================================================
 
-export function GroupPicker({
-  value,
+export function DeviceOrGroupPicker({
+  accessoryId,
+  serviceGroupId,
+  accessories,
+  homes,
   serviceGroups,
-  onChange,
+  onSelectAccessory,
+  onSelectGroup,
 }: {
-  value: string | undefined;
+  accessoryId: string | undefined;
+  serviceGroupId: string | undefined;
+  accessories: HomeKitAccessory[];
+  homes?: HomeKitHome[];
   serviceGroups: HomeKitServiceGroup[];
-  onChange: (id: string, name: string) => void;
+  onSelectAccessory: (id: string, name: string) => void;
+  onSelectGroup: (id: string, name: string) => void;
 }) {
-  const selected = serviceGroups.find((g) => g.id === value);
+  const [open, setOpen] = useState(false);
+
+  // Determine current label
+  const selectedAcc = accessories.find((a) => a.id === accessoryId);
+  const selectedGroup = serviceGroups.find((g) => g.id === serviceGroupId);
+  const label = selectedGroup?.name ?? selectedAcc?.name ?? null;
 
   return (
-    <Select
-      value={value ?? ''}
-      onValueChange={(v) => {
-        const group = serviceGroups.find((g) => g.id === v);
-        if (group) onChange(group.id, group.name);
-      }}
-    >
-      <SelectTrigger className="h-9 text-xs gap-2" data-testid="select-group-button">
-        <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <SelectValue placeholder="Select a group..." />
-      </SelectTrigger>
-      <SelectContent>
-        {serviceGroups.map((g) => (
-          <SelectItem key={g.id} value={g.id}>
-            <span>{g.name}</span>
-            <span className="ml-1.5 text-muted-foreground text-[10px]">{g.accessoryIds.length} devices</span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <>
+      <PickerButton
+        icon={Lightbulb}
+        label={label}
+        placeholder="Select a device or group..."
+        onClick={() => setOpen(true)}
+        testId="select-device-button"
+      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
+          <DialogTitle className="sr-only">Select Device or Group</DialogTitle>
+          <div className="max-h-[65vh] overflow-y-auto">
+            <AccessoryPicker
+              accessories={accessories}
+              homes={homes ?? []}
+              selectedIds={accessoryId ? new Set([accessoryId]) : new Set()}
+              onToggle={(id) => {
+                const acc = accessories.find((a) => a.id === id);
+                if (acc) {
+                  onSelectAccessory(acc.id, acc.name);
+                  setOpen(false);
+                }
+              }}
+              serviceGroups={serviceGroups}
+              selectedServiceGroupIds={serviceGroupId ? new Set([serviceGroupId]) : new Set()}
+              onToggleServiceGroup={(id) => {
+                const group = serviceGroups.find((g) => g.id === id);
+                if (group) {
+                  onSelectGroup(group.id, group.name);
+                  setOpen(false);
+                }
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

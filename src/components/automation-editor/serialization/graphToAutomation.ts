@@ -24,6 +24,7 @@ import type {
   SunCondition,
   TemplateCondition,
   SetCharacteristicAction,
+  SetServiceGroupAction,
   ExecuteSceneAction,
   DelayAction,
   NotifyAction,
@@ -320,6 +321,16 @@ function nodeToActionInner(
     // Simplified types → engine types
     case 'set_device':
     case 'set_characteristic':
+      // If serviceGroupId is set, use set_service_group action
+      if (config.serviceGroupId) {
+        return {
+          type: 'set_service_group',
+          id: node.id,
+          groupId: config.serviceGroupId as string,
+          characteristicType: (config.characteristicType as string) ?? '',
+          value: config.value,
+        } satisfies SetServiceGroupAction;
+      }
       return {
         type: 'set_characteristic',
         id: node.id,

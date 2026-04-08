@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { NodeInfoPopover } from './NodeInfoPopover';
-import { DevicePicker, GroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
+import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
@@ -291,103 +291,59 @@ function renderConfigForm(
   if (category === 'trigger') {
     switch (nodeType) {
       case 'device_changed': {
-        const sourceMode = (config.sourceMode as string) ?? 'device';
+        // Get characteristics for the selected device or group
+        const selectedAcc = accessories.find((a) => a.id === config.accessoryId);
+        const selectedGroup = (serviceGroups ?? []).find((g) => g.id === config.serviceGroupId);
+        const chars = (() => {
+          if (selectedAcc) {
+            return selectedAcc.services?.flatMap((s) => s.characteristics)?.filter((c) => c.isWritable || c.isReadable) ?? [];
+          }
+          if (selectedGroup) {
+            const groupAccs = accessories.filter((a) => selectedGroup.accessoryIds.includes(a.id));
+            const allChars = groupAccs.flatMap((a) => a.services?.flatMap((s) => s.characteristics) ?? []);
+            // Intersection of characteristic types
+            const charSets = groupAccs.map((a) => new Set(a.services?.flatMap((s) => s.characteristics)?.map((c) => c.characteristicType) ?? []));
+            const commonTypes = charSets.length > 0 ? [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct))) : [];
+            return commonTypes.map((ct) => allChars.find((c) => c.characteristicType === ct)).filter(Boolean) as typeof allChars;
+          }
+          return [];
+        })();
+        const selectedChar = chars.find((c) => c.characteristicType === config.characteristicType);
+
         return (
           <>
-            {/* Device / Group toggle */}
-            {(serviceGroups?.length ?? 0) > 0 && (
-              <div className="flex gap-1 p-0.5 bg-muted rounded-lg mb-1">
-                <button
-                  type="button"
-                  className={cn(
-                    'flex-1 px-2 py-1 text-xs rounded-md transition-colors',
-                    sourceMode === 'device' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => updateConfigBatch({ sourceMode: 'device', serviceGroupId: undefined, serviceGroupName: undefined })}
-                >
-                  Device
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    'flex-1 px-2 py-1 text-xs rounded-md transition-colors',
-                    sourceMode === 'group' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => updateConfigBatch({ sourceMode: 'group', accessoryId: undefined, accessoryName: undefined })}
-                >
-                  Group
-                </button>
-              </div>
+            {/* Unified device/group picker — one dialog for both */}
+            <ConfigField label="Device or Group">
+              <DeviceOrGroupPicker
+                accessoryId={config.accessoryId as string | undefined}
+                serviceGroupId={config.serviceGroupId as string | undefined}
+                accessories={accessories}
+                homes={homes}
+                serviceGroups={serviceGroups ?? []}
+                onSelectAccessory={(id, name) => {
+                  if (updateConfigBatch) {
+                    updateConfigBatch({ accessoryId: id, accessoryName: name, serviceGroupId: undefined, serviceGroupName: undefined, sourceMode: 'device', characteristicType: '' });
+                  }
+                }}
+                onSelectGroup={(id, name) => {
+                  if (updateConfigBatch) {
+                    updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, accessoryId: undefined, accessoryName: undefined, sourceMode: 'group', characteristicType: '' });
+                  }
+                }}
+              />
+            </ConfigField>
+
+            {/* Characteristic picker */}
+            {(config.accessoryId || config.serviceGroupId) && (
+              <ConfigField label="Characteristic">
+                <CharacteristicPicker
+                  value={config.characteristicType as string | undefined}
+                  characteristics={chars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+                  onChange={(v) => updateConfig('characteristicType', v)}
+                />
+              </ConfigField>
             )}
 
-            {/* Unified entity selection — same UI pattern for device and group */}
-            {sourceMode === 'group' ? (
-              <>
-                <ConfigField label="Service Group">
-                  <GroupPicker
-                    value={config.serviceGroupId as string | undefined}
-                    serviceGroups={serviceGroups ?? []}
-                    onChange={(id, name) => {
-                      if (updateConfigBatch) {
-                        updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, characteristicType: '' });
-                      } else {
-                        updateConfig('serviceGroupId', id);
-                      }
-                    }}
-                  />
-                </ConfigField>
-                {config.serviceGroupId && (() => {
-                  const selectedGroup = (serviceGroups ?? []).find((g) => g.id === config.serviceGroupId);
-                  const groupAccessories = accessories.filter((a) => selectedGroup?.accessoryIds.includes(a.id));
-                  const charSets = groupAccessories.map(
-                    (a) => new Set(a.services?.flatMap((s) => s.characteristics)?.map((c) => c.characteristicType) ?? []),
-                  );
-                  const commonChars = charSets.length > 0
-                    ? [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct)))
-                    : [];
-                  return (
-                    <ConfigField label="Characteristic">
-                      <CharacteristicPicker
-                        value={config.characteristicType as string | undefined}
-                        characteristics={commonChars.map((ct) => ({ type: ct }))}
-                        onChange={(v) => updateConfig('characteristicType', v)}
-                      />
-                    </ConfigField>
-                  );
-                })()}
-              </>
-            ) : (
-              <>
-                <ConfigField label="Device">
-                  <DevicePicker
-                    value={config.accessoryId as string | undefined}
-                    accessories={accessories}
-                    onChange={(id, name) => {
-                      if (updateConfigBatch) {
-                        updateConfigBatch({ accessoryId: id, accessoryName: name, characteristicType: '' });
-                      } else {
-                        updateConfig('accessoryId', id);
-                      }
-                    }}
-                  />
-                </ConfigField>
-                {config.accessoryId && (() => {
-                  const selectedAcc = accessories.find((a) => a.id === config.accessoryId);
-                  const chars = selectedAcc?.services
-                    ?.flatMap((s) => s.characteristics)
-                    ?.filter((c) => c.isWritable || c.isReadable) ?? [];
-                  return (
-                    <ConfigField label="Characteristic">
-                      <CharacteristicPicker
-                        value={config.characteristicType as string | undefined}
-                        characteristics={chars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
-                        onChange={(v) => updateConfig('characteristicType', v)}
-                      />
-                    </ConfigField>
-                  );
-                })()}
-              </>
-            )}
             {/* Trigger condition — pick ONE filter type */}
             {(config.accessoryId || config.serviceGroupId) && config.characteristicType && (
               <div className="border-t pt-3 mt-3">
@@ -395,13 +351,11 @@ function renderConfigForm(
                   <Select
                     value={(config.filterMode as string) ?? 'any'}
                     onValueChange={(v) => {
-                      // Clear other filter values when switching mode
                       if (updateConfigBatch) {
                         const clear: Record<string, unknown> = { filterMode: v };
                         if (v !== 'value') { clear.to = undefined; clear.from = undefined; }
-                        if (v !== 'above') { clear.above = undefined; }
-                        if (v !== 'below') { clear.below = undefined; }
-                        if (v !== 'range') { if (v !== 'above') clear.above = undefined; if (v !== 'below') clear.below = undefined; }
+                        if (v !== 'above' && v !== 'range') { clear.above = undefined; }
+                        if (v !== 'below' && v !== 'range') { clear.below = undefined; }
                         updateConfigBatch(clear);
                       } else {
                         updateConfig('filterMode', v);
@@ -414,42 +368,30 @@ function renderConfigForm(
                       <SelectItem value="value">Changes to a specific value</SelectItem>
                       <SelectItem value="above">Goes above a threshold</SelectItem>
                       <SelectItem value="below">Goes below a threshold</SelectItem>
-                      <SelectItem value="range">Enters a range (above AND below)</SelectItem>
+                      <SelectItem value="range">Enters a range</SelectItem>
                     </SelectContent>
                   </Select>
                 </ConfigField>
 
+                {/* Smart value inputs — same as Set Device */}
                 {config.filterMode === 'value' && (
                   <div className="mt-2 space-y-2">
-                    <ConfigField label="To value">
-                      <Input
-                        value={String(config.to ?? '')}
-                        onChange={(e) => updateConfig('to', e.target.value || undefined)}
-                        placeholder="e.g., 1 (on) or 0 (off)"
-                        className="h-8 text-xs"
-                      />
+                    <ConfigField label="Changes to">
+                      <SmartValueInput char={selectedChar} value={config.to} onChange={(v) => updateConfig('to', v)} />
                     </ConfigField>
-                    <ConfigField label="From value (optional)">
-                      <Input
-                        value={String(config.from ?? '')}
-                        onChange={(e) => updateConfig('from', e.target.value || undefined)}
-                        placeholder="Any previous value"
-                        className="h-8 text-xs"
-                      />
-                    </ConfigField>
+                    <details open={!!config.from}>
+                      <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">From value (optional)</summary>
+                      <div className="mt-1">
+                        <SmartValueInput char={selectedChar} value={config.from} onChange={(v) => updateConfig('from', v)} />
+                      </div>
+                    </details>
                   </div>
                 )}
 
                 {config.filterMode === 'above' && (
                   <div className="mt-2">
                     <ConfigField label="Above">
-                      <Input
-                        type="number"
-                        value={(config.above as number) ?? ''}
-                        onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)}
-                        placeholder="e.g., 25"
-                        className="h-8 text-xs"
-                      />
+                      <Input type="number" value={(config.above as number) ?? ''} onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="e.g., 25" className="h-8 text-xs" />
                     </ConfigField>
                   </div>
                 )}
@@ -457,13 +399,7 @@ function renderConfigForm(
                 {config.filterMode === 'below' && (
                   <div className="mt-2">
                     <ConfigField label="Below">
-                      <Input
-                        type="number"
-                        value={(config.below as number) ?? ''}
-                        onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)}
-                        placeholder="e.g., 10"
-                        className="h-8 text-xs"
-                      />
+                      <Input type="number" value={(config.below as number) ?? ''} onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="e.g., 10" className="h-8 text-xs" />
                     </ConfigField>
                   </div>
                 )}
@@ -472,24 +408,12 @@ function renderConfigForm(
                   <div className="mt-2 flex gap-2">
                     <div className="flex-1">
                       <ConfigField label="Above">
-                        <Input
-                          type="number"
-                          value={(config.above as number) ?? ''}
-                          onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)}
-                          placeholder="Min"
-                          className="h-8 text-xs"
-                        />
+                        <Input type="number" value={(config.above as number) ?? ''} onChange={(e) => updateConfig('above', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Min" className="h-8 text-xs" />
                       </ConfigField>
                     </div>
                     <div className="flex-1">
                       <ConfigField label="Below">
-                        <Input
-                          type="number"
-                          value={(config.below as number) ?? ''}
-                          onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)}
-                          placeholder="Max"
-                          className="h-8 text-xs"
-                        />
+                        <Input type="number" value={(config.below as number) ?? ''} onChange={(e) => updateConfig('below', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Max" className="h-8 text-xs" />
                       </ConfigField>
                     </div>
                   </div>
@@ -614,18 +538,55 @@ function renderConfigForm(
   // ---- ACTIONS ----
   if (category === 'action') {
     switch (nodeType) {
-      case 'set_device':
+      case 'set_device': {
+        const setDeviceChars = (() => {
+          const acc = accessories.find((a) => a.id === config.accessoryId);
+          if (acc) return acc.services?.flatMap((s) => s.characteristics)?.filter((c) => c.isWritable) ?? [];
+          const group = (serviceGroups ?? []).find((g) => g.id === config.serviceGroupId);
+          if (group) {
+            const groupAccs = accessories.filter((a) => group.accessoryIds.includes(a.id));
+            const charSets = groupAccs.map((a) => new Set(a.services?.flatMap((s) => s.characteristics)?.filter((c) => c.isWritable)?.map((c) => c.characteristicType) ?? []));
+            const commonTypes = charSets.length > 0 ? [...charSets[0]].filter((ct) => charSets.every((s) => s.has(ct))) : [];
+            const allChars = groupAccs.flatMap((a) => a.services?.flatMap((s) => s.characteristics) ?? []);
+            return commonTypes.map((ct) => allChars.find((c) => c.characteristicType === ct)).filter(Boolean) as typeof allChars;
+          }
+          return [];
+        })();
+        const setDeviceChar = setDeviceChars.find((c) => c.characteristicType === config.characteristicType);
         return (
-          <DeviceConfigFields
-            config={config}
-            updateConfig={updateConfig}
-            updateConfigBatch={updateConfigBatch}
-            accessories={accessories}
-            openDevicePicker={openDevicePicker}
-            showValue
-            useEntityPicker
-          />
+          <>
+            <ConfigField label="Device or Group">
+              <DeviceOrGroupPicker
+                accessoryId={config.accessoryId as string | undefined}
+                serviceGroupId={config.serviceGroupId as string | undefined}
+                accessories={accessories}
+                homes={homes}
+                serviceGroups={serviceGroups ?? []}
+                onSelectAccessory={(id, name) => {
+                  if (updateConfigBatch) updateConfigBatch({ accessoryId: id, accessoryName: name, serviceGroupId: undefined, serviceGroupName: undefined, characteristicType: '' });
+                }}
+                onSelectGroup={(id, name) => {
+                  if (updateConfigBatch) updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, accessoryId: undefined, accessoryName: undefined, characteristicType: '' });
+                }}
+              />
+            </ConfigField>
+            {(config.accessoryId || config.serviceGroupId) && (
+              <ConfigField label="Characteristic">
+                <CharacteristicPicker
+                  value={config.characteristicType as string | undefined}
+                  characteristics={setDeviceChars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+                  onChange={(v) => updateConfig('characteristicType', v)}
+                />
+              </ConfigField>
+            )}
+            {config.characteristicType && (
+              <ConfigField label="Value">
+                <SmartValueInput char={setDeviceChar} value={config.value} onChange={(v) => updateConfig('value', v)} />
+              </ConfigField>
+            )}
+          </>
         );
+      }
 
       case 'run_scene': {
         return (
@@ -1358,6 +1319,50 @@ function getCharMeta(c: { validValues?: number[]; minValue?: number; maxValue?: 
   return '';
 }
 
+/** Smart value input — adapts to characteristic type (boolean toggle, slider, enum select, or text) */
+function SmartValueInput({ char, value, onChange }: {
+  char: { validValues?: number[]; minValue?: number; maxValue?: number; stepValue?: number } | undefined;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  // Boolean (on/off)
+  if (char?.validValues && char.validValues.length === 2 && char.validValues.includes(0) && char.validValues.includes(1)) {
+    return (
+      <div className="flex items-center gap-2">
+        <Switch checked={value === true || value === 1 || value === '1'} onCheckedChange={(v) => onChange(v ? 1 : 0)} />
+        <span className="text-xs text-muted-foreground">{value ? 'On' : 'Off'}</span>
+      </div>
+    );
+  }
+  // Numeric range (slider)
+  if (char?.minValue !== undefined && char?.maxValue !== undefined) {
+    const numVal = typeof value === 'number' ? value : Number(value) || char.minValue;
+    return (
+      <div className="space-y-1">
+        <Slider value={[numVal]} min={char.minValue} max={char.maxValue} step={char.stepValue ?? 1} onValueChange={([v]) => onChange(v)} className="my-2" />
+        <Input type="number" value={numVal} min={char.minValue} max={char.maxValue} step={char.stepValue ?? 1} onChange={(e) => onChange(parseFloat(e.target.value) || 0)} className="h-8 text-xs" />
+      </div>
+    );
+  }
+  // Enum (dropdown)
+  if (char?.validValues && char.validValues.length > 2) {
+    return (
+      <Select value={String(value ?? '')} onValueChange={(v) => onChange(Number(v))}>
+        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+        <SelectContent>
+          {char.validValues.map((v) => (
+            <SelectItem key={v} value={String(v)}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+  // Default: text input with template support
+  return (
+    <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value || undefined)} placeholder="Value or {{ expression }}" className="h-8 text-xs" />
+  );
+}
+
 function ConfigField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -1527,7 +1532,7 @@ function isNodeConfigured(nodeType: string, category: string, config: Record<str
   }
   if (category === 'action') {
     switch (nodeType) {
-      case 'set_device': return !!(config.accessoryId && config.characteristicType);
+      case 'set_device': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType);
       case 'run_scene': return !!config.sceneId;
       case 'delay': return !!((config.hours as number) || (config.minutes as number) || (config.seconds as number));
       case 'notify': return !!config.message;
