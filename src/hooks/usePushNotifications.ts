@@ -97,44 +97,8 @@ export function usePushNotifications(
     return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
   }, [isAvailable]);
 
-  // Handle foreground FCM messages — when the tab is focused, FCM delivers via
-  // onMessage instead of the service worker's onBackgroundMessage. We show the
-  // notification via the service worker registration so it appears as a system notification.
-  useEffect(() => {
-    if (!isAvailable || permission !== 'granted') return;
-
-    let unsubscribe: (() => void) | null = null;
-
-    (async () => {
-      try {
-        const { FIREBASE_CONFIG, VAPID_KEY } = await import('../lib/firebase');
-        const { initializeApp, getApps } = await import('firebase/app');
-        const { getMessaging, onMessage } = await import('firebase/messaging');
-
-        const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
-        const messaging = getMessaging(app);
-
-        unsubscribe = onMessage(messaging, (payload) => {
-          const data = payload.data || {};
-          const title = data.title || payload.notification?.title || 'Homecast';
-          const body = data.body || payload.notification?.body || '';
-
-          navigator.serviceWorker.ready.then((reg) => {
-            reg.showNotification(title, {
-              body,
-              icon: '/icon-192.png',
-              data,
-              tag: `homecast-${data.automationId || 'notification'}`,
-            });
-          });
-        });
-      } catch {
-        // Firebase not initialized yet — will be set up on next permission grant
-      }
-    })();
-
-    return () => { unsubscribe?.(); };
-  }, [isAvailable, permission]);
+  // Note: foreground FCM messages (when tab is focused) are silently received.
+  // Notifications only show when the tab is not focused (background push via SW).
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!isAvailable || !registerTokenMutation) return false;
