@@ -117,11 +117,26 @@ export function usePushNotifications(
       const app = initializeApp(FIREBASE_CONFIG);
       const messaging = getMessaging(app);
 
-      // 3. Register service worker
+      // 3. Register service worker and wait for it to be active
       const swRegistration = await navigator.serviceWorker.register(
         '/firebase-messaging-sw.js',
       );
       swRegistrationRef.current = swRegistration;
+
+      // Wait for the service worker to activate (getToken requires an active SW)
+      if (!swRegistration.active) {
+        const sw = swRegistration.installing || swRegistration.waiting;
+        if (sw) {
+          await new Promise<void>((resolve) => {
+            sw.addEventListener('statechange', function handler() {
+              if (sw.state === 'activated') {
+                sw.removeEventListener('statechange', handler);
+                resolve();
+              }
+            });
+          });
+        }
+      }
 
       // 4. Get FCM token
       const token = await getToken(messaging, {
