@@ -79,33 +79,15 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
         <div className="flex items-center gap-2 min-w-0">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-sm font-medium truncate">{enrollment.homeName}</span>
-          <Cloud className="h-3 w-3 text-muted-foreground shrink-0" />
         </div>
-        {enrollment.status === 'active' ? (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Badge variant="default" className="text-xs px-2 py-0.5 bg-blue-600 cursor-pointer hover:bg-blue-700 inline-flex items-center gap-1.5">
-                Cloud Relay
-                <X className="h-3.5 w-3.5 rounded-full hover:bg-white/20 p-0.5" />
-              </Badge>
-            </AlertDialogTrigger>
-            <AlertDialogContent style={{ zIndex: 10050 }}>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect from Cloud Relay?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This home will no longer be managed by Homecast Cloud.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={onCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Disconnect
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        ) : statusBadge(enrollment.status)}
-        {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {enrollment.status === 'active' ? (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-500/50 text-blue-600 dark:text-blue-400">
+              Cloud Relay
+            </Badge>
+          ) : statusBadge(enrollment.status)}
+          {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+        </div>
       </div>
       <div className="space-y-0.5">
         <p className="text-xs text-muted-foreground">
