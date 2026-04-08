@@ -203,7 +203,7 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
         open={addOpen}
         onOpenChange={setAddOpen}
         homeId={home.id}
-        onSaved={loadBrokers}
+        onSaved={() => refetchBrokers()}
       />
     </div>
   );
