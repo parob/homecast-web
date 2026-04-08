@@ -122,7 +122,8 @@ export function usePushNotifications(
               body,
               icon: '/icon-192.png',
               data,
-              tag: `homecast-${data.automationId || 'notification'}`,
+              tag: 'homecast-notify',
+              renotify: true,
             });
           });
         });

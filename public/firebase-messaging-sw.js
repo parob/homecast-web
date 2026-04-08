@@ -31,7 +31,8 @@ messaging.onBackgroundMessage((payload) => {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: data,
-    tag: `homecast-${data.automationId || 'notification'}`,
+    tag: 'homecast-notify',
+    renotify: true,
   };
 
   // Add action buttons if present in data
