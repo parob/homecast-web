@@ -369,8 +369,6 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
   return (
     <>
       <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">Manage how each home connects to Homecast.</p>
-
         {enrollmentsLoading ? (
           <p className="text-xs text-muted-foreground py-4 text-center">Loading homes...</p>
         ) : (

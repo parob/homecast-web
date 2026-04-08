@@ -190,8 +190,8 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
           </div>
         )}
 
-        {/* Custom Brokers (requires Mac app bridge) */}
-        {available && (
+        {/* Custom Brokers (community mode only — cloud custom brokers not yet supported) */}
+        {available && isCommunity && (
           <>
             <div className="flex items-center justify-between py-1">
               <p className="text-sm font-medium">{isCommunity ? 'MQTT Brokers' : 'Custom Brokers'}</p>
