@@ -97,8 +97,42 @@ export function usePushNotifications(
     return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
   }, [isAvailable]);
 
-  // Note: foreground FCM messages (when tab is focused) are silently received.
-  // Notifications only show when the tab is not focused (background push via SW).
+  // Handle foreground FCM messages — show notification via SW registration
+  useEffect(() => {
+    if (!isAvailable || permission !== 'granted') return;
+
+    let unsubscribe: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const { FIREBASE_CONFIG } = await import('../lib/firebase');
+        const { initializeApp, getApps } = await import('firebase/app');
+        const { getMessaging, onMessage } = await import('firebase/messaging');
+
+        const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+        const messaging = getMessaging(app);
+
+        unsubscribe = onMessage(messaging, (payload) => {
+          const title = payload.notification?.title || payload.data?.title || 'Homecast';
+          const body = payload.notification?.body || payload.data?.body || '';
+          const data = payload.data || {};
+
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.showNotification(title, {
+              body,
+              icon: '/icon-192.png',
+              data,
+              tag: `homecast-${data.automationId || 'notification'}`,
+            });
+          });
+        });
+      } catch {
+        // Firebase not initialized yet
+      }
+    })();
+
+    return () => { unsubscribe?.(); };
+  }, [isAvailable, permission]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!isAvailable || !registerTokenMutation) return false;
