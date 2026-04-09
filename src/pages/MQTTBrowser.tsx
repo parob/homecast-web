@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
-import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity } from 'lucide-react';
+import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity, Copy, Check, Plus, ExternalLink, Key, X } from 'lucide-react';
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 const CREATE_MQTT_TOKEN = gql`
   mutation CreateMqttToken { createMqttToken }
@@ -38,6 +45,8 @@ export default function MQTTBrowser() {
   const [connStats, setConnStats] = useState({ connectedAt: 0, totalMessages: 0, clientId: '' });
   const [msgRate, setMsgRate] = useState(0);
   const msgTimestamps = useRef<number[]>([]);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [disabledHomeInfo, setDisabledHomeInfo] = useState<string | null>(null);
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
@@ -269,6 +278,9 @@ export default function MQTTBrowser() {
                 {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
               </span>
             </div>
+            <button onClick={() => setConnectDialogOpen(true)} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors flex items-center gap-1">
+              <Key className="h-3 w-3" /> Connect
+            </button>
             {connected ? (
               <button onClick={disconnect} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors">Disconnect</button>
             ) : (
@@ -307,6 +319,11 @@ export default function MQTTBrowser() {
                   <button
                     key={home.id}
                     onClick={() => {
+                      if (!home.mqttEnabled) {
+                        setDisabledHomeInfo(disabledHomeInfo === home.name ? null : home.name);
+                        return;
+                      }
+                      setDisabledHomeInfo(null);
                       if (isSelected) { setSelectedHome(null); setSelectedRoom(null); }
                       else { setSelectedHome(home.name); setSelectedRoom(null); }
                     }}
@@ -323,13 +340,20 @@ export default function MQTTBrowser() {
                     {home.mqttEnabled ? (
                       <span className="text-[9px] text-green-600 dark:text-green-400">{count > 0 ? count : 'on'}</span>
                     ) : (
-                      <span className="text-[9px]">off</span>
+                      <span className="text-[9px]">mqtt off</span>
                     )}
                     {isSelected && <ChevronDown className="h-3 w-3" />}
                   </button>
                 );
               })}
             </div>
+
+            {/* Info panel for disabled homes */}
+            {disabledHomeInfo && (
+              <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-md px-3 py-2">
+                To enable MQTT for <span className="font-medium text-foreground">{disabledHomeInfo}</span>, go to Settings → Homes → {disabledHomeInfo} → enable Homecast Broker.
+              </div>
+            )}
 
             {/* Room chips when a home is selected */}
             {selectedHome && (() => {
@@ -536,7 +560,172 @@ export default function MQTTBrowser() {
         )}
 
       </div>
+
+      {/* Connect Dialog */}
+      <ConnectDialog
+        open={connectDialogOpen}
+        onOpenChange={setConnectDialogOpen}
+        api={api}
+        isMqttDomain={isMqttDomain}
+        homes={homes}
+      />
     </div>
+  );
+}
+
+function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  api: string;
+  isMqttDomain: boolean;
+  homes: Array<{ id: string; name: string }>;
+}) {
+  const [tokens, setTokens] = useState<Array<{ id: string; name: string; tokenPrefix: string; lastUsedAt?: string; expiresAt?: string }>>([]);
+  const [newToken, setNewToken] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const getAuthHeaders = useCallback(() => {
+    if (isMqttDomain) {
+      const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
+      return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` } : null;
+    }
+    const jwt = localStorage.getItem('homecast-token');
+    return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` } : null;
+  }, [isMqttDomain]);
+
+  const fetchTokens = useCallback(async () => {
+    const headers = getAuthHeaders();
+    if (!headers) return;
+    setLoading(true);
+    try {
+      const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ accessTokens { id name tokenPrefix lastUsedAt expiresAt } }' }) });
+      const d = await r.json();
+      setTokens(d?.data?.accessTokens ?? []);
+    } catch {} finally { setLoading(false); }
+  }, [api, getAuthHeaders]);
+
+  useEffect(() => { if (open) { fetchTokens(); setNewToken(null); } }, [open, fetchTokens]);
+
+  const createToken = async () => {
+    const headers = getAuthHeaders();
+    if (!headers) return;
+    setCreating(true);
+    const homePerms: Record<string, string> = {};
+    homes.forEach(h => { homePerms[h.id] = 'control'; });
+    try {
+      const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({
+        query: 'mutation($name: String!, $homePermissions: String!) { createAccessToken(name: $name, homePermissions: $homePermissions) { success rawToken error } }',
+        variables: { name: 'MQTT Client', homePermissions: JSON.stringify(homePerms) },
+      }) });
+      const d = await r.json();
+      if (d?.data?.createAccessToken?.rawToken) {
+        setNewToken(d.data.createAccessToken.rawToken);
+        fetchTokens();
+      }
+    } catch {} finally { setCreating(false); }
+  };
+
+  const copyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const host = 'mqtt.homecast.cloud';
+  const exampleCmd = `mosquitto_sub -h ${host} -p 8883 --cafile /etc/ssl/cert.pem -u "" -P "YOUR_TOKEN" -t "homecast/#" -v`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Key className="h-4 w-4" /> Connect External Client</DialogTitle>
+          <DialogDescription className="sr-only">MQTT connection details and access tokens</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Connection Details */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Connection</p>
+            <div className="rounded-md border bg-muted/30 divide-y text-[12px]">
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-muted-foreground">Host</span>
+                <div className="flex items-center gap-1.5">
+                  <code className="font-mono">{host}</code>
+                  <button onClick={() => copyText(host, 'host')} className="p-0.5 text-muted-foreground hover:text-foreground">
+                    {copied === 'host' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-muted-foreground">Port</span>
+                <code className="font-mono">8883 <span className="text-muted-foreground">(TLS)</span> or 1883</code>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-muted-foreground">Username</span>
+                <span className="text-muted-foreground italic">leave blank</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-muted-foreground">Password</span>
+                <span>API access token</span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <code className="block text-[10px] font-mono bg-muted/50 rounded-md p-2 pr-8 text-muted-foreground break-all">{exampleCmd}</code>
+              <button onClick={() => copyText(exampleCmd, 'cmd')} className="absolute top-1.5 right-1.5 p-0.5 text-muted-foreground hover:text-foreground">
+                {copied === 'cmd' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+              </button>
+            </div>
+          </div>
+
+          {/* New Token Alert */}
+          {newToken && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1.5">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Save this token — it won't be shown again</p>
+              <div className="flex items-center gap-1.5">
+                <code className="flex-1 text-[11px] font-mono break-all select-all">{newToken}</code>
+                <button onClick={() => copyText(newToken, 'newtoken')} className="p-1 shrink-0">
+                  {copied === 'newtoken' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Access Tokens */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Access Tokens</p>
+              <button onClick={createToken} disabled={creating} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors disabled:opacity-50">
+                <Plus className="h-3 w-3" /> {creating ? 'Creating...' : 'Create Token'}
+              </button>
+            </div>
+
+            {loading ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Loading...</p>
+            ) : tokens.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">No access tokens. Create one to connect external clients.</p>
+            ) : (
+              <div className="rounded-md border divide-y">
+                {tokens.map(token => (
+                  <div key={token.id} className="px-3 py-1.5 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{token.name}</span>
+                      <code className="text-[10px] font-mono text-muted-foreground">{token.tokenPrefix}</code>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {token.expiresAt ? `Expires ${new Date(token.expiresAt).toLocaleDateString()}` : 'Never expires'}
+                      {token.lastUsedAt && ` · Last used ${new Date(token.lastUsedAt).toLocaleDateString()}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
