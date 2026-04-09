@@ -318,7 +318,7 @@ export default function MQTTBrowser() {
                     <div className="px-3 pb-3">
                       {rawMode ? (
                         <div className="space-y-1.5">
-                          <textarea value={publishValue} onChange={(e) => setPublishValue(e.target.value)} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[60px]" />
+                          <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
                           <div className="flex justify-end">
                             <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
                               <Send className="h-3 w-3" /> Publish
