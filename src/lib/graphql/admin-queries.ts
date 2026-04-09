@@ -634,6 +634,13 @@ export const GET_ANALYTICS_INTERNAL = gql`
         conversionRate
         accountTypeBreakdown { free standard cloud managed waitlist }
       }
+      mqtt {
+        enabledHomes
+        customBrokers
+        connectedClients
+        retainedMessages
+        browserSessions
+      }
     }
   }
 `;
