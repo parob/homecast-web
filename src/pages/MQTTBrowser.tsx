@@ -327,7 +327,7 @@ export default function MQTTBrowser() {
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''}`}>
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
                   <span className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[11px] max-w-[280px] truncate"><FmtVal payload={payload} /></span>
+                    <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     {messages[topic].updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
