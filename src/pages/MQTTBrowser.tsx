@@ -43,19 +43,40 @@ export default function MQTTBrowser() {
   const userDisconnected = useRef(false);
 
   const isMqttDomain = location.hostname.startsWith('mqtt.');
+  const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
+
+  // On main domain: use Apollo. On mqtt.* domain: fetch via cookie.
   const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first', skip: isMqttDomain });
   const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first', skip: isMqttDomain });
-  const user = meData?.me;
+  const [cookieUser, setCookieUser] = useState<any>(null);
+  const [cookieHomes, setCookieHomes] = useState<any[]>([]);
+
+  // Fetch user + homes via cookie on mqtt.* domains
+  useEffect(() => {
+    if (!isMqttDomain) return;
+    const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
+    if (!jwt) return;
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` };
+    fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled } }' }) })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.data?.me) setCookieUser(d.data.me);
+        if (d?.data?.cachedHomes) setCookieHomes(d.data.cachedHomes);
+      })
+      .catch(() => {});
+  }, [isMqttDomain, api]);
+
+  const user = meData?.me ?? cookieUser;
 
   const homes = useMemo(() => {
-    const raw: Array<{ id: string; name: string; role?: string; mqttEnabled?: boolean }> = homesData?.cachedHomes ?? [];
+    const raw: Array<{ id: string; name: string; role?: string; mqttEnabled?: boolean }> = (homesData?.cachedHomes ?? cookieHomes) || [];
     const byName = new Map<string, typeof raw[0]>();
     for (const h of raw) {
       const existing = byName.get(h.name);
       if (!existing || h.role === 'owner') byName.set(h.name, h);
     }
     return Array.from(byName.values());
-  }, [homesData]);
+  }, [homesData, cookieHomes]);
 
   // Derive topic counts + rooms per home from messages
   const { topicCountByHome, roomsByHome } = useMemo(() => {
