@@ -107,6 +107,7 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
   const [addOpen, setAddOpen] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
+  const isAdmin = !home.role || home.role === 'owner' || home.role === 'admin';
   const [removeHomeMqttBrokerMut] = useMutation(REMOVE_HOME_MQTT_BROKER);
 
   // Load mqtt_enabled state from server (cloud only)
@@ -171,7 +172,7 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
               </div>
               <Switch
                 checked={mqttEnabled}
-                disabled={mqttToggling}
+                disabled={mqttToggling || !isAdmin}
                 onCheckedChange={handleToggleMqtt}
               />
             </div>
@@ -193,9 +194,9 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
           <>
             <div className="flex items-center justify-between py-1">
               <p className="text-sm font-medium">Custom Brokers</p>
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
+              {isAdmin && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
-              </Button>
+              </Button>}
             </div>
 
             {brokersLoading ? (
