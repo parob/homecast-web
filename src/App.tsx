@@ -78,7 +78,7 @@ const MainRoutes = () => (
             </>
           ) : (
             <>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={location.hostname.startsWith('mqtt.') ? <MQTTBrowser /> : <Index />} />
               <Route path="/how-it-works" element={<HowItWorks />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/features" element={<Navigate to="/" replace />} />
