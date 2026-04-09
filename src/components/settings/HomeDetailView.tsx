@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Plus, Pencil, Trash2, Radio, Bell, Mail } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Bell, Mail } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
@@ -166,50 +166,24 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
 
         {/* Homecast Broker (cloud only) */}
         {!isCommunity && (
-          <>
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <p className="text-sm font-medium">Homecast Broker</p>
-                <p className="text-xs text-muted-foreground">
-                  {mqttEnabled
-                    ? `${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}:8883`
-                    : `Publish device state via ${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`}
-                </p>
-              </div>
-              <Switch
-                checked={mqttEnabled}
-                disabled={mqttToggling || !isAdmin}
-                onCheckedChange={handleToggleMqtt}
-              />
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-sm font-medium">Homecast Broker</p>
+              <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
             </div>
-            {mqttEnabled && (() => {
-              const mqttUrl = location.hostname.includes('staging') ? 'https://staging.mqtt.homecast.cloud' : 'https://mqtt.homecast.cloud';
-              return (
-                <a
-                  href={mqttUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                  onClick={(e) => {
-                    const w = window as any;
-                    if (w.webkit?.messageHandlers?.homecast) {
-                      e.preventDefault();
-                      w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: mqttUrl });
-                    }
-                  }}
-                >
-                  <Radio className="h-3 w-3" /> Open MQTT Browser
-                </a>
-              );
-            })()}
-          </>
+            <Switch
+              checked={mqttEnabled}
+              disabled={mqttToggling || !isAdmin}
+              onCheckedChange={handleToggleMqtt}
+            />
+          </div>
         )}
 
-        {/* Custom Brokers */}
+        {/* Custom MQTT Brokers */}
         {!isCommunity && (
           <>
             <div className="flex items-center justify-between py-1">
-              <p className="text-sm font-medium">Custom Brokers</p>
+              <p className="text-sm font-medium">Custom MQTT Brokers</p>
               {isAdmin && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>}
