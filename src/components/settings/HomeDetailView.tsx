@@ -169,11 +169,11 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
       {developerMode && <div className="space-y-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
 
-        {/* Homecast Broker (cloud only) */}
+        {/* Homecast MQTT Broker (cloud only) */}
         {!isCommunity && (
           <div className="flex items-center justify-between py-1">
             <div>
-              <p className="text-sm font-medium">Homecast Broker</p>
+              <p className="text-sm font-medium">Homecast MQTT Broker</p>
               <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
             </div>
             <Switch
