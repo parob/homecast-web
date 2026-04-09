@@ -200,58 +200,18 @@ export default function MQTTBrowser() {
 
   const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
-    const baseTopic = topic.endsWith('/set') ? topic.replace(/\/set$/, '') : topic;
-    const t = baseTopic + '/set';
+    const t = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(t, payload);
     addToHistory(t, payload);
-    // Optimistic update — immediately reflect the change locally
-    setMessages(prev => {
-      const existing = prev[baseTopic];
-      if (!existing) return prev;
-      try {
-        const currentState = JSON.parse(existing.payload);
-        const newState = JSON.parse(payload);
-        return { ...prev, [baseTopic]: { ...existing, payload: JSON.stringify({ ...currentState, ...newState }), timestamp: Date.now(), updates: existing.updates + 1 } };
-      } catch { return prev; }
-    });
   }, [connected, addToHistory]);
 
   const publishProp = useCallback((topic: string, key: string, value: any) => {
     if (!clientRef.current || !connected) return;
-    const baseTopic = topic.endsWith('/set') ? topic.replace(/\/set$/, '') : topic;
-    const t = baseTopic + '/set';
+    const t = topic.endsWith('/set') ? topic : topic + '/set';
     const p = JSON.stringify({ [key]: value });
     clientRef.current.publish(t, p);
     addToHistory(t, p);
-    // Optimistic update — immediately reflect the change locally
-    setMessages(prev => {
-      const existing = prev[baseTopic];
-      if (!existing) return prev;
-      try {
-        const state = JSON.parse(existing.payload);
-        state[key] = value;
-        return { ...prev, [baseTopic]: { ...existing, payload: JSON.stringify(state), timestamp: Date.now(), updates: existing.updates + 1 } };
-      } catch { return prev; }
-    });
-    // For groups: also optimistically update member topics
-    const members = groupMembers[baseTopic];
-    if (members) {
-      setMessages(prev => {
-        const updated = { ...prev };
-        for (const memberSlug of members) {
-          const memberTopic = Object.keys(prev).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
-          if (memberTopic && prev[memberTopic]) {
-            try {
-              const state = JSON.parse(prev[memberTopic].payload);
-              state[key] = value;
-              updated[memberTopic] = { ...prev[memberTopic], payload: JSON.stringify(state), timestamp: Date.now(), updates: prev[memberTopic].updates + 1 };
-            } catch {}
-          }
-        }
-        return updated;
-      });
-    }
-  }, [connected, addToHistory, groupMembers]);
+  }, [connected, addToHistory]);
 
   // Auto-connect (only once, not after manual disconnect)
   useEffect(() => {
