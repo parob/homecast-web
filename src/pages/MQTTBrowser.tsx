@@ -263,7 +263,7 @@ export default function MQTTBrowser() {
           0% { background-color: rgba(34, 197, 94, 0.15); }
           100% { background-color: transparent; }
         }
-        .animate-mqtt-flash { animation: mqttFlash 2s ease-out forwards; }
+        .animate-mqtt-flash { animation: mqttFlash 8s ease-out forwards; }
       `}</style>
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
@@ -418,7 +418,7 @@ export default function MQTTBrowser() {
           <div className="border rounded-lg divide-y overflow-hidden">
             {filteredTopics.map(([topic, { payload, timestamp }]) => {
               const isExpanded = expandedTopic === topic;
-              const isRecent = Date.now() - timestamp < 2000;
+              const isRecent = Date.now() - timestamp < 8000;
 
               if (isExpanded) {
                 const msg = messages[topic];
@@ -458,8 +458,7 @@ export default function MQTTBrowser() {
                             {availability[topic]}
                           </span>
                         )}
-                        {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()} · publishes to <span className="font-mono">/set</span>
-                      </span>
+                        {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()}                      </span>
                       <div className="flex border rounded overflow-hidden">
                         <button onClick={() => setRawMode(false)} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
                         <button onClick={() => setRawMode(true)} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
