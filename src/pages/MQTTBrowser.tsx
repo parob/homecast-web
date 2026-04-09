@@ -589,7 +589,7 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
 }) {
   const [tokens, setTokens] = useState<Array<{ id: string; name: string; tokenPrefix: string; homePermissions: string; lastUsedAt?: string; expiresAt?: string }>>([]);
   const [newTokenRaw, setNewTokenRaw] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [tokenName, setTokenName] = useState('');
   const [tokenPerms, setTokenPerms] = useState<Record<string, 'view' | 'control'>>({});
   const [tokenExpiry, setTokenExpiry] = useState<string>('never');
@@ -621,7 +621,7 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
     } catch {} finally { setLoading(false); }
   }, [gql]);
 
-  useEffect(() => { if (open) { fetchTokens(); setNewTokenRaw(null); setShowCreate(false); } }, [open, fetchTokens]);
+  useEffect(() => { if (open) { fetchTokens(); setNewTokenRaw(null); } }, [open, fetchTokens]);
 
   const createToken = async () => {
     if (!tokenName.trim() || Object.keys(tokenPerms).length === 0) return;
@@ -704,71 +704,79 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
             </div>
           </div>
 
-          {/* New Token Alert */}
-          {newTokenRaw && (
-            <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1.5">
-              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Save this token — it won't be shown again</p>
-              <div className="flex items-center gap-1.5">
-                <code className="flex-1 text-[11px] font-mono break-all select-all">{newTokenRaw}</code>
-                <button onClick={() => copyText(newTokenRaw, 'newtoken')} className="p-1 shrink-0">
-                  {copied === 'newtoken' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Access Tokens */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Access Tokens</p>
-              <button onClick={() => { setShowCreate(!showCreate); setTokenName(''); setTokenPerms({}); setTokenExpiry('never'); }} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors">
+              <button onClick={() => { setCreateOpen(true); setTokenName(''); setTokenPerms({}); setTokenExpiry('never'); }} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors">
                 <Plus className="h-3 w-3" /> Create Token
               </button>
             </div>
 
-            {/* Create Token Form */}
-            {showCreate && (
-              <div className="rounded-md border p-3 space-y-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Name</label>
-                  <input type="text" value={tokenName} onChange={e => setTokenName(e.target.value)} placeholder="e.g., Home Assistant, Node-RED" className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 outline-none focus:border-primary" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Home permissions</label>
-                  <div className="rounded-md border divide-y">
-                    {homes.map(home => (
-                      <div key={home.id} className="flex items-center justify-between px-2.5 py-1.5">
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" checked={home.id in tokenPerms} onChange={e => {
-                            if (e.target.checked) setTokenPerms(p => ({ ...p, [home.id]: 'control' }));
-                            else setTokenPerms(p => { const n = { ...p }; delete n[home.id]; return n; });
-                          }} className="rounded" />
-                          {home.name}
-                        </label>
-                        {home.id in tokenPerms && (
-                          <select value={tokenPerms[home.id]} onChange={e => setTokenPerms(p => ({ ...p, [home.id]: e.target.value as 'view' | 'control' }))} className="text-xs bg-background border rounded px-1.5 py-0.5">
-                            <option value="control">Control</option>
-                            <option value="view">View</option>
-                          </select>
-                        )}
+            {/* Create Token Dialog */}
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogContent className="sm:max-w-sm" style={{ zIndex: 10060 }}>
+                <DialogHeader>
+                  <DialogTitle>{newTokenRaw ? 'Token Created' : 'Create Access Token'}</DialogTitle>
+                  <DialogDescription className="sr-only">{newTokenRaw ? 'Save your token' : 'Create a new access token'}</DialogDescription>
+                </DialogHeader>
+                {newTokenRaw ? (
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1.5">
+                      <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Save this token — it won't be shown again</p>
+                      <div className="flex items-center gap-1.5">
+                        <code className="flex-1 text-[11px] font-mono break-all select-all">{newTokenRaw}</code>
+                        <button onClick={() => copyText(newTokenRaw, 'newtoken')} className="p-1 shrink-0">
+                          {copied === 'newtoken' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
                       </div>
-                    ))}
+                    </div>
+                    <button onClick={() => { setCreateOpen(false); setNewTokenRaw(null); }} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90">Done</button>
                   </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Expiration</label>
-                  <select value={tokenExpiry} onChange={e => setTokenExpiry(e.target.value)} className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5">
-                    <option value="never">Never</option>
-                    <option value="30d">30 days</option>
-                    <option value="90d">90 days</option>
-                    <option value="1y">1 year</option>
-                  </select>
-                </div>
-                <button onClick={createToken} disabled={creating || !tokenName.trim() || Object.keys(tokenPerms).length === 0} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                  {creating ? 'Creating...' : 'Create Token'}
-                </button>
-              </div>
-            )}
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Name</label>
+                      <input type="text" value={tokenName} onChange={e => setTokenName(e.target.value)} placeholder="e.g., Home Assistant, Node-RED" autoFocus className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 outline-none focus:border-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Home permissions</label>
+                      <div className="rounded-md border divide-y">
+                        {homes.map(home => (
+                          <div key={home.id} className="flex items-center justify-between px-2.5 py-1.5">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input type="checkbox" checked={home.id in tokenPerms} onChange={e => {
+                                if (e.target.checked) setTokenPerms(p => ({ ...p, [home.id]: 'control' }));
+                                else setTokenPerms(p => { const n = { ...p }; delete n[home.id]; return n; });
+                              }} className="rounded" />
+                              {home.name}
+                            </label>
+                            {home.id in tokenPerms && (
+                              <select value={tokenPerms[home.id]} onChange={e => setTokenPerms(p => ({ ...p, [home.id]: e.target.value as 'view' | 'control' }))} className="text-xs bg-background border rounded px-1.5 py-0.5">
+                                <option value="control">Control</option>
+                                <option value="view">View</option>
+                              </select>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Expiration</label>
+                      <select value={tokenExpiry} onChange={e => setTokenExpiry(e.target.value)} className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5">
+                        <option value="never">Never</option>
+                        <option value="30d">30 days</option>
+                        <option value="90d">90 days</option>
+                        <option value="1y">1 year</option>
+                      </select>
+                    </div>
+                    <button onClick={createToken} disabled={creating || !tokenName.trim() || Object.keys(tokenPerms).length === 0} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                      {creating ? 'Creating...' : 'Create Token'}
+                    </button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* Token List */}
             {loading ? (
