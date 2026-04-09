@@ -162,20 +162,10 @@ export default function MQTTBrowser() {
           try {
             const members: string[] = JSON.parse(text);
             setGroupMembers(prev => ({ ...prev, [baseTopic]: members }));
-            // Create group topic entry with aggregated state from member accessories
+            // Create a placeholder topic entry so the group appears in the list
             setMessages(prev => {
-              if (prev[baseTopic]?.updates > 0) return prev;  // Already has real state
-              // Aggregate state from first member that has cached state
-              let groupState: Record<string, any> = {};
-              for (const memberPath of members) {
-                // Find the member's topic in existing messages
-                const memberTopic = Object.keys(prev).find(t => t.endsWith('/' + memberPath.split('/').pop()));
-                if (memberTopic && prev[memberTopic]) {
-                  try { groupState = JSON.parse(prev[memberTopic].payload); break; } catch {}
-                }
-              }
-              if (Object.keys(groupState).length === 0) groupState = { members: members.length };
-              return { ...prev, [baseTopic]: { payload: JSON.stringify(groupState), timestamp: Date.now(), updates: 0 } };
+              if (prev[baseTopic]?.updates > 0) return prev;  // Already has real state from event
+              return { ...prev, [baseTopic]: { payload: '{}', timestamp: Date.now(), updates: 0 } };
             });
           } catch {}
           return;
@@ -401,6 +391,17 @@ export default function MQTTBrowser() {
 
               if (isExpanded) {
                 const msg = messages[topic];
+                const isExpandedGroup = !!groupMembers[topic];
+                // Aggregate state from members for groups
+                let expandedPayload = payload;
+                if (isExpandedGroup && (payload === '{}' || payload.includes('"members"'))) {
+                  for (const memberSlug of (groupMembers[topic] || [])) {
+                    const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
+                    if (mt && messages[mt]?.payload) {
+                      try { const p = JSON.parse(messages[mt].payload); if (Object.keys(p).length > 0 && !p.members) { expandedPayload = messages[mt].payload; break; } } catch {}
+                    }
+                  }
+                }
                 return (
                   <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
                     {/* Clickable header — click topic to collapse */}
@@ -410,7 +411,7 @@ export default function MQTTBrowser() {
                     >
                       <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
+                        <span className="font-mono text-[11px]"><FmtVal payload={expandedPayload} /></span>
                         <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">
                           {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -458,7 +459,7 @@ export default function MQTTBrowser() {
                           </div>
                         </div>
                       ) : (
-                        <PropertyEditor payload={payload} onPublish={(k, v) => publishProp(topic, k, v)} />
+                        <PropertyEditor payload={expandedPayload} onPublish={(k, v) => publishProp(topic, k, v)} />
                       )}
                     </div>
                   </div>
@@ -475,14 +476,34 @@ export default function MQTTBrowser() {
               );
               const isGroup = !!groupMembers[topic];
 
+              // For groups: aggregate state from first member with data
+              let effectivePayload = payload;
+              if (isGroup && (payload === '{}' || payload.includes('"members"'))) {
+                const members = groupMembers[topic] || [];
+                for (const memberSlug of members) {
+                  const memberTopic = Object.keys(messages).find(t =>
+                    t.endsWith('/' + memberSlug.split('/').pop())
+                  );
+                  if (memberTopic && messages[memberTopic]?.payload) {
+                    try {
+                      const parsed = JSON.parse(messages[memberTopic].payload);
+                      if (Object.keys(parsed).length > 0 && !parsed.members) {
+                        effectivePayload = messages[memberTopic].payload;
+                        break;
+                      }
+                    } catch {}
+                  }
+                }
+              }
+
               return (
-                <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(payload), null, 2)); } catch { setPublishValue(payload); } }}
+                <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
                   {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">group</span>}
                   <span className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
+                    <span className="font-mono text-[11px]"><FmtVal payload={effectivePayload} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     {messages[topic].updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
