@@ -286,7 +286,7 @@ export default function MQTTBrowser() {
               </span>
             </div>
             <button onClick={() => setConnectDialogOpen(true)} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors flex items-center gap-1">
-              <Key className="h-3 w-3" /> Connect
+              <Key className="h-3 w-3" /> Connection Details
             </button>
             {connected ? (
               <button onClick={disconnect} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors">Disconnect</button>
@@ -587,13 +587,17 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
   isMqttDomain: boolean;
   homes: Array<{ id: string; name: string }>;
 }) {
-  const [tokens, setTokens] = useState<Array<{ id: string; name: string; tokenPrefix: string; lastUsedAt?: string; expiresAt?: string }>>([]);
-  const [newToken, setNewToken] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<Array<{ id: string; name: string; tokenPrefix: string; homePermissions: string; lastUsedAt?: string; expiresAt?: string }>>([]);
+  const [newTokenRaw, setNewTokenRaw] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [tokenName, setTokenName] = useState('');
+  const [tokenPerms, setTokenPerms] = useState<Record<string, 'view' | 'control'>>({});
+  const [tokenExpiry, setTokenExpiry] = useState<string>('never');
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const getAuthHeaders = useCallback(() => {
+  const getAuthHeaders = useCallback((): Record<string, string> | null => {
     if (isMqttDomain) {
       const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
       return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` } : null;
@@ -602,36 +606,50 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
     return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` } : null;
   }, [isMqttDomain]);
 
-  const fetchTokens = useCallback(async () => {
+  const gql = useCallback(async (query: string, variables?: any) => {
     const headers = getAuthHeaders();
-    if (!headers) return;
-    setLoading(true);
-    try {
-      const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ accessTokens { id name tokenPrefix lastUsedAt expiresAt } }' }) });
-      const d = await r.json();
-      setTokens(d?.data?.accessTokens ?? []);
-    } catch {} finally { setLoading(false); }
+    if (!headers) return null;
+    const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query, variables }) });
+    return (await r.json())?.data;
   }, [api, getAuthHeaders]);
 
-  useEffect(() => { if (open) { fetchTokens(); setNewToken(null); } }, [open, fetchTokens]);
+  const fetchTokens = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await gql('{ accessTokens { id name tokenPrefix homePermissions lastUsedAt expiresAt } }');
+      setTokens(d?.accessTokens ?? []);
+    } catch {} finally { setLoading(false); }
+  }, [gql]);
+
+  useEffect(() => { if (open) { fetchTokens(); setNewTokenRaw(null); setShowCreate(false); } }, [open, fetchTokens]);
 
   const createToken = async () => {
-    const headers = getAuthHeaders();
-    if (!headers) return;
+    if (!tokenName.trim() || Object.keys(tokenPerms).length === 0) return;
     setCreating(true);
-    const homePerms: Record<string, string> = {};
-    homes.forEach(h => { homePerms[h.id] = 'control'; });
+    let expiresAt: string | undefined;
+    if (tokenExpiry !== 'never') {
+      const d = new Date();
+      if (tokenExpiry === '30d') d.setDate(d.getDate() + 30);
+      if (tokenExpiry === '90d') d.setDate(d.getDate() + 90);
+      if (tokenExpiry === '1y') d.setFullYear(d.getFullYear() + 1);
+      expiresAt = d.toISOString();
+    }
     try {
-      const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({
-        query: 'mutation($name: String!, $homePermissions: String!) { createAccessToken(name: $name, homePermissions: $homePermissions) { success rawToken error } }',
-        variables: { name: 'MQTT Client', homePermissions: JSON.stringify(homePerms) },
-      }) });
-      const d = await r.json();
-      if (d?.data?.createAccessToken?.rawToken) {
-        setNewToken(d.data.createAccessToken.rawToken);
+      const d = await gql(
+        'mutation($name: String!, $homePermissions: String!, $expiresAt: String) { createAccessToken(name: $name, homePermissions: $homePermissions, expiresAt: $expiresAt) { success rawToken error } }',
+        { name: tokenName.trim(), homePermissions: JSON.stringify(tokenPerms), expiresAt }
+      );
+      if (d?.createAccessToken?.rawToken) {
+        setNewTokenRaw(d.createAccessToken.rawToken);
+        setShowCreate(false);
         fetchTokens();
       }
     } catch {} finally { setCreating(false); }
+  };
+
+  const revokeToken = async (id: string) => {
+    await gql('mutation($tokenId: String!) { revokeAccessToken(tokenId: $tokenId) { success } }', { tokenId: id });
+    fetchTokens();
   };
 
   const copyText = (text: string, key: string) => {
@@ -645,16 +663,16 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Key className="h-4 w-4" /> Connect External Client</DialogTitle>
+          <DialogTitle>Connection Details</DialogTitle>
           <DialogDescription className="sr-only">MQTT connection details and access tokens</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Connection Details */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Connection</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">MQTT Broker</p>
             <div className="rounded-md border bg-muted/30 divide-y text-[12px]">
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-muted-foreground">Host</span>
@@ -678,7 +696,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
                 <span>API access token</span>
               </div>
             </div>
-
             <div className="relative">
               <code className="block text-[10px] font-mono bg-muted/50 rounded-md p-2 pr-8 text-muted-foreground break-all">{exampleCmd}</code>
               <button onClick={() => copyText(exampleCmd, 'cmd')} className="absolute top-1.5 right-1.5 p-0.5 text-muted-foreground hover:text-foreground">
@@ -688,12 +705,12 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
           </div>
 
           {/* New Token Alert */}
-          {newToken && (
+          {newTokenRaw && (
             <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1.5">
               <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Save this token — it won't be shown again</p>
               <div className="flex items-center gap-1.5">
-                <code className="flex-1 text-[11px] font-mono break-all select-all">{newToken}</code>
-                <button onClick={() => copyText(newToken, 'newtoken')} className="p-1 shrink-0">
+                <code className="flex-1 text-[11px] font-mono break-all select-all">{newTokenRaw}</code>
+                <button onClick={() => copyText(newTokenRaw, 'newtoken')} className="p-1 shrink-0">
                   {copied === 'newtoken' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
               </div>
@@ -703,30 +720,89 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
           {/* Access Tokens */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Access Tokens</p>
-              <button onClick={createToken} disabled={creating} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors disabled:opacity-50">
-                <Plus className="h-3 w-3" /> {creating ? 'Creating...' : 'Create Token'}
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Access Tokens</p>
+              <button onClick={() => { setShowCreate(!showCreate); setTokenName(''); setTokenPerms({}); setTokenExpiry('never'); }} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors">
+                <Plus className="h-3 w-3" /> Create Token
               </button>
             </div>
 
+            {/* Create Token Form */}
+            {showCreate && (
+              <div className="rounded-md border p-3 space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Name</label>
+                  <input type="text" value={tokenName} onChange={e => setTokenName(e.target.value)} placeholder="e.g., Home Assistant, Node-RED" className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 outline-none focus:border-primary" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Home permissions</label>
+                  <div className="rounded-md border divide-y">
+                    {homes.map(home => (
+                      <div key={home.id} className="flex items-center justify-between px-2.5 py-1.5">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={home.id in tokenPerms} onChange={e => {
+                            if (e.target.checked) setTokenPerms(p => ({ ...p, [home.id]: 'control' }));
+                            else setTokenPerms(p => { const n = { ...p }; delete n[home.id]; return n; });
+                          }} className="rounded" />
+                          {home.name}
+                        </label>
+                        {home.id in tokenPerms && (
+                          <select value={tokenPerms[home.id]} onChange={e => setTokenPerms(p => ({ ...p, [home.id]: e.target.value as 'view' | 'control' }))} className="text-xs bg-background border rounded px-1.5 py-0.5">
+                            <option value="control">Control</option>
+                            <option value="view">View</option>
+                          </select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Expiration</label>
+                  <select value={tokenExpiry} onChange={e => setTokenExpiry(e.target.value)} className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5">
+                    <option value="never">Never</option>
+                    <option value="30d">30 days</option>
+                    <option value="90d">90 days</option>
+                    <option value="1y">1 year</option>
+                  </select>
+                </div>
+                <button onClick={createToken} disabled={creating || !tokenName.trim() || Object.keys(tokenPerms).length === 0} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {creating ? 'Creating...' : 'Create Token'}
+                </button>
+              </div>
+            )}
+
+            {/* Token List */}
             {loading ? (
               <p className="text-xs text-muted-foreground text-center py-2">Loading...</p>
             ) : tokens.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-2">No access tokens. Create one to connect external clients.</p>
+              <p className="text-xs text-muted-foreground text-center py-2">No access tokens yet.</p>
             ) : (
               <div className="rounded-md border divide-y">
-                {tokens.map(token => (
-                  <div key={token.id} className="px-3 py-1.5 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{token.name}</span>
-                      <code className="text-[10px] font-mono text-muted-foreground">{token.tokenPrefix}</code>
+                {tokens.map(token => {
+                  let permStr = '';
+                  try {
+                    const perms = JSON.parse(token.homePermissions) as Record<string, string>;
+                    permStr = Object.entries(perms).map(([hid, role]) => {
+                      const h = homes.find(x => x.id === hid);
+                      return `${h?.name || hid.slice(0, 8)} (${role})`;
+                    }).join(', ');
+                  } catch {}
+                  return (
+                    <div key={token.id} className="px-3 py-2 text-[12px]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{token.name}</span>
+                          <code className="text-[10px] font-mono text-muted-foreground">{token.tokenPrefix}</code>
+                        </div>
+                        <button onClick={() => revokeToken(token.id)} className="text-[10px] text-destructive hover:underline">Revoke</button>
+                      </div>
+                      {permStr && <p className="text-[10px] text-muted-foreground mt-0.5">{permStr}</p>}
+                      <p className="text-[10px] text-muted-foreground">
+                        {token.expiresAt ? `Expires ${new Date(token.expiresAt).toLocaleDateString()}` : 'Never expires'}
+                        {token.lastUsedAt && ` · Last used ${new Date(token.lastUsedAt).toLocaleDateString()}`}
+                      </p>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {token.expiresAt ? `Expires ${new Date(token.expiresAt).toLocaleDateString()}` : 'Never expires'}
-                      {token.lastUsedAt && ` · Last used ${new Date(token.lastUsedAt).toLocaleDateString()}`}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
