@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 interface HomeDetailViewProps {
   home: HomeKitHome;
   onBack: () => void;
+  developerMode?: boolean;
 }
 
 function statusBadge(status: string | undefined) {
@@ -102,7 +103,7 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
   );
 }
 
-export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
+export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
@@ -152,8 +153,8 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
         {home.name}
       </button>
 
-      {/* MQTT */}
-      <div className="space-y-2">
+      {/* MQTT (developer mode only) */}
+      {developerMode && <div className="space-y-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
 
         {/* Homecast Broker (cloud only) */}
@@ -194,7 +195,7 @@ export function HomeDetailView({ home, onBack }: HomeDetailViewProps) {
             )}
           </>
         )}
-      </div>
+      </div>}
 
       {/* Notification Preferences (cloud only) */}
       {!isCommunity && <HomeNotificationPreferences homeId={home.id} />}

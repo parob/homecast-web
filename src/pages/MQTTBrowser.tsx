@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
 import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity } from 'lucide-react';
-import { GET_ME, GET_CACHED_HOMES, GET_SETTINGS } from '@/lib/graphql/queries';
+import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
 
 const CREATE_MQTT_TOKEN = gql`
   mutation CreateMqttToken { createMqttToken }
@@ -44,28 +44,7 @@ export default function MQTTBrowser() {
 
   const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first' });
   const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first' });
-  const { data: settingsData } = useQuery(GET_SETTINGS, { fetchPolicy: 'cache-first' });
   const user = meData?.me;
-
-  // Check developer mode
-  const developerMode = useMemo(() => {
-    try {
-      const parsed = JSON.parse(settingsData?.settings?.data || '{}');
-      return parsed.developerMode === true;
-    } catch { return false; }
-  }, [settingsData]);
-
-  if (settingsData && !developerMode) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <Radio className="h-8 w-8 text-muted-foreground mx-auto" />
-          <p className="text-sm font-medium">MQTT Browser</p>
-          <p className="text-xs text-muted-foreground">Enable Developer Mode in Settings to access the MQTT browser.</p>
-        </div>
-      </div>
-    );
-  }
 
   const homes = useMemo(() => {
     const raw: Array<{ id: string; name: string; role?: string; mqttEnabled?: boolean }> = homesData?.cachedHomes ?? [];

@@ -316,7 +316,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
 
   // If a home is selected, show its detail view (must be after all hooks)
   if (selectedHome) {
-    return <HomeDetailView home={selectedHome} onBack={() => setSelectedHome(null)} />;
+    return <HomeDetailView home={selectedHome} onBack={() => setSelectedHome(null)} developerMode={developerMode} />;
   }
 
   if (!isCloudPlan) {
