@@ -468,12 +468,18 @@ export default function MQTTBrowser() {
               const avail = availability[topic];
               const isOffline = avail === 'offline';
 
+              // Check if this topic is a member of a group (indented under it)
+              const isGroupMember = Object.entries(groupMembers).some(([groupTopic, members]) =>
+                members.some(m => topic.endsWith('/' + m.split('/').pop()))
+                && topic !== groupTopic
+              );
+              const isGroup = !!groupMembers[topic];
+
               return (
                 <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(payload), null, 2)); } catch { setPublishValue(payload); } }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
+                  className={`w-full flex items-center gap-2 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''} ${isGroupMember ? 'pl-7 pr-3' : 'px-3'} ${isGroup ? 'bg-muted/10' : ''}`}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                  {groupMembers[topic] && <span className="text-[9px] bg-purple-500/10 text-purple-500 rounded px-1 shrink-0">group</span>}
-                  <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
+                  <span className={`font-mono text-xs min-w-0 truncate ${isGroup ? 'text-purple-500 dark:text-purple-400' : 'text-muted-foreground'}`}><TopicPath topic={topic} /></span>
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
