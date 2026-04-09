@@ -45,8 +45,8 @@ function resolveApiBase(): string {
   if (isCommunity) return `${window.location.protocol}//${window.location.host}`;
 
   const host = window.location.hostname;
-  if (host === 'staging.homecast.cloud') return 'https://staging.api.homecast.cloud';
-  if (host === 'homecast.cloud' || host === 'www.homecast.cloud') return 'https://api.homecast.cloud';
+  if (host === 'staging.homecast.cloud' || host === 'mqtt.staging.homecast.cloud') return 'https://staging.api.homecast.cloud';
+  if (host === 'homecast.cloud' || host === 'www.homecast.cloud' || host === 'mqtt.homecast.cloud') return 'https://api.homecast.cloud';
 
   // Local dev fallback
   return `${window.location.protocol}//${window.location.hostname}:8080`;
@@ -54,8 +54,8 @@ function resolveApiBase(): string {
 
 function resolveWebBase(): string {
   const host = window.location.hostname;
-  if (host === 'staging.homecast.cloud') return 'https://staging.homecast.cloud';
-  if (host === 'homecast.cloud' || host === 'www.homecast.cloud') return 'https://homecast.cloud';
+  if (host === 'staging.homecast.cloud' || host === 'mqtt.staging.homecast.cloud') return 'https://staging.homecast.cloud';
+  if (host === 'homecast.cloud' || host === 'www.homecast.cloud' || host === 'mqtt.homecast.cloud') return 'https://homecast.cloud';
   return `${window.location.protocol}//${window.location.host}`;
 }
 
