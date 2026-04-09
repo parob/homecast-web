@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
 import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity } from 'lucide-react';
-import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
+import { GET_ME, GET_CACHED_HOMES, GET_SETTINGS } from '@/lib/graphql/queries';
 
 const CREATE_MQTT_TOKEN = gql`
   mutation CreateMqttToken { createMqttToken }
@@ -31,6 +31,7 @@ export default function MQTTBrowser() {
   const [selectedHome, setSelectedHome] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
+  const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showConnInfo, setShowConnInfo] = useState(false);
@@ -43,7 +44,28 @@ export default function MQTTBrowser() {
 
   const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first' });
   const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first' });
+  const { data: settingsData } = useQuery(GET_SETTINGS, { fetchPolicy: 'cache-first' });
   const user = meData?.me;
+
+  // Check developer mode
+  const developerMode = useMemo(() => {
+    try {
+      const parsed = JSON.parse(settingsData?.settings?.data || '{}');
+      return parsed.developerMode === true;
+    } catch { return false; }
+  }, [settingsData]);
+
+  if (settingsData && !developerMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <Radio className="h-8 w-8 text-muted-foreground mx-auto" />
+          <p className="text-sm font-medium">MQTT Browser</p>
+          <p className="text-xs text-muted-foreground">Enable Developer Mode in Settings to access the MQTT browser.</p>
+        </div>
+      </div>
+    );
+  }
 
   const homes = useMemo(() => {
     const raw: Array<{ id: string; name: string; role?: string; mqttEnabled?: boolean }> = homesData?.cachedHomes ?? [];
@@ -115,7 +137,13 @@ export default function MQTTBrowser() {
         if (topic.endsWith('/availability')) {
           const baseTopic = topic.replace(/\/availability$/, '');
           setAvailability(prev => ({ ...prev, [baseTopic]: text }));
-          return;  // Don't show availability as a separate topic row
+          return;
+        }
+        // Track group membership topics
+        if (topic.endsWith('/members')) {
+          const baseTopic = topic.replace(/\/members$/, '');
+          try { setGroupMembers(prev => ({ ...prev, [baseTopic]: JSON.parse(text) })); } catch {}
+          return;
         }
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
@@ -368,6 +396,19 @@ export default function MQTTBrowser() {
                         <button onClick={() => setRawMode(true)} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                       </div>
                     </div>
+                    {/* Group members */}
+                    {groupMembers[topic] && groupMembers[topic].length > 0 && (
+                      <div className="px-3 pb-1.5">
+                        <p className="text-[10px] text-muted-foreground mb-1">Group members ({groupMembers[topic].length})</p>
+                        <div className="flex flex-wrap gap-1">
+                          {groupMembers[topic].map((slug: string) => (
+                            <span key={slug} className="text-[10px] font-mono bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
+                              {slug.replace(/-[a-f0-9]{4,}$/, '')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {/* Controls / JSON */}
                     <div className="px-3 pb-3">
                       {rawMode ? (
@@ -394,6 +435,7 @@ export default function MQTTBrowser() {
                 <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(payload), null, 2)); } catch { setPublishValue(payload); } }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
+                  {groupMembers[topic] && <span className="text-[9px] bg-purple-500/10 text-purple-500 rounded px-1 shrink-0">group</span>}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
