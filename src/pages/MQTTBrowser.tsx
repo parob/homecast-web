@@ -156,20 +156,32 @@ export default function MQTTBrowser() {
           setAvailability(prev => ({ ...prev, [baseTopic]: text }));
           return;
         }
-        // Track group membership topics — also create a topic entry so it shows in the list
+        // Track group membership topics
         if (topic.endsWith('/members')) {
           const baseTopic = topic.replace(/\/members$/, '');
           try {
-            const members = JSON.parse(text);
+            const members: string[] = JSON.parse(text);
             setGroupMembers(prev => ({ ...prev, [baseTopic]: members }));
-            // Create a topic entry if one doesn't exist yet (groups have no initial state)
+            // Create group topic entry with aggregated state from member accessories
             setMessages(prev => {
-              if (prev[baseTopic]) return prev;
-              return { ...prev, [baseTopic]: { payload: JSON.stringify({ _group: true, members: members.length }), timestamp: Date.now(), updates: 0 } };
+              if (prev[baseTopic]?.updates > 0) return prev;  // Already has real state
+              // Aggregate state from first member that has cached state
+              let groupState: Record<string, any> = {};
+              for (const memberPath of members) {
+                // Find the member's topic in existing messages
+                const memberTopic = Object.keys(prev).find(t => t.endsWith('/' + memberPath.split('/').pop()));
+                if (memberTopic && prev[memberTopic]) {
+                  try { groupState = JSON.parse(prev[memberTopic].payload); break; } catch {}
+                }
+              }
+              if (Object.keys(groupState).length === 0) groupState = { members: members.length };
+              return { ...prev, [baseTopic]: { payload: JSON.stringify(groupState), timestamp: Date.now(), updates: 0 } };
             });
           } catch {}
           return;
         }
+        // Skip /set echo topics
+        if (topic.endsWith('/set')) return;
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
       client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
