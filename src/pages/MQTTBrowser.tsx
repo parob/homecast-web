@@ -42,8 +42,9 @@ export default function MQTTBrowser() {
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
 
-  const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first' });
-  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first' });
+  const isMqttDomain = location.hostname.startsWith('mqtt.');
+  const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first', skip: isMqttDomain });
+  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first', skip: isMqttDomain });
   const user = meData?.me;
 
   const homes = useMemo(() => {
