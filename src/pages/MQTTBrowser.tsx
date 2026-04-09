@@ -395,6 +395,29 @@ export default function MQTTBrowser() {
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted/30 border rounded-md outline-none focus:border-primary font-mono" />
         </div>
 
+        {/* Publish History */}
+        {publishHistory.length > 0 && (
+          <div className="space-y-1">
+            <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              {showHistory ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Clock className="h-3 w-3" />
+              Publish History ({publishHistory.length})
+            </button>
+            {showHistory && (
+              <div className="border rounded-md divide-y text-[11px]">
+                {publishHistory.map((entry, i) => (
+                  <button key={i} onClick={() => { publishToSet(entry.topic.replace(/\/set$/, ''), entry.payload); }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/50 transition-colors">
+                    <span className="text-muted-foreground tabular-nums shrink-0">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <span className="font-mono text-muted-foreground truncate">{entry.topic}</span>
+                    <span className="ml-auto font-mono shrink-0"><FmtVal payload={entry.payload} /></span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Topic count + clear */}
         {Object.keys(messages).length > 0 && (
           <div className="flex items-center justify-between">
@@ -541,28 +564,6 @@ export default function MQTTBrowser() {
                 </button>
               );
             })}
-          </div>
-        )}
-        {/* Publish History */}
-        {publishHistory.length > 0 && (
-          <div className="space-y-1">
-            <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-              {showHistory ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <Clock className="h-3 w-3" />
-              Publish History ({publishHistory.length})
-            </button>
-            {showHistory && (
-              <div className="border rounded-md divide-y text-[11px]">
-                {publishHistory.map((entry, i) => (
-                  <button key={i} onClick={() => { publishToSet(entry.topic.replace(/\/set$/, ''), entry.payload); }}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/50 transition-colors">
-                    <span className="text-muted-foreground tabular-nums shrink-0">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                    <span className="font-mono text-muted-foreground truncate">{entry.topic}</span>
-                    <span className="ml-auto font-mono shrink-0"><FmtVal payload={entry.payload} /></span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
