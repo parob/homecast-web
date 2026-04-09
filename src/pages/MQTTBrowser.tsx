@@ -477,9 +477,10 @@ export default function MQTTBrowser() {
 
               return (
                 <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(payload), null, 2)); } catch { setPublishValue(payload); } }}
-                  className={`w-full flex items-center gap-2 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''} ${isGroupMember ? 'pl-7 pr-3' : 'px-3'} ${isGroup ? 'bg-muted/10' : ''}`}>
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                  <span className={`font-mono text-xs min-w-0 truncate ${isGroup ? 'text-purple-500 dark:text-purple-400' : 'text-muted-foreground'}`}><TopicPath topic={topic} /></span>
+                  <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
+                  {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">group</span>}
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
