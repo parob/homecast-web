@@ -693,7 +693,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
   };
 
   const host = 'mqtt.homecast.cloud';
-  const exampleCmd = `mosquitto_sub -h ${host} -p 8883 --cafile /etc/ssl/cert.pem -u "" -P "YOUR_TOKEN" -t "homecast/#" -v`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -729,12 +728,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
                 <span className="text-muted-foreground">Password</span>
                 <span>API access token</span>
               </div>
-            </div>
-            <div className="relative">
-              <code className="block text-[10px] font-mono bg-muted/50 rounded-md p-2 pr-8 text-muted-foreground break-all">{exampleCmd}</code>
-              <button onClick={() => copyText(exampleCmd, 'cmd')} className="absolute top-1.5 right-1.5 p-0.5 text-muted-foreground hover:text-foreground">
-                {copied === 'cmd' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-              </button>
             </div>
           </div>
 
@@ -824,7 +817,7 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
                   try {
                     const perms = JSON.parse(token.homePermissions) as Record<string, string>;
                     permStr = Object.entries(perms).map(([hid, role]) => {
-                      const h = homes.find(x => x.id === hid);
+                      const h = homes.find(x => x.id.toLowerCase() === hid.toLowerCase());
                       return `${h?.name || hid.slice(0, 8)} (${role})`;
                     }).join(', ');
                   } catch {}
