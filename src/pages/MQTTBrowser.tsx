@@ -156,10 +156,18 @@ export default function MQTTBrowser() {
           setAvailability(prev => ({ ...prev, [baseTopic]: text }));
           return;
         }
-        // Track group membership topics
+        // Track group membership topics — also create a topic entry so it shows in the list
         if (topic.endsWith('/members')) {
           const baseTopic = topic.replace(/\/members$/, '');
-          try { setGroupMembers(prev => ({ ...prev, [baseTopic]: JSON.parse(text) })); } catch {}
+          try {
+            const members = JSON.parse(text);
+            setGroupMembers(prev => ({ ...prev, [baseTopic]: members }));
+            // Create a topic entry if one doesn't exist yet (groups have no initial state)
+            setMessages(prev => {
+              if (prev[baseTopic]) return prev;
+              return { ...prev, [baseTopic]: { payload: JSON.stringify({ _group: true, members: members.length }), timestamp: Date.now(), updates: 0 } };
+            });
+          } catch {}
           return;
         }
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
