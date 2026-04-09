@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
-import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, X, ChevronDown } from 'lucide-react';
+import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity } from 'lucide-react';
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
 
 const CREATE_MQTT_TOKEN = gql`
@@ -30,6 +30,13 @@ export default function MQTTBrowser() {
   const [publishValue, setPublishValue] = useState('');
   const [selectedHome, setSelectedHome] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
+  const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showConnInfo, setShowConnInfo] = useState(false);
+  const [connStats, setConnStats] = useState({ connectedAt: 0, totalMessages: 0, clientId: '' });
+  const [msgRate, setMsgRate] = useState(0);
+  const msgTimestamps = useRef<number[]>([]);
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
@@ -97,10 +104,20 @@ export default function MQTTBrowser() {
         }
       }
       if (!token) throw new Error('Sign in at homecast.cloud first');
-      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: 'browser_' + Math.random().toString(36).slice(2, 8), clean: true });
-      client.on('connect', () => { setConnected(true); setConnecting(false); client.subscribe('homecast/#'); });
+      const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
+      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
+      client.on('connect', () => { setConnected(true); setConnecting(false); setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid }); client.subscribe('homecast/#'); });
       client.on('message', (topic: string, payload: Buffer) => {
-        setMessages(prev => ({ ...prev, [topic]: { payload: payload.toString(), timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
+        const text = payload.toString();
+        msgTimestamps.current.push(Date.now());
+        setConnStats(prev => ({ ...prev, totalMessages: prev.totalMessages + 1 }));
+        // Track availability topics separately
+        if (topic.endsWith('/availability')) {
+          const baseTopic = topic.replace(/\/availability$/, '');
+          setAvailability(prev => ({ ...prev, [baseTopic]: text }));
+          return;  // Don't show availability as a separate topic row
+        }
+        setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
       client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
       client.on('close', () => { setConnected(false); setConnecting(false); });
@@ -113,15 +130,24 @@ export default function MQTTBrowser() {
     clientRef.current?.end(); clientRef.current = null; setConnected(false);
   }, []);
 
+  const addToHistory = useCallback((topic: string, payload: string) => {
+    setPublishHistory(prev => [{ topic, payload, timestamp: Date.now() }, ...prev].slice(0, 20));
+  }, []);
+
   const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
-    clientRef.current.publish(topic.endsWith('/set') ? topic : topic + '/set', payload);
-  }, [connected]);
+    const t = topic.endsWith('/set') ? topic : topic + '/set';
+    clientRef.current.publish(t, payload);
+    addToHistory(t, payload);
+  }, [connected, addToHistory]);
 
   const publishProp = useCallback((topic: string, key: string, value: any) => {
     if (!clientRef.current || !connected) return;
-    clientRef.current.publish(topic.endsWith('/set') ? topic : topic + '/set', JSON.stringify({ [key]: value }));
-  }, [connected]);
+    const t = topic.endsWith('/set') ? topic : topic + '/set';
+    const p = JSON.stringify({ [key]: value });
+    clientRef.current.publish(t, p);
+    addToHistory(t, p);
+  }, [connected, addToHistory]);
 
   // Auto-connect (only once, not after manual disconnect)
   useEffect(() => {
@@ -132,6 +158,17 @@ export default function MQTTBrowser() {
   }, [connect, connected, connecting]);
 
   useEffect(() => { return () => { clientRef.current?.end(); }; }, []);
+
+  // Message rate calculator (every 2s)
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      msgTimestamps.current = msgTimestamps.current.filter(t => now - t < 10000);
+      setMsgRate(Math.round(msgTimestamps.current.length / 10 * 10) / 10);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [connected]);
 
   // Filter topics by search + home + room
   const filteredTopics = useMemo(() => {
@@ -307,6 +344,12 @@ export default function MQTTBrowser() {
                     {/* Info bar */}
                     <div className="px-3 pb-1.5 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">
+                        {availability[topic] && (
+                          <span className={`inline-flex items-center gap-1 mr-2 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${availability[topic] === 'offline' ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />
+                            {availability[topic]}
+                          </span>
+                        )}
                         {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()} · publishes to <span className="font-mono">/set</span>
                       </span>
                       <div className="flex border rounded overflow-hidden">
@@ -333,9 +376,13 @@ export default function MQTTBrowser() {
                 );
               }
 
+              const avail = availability[topic];
+              const isOffline = avail === 'offline';
+
               return (
                 <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(payload), null, 2)); } catch { setPublishValue(payload); } }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''}`}>
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
+                  {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
@@ -347,9 +394,60 @@ export default function MQTTBrowser() {
             })}
           </div>
         )}
+        {/* Publish History */}
+        {publishHistory.length > 0 && (
+          <div className="space-y-1">
+            <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              {showHistory ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Clock className="h-3 w-3" />
+              Publish History ({publishHistory.length})
+            </button>
+            {showHistory && (
+              <div className="border rounded-md divide-y text-[11px]">
+                {publishHistory.map((entry, i) => (
+                  <button key={i} onClick={() => { publishToSet(entry.topic.replace(/\/set$/, ''), entry.payload); }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/50 transition-colors">
+                    <span className="text-muted-foreground tabular-nums shrink-0">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <span className="font-mono text-muted-foreground truncate">{entry.topic}</span>
+                    <span className="ml-auto font-mono shrink-0"><FmtVal payload={entry.payload} /></span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Connection Info */}
+        {connected && (
+          <div className="space-y-1">
+            <button onClick={() => setShowConnInfo(!showConnInfo)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              {showConnInfo ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Activity className="h-3 w-3" />
+              Connection Info
+            </button>
+            {showConnInfo && (
+              <div className="border rounded-md px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
+                <div className="flex justify-between"><span>Broker</span><span className="font-mono">mqtt.homecast.cloud:8084</span></div>
+                <div className="flex justify-between"><span>Client ID</span><span className="font-mono">{connStats.clientId}</span></div>
+                <div className="flex justify-between"><span>Messages</span><span className="tabular-nums">{connStats.totalMessages}</span></div>
+                <div className="flex justify-between"><span>Rate</span><span className="tabular-nums">{msgRate} msg/s</span></div>
+                <div className="flex justify-between"><span>Uptime</span><span className="tabular-nums">{connStats.connectedAt ? formatUptime(Date.now() - connStats.connectedAt) : '-'}</span></div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function formatUptime(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 function PropertyEditor({ payload, onPublish }: { payload: string; onPublish: (k: string, v: any) => void }) {
