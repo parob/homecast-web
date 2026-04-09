@@ -93,18 +93,34 @@ export default function MQTTBrowser() {
     setConnecting(true); setError(null); userDisconnected.current = false;
     try {
       let token: string | null = null;
-      try {
-        const { data } = await createMqttToken();
-        token = data?.createMqttToken;
-      } catch {
+      const isMqttDomain = location.hostname.startsWith('mqtt.');
+      const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
+
+      // On mqtt.* domains: use cookie. On main domain: use Apollo.
+      if (isMqttDomain) {
         const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
         if (jwt) {
-          const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
           const r = await fetch(api + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
-          token = (await r.json())?.data?.createMqttToken;
+          const result = await r.json();
+          token = result?.data?.createMqttToken;
+          if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
+        }
+      } else {
+        // Same-origin: use Apollo with localStorage JWT
+        const jwt = localStorage.getItem('homecast-token');
+        if (jwt) {
+          const r = await fetch(api + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
+          const result = await r.json();
+          token = result?.data?.createMqttToken;
+          if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
         }
       }
-      if (!token) throw new Error('Sign in at homecast.cloud first');
+      if (!token) {
+        const loginUrl = location.hostname.includes('staging')
+          ? 'https://staging.homecast.cloud/login'
+          : 'https://homecast.cloud/login';
+        throw new Error(`Not signed in. Sign in at ${loginUrl.replace('https://', '')} first, then return here.`);
+      }
       const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
       const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
       client.on('connect', () => { setConnected(true); setConnecting(false); setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid }); client.subscribe('homecast/#'); });
