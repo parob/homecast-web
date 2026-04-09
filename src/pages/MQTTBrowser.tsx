@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
 import { Radio, Send, Trash2, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User } from 'lucide-react';
-import { GET_ME, GET_HOMES, GET_HOME_MQTT_ENABLED } from '@/lib/graphql/queries';
+import { GET_ME, GET_CACHED_HOMES, GET_HOME_MQTT_ENABLED } from '@/lib/graphql/queries';
 
 const CREATE_MQTT_TOKEN = gql`
   mutation CreateMqttToken {
@@ -42,11 +42,20 @@ export default function MQTTBrowser() {
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
 
-  // Get user info + homes
+  // Get user info + homes (cached homes use DB IDs which match mqtt_enabled)
   const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first' });
-  const { data: homesData } = useQuery(GET_HOMES, { fetchPolicy: 'cache-first' });
+  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first' });
   const user = meData?.me;
-  const homes: Array<{ id: string; name: string; accessoryCount: number }> = homesData?.homes ?? [];
+  // Deduplicate homes by name (prefer owner role)
+  const homes: Array<{ id: string; name: string }> = useMemo(() => {
+    const raw: Array<{ id: string; name: string; role?: string }> = homesData?.cachedHomes ?? [];
+    const byName = new Map<string, { id: string; name: string; role?: string }>();
+    for (const h of raw) {
+      const existing = byName.get(h.name);
+      if (!existing || h.role === 'owner') byName.set(h.name, h);
+    }
+    return Array.from(byName.values());
+  }, [homesData]);
 
   // Check mqtt_enabled for each home
   const [homeStatuses, setHomeStatuses] = useState<Record<string, boolean>>({});
