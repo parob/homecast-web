@@ -258,6 +258,13 @@ export default function MQTTBrowser() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style>{`
+        @keyframes mqttFlash {
+          0% { background-color: rgba(34, 197, 94, 0.15); }
+          100% { background-color: transparent; }
+        }
+        .animate-mqtt-flash { animation: mqttFlash 2s ease-out forwards; }
+      `}</style>
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -522,7 +529,8 @@ export default function MQTTBrowser() {
 
               return (
                 <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''} ${isOffline ? 'opacity-40' : ''}`}>
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
+>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
                   {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">group</span>}
