@@ -220,10 +220,20 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
               <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <p className="text-xs text-muted-foreground">
                 {isCloudPlan
-                  ? 'Enable the Homecast MQTT Broker for each home in Settings \u2192 Homes \u2192 [Home] \u2192 MQTT Brokers. Uses your API credentials for authentication.'
+                  ? 'Enable the Homecast MQTT Broker for each home in Settings \u2192 Homes \u2192 [Home]. Uses your API access token as the password.'
                   : 'The managed MQTT broker is available on the Cloud plan. Upgrade to connect Home Assistant, Node-RED, and other MQTT clients to your homes.'}
               </p>
             </div>
+            {isCloudPlan && (
+              <a
+                href={location.hostname.includes('staging') ? 'https://mqtt.staging.homecast.cloud/mqtt' : 'https://mqtt.homecast.cloud/mqtt'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+              >
+                <Radio className="h-3 w-3" /> Open MQTT Browser
+              </a>
+            )}
           </div>
 
           <Separator />

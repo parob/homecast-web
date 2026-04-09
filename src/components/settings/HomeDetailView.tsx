@@ -159,19 +159,31 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
 
         {/* Homecast Broker (cloud only) */}
         {!isCommunity && (
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <p className="text-sm font-medium">Homecast Broker</p>
-              <p className="text-xs text-muted-foreground">
-                {mqttEnabled ? 'mqtt.homecast.cloud:8883 · Use API token as password' : 'Publish device state to mqtt.homecast.cloud'}
-              </p>
+          <>
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm font-medium">Homecast Broker</p>
+                <p className="text-xs text-muted-foreground">
+                  {mqttEnabled ? 'mqtt.homecast.cloud:8883 · Use API token as password' : 'Publish device state to mqtt.homecast.cloud'}
+                </p>
+              </div>
+              <Switch
+                checked={mqttEnabled}
+                disabled={mqttToggling}
+                onCheckedChange={handleToggleMqtt}
+              />
             </div>
-            <Switch
-              checked={mqttEnabled}
-              disabled={mqttToggling}
-              onCheckedChange={handleToggleMqtt}
-            />
-          </div>
+            {mqttEnabled && (
+              <a
+                href={location.hostname.includes('staging') ? 'https://mqtt.staging.homecast.cloud/mqtt' : 'https://mqtt.homecast.cloud/mqtt'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+              >
+                <Radio className="h-3 w-3" /> Open MQTT Browser
+              </a>
+            )}
+          </>
         )}
 
         {/* Custom Brokers */}
