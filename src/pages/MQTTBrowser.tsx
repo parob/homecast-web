@@ -466,8 +466,8 @@ export default function MQTTBrowser() {
                       <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-[11px]"><FmtVal payload={expandedPayload} /></span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">
-                          {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
+                          {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </span>
                         {msg.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{msg.updates}</span>}
                       </div>
@@ -558,7 +558,7 @@ export default function MQTTBrowser() {
                   {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">group</span>}
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={effectivePayload} /></span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                     {messages[topic].updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
                 </button>
