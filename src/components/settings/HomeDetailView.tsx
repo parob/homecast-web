@@ -164,7 +164,9 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
               <div>
                 <p className="text-sm font-medium">Homecast Broker</p>
                 <p className="text-xs text-muted-foreground">
-                  {mqttEnabled ? 'mqtt.homecast.cloud:8883 · Use API token as password' : 'Publish device state to mqtt.homecast.cloud'}
+                  {mqttEnabled
+                    ? `${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}:8883`
+                    : `Publish device state via ${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`}
                 </p>
               </div>
               <Switch
