@@ -245,8 +245,9 @@ export function StagingBanner() {
   const { pathname } = useLocation();
   if (!config.isStaging || pathname.startsWith('/portal') || MARKETING_PATHS.includes(pathname)) return null;
 
+  const isMqtt = pathname === '/mqtt' || location.hostname.startsWith('mqtt.') || location.hostname.startsWith('staging.mqtt.');
   return (
-    <div className="fixed left-0 right-0 z-[10002] flex justify-center pointer-events-none" style={{ top: 'calc(var(--safe-area-top, 0px) + 30px)' }}>
+    <div className="fixed left-0 right-0 z-[10002] flex justify-center pointer-events-none" style={{ top: isMqtt ? 'calc(var(--safe-area-top, 0px) + 8px)' : 'calc(var(--safe-area-top, 0px) + 30px)' }}>
       <span className="pointer-events-auto shadow-sm">
         <StagingSyncLabel />
       </span>

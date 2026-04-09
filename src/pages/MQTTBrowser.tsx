@@ -265,6 +265,38 @@ export default function MQTTBrowser() {
         }
         .animate-mqtt-flash { animation: mqttFlash 8s ease-out forwards; }
       `}</style>
+      {error?.includes('Not signed in') ? (
+        <div className="flex-1 flex items-center justify-center min-h-screen">
+          <div className="text-center space-y-4">
+            <img src="/icon-192.png" alt="Homecast" className="h-12 w-12 rounded mx-auto" />
+            <div className="space-y-1">
+              <p className="text-lg font-semibold">MQTT Browser</p>
+              <p className="text-sm text-muted-foreground">Sign in to your Homecast account to continue.</p>
+            </div>
+            <button
+              onClick={() => {
+                const loginUrl = location.hostname.includes('staging') ? 'https://staging.homecast.cloud/login' : 'https://homecast.cloud/login';
+                const popup = window.open(loginUrl, 'homecast-login', 'width=500,height=700');
+                // Poll for cookie every second — when the user logs in, the cookie appears
+                const interval = setInterval(() => {
+                  const hasCookie = document.cookie.includes('hc_token=');
+                  if (hasCookie) {
+                    clearInterval(interval);
+                    if (popup && !popup.closed) popup.close();
+                    window.location.reload();
+                  }
+                }, 1000);
+                // Stop polling after 5 minutes
+                setTimeout(() => clearInterval(interval), 300000);
+              }}
+              className="inline-flex items-center gap-1.5 text-sm px-5 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Sign in
+            </button>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -298,23 +330,6 @@ export default function MQTTBrowser() {
           </div>
         </div>
       </div>
-
-      {error?.includes('Not signed in') ? (
-        <div className="flex-1 flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-3">
-            <Radio className="h-10 w-10 text-muted-foreground mx-auto" />
-            <p className="text-lg font-semibold">Sign in to continue</p>
-            <p className="text-sm text-muted-foreground">Sign in to your Homecast account to use the MQTT browser.</p>
-            <a
-              href={location.hostname.includes('staging') ? 'https://staging.homecast.cloud/login' : 'https://homecast.cloud/login'}
-              className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              Sign in
-            </a>
-          </div>
-        </div>
-      ) : (
-      <>
       {error && <div className="max-w-4xl mx-auto px-4 pt-3"><div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div></div>}
 
       <div className="max-w-4xl mx-auto px-4 py-4 space-y-3">
