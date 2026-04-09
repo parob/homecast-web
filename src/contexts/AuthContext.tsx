@@ -10,6 +10,31 @@ import { isCommunity, config, isRelaySetupComplete, isRelayMode } from '@/lib/co
 import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 
+// Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it
+function syncTokenCookie(token: string | null) {
+  try {
+    const domain = location.hostname.includes('homecast.cloud')
+      ? '; Domain=.homecast.cloud'
+      : '';  // localhost — no cross-domain
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    if (token) {
+      document.cookie = `hc_token=${encodeURIComponent(token)}${domain}; Path=/${secure}; SameSite=Lax; Max-Age=86400`;
+    } else {
+      document.cookie = `hc_token=${domain}; Path=/${secure}; SameSite=Lax; Max-Age=0`;
+    }
+  } catch { /* ignore cookie errors */ }
+}
+
+// Wrapper that keeps localStorage and cookie in sync
+function setAuthToken(token: string) {
+  localStorage.setItem('homecast-token', token);
+  syncTokenCookie(token);
+}
+function clearAuthToken() {
+  localStorage.removeItem('homecast-token');
+  syncTokenCookie(null);
+}
+
 // Check if we might be in a Mac app (before native bridge is fully ready)
 function mightBeMacApp(): boolean {
   return !!(window as any).isHomecastMacApp;
@@ -177,10 +202,10 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
             lastLoginAt: new Date().toISOString(),
           });
         } else {
-          localStorage.removeItem('homecast-token');
+          clearAuthToken();
         }
       } catch {
-        localStorage.removeItem('homecast-token');
+        clearAuthToken();
       }
     }
     setIsLoading(false);
@@ -242,7 +267,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, error: `Relay response: ${JSON.stringify(result).slice(0, 500)}` };
     }
     if (loginResult?.success && loginResult.token) {
-      localStorage.setItem('homecast-token', loginResult.token);
+      setAuthToken(loginResult.token);
       const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
       win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'authSuccess' });
       // Set user directly — don't re-verify via checkAuth which can fail on flaky connections
@@ -268,7 +293,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
     const result = await communityGraphQL('Signup', { email, password }) as any;
     const signupResult = result?.data?.signup;
     if (signupResult?.success && signupResult.token) {
-      localStorage.setItem('homecast-token', signupResult.token);
+      setAuthToken(signupResult.token);
       const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
       win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'authSuccess' });
       setUser({
@@ -290,7 +315,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     // Simple logout — just clear token, keep data
-    localStorage.removeItem('homecast-token');
+    clearAuthToken();
     setUser(null);
     // Notify Swift so it shows "Change install type" on the login page
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
@@ -371,7 +396,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
           );
           if (isAuthError) {
             console.log('Token invalid, clearing session');
-            localStorage.removeItem('homecast-token');
+            clearAuthToken();
           } else {
             // Network error - keep token, user might be offline
             console.log('Network error during auth check, keeping token');
@@ -381,7 +406,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Auth check failed:', error);
         // Only clear token on explicit auth errors
         if (error?.message?.toLowerCase().includes('authentication')) {
-          localStorage.removeItem('homecast-token');
+          clearAuthToken();
         }
       }
     }
@@ -469,7 +494,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { data } = await loginMutation({ variables: { email, password } });
       if (data?.login?.success && data.login.token) {
-        localStorage.setItem('homecast-token', data.login.token);
+        setAuthToken(data.login.token);
 
         const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
         if (win.webkit?.messageHandlers?.homecast) {
@@ -496,7 +521,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
       const { data } = await signupMutation({ variables: { email, password, name } });
       if (data?.signup?.success) {
         if (data.signup.token) {
-          localStorage.setItem('homecast-token', data.signup.token);
+          setAuthToken(data.signup.token);
 
           const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
           if (win.webkit?.messageHandlers?.homecast) {
@@ -526,7 +551,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     }
     activatingRef.current = false;
 
-    localStorage.setItem('homecast-token', newToken);
+    setAuthToken(newToken);
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
     if (win.webkit?.messageHandlers?.homecast) {
       win.webkit.messageHandlers.homecast.postMessage({ action: 'login', token: newToken });
@@ -545,7 +570,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
       win.webkit.messageHandlers.homecast.postMessage({ action: 'logout' });
     }
 
-    localStorage.removeItem('homecast-token');
+    clearAuthToken();
     localStorage.removeItem('homecast-selected-home');
     localStorage.removeItem('homecast-selected-room');
     // Hard redirect — full page reload clears Apollo cache and all React state

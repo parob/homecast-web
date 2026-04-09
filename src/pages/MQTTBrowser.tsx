@@ -56,9 +56,26 @@ export default function MQTTBrowser() {
     setError(null);
 
     try {
-      const { data } = await createMqttToken();
-      const token = data?.createMqttToken;
-      if (!token) throw new Error('Failed to create MQTT token');
+      // Try Apollo mutation first (same-origin), fall back to cookie + fetch (cross-origin)
+      let token: string | null = null;
+      try {
+        const { data } = await createMqttToken();
+        token = data?.createMqttToken;
+      } catch {
+        // Apollo failed — try reading JWT from cross-subdomain cookie
+        const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
+        if (jwt) {
+          const apiBase = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
+          const resp = await fetch(apiBase + '/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${decodeURIComponent(jwt)}` },
+            body: JSON.stringify({ query: 'mutation { createMqttToken }' }),
+          });
+          const result = await resp.json();
+          token = result?.data?.createMqttToken;
+        }
+      }
+      if (!token) throw new Error('Sign in at homecast.cloud first');
 
       const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', {
         username: '',
