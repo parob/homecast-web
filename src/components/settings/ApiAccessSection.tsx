@@ -151,10 +151,10 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
             { label: 'REST', url: `${config.apiUrl}/rest`, key: 'api-rest' },
             ...(!isCommunity ? [{
               label: 'MQTT',
-              url: location.hostname.includes('staging') ? 'mqtt.staging.homecast.cloud:8883' : 'mqtt.homecast.cloud:8883',
+              url: location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud:8883' : 'mqtt.homecast.cloud:8883',
               key: 'api-mqtt',
               info: isCloudPlan
-                ? `Use API access token as password. <a href="https://${location.hostname.includes('staging') ? 'mqtt.staging.homecast.cloud' : 'mqtt.homecast.cloud'}" target="_blank" rel="noopener" style="text-decoration:underline">Open MQTT Browser</a>`
+                ? `Use API access token as password. <a href="https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}" target="_blank" rel="noopener" style="text-decoration:underline">Open MQTT Browser</a>`
                 : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
             }] : []),
           ].map(({ label, url, key, info }) => (
