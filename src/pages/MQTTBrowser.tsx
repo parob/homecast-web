@@ -101,7 +101,7 @@ export default function MQTTBrowser() {
       if (isMqttDomain) {
         const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
         if (jwt) {
-          const r = await fetch(api + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
+          const r = await fetch(api + '/', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
           const result = await r.json();
           token = result?.data?.createMqttToken;
           if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
@@ -110,7 +110,7 @@ export default function MQTTBrowser() {
         // Same-origin: use Apollo with localStorage JWT
         const jwt = localStorage.getItem('homecast-token');
         if (jwt) {
-          const r = await fetch(api + '/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
+          const r = await fetch(api + '/', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
           const result = await r.json();
           token = result?.data?.createMqttToken;
           if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
