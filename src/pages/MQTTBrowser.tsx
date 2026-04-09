@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
 import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity, Copy, Check, Plus, ExternalLink, Key, X } from 'lucide-react';
@@ -26,17 +27,18 @@ const RANGES: Record<string, { min: number; max: number }> = {
 const BOOLS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
 
 export default function MQTTBrowser() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
-  const [filter, setFilter] = useState('');
-  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
-  const [rawMode, setRawMode] = useState(false);
+  const [filter, setFilter] = useState(() => searchParams.get('filter') || '');
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(() => searchParams.get('topic'));
+  const [rawMode, setRawMode] = useState(() => searchParams.get('view') === 'json');
   const [publishValue, setPublishValue] = useState('');
-  const [selectedHome, setSelectedHome] = useState<string | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [selectedHome, setSelectedHome] = useState<string | null>(() => searchParams.get('home'));
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(() => searchParams.get('room'));
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
   const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
@@ -50,6 +52,27 @@ export default function MQTTBrowser() {
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
+  const filterTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const updateUrlParams = useCallback((params: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      for (const [key, value] of Object.entries(params)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const debouncedUpdateFilter = useCallback((value: string) => {
+    clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(() => {
+      updateUrlParams({ filter: value || null });
+    }, 400);
+  }, [updateUrlParams]);
+
+  useEffect(() => () => clearTimeout(filterTimerRef.current), []);
 
   const isMqttDomain = location.hostname.includes('mqtt.');
   const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
@@ -362,8 +385,8 @@ export default function MQTTBrowser() {
                         return;
                       }
                       setDisabledHomeInfo(null);
-                      if (isSelected) { setSelectedHome(null); setSelectedRoom(null); }
-                      else { setSelectedHome(home.name); setSelectedRoom(null); }
+                      if (isSelected) { setSelectedHome(null); setSelectedRoom(null); updateUrlParams({ home: null, room: null }); }
+                      else { setSelectedHome(home.name); setSelectedRoom(null); updateUrlParams({ home: home.name, room: null }); }
                     }}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border ${
                       isSelected
@@ -403,7 +426,7 @@ export default function MQTTBrowser() {
                   {rooms.map(room => (
                     <button
                       key={room}
-                      onClick={() => setSelectedRoom(selectedRoom === room ? null : room)}
+                      onClick={() => { const next = selectedRoom === room ? null : room; setSelectedRoom(next); updateUrlParams({ room: next }); }}
                       className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
                         selectedRoom === room
                           ? 'bg-primary/10 text-primary border border-primary/30'
@@ -422,7 +445,7 @@ export default function MQTTBrowser() {
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input type="text" placeholder="Search topics..." value={filter} onChange={(e) => setFilter(e.target.value)}
+          <input type="text" placeholder="Search topics..." value={filter} onChange={(e) => { setFilter(e.target.value); debouncedUpdateFilter(e.target.value); }}
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted/30 border rounded-md outline-none focus:border-primary font-mono" />
         </div>
 
@@ -491,7 +514,7 @@ export default function MQTTBrowser() {
                   <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
                     {/* Clickable header — click topic to collapse */}
                     <button
-                      onClick={() => setExpandedTopic(null)}
+                      onClick={() => { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }}
                       className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors"
                     >
                       <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
@@ -514,8 +537,8 @@ export default function MQTTBrowser() {
                         )}
                         {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()}                      </span>
                       <div className="flex border rounded overflow-hidden">
-                        <button onClick={() => setRawMode(false)} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
-                        <button onClick={() => setRawMode(true)} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
+                        <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
+                        <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                       </div>
                     </div>
                     {/* Group members */}
@@ -581,7 +604,7 @@ export default function MQTTBrowser() {
               }
 
               return (
-                <button key={isRecent ? `${topic}-${timestamp}` : topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
+                <button key={isRecent ? `${topic}-${timestamp}` : topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); updateUrlParams({ topic, view: null }); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
 >
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}

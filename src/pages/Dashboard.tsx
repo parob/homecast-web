@@ -1259,36 +1259,13 @@ const Dashboard = () => {
   // NOTE: Collection layout hooks moved below after selectedCollectionGroupId is defined
 
   // Helper to update URL params
-  const updateUrlParams = useCallback((params: { collection?: string | null; home?: string | null; room?: string | null; enrollment?: string | null }) => {
+  const updateUrlParams = useCallback((params: { collection?: string | null; home?: string | null; room?: string | null; enrollment?: string | null; settings?: string | null }) => {
     setSearchParams(prev => {
       const newParams = new URLSearchParams(prev);
-      if (params.collection !== undefined) {
-        if (params.collection) {
-          newParams.set('collection', params.collection);
-        } else {
-          newParams.delete('collection');
-        }
-      }
-      if (params.home !== undefined) {
-        if (params.home) {
-          newParams.set('home', params.home);
-        } else {
-          newParams.delete('home');
-        }
-      }
-      if (params.room !== undefined) {
-        if (params.room) {
-          newParams.set('room', params.room);
-        } else {
-          newParams.delete('room');
-        }
-      }
-      if (params.enrollment !== undefined) {
-        if (params.enrollment) {
-          newParams.set('enrollment', params.enrollment);
-        } else {
-          newParams.delete('enrollment');
-        }
+      for (const [key, value] of Object.entries(params)) {
+        if (value === undefined) continue;
+        if (value) newParams.set(key, value);
+        else newParams.delete(key);
       }
       return newParams;
     }, { replace: true });
@@ -1585,6 +1562,16 @@ const Dashboard = () => {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
+
+  // Open Settings to a specific tab if ?settings= is in the URL
+  useEffect(() => {
+    const tab = searchParams.get('settings') as SettingsTab | null;
+    if (tab) {
+      setSettingsInitialTab(tab);
+      setSettingsOpen(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [launchAtLoginSupported, setLaunchAtLoginSupported] = useState(false);
 
@@ -3661,7 +3648,8 @@ const Dashboard = () => {
   const openSettingsTo = useCallback((tab: SettingsTab) => {
     setSettingsInitialTab(tab);
     setSettingsOpen(true);
-  }, []);
+    updateUrlParams({ settings: tab });
+  }, [updateUrlParams]);
 
   // Handle widget click to expand/collapse
   const handleWidgetClick = useCallback((widgetId: string) => {
@@ -5690,7 +5678,7 @@ const Dashboard = () => {
             {/* Settings Dialog */}
             <SettingsDialog
               open={settingsOpen}
-              onOpenChange={(open) => { setSettingsOpen(open); if (!open) setCloudCheckoutJustCompleted(false); }}
+              onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); updateUrlParams({ settings: null }); } }}
               initialTab={settingsInitialTab}
               accountType={accountType}
               usedAccessorySlots={usedAccessorySlots}
