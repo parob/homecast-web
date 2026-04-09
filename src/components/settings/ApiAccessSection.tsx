@@ -149,6 +149,14 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
             { label: 'MCP', url: `${config.apiUrl}/mcp`, key: 'api-mcp', info: 'Supports OAuth authentication for ChatGPT, Claude Desktop, and other AI assistants.' },
             { label: 'GraphQL', url: `${config.apiUrl}/graphql`, key: 'api-graphql' },
             { label: 'REST', url: `${config.apiUrl}/rest`, key: 'api-rest' },
+            ...(!isCommunity ? [{
+              label: 'MQTT',
+              url: location.hostname.includes('staging') ? 'mqtt.staging.homecast.cloud:8883' : 'mqtt.homecast.cloud:8883',
+              key: 'api-mqtt',
+              info: isCloudPlan
+                ? `Use API access token as password. <a href="https://${location.hostname.includes('staging') ? 'mqtt.staging.homecast.cloud' : 'mqtt.homecast.cloud'}" target="_blank" rel="noopener" style="text-decoration:underline">Open MQTT Browser</a>`
+                : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
+            }] : []),
           ].map(({ label, url, key, info }) => (
             <div key={key} className="px-2.5 py-1.5">
               <div className="flex items-center gap-2">
@@ -171,9 +179,7 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
               </div>
               {info && (
                 <div className="mt-1.5 ml-14">
-                  <span className="inline-flex rounded-md bg-green-100 px-2 py-0.5 text-[10px] text-green-800 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700">
-                    {info}
-                  </span>
+                  <span className="inline-flex rounded-md bg-green-100 px-2 py-0.5 text-[10px] text-green-800 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700" dangerouslySetInnerHTML={{ __html: info }} />
                 </div>
               )}
             </div>
@@ -183,62 +189,6 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
 
       <Separator />
 
-      {/* MQTT Broker Section */}
-      {!isCommunity && (
-        <>
-          <div className={`space-y-2 ${!isCloudPlan ? 'opacity-50' : ''}`}>
-            <div className="flex items-center gap-2">
-              <Radio className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-medium">MQTT Broker</p>
-              {!isCloudPlan && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Cloud plan</span>
-              )}
-            </div>
-            <div className="rounded-md border bg-muted/30 px-2.5 py-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-medium text-muted-foreground w-14 shrink-0">MQTT</span>
-                <code className={`flex-1 text-[11px] font-mono truncate ${isCloudPlan ? 'text-foreground/80' : 'text-muted-foreground'} selectable`}>
-                  mqtt.homecast.cloud:8883
-                </code>
-                {isCloudPlan && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                    onClick={() => copyUrl('mqtt.homecast.cloud:8883', 'mqtt', 'MQTT')}
-                  >
-                    {copiedUrl === 'mqtt' ? (
-                      <Check className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex items-start gap-2 mt-1.5">
-              <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                {isCloudPlan
-                  ? 'Enable the Homecast MQTT Broker for each home in Settings \u2192 Homes \u2192 [Home]. Uses your API access token as the password.'
-                  : 'The managed MQTT broker is available on the Cloud plan. Upgrade to connect Home Assistant, Node-RED, and other MQTT clients to your homes.'}
-              </p>
-            </div>
-            {isCloudPlan && (
-              <a
-                href={location.hostname.includes('staging') ? 'https://mqtt.staging.homecast.cloud' : 'https://mqtt.homecast.cloud'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-              >
-                <Radio className="h-3 w-3" /> Open MQTT Browser
-              </a>
-            )}
-          </div>
-
-          <Separator />
-        </>
-      )}
 
       {/* Access Tokens Section */}
       <div className="space-y-3">
