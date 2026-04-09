@@ -423,9 +423,9 @@ export default function MQTTBrowser() {
               if (isExpanded) {
                 const msg = messages[topic];
                 const isExpandedGroup = !!groupMembers[topic];
-                // Aggregate state from members for groups
+                // For groups: always use first member's full state (group topic only has last-changed characteristic)
                 let expandedPayload = payload;
-                if (isExpandedGroup && (payload === '{}' || payload.includes('"members"'))) {
+                if (isExpandedGroup) {
                   for (const memberSlug of (groupMembers[topic] || [])) {
                     const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
                     if (mt && messages[mt]?.payload) {
@@ -507,9 +507,9 @@ export default function MQTTBrowser() {
               );
               const isGroup = !!groupMembers[topic];
 
-              // For groups: aggregate state from first member with data
+              // For groups: always use first member's full state
               let effectivePayload = payload;
-              if (isGroup && (payload === '{}' || payload.includes('"members"'))) {
+              if (isGroup) {
                 const members = groupMembers[topic] || [];
                 for (const memberSlug of members) {
                   const memberTopic = Object.keys(messages).find(t =>
