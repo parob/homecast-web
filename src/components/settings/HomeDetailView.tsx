@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Plus, Pencil, Trash2, Bell, Mail } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
@@ -157,8 +157,13 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        {home.name}
+        Back
       </button>
+
+      <div className="flex items-center gap-2.5">
+        <HomeIcon className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-base font-semibold">{home.name}</h3>
+      </div>
 
       {/* MQTT (developer mode only) */}
       {developerMode && <div className="space-y-2">
@@ -266,9 +271,7 @@ function HomeNotificationPreferences({ homeId }: { homeId: string }) {
           </button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {hasOverride ? 'Custom settings for this home.' : 'Using global notification settings.'}
-      </p>
+      {hasOverride && <p className="text-xs text-muted-foreground">Custom settings for this home.</p>}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
