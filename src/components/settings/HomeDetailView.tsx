@@ -182,16 +182,26 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
                 onCheckedChange={handleToggleMqtt}
               />
             </div>
-            {mqttEnabled && (
-              <a
-                href={location.hostname.includes('staging') ? 'https://staging.mqtt.homecast.cloud' : 'https://mqtt.homecast.cloud'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-              >
-                <Radio className="h-3 w-3" /> Open MQTT Browser
-              </a>
-            )}
+            {mqttEnabled && (() => {
+              const mqttUrl = location.hostname.includes('staging') ? 'https://staging.mqtt.homecast.cloud' : 'https://mqtt.homecast.cloud';
+              return (
+                <a
+                  href={mqttUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                  onClick={(e) => {
+                    const w = window as any;
+                    if (w.webkit?.messageHandlers?.homecast) {
+                      e.preventDefault();
+                      w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: mqttUrl });
+                    }
+                  }}
+                >
+                  <Radio className="h-3 w-3" /> Open MQTT Browser
+                </a>
+              );
+            })()}
           </>
         )}
 
