@@ -238,6 +238,26 @@ export class ServerWebSocket {
   }
 
   /**
+   * Redirect to a specific server endpoint (GKE pod affinity).
+   * Overrides the WebSocket URL and reconnects immediately.
+   */
+  private redirectTo(target: string): void {
+    // Clean up current connection
+    this.cleanup();
+
+    // Override the WebSocket URL for this session
+    this.config.wsUrl = target;
+    console.log(`[ServerWS] Redirecting to ${target}`);
+
+    // Reset backoff delay for immediate reconnect
+    this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+
+    // Reconnect immediately to the new target
+    this.setState('reconnecting');
+    this.establishConnection();
+  }
+
+  /**
    * Graceful reconnect - close and immediately reconnect without backoff.
    * Used when server requests reconnect (e.g., Cloud Run timeout approaching).
    */
@@ -723,6 +743,12 @@ export class ServerWebSocket {
         }
       } else if (message.type === 'pong') {
         // Response to our ping - connection is alive
+      } else if (message.type === 'redirect') {
+        // Server requesting redirect to a specific pod (GKE consistent hashing)
+        const target = message.target as string;
+        const reason = message.reason as string || 'unknown';
+        console.log(`[ServerWS] Server requested redirect to ${target} (reason: ${reason})`);
+        this.redirectTo(target);
       } else if (message.type === 'reconnect') {
         // Server requesting graceful reconnect (Cloud Run timeout approaching)
         console.log('[ServerWS] Server requested reconnect, refreshing connection...');
