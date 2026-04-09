@@ -13,6 +13,7 @@ const CREATE_MQTT_TOKEN = gql`
 interface TopicMessage {
   payload: string;
   timestamp: number;
+  updates: number;
 }
 
 export default function MQTTBrowser() {
@@ -69,7 +70,11 @@ export default function MQTTBrowser() {
       client.on('message', (topic: string, payload: Buffer) => {
         setMessages(prev => ({
           ...prev,
-          [topic]: { payload: payload.toString(), timestamp: Date.now() },
+          [topic]: {
+            payload: payload.toString(),
+            timestamp: Date.now(),
+            updates: (prev[topic]?.updates ?? 0) + 1,
+          },
         }));
       });
 
@@ -230,8 +235,14 @@ export default function MQTTBrowser() {
                     <span className="font-mono text-xs text-muted-foreground min-w-0 flex-shrink truncate">
                       <TopicPath topic={topic} />
                     </span>
-                    <span className="ml-auto font-mono text-xs flex-shrink-0 max-w-[50%] truncate">
-                      <FormattedValue payload={payload} />
+                    <span className="ml-auto flex items-center gap-3 flex-shrink-0">
+                      <span className="font-mono text-xs max-w-[300px] truncate">
+                        <FormattedValue payload={payload} />
+                      </span>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {new Date(timestamp).toLocaleTimeString()}
+                        {messages[topic].updates > 1 && ` · ${messages[topic].updates}x`}
+                      </span>
                     </span>
                   </button>
 
