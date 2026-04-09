@@ -287,27 +287,38 @@ export default function MQTTBrowser() {
               const isRecent = Date.now() - timestamp < 2000;
 
               if (isExpanded) {
+                const msg = messages[topic];
                 return (
                   <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
-                    {/* Card header */}
-                    <div className="flex items-center justify-between px-3 py-2">
+                    {/* Clickable header — click topic to collapse */}
+                    <button
+                      onClick={() => setExpandedTopic(null)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors"
+                    >
                       <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                        <span className="font-mono text-[11px]"><FmtVal payload={payload} /></span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums w-11 text-right">
                           {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        <div className="flex gap-0.5">
-                          <button onClick={() => setRawMode(false)} className={`p-0.5 rounded ${!rawMode ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}><SlidersHorizontal className="h-3 w-3" /></button>
-                          <button onClick={() => setRawMode(true)} className={`p-0.5 rounded ${rawMode ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}><Code className="h-3 w-3" /></button>
-                        </div>
-                        <button onClick={() => setExpandedTopic(null)} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+                        {msg.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{msg.updates}</span>}
+                      </div>
+                    </button>
+                    {/* Info bar */}
+                    <div className="px-3 pb-1.5 flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">
+                        {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()} · publishes to <span className="font-mono">/set</span>
+                      </span>
+                      <div className="flex border rounded overflow-hidden">
+                        <button onClick={() => setRawMode(false)} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
+                        <button onClick={() => setRawMode(true)} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                       </div>
                     </div>
-                    {/* Controls */}
+                    {/* Controls / JSON */}
                     <div className="px-3 pb-3">
                       {rawMode ? (
                         <div className="space-y-1.5">
-                          <textarea value={publishValue} onChange={(e) => setPublishValue(e.target.value)} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-none" rows={3} />
+                          <textarea value={publishValue} onChange={(e) => setPublishValue(e.target.value)} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[60px]" />
                           <div className="flex justify-end">
                             <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
                               <Send className="h-3 w-3" /> Publish
