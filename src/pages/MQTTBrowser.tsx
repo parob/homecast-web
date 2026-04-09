@@ -228,6 +228,26 @@ export default function MQTTBrowser() {
       {error && <div className="max-w-4xl mx-auto px-4 pt-3"><div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div></div>}
 
       <div className="max-w-4xl mx-auto px-4 py-4 space-y-3">
+        {/* Connection Info */}
+        {connected && (
+          <div className="space-y-1">
+            <button onClick={() => setShowConnInfo(!showConnInfo)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              {showConnInfo ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Activity className="h-3 w-3" />
+              Connection Info
+            </button>
+            {showConnInfo && (
+              <div className="border rounded-md px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
+                <div className="flex justify-between"><span>Broker</span><span className="font-mono">mqtt.homecast.cloud:8084</span></div>
+                <div className="flex justify-between"><span>Client ID</span><span className="font-mono">{connStats.clientId}</span></div>
+                <div className="flex justify-between"><span>Messages</span><span className="tabular-nums">{connStats.totalMessages}</span></div>
+                <div className="flex justify-between"><span>Rate</span><span className="tabular-nums">{msgRate} msg/s</span></div>
+                <div className="flex justify-between"><span>Uptime</span><span className="tabular-nums">{connStats.connectedAt ? formatUptime(Date.now() - connStats.connectedAt) : '-'}</span></div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Homes */}
         {homes.length > 0 && (
           <div className="space-y-1.5">
@@ -417,25 +437,6 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-        {/* Connection Info */}
-        {connected && (
-          <div className="space-y-1">
-            <button onClick={() => setShowConnInfo(!showConnInfo)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-              {showConnInfo ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <Activity className="h-3 w-3" />
-              Connection Info
-            </button>
-            {showConnInfo && (
-              <div className="border rounded-md px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
-                <div className="flex justify-between"><span>Broker</span><span className="font-mono">mqtt.homecast.cloud:8084</span></div>
-                <div className="flex justify-between"><span>Client ID</span><span className="font-mono">{connStats.clientId}</span></div>
-                <div className="flex justify-between"><span>Messages</span><span className="tabular-nums">{connStats.totalMessages}</span></div>
-                <div className="flex justify-between"><span>Rate</span><span className="tabular-nums">{msgRate} msg/s</span></div>
-                <div className="flex justify-between"><span>Uptime</span><span className="tabular-nums">{connStats.connectedAt ? formatUptime(Date.now() - connStats.connectedAt) : '-'}</span></div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
