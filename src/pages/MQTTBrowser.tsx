@@ -105,7 +105,7 @@ export default function MQTTBrowser() {
   const publish = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
     // Convert /state topic to /set topic
-    const setTopic = topic.replace(/\/state$/, '/set');
+    const setTopic = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(setTopic, payload);
   }, [connected]);
 
@@ -249,7 +249,7 @@ export default function MQTTBrowser() {
                   {isExpanded && (
                     <div className="px-3 py-3 bg-muted/30 border-t space-y-2">
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        Publish to {topic.replace(/\/state$/, '/set')}
+                        Publish to {topic.endsWith('/set') ? topic : topic + '/set'}
                       </p>
                       <textarea
                         value={publishValue}
