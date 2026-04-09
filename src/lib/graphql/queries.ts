@@ -170,6 +170,7 @@ export const GET_CACHED_HOMES = gql`
       updatedAt
       role
       ownerEmail
+      mqttEnabled
     }
   }
 `;
