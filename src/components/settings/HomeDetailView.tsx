@@ -175,7 +175,7 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
             </div>
             {mqttEnabled && (
               <a
-                href={location.hostname.includes('staging') ? 'https://mqtt.staging.homecast.cloud/mqtt' : 'https://mqtt.homecast.cloud/mqtt'}
+                href={location.hostname.includes('staging') ? 'https://mqtt.staging.homecast.cloud' : 'https://mqtt.homecast.cloud'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs text-primary hover:underline"
