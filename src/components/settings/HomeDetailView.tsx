@@ -132,7 +132,10 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
       await setHomeMqttEnabledMut({ variables: { homeId: home.id, enabled } });
       await refetchMqtt();
       toast.success(enabled ? 'MQTT broker enabled' : 'MQTT broker disabled');
-    } catch { toast.error('Failed to update MQTT broker'); }
+    } catch (e: any) {
+      const msg = e?.graphQLErrors?.[0]?.message || e?.message || 'Failed to update MQTT broker';
+      toast.error(msg);
+    }
     finally { setMqttToggling(false); }
   };
 
@@ -141,7 +144,10 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
       await removeHomeMqttBrokerMut({ variables: { homeId: home.id, brokerId } });
       await refetchBrokers();
       toast.success('Broker removed');
-    } catch { toast.error('Failed to remove broker'); }
+    } catch (e: any) {
+      const msg = e?.graphQLErrors?.[0]?.message || e?.message || 'Failed to remove broker';
+      toast.error(msg);
+    }
   };
 
   return (
