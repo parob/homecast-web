@@ -550,7 +550,7 @@ export default function MQTTBrowser() {
               }
 
               return (
-                <button key={topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
+                <button key={isRecent ? `${topic}-${timestamp}` : topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
 >
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
