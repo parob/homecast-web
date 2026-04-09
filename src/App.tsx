@@ -116,12 +116,23 @@ const App = () => (
           <StagingBanner />
           <CookieConsent />
           <Routes>
-            {/* Shared routes — no auth/websocket providers (prevents 4002 disconnect on portal) */}
-            <Route path="/s/:hash/:action/*" element={<ShareControlRedirect />} />
-            <Route path="/s/:hash/:action" element={<ShareControlRedirect />} />
-            <Route path="/s/:hash" element={<SharedEntityPage />} />
-            {/* All other routes — with auth/websocket */}
-            <Route path="/*" element={<MainRoutes />} />
+            {/* MQTT browser on mqtt.* domains — no auth/websocket providers needed */}
+            {location.hostname.startsWith('mqtt.') ? (
+              <>
+                <Route path="/" element={<MQTTBrowser />} />
+                <Route path="/mqtt" element={<MQTTBrowser />} />
+                <Route path="*" element={<MQTTBrowser />} />
+              </>
+            ) : (
+              <>
+                {/* Shared routes — no auth/websocket providers (prevents 4002 disconnect on portal) */}
+                <Route path="/s/:hash/:action/*" element={<ShareControlRedirect />} />
+                <Route path="/s/:hash/:action" element={<ShareControlRedirect />} />
+                <Route path="/s/:hash" element={<SharedEntityPage />} />
+                {/* All other routes — with auth/websocket */}
+                <Route path="/*" element={<MainRoutes />} />
+              </>
+            )}
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
