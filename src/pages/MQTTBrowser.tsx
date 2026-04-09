@@ -51,7 +51,7 @@ export default function MQTTBrowser() {
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
 
-  const isMqttDomain = location.hostname.startsWith('mqtt.');
+  const isMqttDomain = location.hostname.includes('mqtt.');
   const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
 
   // On main domain: use Apollo. On mqtt.* domain: fetch via cookie.
@@ -124,10 +124,10 @@ export default function MQTTBrowser() {
     setConnecting(true); setError(null); userDisconnected.current = false;
     try {
       let token: string | null = null;
-      const isMqttDomain = location.hostname.startsWith('mqtt.');
+      const isMqttDomain = location.hostname.includes('mqtt.');
       const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
 
-      // On mqtt.* domains: use cookie. On main domain: use Apollo.
+      // On mqtt.* domains: use cookie. On main domain: use localStorage JWT.
       if (isMqttDomain) {
         const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
         if (jwt) {

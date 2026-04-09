@@ -78,7 +78,7 @@ const MainRoutes = () => (
             </>
           ) : (
             <>
-              <Route path="/" element={location.hostname.startsWith('mqtt.') ? <MQTTBrowser /> : <Index />} />
+              <Route path="/" element={location.hostname.includes('mqtt.') ? <MQTTBrowser /> : <Index />} />
               <Route path="/how-it-works" element={<HowItWorks />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/features" element={<Navigate to="/" replace />} />
@@ -117,7 +117,7 @@ const App = () => (
           <CookieConsent />
           <Routes>
             {/* MQTT browser on mqtt.* domains — no auth/websocket providers needed */}
-            {location.hostname.startsWith('mqtt.') ? (
+            {location.hostname.includes('mqtt.') ? (
               <>
                 <Route path="/" element={<MQTTBrowser />} />
                 <Route path="/mqtt" element={<MQTTBrowser />} />
