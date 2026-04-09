@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { gql } from '@apollo/client/core';
-import { ArrowLeft, Radio, Send, Trash2, Search, Wifi, WifiOff } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Radio, Send, Trash2, Search, Wifi, WifiOff, Code, SlidersHorizontal } from 'lucide-react';
 
 const CREATE_MQTT_TOKEN = gql`
   mutation CreateMqttToken {
@@ -16,8 +15,20 @@ interface TopicMessage {
   updates: number;
 }
 
+const PROPERTY_RANGES: Record<string, { min: number; max: number; step?: number }> = {
+  brightness: { min: 0, max: 100 },
+  color_temp: { min: 50, max: 500 },
+  hue: { min: 0, max: 360 },
+  saturation: { min: 0, max: 100 },
+  speed: { min: 0, max: 100 },
+  target: { min: 0, max: 100 },
+  volume: { min: 0, max: 100 },
+  battery: { min: 0, max: 100 },
+};
+
+const BOOLEAN_PROPS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
+
 export default function MQTTBrowser() {
-  const navigate = useNavigate();
   const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -25,6 +36,7 @@ export default function MQTTBrowser() {
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
   const [filter, setFilter] = useState('');
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
+  const [rawMode, setRawMode] = useState(false);
   const [publishValue, setPublishValue] = useState('');
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
@@ -33,19 +45,13 @@ export default function MQTTBrowser() {
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/mqtt@5.10.0/dist/mqtt.min.js';
-    script.onload = () => {
-      mqttLibRef.current = (window as any).mqtt;
-    };
+    script.onload = () => { mqttLibRef.current = (window as any).mqtt; };
     document.head.appendChild(script);
     return () => { script.remove(); };
   }, []);
 
   const connect = useCallback(async () => {
-    if (!mqttLibRef.current) {
-      setError('MQTT library not loaded yet');
-      return;
-    }
-
+    if (!mqttLibRef.current) { setError('MQTT library not loaded yet'); return; }
     setConnecting(true);
     setError(null);
 
@@ -84,11 +90,7 @@ export default function MQTTBrowser() {
         setConnected(false);
       });
 
-      client.on('close', () => {
-        setConnected(false);
-        setConnecting(false);
-      });
-
+      client.on('close', () => { setConnected(false); setConnecting(false); });
       clientRef.current = client;
     } catch (e: any) {
       setError(e.message || 'Connection failed');
@@ -102,31 +104,29 @@ export default function MQTTBrowser() {
     setConnected(false);
   }, []);
 
-  const publish = useCallback((topic: string, payload: string) => {
+  const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
-    // Convert /state topic to /set topic
     const setTopic = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(setTopic, payload);
   }, [connected]);
 
-  const clearMessages = useCallback(() => {
-    setMessages({});
-  }, []);
+  const publishProperty = useCallback((topic: string, key: string, value: any) => {
+    if (!clientRef.current || !connected) return;
+    const setTopic = topic.endsWith('/set') ? topic : topic + '/set';
+    clientRef.current.publish(setTopic, JSON.stringify({ [key]: value }));
+  }, [connected]);
+
+  const clearMessages = useCallback(() => { setMessages({}); }, []);
 
   // Auto-connect on mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (mqttLibRef.current && !connected && !connecting) {
-        connect();
-      }
+      if (mqttLibRef.current && !connected && !connecting) connect();
     }, 500);
     return () => clearTimeout(timer);
   }, [connect, connected, connecting]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => { clientRef.current?.end(); };
-  }, []);
+  useEffect(() => { return () => { clientRef.current?.end(); }; }, []);
 
   const filteredTopics = Object.entries(messages)
     .filter(([topic]) => !filter || topic.toLowerCase().includes(filter.toLowerCase()))
@@ -137,14 +137,9 @@ export default function MQTTBrowser() {
       {/* Header */}
       <div className="border-b">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Radio className="h-5 w-5 text-muted-foreground" />
-              <h1 className="text-lg font-semibold">MQTT Browser</h1>
-            </div>
+          <div className="flex items-center gap-2">
+            <Radio className="h-5 w-5 text-muted-foreground" />
+            <h1 className="text-lg font-semibold">MQTT Browser</h1>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-sm">
@@ -176,16 +171,13 @@ export default function MQTTBrowser() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="max-w-4xl mx-auto px-4 pt-3">
           <div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div>
         </div>
       )}
 
-      {/* Content */}
       <div className="max-w-4xl mx-auto px-4 py-4">
-        {/* Filter + Clear */}
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -204,7 +196,6 @@ export default function MQTTBrowser() {
           )}
         </div>
 
-        {/* Topic List */}
         {filteredTopics.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground text-sm">
             {connected ? 'Waiting for messages...' : 'Connect to see device state from your homes'}
@@ -220,14 +211,14 @@ export default function MQTTBrowser() {
                 <div key={topic}>
                   <button
                     onClick={() => {
-                      setExpandedTopic(isExpanded ? null : topic);
-                      if (!isExpanded) {
+                      if (isExpanded) {
+                        setExpandedTopic(null);
+                      } else {
+                        setExpandedTopic(topic);
+                        setRawMode(false);
                         try {
-                          const obj = JSON.parse(payload);
-                          setPublishValue(JSON.stringify(obj, null, 2));
-                        } catch {
-                          setPublishValue(payload);
-                        }
+                          setPublishValue(JSON.stringify(JSON.parse(payload), null, 2));
+                        } catch { setPublishValue(payload); }
                       }
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-all ${isRecent ? 'bg-green-500/5' : ''}`}
@@ -247,24 +238,55 @@ export default function MQTTBrowser() {
                   </button>
 
                   {isExpanded && (
-                    <div className="px-3 py-3 bg-muted/30 border-t space-y-2">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        Publish to {topic.endsWith('/set') ? topic : topic + '/set'}
-                      </p>
-                      <textarea
-                        value={publishValue}
-                        onChange={(e) => setPublishValue(e.target.value)}
-                        className="w-full font-mono text-xs bg-background border rounded-md p-2 outline-none focus:border-primary resize-none"
-                        rows={3}
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => { publish(topic, publishValue); }}
-                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                        >
-                          <Send className="h-3.5 w-3.5" /> Publish
-                        </button>
+                    <div className="px-3 py-3 bg-muted/30 border-t space-y-3">
+                      {/* Mode toggle */}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                          {topic.endsWith('/set') ? topic : topic + '/set'}
+                        </p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setRawMode(false)}
+                            className={`p-1 rounded ${!rawMode ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            title="Visual editor"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setRawMode(true)}
+                            className={`p-1 rounded ${rawMode ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            title="Raw JSON"
+                          >
+                            <Code className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
+
+                      {rawMode ? (
+                        /* Raw JSON editor */
+                        <div className="space-y-2">
+                          <textarea
+                            value={publishValue}
+                            onChange={(e) => setPublishValue(e.target.value)}
+                            className="w-full font-mono text-xs bg-background border rounded-md p-2 outline-none focus:border-primary resize-none"
+                            rows={4}
+                          />
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => publishToSet(topic, publishValue)}
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                            >
+                              <Send className="h-3.5 w-3.5" /> Publish
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Visual property editor */
+                        <PropertyEditor
+                          payload={payload}
+                          onPublish={(key, value) => publishProperty(topic, key, value)}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -273,6 +295,98 @@ export default function MQTTBrowser() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PropertyEditor({ payload, onPublish }: { payload: string; onPublish: (key: string, value: any) => void }) {
+  let props: Record<string, any> = {};
+  try { props = JSON.parse(payload); } catch { return <p className="text-xs text-muted-foreground">Cannot parse payload</p>; }
+
+  return (
+    <div className="space-y-2">
+      {Object.entries(props).map(([key, value]) => (
+        <PropertyRow key={key} name={key} value={value} onPublish={onPublish} />
+      ))}
+    </div>
+  );
+}
+
+function PropertyRow({ name, value, onPublish }: { name: string; value: any; onPublish: (key: string, value: any) => void }) {
+  const isBool = BOOLEAN_PROPS.has(name) || typeof value === 'boolean';
+  const isNumber = typeof value === 'number' && !isBool;
+  const range = PROPERTY_RANGES[name];
+
+  if (isBool) {
+    const boolVal = value === true || value === 1 || value === 'on';
+    return (
+      <div className="flex items-center justify-between py-1">
+        <span className="text-sm text-muted-foreground">{name}</span>
+        <button
+          onClick={() => onPublish(name, boolVal ? false : true)}
+          className={`relative w-10 h-5 rounded-full transition-colors ${boolVal ? 'bg-green-500' : 'bg-muted-foreground/30'}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${boolVal ? 'left-[22px]' : 'left-0.5'}`} />
+        </button>
+      </div>
+    );
+  }
+
+  if (isNumber && range) {
+    return (
+      <div className="flex items-center gap-3 py-1">
+        <span className="text-sm text-muted-foreground w-24 shrink-0">{name}</span>
+        <input
+          type="range"
+          min={range.min}
+          max={range.max}
+          step={range.step ?? 1}
+          value={value}
+          onChange={(e) => {}}
+          onMouseUp={(e) => onPublish(name, Number((e.target as HTMLInputElement).value))}
+          onTouchEnd={(e) => onPublish(name, Number((e.target as HTMLInputElement).value))}
+          className="flex-1 h-1.5 accent-primary cursor-pointer"
+        />
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => {}}
+          onBlur={(e) => { const v = Number(e.target.value); if (!isNaN(v)) onPublish(name, v); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if (!isNaN(v)) onPublish(name, v); } }}
+          className="w-14 text-xs font-mono text-right bg-background border rounded px-1.5 py-1 outline-none focus:border-primary"
+          min={range.min}
+          max={range.max}
+        />
+      </div>
+    );
+  }
+
+  if (isNumber) {
+    return (
+      <div className="flex items-center justify-between py-1">
+        <span className="text-sm text-muted-foreground">{name}</span>
+        <input
+          type="number"
+          defaultValue={value}
+          onBlur={(e) => { const v = Number(e.target.value); if (!isNaN(v)) onPublish(name, v); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if (!isNaN(v)) onPublish(name, v); } }}
+          className="w-20 text-xs font-mono text-right bg-background border rounded px-1.5 py-1 outline-none focus:border-primary"
+        />
+      </div>
+    );
+  }
+
+  // String / other
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-sm text-muted-foreground">{name}</span>
+      <input
+        type="text"
+        defaultValue={String(value)}
+        onBlur={(e) => onPublish(name, e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') onPublish(name, (e.target as HTMLInputElement).value); }}
+        className="w-32 text-xs font-mono bg-background border rounded px-1.5 py-1 outline-none focus:border-primary"
+      />
     </div>
   );
 }
