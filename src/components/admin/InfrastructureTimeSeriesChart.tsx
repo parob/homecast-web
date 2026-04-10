@@ -18,11 +18,17 @@ interface Props {
 
 function defaultFormat(unit: string) {
   return (n: number) => {
-    if (unit === 'bytes' || unit === 'bytes/sec') {
-      if (n < 1024) return `${n.toFixed(0)}`;
-      if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)}K`;
-      if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(0)}M`;
-      return `${(n / 1024 / 1024 / 1024).toFixed(1)}G`;
+    if (unit === 'bytes/sec') {
+      if (n < 1024) return `${n.toFixed(0)} B/s`;
+      if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB/s`;
+      if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(1)} MB/s`;
+      return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
+    }
+    if (unit === 'bytes') {
+      if (n < 1024) return `${n.toFixed(0)} B`;
+      if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KiB`;
+      if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(0)} MiB`;
+      return `${(n / 1024 / 1024 / 1024).toFixed(1)} GiB`;
     }
     if (unit === 'millicores') return `${Math.round(n)}m`;
     return n.toFixed(0);
