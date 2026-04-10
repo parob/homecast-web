@@ -57,6 +57,7 @@ export function defaultFormat(unit: string): (n: number) => string {
       return `${(n / 1000).toFixed(1)}k/s`;
     }
     if (unit === 'count') return Math.round(n).toString();
+    if (unit === 'ratio') return `${(n * 100).toFixed(1)}%`;
     return n.toFixed(0);
   };
 }
