@@ -197,6 +197,23 @@ export const GET_DIAGNOSTICS = gql`
   }
 `;
 
+export const GET_INFRASTRUCTURE_STATUS = gql`
+  query GetInfrastructureStatus {
+    infrastructureStatus {
+      deploymentMode
+      consistentHashEnabled
+      currentInstance
+      hashRing {
+        enabled
+        podCount
+        pods
+        currentPod
+        virtualNodes
+      }
+    }
+  }
+`;
+
 export const GET_USER_DIAGNOSTICS = gql`
   query GetUserDiagnostics($userId: String!) {
     userDiagnostics(userId: $userId) {

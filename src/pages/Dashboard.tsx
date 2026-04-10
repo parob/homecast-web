@@ -1018,6 +1018,7 @@ const Dashboard = () => {
   const AdminApprovals = _cloud?.AdminApprovals ?? null;
   const AdminLogs = _cloud?.AdminLogs ?? null;
   const AdminObservability = _cloud?.AdminObservability ?? null;
+  const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminDebug = _cloud?.AdminDebug ?? null;
   const AdminDebugInfo = _cloud?.AdminDebugInfo ?? null;
   const AdminMetrics = _cloud?.AdminMetrics ?? null;
@@ -8003,6 +8004,7 @@ const Dashboard = () => {
                 {adminSubPath === '/tasks' && <AdminTasks />}
                 {adminSubPath === '/approvals' && <AdminApprovals />}
                 {adminSubPath === '/observability' && <AdminObservability />}
+                {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
                 {adminSubPath === '/logs' && <AdminLogs />}
                 {adminSubPath === '/debug' && (
                   <AdminDebugInfo

@@ -1138,6 +1138,25 @@ export interface AdminDiagnosticsResponse {
   diagnostics: AdminSystemDiagnostics;
 }
 
+export interface AdminHashRingState {
+  enabled: boolean;
+  podCount: number;
+  pods: string[];
+  currentPod: string | null;
+  virtualNodes: number;
+}
+
+export interface AdminInfrastructureStatus {
+  deploymentMode: string;
+  consistentHashEnabled: boolean;
+  currentInstance: string;
+  hashRing: AdminHashRingState;
+}
+
+export interface AdminInfrastructureStatusResponse {
+  infrastructureStatus: AdminInfrastructureStatus;
+}
+
 export interface AdminUserDiagnosticsResponse {
   userDiagnostics: AdminUserDiagnostics | null;
 }
