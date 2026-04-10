@@ -4,6 +4,7 @@ import type { AdminTimeSeriesResponse } from '@/lib/graphql/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 import { InfoTooltip } from '@/components/admin/InfoTooltip';
+import { defaultFormat, formatTime } from '@/components/admin/chart-format';
 
 interface Props {
   metric: string;
@@ -11,33 +12,11 @@ interface Props {
   description: React.ReactNode;
   deployment?: string;
   hours?: number;
+  /** Filter to a single pod (k8s metrics only — ignored for Pub/Sub metrics) */
+  podName?: string;
   /** Format the y-axis value, e.g., bytes → "100 MiB" */
   formatValue?: (n: number) => string;
   color?: string;
-}
-
-function defaultFormat(unit: string) {
-  return (n: number) => {
-    if (unit === 'bytes/sec') {
-      if (n < 1024) return `${n.toFixed(0)} B/s`;
-      if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB/s`;
-      if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(1)} MB/s`;
-      return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
-    }
-    if (unit === 'bytes') {
-      if (n < 1024) return `${n.toFixed(0)} B`;
-      if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KiB`;
-      if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(0)} MiB`;
-      return `${(n / 1024 / 1024 / 1024).toFixed(1)} GiB`;
-    }
-    if (unit === 'millicores') return `${Math.round(n)}m`;
-    return n.toFixed(0);
-  };
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export function InfrastructureTimeSeriesChart({
@@ -46,13 +25,14 @@ export function InfrastructureTimeSeriesChart({
   description,
   deployment = 'homecast',
   hours = 1,
+  podName,
   formatValue,
   color = 'hsl(var(--primary))',
 }: Props) {
   const { data, loading } = useQuery<AdminTimeSeriesResponse>(
     GET_INFRASTRUCTURE_TIME_SERIES,
     {
-      variables: { metric, deployment, hours },
+      variables: { metric, deployment, hours, podName },
       pollInterval: 30000,
     }
   );

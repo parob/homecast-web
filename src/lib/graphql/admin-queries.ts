@@ -252,8 +252,18 @@ export const GET_MQTT_BRIDGE_STATUS = gql`
 `;
 
 export const GET_INFRASTRUCTURE_TIME_SERIES = gql`
-  query GetInfrastructureTimeSeries($metric: String!, $deployment: String, $hours: Int) {
-    infrastructureTimeSeries(metric: $metric, deployment: $deployment, hours: $hours) {
+  query GetInfrastructureTimeSeries(
+    $metric: String!
+    $deployment: String
+    $hours: Int
+    $podName: String
+  ) {
+    infrastructureTimeSeries(
+      metric: $metric
+      deployment: $deployment
+      hours: $hours
+      podName: $podName
+    ) {
       metric
       unit
       points {
@@ -272,6 +282,43 @@ export const GET_DATABASE_POOL_STATUS = gql`
       overflow
       checkedIn
       totalConnections
+    }
+  }
+`;
+
+export const GET_DATABASE_STATS = gql`
+  query GetDatabaseStats {
+    databaseStats {
+      databaseSizeBytes
+      activeConnections
+      idleConnections
+      idleInTransaction
+      totalConnections
+      maxConnections
+      transactionsCommitted
+      transactionsRolledBack
+      cacheHitRatio
+      tuplesReturned
+      tuplesFetched
+      tuplesInserted
+      tuplesUpdated
+      tuplesDeleted
+      deadlocks
+      topTables {
+        schema
+        tableName
+        totalBytes
+        tableBytes
+        indexBytes
+        rowEstimate
+      }
+      slowQueries {
+        pid
+        durationSeconds
+        state
+        query
+        applicationName
+      }
     }
   }
 `;

@@ -1020,6 +1020,7 @@ const Dashboard = () => {
   const AdminObservability = _cloud?.AdminObservability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
+  const AdminInfrastructurePodDetail = _cloud?.AdminInfrastructurePodDetail ?? null;
   const AdminInfrastructurePubSub = _cloud?.AdminInfrastructurePubSub ?? null;
   const AdminInfrastructureMqtt = _cloud?.AdminInfrastructureMqtt ?? null;
   const AdminInfrastructureDatabase = _cloud?.AdminInfrastructureDatabase ?? null;
@@ -7965,7 +7966,7 @@ const Dashboard = () => {
           hideCloseButton
         >
           <DialogTitle className="sr-only">Admin Panel</DialogTitle>
-          <div className="flex h-full">
+          <div className="flex h-full selectable">
             {/* Admin Sidebar - desktop only */}
             {!isMobile && <AdminSidebar />}
             {/* Admin Content */}
@@ -7973,7 +7974,7 @@ const Dashboard = () => {
               {isMobile && (
                 <>
                   <Sheet open={adminSidebarOpen} onOpenChange={setAdminSidebarOpen}>
-                    <SheetContent side="left" className="w-64 p-0 safe-area-top safe-area-bottom safe-area-left" style={{ zIndex: 10020 }}>
+                    <SheetContent side="left" className="w-64 p-0 safe-area-top safe-area-bottom safe-area-left selectable" style={{ zIndex: 10020 }}>
                       <SheetTitle className="sr-only">Admin Navigation</SheetTitle>
                       <AdminSidebar onNavigate={() => setAdminSidebarOpen(false)} />
                     </SheetContent>
@@ -8010,6 +8011,9 @@ const Dashboard = () => {
                 {adminSubPath === '/observability' && <AdminObservability />}
                 {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
                 {adminSubPath === '/infrastructure/pods' && AdminInfrastructurePods && <AdminInfrastructurePods />}
+                {adminSubPath.startsWith('/infrastructure/pods/') && AdminInfrastructurePodDetail && (
+                  <AdminInfrastructurePodDetail podName={adminSubPath.replace('/infrastructure/pods/', '')} />
+                )}
                 {adminSubPath === '/infrastructure/pubsub' && AdminInfrastructurePubSub && <AdminInfrastructurePubSub />}
                 {adminSubPath === '/infrastructure/mqtt' && AdminInfrastructureMqtt && <AdminInfrastructureMqtt />}
                 {adminSubPath === '/infrastructure/database' && AdminInfrastructureDatabase && <AdminInfrastructureDatabase />}

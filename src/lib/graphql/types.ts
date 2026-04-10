@@ -1212,6 +1212,47 @@ export interface AdminDatabasePoolStatusResponse {
   databasePoolStatus: AdminDatabasePoolStatus;
 }
 
+export interface AdminDatabaseTableSize {
+  schema: string;
+  tableName: string;
+  totalBytes: number;
+  tableBytes: number;
+  indexBytes: number;
+  rowEstimate: number;
+}
+
+export interface AdminDatabaseSlowQuery {
+  pid: number;
+  durationSeconds: number;
+  state: string;
+  query: string;
+  applicationName: string | null;
+}
+
+export interface AdminDatabaseStats {
+  databaseSizeBytes: number;
+  activeConnections: number;
+  idleConnections: number;
+  idleInTransaction: number;
+  totalConnections: number;
+  maxConnections: number;
+  transactionsCommitted: number;
+  transactionsRolledBack: number;
+  cacheHitRatio: number;
+  tuplesReturned: number;
+  tuplesFetched: number;
+  tuplesInserted: number;
+  tuplesUpdated: number;
+  tuplesDeleted: number;
+  deadlocks: number;
+  topTables: AdminDatabaseTableSize[];
+  slowQueries: AdminDatabaseSlowQuery[];
+}
+
+export interface AdminDatabaseStatsResponse {
+  databaseStats: AdminDatabaseStats;
+}
+
 export interface AdminTimeSeriesPoint {
   timestamp: string;
   value: number;
