@@ -69,57 +69,58 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
           size="icon"
           className="h-5 w-5 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
           onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <Info className="h-3 w-3" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[340px] sm:w-[440px] p-0 !z-[10060]"
+        className="w-[340px] sm:w-[440px] p-0 !z-[10060] max-h-[min(70vh,600px)] overflow-hidden flex flex-col"
         side="right"
         align="start"
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-col" style={{ maxHeight: 'min(70vh, 600px)' }}>
-          {/* Header — fixed */}
-          <div className="px-4 py-2.5 border-b shrink-0">
-            <div className="font-medium text-sm">{def?.label ?? nodeType}</div>
-            {def?.description && (
-              <div className="text-[11px] text-muted-foreground mt-0.5">{def.description}</div>
-            )}
-          </div>
+        {/* Header — fixed */}
+        <div className="px-4 py-2.5 border-b shrink-0">
+          <div className="font-medium text-sm">{def?.label ?? nodeType}</div>
+          {def?.description && (
+            <div className="text-[11px] text-muted-foreground mt-0.5">{def.description}</div>
+          )}
+        </div>
 
-          {/* Content — scrollable */}
-          <div className="overflow-y-auto overscroll-contain px-4 py-3" style={{ maxHeight: 'min(55vh, 480px)' }}>
-            {loading && (
-              <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs">Loading documentation...</span>
-              </div>
-            )}
+        {/* Content — scrollable, takes remaining space */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3">
+          {loading && (
+            <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs">Loading documentation...</span>
+            </div>
+          )}
 
-            {!loading && content && (
-              <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
-            )}
+          {!loading && content && (
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+          )}
 
-            {!loading && !content && (
-              <p className="text-xs text-muted-foreground py-4">
-                {def?.description ?? 'No documentation available.'}
-              </p>
-            )}
-          </div>
+          {!loading && !content && (
+            <p className="text-xs text-muted-foreground py-4">
+              {def?.description ?? 'No documentation available.'}
+            </p>
+          )}
+        </div>
 
-          {/* Footer — fixed */}
-          <div className="px-4 py-2 border-t bg-muted/30 shrink-0">
-            <a
-              href={`${DOCS_GUIDE_BASE}/${filename}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-primary hover:underline flex items-center gap-1"
-            >
-              View full documentation
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
+        {/* Footer — fixed */}
+        <div className="px-4 py-2 border-t bg-muted/30 shrink-0">
+          <a
+            href={`${DOCS_GUIDE_BASE}/${filename}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+          >
+            View full documentation
+            <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </PopoverContent>
     </Popover>

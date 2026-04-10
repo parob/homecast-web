@@ -427,10 +427,22 @@ function AutomationEditorInner({
         e.preventDefault();
         handleSaveRef.current?.();
       }
+      // Delete / Backspace — delete the currently selected node, unless
+      // focus is inside an editable field (config panel, sticky note textarea).
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        const editable = target?.isContentEditable
+          || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (!editable && selectedNodeId) {
+          e.preventDefault();
+          deleteNode(selectedNodeId);
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, [undo, redo, selectedNodeId, deleteNode]);
 
   // Save
   const handleSave = useCallback(async () => {
@@ -524,12 +536,7 @@ function AutomationEditorInner({
             variant="ghost"
             size="icon"
             className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground hover:text-destructive"
-            onClick={() => {
-              if (confirm('Delete this automation?')) {
-                onDelete(existingIdRef.current ?? '');
-                onClose();
-              }
-            }}
+            onClick={() => onDelete(existingIdRef.current ?? '')}
           >
             <Trash2 className="h-3.5 w-3.5 sm:mr-1.5" />
             <span className="hidden sm:inline">Delete</span>
@@ -650,60 +657,23 @@ function AutomationEditorInner({
           )}
         </div>
 
-        {/* Right: tabbed Executions / Versions panel */}
-        {sidePanel && !configNode && existingAutomation?.id && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto sm:w-80 border-l bg-background flex flex-col min-h-0">
-            <div className="h-9 border-b flex items-center shrink-0">
-              <button
-                type="button"
-                className={cn(
-                  'flex-1 h-full text-xs font-medium transition-colors border-b-2',
-                  sidePanel === 'executions'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-                onClick={() => setSidePanel('executions')}
-              >
-                Executions
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'flex-1 h-full text-xs font-medium transition-colors border-b-2',
-                  sidePanel === 'versions'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-                onClick={() => setSidePanel('versions')}
-              >
-                Versions
-              </button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 mx-1 shrink-0"
-                onClick={() => setSidePanel(null)}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <div className="flex-1 min-h-0">
-              {sidePanel === 'executions' ? (
-                <ExecutionHistoryPanel
-                  embedded
-                  automationId={existingAutomation.id}
-                  onClose={() => setSidePanel(null)}
-                />
-              ) : (
-                <VersionHistoryPanel
-                  embedded
-                  automationId={existingAutomation.id}
-                  homeId={homeId}
-                  onClose={() => setSidePanel(null)}
-                  onRestored={() => { setSidePanel(null); onClose(); }}
-                />
-              )}
-            </div>
+        {/* Right: Executions or Versions panel (mutually exclusive) */}
+        {sidePanel === 'executions' && !configNode && existingAutomation?.id && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
+            <ExecutionHistoryPanel
+              automationId={existingAutomation.id}
+              onClose={() => setSidePanel(null)}
+            />
+          </div>
+        )}
+        {sidePanel === 'versions' && !configNode && existingAutomation?.id && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
+            <VersionHistoryPanel
+              automationId={existingAutomation.id}
+              homeId={homeId}
+              onClose={() => setSidePanel(null)}
+              onRestored={() => { setSidePanel(null); onClose(); }}
+            />
           </div>
         )}
 
@@ -888,16 +858,16 @@ function AutomationNotificationPrefs({ automationId }: { automationId: string })
 
   return (
     <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn("h-8 w-8", hasOverride && "text-blue-600 dark:text-blue-400")}>
-              <Bell className="h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Notification Preferences</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn('h-8 w-8', hasOverride && 'text-blue-600 dark:text-blue-400')}
+          aria-label="Notification preferences"
+        >
+          <Bell className="h-3.5 w-3.5" />
+        </Button>
+      </PopoverTrigger>
       <PopoverContent className="w-56 p-3" side="bottom" align="end">
         <div className="space-y-3">
           <div className="flex items-center justify-between">

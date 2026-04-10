@@ -2,11 +2,11 @@
 // Clean card style with colored icon circle
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import { Handle, Position, useReactFlow, type NodeProps, type Node } from '@xyflow/react';
 import {
   Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow,
-  AlertTriangle, Check, X, Loader2,
+  AlertTriangle, Check, X, Loader2, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
@@ -33,13 +33,19 @@ function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
   return [{ id: 'output' }];
 }
 
-export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
+export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const nodeData = data as FlowNodeData;
   const styles = CATEGORY_STYLES[nodeData.category] ?? CATEGORY_STYLES.action;
   const Icon = ICONS[nodeData.icon] ?? Zap;
   const isTrigger = nodeData.category === 'trigger';
   const inputs = getInputs(nodeData);
   const outputs = getOutputs(nodeData);
+  const { deleteElements } = useReactFlow();
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteElements({ nodes: [{ id }] });
+  };
 
   const execRing =
     nodeData.executionState === 'completed' ? 'ring-2 ring-emerald-400' :
@@ -53,6 +59,21 @@ export const BaseNode = memo(function BaseNode({ data, selected }: NodeProps<Nod
       style={{ width: NODE_WIDTH }}
       data-testid={`node-${nodeData.nodeType}`}
     >
+      {/* Delete button — visible on hover or when selected */}
+      <button
+        type="button"
+        onClick={handleDelete}
+        onMouseDown={(e) => e.stopPropagation()}
+        className={cn(
+          'absolute -top-2 -right-2 w-5 h-5 rounded-full bg-background border shadow-sm items-center justify-center text-muted-foreground hover:text-destructive hover:border-destructive z-10 transition-opacity',
+          selected ? 'flex' : 'hidden group-hover:flex',
+        )}
+        aria-label="Delete node"
+        data-testid={`delete-node-${nodeData.nodeType}`}
+      >
+        <Trash2 className="w-2.5 h-2.5" />
+      </button>
+
       {/* Input handle(s) */}
       {!isTrigger && inputs.length === 1 && (
         <Handle
