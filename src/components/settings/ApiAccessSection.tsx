@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Copy, Plus, AlertTriangle, Radio, Info } from 'lucide-react';
+import { Check, Copy, Plus, AlertTriangle, Radio, Info, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { config, isCommunity } from '@/lib/config';
 import { GET_ACCESS_TOKENS } from '@/lib/graphql/queries';
@@ -145,19 +145,30 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
       <div className="space-y-2">
         <p className="text-sm font-medium">Endpoints</p>
         <div className="rounded-md border bg-muted/30 divide-y">
-          {[
-            { label: 'MCP', url: `${config.apiUrl}/mcp`, key: 'api-mcp', info: 'Supports OAuth authentication for ChatGPT, Claude Desktop, and other AI assistants.' },
+          {([
+            { label: 'MCP', url: `${config.apiUrl}/mcp`, key: 'api-mcp', info: 'Supports OAuth authentication for ChatGPT, Claude Desktop, and other AI assistants.' as React.ReactNode },
             { label: 'GraphQL', url: `${config.apiUrl}/graphql`, key: 'api-graphql' },
             { label: 'REST', url: `${config.apiUrl}/rest`, key: 'api-rest' },
             ...(!isCommunity ? [{
               label: 'MQTT',
               url: location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud:8883' : 'mqtt.homecast.cloud:8883',
               key: 'api-mqtt',
-              info: isCloudPlan
-                ? `Use API access token as password. <a href="https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}" target="_blank" rel="noopener" style="text-decoration:underline">Open MQTT Browser</a>`
-                : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
+              info: isCloudPlan ? (
+                <>
+                  Use API access token as password.{' '}
+                  <a
+                    href={`https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 font-semibold underline decoration-green-700/60 decoration-1 underline-offset-2 hover:decoration-green-700 dark:decoration-green-400/60 dark:hover:decoration-green-400"
+                  >
+                    Open MQTT Browser
+                    <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                </>
+              ) : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
             }] : []),
-          ].map(({ label, url, key, info }) => (
+          ] as { label: string; url: string; key: string; info?: React.ReactNode }[]).map(({ label, url, key, info }) => (
             <div key={key} className="px-2.5 py-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-medium text-muted-foreground w-14 shrink-0">{label}</span>
@@ -179,7 +190,9 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
               </div>
               {info && (
                 <div className="mt-1.5 ml-14">
-                  <span className="inline-flex rounded-md bg-green-100 px-2 py-0.5 text-[10px] text-green-800 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700" dangerouslySetInnerHTML={{ __html: info }} />
+                  <span className="inline-flex rounded-md bg-green-100 px-2 py-0.5 text-[10px] text-green-800 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700">
+                    {info}
+                  </span>
                 </div>
               )}
             </div>
