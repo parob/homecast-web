@@ -153,20 +153,30 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
               label: 'MQTT',
               url: location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud:8883' : 'mqtt.homecast.cloud:8883',
               key: 'api-mqtt',
-              info: isCloudPlan ? (
-                <>
-                  Use API access token as password.{' '}
-                  <a
-                    href={`https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-0.5 font-semibold underline decoration-green-700/60 decoration-1 underline-offset-2 hover:decoration-green-700 dark:decoration-green-400/60 dark:hover:decoration-green-400"
-                  >
-                    Open MQTT Browser
-                    <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                </>
-              ) : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
+              info: isCloudPlan ? (() => {
+                const mqttUrl = `https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`;
+                return (
+                  <>
+                    Use API access token as password.{' '}
+                    <a
+                      href={mqttUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        const w = window as any;
+                        if (w.webkit?.messageHandlers?.homecast) {
+                          e.preventDefault();
+                          w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: mqttUrl });
+                        }
+                      }}
+                      className="inline-flex items-center gap-0.5 font-semibold underline decoration-green-700/60 decoration-1 underline-offset-2 hover:decoration-green-700 dark:decoration-green-400/60 dark:hover:decoration-green-400"
+                    >
+                      Open MQTT Browser
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  </>
+                );
+              })() : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
             }] : []),
           ] as { label: string; url: string; key: string; info?: React.ReactNode }[]).map(({ label, url, key, info }) => (
             <div key={key} className="px-2.5 py-1.5">
