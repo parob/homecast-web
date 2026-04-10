@@ -210,6 +210,29 @@ export const GET_INFRASTRUCTURE_STATUS = gql`
         currentPod
         virtualNodes
       }
+      hpa {
+        minReplicas
+        maxReplicas
+        currentReplicas
+        desiredReplicas
+        targetCpuPct
+        currentCpuPct
+        targetMemoryPct
+        currentMemoryPct
+      }
+      podMetrics {
+        podName
+        cpuMillicores
+        memoryBytes
+      }
+      routingMetrics {
+        broadcastsTotal
+        broadcastsLocalOnly
+        pubsubMessagesSent
+        relayRedirectsSent
+        webClientRedirectsSent
+        localityRate
+      }
     }
   }
 `;

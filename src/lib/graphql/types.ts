@@ -1146,11 +1146,40 @@ export interface AdminHashRingState {
   virtualNodes: number;
 }
 
+export interface AdminHPAStatus {
+  minReplicas: number | null;
+  maxReplicas: number | null;
+  currentReplicas: number | null;
+  desiredReplicas: number | null;
+  targetCpuPct: number | null;
+  currentCpuPct: number | null;
+  targetMemoryPct: number | null;
+  currentMemoryPct: number | null;
+}
+
+export interface AdminPodMetric {
+  podName: string;
+  cpuMillicores: number;
+  memoryBytes: number;
+}
+
+export interface AdminRoutingMetrics {
+  broadcastsTotal: number;
+  broadcastsLocalOnly: number;
+  pubsubMessagesSent: number;
+  relayRedirectsSent: number;
+  webClientRedirectsSent: number;
+  localityRate: number;
+}
+
 export interface AdminInfrastructureStatus {
   deploymentMode: string;
   consistentHashEnabled: boolean;
   currentInstance: string;
   hashRing: AdminHashRingState;
+  hpa: AdminHPAStatus | null;
+  podMetrics: AdminPodMetric[];
+  routingMetrics: AdminRoutingMetrics;
 }
 
 export interface AdminInfrastructureStatusResponse {
