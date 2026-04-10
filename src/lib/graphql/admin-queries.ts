@@ -251,6 +251,19 @@ export const GET_MQTT_BRIDGE_STATUS = gql`
   }
 `;
 
+export const GET_INFRASTRUCTURE_TIME_SERIES = gql`
+  query GetInfrastructureTimeSeries($metric: String!, $deployment: String, $hours: Int) {
+    infrastructureTimeSeries(metric: $metric, deployment: $deployment, hours: $hours) {
+      metric
+      unit
+      points {
+        timestamp
+        value
+      }
+    }
+  }
+`;
+
 export const GET_DATABASE_POOL_STATUS = gql`
   query GetDatabasePoolStatus {
     databasePoolStatus {

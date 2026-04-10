@@ -1212,6 +1212,21 @@ export interface AdminDatabasePoolStatusResponse {
   databasePoolStatus: AdminDatabasePoolStatus;
 }
 
+export interface AdminTimeSeriesPoint {
+  timestamp: string;
+  value: number;
+}
+
+export interface AdminTimeSeriesResult {
+  metric: string;
+  unit: string;
+  points: AdminTimeSeriesPoint[];
+}
+
+export interface AdminTimeSeriesResponse {
+  infrastructureTimeSeries: AdminTimeSeriesResult;
+}
+
 export interface AdminUserDiagnosticsResponse {
   userDiagnostics: AdminUserDiagnostics | null;
 }
