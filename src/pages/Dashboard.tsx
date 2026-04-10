@@ -7970,7 +7970,7 @@ const Dashboard = () => {
             {/* Admin Sidebar - desktop only */}
             {!isMobile && <AdminSidebar />}
             {/* Admin Content */}
-            <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex flex-1 flex-col overflow-hidden min-h-0">
               {isMobile && (
                 <>
                   <Sheet open={adminSidebarOpen} onOpenChange={setAdminSidebarOpen}>
@@ -7990,7 +7990,7 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
-              <main className={cn("flex-1 overflow-auto", isMobile ? "p-4" : "p-6")}>
+              <main className={cn("flex-1 min-h-0 overflow-auto", isMobile ? "p-4" : "p-6")}>
                 {adminSubPath === '/' && <AdminDashboard />}
                 {adminSubPath.startsWith('/analytics') && <AdminAnalytics />}
                 {adminSubPath === '/users' && <AdminUsers />}
