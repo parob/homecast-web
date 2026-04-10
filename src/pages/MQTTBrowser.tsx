@@ -26,6 +26,13 @@ const RANGES: Record<string, { min: number; max: number }> = {
 };
 const BOOLS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
 
+// Matches _make_slug in homecast-cloud/server/homecast/mqtt/auth.py
+function makeHomeSlug(name: string, id: string): string {
+  const base = name.toLowerCase().replace(/ /g, '-').replace(/['"]/g, '').replace(/[^a-z0-9-]/g, '');
+  const hex = id.replace(/-/g, '').toLowerCase();
+  return `${base}-${hex.slice(0, 4)}`;
+}
+
 export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
@@ -177,7 +184,19 @@ export default function MQTTBrowser() {
       }
       const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
       const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
-      client.on('connect', () => { setConnected(true); setConnecting(false); setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid }); client.subscribe('homecast/#'); });
+      client.on('connect', () => {
+        setConnected(true); setConnecting(false);
+        setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid });
+        // Subscribe per-home. createMqttToken scopes to all of the user's homes,
+        // so homecast/# would be denied as a broad wildcard on a scoped token.
+        if (homes.length === 0) {
+          client.subscribe('homecast/#');
+        } else {
+          for (const home of homes) {
+            client.subscribe(`homecast/${makeHomeSlug(home.name, home.id)}/#`);
+          }
+        }
+      });
       client.on('message', (topic: string, payload: Buffer) => {
         const text = payload.toString();
         msgTimestamps.current.push(Date.now());
@@ -210,7 +229,7 @@ export default function MQTTBrowser() {
       client.on('close', () => { setConnected(false); setConnecting(false); });
       clientRef.current = client;
     } catch (e: any) { setError(e.message || 'Connection failed'); setConnecting(false); }
-  }, [createMqttToken]);
+  }, [createMqttToken, homes]);
 
   const disconnect = useCallback(() => {
     userDisconnected.current = true;
