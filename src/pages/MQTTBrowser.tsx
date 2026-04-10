@@ -698,8 +698,8 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
       );
       if (d?.createAccessToken?.rawToken) {
         setNewTokenRaw(d.createAccessToken.rawToken);
-        setShowCreate(false);
-        fetchTokens();
+        setCreateOpen(false);
+        await fetchTokens();
       }
     } catch {} finally { setCreating(false); }
   };
@@ -745,7 +745,7 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
               </div>
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-muted-foreground">Username</span>
-                <span className="text-muted-foreground italic">leave blank</span>
+                <span className="text-muted-foreground italic">any value or leave blank</span>
               </div>
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-muted-foreground">Password</span>
