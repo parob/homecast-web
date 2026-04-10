@@ -1019,6 +1019,10 @@ const Dashboard = () => {
   const AdminLogs = _cloud?.AdminLogs ?? null;
   const AdminObservability = _cloud?.AdminObservability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
+  const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
+  const AdminInfrastructurePubSub = _cloud?.AdminInfrastructurePubSub ?? null;
+  const AdminInfrastructureMqtt = _cloud?.AdminInfrastructureMqtt ?? null;
+  const AdminInfrastructureDatabase = _cloud?.AdminInfrastructureDatabase ?? null;
   const AdminDebug = _cloud?.AdminDebug ?? null;
   const AdminDebugInfo = _cloud?.AdminDebugInfo ?? null;
   const AdminMetrics = _cloud?.AdminMetrics ?? null;
@@ -8005,6 +8009,10 @@ const Dashboard = () => {
                 {adminSubPath === '/approvals' && <AdminApprovals />}
                 {adminSubPath === '/observability' && <AdminObservability />}
                 {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
+                {adminSubPath === '/infrastructure/pods' && AdminInfrastructurePods && <AdminInfrastructurePods />}
+                {adminSubPath === '/infrastructure/pubsub' && AdminInfrastructurePubSub && <AdminInfrastructurePubSub />}
+                {adminSubPath === '/infrastructure/mqtt' && AdminInfrastructureMqtt && <AdminInfrastructureMqtt />}
+                {adminSubPath === '/infrastructure/database' && AdminInfrastructureDatabase && <AdminInfrastructureDatabase />}
                 {adminSubPath === '/logs' && <AdminLogs />}
                 {adminSubPath === '/debug' && (
                   <AdminDebugInfo

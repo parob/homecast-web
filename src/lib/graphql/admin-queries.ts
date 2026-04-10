@@ -237,6 +237,32 @@ export const GET_INFRASTRUCTURE_STATUS = gql`
   }
 `;
 
+export const GET_MQTT_BRIDGE_STATUS = gql`
+  query GetMqttBridgeStatus {
+    mqttBridgeStatus {
+      enabled
+      connected
+      brokerHost
+      brokerPort
+      subscribedHomesCount
+      customBrokersCount
+      initialStateDone
+    }
+  }
+`;
+
+export const GET_DATABASE_POOL_STATUS = gql`
+  query GetDatabasePoolStatus {
+    databasePoolStatus {
+      poolSize
+      checkedOut
+      overflow
+      checkedIn
+      totalConnections
+    }
+  }
+`;
+
 export const GET_USER_DIAGNOSTICS = gql`
   query GetUserDiagnostics($userId: String!) {
     userDiagnostics(userId: $userId) {

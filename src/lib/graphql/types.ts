@@ -1186,6 +1186,32 @@ export interface AdminInfrastructureStatusResponse {
   infrastructureStatus: AdminInfrastructureStatus;
 }
 
+export interface AdminMQTTBridgeStatus {
+  enabled: boolean;
+  connected: boolean;
+  brokerHost: string | null;
+  brokerPort: number | null;
+  subscribedHomesCount: number;
+  customBrokersCount: number;
+  initialStateDone: boolean;
+}
+
+export interface AdminMQTTBridgeStatusResponse {
+  mqttBridgeStatus: AdminMQTTBridgeStatus;
+}
+
+export interface AdminDatabasePoolStatus {
+  poolSize: number;
+  checkedOut: number;
+  overflow: number;
+  checkedIn: number;
+  totalConnections: number;
+}
+
+export interface AdminDatabasePoolStatusResponse {
+  databasePoolStatus: AdminDatabasePoolStatus;
+}
+
 export interface AdminUserDiagnosticsResponse {
   userDiagnostics: AdminUserDiagnostics | null;
 }
