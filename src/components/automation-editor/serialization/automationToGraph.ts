@@ -12,7 +12,7 @@ import type {
   Action,
 } from '@/automation/types/automation';
 import { isConditionBlock } from '@/automation/types/automation';
-import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ALL_NODE_DEFINITIONS } from '../constants';
+import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS } from '../constants';
 
 const VERTICAL_GAP = 80;
 const HORIZONTAL_OFFSET = 300;
@@ -60,7 +60,7 @@ function simplifyActionType(engineType: string): string {
 
 export function automationToGraph(automation: Automation): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
   const nodes: Node<FlowNodeData>[] = [];
-  const edges: Edge[] = [];
+  const autoEdges: Edge[] = [];
   let y = 50;
 
   // Add trigger nodes
@@ -81,7 +81,7 @@ export function automationToGraph(automation: Automation): { nodes: Node<FlowNod
     nodes.push(...conditionNodes);
 
     for (const triggerId of lastNodeIds) {
-      edges.push(createEdge(triggerId, conditionNodes[0].id));
+      autoEdges.push(createEdge(triggerId, conditionNodes[0].id));
     }
 
     lastNodeIds = conditionNodes.map((n) => n.id);
@@ -94,14 +94,61 @@ export function automationToGraph(automation: Automation): { nodes: Node<FlowNod
     nodes.push(node);
 
     for (const prevId of lastNodeIds) {
-      edges.push(createEdge(prevId, node.id, 'pass'));
+      autoEdges.push(createEdge(prevId, node.id, 'pass'));
     }
 
     lastNodeIds = [node.id];
     y += VERTICAL_GAP;
   }
 
+  // Restore sticky notes from saved UI state
+  const stickyNotes = automation.uiState?.stickyNotes ?? [];
+  for (const note of stickyNotes) {
+    nodes.push(stickyNoteToNode(note));
+  }
+
+  // Override positions from saved UI state (if any)
+  const savedPositions = automation.uiState?.nodePositions;
+  if (savedPositions) {
+    for (const n of nodes) {
+      const pos = savedPositions[n.id];
+      if (pos) n.position = { x: pos.x, y: pos.y };
+    }
+  }
+
+  // Prefer saved edges over auto-generated ones
+  const savedEdges = automation.uiState?.edges;
+  const edges: Edge[] = savedEdges && savedEdges.length > 0
+    ? savedEdges.map((e) => createEdge(e.source, e.target, e.sourceHandle ?? undefined, e.id))
+    : autoEdges;
+
   return { nodes, edges };
+}
+
+function stickyNoteToNode(note: {
+  id: string;
+  position: { x: number; y: number };
+  text: string;
+  width?: number;
+  height?: number;
+}): Node<FlowNodeData> {
+  const def = ANNOTATION_NODES.find((d) => d.type === 'sticky_note');
+  return {
+    id: note.id,
+    type: 'stickyNote',
+    position: note.position,
+    width: note.width,
+    height: note.height,
+    data: {
+      category: 'annotation',
+      nodeType: 'sticky_note',
+      label: def?.label ?? 'Sticky Note',
+      icon: def?.icon ?? 'StickyNote',
+      config: { text: note.text },
+      isConfigured: true,
+      enabled: true,
+    },
+  };
 }
 
 // ============================================================
@@ -320,9 +367,9 @@ function buildActionSummary(action: Action): string {
 // Edge factory
 // ============================================================
 
-function createEdge(source: string, target: string, sourceHandle?: string): Edge {
+function createEdge(source: string, target: string, sourceHandle?: string, id?: string): Edge {
   return {
-    id: `${source}-${target}${sourceHandle ? `-${sourceHandle}` : ''}`,
+    id: id ?? `${source}-${target}${sourceHandle ? `-${sourceHandle}` : ''}`,
     source,
     target,
     sourceHandle: sourceHandle ?? undefined,

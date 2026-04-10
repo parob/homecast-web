@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 interface ExecutionHistoryPanelProps {
   automationId: string;
   onClose: () => void;
+  /** When true, skip outer wrapper chrome (width/border/bg + header) — caller provides it */
+  embedded?: boolean;
 }
 
 const STATUS_STYLES: Record<string, { color: string; icon: React.ElementType; label: string }> = {
@@ -21,7 +23,7 @@ const STATUS_STYLES: Record<string, { color: string; icon: React.ElementType; la
   timeout: { color: 'text-amber-500', icon: Clock, label: 'Timeout' },
 };
 
-export function ExecutionHistoryPanel({ automationId, onClose }: ExecutionHistoryPanelProps) {
+export function ExecutionHistoryPanel({ automationId, onClose, embedded }: ExecutionHistoryPanelProps) {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   const { data: historyData, loading } = useQuery(GET_EXECUTION_HISTORY, {
@@ -32,18 +34,23 @@ export function ExecutionHistoryPanel({ automationId, onClose }: ExecutionHistor
   const traces = historyData?.executionHistory ?? [];
 
   if (selectedTraceId) {
-    return <TraceDetail traceId={selectedTraceId} onBack={() => setSelectedTraceId(null)} />;
+    return <TraceDetail traceId={selectedTraceId} onBack={() => setSelectedTraceId(null)} embedded={embedded} />;
   }
 
   return (
-    <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background">
-      <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <span className="text-sm font-medium flex-1">Execution History</span>
-        <span className="text-[10px] text-muted-foreground">{traces.length} runs</span>
-      </div>
+    <div className={cn(
+      'flex flex-col min-h-0 h-full shrink-0 bg-background',
+      embedded ? 'w-full' : 'w-full sm:w-80 border-l',
+    )}>
+      {!embedded && (
+        <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm font-medium flex-1">Execution History</span>
+          <span className="text-[10px] text-muted-foreground">{traces.length} runs</span>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {loading && (
@@ -89,7 +96,7 @@ export function ExecutionHistoryPanel({ automationId, onClose }: ExecutionHistor
 // Trace detail — step-by-step inspector
 // ============================================================
 
-function TraceDetail({ traceId, onBack }: { traceId: string; onBack: () => void }) {
+function TraceDetail({ traceId, onBack, embedded }: { traceId: string; onBack: () => void; embedded?: boolean }) {
   const { data, loading } = useQuery(GET_EXECUTION_TRACE, {
     variables: { traceId },
     fetchPolicy: 'network-only',
@@ -99,7 +106,10 @@ function TraceDetail({ traceId, onBack }: { traceId: string; onBack: () => void 
   const parsed = trace?.traceJson ? JSON.parse(trace.traceJson) : null;
 
   return (
-    <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background">
+    <div className={cn(
+      'flex flex-col min-h-0 h-full shrink-0 bg-background',
+      embedded ? 'w-full' : 'w-full sm:w-80 border-l',
+    )}>
       <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />

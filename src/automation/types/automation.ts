@@ -35,6 +35,25 @@ export interface Automation {
   variables?: Record<string, unknown>;
   blueprintId?: string;
   metadata: AutomationMetadata;
+  uiState?: AutomationUIState;
+}
+
+export interface AutomationUIState {
+  nodePositions?: Record<string, { x: number; y: number }>;
+  edges?: Array<{
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  }>;
+  stickyNotes?: Array<{
+    id: string;
+    position: { x: number; y: number };
+    text: string;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 export interface AutomationMetadata {

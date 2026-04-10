@@ -7,15 +7,18 @@ import { RESTORE_AUTOMATION_VERSION } from '@/lib/graphql/mutations';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RotateCcw, GitCommitVertical } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface VersionHistoryPanelProps {
   automationId: string;
   homeId: string;
   onClose: () => void;
   onRestored: () => void;
+  /** When true, skip outer wrapper chrome (width/border/bg + header) — caller provides it */
+  embedded?: boolean;
 }
 
-export function VersionHistoryPanel({ automationId, homeId, onClose, onRestored }: VersionHistoryPanelProps) {
+export function VersionHistoryPanel({ automationId, homeId, onClose, onRestored, embedded }: VersionHistoryPanelProps) {
   const [restoring, setRestoring] = useState<string | null>(null);
 
   const { data, loading } = useQuery(GET_AUTOMATION_VERSIONS, {
@@ -42,14 +45,19 @@ export function VersionHistoryPanel({ automationId, homeId, onClose, onRestored 
   };
 
   return (
-    <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background">
-      <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <span className="text-sm font-medium flex-1">Version History</span>
-        <span className="text-[10px] text-muted-foreground">{versions.length} versions</span>
-      </div>
+    <div className={cn(
+      'flex flex-col min-h-0 h-full shrink-0 bg-background',
+      embedded ? 'w-full' : 'w-full sm:w-80 border-l',
+    )}>
+      {!embedded && (
+        <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm font-medium flex-1">Version History</span>
+          <span className="text-[10px] text-muted-foreground">{versions.length} versions</span>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {loading && (

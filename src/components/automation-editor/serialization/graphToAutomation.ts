@@ -6,6 +6,7 @@ import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
 import type {
   Automation,
+  AutomationUIState,
   Trigger,
   ConditionBlock,
   Action,
@@ -87,7 +88,35 @@ export function graphToAutomation(
       updatedAt: new Date().toISOString(),
       triggerCount: 0,
     },
+    uiState: buildUIState(nodes, edges),
   };
+}
+
+function buildUIState(nodes: Node<FlowNodeData>[], edges: Edge[]): AutomationUIState {
+  const nodePositions: Record<string, { x: number; y: number }> = {};
+  for (const n of nodes) {
+    nodePositions[n.id] = { x: n.position.x, y: n.position.y };
+  }
+
+  const savedEdges = edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.sourceHandle ?? null,
+    targetHandle: e.targetHandle ?? null,
+  }));
+
+  const stickyNotes = nodes
+    .filter((n) => n.type === 'stickyNote')
+    .map((n) => ({
+      id: n.id,
+      position: { x: n.position.x, y: n.position.y },
+      text: ((n.data as FlowNodeData).config.text as string) ?? '',
+      width: typeof n.width === 'number' ? n.width : undefined,
+      height: typeof n.height === 'number' ? n.height : undefined,
+    }));
+
+  return { nodePositions, edges: savedEdges, stickyNotes };
 }
 
 function getDownstreamNodes(

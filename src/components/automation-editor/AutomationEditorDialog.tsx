@@ -138,14 +138,13 @@ function AutomationEditorInner({
   // Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [automationName, setAutomationName] = useState(existingAutomation?.name ?? '');
+  const [automationName, setAutomationName] = useState(existingAutomation?.name ?? 'New automation');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [sidePanel, setSidePanel] = useState<'executions' | 'versions' | null>(null);
   const [showMobilePalette, setShowMobilePalette] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
-  const [showVersions, setShowVersions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
@@ -156,10 +155,37 @@ function AutomationEditorInner({
   // Existing automation ID for update
   const existingIdRef = useRef(existingAutomation?.id);
 
-  // Undo/redo
-  const [history, setHistory] = useState<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // Undo/redo — single state object so commit/undo/redo stay consistent
+  type GraphSnapshot = { nodes: Node<FlowNodeData>[]; edges: Edge[] };
+  const [history, setHistory] = useState<{ entries: GraphSnapshot[]; index: number }>({ entries: [], index: -1 });
   const isUndoRedoRef = useRef(false);
+
+  // Always-fresh view of current nodes/edges for imperative history commits
+  const latestRef = useRef<GraphSnapshot>({ nodes: [], edges: [] });
+  latestRef.current = { nodes, edges };
+
+  const commitHistory = useCallback(() => {
+    if (isUndoRedoRef.current) return;
+    const snapshot: GraphSnapshot = {
+      nodes: JSON.parse(JSON.stringify(latestRef.current.nodes)),
+      edges: JSON.parse(JSON.stringify(latestRef.current.edges)),
+    };
+    setHistory((prev) => {
+      const trimmed = prev.entries.slice(0, prev.index + 1);
+      const entries = [...trimmed, snapshot].slice(-75);
+      return { entries, index: entries.length - 1 };
+    });
+  }, []);
+
+  // Debounced commit for continuous edits (typing in sticky notes, config fields)
+  const debouncedCommitRef = useRef<number | null>(null);
+  const commitHistoryDebounced = useCallback(() => {
+    if (debouncedCommitRef.current) window.clearTimeout(debouncedCommitRef.current);
+    debouncedCommitRef.current = window.setTimeout(() => {
+      commitHistory();
+      debouncedCommitRef.current = null;
+    }, 400);
+  }, [commitHistory]);
 
   // Load existing automation into graph
   useEffect(() => {
@@ -167,6 +193,14 @@ function AutomationEditorInner({
       const { nodes: loaded, edges: loadedEdges } = automationToGraph(existingAutomation);
       setNodes(loaded);
       setEdges(loadedEdges);
+      // Seed initial history entry once state is applied
+      setTimeout(() => {
+        latestRef.current = { nodes: loaded, edges: loadedEdges };
+        commitHistory();
+      }, 0);
+    } else {
+      // Seed empty initial entry for new automations
+      setTimeout(() => commitHistory(), 0);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -185,9 +219,35 @@ function AutomationEditorInner({
     (connection: Connection) => {
       setEdges((eds) => addEdge({ ...connection, type: 'controlFlow' }, eds));
       setIsDirty(true);
+      // Defer so latestRef picks up the new edges
+      setTimeout(() => commitHistory(), 0);
     },
-    [setEdges],
+    [setEdges, commitHistory],
   );
+
+  // Commit history after a node drag completes (captures the move)
+  const onNodeDragStop = useCallback(() => {
+    setIsDirty(true);
+    commitHistory();
+  }, [commitHistory]);
+
+  // React Flow delete key → cascade edge cleanup + dirty + history
+  const onNodesDelete = useCallback(
+    (deleted: Node[]) => {
+      const ids = new Set(deleted.map((n) => n.id));
+      setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+      if (selectedNodeId && ids.has(selectedNodeId)) setSelectedNodeId(null);
+      if (configNodeId && ids.has(configNodeId)) { setConfigNodeId(null); configSnapshotRef.current = null; }
+      setIsDirty(true);
+      setTimeout(() => commitHistory(), 0);
+    },
+    [setEdges, selectedNodeId, configNodeId, commitHistory],
+  );
+
+  const onEdgesDelete = useCallback(() => {
+    setIsDirty(true);
+    setTimeout(() => commitHistory(), 0);
+  }, [commitHistory]);
 
   // Single-click: select + open config panel
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
@@ -229,7 +289,8 @@ function AutomationEditorInner({
     setNodes((nds) => [...nds, newNode]);
     setIsDirty(true);
     setContextMenu(null);
-  }, [nodes, setNodes]);
+    setTimeout(() => commitHistory(), 0);
+  }, [nodes, setNodes, commitHistory]);
 
   const toggleNodeEnabled = useCallback((nodeId: string) => {
     setNodes((nds) => nds.map((n) => {
@@ -239,7 +300,8 @@ function AutomationEditorInner({
     }));
     setIsDirty(true);
     setContextMenu(null);
-  }, [setNodes]);
+    setTimeout(() => commitHistory(), 0);
+  }, [setNodes, commitHistory]);
 
   // Config tray actions
   const handleConfigDone = useCallback(() => {
@@ -301,22 +363,24 @@ function AutomationEditorInner({
       setNodes((nds) => [...nds, newNode]);
       setSelectedNodeId(id);
       setIsDirty(true);
+      setTimeout(() => commitHistory(), 0);
     },
-    [nodes, setNodes],
+    [nodes, setNodes, commitHistory],
   );
 
-  // Update node config
+  // Update node config — debounced history commit so typing collapses into one entry
   const updateNodeData = useCallback(
     (nodeId: string, updates: Partial<FlowNodeData>) => {
       setNodes((nds) =>
         nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...updates } } : n)),
       );
       setIsDirty(true);
+      commitHistoryDebounced();
     },
-    [setNodes],
+    [setNodes, commitHistoryDebounced],
   );
 
-  // Delete node
+  // Delete node (called from context menu + config panel + onNodesDelete cascade)
   const deleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
@@ -324,37 +388,34 @@ function AutomationEditorInner({
       if (selectedNodeId === nodeId) setSelectedNodeId(null);
       if (configNodeId === nodeId) { setConfigNodeId(null); configSnapshotRef.current = null; }
       setIsDirty(true);
+      setTimeout(() => commitHistory(), 0);
     },
-    [setNodes, setEdges, selectedNodeId, configNodeId],
+    [setNodes, setEdges, selectedNodeId, configNodeId, commitHistory],
   );
 
-  // Undo/redo
-  useEffect(() => {
-    if (isDirty && !isUndoRedoRef.current) {
-      setHistory((prev) => {
-        const trimmed = prev.slice(0, historyIndex + 1);
-        const entry = { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) };
-        return [...trimmed, entry].slice(-75);
-      });
-      setHistoryIndex((prev) => Math.min(prev + 1, 74));
-    }
-  }, [nodes.length, edges.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const undo = useCallback(() => {
-    if (historyIndex <= 0) return;
+    if (history.index <= 0) return;
+    const entry = history.entries[history.index - 1];
+    if (!entry) return;
     isUndoRedoRef.current = true;
-    const prev = history[historyIndex - 1];
-    if (prev) { setNodes(prev.nodes); setEdges(prev.edges); setHistoryIndex(historyIndex - 1); }
+    setNodes(entry.nodes);
+    setEdges(entry.edges);
+    setHistory((prev) => ({ ...prev, index: prev.index - 1 }));
+    setIsDirty(true);
     setTimeout(() => { isUndoRedoRef.current = false; }, 0);
-  }, [historyIndex, history, setNodes, setEdges]);
+  }, [history, setNodes, setEdges]);
 
   const redo = useCallback(() => {
-    if (historyIndex >= history.length - 1) return;
+    if (history.index >= history.entries.length - 1) return;
+    const entry = history.entries[history.index + 1];
+    if (!entry) return;
     isUndoRedoRef.current = true;
-    const next = history[historyIndex + 1];
-    if (next) { setNodes(next.nodes); setEdges(next.edges); setHistoryIndex(historyIndex + 1); }
+    setNodes(entry.nodes);
+    setEdges(entry.edges);
+    setHistory((prev) => ({ ...prev, index: prev.index + 1 }));
+    setIsDirty(true);
     setTimeout(() => { isUndoRedoRef.current = false; }, 0);
-  }, [historyIndex, history, setNodes, setEdges]);
+  }, [history, setNodes, setEdges]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -419,12 +480,12 @@ function AutomationEditorInner({
         />
         <div className="h-5 w-px bg-border mx-0.5 sm:mx-1 hidden sm:block" />
         <Tooltip><TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 hidden sm:flex">
+          <Button variant="ghost" size="icon" onClick={undo} disabled={history.index <= 0} className="h-8 w-8 hidden sm:flex">
             <Undo2 className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Undo (⌘Z)</TooltipContent></Tooltip>
         <Tooltip><TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={redo} disabled={historyIndex >= history.length - 1} className="h-8 w-8 hidden sm:flex">
+          <Button variant="ghost" size="icon" onClick={redo} disabled={history.index >= history.entries.length - 1} className="h-8 w-8 hidden sm:flex">
             <Redo2 className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent></Tooltip>
@@ -435,17 +496,27 @@ function AutomationEditorInner({
         {!isNew && (
           <>
             <Tooltip><TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowHistory(!showHistory)}>
+              <Button
+                variant={sidePanel === 'executions' ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground"
+                onClick={() => setSidePanel(sidePanel === 'executions' ? null : 'executions')}
+              >
                 <History className="h-3.5 w-3.5 sm:mr-1.5" />
-                <span className="hidden sm:inline">History</span>
+                <span className="hidden sm:inline">Executions</span>
               </Button>
-            </TooltipTrigger><TooltipContent side="bottom">Execution History</TooltipContent></Tooltip>
+            </TooltipTrigger><TooltipContent side="bottom">Executions</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground" onClick={() => setShowVersions(!showVersions)}>
+              <Button
+                variant={sidePanel === 'versions' ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground"
+                onClick={() => setSidePanel(sidePanel === 'versions' ? null : 'versions')}
+              >
                 <GitCommitVertical className="h-3.5 w-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Versions</span>
               </Button>
-            </TooltipTrigger><TooltipContent side="bottom">Version History</TooltipContent></Tooltip>
+            </TooltipTrigger><TooltipContent side="bottom">Versions</TooltipContent></Tooltip>
           </>
         )}
         {!isNew && onDelete && (
@@ -517,6 +588,9 @@ function AutomationEditorInner({
             onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
             onNodeContextMenu={onNodeContextMenu}
+            onNodeDragStop={onNodeDragStop}
+            onNodesDelete={onNodesDelete}
+            onEdgesDelete={onEdgesDelete}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
@@ -576,25 +650,60 @@ function AutomationEditorInner({
           )}
         </div>
 
-        {/* Right: History panel (full-width overlay on mobile, sidebar on desktop) */}
-        {showHistory && !showVersions && !configNode && existingAutomation?.id && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
-            <ExecutionHistoryPanel
-              automationId={existingAutomation.id}
-              onClose={() => setShowHistory(false)}
-            />
-          </div>
-        )}
-
-        {/* Right: Version history panel */}
-        {showVersions && !configNode && existingAutomation?.id && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
-            <VersionHistoryPanel
-              automationId={existingAutomation.id}
-              homeId={homeId}
-              onClose={() => setShowVersions(false)}
-              onRestored={() => { setShowVersions(false); onClose(); }}
-            />
+        {/* Right: tabbed Executions / Versions panel */}
+        {sidePanel && !configNode && existingAutomation?.id && (
+          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto sm:w-80 border-l bg-background flex flex-col min-h-0">
+            <div className="h-9 border-b flex items-center shrink-0">
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 h-full text-xs font-medium transition-colors border-b-2',
+                  sidePanel === 'executions'
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setSidePanel('executions')}
+              >
+                Executions
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 h-full text-xs font-medium transition-colors border-b-2',
+                  sidePanel === 'versions'
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setSidePanel('versions')}
+              >
+                Versions
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 mx-1 shrink-0"
+                onClick={() => setSidePanel(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0">
+              {sidePanel === 'executions' ? (
+                <ExecutionHistoryPanel
+                  embedded
+                  automationId={existingAutomation.id}
+                  onClose={() => setSidePanel(null)}
+                />
+              ) : (
+                <VersionHistoryPanel
+                  embedded
+                  automationId={existingAutomation.id}
+                  homeId={homeId}
+                  onClose={() => setSidePanel(null)}
+                  onRestored={() => { setSidePanel(null); onClose(); }}
+                />
+              )}
+            </div>
           </div>
         )}
 
