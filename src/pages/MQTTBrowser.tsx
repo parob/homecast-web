@@ -698,7 +698,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
       );
       if (d?.createAccessToken?.rawToken) {
         setNewTokenRaw(d.createAccessToken.rawToken);
-        setCreateOpen(false);
         await fetchTokens();
       }
     } catch {} finally { setCreating(false); }
