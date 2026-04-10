@@ -187,8 +187,8 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
         {/* Custom MQTT Brokers */}
         {!isCommunity && (
           <>
-            <div className="flex items-center justify-between py-1">
-              <p className="text-sm font-medium">Custom MQTT Brokers</p>
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom MQTT Brokers</p>
               {isAdmin && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>}
