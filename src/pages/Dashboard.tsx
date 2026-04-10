@@ -8008,7 +8008,7 @@ const Dashboard = () => {
                 {adminSubPath === '/deals/active' && <AdminActiveDeals />}
                 {adminSubPath === '/tasks' && <AdminTasks />}
                 {adminSubPath === '/approvals' && <AdminApprovals />}
-                {adminSubPath === '/observability' && <AdminObservability />}
+                {(adminSubPath === '/traces' || adminSubPath === '/observability') && <AdminObservability />}
                 {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
                 {adminSubPath === '/infrastructure/pods' && AdminInfrastructurePods && <AdminInfrastructurePods />}
                 {adminSubPath.startsWith('/infrastructure/pods/') && AdminInfrastructurePodDetail && (
