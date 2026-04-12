@@ -171,6 +171,10 @@ export class ServerWebSocket {
   // Owned home IDs — cached from homes.list response for routing decisions
   private ownedHomeIds = new Set<string>();
   private relayAssignmentTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Buffer for automation.* messages received before engine is initialized
+  private automationEngineReady = false;
+  private automationMessageBuffer: { type: string; payload: Record<string, unknown> }[] = [];
   // Debounce timer for homes.updated events (homeManagerDidUpdateHomes can fire multiple times)
   private homesUpdatedDebounce: ReturnType<typeof setTimeout> | null = null;
 
@@ -608,7 +612,7 @@ export class ServerWebSocket {
             payload,
           });
         },
-        // requestFn: makes request/response calls to server
+        // requestFn: not currently used (server pushes configs proactively)
         (action, payload) => this.request(action, payload),
       ),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
@@ -621,6 +625,13 @@ export class ServerWebSocket {
           payload: { message, title, data, automationId },
         });
       },
+    }).then(() => {
+      // Engine is ready — flush any buffered automation messages
+      this.automationEngineReady = true;
+      for (const msg of this.automationMessageBuffer) {
+        dispatchAutomationMessage(msg.type, msg.payload);
+      }
+      this.automationMessageBuffer = [];
     }).catch((err) => {
       console.error('[ServerWS] Failed to init automation engine:', err);
     });
@@ -691,6 +702,8 @@ export class ServerWebSocket {
     }
 
     // Teardown automation engine
+    this.automationEngineReady = false;
+    this.automationMessageBuffer = [];
     teardownAutomationEngine();
     clearAutomationHandlers();
 
@@ -807,7 +820,12 @@ export class ServerWebSocket {
         // Automation engine sync messages from server
         const payload = message.payload as Record<string, unknown> | undefined;
         if (payload) {
-          dispatchAutomationMessage(message.type, payload);
+          if (this.automationEngineReady) {
+            dispatchAutomationMessage(message.type, payload);
+          } else {
+            // Buffer until engine is initialized (avoids race with relay_status → initAutomationEngine)
+            this.automationMessageBuffer.push({ type: message.type, payload });
+          }
         }
       }
     } catch (error) {

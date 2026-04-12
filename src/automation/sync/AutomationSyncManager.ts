@@ -85,18 +85,15 @@ export class AutomationSyncManager {
 
   /**
    * Request all automation configs from the server.
+   *
+   * In cloud mode, the server proactively pushes automation.sync_all on relay
+   * connect (before this is called). The WebSocket layer buffers that push and
+   * replays it once the engine is ready, so this method is a no-op — the push
+   * is the authoritative sync mechanism.
    */
   async requestFullSync(): Promise<void> {
-    try {
-      const result = await this.transport.request('automation.get_all');
-      if (result && typeof result === 'object' && 'automations' in result) {
-        const automations = (result as { automations: Automation[] }).automations;
-        this.engine.loadAutomations(automations);
-      }
-    } catch (e) {
-      console.error('[SyncManager] Failed to fetch automations:', e);
-      // TODO: Load from IndexedDB cache in Phase 4
-    }
+    // Server pushes automation.sync_all on connect; the WS layer buffers and
+    // replays it after engine init. No explicit request needed.
   }
 
   // ============================================================
