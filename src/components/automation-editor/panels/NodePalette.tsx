@@ -70,7 +70,7 @@ export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onV
   const visibleTabs = tabs.filter((t) => t.show);
 
   return (
-    <div className={cn('w-56 border-r flex-col min-h-0 shrink-0 bg-background', forceVisible ? 'flex w-full border-r-0' : 'hidden sm:flex')} data-testid="node-palette">
+    <div className={cn('w-64 border-r flex-col min-h-0 shrink-0 bg-background', forceVisible ? 'flex w-full border-r-0' : 'hidden sm:flex')} data-testid="node-palette">
       {/* Header: collapse button + tabs */}
       {!forceVisible && (
         <div className="border-b shrink-0">
