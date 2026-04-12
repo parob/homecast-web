@@ -382,6 +382,13 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     const token = localStorage.getItem('homecast-token');
     console.log(`[AuthContext] checkAuth: token=${token ? 'exists' : 'missing'}`);
     if (token) {
+      // Re-sync the cross-subdomain cookie on every page load. Without this,
+      // a user whose token is in localStorage from a prior session (or one
+      // who navigated straight here without re-logging-in) has no cookie on
+      // .homecast.cloud, and the MQTT Browser on staging.mqtt.homecast.cloud
+      // (which reads document.cookie, not localStorage) thinks they're
+      // signed out.
+      syncTokenCookie(token);
       try {
         const { data, error } = await getMe();
         console.log(`[AuthContext] getMe result: data=${!!data?.me}, error=${!!error}`);
