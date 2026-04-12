@@ -30,7 +30,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
         isInMobileApp && "safe-area-top",
         isInMacApp && "window-drag"
       )}
-      style={isInMacApp ? { paddingTop: '28px' } : undefined}
+      style={isInMacApp ? { paddingTop: '33px' } : undefined}
     >
       <div className={cn("relative mx-auto w-full px-4 h-[80px] flex items-center justify-between", !isInMacApp && !fullWidth && "max-w-7xl")}>
         {/* Left content with bubble background on mobile */}
@@ -67,7 +67,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       </div>
       {/* Mac app: position bubble at top-right, in title bar area */}
       {isInMacApp && (
-        <div className="absolute top-[20px] right-[18px] flex items-center gap-2 pl-5 pr-[17px] h-[56px] pointer-events-auto">
+        <div className="absolute top-[25px] right-[23px] flex items-center gap-2 pl-5 pr-[17px] h-[56px] pointer-events-auto">
           <div className={cn(
             "absolute inset-0 rounded-[20px] -z-10 transition-colors duration-300",
             isDarkBackground ? "" : "backdrop-blur-xl bg-white/70"

@@ -5,6 +5,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 @keyframes fade-slide-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -304,6 +305,11 @@ html.mac-app {
   -webkit-user-select: none;
   user-select: none;
   -webkit-text-stroke: 0.2px transparent;
+}
+
+/* Offset dialogs from Mac titlebar area (traffic lights + rounded corners) */
+html.mac-app [data-testid="automation-editor"] {
+  padding-top: 5px;
 }
 
 /* Allow text selection on specific elements that may need copying (debug info, errors, etc.) */
