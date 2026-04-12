@@ -86,6 +86,7 @@ function AutomationEditorInner({
   onDelete?: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const isInMacApp = typeof window !== 'undefined' && !!(window as any).isHomecastMacApp;
   const isNew = !existingAutomation;
 
   // Fetch device data for the config panel's device picker
@@ -444,7 +445,7 @@ function AutomationEditorInner({
   return (
     <div className="flex flex-col h-full" data-testid="automation-editor">
       {/* Toolbar */}
-      <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
+      <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0" style={isInMacApp ? { paddingTop: 8, height: 56 } : undefined}>
         {/* Mobile palette toggle */}
         <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setShowMobilePalette(!showMobilePalette)}>
           <Plus className="h-4 w-4" />
