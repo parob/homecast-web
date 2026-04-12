@@ -299,6 +299,11 @@ All colors MUST be HSL.
   user-select: none;
 }
 
+/* Mac app: clear titlebar area (traffic lights + window rounded corners) */
+html.mac-app [data-testid="automation-editor"] > :first-child {
+  padding-top: 8px;
+}
+
 /* Disable text selection in Mac app WKWebView for native-like feel */
 /* Font thinning: WKWebView renders fonts thicker than Chrome — lighten via stroke trick */
 html.mac-app {
@@ -307,10 +312,6 @@ html.mac-app {
   -webkit-text-stroke: 0.2px transparent;
 }
 
-/* Offset dialogs from Mac titlebar area (traffic lights + rounded corners) */
-html.mac-app [data-testid="automation-editor"] {
-  padding-top: 5px;
-}
 
 /* Allow text selection on specific elements that may need copying (debug info, errors, etc.) */
 html.mac-app .selectable {
