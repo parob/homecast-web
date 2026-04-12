@@ -148,6 +148,7 @@ interface CollectionDetailProps {
   editMode?: boolean;
   // Called when drag state changes (for parent scroll disable)
   onDragActiveChange?: (isDragging: boolean) => void;
+  developerMode?: boolean;
 }
 
 // SortableItem imported from shared components - same as Dashboard uses
@@ -226,6 +227,7 @@ export function CollectionDetail({
   isTouchDevice,
   editMode,
   onDragActiveChange,
+  developerMode,
 }: CollectionDetailProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -1760,6 +1762,7 @@ export function CollectionDetail({
             return items.some(i => i.accessory_id === a.id);
           })
         }
+        developerMode={developerMode}
       />
 
       {/* Share Dialog for Accessory */}
@@ -1772,6 +1775,7 @@ export function CollectionDetail({
           open={!!shareAccessory}
           onOpenChange={(open) => !open && setShareAccessory(null)}
           availableCharacteristics={shareAccessory.accessory.services?.flatMap(s => s.characteristics?.map(c => c.characteristicType) || []) || []}
+          developerMode={developerMode}
         />
       )}
 
@@ -1789,6 +1793,7 @@ export function CollectionDetail({
               .filter(a => shareServiceGroup.group.accessoryIds.includes(a.id))
               .flatMap(a => a.services?.flatMap(s => s.characteristics?.map(c => c.characteristicType) || []) || [])
           }
+          developerMode={developerMode}
         />
       )}
 

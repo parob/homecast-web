@@ -211,6 +211,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
+  const [homeNameLocked, setHomeNameLocked] = useState(false);
   const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
   const [loading, setLoading] = useState(false);
   const pricing = getPricing();
@@ -397,7 +398,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
               <SelfHostedHomeCard
                 key={home.id}
                 home={home}
-                onSwitchToCloud={() => { setHomeName(home.name); setAddDialogOpen(true); }}
+                onSwitchToCloud={() => { setHomeName(home.name); setHomeNameLocked(true); setAddDialogOpen(true); }}
                 onClick={() => setSelectedHome(home)}
               />
             ))}
@@ -418,7 +419,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => { setHomeName(prefilledHomeName || ''); setAddDialogOpen(true); }}
+            onClick={() => { setHomeName(prefilledHomeName || ''); setHomeNameLocked(false); setAddDialogOpen(true); }}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Home to Cloud Relay
@@ -442,7 +443,8 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
                 value={homeName}
                 onChange={(e) => setHomeName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                autoFocus
+                autoFocus={!homeNameLocked}
+                disabled={homeNameLocked}
               />
             </div>
             <p className="text-xs text-muted-foreground">

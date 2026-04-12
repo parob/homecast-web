@@ -330,7 +330,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       case 'webhooks':
         return <WebhooksSection />;
       case 'sharing':
-        return <SharedItemsSection />;
+        return <SharedItemsSection developerMode={props.developerMode} />;
       case 'homes':
         return (
           <HomesSection

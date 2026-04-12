@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_EXECUTION_HISTORY, GET_EXECUTION_TRACE } from '@/lib/graphql/queries';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Check, X, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -193,6 +194,122 @@ function StepRow({ step }: { step: any }) {
               {step.children.map((child: any, i: number) => (
                 <StepRow key={i} step={child} />
               ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Inline variant for left sidebar embedding
+// ============================================================
+
+export function ExecutionHistoryInline({ automationId }: { automationId: string }) {
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+
+  const { data: historyData, loading } = useQuery(GET_EXECUTION_HISTORY, {
+    variables: { automationId, limit: 50 },
+    fetchPolicy: 'network-only',
+  });
+
+  const traces = historyData?.executionHistory ?? [];
+
+  return (
+    <>
+      <div className="px-1.5 pb-1">
+        {loading && (
+          <div className="px-2 py-1.5 text-[10px] text-muted-foreground">Loading...</div>
+        )}
+
+        {!loading && traces.length === 0 && (
+          <div className="px-2 py-1.5 text-[10px] text-muted-foreground">No executions yet</div>
+        )}
+
+        {traces.map((trace: any) => {
+          const status = STATUS_STYLES[trace.status] ?? STATUS_STYLES.error;
+          const StatusIcon = status.icon;
+          const duration = trace.durationMs != null ? `${(trace.durationMs / 1000).toFixed(1)}s` : '—';
+          const time = new Date(trace.startedAt).toLocaleString(undefined, {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          });
+
+          return (
+            <button
+              key={trace.id}
+              className="w-full text-left px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors"
+              onClick={() => setSelectedTraceId(trace.id)}
+            >
+              <div className="flex items-center gap-1.5">
+                <StatusIcon className={cn('w-3 h-3 shrink-0', status.color)} />
+                <span className="text-[10px] font-medium flex-1 truncate">{status.label}</span>
+                <span className="text-[9px] text-muted-foreground">{duration}</span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 ml-[18px]">
+                <span className="text-[9px] text-muted-foreground truncate flex-1">{trace.triggerSummary}</span>
+                <span className="text-[9px] text-muted-foreground shrink-0">{time}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Trace detail dialog */}
+      <Dialog open={!!selectedTraceId} onOpenChange={(open) => { if (!open) setSelectedTraceId(null); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col p-0 gap-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogTitle className="sr-only">Execution Trace</DialogTitle>
+          {selectedTraceId && <TraceDetailInline traceId={selectedTraceId} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function TraceDetailInline({ traceId }: { traceId: string }) {
+  const { data, loading } = useQuery(GET_EXECUTION_TRACE, {
+    variables: { traceId },
+    fetchPolicy: 'network-only',
+  });
+
+  const trace = data?.executionTrace;
+  const parsed = trace?.traceJson ? JSON.parse(trace.traceJson) : null;
+
+  return (
+    <div className="flex flex-col min-h-0 h-full">
+      {loading && <div className="p-4 text-xs text-muted-foreground">Loading...</div>}
+
+      {parsed && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Summary */}
+          <div className="p-3 border-b space-y-1">
+            <div className="flex items-center gap-2">
+              <span className={cn('text-xs font-medium', STATUS_STYLES[parsed.status]?.color)}>
+                {STATUS_STYLES[parsed.status]?.label ?? parsed.status}
+              </span>
+              {parsed.error && <span className="text-[10px] text-red-400 truncate">{parsed.error}</span>}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {new Date(parsed.startedAt).toLocaleString()}
+              {parsed.finishedAt && ` — ${((new Date(parsed.finishedAt).getTime() - new Date(parsed.startedAt).getTime()) / 1000).toFixed(2)}s`}
+            </div>
+          </div>
+
+          {/* Steps */}
+          <div className="p-2">
+            <p className="text-[10px] text-muted-foreground px-1 mb-1">Steps ({parsed.steps?.length ?? 0})</p>
+            {parsed.steps?.map((step: any, i: number) => (
+              <StepRow key={i} step={step} />
+            ))}
+          </div>
+
+          {/* Variables */}
+          {parsed.variables && Object.keys(parsed.variables).length > 0 && (
+            <div className="p-3 border-t">
+              <p className="text-[10px] text-muted-foreground mb-1">Final Variables</p>
+              <pre className="text-[10px] font-mono bg-muted p-2 rounded overflow-x-auto">
+                {JSON.stringify(parsed.variables, null, 2)}
+              </pre>
             </div>
           )}
         </div>

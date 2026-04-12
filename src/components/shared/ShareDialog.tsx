@@ -93,6 +93,7 @@ interface ShareDialogProps {
   // Home members (only for entityType === 'home')
   callerRole?: HomeRole;  // Current user's role for this home
   ownerEmail?: string;    // Home owner's email for display
+  developerMode?: boolean;  // Show state/control endpoint info
 }
 
 type PublicAccessState = 'off' | 'view' | 'control';
@@ -112,6 +113,7 @@ export function ShareDialog({
   allAccessories,
   callerRole,
   ownerEmail,
+  developerMode,
 }: ShareDialogProps) {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -532,7 +534,7 @@ export function ShareDialog({
           )}
 
           {/* Read State Endpoint */}
-          {shareUrl && canManageSharing && publicState !== 'off' && (
+          {developerMode && shareUrl && canManageSharing && publicState !== 'off' && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">State Endpoint</Label>
               <div className="flex items-center gap-2">
@@ -560,7 +562,7 @@ export function ShareDialog({
           )}
 
           {/* Share Control Endpoints */}
-          {shareUrl && canManageSharing && (() => {
+          {developerMode && shareUrl && canManageSharing && (() => {
             // Control endpoints don't apply to homes/rooms (mixed device types)
             if (entityType === 'home' || entityType === 'room') return null;
 

@@ -26,14 +26,6 @@ const RANGES: Record<string, { min: number; max: number }> = {
 };
 const BOOLS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
 
-// Mirrors _make_slug in homecast-cloud/server/homecast/mqtt/auth.py.
-// The MQTT username used by EMQX's topic rewrite must match a home slug.
-function makeHomeSlug(name: string, id: string): string {
-  const base = name.toLowerCase().replace(/ /g, '-').replace(/['"]/g, '').replace(/[^a-z0-9-]/g, '');
-  const hex = id.replace(/-/g, '').toLowerCase();
-  return `${base}-${hex.slice(0, 4)}`;
-}
-
 export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
@@ -184,9 +176,7 @@ export default function MQTTBrowser() {
         throw new Error(`Not signed in. Sign in at ${loginUrl.replace('https://', '')} first, then return here.`);
       }
       const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
-      // Username is required for EMQX topic rewrite. createMqttToken issues
-      // unscoped tokens, so "+" (match-any-home) is the right username.
-      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '+', password: token, clientId: cid, clean: true });
+      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
       client.on('connect', () => {
         setConnected(true); setConnecting(false);
         setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid });
@@ -758,7 +748,7 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
               </div>
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-muted-foreground">Username</span>
-                <span className="text-muted-foreground italic">home slug, or <code className="font-mono not-italic">+</code> for all homes</span>
+                <span className="text-muted-foreground italic">any value or leave blank</span>
               </div>
               <div className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-muted-foreground">Password</span>
@@ -794,25 +784,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
                         </button>
                       </div>
                     </div>
-                    {(() => {
-                      const scopedIds = Object.keys(tokenPerms);
-                      const username = scopedIds.length === 1
-                        ? (() => { const h = homes.find(x => x.id === scopedIds[0]); return h ? makeHomeSlug(h.name, h.id) : '+'; })()
-                        : '+';
-                      return (
-                        <div className="rounded-md border bg-muted/30 p-3 text-[11px] space-y-1">
-                          <p className="font-medium">Connect with:</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Username</span>
-                            <code className="font-mono">{username}</code>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Password</span>
-                            <span className="italic text-muted-foreground">the token above</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
                     <button onClick={() => { setCreateOpen(false); setNewTokenRaw(null); }} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90">Done</button>
                   </div>
                 ) : (
@@ -869,18 +840,12 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
               <div className="rounded-md border divide-y">
                 {tokens.map(token => {
                   let permStr = '';
-                  let mqttUsername = '+';
                   try {
                     const perms = JSON.parse(token.homePermissions) as Record<string, string>;
-                    const permEntries = Object.entries(perms);
-                    permStr = permEntries.map(([hid, role]) => {
+                    permStr = Object.entries(perms).map(([hid, role]) => {
                       const h = homes.find(x => x.id.toLowerCase() === hid.toLowerCase());
                       return `${h?.name || hid.slice(0, 8)} (${role})`;
                     }).join(', ');
-                    if (permEntries.length === 1) {
-                      const h = homes.find(x => x.id.toLowerCase() === permEntries[0][0].toLowerCase());
-                      if (h) mqttUsername = makeHomeSlug(h.name, h.id);
-                    }
                   } catch {}
                   return (
                     <div key={token.id} className="px-3 py-2 text-[12px]">
@@ -892,13 +857,6 @@ function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
                         <button onClick={() => revokeToken(token.id)} className="text-[10px] text-destructive hover:underline">Revoke</button>
                       </div>
                       {permStr && <p className="text-[10px] text-muted-foreground mt-0.5">{permStr}</p>}
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] text-muted-foreground">MQTT username:</span>
-                        <code className="text-[10px] font-mono">{mqttUsername}</code>
-                        <button onClick={() => copyText(mqttUsername, `un-${token.id}`)} className="p-0.5 text-muted-foreground hover:text-foreground">
-                          {copied === `un-${token.id}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                        </button>
-                      </div>
                       <p className="text-[10px] text-muted-foreground">
                         {token.expiresAt ? `Expires ${new Date(token.expiresAt).toLocaleDateString()}` : 'Never expires'}
                         {token.lastUsedAt && ` · Last used ${new Date(token.lastUsedAt).toLocaleDateString()}`}

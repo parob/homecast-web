@@ -126,6 +126,7 @@ export function DisplaySection({
         </div>
       </div>
 
+      {/* Layout picker hidden — always masonry for now (may reintroduce later)
       <div className="border-t pt-4" />
 
       <div className="space-y-2">
@@ -162,6 +163,7 @@ export function DisplaySection({
           <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1">Layout options are disabled in compact mode</p>
         )}
       </div>
+      */}
       {!isInMacApp && !isInMobileApp && (
         <div className="flex items-center justify-between">
           <div>

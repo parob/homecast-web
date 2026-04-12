@@ -112,7 +112,7 @@ function getAppName(app: AuthorizedAppInfo): string {
   return app.redirectDomain || app.clientId;
 }
 
-export function SharedItemsSection() {
+export function SharedItemsSection({ developerMode }: { developerMode?: boolean }) {
   const { user } = useAuth();
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<AuthorizedAppInfo | null>(null);
@@ -608,6 +608,7 @@ export function SharedItemsSection() {
           onViewAllSharedItems={() => setSelectedEntity(null)}
           callerRole={matchedHome ? (matchedHome.role as any) || 'owner' : undefined}
           ownerEmail={matchedHome?.ownerEmail || (matchedHome && user?.email) || undefined}
+          developerMode={developerMode}
         />
         );
       })()}

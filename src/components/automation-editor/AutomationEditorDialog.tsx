@@ -35,16 +35,8 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History, GitCommitVertical, Bell, Mail } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Switch } from '@/components/ui/switch';
-import { isCommunity } from '@/lib/config';
-import { GET_NOTIFICATION_PREFERENCES } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE } from '@/lib/graphql/mutations';
-import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ExecutionHistoryPanel } from './panels/ExecutionHistoryPanel';
-import { VersionHistoryPanel } from './panels/VersionHistoryPanel';
 
 import { BaseNode } from './nodes/BaseNode';
 import { StickyNoteNode } from './nodes/StickyNoteNode';
@@ -78,7 +70,7 @@ interface AutomationEditorDialogProps {
   homeId: string;
   existingAutomation?: Automation;
   onSaved?: () => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void>;
 }
 
 function AutomationEditorInner({
@@ -91,7 +83,7 @@ function AutomationEditorInner({
   homeId: string;
   existingAutomation?: Automation;
   onSaved?: () => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
   const isNew = !existingAutomation;
@@ -142,14 +134,13 @@ function AutomationEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [sidePanel, setSidePanel] = useState<'executions' | 'versions' | null>(null);
   const [showMobilePalette, setShowMobilePalette] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Snapshot for config cancel/revert
-  const configSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const handleSaveRef = useRef<(() => void) | null>(null);
 
   // Existing automation ID for update
@@ -237,7 +228,7 @@ function AutomationEditorInner({
       const ids = new Set(deleted.map((n) => n.id));
       setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
       if (selectedNodeId && ids.has(selectedNodeId)) setSelectedNodeId(null);
-      if (configNodeId && ids.has(configNodeId)) { setConfigNodeId(null); configSnapshotRef.current = null; }
+      if (configNodeId && ids.has(configNodeId)) setConfigNodeId(null);
       setIsDirty(true);
       setTimeout(() => commitHistory(), 0);
     },
@@ -253,21 +244,17 @@ function AutomationEditorInner({
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
     setConfigNodeId(node.id);
-    const data = node.data as FlowNodeData;
-    configSnapshotRef.current = { ...data.config };
   }, []);
 
   // Double-click: open config tray
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
     setConfigNodeId(node.id);
-    // Snapshot config for cancel/revert
-    const data = node.data as FlowNodeData;
-    configSnapshotRef.current = { ...data.config };
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setConfigNodeId(null);
     setContextMenu(null);
   }, []);
 
@@ -303,26 +290,6 @@ function AutomationEditorInner({
     setTimeout(() => commitHistory(), 0);
   }, [setNodes, commitHistory]);
 
-  // Config tray actions
-  const handleConfigDone = useCallback(() => {
-    setConfigNodeId(null);
-    configSnapshotRef.current = null;
-  }, []);
-
-  const handleConfigCancel = useCallback(() => {
-    // Revert to snapshot
-    if (configNodeId && configSnapshotRef.current) {
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === configNodeId
-            ? { ...n, data: { ...n.data, config: configSnapshotRef.current! } }
-            : n,
-        ),
-      );
-    }
-    setConfigNodeId(null);
-    configSnapshotRef.current = null;
-  }, [configNodeId, setNodes]);
 
   // Drag and drop from palette
   const { screenToFlowPosition } = useReactFlow();
@@ -386,7 +353,7 @@ function AutomationEditorInner({
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
       if (selectedNodeId === nodeId) setSelectedNodeId(null);
-      if (configNodeId === nodeId) { setConfigNodeId(null); configSnapshotRef.current = null; }
+      if (configNodeId === nodeId) setConfigNodeId(null);
       setIsDirty(true);
       setTimeout(() => commitHistory(), 0);
     },
@@ -502,41 +469,12 @@ function AutomationEditorInner({
           </Button>
         </TooltipTrigger><TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent></Tooltip>
         <div className="flex-1" />
-        {!isNew && !isCommunity && (
-          <AutomationNotificationPrefs automationId={existingIdRef.current ?? ''} />
-        )}
-        {!isNew && (
-          <>
-            <Tooltip><TooltipTrigger asChild>
-              <Button
-                variant={sidePanel === 'executions' ? 'secondary' : 'ghost'}
-                size="icon"
-                className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground"
-                onClick={() => setSidePanel(sidePanel === 'executions' ? null : 'executions')}
-              >
-                <History className="h-3.5 w-3.5 sm:mr-1.5" />
-                <span className="hidden sm:inline">Executions</span>
-              </Button>
-            </TooltipTrigger><TooltipContent side="bottom">Executions</TooltipContent></Tooltip>
-            <Tooltip><TooltipTrigger asChild>
-              <Button
-                variant={sidePanel === 'versions' ? 'secondary' : 'ghost'}
-                size="icon"
-                className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground"
-                onClick={() => setSidePanel(sidePanel === 'versions' ? null : 'versions')}
-              >
-                <GitCommitVertical className="h-3.5 w-3.5 sm:mr-1.5" />
-                <span className="hidden sm:inline">Versions</span>
-              </Button>
-            </TooltipTrigger><TooltipContent side="bottom">Versions</TooltipContent></Tooltip>
-          </>
-        )}
         {!isNew && onDelete && (
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 sm:w-auto sm:px-3 text-muted-foreground hover:text-destructive"
-            onClick={() => onDelete(existingIdRef.current ?? '')}
+            onClick={() => setShowDeleteConfirm(true)}
           >
             <Trash2 className="h-3.5 w-3.5 sm:mr-1.5" />
             <span className="hidden sm:inline">Delete</span>
@@ -566,7 +504,14 @@ function AutomationEditorInner({
       {/* Main content: left palette | canvas | right config tray */}
       <div className="flex-1 flex min-h-0 relative">
         {/* Left: Always-visible node palette (hidden on mobile via CSS in NodePalette) */}
-        <NodePalette onAddNode={addNewNode} />
+        <NodePalette
+          onAddNode={addNewNode}
+          automationId={existingIdRef.current}
+          homeId={homeId}
+          onVersionRestored={() => onClose()}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        />
 
         {/* Mobile palette overlay */}
         {showMobilePalette && (
@@ -636,7 +581,7 @@ function AutomationEditorInner({
               style={{ left: contextMenu.x, top: contextMenu.y }}
             >
               {[
-                { label: 'Configure', action: () => { const n = nodes.find(n => n.id === contextMenu.nodeId); if (n) { setSelectedNodeId(n.id); setConfigNodeId(n.id); configSnapshotRef.current = { ...(n.data as FlowNodeData).config }; } setContextMenu(null); } },
+                { label: 'Configure', action: () => { const n = nodes.find(n => n.id === contextMenu.nodeId); if (n) { setSelectedNodeId(n.id); setConfigNodeId(n.id); } setContextMenu(null); } },
                 { label: 'Duplicate', action: () => duplicateNode(contextMenu.nodeId) },
                 { label: (nodes.find(n => n.id === contextMenu.nodeId)?.data as FlowNodeData)?.enabled === false ? 'Enable' : 'Disable', action: () => toggleNodeEnabled(contextMenu.nodeId) },
                 { label: 'Delete', action: () => { deleteNode(contextMenu.nodeId); setContextMenu(null); }, destructive: true },
@@ -657,26 +602,6 @@ function AutomationEditorInner({
           )}
         </div>
 
-        {/* Right: Executions or Versions panel (mutually exclusive) */}
-        {sidePanel === 'executions' && !configNode && existingAutomation?.id && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
-            <ExecutionHistoryPanel
-              automationId={existingAutomation.id}
-              onClose={() => setSidePanel(null)}
-            />
-          </div>
-        )}
-        {sidePanel === 'versions' && !configNode && existingAutomation?.id && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
-            <VersionHistoryPanel
-              automationId={existingAutomation.id}
-              homeId={homeId}
-              onClose={() => setSidePanel(null)}
-              onRestored={() => { setSidePanel(null); onClose(); }}
-            />
-          </div>
-        )}
-
         {/* Right: Config tray (full-width overlay on mobile, sidebar on desktop) */}
         {configNode && (
           <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
@@ -686,8 +611,6 @@ function AutomationEditorInner({
             allEdges={edges}
             onUpdateData={(updates) => updateNodeData(configNode.id, updates)}
             onDelete={() => deleteNode(configNode.id)}
-            onDone={handleConfigDone}
-            onCancel={handleConfigCancel}
             accessories={accessories}
             homes={homes}
             scenes={scenes}
@@ -731,6 +654,35 @@ function AutomationEditorInner({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete automation</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this automation. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                setShowDeleteConfirm(false);
+                try {
+                  await onDelete?.(existingIdRef.current ?? '');
+                  onClose();
+                } catch {
+                  toast.error('Failed to delete automation');
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -739,7 +691,7 @@ function ErrorSafeReactFlow(props: {
   homeId: string;
   existingAutomation?: Automation;
   onSaved?: () => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [ready, setReady] = useState(false);
@@ -816,94 +768,6 @@ export function AutomationEditorDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function AutomationNotificationPrefs({ automationId }: { automationId: string }) {
-  const { data, refetch } = useQuery<GetNotificationPreferencesResponse>(GET_NOTIFICATION_PREFERENCES);
-  const [setPrefMutation] = useMutation<SetNotificationPreferenceResponse>(SET_NOTIFICATION_PREFERENCE);
-  const [deletePrefMutation] = useMutation(DELETE_NOTIFICATION_PREFERENCE);
-  const [saving, setSaving] = useState(false);
-
-  const pref = data?.notificationPreferences?.find(p => p.scope === 'automation' && p.scopeId === automationId);
-  const hasOverride = !!pref;
-
-  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled', value: boolean) => {
-    setSaving(true);
-    try {
-      await setPrefMutation({
-        variables: {
-          scope: 'automation',
-          scopeId: automationId,
-          pushEnabled: field === 'pushEnabled' ? value : (pref?.pushEnabled ?? true),
-          emailEnabled: field === 'emailEnabled' ? value : (pref?.emailEnabled ?? false),
-          localEnabled: true,
-        },
-      });
-      refetch();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = async () => {
-    setSaving(true);
-    try {
-      await deletePrefMutation({ variables: { scope: 'automation', scopeId: automationId } });
-      refetch();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-8 w-8', hasOverride && 'text-blue-600 dark:text-blue-400')}
-          aria-label="Notification preferences"
-        >
-          <Bell className="h-3.5 w-3.5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56 p-3" side="bottom" align="end">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">Notifications</p>
-            {hasOverride && (
-              <button
-                onClick={handleReset}
-                className="text-[10px] text-muted-foreground hover:text-foreground"
-                disabled={saving}
-              >
-                Reset
-              </button>
-            )}
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            {hasOverride ? 'Custom for this automation.' : 'Using home/global defaults.'}
-          </p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Bell className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs">Push</span>
-              </div>
-              <Switch checked={pref?.pushEnabled ?? true} onCheckedChange={(v) => handleToggle('pushEnabled', v)} disabled={saving} />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Mail className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs">Email</span>
-              </div>
-              <Switch checked={pref?.emailEnabled ?? false} onCheckedChange={(v) => handleToggle('emailEnabled', v)} disabled={saving} />
-            </div>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 

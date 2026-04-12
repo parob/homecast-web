@@ -1906,7 +1906,8 @@ const Dashboard = () => {
         if (typeof display.compactMode === 'boolean') setCompactModeRaw(display.compactMode);
         if (typeof display.hideInfoDevices === 'boolean') setHideInfoDevices(display.hideInfoDevices);
         if (typeof display.hideAccessoryCounts === 'boolean') setHideAccessoryCounts(display.hideAccessoryCounts);
-        if (display.layoutMode === 'grid' || display.layoutMode === 'masonry') setLayoutMode(display.layoutMode);
+        // Layout picker hidden — always masonry for now (may reintroduce later)
+        // if (display.layoutMode === 'grid' || display.layoutMode === 'masonry') setLayoutMode(display.layoutMode);
         if (typeof display.groupByRoom === 'boolean') setGroupByRoom(display.groupByRoom);
         if (typeof display.groupByType === 'boolean') setGroupByType(display.groupByType);
         // Handle iconStyle with migration from old values
@@ -6248,6 +6249,7 @@ const Dashboard = () => {
                   isTouchDevice={isTouchDevice}
                   editMode={editMode}
                   onDragActiveChange={setCollectionDragActive}
+                  developerMode={developerMode}
                 />
               ) : (selectedCollectionId && hasContentAccess) ? (
                 /* Loading state while collection data is being fetched OR waiting for server connection */
@@ -7808,6 +7810,7 @@ const Dashboard = () => {
             const itemIds = new Set(p.items.map(i => i.accessory_id).filter(Boolean));
             return allAccessoriesData.filter(a => itemIds.has(a.id));
           })() : undefined}
+          developerMode={developerMode}
         />
       )}
 
@@ -7830,6 +7833,7 @@ const Dashboard = () => {
             );
             return allAccessoriesData.filter(a => itemIds.has(a.id));
           })() : undefined}
+          developerMode={developerMode}
         />
       )}
 
@@ -7844,6 +7848,7 @@ const Dashboard = () => {
           onOpenChange={(open) => !open && setSidebarShareRoom(null)}
           onViewAllSharedItems={() => openSettingsTo('sharing')}
           accessoryCount={sidebarShareRoom.room.accessoryCount}
+          developerMode={developerMode}
         />
       )}
 
@@ -7860,6 +7865,7 @@ const Dashboard = () => {
           accessoryCount={sidebarShareHome.accessoryCount}
           callerRole={(sidebarShareHome.role as any) || 'owner'}
           ownerEmail={sidebarShareHome.ownerEmail || user?.email}
+          developerMode={developerMode}
         />
       )}
 
@@ -7874,6 +7880,7 @@ const Dashboard = () => {
           onOpenChange={(open) => !open && setSidebarShareAccessory(null)}
           onViewAllSharedItems={() => openSettingsTo('sharing')}
           availableCharacteristics={sidebarShareAccessory.accessory.services?.flatMap(s => s.characteristics?.map(c => c.characteristicType) || []) || []}
+          developerMode={developerMode}
         />
       )}
       {sidebarShareServiceGroup && (
@@ -7886,6 +7893,7 @@ const Dashboard = () => {
           onOpenChange={(open) => !open && setSidebarShareServiceGroup(null)}
           onViewAllSharedItems={() => openSettingsTo('sharing')}
           availableCharacteristics={sidebarShareServiceGroup.accessories.flatMap(a => a.services?.flatMap(s => s.characteristics?.map(c => c.characteristicType) || []) || [])}
+          developerMode={developerMode}
         />
       )}
 
@@ -7933,6 +7941,7 @@ const Dashboard = () => {
           open={!!sidebarShareRoomGroup}
           onOpenChange={(open) => !open && setSidebarShareRoomGroup(null)}
           onViewAllSharedItems={() => openSettingsTo('sharing')}
+          developerMode={developerMode}
         />
       )}
 

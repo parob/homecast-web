@@ -102,17 +102,6 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
     setEditorOpen(true);
   };
 
-  const handleDeleteHcAutomation = async (id: string) => {
-    if (!confirm('Delete this automation?')) return;
-    try {
-      await deleteHcAutomation({ variables: { automationId: id } });
-      hcRefetch();
-      toast.success('Automation deleted');
-    } catch {
-      toast.error('Failed to delete');
-    }
-  };
-
   const handleToggleHcAutomation = async (automation: Automation) => {
     const updated = { ...automation, enabled: !automation.enabled };
     try {
@@ -228,9 +217,10 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
           hcRefetch();
           setEditorOpen(false);
         }}
-        onDelete={(id) => {
-          handleDeleteHcAutomation(id);
-          setEditorOpen(false);
+        onDelete={async (id) => {
+          await deleteHcAutomation({ variables: { automationId: id } });
+          hcRefetch();
+          toast.success('Automation deleted');
         }}
       />
 

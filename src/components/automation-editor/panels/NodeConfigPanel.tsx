@@ -115,8 +115,6 @@ interface NodeConfigPanelProps {
   allEdges?: Edge[];
   onUpdateData: (updates: Partial<FlowNodeData>) => void;
   onDelete: () => void;
-  onDone: () => void;
-  onCancel: () => void;
   accessories?: HomeKitAccessory[];
   homes?: HomeKitHome[];
   scenes?: HomeKitScene[];
@@ -124,7 +122,7 @@ interface NodeConfigPanelProps {
   availableAutomations?: { id: string; name: string }[];
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onDone, onCancel, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [] }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [] }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -236,14 +234,12 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
           </div>
         </div>
 
-        {/* Footer: Delete | Cancel | Done */}
-        <div className="p-3 border-t flex items-center gap-2 shrink-0">
+        {/* Footer: Delete node */}
+        <div className="p-3 border-t flex items-center shrink-0">
           <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:text-destructive h-8 px-2">
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            <span className="text-xs">Delete node</span>
           </Button>
-          <div className="flex-1" />
-          <Button variant="outline" size="sm" onClick={onCancel} className="h-8">Cancel</Button>
-          <Button size="sm" onClick={onDone} className="h-8" data-testid="config-done-button">Done</Button>
         </div>
       </div>
 
