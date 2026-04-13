@@ -481,12 +481,12 @@ function renderConfigForm(
                 {config.filterMode === 'value' && (
                   <div className="mt-2 space-y-2">
                     <ConfigField label="Changes to">
-                      <SmartValueInput char={selectedChar} value={config.to} onChange={(v) => updateConfig('to', v)} />
+                      <SmartValueInput char={selectedChar} value={config.to} onChange={(v) => updateConfig('to', v)} characteristicType={config.characteristicType as string} />
                     </ConfigField>
                     <details open={!!config.from}>
                       <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">From value (optional)</summary>
                       <div className="mt-1">
-                        <SmartValueInput char={selectedChar} value={config.from} onChange={(v) => updateConfig('from', v)} />
+                        <SmartValueInput char={selectedChar} value={config.from} onChange={(v) => updateConfig('from', v)} characteristicType={config.characteristicType as string} />
                       </div>
                     </details>
                   </div>
@@ -692,7 +692,7 @@ function renderConfigForm(
             )}
             {config.characteristicType && (
               <ConfigField label="Value">
-                <SmartValueInput char={setDeviceChar} value={config.value} onChange={(v) => updateConfig('value', v)} />
+                <SmartValueInput char={setDeviceChar} value={config.value} onChange={(v) => updateConfig('value', v)} characteristicType={config.characteristicType as string} />
               </ConfigField>
             )}
           </>
@@ -961,7 +961,7 @@ function renderConfigForm(
             )}
             {config.characteristicType && (
               <ConfigField label="Equals">
-                <SmartValueInput char={condChar} value={config.value} onChange={(v) => updateConfig('value', v)} />
+                <SmartValueInput char={condChar} value={config.value} onChange={(v) => updateConfig('value', v)} characteristicType={config.characteristicType as string} />
               </ConfigField>
             )}
           </>
@@ -1322,8 +1322,10 @@ function DeviceConfigFields({
       {showValue && config.characteristicType && (() => {
         const selectedChar = characteristics.find((c) => c.characteristicType === config.characteristicType);
         // Boolean characteristic → switch
-        if (selectedChar?.validValues && selectedChar.validValues.length === 2 &&
-            selectedChar.validValues.includes(0) && selectedChar.validValues.includes(1)) {
+        const isBool = (selectedChar?.validValues && selectedChar.validValues.length === 2 &&
+            selectedChar.validValues.includes(0) && selectedChar.validValues.includes(1)) ||
+            (!selectedChar?.validValues && !selectedChar?.minValue && config.characteristicType && BOOLEAN_CHARACTERISTICS.has(config.characteristicType as string));
+        if (isBool) {
           return (
             <ConfigField label="Value">
               <div className="flex items-center gap-2">
@@ -1338,7 +1340,7 @@ function DeviceConfigFields({
           );
         }
         // Numeric characteristic with range → slider + input
-        if (selectedChar?.minValue !== undefined && selectedChar?.maxValue !== undefined) {
+        if (selectedChar?.minValue != null && selectedChar?.maxValue != null) {
           const numVal = typeof config.value === 'number' ? config.value : Number(config.value) || selectedChar.minValue;
           return (
             <ConfigField label={`Value (${selectedChar.minValue}–${selectedChar.maxValue})`}>
@@ -1382,21 +1384,28 @@ function DeviceConfigFields({
 
 // GroupConfigFields removed — replaced by DeviceOrGroupPicker
 
-function getCharMeta(c: { validValues?: number[]; minValue?: number; maxValue?: number }): string {
+function getCharMeta(c: { characteristicType?: string; validValues?: number[]; minValue?: number | null; maxValue?: number | null }): string {
   if (c.validValues && c.validValues.length === 2 && c.validValues.includes(0) && c.validValues.includes(1)) return 'on/off';
-  if (c.minValue !== undefined && c.maxValue !== undefined) return `${c.minValue}–${c.maxValue}`;
+  if (c.characteristicType && BOOLEAN_CHARACTERISTICS.has(c.characteristicType)) return 'on/off';
+  if (c.minValue != null && c.maxValue != null) return `${c.minValue}–${c.maxValue}`;
   if (c.validValues && c.validValues.length > 0) return `${c.validValues.length} values`;
   return '';
 }
 
+// Known boolean characteristic types (on/off) — used when HomeKit doesn't provide validValues metadata
+const BOOLEAN_CHARACTERISTICS = new Set(['power_state', 'on', 'obstruction_detected', 'status_active', 'in_use', 'mute', 'night_vision', 'motion_detected', 'contact_sensor_state', 'occupancy_detected', 'leak_detected', 'smoke_detected', 'carbon_monoxide_detected', 'status_fault', 'status_tampered', 'status_low_battery']);
+
 /** Smart value input — adapts to characteristic type (boolean toggle, slider, enum select, or text) */
-function SmartValueInput({ char, value, onChange }: {
-  char: { validValues?: number[]; minValue?: number; maxValue?: number; stepValue?: number } | undefined;
+function SmartValueInput({ char, value, onChange, characteristicType }: {
+  char: { validValues?: number[]; minValue?: number | null; maxValue?: number | null; stepValue?: number } | undefined;
   value: unknown;
   onChange: (v: unknown) => void;
+  characteristicType?: string;
 }) {
-  // Boolean (on/off)
-  if (char?.validValues && char.validValues.length === 2 && char.validValues.includes(0) && char.validValues.includes(1)) {
+  // Boolean (on/off) — from validValues metadata or known boolean characteristic names
+  const isBooleanFromMeta = char?.validValues && char.validValues.length === 2 && char.validValues.includes(0) && char.validValues.includes(1);
+  const isBooleanFromName = characteristicType && BOOLEAN_CHARACTERISTICS.has(characteristicType);
+  if (isBooleanFromMeta || (!char?.validValues && !char?.minValue && isBooleanFromName)) {
     return (
       <div className="flex items-center gap-2">
         <Switch checked={value === true || value === 1 || value === '1'} onCheckedChange={(v) => onChange(v ? 1 : 0)} />
@@ -1405,7 +1414,7 @@ function SmartValueInput({ char, value, onChange }: {
     );
   }
   // Numeric range (slider)
-  if (char?.minValue !== undefined && char?.maxValue !== undefined) {
+  if (char?.minValue != null && char?.maxValue != null) {
     const numVal = typeof value === 'number' ? value : Number(value) || char.minValue;
     return (
       <div className="space-y-1">
