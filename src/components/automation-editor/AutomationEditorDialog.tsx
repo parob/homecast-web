@@ -493,7 +493,7 @@ function AutomationEditorInner({
   return (
     <div className="flex flex-col h-full" data-testid="automation-editor">
       {/* Toolbar */}
-      <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0" style={isInMacApp ? { paddingTop: 8, height: 56 } : undefined}>
+      <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
         {/* Mobile palette toggle */}
         <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setShowMobilePalette(!showMobilePalette)}>
           <Plus className="h-4 w-4" />
@@ -752,7 +752,7 @@ function AutomationEditorInner({
           <DialogTitle className="sr-only">Test Results</DialogTitle>
           {testTrace && (
             <div className="flex flex-col min-h-0 h-full">
-              <div className="p-3 border-b space-y-1">
+              <div className="p-3 pr-10 border-b space-y-1">
                 <div className="flex items-center gap-2">
                   <Play className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-sm font-medium flex-1">Test Run</span>
