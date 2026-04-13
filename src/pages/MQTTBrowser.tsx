@@ -617,7 +617,7 @@ export default function MQTTBrowser() {
             const isThisExpanded = expandedTopic === topic;
             const depth = opts?.depth || 0;
             // Text inset shows hierarchy; hover/flash bg spans full width
-            const insetPx = depth * 24 + (opts?.short ? 36 : 0);
+            const insetPx = depth * 20 + (opts?.short ? 24 : 0);
 
             // Reserve space for the group chevron so groups + accessories align
             const hasAnyGroups = hideMembers && Object.keys(groupMembers).length > 0;
