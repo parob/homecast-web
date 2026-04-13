@@ -156,7 +156,7 @@ export function MainLayout({
           {sidebar && (
             <aside
               className={cn(
-                "hidden md:block w-48 overflow-y-auto scrollbar-hidden shrink-0",
+                "hidden md:block w-48 overflow-y-auto scrollbar-hidden shrink-0 min-h-0",
                 hasBackground ? "" : "bg-card/80 backdrop-blur-md",
               )}
               style={{ paddingTop: sidebarPaddingTop }}
