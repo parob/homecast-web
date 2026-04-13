@@ -125,18 +125,19 @@ function getDownstreamNodes(
   allEdges: Edge[],
 ): Node<FlowNodeData>[] {
   const result: Node<FlowNodeData>[] = [];
-  const visited = new Set<string>();
+  const visited = new Set<string>([sourceId]);
   const queue = [sourceId];
 
   while (queue.length > 0) {
     const currentId = queue.shift()!;
-    if (visited.has(currentId)) continue;
-    visited.add(currentId);
 
     const outEdges = allEdges.filter((e) => e.source === currentId);
     for (const edge of outEdges) {
+      if (visited.has(edge.target)) continue;
+      visited.add(edge.target);
+
       const targetNode = allNodes.find((n) => n.id === edge.target);
-      if (targetNode && !visited.has(targetNode.id)) {
+      if (targetNode) {
         result.push(targetNode);
         queue.push(targetNode.id);
       }
