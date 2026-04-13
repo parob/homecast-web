@@ -612,6 +612,7 @@ function AutomationEditorInner({
             snapGrid={[16, 16]}
             deleteKeyCode={['Backspace', 'Delete']}
             className="bg-muted/20"
+            proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="opacity-30" />
             {nodes.length === 0 && (
