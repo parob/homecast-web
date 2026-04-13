@@ -1,6 +1,9 @@
 /* React Flow styles — must be before @tailwind directives */
 @import '@xyflow/react/dist/style.css';
 
+/* Hide React Flow attribution watermark */
+.react-flow__attribution { display: none !important; }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

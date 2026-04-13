@@ -349,17 +349,18 @@ export class AutomationEngine {
 
   /**
    * Manually trigger an automation (for testing).
-   * Bypasses triggers, evaluates conditions and runs actions.
+   * Accepts optional custom trigger data and evaluates conditions when provided.
    */
-  async manualTrigger(automationId: string): Promise<ExecutionTrace | null> {
+  async manualTrigger(automationId: string, options?: { triggerData?: Partial<TriggerData>; skipConditions?: boolean }): Promise<ExecutionTrace | null> {
     const automation = this.automations.get(automationId);
     if (!automation) return null;
 
     const triggerData: TriggerData = {
-      triggerId: '__manual__',
-      triggerType: 'event',
-      eventType: 'manual_trigger',
+      triggerId: options?.triggerData?.triggerId ?? '__manual__',
+      triggerType: options?.triggerData?.triggerType ?? 'event',
+      eventType: options?.triggerData?.eventType ?? 'manual_trigger',
       timestamp: Date.now(),
+      ...options?.triggerData,
     };
 
     const ctx = new ExecutionContext(
@@ -373,6 +374,24 @@ export class AutomationEngine {
     let error: string | undefined;
 
     try {
+      // Evaluate conditions if trigger data was provided (unless explicitly skipped)
+      const shouldEvalConditions = options?.triggerData && !options?.skipConditions;
+      if (shouldEvalConditions && automation.conditions?.conditions?.length > 0) {
+        const conditionStepIdx = ctx.beginStep('condition', 'condition_block', 'Conditions');
+        const conditionsPassed = this.conditionEvaluator.evaluate(
+          automation.conditions,
+          triggerData,
+          ctx.variables,
+        );
+        ctx.endStep(conditionStepIdx, conditionsPassed ? 'passed' : 'failed');
+        if (!conditionsPassed) {
+          status = 'stopped';
+          const trace = ctx.buildTrace(status, error);
+          this.config.onTraceComplete(trace);
+          return trace;
+        }
+      }
+
       await this.actionExecutor.executeSequence(automation.actions, ctx);
     } catch (e) {
       if (e instanceof StopExecutionError) {
@@ -384,7 +403,9 @@ export class AutomationEngine {
       }
     }
 
-    return ctx.buildTrace(status, error);
+    const trace = ctx.buildTrace(status, error);
+    this.config.onTraceComplete(trace);
+    return trace;
   }
 
   // ============================================================

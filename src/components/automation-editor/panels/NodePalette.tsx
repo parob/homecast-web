@@ -50,11 +50,11 @@ export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onV
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  // Collapsed state — thin strip with expand button
+  // Collapsed state — small floating button at top-left of canvas
   if (collapsed && !forceVisible) {
     return (
-      <div className="w-10 border-r flex flex-col items-center pt-2 shrink-0 bg-background hidden sm:flex">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleCollapse}>
+      <div className="absolute top-2 left-2 z-10 hidden sm:block">
+        <Button variant="outline" size="icon" className="h-8 w-8 bg-background shadow-sm" onClick={onToggleCollapse}>
           <PanelLeftOpen className="h-4 w-4" />
         </Button>
       </div>

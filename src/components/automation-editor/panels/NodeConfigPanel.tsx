@@ -11,7 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Copy } from 'lucide-react';
+import { Trash2, Copy, Play, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { serverConnection } from '@/server/connection';
+import { getAutomationEngine } from '@/automation';
+import type { ExecutionTrace } from '@/automation/types/execution';
+import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
@@ -120,13 +125,25 @@ interface NodeConfigPanelProps {
   scenes?: HomeKitScene[];
   serviceGroups?: HomeKitServiceGroup[];
   availableAutomations?: { id: string; name: string }[];
+  /** Automation ID for test mode (only for saved automations) */
+  automationId?: string;
+  /** Call to save before testing (undefined if no unsaved changes) */
+  onSaveBeforeTest?: () => Promise<void>;
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [] }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, onSaveBeforeTest }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCallback, setPickerCallback] = useState<((a: HomeKitAccessory) => void) | null>(null);
+
+  // Test mode state (trigger nodes only)
+  const [testFromValue, setTestFromValue] = useState('');
+  const [testToValue, setTestToValue] = useState('');
+  const [testNumericValue, setTestNumericValue] = useState('');
+  const [testWebhookPayload, setTestWebhookPayload] = useState('{}');
+  const [isTesting, setIsTesting] = useState(false);
+  const [testTrace, setTestTrace] = useState<ExecutionTrace | null>(null);
 
   const updateConfig = useCallback(
     (key: string, value: unknown) => {
@@ -233,6 +250,127 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
             )}
           </div>
         </div>
+
+        {/* Test section — trigger nodes only */}
+        {data.category === 'trigger' && automationId && (
+          <div className="border-t">
+            <details open={!!testTrace}>
+              <summary className="px-4 py-2.5 text-xs font-medium cursor-pointer hover:bg-muted/30 flex items-center gap-1.5">
+                <Play className="w-3 h-3" />
+                Test Trigger
+              </summary>
+              <div className="px-4 pb-3 space-y-3">
+                {/* Config fields based on trigger type */}
+                {(data.nodeType === 'state') && (
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">From value</Label>
+                      <Input className="h-8 text-xs" placeholder="e.g. false" value={testFromValue} onChange={(e) => setTestFromValue(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">To value</Label>
+                      <Input className="h-8 text-xs" placeholder="e.g. true" value={testToValue} onChange={(e) => setTestToValue(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+                {(data.nodeType === 'numeric_state') && (
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Value</Label>
+                    <Input className="h-8 text-xs" type="number" placeholder="e.g. 75" value={testNumericValue} onChange={(e) => setTestNumericValue(e.target.value)} />
+                  </div>
+                )}
+                {(data.nodeType === 'webhook') && (
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Payload (JSON)</Label>
+                    <Textarea className="text-xs font-mono h-20" placeholder='{"key": "value"}' value={testWebhookPayload} onChange={(e) => setTestWebhookPayload(e.target.value)} />
+                  </div>
+                )}
+
+                <Button
+                  size="sm"
+                  className="w-full h-8"
+                  disabled={isTesting}
+                  onClick={async () => {
+                    if (!automationId) return;
+                    if (onSaveBeforeTest) await onSaveBeforeTest();
+
+                    setIsTesting(true);
+                    setTestTrace(null);
+
+                    // Build trigger data from the node's config + test inputs
+                    const triggerData: Record<string, unknown> = {
+                      triggerId: node.id,
+                      triggerType: data.nodeType,
+                      accessoryId: data.config.accessoryId,
+                      serviceGroupId: data.config.serviceGroupId,
+                      characteristicType: data.config.characteristicType,
+                      timestamp: Date.now(),
+                    };
+
+                    if (data.nodeType === 'state') {
+                      triggerData.fromValue = testFromValue || undefined;
+                      triggerData.toValue = testToValue || undefined;
+                    } else if (data.nodeType === 'numeric_state') {
+                      triggerData.toValue = testNumericValue ? Number(testNumericValue) : undefined;
+                    } else if (data.nodeType === 'webhook') {
+                      try { triggerData.webhookPayload = JSON.parse(testWebhookPayload); } catch { /* keep as string */ }
+                    } else if (data.nodeType === 'time' || data.nodeType === 'time_pattern' || data.nodeType === 'sun') {
+                      triggerData.eventType = 'manual_trigger';
+                    }
+
+                    try {
+                      const engine = getAutomationEngine();
+                      let trace: ExecutionTrace | null;
+                      if (engine) {
+                        trace = await engine.manualTrigger(automationId, { triggerData });
+                      } else {
+                        const result = await serverConnection.request<{ trace: ExecutionTrace }>(
+                          'automation.test',
+                          { automationId, triggerData },
+                        );
+                        trace = result.trace;
+                      }
+                      if (trace) {
+                        setTestTrace(trace);
+                      } else {
+                        toast.error('Automation not found on relay');
+                      }
+                    } catch (e) {
+                      toast.error(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
+                    } finally {
+                      setIsTesting(false);
+                    }
+                  }}
+                >
+                  {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+                  {isTesting ? 'Running...' : 'Run Test'}
+                </Button>
+
+                {/* Inline test results */}
+                {testTrace && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 bg-muted/30 flex items-center gap-2">
+                      <span className={cn('text-xs font-medium', STATUS_STYLES[testTrace.status]?.color)}>
+                        {STATUS_STYLES[testTrace.status]?.label ?? testTrace.status}
+                      </span>
+                      {testTrace.finishedAt && (
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {((new Date(testTrace.finishedAt).getTime() - new Date(testTrace.startedAt).getTime()) / 1000).toFixed(2)}s
+                        </span>
+                      )}
+                    </div>
+                    {testTrace.error && <div className="px-3 py-1.5 text-[10px] text-red-400 border-b">{testTrace.error}</div>}
+                    <div className="p-2 max-h-48 overflow-y-auto">
+                      {testTrace.steps?.map((step: any, i: number) => (
+                        <StepRow key={i} step={step} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+          </div>
+        )}
 
         {/* Footer: Delete node */}
         <div className="p-3 border-t flex items-center shrink-0">
