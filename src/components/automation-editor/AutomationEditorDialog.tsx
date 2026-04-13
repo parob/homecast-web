@@ -851,9 +851,9 @@ export function AutomationEditorDialog({
   onDelete,
 }: AutomationEditorDialogProps) {
   const isInMacApp = typeof window !== 'undefined' && !!(window as any).isHomecastMacApp;
-  // Mac app: increase top gap from 24px to 40px to clear the titlebar area
+  // Mac app: equal 48px inset on all sides to clear titlebar area
   const sizeClass = isInMacApp
-    ? "!max-w-[100vw] sm:!max-w-[calc(100vw-48px)] !w-[100vw] sm:!w-[calc(100vw-48px)] !rounded-none sm:!rounded-lg p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] sm:!h-[calc(100dvh-80px)] !max-h-[100dvh] sm:!max-h-[calc(100dvh-80px)]"
+    ? "!max-w-[100vw] sm:!max-w-[calc(100vw-96px)] !w-[100vw] sm:!w-[calc(100vw-96px)] !rounded-none sm:!rounded-lg p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] sm:!h-[calc(100dvh-96px)] !max-h-[100dvh] sm:!max-h-[calc(100dvh-96px)]"
     : "!max-w-[100vw] sm:!max-w-[calc(100vw-48px)] !w-[100vw] sm:!w-[calc(100vw-48px)] !rounded-none sm:!rounded-lg p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] sm:!h-[calc(100dvh-48px)] !max-h-[100dvh] sm:!max-h-[calc(100dvh-48px)]";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
