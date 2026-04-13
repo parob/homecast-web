@@ -315,7 +315,7 @@ export default function MQTTBrowser() {
     return Array.from(rooms.entries())
       .map(([slug, topics]) => ({ slug, topics }))
       .filter(r => r.topics.length > 0)
-      .sort((a, b) => a.slug.localeCompare(b.slug));
+      .sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
   }, [filteredTopics, groupByRoom]);
 
   return (
