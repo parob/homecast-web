@@ -632,11 +632,11 @@ export default function MQTTBrowser() {
                   {hasAnyGroups && (
                     isGroup ? (
                       <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
-                        className="shrink-0 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer">
+                        className="shrink-0 w-3 flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer">
                         {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                       </span>
                     ) : (
-                      <span className="shrink-0 w-5" />
+                      <span className="shrink-0 w-3" />
                     )
                   )}
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
