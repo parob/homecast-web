@@ -26,6 +26,14 @@ const RANGES: Record<string, { min: number; max: number }> = {
 };
 const BOOLS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
 
+function deSlug(slug: string): string {
+  return slug
+    .replace(/-[a-f0-9]{4}$/, '')
+    .replace(/-(\d)/g, ' $1')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
@@ -53,6 +61,10 @@ export default function MQTTBrowser() {
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
   const filterTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [groupByRoom, setGroupByRoom] = useState(true);
+  const [hideMembers, setHideMembers] = useState(true);
+  const [collapsedRooms, setCollapsedRooms] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams(prev => {
@@ -278,10 +290,33 @@ export default function MQTTBrowser() {
             if (parts.length < 3 || parts[2] !== selectedRoom) return false;
           }
         }
+        // Hide group members when "Groups" toggle is on
+        if (hideMembers) {
+          const isGM = Object.entries(groupMembers).some(([gt, ms]) =>
+            ms.some(m => topic.endsWith('/' + m.split('/').pop())) && topic !== gt
+          );
+          if (isGM) return false;
+        }
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, selectedHome, selectedRoom, homeSlugForName]);
+  }, [messages, filter, selectedHome, selectedRoom, homeSlugForName, hideMembers, groupMembers]);
+
+  // Build room tree for grouped view
+  const topicTree = useMemo(() => {
+    if (!groupByRoom) return null;
+    const rooms = new Map<string, Array<[string, TopicMessage]>>();
+    for (const entry of filteredTopics) {
+      const p = entry[0].split('/');
+      const roomSlug = p.length >= 4 && p[0] === 'homecast' ? p[2] : '_other';
+      if (!rooms.has(roomSlug)) rooms.set(roomSlug, []);
+      rooms.get(roomSlug)!.push(entry);
+    }
+    return Array.from(rooms.entries())
+      .map(([slug, topics]) => ({ slug, topics }))
+      .filter(r => r.topics.length > 0)
+      .sort((a, b) => a.slug.localeCompare(b.slug));
+  }, [filteredTopics, groupByRoom]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -476,17 +511,27 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-        {/* Topic count + clear */}
+        {/* Topic count + view toggles */}
         {Object.keys(messages).length > 0 && (
           <div className="flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground tabular-nums">
               {filteredTopics.length === Object.keys(messages).length
                 ? `${Object.keys(messages).length} topics`
                 : `${filteredTopics.length} of ${Object.keys(messages).length} topics`}
             </p>
-            <button onClick={() => setMessages({})} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-              Clear view
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => { setGroupByRoom(v => !v); setCollapsedRooms(new Set()); }}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                Rooms
+              </button>
+              <button onClick={() => { setHideMembers(v => !v); setExpandedGroups(new Set()); }}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                Groups
+              </button>
+              <button onClick={() => setMessages({})} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-1">
+                Clear
+              </button>
+            </div>
           </div>
         )}
 
@@ -495,135 +540,178 @@ export default function MQTTBrowser() {
           <div className="text-center py-16 text-muted-foreground text-sm">
             {connected ? 'Waiting for messages...' : 'Connect to see device state from your homes'}
           </div>
-        ) : (
-          <div className="border rounded-lg divide-y overflow-hidden">
-            {filteredTopics.map(([topic, { payload, timestamp }]) => {
-              const isExpanded = expandedTopic === topic;
-              const isRecent = Date.now() - timestamp < 8000;
+        ) : (() => {
+          // --- Shared topic row renderer ---
+          const getEffectivePayload = (topic: string, payload: string) => {
+            if (!groupMembers[topic]) return payload;
+            for (const ms of (groupMembers[topic] || [])) {
+              const mt = Object.keys(messages).find(t => t.endsWith('/' + ms.split('/').pop()));
+              if (mt && messages[mt]?.payload) {
+                try { const p = JSON.parse(messages[mt].payload); if (Object.keys(p).length > 0 && !p.members) return messages[mt].payload; } catch {}
+              }
+            }
+            return payload;
+          };
 
-              if (isExpanded) {
-                const msg = messages[topic];
-                const isExpandedGroup = !!groupMembers[topic];
-                // For groups: always use first member's full state (group topic only has last-changed characteristic)
-                let expandedPayload = payload;
-                if (isExpandedGroup) {
-                  for (const memberSlug of (groupMembers[topic] || [])) {
-                    const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
-                    if (mt && messages[mt]?.payload) {
-                      try { const p = JSON.parse(messages[mt].payload); if (Object.keys(p).length > 0 && !p.members) { expandedPayload = messages[mt].payload; break; } } catch {}
-                    }
-                  }
-                }
-                return (
-                  <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
-                    {/* Clickable header — click topic to collapse */}
-                    <button
-                      onClick={() => { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }}
-                      className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors"
-                    >
-                      <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px]"><FmtVal payload={expandedPayload} /></span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
-                          {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </span>
-                        {msg.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{msg.updates}</span>}
-                      </div>
-                    </button>
-                    {/* Info bar */}
-                    <div className="px-3 pb-1.5 flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">
-                        {availability[topic] && (
-                          <span className={`inline-flex items-center gap-1 mr-2 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${availability[topic] === 'offline' ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />
-                            {availability[topic]}
-                          </span>
-                        )}
-                        {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()}                      </span>
-                      <div className="flex border rounded overflow-hidden">
-                        <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
-                        <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
-                      </div>
-                    </div>
-                    {/* Group members */}
-                    {groupMembers[topic] && groupMembers[topic].length > 0 && (
-                      <div className="px-3 pb-1.5">
-                        <p className="text-[10px] text-muted-foreground mb-1">Group members ({groupMembers[topic].length})</p>
-                        <div className="flex flex-wrap gap-1">
-                          {groupMembers[topic].map((slug: string) => (
-                            <span key={slug} className="text-[10px] font-mono bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
-                              {slug.replace(/-[a-f0-9]{4,}$/, '')}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+          const expandTopic = (topic: string) => {
+            const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
+            setExpandedTopic(topic); setRawMode(false); updateUrlParams({ topic, view: null });
+            try { setPublishValue(JSON.stringify(JSON.parse(ep), null, 2)); } catch { setPublishValue(ep); }
+          };
+
+          const renderDetailPanel = (topic: string, payload: string, timestamp: number) => {
+            const msg = messages[topic];
+            const ep = getEffectivePayload(topic, payload);
+            return (
+              <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
+                <button onClick={() => { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors">
+                  <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
+                      {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    {msg.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{msg.updates}</span>}
+                  </div>
+                </button>
+                <div className="px-3 pb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">
+                    {availability[topic] && (
+                      <span className={`inline-flex items-center gap-1 mr-2 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${availability[topic] === 'offline' ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />
+                        {availability[topic]}
+                      </span>
                     )}
-                    {/* Controls / JSON */}
-                    <div className="px-3 pb-3">
-                      {rawMode ? (
-                        <div className="space-y-1.5">
-                          <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
-                          <div className="flex justify-end">
-                            <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                              <Send className="h-3 w-3" /> Publish
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <PropertyEditor payload={expandedPayload} onPublish={(k, v) => publishProp(topic, k, v)} />
-                      )}
+                    {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()}
+                  </span>
+                  <div className="flex border rounded overflow-hidden">
+                    <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
+                    <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
+                  </div>
+                </div>
+                {groupMembers[topic] && groupMembers[topic].length > 0 && (
+                  <div className="px-3 pb-1.5">
+                    <p className="text-[10px] text-muted-foreground mb-1">Group members ({groupMembers[topic].length})</p>
+                    <div className="flex flex-wrap gap-1">
+                      {groupMembers[topic].map((slug: string) => (
+                        <span key={slug} className="text-[10px] font-mono bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
+                          {slug.replace(/-[a-f0-9]{4,}$/, '')}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                );
-              }
+                )}
+                <div className="px-3 pb-3">
+                  {rawMode ? (
+                    <div className="space-y-1.5">
+                      <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
+                      <div className="flex justify-end">
+                        <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Send className="h-3 w-3" /> Publish
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
+                  )}
+                </div>
+              </div>
+            );
+          };
 
-              const avail = availability[topic];
-              const isOffline = avail === 'offline';
+          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { indent?: boolean; short?: boolean }) => {
+            const avail = availability[topic];
+            const isOffline = avail === 'offline';
+            const isGroup = !!groupMembers[topic];
+            const isRecent = Date.now() - timestamp < 8000;
+            const ep = getEffectivePayload(topic, payload);
+            const memberCount = isGroup ? (groupMembers[topic]?.length || 0) : 0;
+            const isGrpExpanded = expandedGroups.has(topic);
 
-              // Check if this topic is a member of a group (indented under it)
-              const isGroupMember = Object.entries(groupMembers).some(([groupTopic, members]) =>
-                members.some(m => topic.endsWith('/' + m.split('/').pop()))
-                && topic !== groupTopic
-              );
-              const isGroup = !!groupMembers[topic];
+            return (
+              <div key={isRecent ? `${topic}-${timestamp}` : topic}>
+                <div className={`flex items-center ${opts?.indent ? 'pl-6' : ''}`}>
+                  {/* Group expand toggle */}
+                  {isGroup && hideMembers ? (
+                    <button onClick={(e) => { e.stopPropagation(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
+                      className="shrink-0 p-1 text-muted-foreground hover:text-foreground">
+                      {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    </button>
+                  ) : null}
+                  <button onClick={() => expandTopic(topic)}
+                    className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''} ${isGroup && hideMembers ? 'pl-0' : ''}`}>
+                    {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
+                    <span className={`text-xs min-w-0 truncate ${opts?.short ? '' : 'font-mono text-muted-foreground'}`}>
+                      {opts?.short ? deSlug(topic.split('/')[3] || topic) : <TopicPath topic={topic} />}
+                    </span>
+                    {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">
+                      {memberCount > 0 ? `ᴳ${memberCount}` : 'ᴳ'}
+                    </span>}
+                    <span className="ml-auto flex items-center gap-2 shrink-0">
+                      <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
+                    </span>
+                  </button>
+                </div>
+                {/* Inline group members */}
+                {isGroup && hideMembers && isGrpExpanded && (
+                  <div className="border-l-2 border-l-purple-300 dark:border-l-purple-800 ml-4">
+                    {(groupMembers[topic] || []).map(memberSlug => {
+                      const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
+                      if (!mt || !messages[mt]) return null;
+                      const m = messages[mt];
+                      if (expandedTopic === mt) return renderDetailPanel(mt, m.payload, m.timestamp);
+                      return renderCollapsedRow(mt, m.payload, m.timestamp, { indent: true, short: opts?.short });
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          };
 
-              // For groups: always use first member's full state
-              let effectivePayload = payload;
-              if (isGroup) {
-                const members = groupMembers[topic] || [];
-                for (const memberSlug of members) {
-                  const memberTopic = Object.keys(messages).find(t =>
-                    t.endsWith('/' + memberSlug.split('/').pop())
+          // --- Grouped rendering ---
+          if (groupByRoom && topicTree) {
+            return (
+              <div className="border rounded-lg overflow-hidden">
+                {topicTree.map(({ slug: roomSlug, topics: roomTopics }) => {
+                  const isCollapsed = collapsedRooms.has(roomSlug);
+                  return (
+                    <div key={roomSlug}>
+                      <button onClick={() => setCollapsedRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
+                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 border-b text-xs font-medium sticky top-0 z-10">
+                        <span className="flex items-center gap-1.5">
+                          {isCollapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                          {deSlug(roomSlug)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{roomTopics.length}</span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="divide-y">
+                          {roomTopics.map(([topic, { payload, timestamp }]) => {
+                            if (expandedTopic === topic) return renderDetailPanel(topic, payload, timestamp);
+                            return renderCollapsedRow(topic, payload, timestamp, { short: true });
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
-                  if (memberTopic && messages[memberTopic]?.payload) {
-                    try {
-                      const parsed = JSON.parse(messages[memberTopic].payload);
-                      if (Object.keys(parsed).length > 0 && !parsed.members) {
-                        effectivePayload = messages[memberTopic].payload;
-                        break;
-                      }
-                    } catch {}
-                  }
-                }
-              }
+                })}
+              </div>
+            );
+          }
 
-              return (
-                <button key={isRecent ? `${topic}-${timestamp}` : topic} onClick={() => { setExpandedTopic(topic); setRawMode(false); updateUrlParams({ topic, view: null }); try { setPublishValue(JSON.stringify(JSON.parse(effectivePayload), null, 2)); } catch { setPublishValue(effectivePayload); } }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
->
-                  {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                  <span className="font-mono text-xs text-muted-foreground min-w-0 truncate"><TopicPath topic={topic} /></span>
-                  {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">group</span>}
-                  <span className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[11px]"><FmtVal payload={effectivePayload} /></span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                    {messages[topic].updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+          // --- Flat rendering (current behavior) ---
+          return (
+            <div className="border rounded-lg divide-y overflow-hidden">
+              {filteredTopics.map(([topic, { payload, timestamp }]) => {
+                if (expandedTopic === topic) return renderDetailPanel(topic, payload, timestamp);
+                return renderCollapsedRow(topic, payload, timestamp);
+              })}
+            </div>
+          );
+        })()}
 
       </div>
 
@@ -950,9 +1038,10 @@ function PropRow({ name, value, onPublish }: { name: string; value: any; onPubli
   );
 }
 
-function TopicPath({ topic }: { topic: string }) {
+function TopicPath({ topic, short }: { topic: string; short?: boolean }) {
   const p = topic.split('/');
   if (p[0] === 'homecast' && p.length >= 4) {
+    if (short) return <>{deSlug(p.slice(3).join('/'))}</>;
     return <><span className="text-blue-500">{p[1]}</span>/<span className="text-purple-400">{p[2]}</span>/<span className="text-foreground">{p.slice(3).join('/')}</span></>;
   }
   return <>{topic}</>;
