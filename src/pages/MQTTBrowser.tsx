@@ -559,50 +559,47 @@ export default function MQTTBrowser() {
 
           const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx?: number) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
-            const padLeft = Math.max((insetPx || 0) + 16, 24);
+            const ml = Math.max(insetPx || 0, 12);
+            const members = groupMembers[topic];
             return (
-              <div className="bg-muted/10 pb-2" style={{ paddingLeft: padLeft, paddingRight: 12 }}>
-                {/* Info + mode toggle */}
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-[10px] text-muted-foreground">
+              <div className="my-1 mr-3 border rounded-lg bg-background overflow-hidden" style={{ marginLeft: ml }}>
+                {/* Header: status + Controls/JSON toggle */}
+                <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
                     {availability[topic] && (
-                      <span className={`inline-flex items-center gap-1 mr-2 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
+                      <span className={`inline-flex items-center gap-1 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${availability[topic] === 'offline' ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />
                         {availability[topic]}
                       </span>
                     )}
-                    {messages[topic]?.updates > 1 && <>{messages[topic].updates} updates</>}
+                    {messages[topic]?.updates > 1 && <span>{messages[topic].updates} updates</span>}
                   </span>
                   <div className="flex border rounded overflow-hidden">
                     <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
                     <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                   </div>
                 </div>
-                {/* Group members */}
-                {groupMembers[topic] && groupMembers[topic].length > 0 && (
-                  <div className="pb-1.5">
-                    <p className="text-[10px] text-muted-foreground mb-1">Group members ({groupMembers[topic].length})</p>
-                    <div className="flex flex-wrap gap-1">
-                      {groupMembers[topic].map((slug: string) => (
-                        <span key={slug} className="text-[10px] font-mono bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
-                          {slug.replace(/-[a-f0-9]{4,}$/, '')}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {/* Controls / JSON */}
-                {rawMode ? (
-                  <div className="space-y-1.5">
-                    <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
-                    <div className="flex justify-end">
-                      <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                        <Send className="h-3 w-3" /> Publish
-                      </button>
+                <div className="px-3 py-2">
+                  {rawMode ? (
+                    <div className="space-y-1.5">
+                      <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
+                      <div className="flex justify-end">
+                        <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Send className="h-3 w-3" /> Publish
+                        </button>
+                      </div>
                     </div>
+                  ) : (
+                    <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
+                  )}
+                </div>
+                {/* Group members footer */}
+                {members && members.length > 0 && (
+                  <div className="px-3 py-1.5 border-t text-[10px] text-muted-foreground font-mono">
+                    <span className="text-purple-500 dark:text-purple-400 mr-1">ᴳ</span>
+                    {members.map((s: string) => s.split('/').pop()?.replace(/-[a-f0-9]{4,}$/, '')).join(' · ')}
                   </div>
-                ) : (
-                  <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
                 )}
               </div>
             );
