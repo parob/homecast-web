@@ -4337,7 +4337,10 @@ const Dashboard = () => {
     if (isInMacApp) {
       const w = window as any;
       w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor', color: tintColor });
-      return;
+      return () => {
+        // Clear explicit color so backgroundDark fallback resumes
+        w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor' });
+      };
     }
     document.body.style.backgroundColor = tintColor;
     return () => {
