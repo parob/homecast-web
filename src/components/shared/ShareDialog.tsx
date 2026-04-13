@@ -45,14 +45,11 @@ import {
   X,
   Users,
   Globe,
-  Mail,
   ExternalLink,
   List,
   ChevronRight,
   AlertCircle,
-  Shield,
   Clock,
-  Bot,
 } from 'lucide-react';
 import {
   Select,
@@ -128,6 +125,7 @@ export function ShareDialog({
   // Home members state (only used when entityType === 'home')
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState('control');
+  const [addingMember, setAddingMember] = useState(false);
 
   // Fetch current access configuration
   const { data: accessData, refetch: refetchAccess } = useQuery<GetEntityAccessResponse>(
@@ -191,6 +189,7 @@ export function ShareDialog({
       setEndpointCopied(null);
       setMemberEmail('');
       setMemberRole('control');
+      setAddingMember(false);
     }
   }, [open]);
 
@@ -404,6 +403,7 @@ export function ShareDialog({
       if (result?.inviteHomeMember.success) {
         toast.success(`Invited ${memberEmail.trim()}`);
         setMemberEmail('');
+        setAddingMember(false);
         refetchMembers();
       } else {
         toast.error(result?.inviteHomeMember.error || 'Failed to invite');
@@ -705,9 +705,6 @@ export function ShareDialog({
           </div>
           )}
 
-          {/* Divider */}
-          {canManageSharing && <div className="border-t" />}
-
           {/* Passcodes Section */}
           {canManageSharing && (
           <div className={`space-y-3 ${publicState === 'control' ? 'opacity-50' : ''}`}>
@@ -733,11 +730,7 @@ export function ShareDialog({
               <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
                 Passcodes are not needed when public control access is enabled. Anyone with the link can already control this {entityType}.
               </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Add passcodes for elevated or restricted access
-              </p>
-            )}
+            ) : null}
 
             {/* Existing passcodes */}
             {passcodeAccess.length > 0 && (
@@ -885,12 +878,23 @@ export function ShareDialog({
 
           {/* Members Section (homes only, not in Community mode — roles are global) */}
           {isHome && canManageMembers && !isCommunity && (
-            <>
-              <div className="border-t" />
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">Members</Label>
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Members</Label>
+                  </div>
+                  {!addingMember && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAddingMember(true)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Member
+                    </Button>
+                  )}
                 </div>
 
                 {/* Owner row */}
@@ -953,90 +957,58 @@ export function ShareDialog({
                   </div>
                 )}
 
-                {/* Invite form */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-medium">Invite by email</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="email"
-                      placeholder="email@example.com"
-                      value={memberEmail}
-                      onChange={(e) => setMemberEmail(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleInviteMember()}
-                      className="h-9 text-sm flex-1"
-                    />
-                    <Select value={memberRole} onValueChange={setMemberRole}>
-                      <SelectTrigger className="h-9 w-[90px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableMemberRoles.map((r) => (
-                          <SelectItem key={r} value={r} className="text-xs">
-                            {MEMBER_ROLE_LABELS[r] || r}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      className="h-9"
-                      onClick={handleInviteMember}
-                      disabled={inviting || !memberEmail.trim()}
-                    >
-                      {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Invite'}
-                    </Button>
+                {/* Invite form (toggled by Add Member button) */}
+                {addingMember && (
+                  <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="email@example.com"
+                        value={memberEmail}
+                        onChange={(e) => setMemberEmail(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleInviteMember()}
+                        className="h-9 text-sm flex-1"
+                        autoFocus
+                      />
+                      <Select value={memberRole} onValueChange={setMemberRole}>
+                        <SelectTrigger className="h-9 w-[90px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableMemberRoles.map((r) => (
+                            <SelectItem key={r} value={r} className="text-xs">
+                              {MEMBER_ROLE_LABELS[r] || r}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => { setAddingMember(false); setMemberEmail(''); }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={handleInviteMember}
+                        disabled={inviting || !memberEmail.trim()}
+                      >
+                        {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Invite'}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Members get full dashboard access. Pending invites activate on signup.
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Members get full dashboard access. Pending invites activate on signup.
-                  </p>
-                </div>
+                )}
               </div>
-            </>
           )}
 
-          {/* AI Assistants Section (homes only) */}
-          {isHome && (
-            <>
-              <div className="border-t" />
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">AI Assistants</Label>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Connect Claude, ChatGPT, Gemini, or other AI assistants to control your home.
-                </p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs font-mono bg-muted px-2.5 py-1.5 rounded truncate selectable">
-                      {config.apiUrl}/mcp
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={async () => {
-                        const url = `${config.apiUrl}/mcp`;
-                        const w = window as any;
-                        if (w.webkit?.messageHandlers?.homecast) {
-                          w.webkit.messageHandlers.homecast.postMessage({ action: 'copy', text: url });
-                        } else {
-                          await navigator.clipboard.writeText(url);
-                        }
-                        toast.success('MCP endpoint copied');
-                      }}
-                      title="Copy MCP endpoint"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Divider */}
-          <div className="border-t" />
 
           {/* View All Shared Items */}
           {onViewAllSharedItems && (
