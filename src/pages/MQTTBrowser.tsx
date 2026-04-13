@@ -557,23 +557,13 @@ export default function MQTTBrowser() {
             try { setPublishValue(JSON.stringify(JSON.parse(ep), null, 2)); } catch { setPublishValue(ep); }
           };
 
-          const renderDetailPanel = (topic: string, payload: string, timestamp: number) => {
-            const msg = messages[topic];
-            const ep = getEffectivePayload(topic, payload);
+          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx?: number) => {
+            const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
+            const padLeft = Math.max((insetPx || 0) + 16, 24);
             return (
-              <div key={topic} className="bg-muted/20 border-l-2 border-l-primary">
-                <button onClick={() => { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors">
-                  <span className="font-mono text-xs"><TopicPath topic={topic} /></span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
-                      {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </span>
-                    {msg.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{msg.updates}</span>}
-                  </div>
-                </button>
-                <div className="px-3 pb-1.5 flex items-center justify-between">
+              <div className="bg-muted/10 pb-2" style={{ paddingLeft: padLeft, paddingRight: 12 }}>
+                {/* Info + mode toggle */}
+                <div className="flex items-center justify-between py-1">
                   <span className="text-[10px] text-muted-foreground">
                     {availability[topic] && (
                       <span className={`inline-flex items-center gap-1 mr-2 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
@@ -581,15 +571,16 @@ export default function MQTTBrowser() {
                         {availability[topic]}
                       </span>
                     )}
-                    {msg.updates} update{msg.updates !== 1 ? 's' : ''} · last {new Date(timestamp).toLocaleTimeString()}
+                    {messages[topic]?.updates > 1 && <>{messages[topic].updates} updates</>}
                   </span>
                   <div className="flex border rounded overflow-hidden">
                     <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
                     <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                   </div>
                 </div>
+                {/* Group members */}
                 {groupMembers[topic] && groupMembers[topic].length > 0 && (
-                  <div className="px-3 pb-1.5">
+                  <div className="pb-1.5">
                     <p className="text-[10px] text-muted-foreground mb-1">Group members ({groupMembers[topic].length})</p>
                     <div className="flex flex-wrap gap-1">
                       {groupMembers[topic].map((slug: string) => (
@@ -600,20 +591,19 @@ export default function MQTTBrowser() {
                     </div>
                   </div>
                 )}
-                <div className="px-3 pb-3">
-                  {rawMode ? (
-                    <div className="space-y-1.5">
-                      <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
-                      <div className="flex justify-end">
-                        <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                          <Send className="h-3 w-3" /> Publish
-                        </button>
-                      </div>
+                {/* Controls / JSON */}
+                {rawMode ? (
+                  <div className="space-y-1.5">
+                    <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
+                    <div className="flex justify-end">
+                      <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Send className="h-3 w-3" /> Publish
+                      </button>
                     </div>
-                  ) : (
-                    <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
+                )}
               </div>
             );
           };
@@ -631,17 +621,25 @@ export default function MQTTBrowser() {
             // Text inset shows hierarchy; hover/flash bg spans full width
             const insetPx = depth * 24 + (opts?.short ? 36 : 0);
 
+            // Reserve space for the group chevron so groups + accessories align
+            const hasAnyGroups = hideMembers && Object.keys(groupMembers).length > 0;
+            const chevronSlotPx = hasAnyGroups ? 20 : 0;
+
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
                 <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
                   className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
                   style={{ paddingLeft: Math.max(insetPx, 12) }}>
-                  {/* Group expand chevron */}
-                  {isGroup && hideMembers && (
-                    <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
-                      className="shrink-0 -ml-1 p-0.5 text-muted-foreground hover:text-foreground cursor-pointer">
-                      {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                    </span>
+                  {/* Fixed-width chevron slot — groups get a toggle, others get a spacer */}
+                  {hasAnyGroups && (
+                    isGroup ? (
+                      <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
+                        className="shrink-0 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer">
+                        {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 w-5" />
+                    )
                   )}
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
@@ -656,8 +654,8 @@ export default function MQTTBrowser() {
                     {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
                 </button>
-                {/* Expanded detail panel — renders below the row, not replacing it */}
-                {isThisExpanded && renderDetailPanel(topic, payload, timestamp)}
+                {/* Expanded detail panel — renders below the row, indented to match */}
+                {isThisExpanded && renderDetailPanel(topic, payload, timestamp, insetPx)}
                 {/* Inline group members */}
                 {isGroup && hideMembers && isGrpExpanded && (
                   <div>
