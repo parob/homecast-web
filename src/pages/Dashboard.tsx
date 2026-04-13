@@ -4333,12 +4333,17 @@ const Dashboard = () => {
   }, [displayedBackground, bgImageTopColor, isDarkBackground]);
 
   useEffect(() => {
-    if (isInMobileApp || isInMacApp) return;
+    if (isInMobileApp) return;
+    if (isInMacApp) {
+      const w = window as any;
+      w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor', color: tintColor });
+      return;
+    }
     document.body.style.backgroundColor = tintColor;
     return () => {
       document.body.style.removeProperty('background-color');
     };
-  }, [tintColor]);
+  }, [tintColor, isInMacApp, isInMobileApp]);
 
   // Helper to compute blur tint class for an accessory (used for ExpandedOverlay)
   const getAccessoryBlurTint = useCallback((accessory: HomeKitAccessory) => {
