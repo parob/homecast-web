@@ -187,6 +187,8 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
       characteristicType: trigger.characteristicType,
       to: trigger.to,
       from: trigger.from,
+      // Derive filterMode from saved trigger data
+      filterMode: trigger.to != null ? 'value' : 'any',
     };
     case 'numeric_state': return {
       accessoryId: trigger.accessoryId,
@@ -195,6 +197,8 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
       characteristicType: trigger.characteristicType,
       above: trigger.above,
       below: trigger.below,
+      // Derive filterMode from saved trigger data
+      filterMode: (trigger.above != null && trigger.below != null) ? 'range' : trigger.above != null ? 'above' : trigger.below != null ? 'below' : 'any',
     };
     case 'time': return { at: trigger.at, weekdays: trigger.weekdays };
     case 'time_pattern': return { hours: trigger.hours, minutes: trigger.minutes, seconds: trigger.seconds };

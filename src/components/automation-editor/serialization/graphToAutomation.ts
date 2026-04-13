@@ -181,8 +181,8 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
           : { accessoryId: (config.accessoryId as string) ?? '' }
         ),
         characteristicType: (config.characteristicType as string) ?? '',
-        to: config.to || undefined,
-        from: config.from || undefined,
+        to: config.to ?? undefined,
+        from: config.from ?? undefined,
       } satisfies StateTrigger;
     }
 
@@ -236,8 +236,8 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
         id: node.id,
         accessoryId: (config.accessoryId as string) ?? '',
         characteristicType: (config.characteristicType as string) ?? '',
-        to: config.to || undefined,
-        from: config.from || undefined,
+        to: config.to ?? undefined,
+        from: config.from ?? undefined,
       } satisfies StateTrigger;
 
     case 'numeric_state':
