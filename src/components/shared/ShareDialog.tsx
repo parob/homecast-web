@@ -716,12 +716,11 @@ export function ShareDialog({
               {!addingPasscode && publicState !== 'control' && (
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon"
                   onClick={() => setAddingPasscode(true)}
-                  className="h-7 px-2 text-xs"
+                  className="h-7 w-7"
                 >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Passcode
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
@@ -884,26 +883,23 @@ export function ShareDialog({
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <Label className="text-sm font-medium">Members</Label>
                   </div>
-                  {!addingMember && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setAddingMember(true)}
-                      className="h-7 px-2 text-xs"
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Member
-                    </Button>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setAddingMember(true)}
+                    className="h-7 w-7"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
 
                 {/* Owner row */}
                 {ownerEmail && (
-                  <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
-                    <span className="text-sm truncate">{ownerEmail}</span>
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Owner
-                    </span>
+                  <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{ownerEmail}</div>
+                    </div>
+                    <span className="text-xs text-muted-foreground capitalize">owner</span>
                   </div>
                 )}
 
@@ -957,55 +953,76 @@ export function ShareDialog({
                   </div>
                 )}
 
-                {/* Invite form (toggled by Add Member button) */}
-                {addingMember && (
-                  <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
-                    <div className="flex gap-2">
-                      <Input
-                        type="email"
-                        placeholder="email@example.com"
-                        value={memberEmail}
-                        onChange={(e) => setMemberEmail(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleInviteMember()}
-                        className="h-9 text-sm flex-1"
-                        autoFocus
-                      />
-                      <Select value={memberRole} onValueChange={setMemberRole}>
-                        <SelectTrigger className="h-9 w-[90px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
+                {/* Add Member dialog */}
+                <Dialog open={addingMember} onOpenChange={setAddingMember}>
+                  <DialogContent className="sm:max-w-[450px]">
+                    <DialogHeader>
+                      <DialogTitle>Add Member</DialogTitle>
+                      <DialogDescription>
+                        Invite someone to join this home. Members get full dashboard access.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="member-email">Email</Label>
+                        <Input
+                          id="member-email"
+                          type="email"
+                          placeholder="email@example.com"
+                          value={memberEmail}
+                          onChange={(e) => setMemberEmail(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleInviteMember()}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Role</Label>
+                        <div className={`grid gap-2 ${availableMemberRoles.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                           {availableMemberRoles.map((r) => (
-                            <SelectItem key={r} value={r} className="text-xs">
-                              {MEMBER_ROLE_LABELS[r] || r}
-                            </SelectItem>
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => setMemberRole(r)}
+                              className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                                memberRole === r
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-muted hover:border-muted-foreground/50'
+                              }`}
+                            >
+                              {r === 'admin' && <Users className={`h-5 w-5 ${memberRole === r ? 'text-primary' : 'text-muted-foreground'}`} />}
+                              {r === 'control' && <Zap className={`h-5 w-5 ${memberRole === r ? 'text-primary' : 'text-muted-foreground'}`} />}
+                              {r === 'view' && <Eye className={`h-5 w-5 ${memberRole === r ? 'text-primary' : 'text-muted-foreground'}`} />}
+                              <span className={`text-sm font-medium ${memberRole === r ? 'text-primary' : ''}`}>{MEMBER_ROLE_LABELS[r] || r}</span>
+                              <span className="text-xs text-muted-foreground text-center">
+                                {r === 'admin' && 'Full management'}
+                                {r === 'control' && 'Can control accessories'}
+                                {r === 'view' && 'Can see accessories'}
+                              </span>
+                            </button>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="outline"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => { setAddingMember(false); setMemberEmail(''); }}
+                        onClick={() => {
+                          setAddingMember(false);
+                          setMemberEmail('');
+                          setMemberRole('control');
+                        }}
                       >
                         Cancel
                       </Button>
                       <Button
-                        size="sm"
-                        className="h-8"
                         onClick={handleInviteMember}
-                        disabled={inviting || !memberEmail.trim()}
+                        disabled={!memberEmail.trim() || inviting}
                       >
-                        {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Invite'}
+                        {inviting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        Invite
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Members get full dashboard access. Pending invites activate on signup.
-                    </p>
-                  </div>
-                )}
+                  </DialogContent>
+                </Dialog>
               </div>
           )}
 
