@@ -560,7 +560,7 @@ export default function MQTTBrowser() {
           const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx?: number) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
             const hasChevronSlot = hideMembers && Object.keys(groupMembers).length > 0;
-            const ml = Math.max(insetPx || 0, 12) + (hasChevronSlot ? 28 : 0);
+            const ml = Math.max(insetPx || 0, 12) + (hasChevronSlot ? 44 : 16);
             const members = groupMembers[topic];
             return (
               <div className="my-1 mr-3 border rounded-lg bg-background overflow-hidden" style={{ marginLeft: ml }}>
