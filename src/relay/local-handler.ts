@@ -213,6 +213,20 @@ export async function executeHomeKitAction(
       return await HomeKit.setAutomationEnabled(automationId, false);
     }
 
+    case 'automation.test': {
+      const { automationId } = payload as { automationId: string };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      const trace = await engine.manualTrigger(automationId);
+      if (!trace) {
+        throw Object.assign(new Error('Automation not found'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      return { trace };
+    }
+
     case 'state.set': {
       const { state, homeId } = payload as {
         state: Record<string, Record<string, Record<string, unknown>>>;

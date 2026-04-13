@@ -35,8 +35,12 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2 } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { serverConnection } from '@/server/connection';
+import { getAutomationEngine } from '@/automation';
+import type { ExecutionTrace } from '@/automation/types/execution';
+import { StepRow, STATUS_STYLES } from './panels/ExecutionHistoryPanel';
 
 import { BaseNode } from './nodes/BaseNode';
 import { StickyNoteNode } from './nodes/StickyNoteNode';
@@ -141,6 +145,9 @@ function AutomationEditorInner({
   const [showCloseWarning, setShowCloseWarning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testTrace, setTestTrace] = useState<ExecutionTrace | null>(null);
+  const [showTestResults, setShowTestResults] = useState(false);
 
   const handleSaveRef = useRef<(() => void) | null>(null);
 
@@ -442,6 +449,47 @@ function AutomationEditorInner({
   // Keep ref in sync for keyboard shortcut
   handleSaveRef.current = handleSave;
 
+  // Test automation — manually trigger actions and show trace
+  const handleTest = useCallback(async () => {
+    const automationId = existingIdRef.current;
+    if (!automationId) return;
+
+    // Auto-save if there are unsaved changes
+    if (isDirty) await handleSave();
+
+    setIsTesting(true);
+    setTestTrace(null);
+
+    try {
+      const engine = getAutomationEngine();
+      let trace: ExecutionTrace | null;
+
+      if (engine) {
+        // Relay Mac — call engine directly
+        trace = await engine.manualTrigger(automationId);
+      } else {
+        // Browser client — request via WebSocket to relay
+        const result = await serverConnection.request<{ trace: ExecutionTrace }>(
+          'automation.test',
+          { automationId },
+        );
+        trace = result.trace;
+      }
+
+      if (trace) {
+        setTestTrace(trace);
+        setShowTestResults(true);
+      } else {
+        toast.error('Automation not found on relay');
+      }
+    } catch (e) {
+      console.error('[AutomationEditor] Test failed:', e);
+      toast.error(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsTesting(false);
+    }
+  }, [isDirty, handleSave]);
+
   return (
     <div className="flex flex-col h-full" data-testid="automation-editor">
       {/* Toolbar */}
@@ -479,6 +527,18 @@ function AutomationEditorInner({
           >
             <Trash2 className="h-3.5 w-3.5 sm:mr-1.5" />
             <span className="hidden sm:inline">Delete</span>
+          </Button>
+        )}
+        {!isNew && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTest}
+            disabled={isTesting}
+            className="h-8"
+          >
+            {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin sm:mr-1.5" /> : <Play className="h-3.5 w-3.5 sm:mr-1.5" />}
+            <span className="hidden sm:inline">{isTesting ? 'Testing...' : 'Test'}</span>
           </Button>
         )}
         <Button
@@ -684,6 +744,47 @@ function AutomationEditorInner({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Test results dialog */}
+      <Dialog open={showTestResults} onOpenChange={setShowTestResults}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col p-0 gap-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogTitle className="sr-only">Test Results</DialogTitle>
+          {testTrace && (
+            <div className="flex flex-col min-h-0 h-full">
+              <div className="p-3 border-b space-y-1">
+                <div className="flex items-center gap-2">
+                  <Play className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-sm font-medium flex-1">Test Run</span>
+                  <span className={cn('text-xs font-medium', STATUS_STYLES[testTrace.status]?.color)}>
+                    {STATUS_STYLES[testTrace.status]?.label ?? testTrace.status}
+                  </span>
+                </div>
+                {testTrace.error && <div className="text-[10px] text-red-400">{testTrace.error}</div>}
+                <div className="text-[10px] text-muted-foreground">
+                  {new Date(testTrace.startedAt).toLocaleString()}
+                  {testTrace.finishedAt && ` — ${((new Date(testTrace.finishedAt).getTime() - new Date(testTrace.startedAt).getTime()) / 1000).toFixed(2)}s`}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                <p className="text-[10px] text-muted-foreground px-1 mb-1">Steps ({testTrace.steps?.length ?? 0})</p>
+                {testTrace.steps?.map((step: any, i: number) => (
+                  <StepRow key={i} step={step} />
+                ))}
+              </div>
+
+              {testTrace.variables && Object.keys(testTrace.variables).length > 0 && (
+                <div className="p-3 border-t">
+                  <p className="text-[10px] text-muted-foreground mb-1">Final Variables</p>
+                  <pre className="text-[10px] font-mono bg-muted p-2 rounded overflow-x-auto max-h-32">
+                    {JSON.stringify(testTrace.variables, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

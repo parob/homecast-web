@@ -14,7 +14,7 @@ interface ExecutionHistoryPanelProps {
   onClose: () => void;
 }
 
-const STATUS_STYLES: Record<string, { color: string; icon: React.ElementType; label: string }> = {
+export const STATUS_STYLES: Record<string, { color: string; icon: React.ElementType; label: string }> = {
   success: { color: 'text-emerald-600', icon: Check, label: 'Success' },
   error: { color: 'text-red-500', icon: X, label: 'Error' },
   stopped: { color: 'text-amber-500', icon: Clock, label: 'Stopped' },
@@ -151,7 +151,7 @@ function TraceDetail({ traceId, onBack }: { traceId: string; onBack: () => void 
   );
 }
 
-function StepRow({ step }: { step: any }) {
+export function StepRow({ step }: { step: any }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS_STYLES[step.result === 'executed' ? 'success' : step.result === 'error' ? 'error' : 'stopped'];
   const StatusIcon = status?.icon ?? Clock;
