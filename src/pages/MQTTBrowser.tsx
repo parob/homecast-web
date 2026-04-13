@@ -629,7 +629,7 @@ export default function MQTTBrowser() {
             const isThisExpanded = expandedTopic === topic;
             const depth = opts?.depth || 0;
             // Text inset shows hierarchy; hover/flash bg spans full width
-            const insetPx = depth * 20 + (opts?.short ? 16 : 0);
+            const insetPx = depth * 24 + (opts?.short ? 36 : 0);
 
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
