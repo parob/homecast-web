@@ -119,6 +119,7 @@ export function ShareDialog({
   const [newPasscodeName, setNewPasscodeName] = useState('');
   const [newPasscodeRole, setNewPasscodeRole] = useState<AccessRole>('view');
   const [newPasscodeSchedule, setNewPasscodeSchedule] = useState<AccessSchedule | null>(null);
+  const [stateEndpointOpen, setStateEndpointOpen] = useState(false);
   const [endpointsOpen, setEndpointsOpen] = useState(false);
   const [endpointCopied, setEndpointCopied] = useState<string | null>(null);
 
@@ -185,6 +186,7 @@ export function ShareDialog({
       setNewPasscodeName('');
       setNewPasscodeRole('view');
       setNewPasscodeSchedule(null);
+      setStateEndpointOpen(false);
       setEndpointsOpen(false);
       setEndpointCopied(null);
       setMemberEmail('');
@@ -504,29 +506,31 @@ export function ShareDialog({
           {shareUrl && canManageSharing && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">Share Link</Label>
+              <Input
+                value={shareUrl}
+                readOnly
+                className="font-mono text-xs selectable"
+              />
               <div className="flex gap-2">
-                <Input
-                  value={shareUrl}
-                  readOnly
-                  className="font-mono text-xs selectable"
-                />
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="flex-1"
                   onClick={handleCopyLink}
-                  title="Copy link"
                 >
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="h-4 w-4 mr-1.5" /> : <Copy className="h-4 w-4 mr-1.5" />}
+                  {copied ? 'Copied' : 'Copy'}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="flex-1"
                   onClick={handleOpenLink}
-                  title="Open in browser"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4 mr-1.5" />
+                  Open
                 </Button>
                 <ShareQRCode shareUrl={shareUrl} entityName={entityName} />
               </div>
@@ -535,30 +539,40 @@ export function ShareDialog({
 
           {/* Read State Endpoint */}
           {developerMode && shareUrl && canManageSharing && publicState !== 'off' && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">State Endpoint</Label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs font-mono bg-muted px-2.5 py-1.5 rounded overflow-x-auto whitespace-nowrap scrollbar-thin selectable">
-                  {shareApiUrl}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => handleCopyEndpoint(shareApiUrl, 'state')}
-                  title="Copy state endpoint"
+            <Collapsible open={stateEndpointOpen} onOpenChange={setStateEndpointOpen}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between text-sm font-medium hover:text-foreground transition-colors"
                 >
-                  {endpointCopied === 'state' ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Returns current state of all accessories as JSON. Works with any access level.
-              </p>
-            </div>
+                  <span>State Endpoint</span>
+                  <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", stateEndpointOpen && "rotate-90")} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-2 pt-3">
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs font-mono bg-muted px-2.5 py-1.5 rounded overflow-x-auto whitespace-nowrap scrollbar-thin selectable">
+                    {shareApiUrl}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => handleCopyEndpoint(shareApiUrl, 'state')}
+                    title="Copy state endpoint"
+                  >
+                    {endpointCopied === 'state' ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Returns current state of all accessories as JSON. Works with any access level.
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
           {/* Share Control Endpoints */}
@@ -862,11 +876,6 @@ export function ShareDialog({
               </DialogContent>
             </Dialog>
 
-            {passcodeAccess.length === 0 && publicState !== 'control' && (
-              <p className="text-xs text-muted-foreground italic">
-                No passcodes configured
-              </p>
-            )}
           </div>
           )}
 
