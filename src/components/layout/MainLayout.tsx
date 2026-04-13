@@ -163,7 +163,7 @@ export function MainLayout({
             >
               <div className={cn(
                 shouldUseDarkText
-                  ? "rounded-[20px] p-3 bg-black/40 backdrop-blur-xl text-white"
+                  ? "rounded-[20px] p-3 bg-black/50 backdrop-blur-xl text-white shadow-[0_0_20px_rgba(0,0,0,0.3)]"
                   : "p-4"
               )}>
                 {sidebar}
