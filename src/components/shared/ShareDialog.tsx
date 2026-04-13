@@ -676,7 +676,7 @@ export function ShareDialog({
                 } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Eye className={`h-5 w-5 ${publicState === 'view' ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className={`text-sm font-medium ${publicState === 'view' ? 'text-primary' : ''}`}>View Only</span>
+                <span className={`text-sm font-medium ${publicState === 'view' ? 'text-primary' : ''}`}>View</span>
                 <span className="text-xs text-muted-foreground text-center">Can see accessories</span>
               </button>
               <button
@@ -733,7 +733,7 @@ export function ShareDialog({
 
             {/* Existing passcodes */}
             {passcodeAccess.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {passcodeAccess.map((access) => {
                   const schedule = access.accessSchedule
                     ? JSON.parse(access.accessSchedule) as AccessSchedule
@@ -742,33 +742,28 @@ export function ShareDialog({
                   return (
                     <div
                       key={access.id}
-                      className="flex items-center justify-between p-2 rounded-lg border bg-muted/30"
+                      className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <span className="text-sm font-medium truncate">
-                            {access.name || 'Passcode'}
-                          </span>
-                          <span className="text-xs text-muted-foreground capitalize shrink-0">
-                            {access.role}
-                          </span>
-                        </div>
+                        <div className="text-sm truncate">{access.name || 'Passcode'}</div>
                         {schedule && (
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-6 truncate">
+                          <div className="text-xs text-muted-foreground truncate">
                             {scheduleSummary}
-                          </p>
+                          </div>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        onClick={() => handleDeletePasscode(access.id)}
-                        disabled={isLoading}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground capitalize">{access.role}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeletePasscode(access.id)}
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -817,7 +812,7 @@ export function ShareDialog({
                         }`}
                       >
                         <Eye className={`h-5 w-5 ${newPasscodeRole === 'view' ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm font-medium ${newPasscodeRole === 'view' ? 'text-primary' : ''}`}>View Only</span>
+                        <span className={`text-sm font-medium ${newPasscodeRole === 'view' ? 'text-primary' : ''}`}>View</span>
                         <span className="text-xs text-muted-foreground text-center">Can see accessories</span>
                       </button>
                       <button
@@ -893,65 +888,61 @@ export function ShareDialog({
                   </Button>
                 </div>
 
-                {/* Owner row */}
-                {ownerEmail && (
-                  <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm truncate">{ownerEmail}</div>
+                {/* Members list (owner + members) */}
+                <div className="space-y-1">
+                  {ownerEmail && (
+                    <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm truncate">{ownerEmail}</div>
+                      </div>
+                      <span className="text-xs text-muted-foreground capitalize">owner</span>
                     </div>
-                    <span className="text-xs text-muted-foreground capitalize">owner</span>
-                  </div>
-                )}
-
-                {/* Members list */}
-                {members.length > 0 && (
-                  <div className="space-y-1">
-                    {members.map((member) => (
-                      <div key={member.id} className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm truncate">{member.name || member.email}</div>
-                          {member.name && <div className="text-xs text-muted-foreground truncate">{member.email}</div>}
-                          {member.isPending && (
-                            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                              <Clock className="h-3 w-3" /> Pending
-                            </span>
-                          )}
-                        </div>
-                        {canModifyMember(member) ? (
-                          <div className="flex items-center gap-1">
-                            <Select
-                              value={member.role}
-                              onValueChange={(val) => handleMemberRoleChange(member.email, val)}
-                              disabled={updatingMember}
-                            >
-                              <SelectTrigger className="h-7 w-[90px] text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableMemberRoles.map((r) => (
-                                  <SelectItem key={r} value={r} className="text-xs">
-                                    {MEMBER_ROLE_LABELS[r] || r}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleRemoveMember(member.email)}
-                              disabled={removingMember}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground capitalize">{member.role}</span>
+                  )}
+                  {members.map((member) => (
+                    <div key={member.id} className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm truncate">{member.name || member.email}</div>
+                        {member.name && <div className="text-xs text-muted-foreground truncate">{member.email}</div>}
+                        {member.isPending && (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                            <Clock className="h-3 w-3" /> Pending
+                          </span>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      {canModifyMember(member) ? (
+                        <div className="flex items-center gap-1">
+                          <Select
+                            value={member.role}
+                            onValueChange={(val) => handleMemberRoleChange(member.email, val)}
+                            disabled={updatingMember}
+                          >
+                            <SelectTrigger className="h-7 w-[90px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableMemberRoles.map((r) => (
+                                <SelectItem key={r} value={r} className="text-xs">
+                                  {MEMBER_ROLE_LABELS[r] || r}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleRemoveMember(member.email)}
+                            disabled={removingMember}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground capitalize">{member.role}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
                 {/* Add Member dialog */}
                 <Dialog open={addingMember} onOpenChange={setAddingMember}>
