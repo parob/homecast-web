@@ -361,25 +361,25 @@ export default function MQTTBrowser() {
       <>
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 shrink-0">
             <img src="/icon-192.png" alt="Homecast" className="h-6 w-6 rounded" />
-            <h1 className="text-lg font-semibold">MQTT Browser</h1>
+            <h1 className="text-lg font-semibold whitespace-nowrap">MQTT Browser</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto">
             {user && (
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <User className="h-3 w-3" />
                 <span>{user.email}</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               {connected ? <Wifi className="h-3.5 w-3.5 text-green-500" /> : connecting ? null : <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />}
               <span className={`text-[11px] ${connected ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
                 {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
               </span>
             </div>
-            <button onClick={() => setConnectDialogOpen(true)} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors flex items-center gap-1">
+            <button onClick={() => setConnectDialogOpen(true)} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Key className="h-3 w-3" /> Connection Details
             </button>
             {connected ? (
@@ -406,9 +406,10 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-        {/* Homes */}
+        {/* Filter row: homes + toggles */}
         {homes.length > 0 && (
           <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5">Filter</span>
               {homes.map(home => {
@@ -447,6 +448,25 @@ export default function MQTTBrowser() {
                   </button>
                 );
               })}
+            </div>
+            {/* Toggles + count — right side of filter row */}
+            {Object.keys(messages).length > 0 && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {filteredTopics.length === Object.keys(messages).length
+                    ? `${Object.keys(messages).length}`
+                    : `${filteredTopics.length}/${Object.keys(messages).length}`}
+                </span>
+                <button onClick={() => { setGroupByRoom(v => !v); setCollapsedRooms(new Set()); }}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                  Rooms
+                </button>
+                <button onClick={() => { setHideMembers(v => !v); setExpandedGroups(new Set()); }}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                  Groups
+                </button>
+              </div>
+            )}
             </div>
 
             {/* Info panel for disabled homes */}
@@ -512,29 +532,6 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-        {/* Topic count + view toggles */}
-        {Object.keys(messages).length > 0 && (
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground tabular-nums">
-              {filteredTopics.length === Object.keys(messages).length
-                ? `${Object.keys(messages).length} topics`
-                : `${filteredTopics.length} of ${Object.keys(messages).length} topics`}
-            </p>
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => { setGroupByRoom(v => !v); setCollapsedRooms(new Set()); }}
-                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
-                Rooms
-              </button>
-              <button onClick={() => { setHideMembers(v => !v); setExpandedGroups(new Set()); }}
-                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
-                Groups
-              </button>
-              <button onClick={() => setMessages({})} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-1">
-                Clear
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Topics */}
         {filteredTopics.length === 0 ? (
@@ -621,7 +618,7 @@ export default function MQTTBrowser() {
             );
           };
 
-          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { indent?: boolean; short?: boolean }) => {
+          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { depth?: number; short?: boolean }) => {
             const avail = availability[topic];
             const isOffline = avail === 'offline';
             const isGroup = !!groupMembers[topic];
@@ -629,10 +626,13 @@ export default function MQTTBrowser() {
             const ep = getEffectivePayload(topic, payload);
             const memberCount = isGroup ? (groupMembers[topic]?.length || 0) : 0;
             const isGrpExpanded = expandedGroups.has(topic);
+            const isThisExpanded = expandedTopic === topic;
+            const depth = opts?.depth || 0;
+            const indentPx = depth * 20;
 
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
-                <div className={`flex items-center ${opts?.indent ? 'pl-6' : ''}`}>
+                <div className="flex items-center" style={indentPx ? { paddingLeft: indentPx } : undefined}>
                   {/* Group expand toggle */}
                   {isGroup && hideMembers ? (
                     <button onClick={(e) => { e.stopPropagation(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
@@ -640,11 +640,11 @@ export default function MQTTBrowser() {
                       {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                     </button>
                   ) : null}
-                  <button onClick={() => expandTopic(topic)}
+                  <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
                     className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''} ${isGroup && hideMembers ? 'pl-0' : ''}`}>
                     {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                    <span className={`text-xs min-w-0 truncate ${opts?.short ? '' : 'font-mono text-muted-foreground'}`}>
-                      {opts?.short ? deSlug(topic.split('/')[3] || topic) : <TopicPath topic={topic} />}
+                    <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
+                      {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                     </span>
                     {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">
                       {memberCount > 0 ? `ᴳ${memberCount}` : 'ᴳ'}
@@ -656,15 +656,16 @@ export default function MQTTBrowser() {
                     </span>
                   </button>
                 </div>
+                {/* Expanded detail panel — renders below the row, not replacing it */}
+                {isThisExpanded && renderDetailPanel(topic, payload, timestamp)}
                 {/* Inline group members */}
                 {isGroup && hideMembers && isGrpExpanded && (
-                  <div className="border-l-2 border-l-purple-300 dark:border-l-purple-800 ml-4">
+                  <div className="border-l-2 border-l-purple-300 dark:border-l-purple-800" style={{ marginLeft: indentPx + 16 }}>
                     {(groupMembers[topic] || []).map(memberSlug => {
                       const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
                       if (!mt || !messages[mt]) return null;
                       const m = messages[mt];
-                      if (expandedTopic === mt) return renderDetailPanel(mt, m.payload, m.timestamp);
-                      return renderCollapsedRow(mt, m.payload, m.timestamp, { indent: true, short: opts?.short });
+                      return renderCollapsedRow(mt, m.payload, m.timestamp, { depth: depth + 1, short: opts?.short });
                     })}
                   </div>
                 )}
@@ -684,16 +685,15 @@ export default function MQTTBrowser() {
                         className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 border-b text-xs font-medium sticky top-0 z-10">
                         <span className="flex items-center gap-1.5">
                           {isCollapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                          {deSlug(roomSlug)}
+                          <span className="font-mono">{roomSlug}</span>
                         </span>
                         <span className="text-[10px] text-muted-foreground tabular-nums">{roomTopics.length}</span>
                       </button>
                       {!isCollapsed && (
-                        <div className="divide-y">
-                          {roomTopics.map(([topic, { payload, timestamp }]) => {
-                            if (expandedTopic === topic) return renderDetailPanel(topic, payload, timestamp);
-                            return renderCollapsedRow(topic, payload, timestamp, { short: true });
-                          })}
+                        <div className="divide-y pl-4">
+                          {roomTopics.map(([topic, { payload, timestamp }]) =>
+                            renderCollapsedRow(topic, payload, timestamp, { short: true })
+                          )}
                         </div>
                       )}
                     </div>
@@ -706,10 +706,9 @@ export default function MQTTBrowser() {
           // --- Flat rendering (current behavior) ---
           return (
             <div className="border rounded-lg divide-y overflow-hidden">
-              {filteredTopics.map(([topic, { payload, timestamp }]) => {
-                if (expandedTopic === topic) return renderDetailPanel(topic, payload, timestamp);
-                return renderCollapsedRow(topic, payload, timestamp);
-              })}
+              {filteredTopics.map(([topic, { payload, timestamp }]) =>
+                renderCollapsedRow(topic, payload, timestamp)
+              )}
             </div>
           );
         })()}
@@ -1042,7 +1041,7 @@ function PropRow({ name, value, onPublish }: { name: string; value: any; onPubli
 function TopicPath({ topic, short }: { topic: string; short?: boolean }) {
   const p = topic.split('/');
   if (p[0] === 'homecast' && p.length >= 4) {
-    if (short) return <>{deSlug(p.slice(3).join('/'))}</>;
+    if (short) return <span className="text-foreground">{p.slice(3).join('/')}</span>;
     return <><span className="text-blue-500">{p[1]}</span>/<span className="text-purple-400">{p[2]}</span>/<span className="text-foreground">{p.slice(3).join('/')}</span></>;
   }
   return <>{topic}</>;
