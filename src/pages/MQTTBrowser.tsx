@@ -308,7 +308,7 @@ export default function MQTTBrowser() {
     const rooms = new Map<string, Array<[string, TopicMessage]>>();
     for (const entry of filteredTopics) {
       const p = entry[0].split('/');
-      const roomSlug = p.length >= 4 && p[0] === 'homecast' ? p[2] : '_other';
+      const roomSlug = p.length >= 4 && p[0] === 'homecast' ? p[2] : '';
       if (!rooms.has(roomSlug)) rooms.set(roomSlug, []);
       rooms.get(roomSlug)!.push(entry);
     }
@@ -676,18 +676,26 @@ export default function MQTTBrowser() {
           // --- Grouped rendering ---
           if (groupByRoom && topicTree) {
             return (
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden divide-y">
                 {topicTree.map(({ slug: roomSlug, topics: roomTopics }) => {
+                  // Topics without a room (< 4 segments) — render flat, no header
+                  if (!roomSlug) {
+                    return <div key="_noroom" className="divide-y">
+                      {roomTopics.map(([topic, { payload, timestamp }]) =>
+                        renderCollapsedRow(topic, payload, timestamp)
+                      )}
+                    </div>;
+                  }
                   const isCollapsed = collapsedRooms.has(roomSlug);
                   return (
                     <div key={roomSlug}>
                       <button onClick={() => setCollapsedRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
-                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 border-b text-xs font-medium sticky top-0 z-10">
+                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold sticky top-0 z-10">
                         <span className="flex items-center gap-1.5">
                           {isCollapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
                           <span className="font-mono">{roomSlug}</span>
                         </span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">{roomTopics.length}</span>
+                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{roomTopics.length}</span>
                       </button>
                       {!isCollapsed && (
                         <div className="divide-y">
