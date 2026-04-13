@@ -409,7 +409,8 @@ export default function MQTTBrowser() {
         {/* Homes */}
         {homes.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5">Filter</span>
               {homes.map(home => {
                 const slug = homeSlugForName(home.name);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
