@@ -628,39 +628,39 @@ export default function MQTTBrowser() {
             const isGrpExpanded = expandedGroups.has(topic);
             const isThisExpanded = expandedTopic === topic;
             const depth = opts?.depth || 0;
-            const indentPx = depth * 20;
+            // Text inset shows hierarchy; hover/flash bg spans full width
+            const insetPx = depth * 20 + (opts?.short ? 16 : 0);
 
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
-                <div className="flex items-center" style={indentPx ? { paddingLeft: indentPx } : undefined}>
-                  {/* Group expand toggle */}
-                  {isGroup && hideMembers ? (
-                    <button onClick={(e) => { e.stopPropagation(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
-                      className="shrink-0 p-1 text-muted-foreground hover:text-foreground">
+                <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
+                  className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
+                  style={{ paddingLeft: Math.max(insetPx, 12) }}>
+                  {/* Group expand chevron */}
+                  {isGroup && hideMembers && (
+                    <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
+                      className="shrink-0 -ml-1 p-0.5 text-muted-foreground hover:text-foreground cursor-pointer">
                       {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                    </button>
-                  ) : null}
-                  <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
-                    className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''} ${isGroup && hideMembers ? 'pl-0' : ''}`}>
-                    {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                    <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
-                      {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                     </span>
-                    {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">
-                      {memberCount > 0 ? `ᴳ${memberCount}` : 'ᴳ'}
-                    </span>}
-                    <span className="ml-auto flex items-center gap-2 shrink-0">
-                      <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                      {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
-                    </span>
-                  </button>
-                </div>
+                  )}
+                  {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
+                  <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
+                    {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
+                  </span>
+                  {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">
+                    {memberCount > 0 ? `ᴳ${memberCount}` : 'ᴳ'}
+                  </span>}
+                  <span className="ml-auto flex items-center gap-2 shrink-0">
+                    <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
+                  </span>
+                </button>
                 {/* Expanded detail panel — renders below the row, not replacing it */}
                 {isThisExpanded && renderDetailPanel(topic, payload, timestamp)}
                 {/* Inline group members */}
                 {isGroup && hideMembers && isGrpExpanded && (
-                  <div className="border-l-2 border-l-purple-300 dark:border-l-purple-800" style={{ marginLeft: indentPx + 16 }}>
+                  <div>
                     {(groupMembers[topic] || []).map(memberSlug => {
                       const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
                       if (!mt || !messages[mt]) return null;
@@ -690,7 +690,7 @@ export default function MQTTBrowser() {
                         <span className="text-[10px] text-muted-foreground tabular-nums">{roomTopics.length}</span>
                       </button>
                       {!isCollapsed && (
-                        <div className="divide-y pl-4">
+                        <div className="divide-y">
                           {roomTopics.map(([topic, { payload, timestamp }]) =>
                             renderCollapsedRow(topic, payload, timestamp, { short: true })
                           )}
