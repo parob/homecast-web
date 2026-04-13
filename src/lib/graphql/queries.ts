@@ -811,34 +811,15 @@ export const HC_AUTOMATIONS = gql`
   }
 `;
 
-// Execution History
+// Execution History — uses hcExecutionTraces which returns StoredEntityInfo[]
+// Each entity's dataJson contains the full ExecutionTrace JSON
 export const GET_EXECUTION_HISTORY = gql`
   query GetExecutionHistory($automationId: String!, $limit: Int) {
-    executionHistory(automationId: $automationId, limit: $limit) {
+    hcExecutionTraces(automationId: $automationId, limit: $limit) {
       id
-      automationId
-      automationName
-      status
-      startedAt
-      finishedAt
-      durationMs
-      triggerSummary
-    }
-  }
-`;
-
-export const GET_EXECUTION_TRACE = gql`
-  query GetExecutionTrace($traceId: String!) {
-    executionTrace(traceId: $traceId) {
-      id
-      automationId
-      automationName
-      status
-      startedAt
-      finishedAt
-      durationMs
-      triggerSummary
-      traceJson
+      entityId
+      dataJson
+      updatedAt
     }
   }
 `;

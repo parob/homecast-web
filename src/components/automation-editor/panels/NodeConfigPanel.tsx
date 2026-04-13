@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Copy, Play, Loader2 } from 'lucide-react';
+import { Trash2, Copy, Play, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { getAutomationEngine } from '@/automation';
@@ -120,6 +120,7 @@ interface NodeConfigPanelProps {
   allEdges?: Edge[];
   onUpdateData: (updates: Partial<FlowNodeData>) => void;
   onDelete: () => void;
+  onClose?: () => void;
   accessories?: HomeKitAccessory[];
   homes?: HomeKitHome[];
   scenes?: HomeKitScene[];
@@ -131,7 +132,7 @@ interface NodeConfigPanelProps {
   onSaveBeforeTest?: () => Promise<void>;
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, onSaveBeforeTest }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, onSaveBeforeTest }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -178,12 +179,17 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
 
   return (
     <>
-      <div className="w-full sm:w-80 border-l flex flex-col min-h-0 h-full shrink-0 bg-background" data-testid="config-panel">
+      <div className="w-full sm:w-auto flex flex-col min-h-0 h-full shrink-0 bg-background sm:rounded-xl sm:border sm:shadow-lg" data-testid="config-panel">
         {/* Header */}
         <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
           <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center shrink-0', styles.iconBg)} />
           <span className="text-sm font-medium flex-1 truncate">{data.label}</span>
           <NodeInfoPopover nodeType={data.nodeType} />
+          {onClose && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
 
         {/* Enabled toggle */}

@@ -439,6 +439,25 @@ function AutomationEditorInner({
     }
   }, [automationName, homeId, nodes, edges, saveHcAutomation, onSaved]);
 
+  // Save without closing the editor (for test-before-run)
+  const saveOnly = useCallback(async () => {
+    if (!automationName.trim() || !homeId) return;
+    setIsSaving(true);
+    try {
+      const automation = graphToAutomation(nodes, edges, automationName, homeId, existingIdRef.current);
+      await saveHcAutomation({
+        variables: { homeId, automationId: automation.id, data: JSON.stringify(automation) },
+      });
+      existingIdRef.current = automation.id;
+      setIsDirty(false);
+    } catch (e) {
+      console.error('[AutomationEditor] Save failed:', e);
+      toast.error('Failed to save automation');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [automationName, homeId, nodes, edges, saveHcAutomation]);
+
   // Keep ref in sync for keyboard shortcut
   handleSaveRef.current = handleSave;
 
@@ -606,22 +625,23 @@ function AutomationEditorInner({
           )}
         </div>
 
-        {/* Right: Config tray (full-width overlay on mobile, sidebar on desktop) */}
+        {/* Right: Config panel (floating card on desktop, full overlay on mobile) */}
         {configNode && (
-          <div className="absolute inset-0 z-10 sm:relative sm:inset-auto">
+          <div className="absolute inset-0 z-10 sm:absolute sm:inset-auto sm:right-3 sm:top-3 sm:bottom-3 sm:w-80">
           <NodeConfigPanel
             node={configNode}
             allNodes={nodes}
             allEdges={edges}
             onUpdateData={(updates) => updateNodeData(configNode.id, updates)}
             onDelete={() => deleteNode(configNode.id)}
+            onClose={() => { setConfigNodeId(null); setSelectedNodeId(null); }}
             accessories={accessories}
             homes={homes}
             scenes={scenes}
             serviceGroups={serviceGroups}
             availableAutomations={availableAutomations}
             automationId={existingIdRef.current ?? undefined}
-            onSaveBeforeTest={isDirty ? handleSave : undefined}
+            onSaveBeforeTest={isDirty ? saveOnly : undefined}
           />
           </div>
         )}
