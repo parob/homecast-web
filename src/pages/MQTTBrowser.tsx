@@ -63,7 +63,7 @@ export default function MQTTBrowser() {
   const filterTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const [groupByRoom, setGroupByRoom] = useState(true);
   const [hideMembers, setHideMembers] = useState(true);
-  const [collapsedRooms, setCollapsedRooms] = useState<Set<string>>(new Set());
+  const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
@@ -457,7 +457,7 @@ export default function MQTTBrowser() {
                     ? `${Object.keys(messages).length}`
                     : `${filteredTopics.length}/${Object.keys(messages).length}`}
                 </span>
-                <button onClick={() => { setGroupByRoom(v => !v); setCollapsedRooms(new Set()); }}
+                <button onClick={() => { setGroupByRoom(v => !v); setOpenRooms(new Set()); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
@@ -682,18 +682,18 @@ export default function MQTTBrowser() {
                       )}
                     </div>;
                   }
-                  const isCollapsed = collapsedRooms.has(roomSlug);
+                  const isOpen = openRooms.has(roomSlug);
                   return (
                     <div key={roomSlug}>
-                      <button onClick={() => setCollapsedRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
+                      <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
                         className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold sticky top-0 z-10">
                         <span className="flex items-center gap-1.5">
-                          {isCollapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                          {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
                           <span className="font-mono">{roomSlug}</span>
                         </span>
                         <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{roomTopics.length}</span>
                       </button>
-                      {!isCollapsed && (
+                      {isOpen && (
                         <div className="divide-y">
                           {roomTopics.map(([topic, { payload, timestamp }]) =>
                             renderCollapsedRow(topic, payload, timestamp, { short: true })
