@@ -11,7 +11,7 @@ import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
-import { initAutomationEngine, teardownAutomationEngine } from '../automation';
+import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine } from '../automation';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 
 // Protocol message types
@@ -175,6 +175,11 @@ export class ServerWebSocket {
   // Buffer for automation.* messages received before engine is initialized
   private automationEngineReady = false;
   private automationMessageBuffer: { type: string; payload: Record<string, unknown> }[] = [];
+
+  // Wake/visibility handler for recalculating time triggers after sleep
+  private automationWakeHandler: (() => void) | null = null;
+  private lastTickAt = Date.now();
+  private clockDriftInterval: ReturnType<typeof setInterval> | null = null;
   // Debounce timer for homes.updated events (homeManagerDidUpdateHomes can fire multiple times)
   private homesUpdatedDebounce: ReturnType<typeof setTimeout> | null = null;
 
@@ -654,6 +659,37 @@ export class ServerWebSocket {
 
     // Register APNs token for native push notifications (cloud mode only)
     this.registerAPNsToken();
+
+    // Recalculate time triggers on wake/visibility — setTimeout dies during sleep
+    this.automationWakeHandler = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        const engine = getAutomationEngine();
+        if (engine) {
+          console.log('[ServerWS] Recalculating time triggers (wake/visibility)');
+          engine.recalculateTimeTriggers();
+        }
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.automationWakeHandler);
+    }
+
+    // Detect clock drift (sleep/suspend) — if the last tick is way in the past, the system slept
+    this.lastTickAt = Date.now();
+    this.clockDriftInterval = setInterval(() => {
+      const now = Date.now();
+      const expectedDelta = 30000;
+      const actualDelta = now - this.lastTickAt;
+      this.lastTickAt = now;
+      // If we're more than 60s behind expected, the system slept — recalculate
+      if (actualDelta > expectedDelta + 60000) {
+        const engine = getAutomationEngine();
+        if (engine) {
+          console.log(`[ServerWS] Clock drift detected (${Math.round(actualDelta / 1000)}s) — recalculating time triggers`);
+          engine.recalculateTimeTriggers();
+        }
+      }
+    }, 30000);
   }
 
   private async registerAPNsToken(): Promise<void> {
@@ -706,6 +742,16 @@ export class ServerWebSocket {
     this.automationMessageBuffer = [];
     teardownAutomationEngine();
     clearAutomationHandlers();
+
+    // Tear down wake/drift handlers
+    if (this.automationWakeHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.automationWakeHandler);
+      this.automationWakeHandler = null;
+    }
+    if (this.clockDriftInterval) {
+      clearInterval(this.clockDriftInterval);
+      this.clockDriftInterval = null;
+    }
 
     HomeKit.stopObserving().catch(() => {});
   }

@@ -123,7 +123,9 @@ export class AutomationEngine {
       }
     }
 
-    console.log(`[AutomationEngine] Loaded ${automations.length} automations (${automations.filter(a => a.enabled).length} enabled)`);
+    const enabled = automations.filter(a => a.enabled);
+    const triggerCount = enabled.reduce((sum, a) => sum + (a.triggers?.length ?? 0), 0);
+    console.log(`[AutomationEngine] Loaded ${automations.length} automations (${enabled.length} enabled, ${triggerCount} triggers registered)`);
   }
 
   /**
@@ -219,6 +221,8 @@ export class AutomationEngine {
   private async onTriggerFired(automationId: string, triggerData: TriggerData): Promise<void> {
     const automation = this.automations.get(automationId);
     if (!automation || !automation.enabled) return;
+
+    console.log(`[AutomationEngine] Trigger fired: ${automation.name} (trigger=${triggerData.triggerType}, id=${triggerData.triggerId.slice(0, 8)})`);
 
     // Rate limiting
     if (!this.checkRateLimit(automationId)) {
