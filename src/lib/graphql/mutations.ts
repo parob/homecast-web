@@ -423,6 +423,31 @@ export const PUBLIC_ENTITY_SET_CHARACTERISTIC = gql`
   }
 `;
 
+// Atomic group control — one relay call toggles every member simultaneously.
+// Only valid for accessory_group shares where groupId matches the share entity.
+export const PUBLIC_ENTITY_SET_SERVICE_GROUP = gql`
+  mutation PublicEntitySetServiceGroup(
+    $shareHash: String!
+    $groupId: String!
+    $characteristicType: String!
+    $value: String!
+    $passcode: String
+  ) {
+    publicEntitySetServiceGroup(
+      shareHash: $shareHash
+      groupId: $groupId
+      characteristicType: $characteristicType
+      value: $value
+      passcode: $passcode
+    ) {
+      success
+      accessoryId
+      characteristicType
+      value
+    }
+  }
+`;
+
 // --- Stored Entity Mutations ---
 
 export const SYNC_ENTITIES = gql`
