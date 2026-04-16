@@ -249,6 +249,35 @@ export const GET_MQTT_BRIDGE_STATUS = gql`
   }
 `;
 
+export const GET_CLOUD_RELAY_HEALTH = gql`
+  query GetCloudRelayHealth {
+    cloudRelayHealth {
+      enrollmentId
+      customerEmail
+      homeId
+      homeName
+      managedUserEmail
+      podName
+      connected
+      lastSeen
+      recentOfflineAlerts
+    }
+  }
+`;
+
+export const RESOLVE_HOME_OWNER = gql`
+  query ResolveHomeOwner($homeId: String!) {
+    resolveHomeOwner(homeId: $homeId) {
+      homeId
+      ringOwnerPod
+      relayPod
+      matches
+      webClientCount
+      webClientLocalCount
+    }
+  }
+`;
+
 export const GET_INFRASTRUCTURE_TIME_SERIES = gql`
   query GetInfrastructureTimeSeries(
     $metric: String!

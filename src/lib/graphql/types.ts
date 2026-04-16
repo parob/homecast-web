@@ -1174,6 +1174,35 @@ export interface PeerRegistryEntry {
   ageSeconds: number | null;
 }
 
+export interface CloudRelayStatus {
+  enrollmentId: string;
+  customerEmail: string;
+  homeId: string | null;
+  homeName: string | null;
+  managedUserEmail: string | null;
+  podName: string | null;
+  connected: boolean;
+  lastSeen: string | null;
+  recentOfflineAlerts: number;
+}
+
+export interface CloudRelayHealthResponse {
+  cloudRelayHealth: CloudRelayStatus[];
+}
+
+export interface HomeOwnerInspection {
+  homeId: string;
+  ringOwnerPod: string | null;
+  relayPod: string | null;
+  matches: boolean;
+  webClientCount: number;
+  webClientLocalCount: number;
+}
+
+export interface ResolveHomeOwnerResponse {
+  resolveHomeOwner: HomeOwnerInspection;
+}
+
 export interface AdminInfrastructureStatus {
   deploymentMode: string;
   consistentHashEnabled: boolean;
