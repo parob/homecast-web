@@ -4730,27 +4730,10 @@ const Dashboard = () => {
       const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
       const updated = {
         ...currentSettings,
-        onboardingCompleted: true,
         onboarding: {
+          completed: currentSettings.onboarding?.completed ?? true,
           ...currentSettings.onboarding,
-          completed: true,
           setupPath: 'mac-relay' as const,
-        },
-      };
-      await updateSettingsMutation({ variables: { data: JSON.stringify(updated) } });
-    } catch { /* ignore save errors */ }
-  }, [settingsData, updateSettingsMutation]);
-
-  const handleResetSetup = useCallback(async () => {
-    try {
-      const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
-      const updated = {
-        ...currentSettings,
-        onboardingCompleted: true,
-        onboarding: {
-          ...currentSettings.onboarding,
-          completed: true,
-          setupPath: 'skipped' as const,
         },
       };
       await updateSettingsMutation({ variables: { data: JSON.stringify(updated) } });
@@ -6341,7 +6324,6 @@ const Dashboard = () => {
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   onSetupMac={handleSetupMac}
-                  onResetSetup={handleResetSetup}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
@@ -6355,7 +6337,6 @@ const Dashboard = () => {
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   onSetupMac={handleSetupMac}
-                  onResetSetup={handleResetSetup}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />

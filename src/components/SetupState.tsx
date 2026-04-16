@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Monitor, Cloud, Loader2, Copy, Check, ChevronDown, ChevronUp, AlertCircle, Users, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Monitor, Cloud, Loader2, Copy, Check, ChevronDown, ChevronUp, AlertCircle, Users, ArrowRight } from 'lucide-react';
 import { config } from '@/lib/config';
 import { getPricing } from '@/lib/pricing';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
@@ -19,7 +19,6 @@ interface SetupStateProps {
   isInMobileApp?: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
-  onResetSetup?: () => void;
   accountType?: string;
   pendingEnrollmentId?: string;
   cloudSignupsAvailable?: boolean;
@@ -57,30 +56,20 @@ export function CollapsibleHelp({ title, children }: { title: string; children: 
   );
 }
 
-function WaitingForMac({ isDarkBackground, onSetupCloud, onBack, accountType, cloudSignupsAvailable = true }: {
+function WaitingForMac({ isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
-  onBack?: () => void;
   accountType?: string;
   cloudSignupsAvailable?: boolean;
 }) {
-  const openAppStore = useCallback(() => {
-    const w = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; url?: string }) => void } } } };
-    if (w.webkit?.messageHandlers?.homecast) {
-      w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: config.appStoreUrl });
-    } else {
-      window.open(config.appStoreUrl, '_blank');
-    }
-  }, []);
-
   return (
     <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
       <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
-        <Monitor className={`h-12 w-12 mb-4 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-        <div className="flex items-center gap-2 mb-2">
-          <h3 className="text-lg font-semibold">Waiting for your Mac</h3>
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <div className="relative mb-4">
+          <Monitor className={`h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
+          <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-primary" />
         </div>
+        <h3 className="mb-2 text-lg font-semibold">Waiting for your Mac...</h3>
         <p className={`text-center text-sm mb-6 max-w-sm ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
           Your dashboard will update automatically when your Mac connects.
         </p>
@@ -99,7 +88,7 @@ function WaitingForMac({ isDarkBackground, onSetupCloud, onBack, accountType, cl
               variant="outline"
               size="sm"
               className={isDarkBackground ? 'bg-white/10 border-white/30 text-white hover:bg-white/20' : ''}
-              onClick={openAppStore}
+              onClick={() => window.open(config.appStoreUrl, '_blank')}
             >
               <svg viewBox="0 0 384 512" className="h-3.5 w-3.5 mr-2" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" /></svg>
               Download on the App Store
@@ -127,15 +116,6 @@ function WaitingForMac({ isDarkBackground, onSetupCloud, onBack, accountType, cl
               )}
             </p>
           </div>
-        )}
-
-        {onBack && (
-          <button
-            onClick={onBack}
-            className={`mt-6 inline-flex items-center gap-1 text-xs ${isDarkBackground ? 'text-white/60 hover:text-white/80' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
-          >
-            <ArrowLeft className="h-3 w-3" /> Back to setup options
-          </button>
         )}
       </CardContent>
     </Card>
@@ -467,7 +447,6 @@ export function SetupState({
   isInMobileApp = false,
   onSetupCloud,
   onSetupMac,
-  onResetSetup,
   accountType,
   pendingEnrollmentId,
   cloudSignupsAvailable = true,
@@ -486,7 +465,7 @@ export function SetupState({
   // Show context-aware empty state based on setup path
   switch (setupPath) {
     case 'mac-relay':
-      return <WaitingForMac isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onBack={onResetSetup} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
+      return <WaitingForMac isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
     case 'cloud-relay':
       return <EnrollmentTracker isDarkBackground={isDarkBackground} pendingEnrollmentId={pendingEnrollmentId} />;
     case 'shared-home':
