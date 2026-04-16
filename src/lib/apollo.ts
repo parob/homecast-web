@@ -5,8 +5,24 @@ import { config, isCommunity } from "./config";
 import { browserLogger } from "./browser-logger";
 import { isRelayCapable } from "../native/homekit-bridge";
 
+// Time-out individual GraphQL requests so a stuck backend surfaces as a visible
+// error instead of hanging the page until the LB cuts the connection at 30s.
+const GRAPHQL_REQUEST_TIMEOUT_MS = 15_000;
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GRAPHQL_REQUEST_TIMEOUT_MS);
+  const upstreamSignal = init?.signal;
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) controller.abort();
+    else upstreamSignal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+};
+
 const httpLink = createHttpLink({
   uri: config.graphqlUrl,
+  fetch: fetchWithTimeout,
 });
 
 // Auth link - adds authorization header
