@@ -1017,34 +1017,23 @@ export interface AdminLogsResult {
 
 export interface AdminServerInstance {
   instanceId: string;
-  slotName: string | null;
   lastHeartbeat: string | null;
 }
 
-// Per-pod metrics heartbeat slot. The `topic_slots` DB table used to be the
-// Pub/Sub cross-pod routing slot pool. Routing moved to Envoy ring-hash +
-// DirectRouter, but the table is retained as a per-pod metrics snapshot —
-// each pod claims one row and writes its metrics_json on every heartbeat.
-export interface MetricsSlot {
-  slotName: string;
-  claimed: boolean;
-  instanceId: string | null;
-  claimedAt: string | null;
-  lastHeartbeat: string | null;
+// Live snapshot of a single pod, as collected by the admin /internal/metrics
+// fanout. `reachable=false` means the pod was discovered by the K8s
+// Endpoints API but didn't respond inside the fanout timeout.
+export interface PodSnapshot {
+  podName: string;
+  reachable: boolean;
+  timestamp: string | null;
   webConnections: number;
   deviceConnections: number;
-  messagesSentLastHour: number;
-  messagesReceivedLastHour: number;
 }
-
-// @deprecated — use MetricsSlot. Alias kept for transitional call sites.
-export type PubSubTopicSlot = MetricsSlot;
 
 export interface AdminSystemDiagnostics {
   serverInstances: AdminServerInstance[];
-  topicSlots: MetricsSlot[];
-  pubsubEnabled: boolean;
-  pubsubActiveSlots: number;
+  podSnapshots: PodSnapshot[];
   totalWebsocketConnections: number;
   webConnections: number;
   deviceConnections: number;

@@ -163,22 +163,15 @@ export const GET_DIAGNOSTICS = gql`
     diagnostics {
       serverInstances {
         instanceId
-        slotName
         lastHeartbeat
       }
-      topicSlots {
-        slotName
-        claimed
-        instanceId
-        claimedAt
-        lastHeartbeat
+      podSnapshots {
+        podName
+        reachable
+        timestamp
         webConnections
         deviceConnections
-        messagesSentLastHour
-        messagesReceivedLastHour
       }
-      pubsubEnabled
-      pubsubActiveSlots
       totalWebsocketConnections
       webConnections
       deviceConnections
