@@ -6292,6 +6292,7 @@ const Dashboard = () => {
                   isDarkBackground={isDarkBackground}
                   userEmail={user?.email}
                   isInMacApp={isInMacApp}
+                  isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
@@ -6303,6 +6304,7 @@ const Dashboard = () => {
                   isDarkBackground={isDarkBackground}
                   userEmail={user?.email}
                   isInMacApp={isInMacApp}
+                  isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
