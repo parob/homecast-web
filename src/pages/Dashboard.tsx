@@ -8040,7 +8040,7 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
-              <main className={cn("flex-1 min-h-0 overflow-auto", isMobile ? "p-4" : "p-6")}>
+              <main className={cn("flex-1 min-h-0 overflow-auto", isMobile ? "p-1" : "p-6")}>
                 {adminSubPath === '/' && <AdminDashboard />}
                 {adminSubPath.startsWith('/analytics') && <AdminAnalytics />}
                 {adminSubPath === '/users' && <AdminUsers />}

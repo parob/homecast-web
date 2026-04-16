@@ -85,8 +85,6 @@ export function initLocalServer(): void {
 
   if (!w.isHomeKitRelayCapable) return;
 
-  console.log('[LocalServer] Initializing request handler');
-
   // Load auth-enabled flag from IndexedDB
   refreshAuthEnabled();
 
@@ -98,7 +96,6 @@ export function initLocalServer(): void {
     connectedClients.delete(clientId);
     authenticatedClients.delete(clientId);
     setCommunityClientCount(connectedClients.size);
-    console.log(`[LocalServer] Client disconnected: ${clientId} (${connectedClients.size} remaining)`);
   };
 
   // GraphQL handler — called by Swift when an HTTP POST / request arrives

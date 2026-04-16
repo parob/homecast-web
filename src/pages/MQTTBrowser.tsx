@@ -1,42 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@apollo/client/react';
-import { gql } from '@apollo/client/core';
-import { Radio, Send, Search, Wifi, WifiOff, Code, SlidersHorizontal, Home, User, ChevronDown, ChevronRight, Clock, Activity, Copy, Check, Plus, ExternalLink, Key, X } from 'lucide-react';
+import { useQuery } from '@apollo/client/react';
+import { Radio, Send, Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRight, Clock, Key } from 'lucide-react';
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-
-const CREATE_MQTT_TOKEN = gql`
-  mutation CreateMqttToken { createMqttToken }
-`;
+import { isMqttDomain, getApiBase, getAuthHeaders } from './mqtt-browser/util';
+import { formatUptime, PropertyEditor, TopicPath, FmtVal } from './mqtt-browser/helpers';
+import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 
 interface TopicMessage { payload: string; timestamp: number; updates: number; }
-
-const RANGES: Record<string, { min: number; max: number }> = {
-  brightness: { min: 0, max: 100 }, color_temp: { min: 50, max: 500 },
-  hue: { min: 0, max: 360 }, saturation: { min: 0, max: 100 },
-  speed: { min: 0, max: 100 }, target: { min: 0, max: 100 },
-  volume: { min: 0, max: 100 }, battery: { min: 0, max: 100 },
-};
-const BOOLS = new Set(['on', 'active', 'mute', 'motion', 'contact', 'locked']);
-
-function deSlug(slug: string): string {
-  return slug
-    .replace(/-[a-f0-9]{4}$/, '')
-    .replace(/-(\d)/g, ' $1')
-    .replace(/-/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
-}
+interface CookieUser { id: string; email: string; name: string; accountType?: string }
+interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean }
 
 export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [createMqttToken] = useMutation(CREATE_MQTT_TOKEN);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +27,6 @@ export default function MQTTBrowser() {
   const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [showConnInfo, setShowConnInfo] = useState(false);
   const [connStats, setConnStats] = useState({ connectedAt: 0, totalMessages: 0, clientId: '' });
   const [msgRate, setMsgRate] = useState(0);
   const msgTimestamps = useRef<number[]>([]);
@@ -86,21 +61,20 @@ export default function MQTTBrowser() {
 
   useEffect(() => () => clearTimeout(filterTimerRef.current), []);
 
-  const isMqttDomain = location.hostname.includes('mqtt.');
-  const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
+  const onMqttDomain = isMqttDomain();
+  const api = getApiBase();
 
   // On main domain: use Apollo. On mqtt.* domain: fetch via cookie.
-  const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first', skip: isMqttDomain });
-  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first', skip: isMqttDomain });
-  const [cookieUser, setCookieUser] = useState<any>(null);
-  const [cookieHomes, setCookieHomes] = useState<any[]>([]);
+  const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first', skip: onMqttDomain });
+  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first', skip: onMqttDomain });
+  const [cookieUser, setCookieUser] = useState<CookieUser | null>(null);
+  const [cookieHomes, setCookieHomes] = useState<CookieHome[]>([]);
 
   // Fetch user + homes via cookie on mqtt.* domains
   useEffect(() => {
-    if (!isMqttDomain) return;
-    const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
-    if (!jwt) return;
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` };
+    if (!onMqttDomain) return;
+    const headers = getAuthHeaders();
+    if (!headers) return;
     fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled } }' }) })
       .then(r => r.json())
       .then(d => {
@@ -108,13 +82,13 @@ export default function MQTTBrowser() {
         if (d?.data?.cachedHomes) setCookieHomes(d.data.cachedHomes);
       })
       .catch(() => {});
-  }, [isMqttDomain, api]);
+  }, [onMqttDomain, api]);
 
   const user = meData?.me ?? cookieUser;
 
   const homes = useMemo(() => {
-    const raw: Array<{ id: string; name: string; role?: string; mqttEnabled?: boolean }> = (homesData?.cachedHomes ?? cookieHomes) || [];
-    const byName = new Map<string, typeof raw[0]>();
+    const raw: CookieHome[] = (homesData?.cachedHomes ?? cookieHomes) || [];
+    const byName = new Map<string, CookieHome>();
     for (const h of raw) {
       const existing = byName.get(h.name);
       if (!existing || h.role === 'owner') byName.set(h.name, h);
@@ -159,27 +133,12 @@ export default function MQTTBrowser() {
     setConnecting(true); setError(null); userDisconnected.current = false;
     try {
       let token: string | null = null;
-      const isMqttDomain = location.hostname.includes('mqtt.');
-      const api = location.hostname.includes('staging') ? 'https://staging.api.homecast.cloud' : 'https://api.homecast.cloud';
-
-      // On mqtt.* domains: use cookie. On main domain: use localStorage JWT.
-      if (isMqttDomain) {
-        const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
-        if (jwt) {
-          const r = await fetch(api + '/', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
-          const result = await r.json();
-          token = result?.data?.createMqttToken;
-          if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
-        }
-      } else {
-        // Same-origin: use Apollo with localStorage JWT
-        const jwt = localStorage.getItem('homecast-token');
-        if (jwt) {
-          const r = await fetch(api + '/', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` }, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
-          const result = await r.json();
-          token = result?.data?.createMqttToken;
-          if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
-        }
+      const headers = getAuthHeaders();
+      if (headers) {
+        const r = await fetch(getApiBase() + '/', { method: 'POST', headers, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
+        const result = await r.json();
+        token = result?.data?.createMqttToken;
+        if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
       }
       if (!token) {
         const loginUrl = location.hostname.includes('staging')
@@ -225,8 +184,11 @@ export default function MQTTBrowser() {
       client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
       client.on('close', () => { setConnected(false); setConnecting(false); });
       clientRef.current = client;
-    } catch (e: any) { setError(e.message || 'Connection failed'); setConnecting(false); }
-  }, [createMqttToken]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Connection failed');
+      setConnecting(false);
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     userDisconnected.current = true;
@@ -244,7 +206,7 @@ export default function MQTTBrowser() {
     addToHistory(t, payload);
   }, [connected, addToHistory]);
 
-  const publishProp = useCallback((topic: string, key: string, value: any) => {
+  const publishProp = useCallback((topic: string, key: string, value: unknown) => {
     if (!clientRef.current || !connected) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     const p = JSON.stringify({ [key]: value });
@@ -723,8 +685,6 @@ export default function MQTTBrowser() {
       <ConnectDialog
         open={connectDialogOpen}
         onOpenChange={setConnectDialogOpen}
-        api={api}
-        isMqttDomain={isMqttDomain}
         homes={homes}
       />
       </>
@@ -733,333 +693,3 @@ export default function MQTTBrowser() {
   );
 }
 
-function ConnectDialog({ open, onOpenChange, api, isMqttDomain, homes }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  api: string;
-  isMqttDomain: boolean;
-  homes: Array<{ id: string; name: string }>;
-}) {
-  const [tokens, setTokens] = useState<Array<{ id: string; name: string; tokenPrefix: string; homePermissions: string; lastUsedAt?: string; expiresAt?: string }>>([]);
-  const [newTokenRaw, setNewTokenRaw] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [tokenName, setTokenName] = useState('');
-  const [tokenPerms, setTokenPerms] = useState<Record<string, 'view' | 'control'>>({});
-  const [tokenExpiry, setTokenExpiry] = useState<string>('never');
-  const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const getAuthHeaders = useCallback((): Record<string, string> | null => {
-    if (isMqttDomain) {
-      const jwt = document.cookie.split('; ').find(c => c.startsWith('hc_token='))?.split('=')[1];
-      return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${decodeURIComponent(jwt)}` } : null;
-    }
-    const jwt = localStorage.getItem('homecast-token');
-    return jwt ? { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` } : null;
-  }, [isMqttDomain]);
-
-  const gql = useCallback(async (query: string, variables?: any) => {
-    const headers = getAuthHeaders();
-    if (!headers) return null;
-    const r = await fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query, variables }) });
-    return (await r.json())?.data;
-  }, [api, getAuthHeaders]);
-
-  const fetchTokens = useCallback(async () => {
-    setLoading(true);
-    try {
-      const d = await gql('{ accessTokens { id name tokenPrefix homePermissions lastUsedAt expiresAt } }');
-      setTokens(d?.accessTokens ?? []);
-    } catch {} finally { setLoading(false); }
-  }, [gql]);
-
-  useEffect(() => { if (open) { fetchTokens(); setNewTokenRaw(null); } }, [open, fetchTokens]);
-
-  const createToken = async () => {
-    if (!tokenName.trim() || Object.keys(tokenPerms).length === 0) return;
-    setCreating(true);
-    let expiresAt: string | undefined;
-    if (tokenExpiry !== 'never') {
-      const d = new Date();
-      if (tokenExpiry === '30d') d.setDate(d.getDate() + 30);
-      if (tokenExpiry === '90d') d.setDate(d.getDate() + 90);
-      if (tokenExpiry === '1y') d.setFullYear(d.getFullYear() + 1);
-      expiresAt = d.toISOString();
-    }
-    try {
-      const d = await gql(
-        'mutation($name: String!, $homePermissions: String!, $expiresAt: String) { createAccessToken(name: $name, homePermissions: $homePermissions, expiresAt: $expiresAt) { success rawToken error } }',
-        { name: tokenName.trim(), homePermissions: JSON.stringify(tokenPerms), expiresAt }
-      );
-      if (d?.createAccessToken?.rawToken) {
-        setNewTokenRaw(d.createAccessToken.rawToken);
-        await fetchTokens();
-      }
-    } catch {} finally { setCreating(false); }
-  };
-
-  const revokeToken = async (id: string) => {
-    await gql('mutation($tokenId: String!) { revokeAccessToken(tokenId: $tokenId) { success } }', { tokenId: id });
-    fetchTokens();
-  };
-
-  const copyText = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  const host = 'mqtt.homecast.cloud';
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Connection Details</DialogTitle>
-          <DialogDescription className="sr-only">MQTT connection details and access tokens</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-5">
-          {/* Connection Details */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">MQTT Broker</p>
-            <div className="rounded-md border bg-muted/30 divide-y text-[12px]">
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <span className="text-muted-foreground">Host</span>
-                <div className="flex items-center gap-1.5">
-                  <code className="font-mono">{host}</code>
-                  <button onClick={() => copyText(host, 'host')} className="p-0.5 text-muted-foreground hover:text-foreground">
-                    {copied === 'host' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <span className="text-muted-foreground">Port</span>
-                <code className="font-mono">8883 <span className="text-muted-foreground">(TLS)</span> or 1883</code>
-              </div>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <span className="text-muted-foreground">Username</span>
-                <span className="text-muted-foreground italic">any value or leave blank</span>
-              </div>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <span className="text-muted-foreground">Password</span>
-                <span>API access token</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Access Tokens */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Access Tokens</p>
-              <button onClick={() => { setCreateOpen(true); setTokenName(''); setTokenPerms({}); setTokenExpiry('never'); }} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border hover:bg-muted transition-colors">
-                <Plus className="h-3 w-3" /> Create Token
-              </button>
-            </div>
-
-            {/* Create Token Dialog */}
-            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-              <DialogContent className="sm:max-w-sm" style={{ zIndex: 10060 }}>
-                <DialogHeader>
-                  <DialogTitle>{newTokenRaw ? 'Token Created' : 'Create Access Token'}</DialogTitle>
-                  <DialogDescription className="sr-only">{newTokenRaw ? 'Save your token' : 'Create a new access token'}</DialogDescription>
-                </DialogHeader>
-                {newTokenRaw ? (
-                  <div className="space-y-3">
-                    <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1.5">
-                      <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Save this token — it won't be shown again</p>
-                      <div className="flex items-center gap-1.5">
-                        <code className="flex-1 text-[11px] font-mono break-all select-all">{newTokenRaw}</code>
-                        <button onClick={() => copyText(newTokenRaw, 'newtoken')} className="p-1 shrink-0">
-                          {copied === 'newtoken' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-                    <button onClick={() => { setCreateOpen(false); setNewTokenRaw(null); }} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90">Done</button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Name</label>
-                      <input type="text" value={tokenName} onChange={e => setTokenName(e.target.value)} placeholder="e.g., Home Assistant, Node-RED" autoFocus className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5 outline-none focus:border-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Home permissions</label>
-                      <div className="rounded-md border divide-y">
-                        {homes.map(home => (
-                          <div key={home.id} className="flex items-center justify-between px-2.5 py-1.5">
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input type="checkbox" checked={home.id in tokenPerms} onChange={e => {
-                                if (e.target.checked) setTokenPerms(p => ({ ...p, [home.id]: 'control' }));
-                                else setTokenPerms(p => { const n = { ...p }; delete n[home.id]; return n; });
-                              }} className="rounded" />
-                              {home.name}
-                            </label>
-                            {home.id in tokenPerms && (
-                              <select value={tokenPerms[home.id]} onChange={e => setTokenPerms(p => ({ ...p, [home.id]: e.target.value as 'view' | 'control' }))} className="text-xs bg-background border rounded px-1.5 py-0.5">
-                                <option value="control">Control</option>
-                                <option value="view">View</option>
-                              </select>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Expiration</label>
-                      <select value={tokenExpiry} onChange={e => setTokenExpiry(e.target.value)} className="w-full text-sm bg-background border rounded-md px-2.5 py-1.5">
-                        <option value="never">Never</option>
-                        <option value="30d">30 days</option>
-                        <option value="90d">90 days</option>
-                        <option value="1y">1 year</option>
-                      </select>
-                    </div>
-                    <button onClick={createToken} disabled={creating || !tokenName.trim() || Object.keys(tokenPerms).length === 0} className="w-full text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                      {creating ? 'Creating...' : 'Create Token'}
-                    </button>
-                  </div>
-                )}
-              </DialogContent>
-            </Dialog>
-
-            {/* Token List */}
-            {loading ? (
-              <p className="text-xs text-muted-foreground text-center py-2">Loading...</p>
-            ) : tokens.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-2">No access tokens yet.</p>
-            ) : (
-              <div className="rounded-md border divide-y">
-                {tokens.map(token => {
-                  let permStr = '';
-                  try {
-                    const perms = JSON.parse(token.homePermissions) as Record<string, string>;
-                    permStr = Object.entries(perms).map(([hid, role]) => {
-                      const h = homes.find(x => x.id.toLowerCase() === hid.toLowerCase());
-                      return `${h?.name || hid.slice(0, 8)} (${role})`;
-                    }).join(', ');
-                  } catch {}
-                  return (
-                    <div key={token.id} className="px-3 py-2 text-[12px]">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{token.name}</span>
-                          <code className="text-[10px] font-mono text-muted-foreground">{token.tokenPrefix}</code>
-                        </div>
-                        <button onClick={() => revokeToken(token.id)} className="text-[10px] text-destructive hover:underline">Revoke</button>
-                      </div>
-                      {permStr && <p className="text-[10px] text-muted-foreground mt-0.5">{permStr}</p>}
-                      <p className="text-[10px] text-muted-foreground">
-                        {token.expiresAt ? `Expires ${new Date(token.expiresAt).toLocaleDateString()}` : 'Never expires'}
-                        {token.lastUsedAt && ` · Last used ${new Date(token.lastUsedAt).toLocaleDateString()}`}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function formatUptime(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
-
-function PropertyEditor({ payload, onPublish }: { payload: string; onPublish: (k: string, v: any) => void }) {
-  let props: Record<string, any> = {};
-  try { props = JSON.parse(payload); } catch { return <p className="text-xs text-muted-foreground">Cannot parse</p>; }
-  return <div className="space-y-1">{Object.entries(props).map(([k, v]) => <PropRow key={k} name={k} value={v} onPublish={onPublish} />)}</div>;
-}
-
-function PropRow({ name, value, onPublish }: { name: string; value: any; onPublish: (k: string, v: any) => void }) {
-  const [localVal, setLocalVal] = useState(value);
-  useEffect(() => { setLocalVal(value); }, [value]);
-
-  const isBool = BOOLS.has(name) || typeof value === 'boolean';
-  const isNum = typeof value === 'number' && !isBool;
-  const range = RANGES[name];
-
-  if (isBool) {
-    const on = localVal === true || localVal === 1;
-    return (
-      <div className="flex items-center justify-between py-0.5">
-        <span className="text-xs text-muted-foreground">{name}</span>
-        <button onClick={() => { const nv = !on; setLocalVal(nv); onPublish(name, nv); }}
-          className={`relative w-9 h-[18px] rounded-full transition-colors ${on ? 'bg-green-500' : 'bg-muted-foreground/30'}`}>
-          <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform ${on ? 'left-[19px]' : 'left-[2px]'}`} />
-        </button>
-      </div>
-    );
-  }
-
-  if (isNum && range) {
-    return (
-      <div className="flex items-center gap-2 py-0.5">
-        <span className="text-xs text-muted-foreground w-20 shrink-0">{name}</span>
-        <input type="range" min={range.min} max={range.max} value={localVal}
-          onChange={(e) => setLocalVal(Number(e.target.value))}
-          onMouseUp={() => onPublish(name, localVal)}
-          onTouchEnd={() => onPublish(name, localVal)}
-          className="flex-1 h-1 accent-primary cursor-pointer" />
-        <input type="number" value={localVal} min={range.min} max={range.max}
-          onChange={(e) => setLocalVal(Number(e.target.value))}
-          onBlur={() => onPublish(name, localVal)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onPublish(name, localVal); }}
-          className="w-12 text-[11px] font-mono text-right bg-background border rounded px-1 py-0.5 outline-none focus:border-primary" />
-      </div>
-    );
-  }
-
-  if (isNum) {
-    return (
-      <div className="flex items-center justify-between py-0.5">
-        <span className="text-xs text-muted-foreground">{name}</span>
-        <input type="number" value={localVal} onChange={(e) => setLocalVal(Number(e.target.value))}
-          onBlur={() => onPublish(name, localVal)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onPublish(name, localVal); }}
-          className="w-16 text-[11px] font-mono text-right bg-background border rounded px-1 py-0.5 outline-none focus:border-primary" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-between py-0.5">
-      <span className="text-xs text-muted-foreground">{name}</span>
-      <input type="text" value={String(localVal)} onChange={(e) => setLocalVal(e.target.value)}
-        onBlur={() => onPublish(name, localVal)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onPublish(name, localVal); }}
-        className="w-28 text-[11px] font-mono bg-background border rounded px-1 py-0.5 outline-none focus:border-primary" />
-    </div>
-  );
-}
-
-function TopicPath({ topic, short }: { topic: string; short?: boolean }) {
-  const p = topic.split('/');
-  if (p[0] === 'homecast' && p.length >= 4) {
-    if (short) return <span className="text-foreground">{p.slice(3).join('/')}</span>;
-    return <><span className="text-blue-500">{p[1]}</span>/<span className="text-purple-400">{p[2]}</span>/<span className="text-foreground">{p.slice(3).join('/')}</span></>;
-  }
-  return <>{topic}</>;
-}
-
-function FmtVal({ payload }: { payload: string }) {
-  try {
-    const obj = JSON.parse(payload);
-    return <>{Object.entries(obj).map(([k, v], i) => (
-      <span key={k}>
-        {i > 0 && <span className="text-muted-foreground"> · </span>}
-        <span className="text-muted-foreground">{k}: </span>
-        {v === true ? <span className="text-green-500">on</span> : v === false ? <span className="text-red-400">off</span> : typeof v === 'number' ? <span className="text-amber-400">{v}</span> : <span>{String(v)}</span>}
-      </span>
-    ))}</>;
-  } catch { return <>{payload}</>; }
-}
