@@ -39,8 +39,6 @@ export const GET_USER_DETAIL = gql`
       isActive
       isAdmin
       accountType
-      forcePubsubRouting
-      forcePubsubHomes
       emailVerified
       stagingAccess
       totalAccessoryCount
@@ -228,7 +226,6 @@ export const GET_INFRASTRUCTURE_STATUS = gql`
       routingMetrics {
         broadcastsTotal
         broadcastsLocalOnly
-        pubsubMessagesSent
         relayRedirectsSent
         webClientRedirectsSent
         localityRate
@@ -405,17 +402,6 @@ export const ADMIN_SET_PASSWORD = gql`
   }
 `;
 
-export const SET_FORCE_PUBSUB = gql`
-  mutation SetForcePubsub($userId: String!, $forcePubsub: Boolean!) {
-    setForcePubsub(userId: $userId, forcePubsub: $forcePubsub)
-  }
-`;
-
-export const SET_FORCE_PUBSUB_HOME = gql`
-  mutation SetForcePubsubHome($userId: String!, $homeId: String!, $forcePubsub: Boolean!) {
-    setForcePubsubHome(userId: $userId, homeId: $homeId, forcePubsub: $forcePubsub)
-  }
-`;
 
 export const FORCE_DISCONNECT = gql`
   mutation ForceDisconnect($deviceId: String!) {

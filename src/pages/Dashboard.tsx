@@ -1021,7 +1021,6 @@ const Dashboard = () => {
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
   const AdminInfrastructurePodDetail = _cloud?.AdminInfrastructurePodDetail ?? null;
-  const AdminInfrastructurePubSub = _cloud?.AdminInfrastructurePubSub ?? null;
   const AdminInfrastructureMqtt = _cloud?.AdminInfrastructureMqtt ?? null;
   const AdminInfrastructureDatabase = _cloud?.AdminInfrastructureDatabase ?? null;
   const AdminDebug = _cloud?.AdminDebug ?? null;
@@ -8033,7 +8032,6 @@ const Dashboard = () => {
                 {adminSubPath.startsWith('/infrastructure/pods/') && AdminInfrastructurePodDetail && (
                   <AdminInfrastructurePodDetail podName={adminSubPath.replace('/infrastructure/pods/', '')} />
                 )}
-                {adminSubPath === '/infrastructure/pubsub' && AdminInfrastructurePubSub && <AdminInfrastructurePubSub />}
                 {adminSubPath === '/infrastructure/mqtt' && AdminInfrastructureMqtt && <AdminInfrastructureMqtt />}
                 {adminSubPath === '/infrastructure/database' && AdminInfrastructureDatabase && <AdminInfrastructureDatabase />}
                 {adminSubPath === '/logs' && <AdminLogs />}

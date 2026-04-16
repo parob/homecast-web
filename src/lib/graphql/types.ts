@@ -972,8 +972,6 @@ export interface AdminUserDetail {
   sessions: AdminSessionSummary[];
   homes: AdminHomeInfo[];
   settingsJson: string | null;
-  forcePubsubRouting: boolean;
-  forcePubsubHomes: string[];  // List of home IDs with forced Pub/Sub
   emailVerified: boolean;
   stagingAccess: boolean;
   totalAccessoryCount: number;
@@ -1023,7 +1021,11 @@ export interface AdminServerInstance {
   lastHeartbeat: string | null;
 }
 
-export interface PubSubTopicSlot {
+// Per-pod metrics heartbeat slot. The `topic_slots` DB table used to be the
+// Pub/Sub cross-pod routing slot pool. Routing moved to Envoy ring-hash +
+// DirectRouter, but the table is retained as a per-pod metrics snapshot —
+// each pod claims one row and writes its metrics_json on every heartbeat.
+export interface MetricsSlot {
   slotName: string;
   claimed: boolean;
   instanceId: string | null;
@@ -1035,9 +1037,12 @@ export interface PubSubTopicSlot {
   messagesReceivedLastHour: number;
 }
 
+// @deprecated — use MetricsSlot. Alias kept for transitional call sites.
+export type PubSubTopicSlot = MetricsSlot;
+
 export interface AdminSystemDiagnostics {
   serverInstances: AdminServerInstance[];
-  topicSlots: PubSubTopicSlot[];
+  topicSlots: MetricsSlot[];
   pubsubEnabled: boolean;
   pubsubActiveSlots: number;
   totalWebsocketConnections: number;
@@ -1166,7 +1171,6 @@ export interface AdminPodMetric {
 export interface AdminRoutingMetrics {
   broadcastsTotal: number;
   broadcastsLocalOnly: number;
-  pubsubMessagesSent: number;
   relayRedirectsSent: number;
   webClientRedirectsSent: number;
   localityRate: number;
