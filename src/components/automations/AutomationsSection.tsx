@@ -133,56 +133,55 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
 
       <AnimatedCollapse open={expanded && !hidden}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
-          {relayNeedsUpdate ? (
-            <p className={`text-xs ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
-              Requires a relay update to manage automations
+          {relayNeedsUpdate && (
+            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+              HomeKit automations require a relay update. Homecast automations are unaffected.
             </p>
-          ) : (
-            <div className={
-              compact
-                ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
-                : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]'
-            }>
-              {/* HomeKit native automations */}
-              {automations.map(automation => (
-                <AutomationCard
-                  key={automation.id}
-                  automation={automation}
-                  onClick={() => handleCardClick(automation)}
-                  onUpdated={() => refetch()}
-                  compact={compact}
-                  isDarkBackground={isDarkBackground}
-                />
-              ))}
-
-              {/* Homecast-managed automations */}
-              {hcAutomations.map((hc: Automation) => (
-                <AutomationCard
-                  key={`hc-${hc.id}`}
-                  hcAutomation={hc}
-                  onClick={() => handleHcAutomationClick(hc)}
-                  onToggle={() => handleToggleHcAutomation(hc)}
-                  compact={compact}
-                  isDarkBackground={isDarkBackground}
-                />
-              ))}
-
-              {/* New automation button — same height as cards */}
-              <button
-                type="button"
-                data-testid="new-automation-button"
-                onClick={() => setNewTypeOpen(true)}
-                className={`w-full flex items-center justify-center gap-1.5 rounded-[20px] border-2 border-dashed transition-colors ${compact ? 'p-2.5' : 'p-4'} ${
-                  isDarkBackground
-                    ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
-                    : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
-                }`}
-              >
-                <Plus className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
-                <span className={`${compact ? 'text-xs' : 'text-sm'}`}>New</span>
-              </button>
-            </div>
           )}
+          <div className={
+            compact
+              ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
+              : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]'
+          }>
+            {/* HomeKit native automations */}
+            {automations.map(automation => (
+              <AutomationCard
+                key={automation.id}
+                automation={automation}
+                onClick={() => handleCardClick(automation)}
+                onUpdated={() => refetch()}
+                compact={compact}
+                isDarkBackground={isDarkBackground}
+              />
+            ))}
+
+            {/* Homecast-managed automations */}
+            {hcAutomations.map((hc: Automation) => (
+              <AutomationCard
+                key={`hc-${hc.id}`}
+                hcAutomation={hc}
+                onClick={() => handleHcAutomationClick(hc)}
+                onToggle={() => handleToggleHcAutomation(hc)}
+                compact={compact}
+                isDarkBackground={isDarkBackground}
+              />
+            ))}
+
+            {/* New automation button — same height as cards */}
+            <button
+              type="button"
+              data-testid="new-automation-button"
+              onClick={() => setNewTypeOpen(true)}
+              className={`w-full flex items-center justify-center gap-1.5 rounded-[20px] border-2 border-dashed transition-colors ${compact ? 'p-2.5' : 'p-4'} ${
+                isDarkBackground
+                  ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
+                  : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
+              }`}
+            >
+              <Plus className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+              <span className={`${compact ? 'text-xs' : 'text-sm'}`}>New</span>
+            </button>
+          </div>
         </div>
       </AnimatedCollapse>
 
@@ -233,8 +232,13 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
             <button
               type="button"
               data-testid="new-homekit-automation"
+              disabled={relayNeedsUpdate}
               onClick={() => { setNewTypeOpen(false); setEditingAutomation(null); setFormOpen(true); }}
-              className="flex flex-col items-center text-center rounded-xl border p-4 transition-all hover:border-primary/40 hover:shadow-sm"
+              className={`flex flex-col items-center text-center rounded-xl border p-4 transition-all ${
+                relayNeedsUpdate
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:border-primary/40 hover:shadow-sm'
+              }`}
             >
               <img src="/homekit_logo.png" alt="HomeKit" className="h-10 w-10 mb-3" />
               <div className="text-sm font-semibold mb-1">HomeKit</div>
@@ -247,7 +251,9 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
                 <li className="flex items-start gap-1.5"><Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" /> Time and device triggers</li>
                 <li className="flex items-start gap-1.5"><Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" /> Works without relay</li>
               </ul>
-              <Button variant="outline" size="sm" className="mt-4 w-full">Create</Button>
+              <Button variant="outline" size="sm" className="mt-4 w-full" disabled={relayNeedsUpdate}>
+                {relayNeedsUpdate ? 'Relay update required' : 'Create'}
+              </Button>
             </button>
 
             {/* Homecast option */}

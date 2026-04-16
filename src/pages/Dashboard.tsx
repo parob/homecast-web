@@ -3539,10 +3539,25 @@ const Dashboard = () => {
     setSidebarDeletingCollection(null);
   }, [sidebarDeletingCollection, selectedCollection, deleteCollectionMutation]);
 
-  // Get set of accessory IDs that are in service groups
+  // Get set of accessory IDs that are in service groups.
+  // Groups may reference members via `accessoryIds` or `serviceIds` — resolve
+  // service IDs back to their owning accessory so either form dedupes the
+  // accessory out of the ungrouped list.
   const groupedAccessoryIds = useMemo(() => {
-    return new Set(serviceGroups.flatMap(g => g.accessoryIds));
-  }, [serviceGroups]);
+    const ids = new Set<string>();
+    const serviceOwner = new Map<string, string>();
+    for (const acc of accessories) {
+      for (const svc of acc.services ?? []) serviceOwner.set(svc.id, acc.id);
+    }
+    for (const g of serviceGroups) {
+      for (const id of g.accessoryIds ?? []) ids.add(id);
+      for (const sid of g.serviceIds ?? []) {
+        const ownerId = serviceOwner.get(sid);
+        if (ownerId) ids.add(ownerId);
+      }
+    }
+    return ids;
+  }, [serviceGroups, accessories]);
 
   // Toggle group expanded state (not persisted - always closed on refresh)
   const toggleGroupExpanded = useCallback((groupId: string) => {

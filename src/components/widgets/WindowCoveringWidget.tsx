@@ -141,7 +141,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // View-only mode: disabled prop indicates view-only (show cursor-not-allowed)
   // Reachability: device offline (show regular disabled state)
   const isViewOnly = disabled && accessory.isReachable;
-  const isUnreachable = !accessory.isReachable;
+  const noResponse = !accessory.isReachable;
   const currentPositionChar = getCharacteristic(accessory, 'current_position');
   const targetPositionChar = getCharacteristic(accessory, 'target_position');
   const positionStateChar = getCharacteristic(accessory, 'position_state');
@@ -293,7 +293,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - targetValue) : targetValue);
               }
             }}
-            disabled={isUnreachable}
+            disabled={noResponse}
           >
             {currentPosition === 0 ? 'Open' : 'Close'}
           </Button>
@@ -312,7 +312,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                   onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - v) : v);
                 }
               }}
-              disabled={isViewOnly || isUnreachable}
+              disabled={isViewOnly || noResponse}
               accentColor={getAccentColor()}
               trackColor={getTrackColor()}
             />
@@ -327,7 +327,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 // Open fully (100% open = 0% coverage for inverted blinds)
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
               }}
-              disabled={isUnreachable}
+              disabled={noResponse}
               className={`h-8 w-8 p-0 rounded-md ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
               <ChevronUp className="h-4 w-4" />
@@ -340,7 +340,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 // Close fully (0% open = 100% coverage for inverted blinds)
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
               }}
-              disabled={isUnreachable}
+              disabled={noResponse}
               className={`h-8 w-8 p-0 rounded-md ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
               <ChevronDown className="h-4 w-4" />

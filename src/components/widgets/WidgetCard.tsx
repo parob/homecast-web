@@ -145,7 +145,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
-  // When unreachable, default to off state visually
+  // When not responding, default to off state visually
   const effectiveCompact = compact;
   const effectiveIsOn = isReachable ? isOn : false;
   const effectiveOnExpandToggle = onExpandToggle;
@@ -190,14 +190,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Card is always transparent - background handled externally
   const cardBgClass = '!bg-transparent';
 
-  // Icon opacity: more visible when off but reachable, very faded when unreachable
+  // Icon opacity: more visible when off but reachable, very faded when not responding
   const iconOpacityClass = !isReachable
-    ? 'opacity-20 grayscale'  // Unreachable: very faded
+    ? 'opacity-20 grayscale'  // No Response: very faded
     : (!effectiveIsOn ? 'opacity-70' : '');  // Off but reachable: slightly faded, On: full
 
-  // Effective subtitle - show "Unreachable" when device is unreachable
+  // Effective subtitle - show "No Response" when device is not reachable
   // When locationSubtitle is provided, show it as a second line or after the main subtitle
-  const effectiveSubtitle = !isReachable ? 'Unreachable' : (
+  const effectiveSubtitle = !isReachable ? 'No Response' : (
     locationSubtitle
       ? (subtitle ? <>{subtitle}<span className="opacity-60"> {locationSubtitle}</span></> : <span className="opacity-80">{locationSubtitle}</span>)
       : subtitle
@@ -246,7 +246,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   );
 
   // Hide subtitle when multiLineTitle AND reachable (to allow title wrapping)
-  // But always show subtitle when unreachable (to display "Unreachable")
+  // But always show subtitle when not responding (to display "No Response")
   const hideSubtitleForMultiLine = multiLineTitle && isReachable;
 
   // Non-compact mode header content - horizontal layout
@@ -270,8 +270,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     </div>
   );
 
-  // Apply unreachable styling to inner content only, not the tooltip portal
-  const unreachableClass = !isReachable ? 'opacity-50 grayscale' : '';
+  // Apply No Response styling to inner content only, not the tooltip portal
+  const noResponseClass = !isReachable ? 'opacity-50 grayscale' : '';
 
   // Hidden state styling - applied to content, not visibility button
   // Use isHidden prop (for context menu hide) or isHiddenUi (for edit mode)
@@ -316,7 +316,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
-            className={`${unreachableClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
+            className={`${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
             {...(dragHandle?.attributes || {})}
             {...(dragHandle?.listeners || {})}
           >
@@ -326,7 +326,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           // Non-compact mode - horizontal layout with separate switch
           <div className="flex items-center justify-between gap-2">
             <div
-              className={`min-w-0 flex-1 ${unreachableClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-default'}`}
+              className={`min-w-0 flex-1 ${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-default'}`}
               {...(dragHandle?.attributes || {})}
               {...(dragHandle?.listeners || {})}
             >
@@ -356,7 +356,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <div className={`relative z-10 ${effectiveDisabled ? 'pointer-events-none' : 'pointer-events-auto cursor-auto'} ${unreachableClass} ${hiddenClass}`}>
+            <div className={`relative z-10 ${effectiveDisabled ? 'pointer-events-none' : 'pointer-events-auto cursor-auto'} ${noResponseClass} ${hiddenClass}`}>
               {children}
               {effectiveDisabled && effectiveOnDisabledClick && (
                 <div

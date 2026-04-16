@@ -219,9 +219,17 @@ export const GET_INFRASTRUCTURE_STATUS = gql`
       routingMetrics {
         broadcastsTotal
         broadcastsLocalOnly
+        crossPodFanouts
         relayRedirectsSent
         webClientRedirectsSent
         localityRate
+        hmacRejectedTotal
+      }
+      peerRegistry {
+        podName
+        ip
+        status
+        ageSeconds
       }
     }
   }

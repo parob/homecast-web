@@ -206,7 +206,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
   // View-only mode: disabled prop indicates view-only (show cursor-not-allowed)
   // Reachability: device offline (show regular disabled state)
   const isViewOnly = disabled && accessory.isReachable;
-  const isUnreachable = !accessory.isReachable;
+  const noResponse = !accessory.isReachable;
   // Determine if this is a heater_cooler or thermostat
   const isHeaterCooler = hasServiceType(accessory, 'heater_cooler');
 
@@ -575,8 +575,8 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
               ))}
             </div>
           </div>
-        ) : activeChar?.isWritable && (!isActive || isUnreachable) ? (
-          // Show switch for non-heater_cooler devices or when unreachable
+        ) : activeChar?.isWritable && (!isActive || noResponse) ? (
+          // Show switch for non-heater_cooler devices or when not responding
           <div className="flex items-center gap-2">
             {/* Show current temp in compact mode even when off */}
             {compact && currentTemp !== null && currentTemp !== undefined && (
@@ -593,7 +593,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                   onSlider(accessory.id, targetHCStateChar.type, availableHCModes[0].index);
                 }
               }}
-              disabled={isUnreachable}
+              disabled={noResponse}
               className={isViewOnly ? 'cursor-not-allowed' : ''}
             />
           </div>
@@ -651,7 +651,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
               min={minTemp}
               max={maxTemp}
               onChange={(v) => { if (!isViewOnly) onSlider(accessory.id, targetTempType, v); }}
-              disabled={isViewOnly || isUnreachable}
+              disabled={isViewOnly || noResponse}
               status={currentStateDesc}
               strokeColor={strokeColor}
               trackColor={trackColor}
@@ -722,7 +722,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                     <ModeButtons
                       buttons={allButtons}
                       getButtonClasses={getButtonClasses}
-                      disabled={isUnreachable}
+                      disabled={noResponse}
                       viewOnly={isViewOnly}
                     />
                   );
@@ -738,7 +738,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                     step={fanSpeedChar?.characteristic?.stepValue ?? 10}
                     formatValue={(v) => `${Math.round(v)}%`}
                     onCommit={(v) => { if (!isViewOnly) onSlider(accessory.id, 'rotation_speed', v); }}
-                    disabled={isViewOnly || isUnreachable}
+                    disabled={isViewOnly || noResponse}
                     icon={Fan}
                     compact
                   />
@@ -806,7 +806,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                   <ModeButtons
                     buttons={allButtons}
                     getButtonClasses={getButtonClasses}
-                    disabled={isUnreachable}
+                    disabled={noResponse}
                     viewOnly={isViewOnly}
                   />
                 );
@@ -831,7 +831,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                     step={tempChar?.characteristic?.stepValue ?? 0.5}
                     formatValue={(v) => `${v.toFixed(1)}°C`}
                     onCommit={(v) => { if (!isViewOnly) onSlider(accessory.id, targetTempType, v); }}
-                    disabled={isViewOnly || isUnreachable}
+                    disabled={isViewOnly || noResponse}
                     iconLeft={Snowflake}
                     iconRight={Flame}
                     compact={compact}

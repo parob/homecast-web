@@ -336,14 +336,24 @@ export function AccessoryPicker({
     return groups;
   }, [groupFuse, searchQuery, serviceGroups, filterHome, serviceGroupHomeMap, accessoryIdsInRoom]);
 
-  // Exclude accessories that belong to any service group (they're selectable only via the group row)
+  // Exclude accessories that belong to any service group (they're selectable only via the group row).
+  // Groups may reference members via `accessoryIds` or `serviceIds` — resolve
+  // service IDs back to their owning accessory so either form excludes it.
   const groupedAccessoryIds = useMemo(() => {
     const ids = new Set<string>();
+    const serviceOwner = new Map<string, string>();
+    for (const acc of accessories) {
+      for (const svc of acc.services ?? []) serviceOwner.set(svc.id, acc.id);
+    }
     for (const group of serviceGroups) {
-      for (const id of group.accessoryIds) ids.add(id);
+      for (const id of group.accessoryIds ?? []) ids.add(id);
+      for (const sid of group.serviceIds ?? []) {
+        const ownerId = serviceOwner.get(sid);
+        if (ownerId) ids.add(ownerId);
+      }
     }
     return ids;
-  }, [serviceGroups]);
+  }, [serviceGroups, accessories]);
 
   const dedupedAccessories = useMemo(() => {
     return filteredAccessories.filter(acc => !groupedAccessoryIds.has(acc.id));

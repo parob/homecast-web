@@ -1160,9 +1160,18 @@ export interface AdminPodMetric {
 export interface AdminRoutingMetrics {
   broadcastsTotal: number;
   broadcastsLocalOnly: number;
+  crossPodFanouts: number;
   relayRedirectsSent: number;
   webClientRedirectsSent: number;
   localityRate: number;
+  hmacRejectedTotal: number;
+}
+
+export interface PeerRegistryEntry {
+  podName: string;
+  ip: string;
+  status: 'live' | 'recently_dropped';
+  ageSeconds: number | null;
 }
 
 export interface AdminInfrastructureStatus {
@@ -1173,6 +1182,7 @@ export interface AdminInfrastructureStatus {
   hpa: AdminHPAStatus | null;
   podMetrics: AdminPodMetric[];
   routingMetrics: AdminRoutingMetrics;
+  peerRegistry: PeerRegistryEntry[];
 }
 
 export interface AdminInfrastructureStatusResponse {

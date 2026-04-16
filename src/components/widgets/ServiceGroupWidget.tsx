@@ -107,12 +107,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 }) => {
   // Compute group-level reachability from member accessories
   const reachableCount = accessories.filter(a => a.isReachable).length;
-  const allUnreachable = accessories.length > 0 && reachableCount === 0;
-  const someUnreachable = reachableCount > 0 && reachableCount < accessories.length;
+  const allNoResponse = accessories.length > 0 && reachableCount === 0;
+  const someNoResponse = reachableCount > 0 && reachableCount < accessories.length;
 
   // Read interaction context (provided by shared views for view-only mode)
   const interactionCtx = useContext(WidgetInteractionContext);
-  const effectiveDisabled = disabled || interactionCtx.disabled || allUnreachable || false;
+  const effectiveDisabled = disabled || interactionCtx.disabled || allNoResponse || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -237,7 +237,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     }).length;
   }, [accessories, getEffectiveValue]);
 
-  const groupOn = allUnreachable ? false : isGroupOn();
+  const groupOn = allNoResponse ? false : isGroupOn();
   const brightness = isLightsGroup ? getAverageBrightness() : null;
   const colorTempInfo = hasColorTemp ? getColorTempInfo() : null;
   const position = isBlindsGroup ? getAveragePosition() : 0;
@@ -293,8 +293,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const hasContextMenu = !disableTooltip && !isDragging;
 
 
-  // Unreachable styling (same as WidgetCard)
-  const unreachableClass = allUnreachable ? 'opacity-50 grayscale' : '';
+  // No Response styling (same as WidgetCard)
+  const noResponseClass = allNoResponse ? 'opacity-50 grayscale' : '';
 
   // Hidden styling
   const hiddenClass = isHidden ? 'opacity-40 grayscale' : '';
@@ -334,12 +334,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   }, [isDragging, showCompact, isWidgetExpanded, isExpanded]);
 
   // Compact subtitle text
-  const compactSubtitle = allUnreachable
-    ? 'Unreachable'
+  const compactSubtitle = allNoResponse
+    ? 'No Response'
     : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
 
   const cardContent = (
-    <Card className={`relative ${groupCardBgClass} ${unreachableClass} ${hiddenClass} cursor-pointer`} onClick={handleCardClick}>
+    <Card className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} cursor-pointer`} onClick={handleCardClick}>
       <CardHeader className={showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
         {showCompact ? (
           // Compact mode - vertical layout matching preview style
@@ -409,16 +409,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   {getDisplayName(group.name, roomName)}
                 </CardTitle>
                 <CardDescription className={`text-xs mt-0.5 flex items-center gap-1.5 `}>
-                  {allUnreachable
-                    ? 'Unreachable'
+                  {allNoResponse
+                    ? 'No Response'
                     : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
                   {locationSubtitle && <span className="opacity-60">{locationSubtitle}</span>}
-                  {!allUnreachable && someUnreachable && (
+                  {!allNoResponse && someNoResponse && (
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
                       {reachableCount}/{accessories.length} reachable
                     </Badge>
                   )}
-                  {!allUnreachable && isPartiallyOn && (
+                  {!allNoResponse && isPartiallyOn && (
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
                       {onCount}/{accessories.length} on
                     </Badge>
@@ -450,7 +450,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           </div>
         )}
       </CardHeader>
-      <AnimatedCollapse open={!showCompact && !allUnreachable && (isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo !== null)))}>
+      <AnimatedCollapse open={!showCompact && !allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo !== null)))}>
         <CardContent className={`relative px-4 pb-3 pt-1 space-y-2 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           {isBlindsGroup && (
             <SliderControl
@@ -633,7 +633,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
   const expandedCardContent = (
-    <Card className={`relative ${expandedCardBgClass} ${unreachableClass} cursor-pointer`} onClick={handleExpandedCardClick}>
+    <Card className={`relative ${expandedCardBgClass} ${noResponseClass} cursor-pointer`} onClick={handleExpandedCardClick}>
       <CardHeader className={`p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center min-w-0 flex-1 gap-2 cursor-pointer">
@@ -648,15 +648,15 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 {getDisplayName(group.name, roomName)}
               </CardTitle>
               <CardDescription className={`text-xs mt-0.5 flex items-center gap-1.5 `}>
-                {allUnreachable
-                  ? 'Unreachable'
+                {allNoResponse
+                  ? 'No Response'
                   : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
-                {!allUnreachable && someUnreachable && (
+                {!allNoResponse && someNoResponse && (
                   <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
                     {reachableCount}/{accessories.length} reachable
                   </Badge>
                 )}
-                {!allUnreachable && isPartiallyOn && (
+                {!allNoResponse && isPartiallyOn && (
                   <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
                     {onCount}/{accessories.length} on
                   </Badge>
@@ -687,7 +687,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           )}
         </div>
       </CardHeader>
-      <AnimatedCollapse open={!allUnreachable && (isBlindsGroup || (isLightsGroup && groupOn && brightness !== null))}>
+      <AnimatedCollapse open={!allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && brightness !== null))}>
         <CardContent className={`relative px-4 pb-3 pt-1 space-y-2 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           {isBlindsGroup && (
             <SliderControl
