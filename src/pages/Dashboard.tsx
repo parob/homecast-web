@@ -4725,6 +4725,21 @@ const Dashboard = () => {
     } catch { /* ignore save errors */ }
   }, [settingsData, updateSettingsMutation]);
 
+  const handleSetupMac = useCallback(async () => {
+    try {
+      const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
+      const updated = {
+        ...currentSettings,
+        onboarding: {
+          completed: currentSettings.onboarding?.completed ?? true,
+          ...currentSettings.onboarding,
+          setupPath: 'mac-relay' as const,
+        },
+      };
+      await updateSettingsMutation({ variables: { data: JSON.stringify(updated) } });
+    } catch { /* ignore save errors */ }
+  }, [settingsData, updateSettingsMutation]);
+
   // Tutorial completion handler
   const handleTutorialComplete = useCallback(async () => {
     setShowTutorial(false);
@@ -6308,6 +6323,7 @@ const Dashboard = () => {
                   isInMacApp={isInMacApp}
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
+                  onSetupMac={handleSetupMac}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
@@ -6320,6 +6336,7 @@ const Dashboard = () => {
                   isInMacApp={isInMacApp}
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
+                  onSetupMac={handleSetupMac}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />

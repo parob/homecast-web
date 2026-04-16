@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Monitor, Cloud, Loader2, Copy, Check, ChevronDown, ChevronUp, AlertCircle, Users, ArrowRight } from 'lucide-react';
 import { config } from '@/lib/config';
 import { getPricing } from '@/lib/pricing';
@@ -347,7 +346,7 @@ function WaitingForInvite({ isDarkBackground, userEmail, onSetupCloud, onSetupMa
   );
 }
 
-function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, cloudSignupsAvailable = true, isInMobileApp = false }: {
+function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, cloudSignupsAvailable = true }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
@@ -356,18 +355,9 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
   isInMobileApp?: boolean;
 }) {
   const pricing = getPricing();
-  const [selfHostedDialogOpen, setSelfHostedDialogOpen] = useState(false);
 
   return (
     <div className="space-y-5 max-w-lg mx-auto">
-      {relayOffline && (
-        <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
-          <Monitor className={`h-5 w-5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
-          <p className={`text-sm ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
-            It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect, or choose a different option below.
-          </p>
-        </div>
-      )}
       <div className="text-center space-y-3">
         {!relayOffline && <img src="/icon-192.png" alt="Homecast" className="h-14 w-14 mx-auto rounded-2xl" />}
         <h3 className={`text-xl font-bold ${isDarkBackground ? 'text-white' : ''}`}>
@@ -379,13 +369,7 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
       </div>
 
       <Card className={`cursor-pointer hover:border-primary/50 transition-colors ${isDarkBackground ? 'bg-black/30 border-white/20 hover:border-white/40' : ''}`}
-        onClick={() => {
-          if (isInMobileApp) {
-            setSelfHostedDialogOpen(true);
-          } else {
-            window.open(config.appStoreUrl, '_blank');
-          }
-        }}>
+        onClick={() => onSetupMac?.()}>
         <CardContent className={`py-5 ${isDarkBackground ? 'text-white' : ''}`}>
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -401,6 +385,14 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
               <p className={`text-xs mt-1.5 ml-11 font-medium ${isDarkBackground ? 'text-green-400' : 'text-green-600'}`}>
                 Free · up to 10 accessories
               </p>
+              {relayOffline && (
+                <div className={`mt-3 ml-11 flex items-start gap-2 rounded-md border px-2.5 py-2 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
+                  <Monitor className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
+                  <p className={`text-xs ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
+                    It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.
+                  </p>
+                </div>
+              )}
             </div>
             <ArrowRight className={`h-4 w-4 shrink-0 ml-3 ${isDarkBackground ? 'text-white/30' : 'text-muted-foreground/50'}`} />
           </div>
@@ -442,40 +434,6 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
         </p>
       </div>
 
-      <Dialog open={selfHostedDialogOpen} onOpenChange={setSelfHostedDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Set up a self-hosted relay</DialogTitle>
-            <DialogDescription>
-              The self-hosted relay runs on a Mac. You'll need a Mac on the same Wi-Fi as your Apple Home accessories with the Homecast app installed.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">On your Mac</p>
-              <p className="text-sm">Install the Homecast Mac app from the App Store, then sign in with the same account.</p>
-              <div className="flex items-center gap-2 pt-1">
-                <code className="flex-1 text-xs px-2 py-1.5 rounded bg-background border break-all">{config.appStoreUrl}</code>
-                <CopyButton text={config.appStoreUrl} />
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Want a relay you don't have to manage? The cloud relay runs in our infrastructure — no Mac needed.
-            </p>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelfHostedDialogOpen(false)}>Close</Button>
-            {onSetupCloud && cloudSignupsAvailable && (
-              <Button onClick={() => { setSelfHostedDialogOpen(false); onSetupCloud(); }}>
-                Use cloud relay instead
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
