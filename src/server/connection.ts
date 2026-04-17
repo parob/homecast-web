@@ -12,6 +12,8 @@ import { isRelayCapable } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { markRecentBroadcast } from './local-broadcast';
+import { browserLogger } from '../lib/browser-logger';
+import { toastConnection } from '../lib/toast-bus';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -513,11 +515,20 @@ class ServerConnection {
               this.activeSubscriptions.clear();
               this.stopSubscriptionRenewal();
             }
+            // Emit structured log + toast for state transitions so disconnects
+            // are visible both in Cloud Logging (via browserLogger shipping)
+            // and to the user in the UI.
+            const prev = this.state.connectionState;
+            if (prev !== connectionState) {
+              try { browserLogger.logConnection(connectionState, `prev=${prev}`); } catch { /* noop */ }
+              try { toastConnection(prev, connectionState); } catch { /* noop */ }
+            }
             this.updateState(updates);
           },
           onError: (error) => {
             console.error('[ServerConnection] Error:', error);
             this.updateState({ error });
+            try { browserLogger.logError(`ServerConnection error: ${error}`, { source: 'server_connection' }); } catch { /* noop */ }
           },
           onBroadcast: (message) => {
             // Handle subscription_invalidated specially
