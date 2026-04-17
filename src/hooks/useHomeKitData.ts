@@ -21,7 +21,7 @@ function withDerivedReachability(a: HomeKitAccessory): HomeKitAccessory {
   const derived = isAccessoryResponsive(a, a.isReachable);
   return a.isReachable === derived ? a : { ...a, isReachable: derived };
 }
-function normalizeAccessories(list: HomeKitAccessory[]): HomeKitAccessory[] {
+export function normalizeAccessories(list: HomeKitAccessory[]): HomeKitAccessory[] {
   return list.map(withDerivedReachability);
 }
 
@@ -625,7 +625,7 @@ export function useAccessoriesForHomes(
             includeValues: true,
           })
           .then(result => {
-            cache.set(`accessories:${homeId}`, result.accessories);
+            cache.set(`accessories:${homeId}`, normalizeAccessories(result.accessories));
           })
           .catch(() => {})
         )

@@ -38,7 +38,7 @@ import { serverConnection, getDeviceId } from '@/server/connection';
 import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
-import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache } from '@/hooks/useHomeKitData';
+import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, normalizeAccessories } from '@/hooks/useHomeKitData';
 import { useEntitySync } from '@/hooks/useEntitySync';
 import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLayout, useRoomGroupLayout } from '@/hooks/useEntityLayout';
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
@@ -2630,7 +2630,7 @@ const Dashboard = () => {
       Promise.all(
         homesForFetch.map(home =>
           serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', { homeId: home.id, includeValues: true, includeAll: true })
-            .then(r => r.accessories || [])
+            .then(r => normalizeAccessories(r.accessories || []))
             .catch(() => [])
         )
       ).then(results => setAllUnfilteredAccessories(results.flat()));

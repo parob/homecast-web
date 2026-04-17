@@ -14,7 +14,7 @@ import type {
   HomeKitAccessory,
   HomeKitServiceGroup,
 } from '@/lib/graphql/types';
-import { useHomes, useAccessoriesForHomes, updateAccessoryCharacteristicInCache, setServiceGroupsInCache } from '@/hooks/useHomeKitData';
+import { useHomes, useAccessoriesForHomes, updateAccessoryCharacteristicInCache, setServiceGroupsInCache, normalizeAccessories } from '@/hooks/useHomeKitData';
 import { NoDeviceConnected } from '@/components/shared/NoDeviceConnected';
 import { ErrorWithTrace } from '@/components/shared/ErrorWithTrace';
 import { serverConnection } from '@/server/connection';
@@ -447,7 +447,7 @@ export function CollectionDetail({
     Promise.all(
       homes.map(home =>
         serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', { homeId: home.id, includeValues: true })
-          .then(result => result.accessories || [])
+          .then(result => normalizeAccessories(result.accessories || []))
           .catch(() => [])
       )
     ).then(results => {
