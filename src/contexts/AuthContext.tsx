@@ -9,6 +9,7 @@ import { isRelayCapable } from '@/relay';
 import { isCommunity, config, isRelaySetupComplete, isRelayMode } from '@/lib/config';
 import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
+import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 
 // Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it
 function syncTokenCookie(token: string | null) {
@@ -519,7 +520,17 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Login error:', error);
       const msg = error.message || '';
       const isNetwork = msg === 'Failed to fetch' || msg === 'Load failed' || msg === 'NetworkError when attempting to reach resource.' || error.networkError;
-      return { success: false, error: isNetwork ? 'Unable to connect. Check your internet connection and try again.' : msg || 'Login failed' };
+      if (isNetwork) {
+        const diag = await diagnoseConnection();
+        if (diag === 'offline') {
+          return { success: false, error: 'You appear to be offline. Check your internet connection and try again.' };
+        }
+        if (diag === 'backend-down') {
+          return { success: false, error: 'Homecast is temporarily unavailable. Please try again in a moment.' };
+        }
+        return { success: false, error: 'Unable to connect. Please try again.' };
+      }
+      return { success: false, error: msg || 'Login failed' };
     }
   };
 
@@ -547,7 +558,17 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Signup error:', error);
       const msg = error.message || '';
       const isNetwork = msg === 'Failed to fetch' || msg === 'Load failed' || msg === 'NetworkError when attempting to reach resource.' || error.networkError;
-      return { success: false, error: isNetwork ? 'Unable to connect. Check your internet connection and try again.' : msg || 'Signup failed' };
+      if (isNetwork) {
+        const diag = await diagnoseConnection();
+        if (diag === 'offline') {
+          return { success: false, error: 'You appear to be offline. Check your internet connection and try again.' };
+        }
+        if (diag === 'backend-down') {
+          return { success: false, error: 'Homecast is temporarily unavailable. Please try again in a moment.' };
+        }
+        return { success: false, error: 'Unable to connect. Please try again.' };
+      }
+      return { success: false, error: msg || 'Signup failed' };
     }
   };
 
