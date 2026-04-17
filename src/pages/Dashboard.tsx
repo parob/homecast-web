@@ -1018,6 +1018,7 @@ const Dashboard = () => {
   const AdminApprovals = _cloud?.AdminApprovals ?? null;
   const AdminLogs = _cloud?.AdminLogs ?? null;
   const AdminObservability = _cloud?.AdminObservability ?? null;
+  const AdminReliability = _cloud?.AdminReliability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
   const AdminInfrastructurePodDetail = _cloud?.AdminInfrastructurePodDetail ?? null;
@@ -8059,6 +8060,7 @@ const Dashboard = () => {
                 {adminSubPath === '/tasks' && <AdminTasks />}
                 {adminSubPath === '/approvals' && <AdminApprovals />}
                 {(adminSubPath === '/traces' || adminSubPath === '/observability') && <AdminObservability />}
+                {adminSubPath === '/reliability' && AdminReliability && <AdminReliability />}
                 {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
                 {adminSubPath === '/infrastructure/pods' && AdminInfrastructurePods && <AdminInfrastructurePods />}
                 {adminSubPath.startsWith('/infrastructure/pods/') && AdminInfrastructurePodDetail && (
