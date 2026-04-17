@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/context-menu';
 import type { HomeKitServiceGroup, HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
+import { useAccessoryStatusLookup } from '@/lib/accessoryFreshness';
 import {
   Lightbulb,
   Blinds,
@@ -105,8 +106,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   locationSubtitle,
   editMode = false,
 }) => {
-  // Compute group-level reachability from member accessories
-  const reachableCount = accessories.filter(a => a.isReachable).length;
+  // Compute group-level reachability from member accessories, using the
+  // same behaviour-derived rule as WidgetCard (fresh values override a
+  // stuck isReachable=false — see lib/accessoryFreshness.ts).
+  const statusLookup = useAccessoryStatusLookup();
+  const isMemberResponsive = (a: HomeKitAccessory) => statusLookup(a.id, a.isReachable) === 'responsive';
+  const reachableCount = accessories.filter(isMemberResponsive).length;
   const allNoResponse = accessories.length > 0 && reachableCount === 0;
   const someNoResponse = reachableCount > 0 && reachableCount < accessories.length;
 
@@ -568,7 +573,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                         <Switch
                           checked={accIsOn}
                           onCheckedChange={() => onAccessoryToggle(accessory.id, powerCharType!, accIsOn)}
-                          disabled={effectiveDisabled || !accessory.isReachable}
+                          disabled={effectiveDisabled || !isMemberResponsive(accessory)}
                           className="scale-75"
                           onClick={(e) => e.stopPropagation()}
                           checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
@@ -583,7 +588,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                           max={100}
                           step={5}
                           onValueCommit={(v) => onAccessorySlider(accessory.id, 'target_position', v[0])}
-                          disabled={effectiveDisabled || !accessory.isReachable}
+                          disabled={effectiveDisabled || !isMemberResponsive(accessory)}
                           className="w-full"
                           trackColorClass={iconStyle === 'colourful' && iconColor ? iconColor.sliderTrack : undefined}
                           trackBgClass="bg-muted/25"
@@ -808,7 +813,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                         <Switch
                           checked={accIsOn}
                           onCheckedChange={() => onAccessoryToggle(accessory.id, powerCharType!, accIsOn)}
-                          disabled={effectiveDisabled || !accessory.isReachable}
+                          disabled={effectiveDisabled || !isMemberResponsive(accessory)}
                           className="scale-75"
                           onClick={(e) => e.stopPropagation()}
                           checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
@@ -823,7 +828,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                           max={100}
                           step={5}
                           onValueCommit={(v) => onAccessorySlider(accessory.id, 'target_position', v[0])}
-                          disabled={effectiveDisabled || !accessory.isReachable}
+                          disabled={effectiveDisabled || !isMemberResponsive(accessory)}
                           className="w-full"
                           trackColorClass={iconStyle === 'colourful' && iconColor ? iconColor.sliderTrack : undefined}
                           trackBgClass="bg-muted/25"

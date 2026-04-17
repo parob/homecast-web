@@ -36,6 +36,19 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { HomecastError } from '@/server/websocket';
+import { markNoResponse } from '@/lib/accessoryFreshness';
+
+/** Error codes from a control attempt that mean the accessory is unreachable. */
+const REACHABILITY_ERROR_CODES = new Set([
+  'NO_RESPONSE',
+  'NO_DEVICE',
+  'DEVICE_ERROR',
+  'DEVICE_NOT_HERE',
+  'DEVICE_NOT_REACHABLE',
+  'TIMEOUT',
+]);
+const isReachabilityError = (code: string | undefined): boolean =>
+  !!code && REACHABILITY_ERROR_CODES.has(code);
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
 import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache } from '@/hooks/useHomeKitData';
@@ -4163,6 +4176,12 @@ const Dashboard = () => {
       toast.error(msg);
       // Revert optimistic update on error
       updateCharacteristicInCache(accessoryId, characteristicType, JSON.stringify(currentValue));
+      // Flip the tile to "No Response" on reachability-class failures so the UI
+      // stops lying optimistically. Other errors (permissions, validation) keep
+      // the tile as-is with just a toast.
+      if (error instanceof HomecastError && isReachabilityError(error.code)) {
+        markNoResponse(accessoryId);
+      }
     }
   }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
 
@@ -4194,6 +4213,9 @@ const Dashboard = () => {
         ? `${error.code}: ${error.message}`
         : (error.message || 'Failed to update');
       toast.error(msg);
+      if (error instanceof HomecastError && isReachabilityError(error.code)) {
+        markNoResponse(accessoryId);
+      }
     }
   }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
 
