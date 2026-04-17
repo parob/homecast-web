@@ -5,6 +5,52 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import App from "./App.tsx";
 import "./index.css";
+import { browserLogger } from "./lib/browser-logger";
+import { config } from "./lib/config";
+
+// Install client-side log capture + ship WARN/ERROR to the server so they
+// land in Cloud Logging alongside server events (correlated by user_id,
+// trace_id where available). Community mode has no cloud endpoint so
+// shipping is disabled there; the local ring buffer still works.
+browserLogger.install(
+  config.isCommunity
+    ? undefined
+    : {
+        source: "web",
+        url: () => `${config.apiUrl}/internal/logs`,
+        token: () => {
+          try {
+            return localStorage.getItem("homecast-token");
+          } catch {
+            return null;
+          }
+        },
+      }
+);
+
+// Web Vitals — LCP / INP / CLS reported once per metric per page to
+// /internal/logs with source=web-vitals. Skipped in Community mode (no
+// cloud endpoint). Imported lazily so it doesn't block initial paint.
+if (!config.isCommunity) {
+  import("web-vitals")
+    .then(({ onLCP, onINP, onCLS, onFCP, onTTFB }) => {
+      const report = (name: string) =>
+        (metric: { name: string; value: number; id: string; rating?: string }) => {
+          try {
+            browserLogger.logInfo(
+              `web-vital:${name}=${metric.value.toFixed(0)}`,
+              { name: metric.name, value: metric.value, id: metric.id, rating: metric.rating ?? "unknown", vital: true }
+            );
+          } catch { /* noop */ }
+        };
+      onLCP(report("LCP"));
+      onINP(report("INP"));
+      onCLS(report("CLS"));
+      onFCP(report("FCP"));
+      onTTFB(report("TTFB"));
+    })
+    .catch(() => { /* web-vitals failed to load — not critical */ });
+}
 
 // Initialize native module (includes menu bar bridge for Mac app)
 import "./native";

@@ -28,6 +28,7 @@ import OAuthConsent from "./pages/OAuthConsent";
 import NotFound from "./pages/NotFound";
 import ShareControlRedirect from "./pages/ShareControlRedirect";
 import MQTTBrowser from "./pages/MQTTBrowser";
+import Diagnostics from "./pages/Diagnostics";
 
 // Cloud-only pages — lazy loaded from @homecast/cloud if available
 const VerifyEmail = lazy(() => hasCloud()
@@ -73,6 +74,7 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               <Route path="*" element={<ToPortal />} />
             </>
@@ -95,6 +97,7 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               <Route path="*" element={<NotFound />} />
             </>
