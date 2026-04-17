@@ -8,7 +8,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
-import { seedFreshnessFromAccessories } from '../lib/accessoryFreshness';
 
 // ============================================================================
 // Simple cache implementation (similar to Apollo's cache-first policy)
@@ -449,9 +448,7 @@ export function useAccessories(
       homeId,
       includeValues: true,
     });
-    const accessories = result?.accessories ?? [];
-    seedFreshnessFromAccessories(accessories);
-    return accessories;
+    return result?.accessories ?? [];
   }, [homeId]);
 
   const skip = (options.skip ?? false) || !homeId;
@@ -469,9 +466,7 @@ export function useAllAccessories(
     const result = await serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
       includeValues: true,
     });
-    const accessories = result?.accessories ?? [];
-    seedFreshnessFromAccessories(accessories);
-    return accessories;
+    return result?.accessories ?? [];
   }, []);
 
   return useCachedData<HomeKitAccessory[]>('accessories:all', fetcher, options.skip ?? false);
@@ -541,7 +536,6 @@ export function useAccessoriesForHomes(
           if (mountedRef.current) {
             cache.set(`accessories:${homeId}`, result.accessories);
           }
-          seedFreshnessFromAccessories(result.accessories);
           return result.accessories;
         })
         .catch(() => [] as HomeKitAccessory[])
@@ -581,7 +575,6 @@ export function useAccessoriesForHomes(
         if (mountedRef.current) {
           cache.set(`accessories:${homeId}`, result?.accessories ?? []);
         }
-        if (result?.accessories) seedFreshnessFromAccessories(result.accessories);
       }).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

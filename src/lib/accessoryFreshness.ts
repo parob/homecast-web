@@ -46,35 +46,6 @@ export function markNoResponse(accessoryId: string): void {
   notify();
 }
 
-/**
- * Seed last-value timestamps when a batch of accessories arrives with real values
- * (e.g. after `accessories.list`). Without this, a just-mounted tile with cached
- * values + stale `isReachable=false` would render as "no response" until the next
- * broadcast arrives.
- */
-export function seedFreshnessFromAccessories(
-  accessories: Array<{
-    id?: string;
-    services?: Array<{ characteristics?: Array<{ value?: unknown }> }>;
-  }>,
-): void {
-  const now = Date.now();
-  let changed = false;
-  for (const a of accessories) {
-    if (!a.id) continue;
-    const hasAnyValue = a.services?.some((s) =>
-      s.characteristics?.some((c) => c.value !== null && c.value !== undefined),
-    );
-    if (!hasAnyValue) continue;
-    const prev = store.get(a.id);
-    if (!prev || prev.lastValueAt < now - 1000) {
-      store.set(a.id, { lastValueAt: now, lastNoResponseAt: prev?.lastNoResponseAt ?? 0 });
-      changed = true;
-    }
-  }
-  if (changed) notify();
-}
-
 export type AccessoryStatus = 'responsive' | 'no_response';
 
 export function computeAccessoryStatus(
@@ -96,12 +67,33 @@ export function computeAccessoryStatus(
   return 'no_response';
 }
 
+/**
+ * Periodic tick so tiles correctly age into `no_response` once their
+ * `lastValueAt` exits the fresh window, without needing an unrelated
+ * broadcast to trigger a re-render. Fires only while something is
+ * subscribed, so idle tabs don't churn.
+ */
+const TICK_INTERVAL_MS = 30 * 1000;
+let tickHandle: ReturnType<typeof setInterval> | null = null;
+function ensureTicker(): void {
+  if (tickHandle !== null) return;
+  if (typeof window === 'undefined') return; // skip in SSR / tests
+  tickHandle = setInterval(() => {
+    if (listeners.size > 0) notify();
+    else if (tickHandle !== null) {
+      clearInterval(tickHandle);
+      tickHandle = null;
+    }
+  }, TICK_INTERVAL_MS);
+}
+
 /** Internal subscription hook — re-renders caller when any entry changes. */
 function useFreshnessSubscription(): void {
   const [, tick] = useState(0);
   useEffect(() => {
     const listener = () => tick((n) => n + 1);
     listeners.add(listener);
+    ensureTicker();
     return () => {
       listeners.delete(listener);
     };
