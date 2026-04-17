@@ -9,7 +9,7 @@ import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 
 interface TopicMessage { payload: string; timestamp: number; updates: number; }
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
-interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean }
+interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean }
 
 export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,18 +70,24 @@ export default function MQTTBrowser() {
   const [cookieUser, setCookieUser] = useState<CookieUser | null>(null);
   const [cookieHomes, setCookieHomes] = useState<CookieHome[]>([]);
 
-  // Fetch user + homes via cookie on mqtt.* domains
+  // Fetch user + homes via cookie on mqtt.* domains. Poll every 15s so the
+  // relay-connected banner updates when the user brings their Mac online/offline.
   useEffect(() => {
     if (!onMqttDomain) return;
     const headers = getAuthHeaders();
     if (!headers) return;
-    fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled } }' }) })
-      .then(r => r.json())
-      .then(d => {
-        if (d?.data?.me) setCookieUser(d.data.me);
-        if (d?.data?.cachedHomes) setCookieHomes(d.data.cachedHomes);
-      })
-      .catch(() => {});
+    const fetchOnce = () => {
+      fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled relayConnected } }' }) })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.data?.me) setCookieUser(d.data.me);
+          if (d?.data?.cachedHomes) setCookieHomes(d.data.cachedHomes);
+        })
+        .catch(() => {});
+    };
+    fetchOnce();
+    const interval = setInterval(fetchOnce, 15000);
+    return () => clearInterval(interval);
   }, [onMqttDomain, api]);
 
   const user = meData?.me ?? cookieUser;
@@ -199,20 +205,43 @@ export default function MQTTBrowser() {
     setPublishHistory(prev => [{ topic, payload, timestamp: Date.now() }, ...prev].slice(0, 20));
   }, []);
 
+  // Map a topic's home-slug (parts[1]) back to the CookieHome record
+  const homeForSlug = useCallback((slug: string): CookieHome | undefined => {
+    const list: CookieHome[] = (homesData?.cachedHomes ?? cookieHomes) || [];
+    return list.find(h => {
+      const prefix = h.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      return slug.startsWith(prefix);
+    });
+  }, [homesData, cookieHomes]);
+
+  // If the topic's home is known to be offline, confirm before publishing so
+  // the command doesn't silently dissolve (no subscriber, broker drops it).
+  const confirmIfOffline = useCallback((topic: string): boolean => {
+    const slug = topic.split('/')[1];
+    if (!slug) return true;
+    const home = homeForSlug(slug);
+    if (home && home.relayConnected === false) {
+      return window.confirm(`${home.name}'s relay is offline. This command will be dropped by the broker. Publish anyway?`);
+    }
+    return true;
+  }, [homeForSlug]);
+
   const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
+    if (!confirmIfOffline(topic)) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(t, payload);
     addToHistory(t, payload);
-  }, [connected, addToHistory]);
+  }, [connected, addToHistory, confirmIfOffline]);
 
   const publishProp = useCallback((topic: string, key: string, value: unknown) => {
     if (!clientRef.current || !connected) return;
+    if (!confirmIfOffline(topic)) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     const p = JSON.stringify({ [key]: value });
     clientRef.current.publish(t, p);
     addToHistory(t, p);
-  }, [connected, addToHistory]);
+  }, [connected, addToHistory, confirmIfOffline]);
 
   // Auto-connect (only once, not after manual disconnect)
   useEffect(() => {
@@ -464,6 +493,13 @@ export default function MQTTBrowser() {
           </div>
         )}
 
+        {/* Relay-offline banner */}
+        {selectedHome && homes.find(h => h.name === selectedHome)?.relayConnected === false && (
+          <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <strong>{selectedHome} relay is offline.</strong> Commands published to MQTT will be dropped until the Homecast Mac app reconnects.
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -532,6 +568,8 @@ export default function MQTTBrowser() {
             const hasChevronSlot = hideMembers && Object.keys(groupMembers).length > 0;
             const ml = Math.max(insetPx || 0, 12) + (hasChevronSlot ? 44 : 16);
             const members = groupMembers[topic];
+            const topicHome = homeForSlug(topic.split('/')[1] || '');
+            const homeOffline = topicHome?.relayConnected === false;
             return (
               <div className="my-1 mr-3 border rounded-lg bg-background overflow-hidden" style={{ marginLeft: ml }}>
                 {/* Header: status + Controls/JSON toggle */}
@@ -550,6 +588,12 @@ export default function MQTTBrowser() {
                     <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
                   </div>
                 </div>
+                {/* Relay-offline hint */}
+                {homeOffline && (
+                  <div className="px-3 py-1.5 border-b text-[10px] text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                    Relay offline — publishes won't reach the device.
+                  </div>
+                )}
                 {/* Controls / JSON */}
                 <div className="px-3 py-2">
                   {rawMode ? (

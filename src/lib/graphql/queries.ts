@@ -171,6 +171,7 @@ export const GET_CACHED_HOMES = gql`
       role
       ownerEmail
       mqttEnabled
+      relayConnected
     }
   }
 `;
