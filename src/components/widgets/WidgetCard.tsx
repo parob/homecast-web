@@ -13,7 +13,6 @@ import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
-import { isAccessoryResponsive } from '@/lib/accessoryFreshness';
 import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, ServiceType } from './types';
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
 import { useDragHandle } from '@/components/shared/SortableItem';
@@ -146,15 +145,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
-  // "No response" is driven by whether HomeKit actually returned live values
-  // — not by HMAccessory.isReachable, which is famously stuck false for
-  // shared-user / bridged accessories even when reads work. See
-  // lib/accessoryFreshness.ts.
-  const effectiveIsReachable = isAccessoryResponsive(accessory, isReachable);
-
+  // `isReachable` here is already the derived value — useHomeKitData overrides
+  // HomeKit's framework flag with value-presence before accessories hit the
+  // cache. Widgets just read it as-is.
   // When not responding, default to off state visually
   const effectiveCompact = compact;
-  const effectiveIsOn = effectiveIsReachable ? isOn : false;
+  const effectiveIsOn = isReachable ? isOn : false;
   const effectiveOnExpandToggle = onExpandToggle;
 
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
@@ -198,13 +194,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const cardBgClass = '!bg-transparent';
 
   // Icon opacity: more visible when off but reachable, very faded when not responding
-  const iconOpacityClass = !effectiveIsReachable
+  const iconOpacityClass = !isReachable
     ? 'opacity-20 grayscale'  // No Response: very faded
     : (!effectiveIsOn ? 'opacity-70' : '');  // Off but reachable: slightly faded, On: full
 
   // Effective subtitle - show "No Response" when device is not reachable
   // When locationSubtitle is provided, show it as a second line or after the main subtitle
-  const effectiveSubtitle = !effectiveIsReachable ? 'No Response' : (
+  const effectiveSubtitle = !isReachable ? 'No Response' : (
     locationSubtitle
       ? (subtitle ? <>{subtitle}<span className="opacity-60"> {locationSubtitle}</span></> : <span className="opacity-80">{locationSubtitle}</span>)
       : subtitle
@@ -254,7 +250,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Hide subtitle when multiLineTitle AND reachable (to allow title wrapping)
   // But always show subtitle when not responding (to display "No Response")
-  const hideSubtitleForMultiLine = multiLineTitle && effectiveIsReachable;
+  const hideSubtitleForMultiLine = multiLineTitle && isReachable;
 
   // Non-compact mode header content - horizontal layout
   const headerContent = (
@@ -278,7 +274,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   );
 
   // Apply No Response styling to inner content only, not the tooltip portal
-  const noResponseClass = !effectiveIsReachable ? 'opacity-50 grayscale' : '';
+  const noResponseClass = !isReachable ? 'opacity-50 grayscale' : '';
 
   // Hidden state styling - applied to content, not visibility button
   // Use isHidden prop (for context menu hide) or isHiddenUi (for edit mode)

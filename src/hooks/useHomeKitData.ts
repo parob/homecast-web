@@ -8,6 +8,22 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
+import { isAccessoryResponsive } from '../lib/accessoryFreshness';
+
+/**
+ * Derive `isReachable` from value presence + the framework flag before the
+ * accessory lands in the cache. Every widget reads `accessory.isReachable`
+ * downstream; normalising here means they all pick up the Apple-Home-style
+ * rule (values present → responsive, even if HMAccessory.isReachable lies)
+ * without each widget having to know about it.
+ */
+function withDerivedReachability(a: HomeKitAccessory): HomeKitAccessory {
+  const derived = isAccessoryResponsive(a, a.isReachable);
+  return a.isReachable === derived ? a : { ...a, isReachable: derived };
+}
+function normalizeAccessories(list: HomeKitAccessory[]): HomeKitAccessory[] {
+  return list.map(withDerivedReachability);
+}
 
 // ============================================================================
 // Simple cache implementation (similar to Apollo's cache-first policy)
@@ -448,7 +464,7 @@ export function useAccessories(
       homeId,
       includeValues: true,
     });
-    return result?.accessories ?? [];
+    return normalizeAccessories(result?.accessories ?? []);
   }, [homeId]);
 
   const skip = (options.skip ?? false) || !homeId;
@@ -466,7 +482,7 @@ export function useAllAccessories(
     const result = await serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
       includeValues: true,
     });
-    return result?.accessories ?? [];
+    return normalizeAccessories(result?.accessories ?? []);
   }, []);
 
   return useCachedData<HomeKitAccessory[]>('accessories:all', fetcher, options.skip ?? false);
@@ -532,11 +548,12 @@ export function useAccessoriesForHomes(
           includeValues: true,
         })
         .then(result => {
+          const normalized = normalizeAccessories(result.accessories);
           // Store in per-home cache so updates work
           if (mountedRef.current) {
-            cache.set(`accessories:${homeId}`, result.accessories);
+            cache.set(`accessories:${homeId}`, normalized);
           }
-          return result.accessories;
+          return normalized;
         })
         .catch(() => [] as HomeKitAccessory[])
       )
@@ -573,7 +590,7 @@ export function useAccessoriesForHomes(
         includeValues: true,
       }).then(result => {
         if (mountedRef.current) {
-          cache.set(`accessories:${homeId}`, result?.accessories ?? []);
+          cache.set(`accessories:${homeId}`, normalizeAccessories(result?.accessories ?? []));
         }
       }).catch(() => {});
     }
@@ -800,7 +817,7 @@ function updateCharacteristicInCacheKey(
   let updated = false;
   const newAccessories = accessories.map(acc => {
     if (acc.id !== accessoryId) return acc;
-    return {
+    const withValue = {
       ...acc,
       services: acc.services.map(service => ({
         ...service,
@@ -811,6 +828,8 @@ function updateCharacteristicInCacheKey(
         })
       }))
     };
+    // Re-derive reachability: a value arriving is proof of responsiveness.
+    return withDerivedReachability(withValue);
   });
 
   if (updated) {
@@ -869,9 +888,12 @@ function updateReachabilityInCacheKey(
   let updated = false;
   const newAccessories = accessories.map(acc => {
     if (acc.id !== accessoryId) return acc;
-    if (acc.isReachable === isReachable) return acc;
+    // Apply the incoming flag, then re-derive so a stuck `false` doesn't
+    // drown out the values we still have cached.
+    const derived = withDerivedReachability({ ...acc, isReachable });
+    if (acc.isReachable === derived.isReachable) return acc;
     updated = true;
-    return { ...acc, isReachable };
+    return derived;
   });
 
   if (updated) {
