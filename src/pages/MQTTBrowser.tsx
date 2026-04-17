@@ -214,34 +214,20 @@ export default function MQTTBrowser() {
     });
   }, [homesData, cookieHomes]);
 
-  // If the topic's home is known to be offline, confirm before publishing so
-  // the command doesn't silently dissolve (no subscriber, broker drops it).
-  const confirmIfOffline = useCallback((topic: string): boolean => {
-    const slug = topic.split('/')[1];
-    if (!slug) return true;
-    const home = homeForSlug(slug);
-    if (home && home.relayConnected === false) {
-      return window.confirm(`${home.name}'s relay is offline. This command will be dropped by the broker. Publish anyway?`);
-    }
-    return true;
-  }, [homeForSlug]);
-
   const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
-    if (!confirmIfOffline(topic)) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(t, payload);
     addToHistory(t, payload);
-  }, [connected, addToHistory, confirmIfOffline]);
+  }, [connected, addToHistory]);
 
   const publishProp = useCallback((topic: string, key: string, value: unknown) => {
     if (!clientRef.current || !connected) return;
-    if (!confirmIfOffline(topic)) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     const p = JSON.stringify({ [key]: value });
     clientRef.current.publish(t, p);
     addToHistory(t, p);
-  }, [connected, addToHistory, confirmIfOffline]);
+  }, [connected, addToHistory]);
 
   // Auto-connect (only once, not after manual disconnect)
   useEffect(() => {
