@@ -408,6 +408,8 @@ export default function MQTTBrowser() {
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
                 const isSelected = selectedHome === home.name;
 
+                const relayUnknown = home.relayConnected === undefined;
+                const relayOffline = home.relayConnected === false;
                 return (
                   <button
                     key={home.id}
@@ -427,9 +429,16 @@ export default function MQTTBrowser() {
                           ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground'
                           : 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
                     }`}
+                    title={relayOffline ? `${home.name} relay is offline` : relayUnknown ? '' : `${home.name} relay is online`}
                   >
                     <Home className="h-3 w-3" />
                     <span className="font-medium">{home.name}</span>
+                    {!relayUnknown && (
+                      <span
+                        aria-label={relayOffline ? 'relay offline' : 'relay online'}
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${relayOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`}
+                      />
+                    )}
                     {home.mqttEnabled ? (
                       <span className="text-[9px] text-green-600 dark:text-green-400">{count > 0 ? count : 'on'}</span>
                     ) : (
