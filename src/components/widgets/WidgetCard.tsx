@@ -13,7 +13,7 @@ import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
-import { useAccessoryStatus } from '@/lib/accessoryFreshness';
+import { isAccessoryResponsive } from '@/lib/accessoryFreshness';
 import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, ServiceType } from './types';
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
 import { useDragHandle } from '@/components/shared/SortableItem';
@@ -146,12 +146,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
-  // "No response" resolves from observed behaviour (fresh values / recent
-  // control failure), not purely HMAccessory.isReachable — which HomeKit
-  // famously leaves stuck false while reads still succeed. See
-  // lib/accessoryFreshness.ts for the exact rule.
-  const status = useAccessoryStatus(accessory?.id, isReachable);
-  const effectiveIsReachable = status === 'responsive';
+  // "No response" is driven by whether HomeKit actually returned live values
+  // — not by HMAccessory.isReachable, which is famously stuck false for
+  // shared-user / bridged accessories even when reads work. See
+  // lib/accessoryFreshness.ts.
+  const effectiveIsReachable = isAccessoryResponsive(accessory, isReachable);
 
   // When not responding, default to off state visually
   const effectiveCompact = compact;

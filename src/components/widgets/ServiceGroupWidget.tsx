@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/context-menu';
 import type { HomeKitServiceGroup, HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
-import { useAccessoryStatusLookup } from '@/lib/accessoryFreshness';
+import { isAccessoryResponsive } from '@/lib/accessoryFreshness';
 import {
   Lightbulb,
   Blinds,
@@ -107,10 +107,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   editMode = false,
 }) => {
   // Compute group-level reachability from member accessories, using the
-  // same behaviour-derived rule as WidgetCard (fresh values override a
-  // stuck isReachable=false — see lib/accessoryFreshness.ts).
-  const statusLookup = useAccessoryStatusLookup();
-  const isMemberResponsive = (a: HomeKitAccessory) => statusLookup(a.id, a.isReachable) === 'responsive';
+  // same value-presence rule as WidgetCard — see lib/accessoryFreshness.ts.
+  const isMemberResponsive = (a: HomeKitAccessory) => isAccessoryResponsive(a, a.isReachable);
   const reachableCount = accessories.filter(isMemberResponsive).length;
   const allNoResponse = accessories.length > 0 && reachableCount === 0;
   const someNoResponse = reachableCount > 0 && reachableCount < accessories.length;

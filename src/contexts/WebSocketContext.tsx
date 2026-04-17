@@ -3,7 +3,6 @@ import { HomeKit, isRelayCapable } from '../native/homekit-bridge';
 import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
-import { markValueSeen } from '../lib/accessoryFreshness';
 import { toast } from 'sonner';
 
 // Logger - dev only to avoid Chrome energy warnings from high-frequency logging
@@ -140,10 +139,6 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       const key = `${message.accessoryId}:${message.characteristicType}`;
       wsLog.event(message.accessoryId, message.characteristicType, message.value);
 
-      // A value arrived — proves the accessory is responsive right now, even
-      // if HomeKit's isReachable flag still reads false.
-      markValueSeen(message.accessoryId);
-
       characteristicBufferRef.current.set(key, {
         accessoryId: message.accessoryId,
         homeId: message.homeId ?? null,
@@ -153,9 +148,6 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       scheduleFlush();
     } else if (message.type === 'reachability_update') {
       wsLog.reachability(message.accessoryId, message.isReachable);
-
-      // Positive reachability also counts as a "we just heard from it" signal.
-      if (message.isReachable) markValueSeen(message.accessoryId);
 
       reachabilityBufferRef.current.set(message.accessoryId, {
         accessoryId: message.accessoryId,
