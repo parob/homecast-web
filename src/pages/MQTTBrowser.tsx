@@ -504,6 +504,14 @@ export default function MQTTBrowser() {
           // --- Shared topic row renderer ---
           const getEffectivePayload = (topic: string, payload: string) => {
             if (!groupMembers[topic]) return payload;
+            // Prefer the group's own retained payload when it has real content —
+            // the server now aggregates group state (any-member-on semantics).
+            try {
+              const p = JSON.parse(payload);
+              if (p && Object.keys(p).length > 0 && !p.members) return payload;
+            } catch {}
+            // Fallback for placeholder `{}` (only member list arrived, group state
+            // not yet published by an older relay).
             for (const ms of (groupMembers[topic] || [])) {
               const mt = Object.keys(messages).find(t => t.endsWith('/' + ms.split('/').pop()));
               if (mt && messages[mt]?.payload) {
