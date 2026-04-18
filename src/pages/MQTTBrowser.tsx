@@ -36,6 +36,8 @@ export default function MQTTBrowser() {
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
   const filterTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const failureCountRef = useRef(0);
+  const [retryDelay, setRetryDelay] = useState(0);
   const [groupByRoom, setGroupByRoom] = useState(true);
   const [hideMembers, setHideMembers] = useState(true);
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
@@ -156,6 +158,8 @@ export default function MQTTBrowser() {
       const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
       client.on('connect', () => {
         setConnected(true); setConnecting(false);
+        failureCountRef.current = 0;
+        setRetryDelay(0);
         setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid });
         client.subscribe('homecast/#');
       });
@@ -187,12 +191,13 @@ export default function MQTTBrowser() {
         if (topic.endsWith('/set')) return;
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
-      client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
+      client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); failureCountRef.current += 1; });
       client.on('close', () => { setConnected(false); setConnecting(false); });
       clientRef.current = client;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Connection failed');
       setConnecting(false);
+      failureCountRef.current += 1;
     }
   }, []);
 
@@ -229,11 +234,16 @@ export default function MQTTBrowser() {
     addToHistory(t, p);
   }, [connected, addToHistory]);
 
-  // Auto-connect (only once, not after manual disconnect)
+  // Auto-connect with exponential backoff. On each consecutive failure we wait
+  // longer (500ms, 1s, 2s, … capped at 10s) so a broken token or broker doesn't
+  // peg the auth endpoint or the broker.
   useEffect(() => {
+    if (connected || connecting || userDisconnected.current) { setRetryDelay(0); return; }
+    const delay = Math.min(500 * 2 ** failureCountRef.current, 10_000);
+    setRetryDelay(delay);
     const t = setTimeout(() => {
       if (mqttLibRef.current && !connected && !connecting && !userDisconnected.current) connect();
-    }, 500);
+    }, delay);
     return () => clearTimeout(t);
   }, [connect, connected, connecting]);
 
@@ -353,7 +363,7 @@ export default function MQTTBrowser() {
             <div className="flex items-center gap-1.5 shrink-0">
               {connected ? <Wifi className="h-3.5 w-3.5 text-green-500" /> : connecting ? null : <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />}
               <span className={`text-[11px] ${connected ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
+                {connected ? 'Connected' : connecting ? 'Connecting...' : !userDisconnected.current && retryDelay >= 1000 ? `Retrying in ${Math.round(retryDelay / 1000)}s` : 'Disconnected'}
               </span>
             </div>
             <button onClick={() => setConnectDialogOpen(true)} className="text-[11px] px-2.5 py-1 rounded border hover:bg-muted transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap">
