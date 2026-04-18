@@ -51,14 +51,9 @@ export const MotionSensorWidget: React.FC<WidgetProps> = memo(({
 
   const hasTemp = temperature !== null;
 
-  // Compact mode status display
-  const compactStatus = compact ? (
-    <span data-status-badge className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-      motionDetected
-        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
-        : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
-    }`}>
-      {motionDetected ? 'Motion' : 'No Motion'}
+  const compactStatus = compact && motionDetected ? (
+    <span data-status-badge className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+      Motion
     </span>
   ) : undefined;
 

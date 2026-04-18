@@ -308,30 +308,20 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     </div>
   ) : null;
 
-  // Handle click to toggle expanded state (only if not dragging)
-  // In compact mode: click cycles through states:
-  // 1. Compact widget → expand overlay
-  // 2. Expanded overlay → expand accessories
-  // 3. Accessories expanded → close everything
   const handleCardClick = useCallback(() => {
     if (isDragging) return;
     if (showCompact) {
       if (!isWidgetExpanded) {
-        // State 1: Compact widget → expand overlay
         setIsWidgetExpanded(true);
-      } else if (!isExpanded) {
-        // State 2: Expanded overlay → expand accessories
         setIsExpanded(true);
       } else {
-        // State 3: Accessories expanded → close everything
         setIsExpanded(false);
         setIsWidgetExpanded(false);
       }
     } else {
-      // In normal mode, toggle show/hide devices
       setIsExpanded(prev => !prev);
     }
-  }, [isDragging, showCompact, isWidgetExpanded, isExpanded]);
+  }, [isDragging, showCompact, isWidgetExpanded]);
 
   // Compact subtitle text
   const compactSubtitle = allNoResponse
@@ -619,17 +609,10 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     </Card>
   );
 
-  // Click handler for expanded overlay card - toggle accessories or close everything
   const handleExpandedCardClick = useCallback(() => {
-    if (isExpanded) {
-      // Accessories are shown, close everything
-      setIsExpanded(false);
-      setIsWidgetExpanded(false);
-    } else {
-      // Show accessories
-      setIsExpanded(true);
-    }
-  }, [isExpanded]);
+    setIsExpanded(false);
+    setIsWidgetExpanded(false);
+  }, []);
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
   const expandedCardContent = (

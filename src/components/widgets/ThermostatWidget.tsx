@@ -559,20 +559,28 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
               <span className="text-xs text-muted-foreground">{Number(currentTemp).toFixed(0)}°</span>
             )}
             <div className="flex gap-1">
-              {availableHCModes.map((mode) => (
-                <button
-                  key={mode.name}
-                  onClick={() => {
-                    if (isViewOnly) return;
-                    onToggle(accessory.id, 'active', false);
-                    handleModeChange(mode.index);
-                  }}
-                  className={`p-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-                  title={mode.name}
-                >
-                  <mode.icon className="h-3.5 w-3.5" />
-                </button>
-              ))}
+              {availableHCModes.map((mode) => {
+                const modeBgClass =
+                  mode.name === 'Heat'
+                    ? 'bg-red-100 hover:bg-red-200 text-red-600 dark:bg-red-950/50 dark:hover:bg-red-900/60 dark:text-red-300'
+                    : mode.name === 'Cool'
+                    ? 'bg-sky-100 hover:bg-sky-200 text-sky-600 dark:bg-sky-950/50 dark:hover:bg-sky-900/60 dark:text-sky-300'
+                    : 'bg-muted hover:bg-muted/80';
+                return (
+                  <button
+                    key={mode.name}
+                    onClick={() => {
+                      if (isViewOnly) return;
+                      onToggle(accessory.id, 'active', false);
+                      handleModeChange(mode.index);
+                    }}
+                    className={`p-1.5 rounded-lg transition-colors ${modeBgClass} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+                    title={mode.name}
+                  >
+                    <mode.icon className="h-3.5 w-3.5" />
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : activeChar?.isWritable && (!isActive || noResponse) ? (
