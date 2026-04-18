@@ -11,7 +11,12 @@ import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 
-// Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it
+// Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it.
+// Max-Age must be long enough that a user who lives on the main domain for a
+// while and then hops to mqtt.* doesn't find an expired cookie; 30 days
+// comfortably covers JWT lifetimes and the login flow clears/refreshes on auth
+// errors anyway.
+const TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 function syncTokenCookie(token: string | null) {
   try {
     const domain = location.hostname.includes('homecast.cloud')
@@ -19,11 +24,23 @@ function syncTokenCookie(token: string | null) {
       : '';  // localhost — no cross-domain
     const secure = location.protocol === 'https:' ? '; Secure' : '';
     if (token) {
-      document.cookie = `hc_token=${encodeURIComponent(token)}${domain}; Path=/${secure}; SameSite=Lax; Max-Age=86400`;
+      document.cookie = `hc_token=${encodeURIComponent(token)}${domain}; Path=/${secure}; SameSite=Lax; Max-Age=${TOKEN_COOKIE_MAX_AGE}`;
     } else {
       document.cookie = `hc_token=${domain}; Path=/${secure}; SameSite=Lax; Max-Age=0`;
     }
   } catch { /* ignore cookie errors */ }
+}
+
+// Return URL validator used by the mqtt-sync redirect handshake. Accepts only
+// https URLs on mqtt.homecast.cloud or *.mqtt.homecast.cloud to prevent the
+// `return` query param becoming an open redirect.
+function isValidMqttReturnUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && /^(?:[a-z0-9-]+\.)?mqtt\.homecast\.cloud$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
 }
 
 // Wrapper that keeps localStorage and cookie in sync
@@ -418,6 +435,28 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
+    // mqtt-sync handshake: staging.mqtt.homecast.cloud (and prod mqtt.*)
+    // redirects here when it can't find hc_token, so that checkAuth above
+    // rewrites the Domain=.homecast.cloud cookie from localStorage, and we
+    // can bounce the user straight back. No session at all → hand off to
+    // /login via its existing ?redirect= (relative path) param; once the
+    // user logs in, Login sends them back here and we finish the bounce.
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get('mqtt_sync') === '1' && location.hostname.endsWith('homecast.cloud')) {
+        const rawReturn = params.get('return') || '';
+        const target = isValidMqttReturnUrl(rawReturn) ? rawReturn : null;
+        if (target && token) {
+          location.replace(target);
+          return;
+        }
+        if (target) {
+          const afterLogin = `/?mqtt_sync=1&return=${encodeURIComponent(target)}`;
+          location.replace(`/login?redirect=${encodeURIComponent(afterLogin)}`);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
     setIsLoading(false);
   };
 
