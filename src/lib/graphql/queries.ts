@@ -69,7 +69,7 @@ export const GET_ACCOUNT = gql`
 `;
 
 export const GET_ACTIVE_DEALS = gql`
-  query GetActiveDeals($marketplace: String, $accessories: [AccessoryInput]) {
+  query GetActiveDeals($marketplace: String, $accessories: [AccessoryInput!]) {
     activeDeals(marketplace: $marketplace, accessories: $accessories) {
       id
       deviceId
