@@ -529,7 +529,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               // Use colorful theme colors for inline accessories
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
-                : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
+                : (accIsOn ? 'bg-primary/10 dark:bg-black/40' : 'bg-muted/30 dark:bg-black/40');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
                 : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
@@ -759,7 +759,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               // Use colorful theme colors for inline accessories
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
-                : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
+                : (accIsOn ? 'bg-primary/10 dark:bg-black/40' : 'bg-muted/30 dark:bg-black/40');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
                 : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
