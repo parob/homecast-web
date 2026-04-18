@@ -155,7 +155,10 @@ export default function MQTTBrowser() {
         throw new Error(`Not signed in. Sign in at ${loginUrl.replace('https://', '')} first, then return here.`);
       }
       const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
-      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true });
+      // reconnectPeriod: 0 disables mqtt.js' internal reconnect loop. We do
+      // our own exponential backoff in the useEffect below; leaving both
+      // enabled produced a 1Hz retry storm against a down broker.
+      const client = mqttLibRef.current.connect('wss://mqtt.homecast.cloud:8084/mqtt', { username: '', password: token, clientId: cid, clean: true, reconnectPeriod: 0 });
       client.on('connect', () => {
         setConnected(true); setConnecting(false);
         failureCountRef.current = 0;
@@ -191,8 +194,12 @@ export default function MQTTBrowser() {
         if (topic.endsWith('/set')) return;
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
-      client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); failureCountRef.current += 1; });
-      client.on('close', () => { setConnected(false); setConnecting(false); });
+      client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
+      client.on('close', () => {
+        setConnected(false);
+        setConnecting(false);
+        if (!userDisconnected.current) failureCountRef.current += 1;
+      });
       clientRef.current = client;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Connection failed');
