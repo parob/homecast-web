@@ -6,10 +6,11 @@ import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
 import { isMqttDomain, getApiBase, getAuthHeaders, getJWT } from './mqtt-browser/util';
 import { formatUptime, PropertyEditor, TopicPath, FmtVal } from './mqtt-browser/helpers';
 import { ConnectDialog } from './mqtt-browser/ConnectDialog';
+import { HomeInfoDialog } from './mqtt-browser/HomeInfoDialog';
 
 interface TopicMessage { payload: string; timestamp: number; updates: number; }
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
-interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean }
+interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean; ownerEmail?: string | null }
 
 export default function MQTTBrowser() {
   // On mqtt.* the only auth signal is the cross-subdomain cookie. If it's
@@ -27,8 +28,6 @@ export default function MQTTBrowser() {
   const [expandedTopic, setExpandedTopic] = useState<string | null>(() => searchParams.get('topic'));
   const [rawMode, setRawMode] = useState(() => searchParams.get('view') === 'json');
   const [publishValue, setPublishValue] = useState('');
-  const [selectedHome, setSelectedHome] = useState<string | null>(() => searchParams.get('home'));
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(() => searchParams.get('room'));
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
   const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
@@ -37,7 +36,7 @@ export default function MQTTBrowser() {
   const [msgRate, setMsgRate] = useState(0);
   const msgTimestamps = useRef<number[]>([]);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
-  const [disabledHomeInfo, setDisabledHomeInfo] = useState<string | null>(null);
+  const [infoHomeName, setInfoHomeName] = useState<string | null>(null);
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
@@ -95,7 +94,7 @@ export default function MQTTBrowser() {
     const headers = getAuthHeaders();
     if (!headers) return;
     const fetchOnce = () => {
-      fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled relayConnected } }' }) })
+      fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled relayConnected ownerEmail } }' }) })
         .then(r => r.json())
         .then(d => {
           if (d?.data?.me) setCookieUser(d.data.me);
@@ -307,17 +306,12 @@ export default function MQTTBrowser() {
     return () => clearInterval(interval);
   }, [connected]);
 
-  // Filter topics by search + home + room
+  // Filter topics by search text + group-member hiding. Home/room filtering
+  // was removed — the per-home group headers already scope the view.
   const filteredTopics = useMemo(() => {
     return Object.entries(messages)
       .filter(([topic]) => {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
-        if (selectedHome) {
-          const slug = homeSlugForName(selectedHome);
-          const parts = topic.split('/');
-          if (!slug || parts[0] !== 'homecast' || parts[1] !== slug) return false;
-          if (selectedRoom && (parts.length < 3 || parts[2] !== selectedRoom)) return false;
-        }
         // Hide group members when "Groups" toggle is on
         if (hideMembers) {
           const isGM = Object.entries(groupMembers).some(([gt, ms]) =>
@@ -328,7 +322,7 @@ export default function MQTTBrowser() {
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, selectedHome, selectedRoom, homeSlugForName, hideMembers, groupMembers]);
+  }, [messages, filter, hideMembers, groupMembers]);
 
   // Build grouped tree. When Homes is on we bucket by home slug first;
   // when Rooms is also on we nest rooms under each home.
@@ -416,37 +410,25 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-        {/* Filter row: homes + toggles */}
+        {/* Home chips + grouping toggles. Clicking a chip opens an info
+            dialog (no filtering — the list already groups by home). */}
         {homes.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5">Filter</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5">Homes</span>
               {homes.map(home => {
                 const slug = homeSlugForName(home.name);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
-                const isSelected = selectedHome === home.name;
-
                 const relayUnknown = home.relayConnected === undefined;
                 const relayOffline = home.relayConnected === false;
                 return (
                   <button
                     key={home.id}
-                    onClick={() => {
-                      if (!home.mqttEnabled) {
-                        setDisabledHomeInfo(disabledHomeInfo === home.name ? null : home.name);
-                        return;
-                      }
-                      setDisabledHomeInfo(null);
-                      if (isSelected) { setSelectedHome(null); setSelectedRoom(null); updateUrlParams({ home: null, room: null }); }
-                      else { setSelectedHome(home.name); setSelectedRoom(null); updateUrlParams({ home: home.name, room: null }); }
-                    }}
+                    onClick={() => setInfoHomeName(prev => prev === home.name ? null : home.name)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border ${
-                      isSelected
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : home.mqttEnabled
-                          ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground'
-                          : 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
+                      home.mqttEnabled
+                        ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground'
+                        : 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
                     }`}
                     title={relayOffline ? `${home.name} relay is offline` : relayUnknown ? '' : `${home.name} relay is online`}
                   >
@@ -463,7 +445,6 @@ export default function MQTTBrowser() {
                     ) : (
                       <span className="text-[9px]">mqtt off</span>
                     )}
-                    {isSelected && <ChevronDown className="h-3 w-3" />}
                   </button>
                 );
               })}
@@ -490,45 +471,6 @@ export default function MQTTBrowser() {
                 </button>
               </div>
             )}
-            </div>
-
-            {/* Info panel for disabled homes */}
-            {disabledHomeInfo && (
-              <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-md px-3 py-2">
-                To enable MQTT for <span className="font-medium text-foreground">{disabledHomeInfo}</span>, go to Settings → Homes → {disabledHomeInfo} → enable Homecast Broker.
-              </div>
-            )}
-
-            {/* Room chips when a home is selected */}
-            {selectedHome && (() => {
-              const slug = homeSlugForName(selectedHome);
-              const rooms = slug ? roomsByHome[slug] : [];
-              if (!rooms || rooms.length === 0) return null;
-              return (
-                <div className="flex flex-wrap gap-1 pl-4">
-                  {rooms.map(room => (
-                    <button
-                      key={room}
-                      onClick={() => { const next = selectedRoom === room ? null : room; setSelectedRoom(next); updateUrlParams({ room: next }); }}
-                      className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
-                        selectedRoom === room
-                          ? 'bg-primary/10 text-primary border border-primary/30'
-                          : 'bg-muted/50 text-muted-foreground hover:bg-muted border border-transparent'
-                      }`}
-                    >
-                      {room.replace(/-[a-f0-9]{4}$/, '')}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Relay-offline banner */}
-        {selectedHome && homes.find(h => h.name === selectedHome)?.relayConnected === false && (
-          <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            <strong>{selectedHome} relay is offline.</strong> Commands published to MQTT will be dropped until the Homecast Mac app reconnects.
           </div>
         )}
 
@@ -820,6 +762,14 @@ export default function MQTTBrowser() {
         open={connectDialogOpen}
         onOpenChange={setConnectDialogOpen}
         homes={homes}
+      />
+      <HomeInfoDialog
+        open={!!infoHomeName}
+        onOpenChange={(o) => { if (!o) setInfoHomeName(null); }}
+        home={homes.find(h => h.name === infoHomeName) ?? null}
+        slug={infoHomeName ? homeSlugForName(infoHomeName) : null}
+        topicCount={(infoHomeName ? topicCountByHome[homeSlugForName(infoHomeName) ?? ''] : 0) ?? 0}
+        roomCount={(infoHomeName ? roomsByHome[homeSlugForName(infoHomeName) ?? ''] : [])?.length ?? 0}
       />
       </>
     </div>
