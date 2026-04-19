@@ -52,8 +52,8 @@ export default function MQTTBrowser() {
     return p === '1' ? true : p === '0' ? false : true;
   });
   const [hideMembers, setHideMembers] = useState(true);
-  // Inverted so homes default to open — we track which the user has collapsed.
-  const [closedHomes, setClosedHomes] = useState<Set<string>>(new Set());
+  // Homes default to collapsed; the user opens the ones they care about.
+  const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const appliedHomeDefaultRef = useRef(false);
@@ -457,7 +457,7 @@ export default function MQTTBrowser() {
                     ? `${Object.keys(messages).length}`
                     : `${filteredTopics.length}/${Object.keys(messages).length}`}
                 </span>
-                <button onClick={() => { const next = !groupByHome; setGroupByHome(next); setClosedHomes(new Set()); updateUrlParams({ groupByHome: next ? '1' : '0' }); }}
+                <button onClick={() => { const next = !groupByHome; setGroupByHome(next); setOpenHomes(new Set()); updateUrlParams({ groupByHome: next ? '1' : '0' }); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByHome ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Homes
                 </button>
@@ -718,10 +718,10 @@ export default function MQTTBrowser() {
                           )}
                     </div>;
                   }
-                  const isOpen = !closedHomes.has(homeSlug);
+                  const isOpen = openHomes.has(homeSlug);
                   return (
                     <div key={homeSlug}>
-                      <button onClick={() => setClosedHomes(prev => { const n = new Set(prev); if (n.has(homeSlug)) n.delete(homeSlug); else n.add(homeSlug); return n; })}
+                      <button onClick={() => setOpenHomes(prev => { const n = new Set(prev); if (n.has(homeSlug)) n.delete(homeSlug); else n.add(homeSlug); return n; })}
                         className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/20 hover:bg-muted/40 text-xs font-semibold">
                         <span className="flex items-center gap-1.5">
                           {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
