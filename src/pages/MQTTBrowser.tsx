@@ -759,18 +759,18 @@ export default function MQTTBrowser() {
                   if (!groupByHome) {
                     return <div key="_rooms" className="divide-y">
                       {groupByRoom
-                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
+                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 0))
                         : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
                             renderCollapsedRow(topic, payload, timestamp)
                           )}
                     </div>;
                   }
-                  // Grouping by home
+                  // Grouping by home, but this bucket has no home prefix
                   const homeSlug = homeBucket.slug;
                   if (!homeSlug) {
                     return <div key="_nohome" className="divide-y">
                       {groupByRoom
-                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
+                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 0))
                         : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
                             renderCollapsedRow(topic, payload, timestamp)
                           )}
@@ -790,7 +790,7 @@ export default function MQTTBrowser() {
                       {isOpen && (
                         <div className="divide-y">
                           {groupByRoom
-                            ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 2))
+                            ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
                             : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
                                 renderCollapsedRow(topic, payload, timestamp, { depth: 1, short: true })
                               )}
