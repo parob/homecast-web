@@ -114,6 +114,34 @@ export function ConnectDialog({ open, onOpenChange, homes }: {
             </div>
           </div>
 
+          {/* Topic Structure */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Topics</p>
+            <div className="rounded-md border bg-muted/30 divide-y text-[12px]">
+              <div className="px-3 py-2 space-y-1">
+                <p className="text-muted-foreground text-[11px]">Read device state — retained JSON per accessory:</p>
+                <code className="block font-mono text-[11px] break-all">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}</code>
+                <p className="text-muted-foreground text-[11px]">Example payload: <code className="font-mono">{`{"on":true,"brightness":72}`}</code></p>
+              </div>
+              <div className="px-3 py-2 space-y-1">
+                <p className="text-muted-foreground text-[11px]">Control a device — publish JSON to the <code className="font-mono">/set</code> subtopic:</p>
+                <code className="block font-mono text-[11px] break-all">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}/set</code>
+                <p className="text-muted-foreground text-[11px]">Payload keys map 1:1 to state keys — send only what you want to change: <code className="font-mono">{`{"on":false}`}</code></p>
+              </div>
+              <div className="px-3 py-2 space-y-1">
+                <p className="text-muted-foreground text-[11px]">Other topics you'll see:</p>
+                <ul className="text-[11px] space-y-0.5">
+                  <li><code className="font-mono">.../availability</code> — <span className="text-muted-foreground">"online" / "offline" per device</span></li>
+                  <li><code className="font-mono">.../members</code> — <span className="text-muted-foreground">JSON array of accessory slugs in a service group</span></li>
+                  <li><code className="font-mono">homecast/{'{home}'}/status</code> — <span className="text-muted-foreground">home-level online/offline LWT</span></li>
+                </ul>
+              </div>
+              <div className="px-3 py-2">
+                <p className="text-muted-foreground text-[11px]">Slugs are lowercase-kebab with a 4-hex UUID suffix (e.g. <code className="font-mono">county-hall-2d10</code>, <code className="font-mono">kitchen-dfee</code>). Subscribe to <code className="font-mono">homecast/#</code> to see everything your token is scoped to.</p>
+              </div>
+            </div>
+          </div>
+
           {/* Access Tokens */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
