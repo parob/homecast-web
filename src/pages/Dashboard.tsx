@@ -1763,7 +1763,7 @@ const Dashboard = () => {
   );
 
   // User settings query
-  const { data: settingsData, refetch: refetchSettings } = useQuery<GetSettingsResponse>(
+  const { data: settingsData, loading: settingsLoading, refetch: refetchSettings } = useQuery<GetSettingsResponse>(
     GET_SETTINGS,
     { skip: !isAuthenticated, fetchPolicy: 'cache-first', nextFetchPolicy: 'cache-first' }
   );
@@ -6297,7 +6297,7 @@ const Dashboard = () => {
                     {!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
                   </p>
                 </div>
-              ) : (!isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading))) ? (
+              ) : (!isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading) || (settingsLoading && !settingsData))) ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>

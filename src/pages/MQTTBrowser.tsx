@@ -127,11 +127,17 @@ export default function MQTTBrowser() {
     return { topicCountByHome: counts, roomsByHome: Object.fromEntries(Object.entries(rooms).map(([k, v]) => [k, Array.from(v).sort()])) };
   }, [messages]);
 
-  // Find the home slug that matches a home name
+  // Build the MQTT slug for a home from its id + name — must match the
+  // server's _make_slug (name slugified + '-' + first 4 hex of UUID).
+  // Deriving from the home record (not from received topics) means the
+  // filter still works for homes that haven't published a message yet.
   const homeSlugForName = useCallback((name: string) => {
-    const prefix = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    return Object.keys(topicCountByHome).find(slug => slug.startsWith(prefix)) || null;
-  }, [topicCountByHome]);
+    const home = homes.find(h => h.name === name);
+    if (!home) return null;
+    const base = name.toLowerCase().replace(/\s+/g, '-').replace(/'/g, '').replace(/"/g, '').replace(/[^a-z0-9-]/g, '');
+    const suffix = home.id.replace(/-/g, '').slice(0, 4).toLowerCase();
+    return `${base}-${suffix}`;
+  }, [homes]);
 
   // Redirect off the mqtt.* domain for the cookie handshake before we
   // start loading mqtt.js or touching the broker.
@@ -234,14 +240,11 @@ export default function MQTTBrowser() {
     setPublishHistory(prev => [{ topic, payload, timestamp: Date.now() }, ...prev].slice(0, 20));
   }, []);
 
-  // Map a topic's home-slug (parts[1]) back to the CookieHome record
+  // Map a topic's home-slug (parts[1]) back to the CookieHome record by
+  // comparing against each home's derived slug — same format the server uses.
   const homeForSlug = useCallback((slug: string): CookieHome | undefined => {
-    const list: CookieHome[] = (homesData?.cachedHomes ?? cookieHomes) || [];
-    return list.find(h => {
-      const prefix = h.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      return slug.startsWith(prefix);
-    });
-  }, [homesData, cookieHomes]);
+    return homes.find(h => homeSlugForName(h.name) === slug);
+  }, [homes, homeSlugForName]);
 
   const publishToSet = useCallback((topic: string, payload: string) => {
     if (!clientRef.current || !connected) return;
@@ -291,15 +294,9 @@ export default function MQTTBrowser() {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
         if (selectedHome) {
           const slug = homeSlugForName(selectedHome);
-          if (slug && !topic.split('/')[1]?.startsWith(slug.split('-').slice(0, -1).join('-'))) {
-            // Match by slug prefix (without the hash suffix)
-            const parts = topic.split('/');
-            if (parts[0] !== 'homecast' || parts[1] !== slug) return false;
-          }
-          if (selectedRoom) {
-            const parts = topic.split('/');
-            if (parts.length < 3 || parts[2] !== selectedRoom) return false;
-          }
+          const parts = topic.split('/');
+          if (!slug || parts[0] !== 'homecast' || parts[1] !== slug) return false;
+          if (selectedRoom && (parts.length < 3 || parts[2] !== selectedRoom)) return false;
         }
         // Hide group members when "Groups" toggle is on
         if (hideMembers) {

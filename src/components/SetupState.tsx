@@ -67,7 +67,7 @@ function WaitingForMac({ isDarkBackground, onSetupCloud, accountType, cloudSignu
       <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
         <div className="relative mb-4">
           <Monitor className={`h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-          <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-primary" />
+          <Loader2 className="absolute -bottom-2 -right-2 h-5 w-5 animate-spin text-primary rounded-full bg-background p-0.5" />
         </div>
         <h3 className="mb-2 text-lg font-semibold">Waiting for your Mac...</h3>
         <p className={`text-center text-sm mb-6 max-w-sm ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>

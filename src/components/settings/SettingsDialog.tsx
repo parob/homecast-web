@@ -22,6 +22,7 @@ import {
   Pin,
   User,
   ChevronRight,
+  ChevronDown,
   ArrowLeft,
   Tag,
   Bell,
@@ -38,6 +39,7 @@ import { ApiAccessSection } from './ApiAccessSection';
 import { WebhooksSection } from './WebhooksSection';
 import { SharedItemsSection } from './SharedItemsSection';
 import { HomesSection } from './HomesSection';
+import { HomeDetailView } from './HomeDetailView';
 // SelfHostedRelaySection imported from @homecast/cloud above
 import { MacAppSection } from './MacAppSection';
 import { TabBarSection } from './TabBarSection';
@@ -151,14 +153,22 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'plan');
   // On mobile, null means showing the menu list; a tab value means showing that section
   const [mobileSection, setMobileSection] = useState<SettingsTab | null>(null);
+  // Desktop: which home is selected within the Homes section (null = show Homes list)
+  const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
 
   // Reset to initial tab when dialog opens
   useEffect(() => {
     if (open) {
       setActiveTab(initialTab || 'plan');
       setMobileSection(null);
+      setSelectedHomeId(null);
     }
   }, [open, initialTab]);
+
+  // Clear home selection whenever the active tab leaves 'homes'
+  useEffect(() => {
+    if (activeTab !== 'homes' && selectedHomeId) setSelectedHomeId(null);
+  }, [activeTab, selectedHomeId]);
 
   // If developer mode is toggled off and we're on a developer-only tab, fall back to plan
   useEffect(() => {
@@ -331,7 +341,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return <WebhooksSection />;
       case 'sharing':
         return <SharedItemsSection developerMode={props.developerMode} />;
-      case 'homes':
+      case 'homes': {
+        // Desktop: when a home is selected from the sidebar, render its detail view
+        // directly. Mobile: let HomesSection manage its own drill-down.
+        const selectedHome = !isMobile && selectedHomeId
+          ? props.homes.find(h => h.id === selectedHomeId)
+          : null;
+        if (selectedHome) {
+          return (
+            <HomeDetailView
+              home={selectedHome}
+              onBack={() => setSelectedHomeId(null)}
+              developerMode={props.developerMode}
+            />
+          );
+        }
         return (
           <HomesSection
             homes={props.homes}
@@ -343,8 +367,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
             isInMobileApp={props.isInMobileApp}
             cloudSignupsAvailable={props.cloudSignupsAvailable}
             developerMode={props.developerMode}
+            onSelectHome={!isMobile ? setSelectedHomeId : undefined}
           />
         );
+      }
       case 'self-hosted-relay':
         return SelfHostedRelaySection ? (
           <SelfHostedRelaySection
@@ -469,20 +495,49 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </div>
                     {group.items.map((item) => {
                       const Icon = item.icon;
+                      const isHomesRow = item.id === 'homes';
+                      const isActive = activeTab === item.id;
+                      const homesExpanded = isHomesRow && activeTab === 'homes' && props.homes.length > 0;
                       return (
-                        <button
-                          key={item.id}
-                          onClick={() => setActiveTab(item.id)}
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors rounded-none",
-                            activeTab === item.id
-                              ? "bg-muted font-medium text-foreground"
-                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          )}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          {item.label}
-                        </button>
+                        <div key={item.id}>
+                          <button
+                            onClick={() => {
+                              setActiveTab(item.id);
+                              if (isHomesRow) setSelectedHomeId(null);
+                            }}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors rounded-none",
+                              isActive && !(isHomesRow && selectedHomeId)
+                                ? "bg-muted font-medium text-foreground"
+                                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="flex-1 text-left">{item.label}</span>
+                            {isHomesRow && props.homes.length > 0 && (
+                              homesExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            )}
+                          </button>
+                          {homesExpanded && props.homes.map((home) => (
+                            <button
+                              key={home.id}
+                              onClick={() => {
+                                setActiveTab('homes');
+                                setSelectedHomeId(home.id);
+                              }}
+                              className={cn(
+                                "w-full flex items-center gap-2 pl-9 pr-3 py-1 text-xs transition-colors rounded-none",
+                                selectedHomeId === home.id
+                                  ? "bg-muted font-medium text-foreground"
+                                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                              )}
+                            >
+                              <span className="flex-1 text-left truncate">{home.name}</span>
+                            </button>
+                          ))}
+                        </div>
                       );
                     })}
                   </div>

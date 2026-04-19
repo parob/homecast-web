@@ -42,6 +42,9 @@ interface HomesSectionProps {
   isInMobileApp: boolean;
   cloudSignupsAvailable?: boolean;
   developerMode?: boolean;
+  // When provided, home selection is lifted to the parent (desktop sidebar drives the nav).
+  // When absent, HomesSection manages selection internally (mobile drill-down).
+  onSelectHome?: (homeId: string) => void;
 }
 
 function statusBadge(status: string) {
@@ -207,13 +210,17 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
   );
 }
 
-export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, accountType, handleUpgradeToCloud, isInMacApp, isInMobileApp, cloudSignupsAvailable = true, developerMode }: HomesSectionProps) {
+export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, accountType, handleUpgradeToCloud, isInMacApp, isInMobileApp, cloudSignupsAvailable = true, developerMode, onSelectHome }: HomesSectionProps) {
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
   const [homeNameLocked, setHomeNameLocked] = useState(false);
   const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
   const [loading, setLoading] = useState(false);
+  const handleSelectHome = (home: HomeKitHome) => {
+    if (onSelectHome) onSelectHome(home.id);
+    else setSelectedHome(home);
+  };
   const pricing = getPricing();
   const pricingRegion = getRegion();
 
@@ -350,7 +357,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Your Homes</p>
             {ownedHomes.map((home) => (
-              <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
+              <SelfHostedHomeCard key={home.id} home={home} onClick={() => handleSelectHome(home)} />
             ))}
           </div>
         )}
@@ -359,7 +366,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Homes shared with you</p>
             {sharedHomes.map((home) => (
-              <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
+              <SelfHostedHomeCard key={home.id} home={home} onClick={() => handleSelectHome(home)} />
             ))}
           </div>
         )}
@@ -389,7 +396,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
                 onConfirmInvite={() => handleConfirmInvite(enrollment.id)}
                 onResetInvite={() => handleResetInvite(enrollment.id)}
                 developerMode={developerMode}
-                onClick={matchedHome ? () => setSelectedHome(matchedHome) : undefined}
+                onClick={matchedHome ? () => handleSelectHome(matchedHome) : undefined}
               />
               );
             })}
@@ -399,7 +406,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
                 key={home.id}
                 home={home}
                 onSwitchToCloud={() => { setHomeName(home.name); setHomeNameLocked(true); setAddDialogOpen(true); }}
-                onClick={() => setSelectedHome(home)}
+                onClick={() => handleSelectHome(home)}
               />
             ))}
 
@@ -407,7 +414,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
               <>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-1">Homes shared with you</p>
                 {sharedSelfHostedHomes.map((home) => (
-                  <SelfHostedHomeCard key={home.id} home={home} onClick={() => setSelectedHome(home)} />
+                  <SelfHostedHomeCard key={home.id} home={home} onClick={() => handleSelectHome(home)} />
                 ))}
               </>
             )}
