@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
@@ -27,7 +27,6 @@ import { toast } from 'sonner';
 
 interface HomeDetailViewProps {
   home: HomeKitHome;
-  onBack: () => void;
   developerMode?: boolean;
 }
 
@@ -103,7 +102,7 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
   );
 }
 
-export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewProps) {
+export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
@@ -152,14 +151,6 @@ export function HomeDetailView({ home, onBack, developerMode }: HomeDetailViewPr
 
   return (
     <div className="space-y-4">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </button>
-
       <div className="flex items-center gap-2.5">
         <HomeIcon className="h-5 w-5 text-muted-foreground" />
         <h3 className="text-base font-semibold">{home.name}</h3>

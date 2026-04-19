@@ -44,10 +44,20 @@ export default function MQTTBrowser() {
   const filterTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const failureCountRef = useRef(0);
   const [retryDelay, setRetryDelay] = useState(0);
-  const [groupByRoom, setGroupByRoom] = useState(true);
+  const [groupByHome, setGroupByHome] = useState(() => {
+    const p = searchParams.get('groupByHome');
+    return p === '1' ? true : p === '0' ? false : false;
+  });
+  const [groupByRoom, setGroupByRoom] = useState(() => {
+    const p = searchParams.get('groupByRoom');
+    return p === '1' ? true : p === '0' ? false : true;
+  });
   const [hideMembers, setHideMembers] = useState(true);
+  // Inverted so homes default to open — we track which the user has collapsed.
+  const [closedHomes, setClosedHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const appliedHomeDefaultRef = useRef(false);
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams(prev => {
@@ -109,6 +119,16 @@ export default function MQTTBrowser() {
     }
     return Array.from(byName.values());
   }, [homesData, cookieHomes]);
+
+  // Default Homes grouping on when the user has >1 mqtt-enabled home. Runs
+  // once after homes load; a manual URL param or explicit toggle wins.
+  useEffect(() => {
+    if (appliedHomeDefaultRef.current) return;
+    if (homes.length === 0) return;
+    if (searchParams.has('groupByHome')) { appliedHomeDefaultRef.current = true; return; }
+    if (homes.filter(h => h.mqttEnabled).length > 1) setGroupByHome(true);
+    appliedHomeDefaultRef.current = true;
+  }, [homes, searchParams]);
 
   // Derive topic counts + rooms per home from messages
   const { topicCountByHome, roomsByHome } = useMemo(() => {
@@ -310,21 +330,32 @@ export default function MQTTBrowser() {
       .sort(([a], [b]) => a.localeCompare(b));
   }, [messages, filter, selectedHome, selectedRoom, homeSlugForName, hideMembers, groupMembers]);
 
-  // Build room tree for grouped view
-  const topicTree = useMemo(() => {
-    if (!groupByRoom) return null;
-    const rooms = new Map<string, Array<[string, TopicMessage]>>();
+  // Build grouped tree. When Homes is on we bucket by home slug first;
+  // when Rooms is also on we nest rooms under each home.
+  type RoomBucket = { slug: string; topics: Array<[string, TopicMessage]> };
+  type HomeBucket = { slug: string; rooms: RoomBucket[]; allTopics: Array<[string, TopicMessage]> };
+  const topicTree = useMemo<HomeBucket[] | null>(() => {
+    if (!groupByHome && !groupByRoom) return null;
+    const byHome = new Map<string, HomeBucket>();
     for (const entry of filteredTopics) {
       const p = entry[0].split('/');
-      const roomSlug = p.length >= 4 && p[0] === 'homecast' ? p[2] : '';
-      if (!rooms.has(roomSlug)) rooms.set(roomSlug, []);
-      rooms.get(roomSlug)!.push(entry);
+      const isHomecast = p[0] === 'homecast';
+      const homeSlug = groupByHome && isHomecast && p.length >= 2 ? p[1] : '';
+      const roomSlug = groupByRoom && isHomecast && p.length >= 4 ? p[2] : '';
+      if (!byHome.has(homeSlug)) byHome.set(homeSlug, { slug: homeSlug, rooms: [], allTopics: [] });
+      const h = byHome.get(homeSlug)!;
+      h.allTopics.push(entry);
+      if (groupByRoom) {
+        let r = h.rooms.find(r => r.slug === roomSlug);
+        if (!r) { r = { slug: roomSlug, topics: [] }; h.rooms.push(r); }
+        r.topics.push(entry);
+      }
     }
-    return Array.from(rooms.entries())
-      .map(([slug, topics]) => ({ slug, topics }))
-      .filter(r => r.topics.length > 0)
-      .sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
-  }, [filteredTopics, groupByRoom]);
+    const arr = Array.from(byHome.values());
+    arr.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
+    for (const h of arr) h.rooms.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
+    return arr;
+  }, [filteredTopics, groupByHome, groupByRoom]);
 
   if (needsMqttSync) return null;
 
@@ -445,7 +476,11 @@ export default function MQTTBrowser() {
                     ? `${Object.keys(messages).length}`
                     : `${filteredTopics.length}/${Object.keys(messages).length}`}
                 </span>
-                <button onClick={() => { setGroupByRoom(v => !v); setOpenRooms(new Set()); }}
+                <button onClick={() => { const next = !groupByHome; setGroupByHome(next); setClosedHomes(new Set()); updateUrlParams({ groupByHome: next ? '1' : '0' }); }}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByHome ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                  Homes
+                </button>
+                <button onClick={() => { const next = !groupByRoom; setGroupByRoom(next); setOpenRooms(new Set()); updateUrlParams({ groupByRoom: next ? '1' : '0' }); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
@@ -680,35 +715,85 @@ export default function MQTTBrowser() {
             );
           };
 
+          // Room-section renderer. headerDepth=0 when rooms are the outer
+          // grouping; headerDepth=1 when rooms are nested inside a home.
+          const renderRoomBucket = (roomSlug: string, roomTopics: Array<[string, TopicMessage]>, headerDepth: number) => {
+            const topicDepth = headerDepth;  // topics sit one deeper visually via the `short` inset
+            if (!roomSlug) {
+              return <div key="_noroom" className="divide-y">
+                {roomTopics.map(([topic, { payload, timestamp }]) =>
+                  renderCollapsedRow(topic, payload, timestamp, { depth: topicDepth, short: true })
+                )}
+              </div>;
+            }
+            const isOpen = openRooms.has(roomSlug);
+            const headerPadLeft = 12 + headerDepth * 16;
+            return (
+              <div key={roomSlug}>
+                <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
+                  className="w-full flex items-center justify-between pr-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold"
+                  style={{ paddingLeft: headerPadLeft }}>
+                  <span className="flex items-center gap-1.5">
+                    {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                    <span className="font-mono">{roomSlug}</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{roomTopics.length}</span>
+                </button>
+                {isOpen && (
+                  <div className="divide-y">
+                    {roomTopics.map(([topic, { payload, timestamp }]) =>
+                      renderCollapsedRow(topic, payload, timestamp, { depth: topicDepth, short: true })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
           // --- Grouped rendering ---
-          if (groupByRoom && topicTree) {
+          if (topicTree) {
             return (
               <div className="border rounded-lg overflow-hidden divide-y">
-                {topicTree.map(({ slug: roomSlug, topics: roomTopics }) => {
-                  // Topics without a room (< 4 segments) — render flat, no header
-                  if (!roomSlug) {
-                    return <div key="_noroom" className="divide-y">
-                      {roomTopics.map(([topic, { payload, timestamp }]) =>
-                        renderCollapsedRow(topic, payload, timestamp)
-                      )}
+                {topicTree.map(homeBucket => {
+                  // Not grouping by home (homeSlug=='') — render rooms flat
+                  if (!groupByHome) {
+                    return <div key="_rooms" className="divide-y">
+                      {groupByRoom
+                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
+                        : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
+                            renderCollapsedRow(topic, payload, timestamp)
+                          )}
                     </div>;
                   }
-                  const isOpen = openRooms.has(roomSlug);
+                  // Grouping by home
+                  const homeSlug = homeBucket.slug;
+                  if (!homeSlug) {
+                    return <div key="_nohome" className="divide-y">
+                      {groupByRoom
+                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
+                        : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
+                            renderCollapsedRow(topic, payload, timestamp)
+                          )}
+                    </div>;
+                  }
+                  const isOpen = !closedHomes.has(homeSlug);
                   return (
-                    <div key={roomSlug}>
-                      <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
-                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold sticky top-0 z-10">
+                    <div key={homeSlug}>
+                      <button onClick={() => setClosedHomes(prev => { const n = new Set(prev); if (n.has(homeSlug)) n.delete(homeSlug); else n.add(homeSlug); return n; })}
+                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/20 hover:bg-muted/40 text-xs font-semibold">
                         <span className="flex items-center gap-1.5">
                           {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                          <span className="font-mono">{roomSlug}</span>
+                          <span className="font-mono">{homeSlug}</span>
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{roomTopics.length}</span>
+                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{homeBucket.allTopics.length}</span>
                       </button>
                       {isOpen && (
                         <div className="divide-y">
-                          {roomTopics.map(([topic, { payload, timestamp }]) =>
-                            renderCollapsedRow(topic, payload, timestamp, { short: true })
-                          )}
+                          {groupByRoom
+                            ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 2))
+                            : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
+                                renderCollapsedRow(topic, payload, timestamp, { depth: 1, short: true })
+                              )}
                         </div>
                       )}
                     </div>

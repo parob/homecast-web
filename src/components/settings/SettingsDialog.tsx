@@ -342,16 +342,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
       case 'sharing':
         return <SharedItemsSection developerMode={props.developerMode} />;
       case 'homes': {
-        // Desktop: when a home is selected from the sidebar, render its detail view
-        // directly. Mobile: let HomesSection manage its own drill-down.
-        const selectedHome = !isMobile && selectedHomeId
+        const selectedHome = selectedHomeId
           ? props.homes.find(h => h.id === selectedHomeId)
           : null;
         if (selectedHome) {
           return (
             <HomeDetailView
               home={selectedHome}
-              onBack={() => setSelectedHomeId(null)}
               developerMode={props.developerMode}
             />
           );
@@ -367,7 +364,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             isInMobileApp={props.isInMobileApp}
             cloudSignupsAvailable={props.cloudSignupsAvailable}
             developerMode={props.developerMode}
-            onSelectHome={!isMobile ? setSelectedHomeId : undefined}
+            onSelectHome={setSelectedHomeId}
           />
         );
       }
@@ -419,6 +416,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
   };
 
   const activeLabel = menuItems.find(i => i.id === (isMobile ? mobileSection : activeTab))?.label || 'Settings';
+  const selectedHome = selectedHomeId ? props.homes.find(h => h.id === selectedHomeId) : null;
+  const mobileTitle = mobileSection === 'homes' && selectedHome ? selectedHome.name : (mobileSection ? activeLabel : 'Settings');
+  const handleMobileBack = () => {
+    if (mobileSection === 'homes' && selectedHomeId) {
+      setSelectedHomeId(null);
+    } else {
+      setMobileSection(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -436,13 +442,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <DialogTitle className="flex items-center gap-2">
                 {mobileSection && (
                   <button
-                    onClick={() => setMobileSection(null)}
+                    onClick={handleMobileBack}
                     className="p-1 -ml-1 rounded-md hover:bg-muted transition-colors"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                 )}
-                {mobileSection ? activeLabel : 'Settings'}
+                {mobileTitle}
               </DialogTitle>
               <DialogDescription className="sr-only">Configure display and server settings</DialogDescription>
             </DialogHeader>
