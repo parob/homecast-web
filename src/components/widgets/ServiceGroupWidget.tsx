@@ -13,6 +13,7 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -118,6 +119,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedAccessoryId, setExpandedAccessoryId] = useState<string | null>(null);
   const [isWidgetExpanded, setIsWidgetExpanded] = useState(false);
+  const { isDarkBackground } = useBackgroundContext();
 
   // Get drag handle from SortableItem context (if inside a sortable)
   const dragHandle = useDragHandle();
@@ -529,7 +531,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               // Use colorful theme colors for inline accessories
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
-                : (accIsOn ? 'bg-primary/10 dark:bg-black/40' : 'bg-muted/30 dark:bg-black/40');
+                : isDarkBackground
+                  ? 'bg-black/40'
+                  : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
                 : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
@@ -759,7 +763,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               // Use colorful theme colors for inline accessories
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
-                : (accIsOn ? 'bg-primary/10 dark:bg-black/40' : 'bg-muted/30 dark:bg-black/40');
+                : isDarkBackground
+                  ? 'bg-black/40'
+                  : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
                 : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
