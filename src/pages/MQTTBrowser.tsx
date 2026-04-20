@@ -55,7 +55,7 @@ export default function MQTTBrowser() {
   // Homes default to collapsed; the user opens the ones they care about.
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set());
   const appliedHomeDefaultRef = useRef(false);
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
@@ -325,31 +325,102 @@ export default function MQTTBrowser() {
   }, [messages, filter, hideMembers, groupMembers]);
 
   // Build grouped tree. When Homes is on we bucket by home slug first;
-  // when Rooms is also on we nest rooms under each home.
-  type RoomBucket = { slug: string; topics: Array<[string, TopicMessage]> };
-  type HomeBucket = { slug: string; rooms: RoomBucket[]; allTopics: Array<[string, TopicMessage]> };
+  // when Rooms is also on we nest rooms under each home. When hideMembers
+  // is on we additionally hoist service groups into their own sub-buckets
+  // so they render as section headers with members nested beneath.
+  type GroupBucket = {
+    topic: string;
+    payload: TopicMessage;
+    memberTopics: Array<[string, TopicMessage]>;
+  };
+  type RoomBucket = {
+    slug: string;
+    plain: Array<[string, TopicMessage]>;
+    groups: GroupBucket[];
+  };
+  type HomeBucket = {
+    slug: string;
+    rooms: RoomBucket[];
+    // Topics with no room (homecast/<home>/...) — plain + group variants
+    plain: Array<[string, TopicMessage]>;
+    groups: GroupBucket[];
+    allTopicCount: number;
+  };
   const topicTree = useMemo<HomeBucket[] | null>(() => {
     if (!groupByHome && !groupByRoom) return null;
+
+    // Resolve the set of member-accessory topics in the current messages map
+    // so we can skip them (they'll render inside their group). Only applied
+    // when the Groups toggle is on (hideMembers=true).
+    const memberTopicSet = new Set<string>();
+    if (hideMembers) {
+      for (const [, members] of Object.entries(groupMembers)) {
+        for (const memberSlug of members) {
+          const short = memberSlug.split('/').pop();
+          if (!short) continue;
+          const full = Object.keys(messages).find(t => t.endsWith('/' + short));
+          if (full) memberTopicSet.add(full);
+        }
+      }
+    }
+
+    const buildGroup = (topic: string, payload: TopicMessage): GroupBucket => {
+      const members = groupMembers[topic] || [];
+      const memberTopics: Array<[string, TopicMessage]> = [];
+      for (const memberSlug of members) {
+        const short = memberSlug.split('/').pop();
+        if (!short) continue;
+        const full = Object.keys(messages).find(t => t.endsWith('/' + short));
+        if (full && messages[full]) memberTopics.push([full, messages[full]]);
+      }
+      return { topic, payload, memberTopics };
+    };
+
     const byHome = new Map<string, HomeBucket>();
+    const ensureHome = (slug: string) => {
+      if (!byHome.has(slug)) byHome.set(slug, { slug, rooms: [], plain: [], groups: [], allTopicCount: 0 });
+      return byHome.get(slug)!;
+    };
+    const ensureRoom = (h: HomeBucket, slug: string) => {
+      let r = h.rooms.find(r => r.slug === slug);
+      if (!r) { r = { slug, plain: [], groups: [] }; h.rooms.push(r); }
+      return r;
+    };
+
     for (const entry of filteredTopics) {
-      const p = entry[0].split('/');
+      const [topic, msg] = entry;
+      const p = topic.split('/');
       const isHomecast = p[0] === 'homecast';
       const homeSlug = groupByHome && isHomecast && p.length >= 2 ? p[1] : '';
       const roomSlug = groupByRoom && isHomecast && p.length >= 4 ? p[2] : '';
-      if (!byHome.has(homeSlug)) byHome.set(homeSlug, { slug: homeSlug, rooms: [], allTopics: [] });
-      const h = byHome.get(homeSlug)!;
-      h.allTopics.push(entry);
-      if (groupByRoom) {
-        let r = h.rooms.find(r => r.slug === roomSlug);
-        if (!r) { r = { slug: roomSlug, topics: [] }; h.rooms.push(r); }
-        r.topics.push(entry);
+      const isGroup = hideMembers && !!groupMembers[topic];
+
+      // Hide member-accessories from the plain list — they render inside their group
+      if (hideMembers && !isGroup && memberTopicSet.has(topic)) continue;
+
+      const h = ensureHome(homeSlug);
+      h.allTopicCount += 1;
+
+      if (groupByRoom && roomSlug) {
+        const r = ensureRoom(h, roomSlug);
+        if (isGroup) r.groups.push(buildGroup(topic, msg));
+        else r.plain.push(entry);
+      } else {
+        // No room segment — park at the home level
+        if (isGroup) h.groups.push(buildGroup(topic, msg));
+        else h.plain.push(entry);
       }
     }
+
     const arr = Array.from(byHome.values());
     arr.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
-    for (const h of arr) h.rooms.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
+    for (const h of arr) {
+      h.rooms.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
+      for (const r of h.rooms) r.groups.sort((a, b) => a.topic.localeCompare(b.topic));
+      h.groups.sort((a, b) => a.topic.localeCompare(b.topic));
+    }
     return arr;
-  }, [filteredTopics, groupByHome, groupByRoom]);
+  }, [filteredTopics, groupByHome, groupByRoom, hideMembers, groupMembers, messages]);
 
   if (needsMqttSync) return null;
 
@@ -465,7 +536,7 @@ export default function MQTTBrowser() {
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
-                <button onClick={() => { setHideMembers(v => !v); setExpandedGroups(new Set()); }}
+                <button onClick={() => { setHideMembers(v => !v); setOpenGroupKeys(new Set()); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Groups
                 </button>
@@ -597,60 +668,67 @@ export default function MQTTBrowser() {
           const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { depth?: number; short?: boolean }) => {
             const avail = availability[topic];
             const isOffline = avail === 'offline';
-            const isGroup = !!groupMembers[topic];
             const isRecent = Date.now() - timestamp < 8000;
             const ep = getEffectivePayload(topic, payload);
-            const memberCount = isGroup ? (groupMembers[topic]?.length || 0) : 0;
-            const isGrpExpanded = expandedGroups.has(topic);
             const isThisExpanded = expandedTopic === topic;
             const depth = opts?.depth || 0;
-            // Text inset shows hierarchy; hover/flash bg spans full width
             const insetPx = depth * 16 + (opts?.short ? 20 : 0);
-
-            // Reserve space for the group chevron so groups + accessories align
-            const hasAnyGroups = hideMembers && Object.keys(groupMembers).length > 0;
-            const chevronSlotPx = hasAnyGroups ? 20 : 0;
 
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
                 <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
                   className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
                   style={{ paddingLeft: Math.max(insetPx, 12) }}>
-                  {/* Fixed-width chevron slot — groups get a toggle, others get a spacer */}
-                  {hasAnyGroups && (
-                    isGroup ? (
-                      <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; }); }}
-                        className="shrink-0 w-3 flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer">
-                        {isGrpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 w-3" />
-                    )
-                  )}
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
                     {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                   </span>
-                  {isGroup && <span className="text-[9px] text-purple-500 dark:text-purple-400 shrink-0">
-                    {memberCount > 0 ? `ᴳ${memberCount}` : 'ᴳ'}
-                  </span>}
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                     {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
                 </button>
-                {/* Expanded detail panel — renders below the row, indented to match */}
                 {isThisExpanded && renderDetailPanel(topic, payload, timestamp, insetPx)}
-                {/* Inline group members */}
-                {isGroup && hideMembers && isGrpExpanded && (
-                  <div>
-                    {(groupMembers[topic] || []).map(memberSlug => {
-                      const mt = Object.keys(messages).find(t => t.endsWith('/' + memberSlug.split('/').pop()));
-                      if (!mt || !messages[mt]) return null;
-                      const m = messages[mt];
-                      return renderCollapsedRow(mt, m.payload, m.timestamp, { depth: depth + 1, short: opts?.short });
-                    })}
+              </div>
+            );
+          };
+
+          // Group header — same shape as the room/home header (chevron + mono slug + right-count).
+          // Right-side state chip opens the PropertyEditor; header body toggles member expansion.
+          const renderGroupBucket = (g: { topic: string; payload: TopicMessage; memberTopics: Array<[string, TopicMessage]> }, headerDepth: number) => {
+            const groupSlug = g.topic.split('/').pop() || g.topic;
+            const isOpen = openGroupKeys.has(g.topic);
+            const ep = getEffectivePayload(g.topic, g.payload.payload);
+            const headerPadLeft = 12 + headerDepth * 16;
+            const topicDepth = headerDepth + 1;
+            return (
+              <div key={g.topic} className="border-l-2 border-purple-500/50">
+                <div className="flex items-stretch bg-muted/15 hover:bg-muted/30">
+                  <button
+                    onClick={() => setOpenGroupKeys(prev => { const n = new Set(prev); if (n.has(g.topic)) n.delete(g.topic); else n.add(g.topic); return n; })}
+                    className="flex-1 flex items-center justify-between pr-2 py-1.5 text-xs font-semibold text-left"
+                    style={{ paddingLeft: headerPadLeft }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                      <span className="font-mono">{groupSlug}</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{g.memberTopics.length}</span>
+                  </button>
+                  <button
+                    onClick={() => expandTopic(g.topic)}
+                    className="px-2.5 flex items-center text-[11px] font-mono hover:bg-muted/40 border-l border-border/50"
+                    title="Edit group state"
+                  >
+                    <FmtVal payload={ep} />
+                  </button>
+                </div>
+                {isOpen && (
+                  <div className="divide-y">
+                    {g.memberTopics.map(([t, m]) =>
+                      renderCollapsedRow(t, m.payload, m.timestamp, { depth: topicDepth, short: true })
+                    )}
                   </div>
                 )}
               </div>
@@ -659,34 +737,35 @@ export default function MQTTBrowser() {
 
           // Room-section renderer. headerDepth=0 when rooms are the outer
           // grouping; headerDepth=1 when rooms are nested inside a home.
-          const renderRoomBucket = (roomSlug: string, roomTopics: Array<[string, TopicMessage]>, headerDepth: number) => {
-            const topicDepth = headerDepth;  // topics sit one deeper visually via the `short` inset
-            if (!roomSlug) {
-              return <div key="_noroom" className="divide-y">
-                {roomTopics.map(([topic, { payload, timestamp }]) =>
-                  renderCollapsedRow(topic, payload, timestamp, { depth: topicDepth, short: true })
+          const renderRoomBucket = (r: RoomBucket, headerDepth: number) => {
+            const topicDepth = headerDepth;
+            const bodyCount = r.plain.length + r.groups.length;
+            const renderBody = (innerDepth: number) => (
+              <>
+                {r.plain.map(([topic, { payload, timestamp }]) =>
+                  renderCollapsedRow(topic, payload, timestamp, { depth: innerDepth, short: true })
                 )}
-              </div>;
+                {r.groups.map(g => renderGroupBucket(g, innerDepth))}
+              </>
+            );
+            if (!r.slug) {
+              return <div key="_noroom" className="divide-y">{renderBody(topicDepth)}</div>;
             }
-            const isOpen = openRooms.has(roomSlug);
+            const isOpen = openRooms.has(r.slug);
             const headerPadLeft = 12 + headerDepth * 16;
             return (
-              <div key={roomSlug}>
-                <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(roomSlug)) n.delete(roomSlug); else n.add(roomSlug); return n; })}
+              <div key={r.slug}>
+                <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(r.slug)) n.delete(r.slug); else n.add(r.slug); return n; })}
                   className="w-full flex items-center justify-between pr-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold"
                   style={{ paddingLeft: headerPadLeft }}>
                   <span className="flex items-center gap-1.5">
                     {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                    <span className="font-mono">{roomSlug}</span>
+                    <span className="font-mono">{r.slug}</span>
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{roomTopics.length}</span>
+                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{bodyCount}</span>
                 </button>
                 {isOpen && (
-                  <div className="divide-y">
-                    {roomTopics.map(([topic, { payload, timestamp }]) =>
-                      renderCollapsedRow(topic, payload, timestamp, { depth: topicDepth, short: true })
-                    )}
-                  </div>
+                  <div className="divide-y">{renderBody(topicDepth + 1)}</div>
                 )}
               </div>
             );
@@ -694,29 +773,28 @@ export default function MQTTBrowser() {
 
           // --- Grouped rendering ---
           if (topicTree) {
+            // Render a home bucket's body at a given depth
+            const renderHomeBody = (h: HomeBucket, rowDepth: number) => (
+              <>
+                {/* Home-level (no-room) topics + groups */}
+                {h.plain.map(([topic, { payload, timestamp }]) =>
+                  renderCollapsedRow(topic, payload, timestamp, { depth: rowDepth, short: rowDepth > 0 })
+                )}
+                {h.groups.map(g => renderGroupBucket(g, rowDepth))}
+                {/* Rooms (when groupByRoom is on) */}
+                {groupByRoom && h.rooms.map(r => renderRoomBucket(r, rowDepth))}
+              </>
+            );
             return (
               <div className="border rounded-lg overflow-hidden divide-y">
                 {topicTree.map(homeBucket => {
-                  // Not grouping by home (homeSlug=='') — render rooms flat
+                  // Not grouping by home (single unlabeled bucket) — render body flat at depth 0
                   if (!groupByHome) {
-                    return <div key="_rooms" className="divide-y">
-                      {groupByRoom
-                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 0))
-                        : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
-                            renderCollapsedRow(topic, payload, timestamp)
-                          )}
-                    </div>;
+                    return <div key="_rooms" className="divide-y">{renderHomeBody(homeBucket, 0)}</div>;
                   }
-                  // Grouping by home, but this bucket has no home prefix
                   const homeSlug = homeBucket.slug;
                   if (!homeSlug) {
-                    return <div key="_nohome" className="divide-y">
-                      {groupByRoom
-                        ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 0))
-                        : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
-                            renderCollapsedRow(topic, payload, timestamp)
-                          )}
-                    </div>;
+                    return <div key="_nohome" className="divide-y">{renderHomeBody(homeBucket, 0)}</div>;
                   }
                   const isOpen = openHomes.has(homeSlug);
                   return (
@@ -727,16 +805,10 @@ export default function MQTTBrowser() {
                           {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
                           <span className="font-mono">{homeSlug}</span>
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{homeBucket.allTopics.length}</span>
+                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{homeBucket.allTopicCount}</span>
                       </button>
                       {isOpen && (
-                        <div className="divide-y">
-                          {groupByRoom
-                            ? homeBucket.rooms.map(r => renderRoomBucket(r.slug, r.topics, 1))
-                            : homeBucket.allTopics.map(([topic, { payload, timestamp }]) =>
-                                renderCollapsedRow(topic, payload, timestamp, { depth: 1, short: true })
-                              )}
-                        </div>
+                        <div className="divide-y">{renderHomeBody(homeBucket, 1)}</div>
                       )}
                     </div>
                   );
