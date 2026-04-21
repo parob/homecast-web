@@ -594,7 +594,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
               : "The home owner's relay isn't connected right now. Devices will appear when it comes back online."}
           </p>
           <p className={`mt-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-            {formatLastOnline(mostRecentLastSeen(sharedHomes))}.
+            {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(sharedHomes))}.
           </p>
         </CardContent>
       </Card>
@@ -620,7 +620,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
             : "It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect."}
         </p>
         <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-          {formatLastOnline(mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.
+          {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.
         </p>
         {onSetupCloud && (
           <div className={`border-t pt-4 mt-2 ${isDarkBackground ? 'border-white/20' : ''}`}>
