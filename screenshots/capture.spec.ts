@@ -73,31 +73,17 @@ async function clipAroundElement(page: Page, locator: ReturnType<Page['locator']
   };
 }
 
-/** Open the settings dialog from the dashboard. */
-async function openSettings(page: Page) {
-  // The settings are in a dropdown menu — find the trigger button with MoreVertical icon
-  // or an icon button in the header area. Try the gear/settings approach first.
-  const menuTrigger = page.locator('button').filter({ has: page.locator('[class*="lucide-ellipsis-vertical"], [class*="lucide-more-vertical"]') }).first();
-  if (await menuTrigger.isVisible()) {
-    await menuTrigger.click({ force: true });
-    await page.waitForTimeout(300);
-    await page.getByText('Homecast Settings').click();
-  } else {
-    // Fallback: try any dropdown trigger in the header
-    const headerButtons = page.locator('header button, [class*="header"] button').filter({ has: page.locator('svg') });
-    for (let i = 0; i < await headerButtons.count(); i++) {
-      await headerButtons.nth(i).click({ force: true });
-      await page.waitForTimeout(300);
-      const settingsItem = page.getByText('Homecast Settings');
-      if (await settingsItem.isVisible()) {
-        await settingsItem.click();
-        break;
-      }
-      // Close menu if it opened something else
-      await page.keyboard.press('Escape');
-    }
-  }
+/** Open the settings dialog from the dashboard, optionally on a specific tab. */
+async function openSettings(page: Page, tabLabel?: string) {
+  const menuTrigger = page.locator('[data-tour="header-menu"]').first();
+  await menuTrigger.click({ force: true });
+  await page.waitForTimeout(300);
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await page.waitForTimeout(500);
+  if (tabLabel) {
+    await page.locator('[role="dialog"] nav button', { hasText: tabLabel }).first().click({ force: true });
+    await page.waitForTimeout(400);
+  }
 }
 
 // ── Dashboard Screenshots ──────────────────────────────────────────────────────
@@ -106,8 +92,14 @@ test.describe('Dashboard screenshots', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
     await setupMocks(page);
-    await page.goto('/portal');
+    await page.goto(`/portal?home=${HOME_ID}`);
     await page.waitForTimeout(3000);
+    // Defensive: force-select My Home via sidebar if auto-selection landed elsewhere
+    const myHomeBtn = page.locator('button').filter({ hasText: 'My Home' }).first();
+    if (await myHomeBtn.isVisible()) {
+      await myHomeBtn.click({ force: true });
+      await page.waitForTimeout(1500);
+    }
   });
 
   test('dashboard overview — full page', async ({ page }) => {
@@ -123,7 +115,9 @@ test.describe('Dashboard screenshots', () => {
   });
 
   test('widget lightbulb — lights card with brightness and color temp', async ({ page }) => {
-    const lightCard = page.locator('div[class*="rounded-"]').filter({ hasText: 'Color Temp' }).first();
+    const lightCard = page.getByRole('button', { name: /Ceiling Light.*brightness/ }).first();
+    await lightCard.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
     const clip = await clipAroundElement(page, lightCard, { padX: 5, padY: 5 });
     if (clip) {
       await page.screenshot({ path: img('widget-lightbulb.png'), clip });
@@ -153,7 +147,7 @@ test.describe('Dashboard screenshots', () => {
   });
 
   test('widget blinds — blinds position card', async ({ page }) => {
-    const blindsCard = page.locator('div[class*="rounded-"]').filter({ hasText: 'Closed' }).first();
+    const blindsCard = page.getByRole('button', { name: /Blinds.*% Open|Close Blinds/ }).first();
     const clip = await clipAroundElement(page, blindsCard, { padX: 5, padY: 5 });
     if (clip) {
       await page.screenshot({ path: img('widget-blinds.png'), clip });
@@ -210,25 +204,17 @@ test.describe('Dashboard screenshots', () => {
   });
 
   test('api endpoints — API Access dialog', async ({ page }) => {
-    await openSettings(page);
-    // Use exact match for "Manage" to avoid matching "Manage Subscription"
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    await manageButtons.first().click({ force: true });
-    await page.waitForTimeout(500);
-    const topDialog = page.locator('[role="dialog"]').last();
-    if (await topDialog.isVisible()) {
+    await openSettings(page, 'API Access');
+    const dialog = page.locator('[role="dialog"]').first();
+    if (await dialog.isVisible()) {
       await prepareDialogScreenshot(page);
-      await topDialog.screenshot({ path: img('api-endpoints.png'), omitBackground: true });
+      await dialog.screenshot({ path: img('api-endpoints.png'), omitBackground: true });
       fs.copyFileSync(img('api-endpoints.png'), featureImg('api-access.png'));
     }
   });
 
   test('api create token — token creation form', async ({ page }) => {
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    await manageButtons.first().click({ force: true });
-    await page.waitForTimeout(500);
-    // Click "Create Token"
+    await openSettings(page, 'API Access');
     const createBtn = page.getByRole('button', { name: /Create Token/i });
     if (await createBtn.isVisible()) {
       await createBtn.click({ force: true });
@@ -242,17 +228,12 @@ test.describe('Dashboard screenshots', () => {
   });
 
   test('webhooks list — webhook management', async ({ page }) => {
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    if (await manageButtons.count() >= 2) {
-      await manageButtons.nth(1).click({ force: true });
-      await page.waitForTimeout(500);
-      const topDialog = page.locator('[role="dialog"]').last();
-      if (await topDialog.isVisible()) {
-        await prepareDialogScreenshot(page);
-        await topDialog.screenshot({ path: img('webhooks-list.png'), omitBackground: true });
-        fs.copyFileSync(img('webhooks-list.png'), featureImg('webhooks.png'));
-      }
+    await openSettings(page, 'Webhooks');
+    const dialog = page.locator('[role="dialog"]').first();
+    if (await dialog.isVisible()) {
+      await prepareDialogScreenshot(page);
+      await dialog.screenshot({ path: img('webhooks-list.png'), omitBackground: true });
+      fs.copyFileSync(img('webhooks-list.png'), featureImg('webhooks.png'));
     }
   });
 
@@ -302,62 +283,31 @@ test.describe('Dashboard screenshots', () => {
     }
   });
 
-  test('share dialog ai — AI Assistants section cropped', async ({ page }) => {
-    const homeBtn = page.locator('button').filter({ hasText: 'My Home' }).first();
-    await homeBtn.click({ button: 'right', force: true });
-    await page.waitForTimeout(500);
-    const shareItem = page.locator('[role="menuitem"]').filter({ hasText: 'Share Home' });
-    if (await shareItem.isVisible()) {
-      await shareItem.click();
-      await page.waitForTimeout(1000);
-      // Scroll the AI Assistants section into view
-      const aiLabel = page.getByText('AI Assistants', { exact: true }).first();
-      await aiLabel.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(300);
-      // Use fullPage screenshot to capture off-viewport content
-      const box = await aiLabel.boundingBox();
-      if (box) {
-        await prepareDialogScreenshot(page);
-        await page.screenshot({
-          path: img('share-dialog-ai.png'),
-          omitBackground: true,
-          fullPage: true,
-          clip: { x: Math.max(0, box.x - 30), y: Math.max(0, box.y - 10), width: 450, height: 140 },
-        });
-      }
-    }
+  test.skip('share dialog ai — AI Assistants section cropped', async () => {
+    // The "AI Assistants" section was removed from the share dialog. Feature image
+    // for AI assistants is now captured via the OAuth consent test above.
   });
 
   test('shared items list — shared items dialog', async ({ page }) => {
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    if (await manageButtons.count() >= 3) {
-      await manageButtons.nth(2).click({ force: true });
-      await page.waitForTimeout(500);
-      const topDialog = page.locator('[role="dialog"]').last();
-      if (await topDialog.isVisible()) {
-        await prepareDialogScreenshot(page);
-        await topDialog.screenshot({ path: img('shared-items-list.png'), omitBackground: true });
-      }
+    await openSettings(page, 'Sharing');
+    const dialog = page.locator('[role="dialog"]').first();
+    if (await dialog.isVisible()) {
+      await prepareDialogScreenshot(page);
+      await dialog.screenshot({ path: img('shared-items-list.png'), omitBackground: true });
     }
   });
 
   test('shared items apps — authorized apps tab', async ({ page }) => {
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    if (await manageButtons.count() >= 3) {
-      await manageButtons.nth(2).click({ force: true });
+    await openSettings(page, 'Sharing');
+    const appsTab = page.getByRole('tab', { name: /Authorized Apps/i });
+    if (await appsTab.isVisible()) {
+      await appsTab.click();
       await page.waitForTimeout(500);
-      const appsTab = page.getByRole('tab', { name: /Authorized Apps/i });
-      if (await appsTab.isVisible()) {
-        await appsTab.click();
-        await page.waitForTimeout(500);
-      }
-      const topDialog = page.locator('[role="dialog"]').last();
-      if (await topDialog.isVisible()) {
-        await prepareDialogScreenshot(page);
-        await topDialog.screenshot({ path: img('shared-items-apps.png'), omitBackground: true });
-      }
+    }
+    const dialog = page.locator('[role="dialog"]').first();
+    if (await dialog.isVisible()) {
+      await prepareDialogScreenshot(page);
+      await dialog.screenshot({ path: img('shared-items-apps.png'), omitBackground: true });
     }
   });
 
@@ -519,6 +469,8 @@ const BASE_SETTINGS = {
   fontSize: 'small',
   hideInfoDevices: false,
   hideAccessoryCounts: true,
+  developerMode: true,
+  homeOrder: [HOME_ID, SHARED_HOME_ID],
 };
 
 test.describe('App Store screenshots', () => {
@@ -609,10 +561,7 @@ test.describe('App Store screenshots', () => {
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
     await page.waitForTimeout(3000);
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    await manageButtons.first().click({ force: true });
-    await page.waitForTimeout(500);
+    await openSettings(page, 'API Access');
     await page.screenshot({ path: appStoreImg('07-api-access.png') });
   });
 
@@ -625,12 +574,7 @@ test.describe('App Store screenshots', () => {
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
     await page.waitForTimeout(3000);
-    await openSettings(page);
-    const manageButtons = page.locator('[role="dialog"]').getByRole('button', { name: 'Manage', exact: true });
-    if (await manageButtons.count() >= 2) {
-      await manageButtons.nth(1).click({ force: true });
-      await page.waitForTimeout(500);
-    }
+    await openSettings(page, 'Webhooks');
     await page.screenshot({ path: appStoreImg('08-webhooks.png') });
   });
 

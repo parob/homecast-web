@@ -308,7 +308,7 @@ export const SERVICE_GROUPS = [
     name: 'All Lights',
     homeId: HOME_ID,
     serviceIds: [],
-    accessoryIds: ['acc-lr-ceiling', 'acc-lr-lamp', 'acc-br-light', 'acc-ki-light', 'acc-gd-light'],
+    accessoryIds: ['acc-lr-lamp', 'acc-br-light', 'acc-ki-light', 'acc-gd-light'],
   },
 ];
 
@@ -360,6 +360,8 @@ export const MOCK_SETTINGS = {
     theme: 'dark',
     sidebarCollapsed: false,
     developerMode: true,
+    homeOrder: [HOME_ID, SHARED_HOME_ID],
+    lastView: { type: 'home', homeId: HOME_ID },
   }),
 };
 
