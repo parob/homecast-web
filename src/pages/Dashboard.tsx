@@ -2611,11 +2611,13 @@ const Dashboard = () => {
       if (parsed.tutorialCompleted) return;
       // In cloud mode, wait for onboarding to be done first
       if (!isCommunity && !parsed.onboarding?.completed && !parsed.onboardingCompleted) return;
-      // Only show if user has at least one home
+      // Only show once a relay is serving content — otherwise the user is still
+      // on "Waiting for your Mac" / cloud enrollment screens with nothing to tour.
+      if (!hasContentAccess) return;
       if (!homesData || homesData.homes.length === 0) return;
       setShowTutorial(true);
     } catch { /* ignore parse errors */ }
-  }, [settingsData, isAuthenticated, homesLoading, showOnboarding, homesData]);
+  }, [settingsData, isAuthenticated, homesLoading, showOnboarding, homesData, hasContentAccess]);
 
   const roomsData = relayRoomsData ? { rooms: relayRoomsData } : null;
   const roomsLoading = relayRoomsLoading && !relayRoomsData;
