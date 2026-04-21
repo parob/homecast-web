@@ -552,12 +552,12 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
   accountType?: string;
   cloudSignupsAvailable?: boolean;
 }) {
+  const offlineHomes = homes.filter(h => h.relayConnected === false);
   const sharedHomes = homes.filter(h => h.role && h.role !== 'owner');
   const isSharedHome = sharedHomes.length > 0;
-  // Treat as "cloud relay offline" when every offline shared home is
-  // cloud-managed — that's our infrastructure, not a Mac the owner forgot
-  // to turn on.
-  const isCloudRelayOffline = isSharedHome && sharedHomes.every(h => h.isCloudManaged);
+  // Cloud-managed homes are handled by our infrastructure, not the user's Mac —
+  // we show a different message regardless of whether the user is owner or shared.
+  const isCloudRelayOffline = offlineHomes.length > 0 && offlineHomes.every(h => h.isCloudManaged);
 
   if (isSharedHome) {
     return (
@@ -586,16 +586,24 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
 
   return (
     <>
-      <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
+      {!isCloudRelayOffline && <EnableRelayHereBanner isDarkBackground={isDarkBackground} />}
       <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
       <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
-        <Monitor className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-        <h3 className="mb-2 text-lg font-semibold">Your Mac relay is offline</h3>
+        {isCloudRelayOffline ? (
+          <Cloud className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
+        ) : (
+          <Monitor className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
+        )}
+        <h3 className="mb-2 text-lg font-semibold">
+          {isCloudRelayOffline ? 'Cloud relay offline' : 'Your Mac relay is offline'}
+        </h3>
         <p className={`text-center text-sm mb-4 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
-          It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.
+          {isCloudRelayOffline
+            ? "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Devices will appear when it's back online."
+            : "It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect."}
         </p>
         <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-          {formatLastOnline(mostRecentLastSeen(homes.filter(h => !h.role || h.role === 'owner')))}.
+          {formatLastOnline(mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.
         </p>
         {onSetupCloud && (
           <div className={`border-t pt-4 mt-2 ${isDarkBackground ? 'border-white/20' : ''}`}>
