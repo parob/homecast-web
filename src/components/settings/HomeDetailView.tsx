@@ -25,6 +25,7 @@ import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import type { HomeKitHome } from '@/lib/graphql/types';
 import { toast } from 'sonner';
+import { useHomes } from '@/hooks/useHomeKitData';
 
 interface HomeDetailViewProps {
   home: HomeKitHome;
@@ -103,7 +104,22 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
   );
 }
 
-export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
+export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailViewProps) {
+  // Keep the detail view fresh so relayLastSeenAt / relayConnected reflect the
+  // live server state instead of a frozen snapshot taken at settings-open time.
+  const { data: liveHomes, refetch: refetchHomes } = useHomes();
+  useEffect(() => {
+    const id = setInterval(() => { refetchHomes(); }, 15_000);
+    return () => clearInterval(id);
+  }, [refetchHomes]);
+  const home = liveHomes?.find(h => h.id === homeProp.id) ?? homeProp;
+  // Tick every second so the "ago" label updates without waiting for a refetch.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow(n => n + 1), 1_000);
+    return () => clearInterval(id);
+  }, []);
+
   const [addOpen, setAddOpen] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);

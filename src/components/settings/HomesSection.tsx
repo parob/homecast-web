@@ -32,6 +32,7 @@ import type {
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
+import { useHomes } from '@/hooks/useHomeKitData';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -218,7 +219,21 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
   );
 }
 
-export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, accountType, handleUpgradeToCloud, isInMacApp, isInMobileApp, cloudSignupsAvailable = true, developerMode, onSelectHome }: HomesSectionProps) {
+export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnroll, accountType, handleUpgradeToCloud, isInMacApp, isInMobileApp, cloudSignupsAvailable = true, developerMode, onSelectHome }: HomesSectionProps) {
+  // Keep the list fresh so each card's online/offline + last-seen reflects the
+  // live server state rather than the snapshot captured at dialog-open time.
+  const { data: liveHomes, refetch: refetchHomes } = useHomes();
+  useEffect(() => {
+    const id = setInterval(() => { refetchHomes(); }, 15_000);
+    return () => clearInterval(id);
+  }, [refetchHomes]);
+  const homes = liveHomes ?? homesProp;
+  // Tick every second so the "ago" label recomputes between refetches.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow(n => n + 1), 1_000);
+    return () => clearInterval(id);
+  }, []);
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
