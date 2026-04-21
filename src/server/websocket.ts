@@ -13,6 +13,7 @@ import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
 import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine } from '../automation';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
+import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws';
 
 // Protocol message types
 interface ProtocolMessage {
@@ -136,7 +137,7 @@ const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
 export class ServerWebSocket {
   private config: ServerConfig;
   private callbacks: ServerWebSocketCallbacks;
-  private ws: WebSocket | null = null;
+  private ws: WebSocket | NativeRelayWebSocket | null = null;
   private state: ConnectionState = 'disconnected';
   private reconnectDelay = INITIAL_RECONNECT_DELAY;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -556,7 +557,12 @@ export class ServerWebSocket {
         console.log(`[ServerWS] Browser Session ID: ${this.config.browserSessionId}`);
       }
       console.log(`[ServerWS] Client type: ${isRelayEnabled() ? 'device (relay)' : 'web (browser)'}`);
-      this.ws = new WebSocket(url.toString());
+      if (shouldUseNativeRelayWs()) {
+        console.log('[ServerWS] Using native relay WebSocket transport');
+        this.ws = new NativeRelayWebSocket(url.toString());
+      } else {
+        this.ws = new WebSocket(url.toString());
+      }
 
       this.ws.onopen = this.handleOpen.bind(this);
       this.ws.onmessage = this.handleMessage.bind(this);
