@@ -2584,6 +2584,13 @@ const Dashboard = () => {
   const homesLoading = relayHomesLoading && !relayHomesData && !(isCommunity && isRelayCapable());
   const refetchHomes = relayRefetchHomes;
 
+  // Hoisted above the useEffects below so they can appear in deps arrays without
+  // hitting a let/const TDZ at render time.
+  const homes = homesData?.homes || [];
+  const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
+  const anyRelayConnected = homes.some(h => h.relayConnected === true);
+  const hasContentAccess = hasDeviceAccess || hasSharedHomes || anyRelayConnected;
+
   // Onboarding: check if user has completed onboarding (cloud mode only)
   useEffect(() => {
     if (isCommunity) return; // Community mode doesn't need cloud onboarding
@@ -2814,16 +2821,9 @@ const Dashboard = () => {
     updateAccessoryCharacteristicInCache(homeId, accessoryId, characteristicType, parsedValue, false);
   }, [selectedHomeId]);
 
-  const homes = homesData?.homes || [];
   const rooms = roomsData?.rooms || [];
   const accessories = (accessoriesData?.accessories || []) as HomeKitAccessory[];
   const serviceGroups = serviceGroupsData?.serviceGroups || [];
-
-  // Broader access check: user has content access if they have a device, shared homes,
-  // or any home with an active relay (homes.list includes relayConnected from DB)
-  const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
-  const anyRelayConnected = homes.some(h => h.relayConnected === true);
-  const hasContentAccess = hasDeviceAccess || hasSharedHomes || anyRelayConnected;
 
   // Selected home role - used to enforce view-only permissions
   const selectedHomeRole = useMemo(() => {
