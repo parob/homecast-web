@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
-import { formatLastOnline } from '@/lib/relay-last-seen';
+import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
@@ -195,14 +195,12 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
             </span>
           </div>
 
-          {!relayOnline && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Last online</span>
-              <span className="font-medium">
-                {home.relayLastSeenAt ? formatLastOnline(home.relayLastSeenAt).replace(/^Last online\s*/i, '') : 'Never'}
-              </span>
-            </div>
-          )}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Last online</span>
+            <span className="font-medium">
+              {home.relayLastSeenAt ? formatRelativeAgo(home.relayLastSeenAt) : 'Never'}
+            </span>
+          </div>
 
           {roleLabel && (
             <div className="flex justify-between">
