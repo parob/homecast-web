@@ -491,7 +491,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded && !showCompact}>
         <CardContent className={`relative px-3 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <div className="space-y-2 pt-1">
+          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[17rem] overflow-y-auto pr-1' : ''}`}>
             {accessories.map((accessory) => {
               const isBlind = accessory.services?.some(s => s.serviceType === 'window_covering');
               const serviceType = getPrimaryServiceType(accessory);
@@ -723,7 +723,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded}>
         <CardContent className={`relative px-3 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <div className="space-y-2 pt-1">
+          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[17rem] overflow-y-auto pr-1' : ''}`}>
             {accessories.map((accessory) => {
               const isBlind = accessory.services?.some(s => s.serviceType === 'window_covering');
               const serviceType = getPrimaryServiceType(accessory);

@@ -13,7 +13,9 @@ export interface ExpandedOverlayProps {
 const OVERLAY_WIDTH = 320;
 const PADDING = 10;
 
-// Calculate overlay position and coordinates based on parent element
+// Calculate overlay position and coordinates based on parent element.
+// The overlay is top-aligned with the trigger so it always opens downward from
+// the widget's top edge — never pushed above the viewport regardless of content height.
 const getOverlayPositionAndCoords = (element: HTMLElement | null): {
   position: 'left' | 'center' | 'right';
   x: number;
@@ -25,7 +27,7 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null): {
 
   // Calculate where overlay would be if centered on the widget
   const widgetCenterX = rect.left + rect.width / 2;
-  const widgetCenterY = rect.top + rect.height / 2;
+  const widgetTopY = rect.top;
   const overlayLeft = widgetCenterX - OVERLAY_WIDTH / 2 - PADDING;
   const overlayRight = widgetCenterX + OVERLAY_WIDTH / 2 + PADDING;
 
@@ -43,7 +45,7 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null): {
     x = rect.right - OVERLAY_WIDTH - PADDING;
   }
 
-  return { position, x, y: widgetCenterY };
+  return { position, x, y: widgetTopY };
 };
 
 export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, children }) => {
@@ -51,7 +53,6 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
   const [coords, setCoords] = useState({ x: 0, y: 0 });
-  const [contentHeight, setContentHeight] = useState(0);
   const [ready, setReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
@@ -82,11 +83,8 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       const { position: pos, x, y } = getOverlayPositionAndCoords(parent);
       setPosition(pos);
       setCoords({ x, y });
-      // Trigger ready state after position is set and measure content
+      // Trigger ready state after position is set
       requestAnimationFrame(() => {
-        if (contentRef.current) {
-          setContentHeight(contentRef.current.offsetHeight);
-        }
         setReady(true);
       });
     }
@@ -98,10 +96,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   }, [onMouseLeave]);
 
   const transformOrigin = position === 'left'
-    ? 'center left'
+    ? 'top left'
     : position === 'right'
-      ? 'center right'
-      : 'center center';
+      ? 'top right'
+      : 'top center';
 
   // Render a placeholder in the DOM tree to get parent reference
   // The actual overlay is rendered via portal
@@ -113,8 +111,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
           className="fixed z-[10060] pointer-events-auto"
           style={{
             left: coords.x,
-            // Calculate top to center vertically without using transform
-            top: coords.y - (contentHeight ? contentHeight / 2 + PADDING : 100),
+            // Anchor overlay's content top to the widget's top edge (minus the
+            // 10px padding ring inside the wrapper). Clamp so it never draws
+            // above the viewport.
+            top: Math.max(0, coords.y - PADDING),
           }}
           onMouseEnter={onMouseEnter}
           onMouseLeave={handleMouseLeave}
