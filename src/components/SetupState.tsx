@@ -553,8 +553,13 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
   cloudSignupsAvailable?: boolean;
 }) {
   const offlineHomes = homes.filter(h => h.relayConnected === false);
+  const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
+  const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
   const sharedHomes = homes.filter(h => h.role && h.role !== 'owner');
-  const isSharedHome = sharedHomes.length > 0;
+  // Prefer the owner branch if the user actually owns an offline relay — they
+  // can act on it. Fall back to the shared branch only when every offline home
+  // belongs to someone else.
+  const isSharedHome = offlineOwnerHomes.length === 0 && offlineSharedHomes.length > 0;
   // Cloud-managed homes are handled by our infrastructure, not the user's Mac —
   // we show a different message regardless of whether the user is owner or shared.
   const isCloudRelayOffline = offlineHomes.length > 0 && offlineHomes.every(h => h.isCloudManaged);
