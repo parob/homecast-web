@@ -2841,6 +2841,11 @@ const Dashboard = () => {
     if (!selectedHomeId) return false;
     const home = homes.find(h => h.id === selectedHomeId);
     if (!home) return false;
+    // On the Mac relay itself, the server's relayConnected flag is transient
+    // during startup/reconnect — accessories come from the local bridge. Don't
+    // flash "Your Mac relay is offline" inside the relay app. Cloud-managed
+    // homes are served by a different relay, so the flag is still meaningful.
+    if (isRelayCapable() && isRelayEnabled() && !home.isCloudManaged) return false;
     return home.relayConnected === false;
   }, [selectedHomeId, homes]);
 
