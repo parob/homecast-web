@@ -1692,7 +1692,7 @@ const Dashboard = () => {
   const hasDeviceSession = deviceSessions.length > 0;
   // In Mac app mode with relay connected, we ARE the device - can proceed with queries
   // In Community mode, all clients have device access (WS routes to local HomeKit)
-  const hasDeviceAccess = isCommunity || hasDeviceSession || (isInMacApp && serverConnected);
+  const hasDeviceAccess = isCommunity || hasDeviceSession || (isInMacApp && isRelayEnabled() && serverConnected);
 
   // Debug: log hasDeviceAccess changes
   useEffect(() => {
