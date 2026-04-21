@@ -6323,6 +6323,7 @@ const Dashboard = () => {
                     } catch { return undefined; }
                   })()}
                   homes={homes}
+                  selectedHomeId={selectedHomeId}
                   isDarkBackground={isDarkBackground}
                   userEmail={user?.email}
                   isInMacApp={isInMacApp}
@@ -6336,6 +6337,7 @@ const Dashboard = () => {
                 <SetupState
                   setupPath={undefined}
                   homes={homes}
+                  selectedHomeId={selectedHomeId}
                   isDarkBackground={isDarkBackground}
                   userEmail={user?.email}
                   isInMacApp={isInMacApp}

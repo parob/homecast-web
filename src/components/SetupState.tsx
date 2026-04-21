@@ -60,6 +60,7 @@ function EnableRelayHereBanner({ isDarkBackground }: { isDarkBackground: boolean
 interface SetupStateProps {
   setupPath?: SetupPath;
   homes: HomeKitHome[];
+  selectedHomeId?: string | null;
   isDarkBackground: boolean;
   userEmail?: string;
   isInMacApp: boolean;
@@ -490,6 +491,7 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
 export function SetupState({
   setupPath,
   homes,
+  selectedHomeId,
   isDarkBackground,
   userEmail,
   isInMacApp,
@@ -513,7 +515,7 @@ export function SetupState({
 
   // Shared homes with offline relay: user can't change relay type, show offline state
   if (homes.length > 0 && homes.some(h => h.relayConnected === false)) {
-    return <RelayOfflineState homes={homes} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
+    return <RelayOfflineState homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
   }
 
   // Show context-aware empty state based on setup path
@@ -545,8 +547,9 @@ export function SetupState({
   }
 }
 
-function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
+function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
   homes: HomeKitHome[];
+  selectedHomeId?: string | null;
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   accountType?: string;
@@ -556,13 +559,22 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
   const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
   const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
   const sharedHomes = homes.filter(h => h.role && h.role !== 'owner');
-  // Prefer the owner branch if the user actually owns an offline relay — they
-  // can act on it. Fall back to the shared branch only when every offline home
-  // belongs to someone else.
-  const isSharedHome = offlineOwnerHomes.length === 0 && offlineSharedHomes.length > 0;
+
+  // Prefer the selected home when deciding the copy — the user is looking at
+  // that specific home. Fall back to aggregate-offline logic when no home is
+  // selected (e.g. first load before a selection is restored).
+  const selectedHome = selectedHomeId ? homes.find(h => h.id === selectedHomeId) : null;
+  const isSelectedShared = !!(selectedHome && selectedHome.role && selectedHome.role !== 'owner');
+  const isSelectedCloudManaged = !!selectedHome?.isCloudManaged;
+
+  const isSharedHome = selectedHome
+    ? isSelectedShared
+    : (offlineOwnerHomes.length === 0 && offlineSharedHomes.length > 0);
   // Cloud-managed homes are handled by our infrastructure, not the user's Mac —
   // we show a different message regardless of whether the user is owner or shared.
-  const isCloudRelayOffline = offlineHomes.length > 0 && offlineHomes.every(h => h.isCloudManaged);
+  const isCloudRelayOffline = selectedHome
+    ? isSelectedCloudManaged
+    : (offlineHomes.length > 0 && offlineHomes.every(h => h.isCloudManaged));
 
   if (isSharedHome) {
     return (
