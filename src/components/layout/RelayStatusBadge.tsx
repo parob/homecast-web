@@ -6,6 +6,7 @@ import { isCommunity } from '@/lib/config';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { HomeKitStats } from '@/native/homekit-bridge';
 import { useHomes } from '@/hooks/useHomeKitData';
+import { formatLastOnline } from '@/lib/relay-last-seen';
 
 export type SelectedHomeRelayType = 'self-hosted' | 'cloud-managed' | null;
 
@@ -105,6 +106,7 @@ export function RelayStatusBadge({ isDarkBackground, accountType, accessoryLimit
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [relayStatus, setRelayStatus] = useState<boolean | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
+  const [lastConnectedAt, setLastConnectedAt] = useState<number | null>(null);
   const [subscriberStatus, setSubscriberStatus] = useState<{ webClientsListening: boolean; webhooksActive: boolean; webClientCount: number; webhookCount: number; subscriptionCount: number } | null>(null);
   const [stats, setStats] = useState<HomeKitStats | null>(null);
   const [uptime, setUptime] = useState('--');
@@ -128,6 +130,7 @@ export function RelayStatusBadge({ isDarkBackground, accountType, accessoryLimit
       setRelayStatus(state.relayStatus);
       const at = serverConnection.getConnectedAt();
       setConnectedAt(at);
+      setLastConnectedAt(serverConnection.getLastConnectedAt());
       setUptime(formatUptime(at));
       setSubscriberStatus(serverConnection.getSubscriberStatus());
       setActivity(serverConnection.getActivityHistory());
@@ -211,6 +214,10 @@ export function RelayStatusBadge({ isDarkBackground, accountType, accessoryLimit
                 Take Over as Relay
               </button>
             </div>
+          ) : effectiveState === 'disconnected' ? (
+            <p className="text-xs text-muted-foreground">
+              Not connected to the server. {formatLastOnline(lastConnectedAt)}.
+            </p>
           ) : allHomesCloudManaged ? (
             <p className="text-xs text-muted-foreground">
               All your homes are cloud-managed. You can switch off the relay in Settings.

@@ -13,8 +13,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
+import { formatLastOnline } from '@/lib/relay-last-seen';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
@@ -149,11 +150,90 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
     }
   };
 
+  const isOwner = !home.role || home.role === 'owner';
+  const isShared = !isOwner;
+  const isCloudManaged = home.isCloudManaged === true;
+  const connectionKind: 'cloud' | 'self-hosted' | 'shared' =
+    isShared ? 'shared' : isCloudManaged ? 'cloud' : 'self-hosted';
+  const connectionKindLabel =
+    connectionKind === 'cloud' ? 'Cloud Relay'
+    : connectionKind === 'self-hosted' ? 'Self-hosted relay'
+    : 'Shared with you';
+  const ConnectionKindIcon =
+    connectionKind === 'cloud' ? Cloud
+    : connectionKind === 'self-hosted' ? Monitor
+    : Users;
+  const relayOnline = home.relayConnected === true;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2.5">
         <HomeIcon className="h-5 w-5 text-muted-foreground" />
         <h3 className="text-base font-semibold">{home.name}</h3>
+        {home.isPrimary && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Primary</Badge>
+        )}
+      </div>
+
+      {/* Connection */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Connection</p>
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ConnectionKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{connectionKindLabel}</span>
+            </div>
+            <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${
+              relayOnline
+                ? 'bg-green-500/10 text-green-600'
+                : 'bg-red-500/10 text-red-600'
+            }`}>
+              {relayOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+              {relayOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+
+          {!relayOnline && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Last online</span>
+              <span className="font-medium">
+                {home.relayLastSeenAt ? formatLastOnline(home.relayLastSeenAt).replace(/^Last online\s*/i, '') : 'Never'}
+              </span>
+            </div>
+          )}
+
+          {isShared && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Your role</span>
+                <span className="font-medium capitalize">{home.role}</span>
+              </div>
+              {home.ownerEmail && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Owner</span>
+                  <span className="font-medium truncate ml-2 max-w-[180px]" title={home.ownerEmail}>{home.ownerEmail}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Accessories</span>
+            <span className="font-medium">{home.accessoryCount ?? 0}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Rooms</span>
+            <span className="font-medium">{home.roomCount ?? 0}</span>
+          </div>
+
+          {developerMode && (
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground shrink-0">Home ID</span>
+              <span className="font-mono text-[10px] truncate" title={home.id}>{home.id}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* MQTT (developer mode only) */}

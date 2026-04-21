@@ -172,6 +172,7 @@ export const GET_CACHED_HOMES = gql`
       ownerEmail
       mqttEnabled
       relayConnected
+      relayLastSeenAt
     }
   }
 `;
@@ -652,6 +653,7 @@ export const GET_MY_MANAGED_RELAY_INFO = gql`
       email
       relayConnected
       relayConnectedSince
+      relayLastSeenAt
       homeCount
       maxHomes
       totalWebClientCount

@@ -180,6 +180,7 @@ export interface HomeKitHome {
   sceneCount?: number;
   role?: HomeRole;
   relayConnected?: boolean;
+  relayLastSeenAt?: string | null;
   isCloudManaged?: boolean;
   roomFingerprint?: string;
   ownerEmail?: string;
@@ -1622,6 +1623,7 @@ export interface ManagedRelayInfo {
   pendingEnrollmentCount: number;
   activeEnrollmentCount: number;
   relayConnectedSince: string | null;
+  relayLastSeenAt: string | null;
   totalWebClientCount: number;
   totalSubscriptionCount: number;
   totalWebhookCount: number;

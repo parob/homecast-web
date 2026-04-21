@@ -75,6 +75,8 @@ import { config, isCommunity, isClientMode } from '@/lib/config';
 
 const WS_URL = config.wsUrl;
 
+const LAST_CONNECTED_AT_KEY = 'homecast-last-connected-at';
+
 // --- Community Mode Cache ---
 // Caches HomeKit read operations so home switching is instant after first load.
 // Write operations (characteristic.set, state.set) bypass cache and invalidate
@@ -392,6 +394,22 @@ class ServerConnection {
   }
 
   /**
+   * Get the timestamp of the most recent successful connection — persists across
+   * disconnects via localStorage so the UI can show "last online X ago" while
+   * the relay (this browser's WS) is down.
+   */
+  getLastConnectedAt(): number | null {
+    try {
+      const raw = localStorage.getItem(LAST_CONNECTED_AT_KEY);
+      if (!raw) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get per-minute WebSocket activity counts for the last 60 minutes.
    */
   getActivityHistory(): number[] {
@@ -514,6 +532,9 @@ class ServerConnection {
               updates.relayStatus = null;
               this.activeSubscriptions.clear();
               this.stopSubscriptionRenewal();
+            }
+            if (connectionState === 'connected') {
+              try { localStorage.setItem(LAST_CONNECTED_AT_KEY, String(Date.now())); } catch { /* noop */ }
             }
             // Emit structured log + toast for state transitions so disconnects
             // are visible both in Cloud Logging (via browserLogger shipping)

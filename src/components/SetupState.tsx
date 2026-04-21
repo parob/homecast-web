@@ -11,6 +11,7 @@ import type { MyCloudManagedEnrollmentsResponse, CustomerEnrollmentInfo, HomeKit
 import type { SetupPath } from '@/components/OnboardingOverlay';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { serverConnection } from '@/server/connection';
+import { formatLastOnline } from '@/lib/relay-last-seen';
 
 function openExternalUrl(url: string) {
   const w = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; url?: string }) => void } } } };
@@ -24,6 +25,16 @@ function openExternalUrl(url: string) {
 function enableRelayHere() {
   localStorage.removeItem('homecast-relay-disabled');
   serverConnection.reconnect();
+}
+
+function mostRecentLastSeen(homes: HomeKitHome[]): string | null {
+  let best: number | null = null;
+  for (const h of homes) {
+    if (!h.relayLastSeenAt) continue;
+    const t = Date.parse(h.relayLastSeenAt);
+    if (Number.isFinite(t) && (best == null || t > best)) best = t;
+  }
+  return best == null ? null : new Date(best).toISOString();
 }
 
 function EnableRelayHereBanner({ isDarkBackground }: { isDarkBackground: boolean }) {
@@ -382,11 +393,12 @@ function WaitingForInvite({ isDarkBackground, userEmail, onSetupCloud, onSetupMa
   );
 }
 
-function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, cloudSignupsAvailable = true }: {
+function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, relayLastSeenAt = null, cloudSignupsAvailable = true }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
   relayOffline?: boolean;
+  relayLastSeenAt?: string | null;
   cloudSignupsAvailable?: boolean;
   isInMobileApp?: boolean;
 }) {
@@ -425,7 +437,8 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
                 <div className={`mt-3 ml-11 flex items-start gap-2 rounded-md border px-2.5 py-2 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
                   <Monitor className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
                   <p className={`text-xs ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
-                    It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.
+                    It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.{' '}
+                    <span className="opacity-75">{formatLastOnline(relayLastSeenAt)}.</span>
                   </p>
                 </div>
               )}
@@ -526,7 +539,7 @@ export function SetupState({
       return (
         <>
           <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
-          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} />
+          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} relayLastSeenAt={mostRecentLastSeen(homes)} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} />
         </>
       );
   }
@@ -563,6 +576,9 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
               ? "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Devices will appear when it's back online."
               : "The home owner's relay isn't connected right now. Devices will appear when it comes back online."}
           </p>
+          <p className={`mt-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
+            {formatLastOnline(mostRecentLastSeen(sharedHomes))}.
+          </p>
         </CardContent>
       </Card>
     );
@@ -575,6 +591,9 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
         <h3 className="mb-2 text-lg font-semibold">Your Mac relay is offline</h3>
         <p className={`text-center text-sm mb-4 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
           It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.
+        </p>
+        <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
+          {formatLastOnline(mostRecentLastSeen(homes.filter(h => !h.role || h.role === 'owner')))}.
         </p>
         {onSetupCloud && (
           <div className={`border-t pt-4 mt-2 ${isDarkBackground ? 'border-white/20' : ''}`}>

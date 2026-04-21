@@ -12,6 +12,7 @@ export interface HomeKitHome {
   accessoryCount: number;
   role?: string;
   relayConnected?: boolean;
+  relayLastSeenAt?: string | null;
   isCloudManaged?: boolean;
   roomFingerprint?: string;
 }

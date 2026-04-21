@@ -335,7 +335,7 @@ export function HomesSection({ homes, prefilledHomeName, autoOpenEnroll, account
             <div className="flex items-start gap-3">
               <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
               <div className="space-y-1">
-                <p className="text-sm font-medium">Cloud Relay</p>
+                <p className="text-sm font-medium">Signup for Cloud Relay</p>
                 <p className="text-xs text-muted-foreground">
                   Always-on relay hosted by Homecast — no Mac needed. Available on the Cloud plan ({pricing.cloud.formatted}/mo).
                 </p>
