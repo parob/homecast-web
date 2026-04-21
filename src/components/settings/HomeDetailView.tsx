@@ -153,16 +153,13 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
   const isOwner = !home.role || home.role === 'owner';
   const isShared = !isOwner;
   const isCloudManaged = home.isCloudManaged === true;
-  const connectionKind: 'cloud' | 'self-hosted' | 'shared' =
-    isShared ? 'shared' : isCloudManaged ? 'cloud' : 'self-hosted';
-  const connectionKindLabel =
-    connectionKind === 'cloud' ? 'Cloud Relay'
-    : connectionKind === 'self-hosted' ? 'Self-hosted relay'
-    : 'Shared with you';
-  const ConnectionKindIcon =
-    connectionKind === 'cloud' ? Cloud
-    : connectionKind === 'self-hosted' ? Monitor
-    : Users;
+  const relayKindLabel = isCloudManaged ? 'Cloud Relay' : 'Self-hosted relay';
+  const RelayKindIcon = isCloudManaged ? Cloud : Monitor;
+  const roleLabel = isShared
+    ? (home.role === 'admin' ? 'Shared — can manage'
+       : home.role === 'view' ? 'Shared — view only'
+       : 'Shared with you')
+    : null;
   const relayOnline = home.relayConnected === true;
 
   return (
@@ -181,8 +178,8 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ConnectionKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-medium">{connectionKindLabel}</span>
+              <RelayKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{relayKindLabel}</span>
             </div>
             <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${
               relayOnline
@@ -203,19 +200,27 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
             </div>
           )}
 
-          {isShared && (
-            <>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Your role</span>
-                <span className="font-medium capitalize">{home.role}</span>
-              </div>
-              {home.ownerEmail && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Owner</span>
-                  <span className="font-medium truncate ml-2 max-w-[180px]" title={home.ownerEmail}>{home.ownerEmail}</span>
-                </div>
-              )}
-            </>
+          {roleLabel && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Your access</span>
+              <span className="font-medium">{roleLabel}</span>
+            </div>
+          )}
+
+          {isShared && home.ownerEmail && (
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground shrink-0">Home owner</span>
+              <span className="font-medium truncate max-w-[180px]" title={home.ownerEmail}>{home.ownerEmail}</span>
+            </div>
+          )}
+
+          {home.relayOwnerEmail && home.relayOwnerEmail !== home.ownerEmail && (
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground shrink-0 flex items-center gap-1">
+                <Users className="h-3 w-3" /> Relay operator
+              </span>
+              <span className="font-medium truncate max-w-[180px]" title={home.relayOwnerEmail}>{home.relayOwnerEmail}</span>
+            </div>
           )}
 
           <div className="flex justify-between">
@@ -227,10 +232,17 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
             <span className="font-medium">{home.roomCount ?? 0}</span>
           </div>
 
+          {home.relayId && (
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground shrink-0">Relay ID</span>
+              <span className="font-mono text-[10px] truncate max-w-[180px]" title={home.relayId}>{home.relayId}</span>
+            </div>
+          )}
+
           {developerMode && (
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground shrink-0">Home ID</span>
-              <span className="font-mono text-[10px] truncate" title={home.id}>{home.id}</span>
+              <span className="font-mono text-[10px] truncate max-w-[180px]" title={home.id}>{home.id}</span>
             </div>
           )}
         </div>

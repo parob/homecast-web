@@ -13,6 +13,8 @@ export interface HomeKitHome {
   role?: string;
   relayConnected?: boolean;
   relayLastSeenAt?: string | null;
+  relayId?: string | null;
+  relayOwnerEmail?: string | null;
   isCloudManaged?: boolean;
   roomFingerprint?: string;
 }
