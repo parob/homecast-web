@@ -612,8 +612,8 @@ export default function MQTTBrowser() {
 
           const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx?: number) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
-            const hasChevronSlot = hideMembers && Object.keys(groupMembers).length > 0;
-            const ml = Math.max(insetPx || 0, 12) + (hasChevronSlot ? 44 : 16);
+            // Indent the panel just enough to nest under its row, no extra slack.
+            const ml = Math.max(insetPx || 0, 12);
             const members = groupMembers[topic];
             const topicHome = homeForSlug(topic.split('/')[1] || '');
             const homeOffline = topicHome?.relayConnected === false;
