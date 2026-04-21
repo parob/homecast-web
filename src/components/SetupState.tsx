@@ -512,7 +512,7 @@ export function SetupState({
   }
 
   // Shared homes with offline relay: user can't change relay type, show offline state
-  if (homes.length > 0 && homes.some(h => h.role && h.role !== 'owner')) {
+  if (homes.length > 0 && homes.some(h => h.relayConnected === false)) {
     return <RelayOfflineState homes={homes} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
   }
 
@@ -585,7 +585,9 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
   }
 
   return (
-    <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
+    <>
+      <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
+      <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
       <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
         <Monitor className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
         <h3 className="mb-2 text-lg font-semibold">Your Mac relay is offline</h3>
@@ -620,6 +622,7 @@ function RelayOfflineState({ homes, isDarkBackground, onSetupCloud, accountType,
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+    </>
   );
 }

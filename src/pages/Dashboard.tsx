@@ -2834,11 +2834,13 @@ const Dashboard = () => {
   const isViewOnly = selectedHomeRole === 'view';
   const canShare = selectedHomeRole === 'owner' || selectedHomeRole === 'admin';
 
-  // Check if selected shared home's relay is offline
+  // Check if selected home's relay is offline (owner or shared).
+  // Routing through SetupState pre-empts the accessoriesError path so the user
+  // sees the dedicated "Your Mac relay is offline" card instead of NO_DEVICE.
   const selectedHomeRelayOffline = useMemo(() => {
     if (!selectedHomeId) return false;
     const home = homes.find(h => h.id === selectedHomeId);
-    if (!home || !home.role || home.role === 'owner') return false;
+    if (!home) return false;
     return home.relayConnected === false;
   }, [selectedHomeId, homes]);
 
