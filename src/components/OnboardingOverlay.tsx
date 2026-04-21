@@ -23,6 +23,7 @@ interface OnboardingOverlayProps {
   userEmail: string;
   onInvalidateHomes?: () => void;
   cloudSignupsAvailable?: boolean;
+  accountType?: string;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -121,13 +122,14 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
   );
 }
 
-function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, onBack, pricing }: {
+function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, onBack, pricing, accountType }: {
   isInMacApp: boolean;
   isInMobileApp?: boolean;
   onComplete: () => void;
   onUpgradeStandard: () => void;
   onBack: () => void;
   pricing: ReturnType<typeof getPricing>;
+  accountType?: string;
 }) {
   const openAppStore = useCallback(() => {
     const w = window as any;
@@ -168,26 +170,40 @@ function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard
         </p>
       )}
 
-      <p className="text-xs font-medium text-muted-foreground">Choose your plan:</p>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg border p-3 space-y-2 flex flex-col">
-          <h3 className="text-sm font-medium">Basic</h3>
-          <p className="text-xs text-muted-foreground flex-1">10 accessories</p>
-          <p className="text-sm font-medium">Free</p>
-          <Button variant="outline" size="sm" className="w-full text-xs" onClick={onComplete}>
-            Get started
+      {accountType === 'standard' ? (
+        <div className="rounded-lg border border-primary/50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Standard</h3>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600">Current plan</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Unlimited accessories · {pricing.standard.formatted}/mo</p>
+          <Button size="sm" className="w-full text-xs" onClick={onComplete}>
+            Continue
           </Button>
         </div>
-        <div className="rounded-lg border border-primary/50 p-3 space-y-2 flex flex-col">
-          <h3 className="text-sm font-medium">Standard</h3>
-          <p className="text-xs text-muted-foreground flex-1">Unlimited accessories</p>
-          <p className="text-sm font-medium">{pricing.standard.formatted}/mo</p>
-          <Button size="sm" className="w-full text-xs" onClick={() => { onComplete(); onUpgradeStandard(); }}>
-            Subscribe
-          </Button>
-        </div>
-      </div>
+      ) : (
+        <>
+          <p className="text-xs font-medium text-muted-foreground">Choose your plan:</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3 space-y-2 flex flex-col">
+              <h3 className="text-sm font-medium">Basic</h3>
+              <p className="text-xs text-muted-foreground flex-1">10 accessories</p>
+              <p className="text-sm font-medium">Free</p>
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={onComplete}>
+                Get started
+              </Button>
+            </div>
+            <div className="rounded-lg border border-primary/50 p-3 space-y-2 flex flex-col">
+              <h3 className="text-sm font-medium">Standard</h3>
+              <p className="text-xs text-muted-foreground flex-1">Unlimited accessories</p>
+              <p className="text-sm font-medium">{pricing.standard.formatted}/mo</p>
+              <Button size="sm" className="w-full text-xs" onClick={() => { onComplete(); onUpgradeStandard(); }}>
+                Subscribe
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
       {!isInMacApp && (
         <p className="text-xs text-muted-foreground text-center">
@@ -434,7 +450,7 @@ const stepDescriptions: Record<WizardStep, string> = {
   'shared-home': 'Check for home invitations',
 };
 
-export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true }: OnboardingOverlayProps) {
+export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType }: OnboardingOverlayProps) {
   const [step, setStep] = useState<WizardStep>('intent');
   const pricing = getPricing();
 
@@ -490,6 +506,7 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
             onUpgradeStandard={onUpgradeStandard}
             onBack={() => setStep('intent')}
             pricing={pricing}
+            accountType={accountType}
           />
         )}
 

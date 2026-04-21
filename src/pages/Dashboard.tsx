@@ -8139,6 +8139,7 @@ const Dashboard = () => {
           userEmail={user?.email || ''}
           onInvalidateHomes={invalidateHomeKitCache}
           cloudSignupsAvailable={cloudSignupsAvailable}
+          accountType={accountType}
         />
       )}
 
