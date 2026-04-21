@@ -703,8 +703,8 @@ export default function MQTTBrowser() {
             const headerPadLeft = 12 + headerDepth * 16;
             const topicDepth = headerDepth + 1;
             return (
-              <div key={g.topic} className="border-l-2 border-purple-500/50">
-                <div className="flex items-stretch bg-muted/15 hover:bg-muted/30">
+              <div key={g.topic}>
+                <div className="flex items-stretch bg-muted/30 hover:bg-muted/50">
                   <button
                     onClick={() => setOpenGroupKeys(prev => { const n = new Set(prev); if (n.has(g.topic)) n.delete(g.topic); else n.add(g.topic); return n; })}
                     className="flex-1 flex items-center justify-between pr-2 py-1.5 text-xs font-semibold text-left"
@@ -718,7 +718,7 @@ export default function MQTTBrowser() {
                   </button>
                   <button
                     onClick={() => expandTopic(g.topic)}
-                    className="px-2.5 flex items-center text-[11px] font-mono hover:bg-muted/40 border-l border-border/50"
+                    className="px-2.5 flex items-center text-[11px] font-mono hover:bg-muted/60 border-l border-border/50"
                     title="Edit group state"
                   >
                     <FmtVal payload={ep} />
