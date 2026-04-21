@@ -156,9 +156,10 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
   const relayKindLabel = isCloudManaged ? 'Cloud Relay' : 'Self-hosted relay';
   const RelayKindIcon = isCloudManaged ? Cloud : Monitor;
   const roleLabel = isShared
-    ? (home.role === 'admin' ? 'Shared — can manage'
-       : home.role === 'view' ? 'Shared — view only'
-       : 'Shared with you')
+    ? (home.role === 'admin' ? 'Admin'
+       : home.role === 'view' ? 'View'
+       : home.role === 'control' ? 'Control'
+       : 'Shared')
     : null;
   const relayOnline = home.relayConnected === true;
 
@@ -169,6 +170,9 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
         <h3 className="text-base font-semibold">{home.name}</h3>
         {home.isPrimary && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">Primary</Badge>
+        )}
+        {isShared && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Shared</Badge>
         )}
       </div>
 
@@ -219,7 +223,7 @@ export function HomeDetailView({ home, developerMode }: HomeDetailViewProps) {
               <span className="text-muted-foreground shrink-0 flex items-center gap-1">
                 <Users className="h-3 w-3" /> Relay operator
               </span>
-              <span className="font-medium truncate max-w-[180px]" title={home.relayOwnerEmail}>{home.relayOwnerEmail}</span>
+              <span className="font-medium break-all text-right">{home.relayOwnerEmail}</span>
             </div>
           )}
 
