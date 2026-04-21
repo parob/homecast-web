@@ -31,7 +31,7 @@ import type {
   HomeKitHome,
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
-import { formatLastOnline } from '@/lib/relay-last-seen';
+import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -195,7 +195,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
       <div className="flex items-center gap-1.5">
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-500' : 'bg-green-500'}`} />
         <p className="text-xs text-muted-foreground">
-          {isOffline ? formatLastOnline(home.relayLastSeenAt) : 'Online'}
+          {isOffline ? formatLastOnline(home.relayLastSeenAt) : `Online · ${formatRelativeAgo(home.relayLastSeenAt)}`}
         </p>
       </div>
       {isOwner ? (

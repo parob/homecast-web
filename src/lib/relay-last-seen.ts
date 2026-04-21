@@ -17,3 +17,15 @@ export function formatLastOnline(input: number | string | null | undefined): str
   if (elapsed < 10_000) return 'Last online just now';
   return `Last online ${formatDistanceToNowStrict(new Date(ms), { addSuffix: true })}`;
 }
+
+/**
+ * Short relative timestamp without the "Last online" / "just now" prefixing.
+ * Use for compact status lines like "Online · 3 seconds ago".
+ */
+export function formatRelativeAgo(input: number | string | null | undefined): string {
+  if (input == null) return 'never';
+  const ms = typeof input === 'number' ? input : Date.parse(input);
+  if (!Number.isFinite(ms) || ms <= 0) return 'never';
+  if (Date.now() - ms < 10_000) return 'just now';
+  return formatDistanceToNowStrict(new Date(ms), { addSuffix: true });
+}
