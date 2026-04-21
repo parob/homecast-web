@@ -347,7 +347,10 @@ export default function MQTTBrowser() {
     allTopicCount: number;
   };
   const topicTree = useMemo<HomeBucket[] | null>(() => {
-    if (!groupByHome && !groupByRoom) return null;
+    // Build the tree whenever any grouping axis is active. Even with Homes
+    // and Rooms both off, Groups-on still needs the tree so group buckets
+    // can render as section headers.
+    if (!groupByHome && !groupByRoom && !hideMembers) return null;
 
     // Resolve the set of member-accessory topics in the current messages map
     // so we can skip them (they'll render inside their group). Only applied
@@ -750,10 +753,10 @@ export default function MQTTBrowser() {
             const bodyCount = r.plain.length + r.groups.length;
             const renderBody = (innerDepth: number) => (
               <>
+                {r.groups.map(g => renderGroupBucket(g, innerDepth))}
                 {r.plain.map(([topic, { payload, timestamp }]) =>
                   renderCollapsedRow(topic, payload, timestamp, { depth: innerDepth, short: true })
                 )}
-                {r.groups.map(g => renderGroupBucket(g, innerDepth))}
               </>
             );
             if (!r.slug) {
@@ -784,12 +787,11 @@ export default function MQTTBrowser() {
             // Render a home bucket's body at a given depth
             const renderHomeBody = (h: HomeBucket, rowDepth: number) => (
               <>
-                {/* Home-level (no-room) topics + groups */}
+                {/* Groups first, then loose accessories, then rooms */}
+                {h.groups.map(g => renderGroupBucket(g, rowDepth))}
                 {h.plain.map(([topic, { payload, timestamp }]) =>
                   renderCollapsedRow(topic, payload, timestamp, { depth: rowDepth, short: rowDepth > 0 })
                 )}
-                {h.groups.map(g => renderGroupBucket(g, rowDepth))}
-                {/* Rooms (when groupByRoom is on) */}
                 {groupByRoom && h.rooms.map(r => renderRoomBucket(r, rowDepth))}
               </>
             );
