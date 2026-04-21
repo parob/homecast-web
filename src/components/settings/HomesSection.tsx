@@ -31,6 +31,7 @@ import type {
   HomeKitHome,
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
+import { formatLastOnline } from '@/lib/relay-last-seen';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -167,6 +168,7 @@ const ROLE_LABELS: Record<string, string> = { owner: 'Owner', admin: 'Admin', co
 function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitHome; onSwitchToCloud?: () => void; onClick?: () => void }) {
   const isCloud = home.isCloudManaged;
   const isOwner = !home.role || home.role === 'owner';
+  const isOffline = home.relayConnected === false;
   return (
     <div
       className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
@@ -189,6 +191,12 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
           </Badge>
           {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
         </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-500' : 'bg-green-500'}`} />
+        <p className="text-xs text-muted-foreground">
+          {isOffline ? formatLastOnline(home.relayLastSeenAt) : 'Online'}
+        </p>
       </div>
       {isOwner ? (
         <p className="text-xs text-muted-foreground">
