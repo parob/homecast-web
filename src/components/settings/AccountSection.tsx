@@ -18,7 +18,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2, BookOpen } from 'lucide-react';
 import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
-import { isRelayCapable } from '@/native/homekit-bridge';
+import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
 
 interface CommunityUser {
   id: string;
@@ -36,6 +36,9 @@ interface AccountSectionProps {
   resetAndUninstall?: () => Promise<void>;
   serverVersion: string | undefined;
   onReplayTutorial?: () => void;
+  showLaunchAtLogin: boolean;
+  launchAtLogin: boolean;
+  setLaunchAtLogin: (value: boolean) => void;
 }
 
 async function communityGraphQL(operationName: string, variables: Record<string, unknown> = {}) {
@@ -61,6 +64,9 @@ export function AccountSection({
   resetAndUninstall,
   serverVersion,
   onReplayTutorial,
+  showLaunchAtLogin,
+  launchAtLogin,
+  setLaunchAtLogin,
 }: AccountSectionProps) {
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
@@ -303,6 +309,26 @@ export function AccountSection({
       )}
 
       <div className="space-y-4">
+        {showLaunchAtLogin && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Open at Login</p>
+              <p className="text-xs text-muted-foreground">Start Homecast when you log in to your Mac</p>
+            </div>
+            <Switch
+              checked={launchAtLogin}
+              onCheckedChange={async (checked) => {
+                setLaunchAtLogin(checked);
+                try {
+                  const result = await HomeKit.setLaunchAtLogin(checked);
+                  setLaunchAtLogin(result.launchAtLogin);
+                } catch {
+                  setLaunchAtLogin(!checked);
+                }
+              }}
+            />
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">Developer Mode</p>

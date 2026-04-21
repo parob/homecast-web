@@ -105,26 +105,7 @@ export function DisplaySection({
           />
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">Group by type</p>
-          <p className="text-xs text-muted-foreground">Group accessories by type</p>
-          {groupByType && (
-            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Rearranging accessories is disabled when grouping by type</p>
-          )}
-        </div>
-        <div className="relative flex items-center">
-          {settingSaveError === 'groupByType' && (
-            <div className="absolute right-full mr-2 whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
-              Failed to save
-            </div>
-          )}
-          <Switch
-            checked={groupByType}
-            onCheckedChange={toggleGroupByType}
-          />
-        </div>
-      </div>
+      {/* Group by type hidden — always off for now */}
 
       {/* Layout picker hidden — always masonry for now (may reintroduce later)
       <div className="border-t pt-4" />
@@ -239,37 +220,7 @@ export function DisplaySection({
           </Button>
         </div>
       </div>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Icon style</p>
-            <p className="text-xs text-muted-foreground">Color scheme for widget icons</p>
-          </div>
-          {settingSaveError === 'iconStyle' && (
-            <div className="whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
-              Failed to save
-            </div>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant={iconStyle === 'standard' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => changeIconStyle('standard')}
-            className="flex-1"
-          >
-            Standard
-          </Button>
-          <Button
-            variant={iconStyle === 'colourful' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => changeIconStyle('colourful')}
-            className="flex-1"
-          >
-            Colourful
-          </Button>
-        </div>
-      </div>
+      {/* Icon style hidden — always colourful */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Auto backgrounds</p>

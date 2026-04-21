@@ -18,7 +18,6 @@ import {
   Share2,
   Cloud,
   Home as HomeIcon,
-  AppWindow,
   Pin,
   User,
   ChevronRight,
@@ -41,12 +40,11 @@ import { SharedItemsSection } from './SharedItemsSection';
 import { HomesSection } from './HomesSection';
 import { HomeDetailView } from './HomeDetailView';
 // SelfHostedRelaySection imported from @homecast/cloud above
-import { MacAppSection } from './MacAppSection';
 import { TabBarSection } from './TabBarSection';
 import { AccountSection } from './AccountSection';
 import { NotificationsSection } from './NotificationsSection';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'mac-app' | 'tab-bar' | 'account';
+export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'tab-bar' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -193,20 +191,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
 
     items.push({ id: 'homes', label: 'Homes', group: 'General', icon: HomeIcon });
+    items.push({ id: 'sharing', label: 'Sharing', group: 'General', icon: Share2 });
 
     if (developerMode) {
-      items.push({ id: 'api-access', label: 'API Access', group: 'Integrations', icon: Key });
-      items.push({ id: 'webhooks', label: 'Webhooks', group: 'Integrations', icon: Webhook });
+      items.push({ id: 'api-access', label: 'API Access', group: 'Developer', icon: Key });
+      items.push({ id: 'webhooks', label: 'Webhooks', group: 'Developer', icon: Webhook });
     }
-
-    items.push({ id: 'sharing', label: 'Sharing', group: 'Integrations', icon: Share2 });
 
     if (isRelayCapable() && SelfHostedRelaySection) {
       items.push({ id: 'self-hosted-relay', label: 'Relay', group: 'Device', icon: Cloud });
-    }
-
-    if (isInMacApp && launchAtLoginSupported) {
-      items.push({ id: 'mac-app', label: 'Mac App', group: 'Device', icon: AppWindow });
     }
 
     if (isInMobileApp) {
@@ -380,13 +373,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return props.notificationProps ? (
           <NotificationsSection {...props.notificationProps} />
         ) : null;
-      case 'mac-app':
-        return (
-          <MacAppSection
-            launchAtLogin={props.launchAtLogin}
-            setLaunchAtLogin={props.setLaunchAtLogin}
-          />
-        );
       case 'tab-bar':
         return (
           <TabBarSection
@@ -408,6 +394,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
             resetAndUninstall={props.resetAndUninstall}
             serverVersion={props.serverVersion}
             onReplayTutorial={props.onReplayTutorial}
+            showLaunchAtLogin={props.isInMacApp && props.launchAtLoginSupported}
+            launchAtLogin={props.launchAtLogin}
+            setLaunchAtLogin={props.setLaunchAtLogin}
           />
         );
       default:
@@ -461,9 +450,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 <div className="py-1">
                   {groupedItems.map((group) => (
                     <div key={group.label}>
-                      <div className="px-4 pt-3 pb-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</p>
-                      </div>
+                      {group.label !== 'General' && (
+                        <div className="px-4 pt-3 pb-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</p>
+                        </div>
+                      )}
                       {group.items.map((item) => {
                         const Icon = item.icon;
                         return (
@@ -496,9 +487,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <nav className="w-44 shrink-0 border-r overflow-y-auto py-1">
                 {groupedItems.map((group) => (
                   <div key={group.label}>
-                    <div className="px-3 pt-3 pb-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</p>
-                    </div>
+                    {group.label !== 'General' && (
+                      <div className="px-3 pt-3 pb-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</p>
+                      </div>
+                    )}
                     {group.items.map((item) => {
                       const Icon = item.icon;
                       const isHomesRow = item.id === 'homes';
