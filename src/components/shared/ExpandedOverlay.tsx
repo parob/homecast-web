@@ -12,6 +12,9 @@ export interface ExpandedOverlayProps {
 
 const OVERLAY_WIDTH = 320;
 const PADDING = 10;
+// Offset the overlay content down from the widget's top edge so it visually
+// starts just below the top of the compact trigger rather than flush with it.
+const TOP_OFFSET = 16;
 
 // Calculate overlay position and coordinates based on parent element.
 // The overlay is top-aligned with the trigger so it always opens downward from
@@ -111,10 +114,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
           className="fixed z-[10060] pointer-events-auto"
           style={{
             left: coords.x,
-            // Anchor overlay's content top to the widget's top edge (minus the
-            // 10px padding ring inside the wrapper). Clamp so it never draws
-            // above the viewport.
-            top: Math.max(0, coords.y - PADDING),
+            // Anchor overlay's content to sit TOP_OFFSET px below the widget's
+            // top edge (accounting for the 10px wrapper padding ring). Clamp
+            // so it never draws above the viewport.
+            top: Math.max(0, coords.y - PADDING + TOP_OFFSET),
           }}
           onMouseEnter={onMouseEnter}
           onMouseLeave={handleMouseLeave}
