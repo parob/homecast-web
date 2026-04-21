@@ -702,28 +702,36 @@ export default function MQTTBrowser() {
             const ep = getEffectivePayload(g.topic, g.payload.payload);
             const headerPadLeft = 12 + headerDepth * 16;
             const topicDepth = headerDepth + 1;
+            const isEditorOpen = expandedTopic === g.topic;
+            const toggleMembers = () => setOpenGroupKeys(prev => { const n = new Set(prev); if (n.has(g.topic)) n.delete(g.topic); else n.add(g.topic); return n; });
+            const openEditor = () => {
+              if (isEditorOpen) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }
+              else expandTopic(g.topic);
+            };
             return (
               <div key={g.topic}>
-                <div className="flex items-stretch bg-muted/30 hover:bg-muted/50">
+                <div className="w-full flex items-stretch bg-muted/30 hover:bg-muted/50 text-xs font-semibold">
                   <button
-                    onClick={() => setOpenGroupKeys(prev => { const n = new Set(prev); if (n.has(g.topic)) n.delete(g.topic); else n.add(g.topic); return n; })}
-                    className="flex-1 flex items-center justify-between pr-2 py-1.5 text-xs font-semibold text-left"
-                    style={{ paddingLeft: headerPadLeft }}
+                    onClick={toggleMembers}
+                    className="shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                    style={{ paddingLeft: headerPadLeft, paddingRight: 4 }}
+                    title={isOpen ? 'Collapse members' : 'Expand members'}
                   >
-                    <span className="flex items-center gap-1.5">
-                      {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                      <span className="font-mono">{groupSlug}</span>
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{g.memberTopics.length}</span>
+                    {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                   </button>
                   <button
-                    onClick={() => expandTopic(g.topic)}
-                    className="px-2.5 flex items-center text-[11px] font-mono hover:bg-muted/60 border-l border-border/50"
+                    onClick={openEditor}
+                    className="flex-1 flex items-center justify-between pr-3 py-1.5 text-left"
                     title="Edit group state"
                   >
-                    <FmtVal payload={ep} />
+                    <span className="font-mono truncate">{groupSlug}</span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono text-[11px] font-normal"><FmtVal payload={ep} /></span>
+                      <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{g.memberTopics.length}</span>
+                    </span>
                   </button>
                 </div>
+                {isEditorOpen && renderDetailPanel(g.topic, g.payload.payload, g.payload.timestamp, headerPadLeft)}
                 {isOpen && (
                   <div className="divide-y">
                     {g.memberTopics.map(([t, m]) =>
