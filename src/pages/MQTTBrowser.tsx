@@ -485,37 +485,36 @@ export default function MQTTBrowser() {
         )}
 
         {/* Home chips + grouping toggles. Clicking a chip opens an info
-            dialog (no filtering — the list already groups by home). */}
+            dialog (no filtering — the list already groups by home).
+            Layout: chip row scrolls horizontally rather than wrapping;
+            the count + Homes/Rooms/Groups pills wrap to a second line
+            before the chips do on narrow viewports. */}
         {homes.length > 0 && (
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5">Homes</span>
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+            <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto min-w-0 max-w-full">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5 shrink-0">Homes</span>
               {homes.map(home => {
                 const slug = homeSlugForName(home.name);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
-                const relayUnknown = home.relayConnected === undefined;
                 const relayOffline = home.relayConnected === false;
+                const chipClass = !home.mqttEnabled
+                  ? 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
+                  : relayOffline
+                    ? 'border-red-500/50 bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400'
+                    : 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground';
                 return (
                   <button
                     key={home.id}
                     onClick={() => setInfoHomeName(prev => prev === home.name ? null : home.name)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border ${
-                      home.mqttEnabled
-                        ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground'
-                        : 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
-                    }`}
-                    title={relayOffline ? `${home.name} relay is offline` : relayUnknown ? '' : `${home.name} relay is online`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border shrink-0 ${chipClass}`}
+                    title={relayOffline ? `${home.name} relay is offline` : 'Relay online'}
                   >
                     <Home className="h-3 w-3" />
                     <span className="font-medium">{home.name}</span>
-                    {!relayUnknown && (
-                      <span
-                        aria-label={relayOffline ? 'relay offline' : 'relay online'}
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${relayOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`}
-                      />
-                    )}
                     {home.mqttEnabled ? (
-                      <span className="text-[9px] text-green-600 dark:text-green-400">{count > 0 ? count : 'on'}</span>
+                      <span className={`text-[9px] ${relayOffline ? 'text-red-700 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {relayOffline ? 'offline' : count > 0 ? count : 'on'}
+                      </span>
                     ) : (
                       <span className="text-[9px]">mqtt off</span>
                     )}
@@ -523,7 +522,7 @@ export default function MQTTBrowser() {
                 );
               })}
             </div>
-            {/* Toggles + count — right side of filter row */}
+            {/* Toggles + count. Wraps to a new row before the chip row does. */}
             {Object.keys(messages).length > 0 && (
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-[10px] text-muted-foreground tabular-nums">
