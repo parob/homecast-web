@@ -21,16 +21,23 @@ export const CURRENT_ENV: HomecastEnv | null = currentEnvFromConfig();
 export const OTHER_ENV: HomecastEnv | null =
   CURRENT_ENV === "production" ? "staging" : CURRENT_ENV === "staging" ? "production" : null;
 
-const OTHER_API_BASE = OTHER_ENV === "production" ? PROD_API : OTHER_ENV === "staging" ? STAGING_API : null;
+export const ENV_API: Record<HomecastEnv, string> = {
+  production: PROD_API,
+  staging: STAGING_API,
+};
 
-export const OTHER_WEB_BASE: string | null =
-  OTHER_ENV === "production" ? PROD_WEB : OTHER_ENV === "staging" ? STAGING_WEB : null;
+export const ENV_WEB: Record<HomecastEnv, string> = {
+  production: PROD_WEB,
+  staging: STAGING_WEB,
+};
 
-const OTHER_REQUEST_TIMEOUT_MS = 15_000;
+export const OTHER_WEB_BASE: string | null = OTHER_ENV ? ENV_WEB[OTHER_ENV] : null;
+
+const REQUEST_TIMEOUT_MS = 15_000;
 
 const fetchWithTimeout: typeof fetch = (input, init) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OTHER_REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const upstream = init?.signal;
   if (upstream) {
     if (upstream.aborted) controller.abort();
@@ -62,10 +69,9 @@ const retryLink = new RetryLink({
   },
 });
 
-function buildClient(): ApolloClient | null {
-  if (!OTHER_API_BASE) return null;
+function buildClient(apiBase: string): ApolloClient {
   const httpLink = createHttpLink({
-    uri: `${OTHER_API_BASE}/`,
+    uri: `${apiBase}/`,
     fetch: fetchWithTimeout,
   });
   return new ApolloClient({
@@ -74,4 +80,28 @@ function buildClient(): ApolloClient | null {
   });
 }
 
-export const otherEnvClient: ApolloClient | null = buildClient();
+/**
+ * Env-named Apollo clients for admin pages.
+ *
+ * Each is pinned to its environment's GraphQL endpoint, regardless of which
+ * URL is hosting the admin panel. Both clients share the same auth link
+ * (reading the JWT from localStorage) — this works because prod and staging
+ * are configured with the same JWT_SECRET, so a token issued by either env
+ * validates on the other.
+ *
+ * Community mode has no cloud endpoints; both are null. Admin pages should
+ * never render in Community mode, but callers should still guard defensively.
+ */
+export const prodClient: ApolloClient | null = isCommunity ? null : buildClient(PROD_API);
+export const stagingClient: ApolloClient | null = isCommunity ? null : buildClient(STAGING_API);
+
+export const ENV_CLIENTS: Record<HomecastEnv, ApolloClient | null> = {
+  production: prodClient,
+  staging: stagingClient,
+};
+
+/**
+ * @deprecated Prefer `prodClient` / `stagingClient` + `usePairedEnvQuery`.
+ * Retained so existing call sites keep compiling during the symmetry refactor.
+ */
+export const otherEnvClient: ApolloClient | null = OTHER_ENV ? ENV_CLIENTS[OTHER_ENV] : null;
