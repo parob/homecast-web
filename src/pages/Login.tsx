@@ -28,7 +28,12 @@ function switchMode() {
   }
 }
 
-const switchModeLabel = isOnRelayMac ? 'Change install type' : 'Change relay connection';
+// On the Cloud login screen, switching goes to Community.
+const switchFromCloudLabel = isOnRelayMac
+  ? 'Switch to Community Mode'
+  : 'Switch to community relay';
+// On Community screens, switching goes to Cloud.
+const switchFromCommunityLabel = 'Switch to Cloud Mode';
 
 const Login = () => {
   const { login, signup, isAuthenticated, isLoading: authLoading, token } = useAuth();
@@ -301,7 +306,7 @@ const Login = () => {
               {(isInNativeApp || isCommunity) && (
                 <div className="w-full border-t pt-3 mt-1">
                   <Button variant="outline" size="sm" className="w-full" onClick={switchMode}>
-                    {switchModeLabel}
+                    {switchFromCommunityLabel}
                   </Button>
                 </div>
               )}
@@ -325,7 +330,7 @@ const Login = () => {
             <CardFooter className="flex flex-col gap-3 pt-0">
               <div className="w-full border-t pt-3">
                 <Button variant="outline" size="sm" className="w-full" onClick={switchMode}>
-                  {switchModeLabel}
+                  {switchFromCommunityLabel}
                 </Button>
               </div>
             </CardFooter>
@@ -381,7 +386,7 @@ const Login = () => {
                 </Button>
                 <div className="w-full border-t pt-3">
                   <Button variant="outline" size="sm" className="w-full" type="button" onClick={switchMode}>
-                    {switchModeLabel}
+                    {switchFromCommunityLabel}
                   </Button>
                 </div>
                 {(window as any).isHomeKitRelayCapable && !showResetConfirm && (
@@ -506,7 +511,7 @@ const Login = () => {
                 {isInNativeApp && (
                   <div className="w-full border-t pt-3">
                     <Button variant="outline" size="sm" className="w-full" type="button" onClick={switchMode}>
-                      Change connection mode
+                      {switchFromCloudLabel}
                     </Button>
                   </div>
                 )}
