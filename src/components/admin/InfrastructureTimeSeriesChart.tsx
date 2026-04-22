@@ -117,15 +117,17 @@ function PairedInfrastructureTimeSeriesChart({
   // single Apollo client with different `deployment` filters.
   const client = prodClient ?? undefined;
 
+  // GKE deployment naming: staging = "homecast", prod = "homecast-prod"
+  // (historical — staging predates prod so the un-suffixed name is staging).
   const prodQ = useQuery<AdminTimeSeriesResponse>(GET_INFRASTRUCTURE_TIME_SERIES, {
-    variables: { metric, deployment: 'homecast', hours, podName },
+    variables: { metric, deployment: 'homecast-prod', hours, podName },
     pollInterval: 30000,
     skip: !showProd,
     client,
     errorPolicy: 'all',
   });
   const stagingQ = useQuery<AdminTimeSeriesResponse>(GET_INFRASTRUCTURE_TIME_SERIES, {
-    variables: { metric, deployment: 'homecast-staging', hours, podName },
+    variables: { metric, deployment: 'homecast', hours, podName },
     pollInterval: 30000,
     skip: !showStaging,
     client,
