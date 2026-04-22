@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
+import { ApolloProvider } from '@apollo/client/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { HomecastEnv } from '@/lib/apollo-other-env';
+import { ENV_CLIENTS, type HomecastEnv } from '@/lib/apollo-other-env';
 import { useAdminEnvToggle } from '@/hooks/useAdminEnvToggle';
 
 // Inlined so this component lives in the host web app tree; cloud analytics
@@ -88,3 +89,45 @@ export function PairedEnvSections<TData>({
 
 // Re-export for convenience — keeps legacy callers compiling while they migrate.
 export { ENV_STYLES };
+
+/**
+ * Runs `children` once per visible env, with each instance wrapped in an
+ * ApolloProvider pinned to that env's client. The same JSX, including its
+ * useQuery / useMutation calls, executes twice — once targeting prod, once
+ * staging — giving the admin panel per-page symmetry for free.
+ *
+ * Pages that have their own filter state, pagination, dialogs, etc. get a
+ * separate copy of that state in each env section (React key = env), so
+ * mutations stay scoped to the env whose section hosts them.
+ */
+export function PairedEnvPage({ children }: { children: ReactNode }) {
+  const envToggle = useAdminEnvToggle();
+  const sides: HomecastEnv[] = [];
+  if (envToggle.showProduction) sides.push('production');
+  if (envToggle.showStaging) sides.push('staging');
+
+  if (sides.length === 0) {
+    return (
+      <div className="py-12 text-center text-sm text-muted-foreground">
+        Turn on an environment toggle to view this page.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {sides.map((env) => {
+        const client = ENV_CLIENTS[env];
+        if (!client) return null;
+        return (
+          <div key={env} className="space-y-3">
+            <EnvHeading env={env} />
+            <ApolloProvider client={client}>
+              {children}
+            </ApolloProvider>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
