@@ -73,6 +73,71 @@ async function clipAroundElement(page: Page, locator: ReturnType<Page['locator']
   };
 }
 
+/**
+ * Navigate to the dashboard and ensure "My Home" is selected.
+ *
+ * The dashboard auto-selects homes alphabetically when homeOrder hasn't loaded,
+ * which lands on "Beach House" (SHARED_HOME_ID) by default. URL params and
+ * localStorage hints aren't reliable because account/accessory loading races
+ * can clear pendingHomeId before the URL selection takes effect. Force-clicking
+ * "My Home" guarantees the right selection regardless of load order.
+ */
+/**
+ * Navigate to My Home, optionally selecting a specific room.
+ *
+ * `roomName` is the display name of the room to select (e.g. "Living Room").
+ * URL-based room selection via page.goto triggers a full reload which re-hits
+ * the alphabetical auto-select race, so we click the sidebar button instead.
+ */
+async function gotoMyHome(page: Page, roomName?: string) {
+  await page.goto(`/portal?home=${HOME_ID}`);
+  await page.waitForTimeout(3000);
+  // If "My Home" isn't visible in the sidebar, open the mobile sidebar first.
+  const findMyHomeBtn = () => page.getByRole('button', { name: 'My Home', exact: true }).first();
+  if (!(await findMyHomeBtn().isVisible())) {
+    const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
+    if (await menuBtn.isVisible()) {
+      await menuBtn.click({ force: true });
+      await page.waitForTimeout(800);
+    }
+  }
+  // Force-select My Home in case auto-selection landed on a different home
+  // (Dashboard sorts alphabetically until homeOrder arrives from GetSettings).
+  if (await findMyHomeBtn().isVisible()) {
+    await findMyHomeBtn().click({ force: true });
+    await page.waitForTimeout(1500);
+  }
+  if (roomName) {
+    // Re-open the mobile sidebar if it closed after the My Home click.
+    const roomBtn = page.getByRole('button', { name: roomName, exact: true }).first();
+    if (!(await roomBtn.isVisible())) {
+      const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
+      if (await menuBtn.isVisible()) {
+        await menuBtn.click({ force: true });
+        await page.waitForTimeout(800);
+      }
+    }
+    if (await roomBtn.isVisible()) {
+      await roomBtn.click({ force: true });
+      await page.waitForTimeout(1500);
+    }
+  }
+  // On mobile, close sidebar if it's still open.
+  const closeBtn = page.locator('button:has(svg.lucide-x)').first();
+  if (await closeBtn.isVisible()) {
+    await closeBtn.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  // Reset scroll position so the header is visible in the screenshot.
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.querySelectorAll('[class*="overflow-"]').forEach((el) => {
+      (el as HTMLElement).scrollTop = 0;
+    });
+  });
+  await page.waitForTimeout(300);
+}
+
 /** Open the settings dialog from the dashboard, optionally on a specific tab. */
 async function openSettings(page: Page, tabLabel?: string) {
   const menuTrigger = page.locator('[data-tour="header-menu"]').first();
@@ -92,14 +157,7 @@ test.describe('Dashboard screenshots', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    // Defensive: force-select My Home via sidebar if auto-selection landed elsewhere
-    const myHomeBtn = page.locator('button').filter({ hasText: 'My Home' }).first();
-    if (await myHomeBtn.isVisible()) {
-      await myHomeBtn.click({ force: true });
-      await page.waitForTimeout(1500);
-    }
+    await gotoMyHome(page);
   });
 
   test('dashboard overview — full page', async ({ page }) => {
@@ -384,8 +442,7 @@ test.describe('Features hero screenshot', () => {
       [`home:${SHARED_HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-beach', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: featureImg('dashboard.png') });
   });
 
@@ -408,8 +465,7 @@ test.describe('Features hero screenshot', () => {
       [`home:${SHARED_HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-beach', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: featureImg('dashboard-mobile.png') });
   });
 });
@@ -485,8 +541,7 @@ test.describe('App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: appStoreImg('01-home-overview.png') });
   });
 
@@ -497,8 +552,7 @@ test.describe('App Store screenshots', () => {
       [`room:${ROOMS.livingRoom}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}&room=${ROOMS.livingRoom}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page, 'Living Room');
     await page.screenshot({ path: appStoreImg('02-living-room.png') });
   });
 
@@ -509,8 +563,7 @@ test.describe('App Store screenshots', () => {
       [`room:${ROOMS.bedroom}`]: { background: { type: 'preset', presetId: 'gradient-aurora', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}&room=${ROOMS.bedroom}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page, 'Bedroom');
     await page.screenshot({ path: appStoreImg('03-bedroom.png') });
   });
 
@@ -521,8 +574,7 @@ test.describe('App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-mountains', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: appStoreImg('04-compact-mode.png') });
   });
 
@@ -538,17 +590,15 @@ test.describe('App Store screenshots', () => {
     await page.screenshot({ path: appStoreImg('05-beach-house.png') });
   });
 
-  // 6 — Settings dialog
+  // 6 — Settings dialog (Display tab — community builds have no Plan content)
   test('appstore 06 — Settings', async ({ page }) => {
     overrideSettings(BASE_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    await openSettings(page);
-    await page.waitForTimeout(500);
+    await gotoMyHome(page);
+    await openSettings(page, 'Display');
     await page.screenshot({ path: appStoreImg('06-settings.png') });
   });
 
@@ -559,8 +609,7 @@ test.describe('App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await openSettings(page, 'API Access');
     await page.screenshot({ path: appStoreImg('07-api-access.png') });
   });
@@ -572,8 +621,7 @@ test.describe('App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await openSettings(page, 'Webhooks');
     await page.screenshot({ path: appStoreImg('08-webhooks.png') });
   });
@@ -585,8 +633,7 @@ test.describe('App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     const homeBtn = page.locator('button').filter({ hasText: 'My Home' }).first();
     await homeBtn.click({ button: 'right', force: true });
     await page.waitForTimeout(500);
@@ -633,8 +680,7 @@ test.describe('iPhone App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: iphoneImg('01-home-overview.png') });
   });
 
@@ -645,8 +691,7 @@ test.describe('iPhone App Store screenshots', () => {
       [`room:${ROOMS.livingRoom}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}&room=${ROOMS.livingRoom}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page, 'Living Room');
     await page.screenshot({ path: iphoneImg('02-living-room.png') });
   });
 
@@ -657,11 +702,8 @@ test.describe('iPhone App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-aurora', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    // Open MoreVertical menu
-    const menuTrigger = page.locator('button').filter({ has: page.locator('[class*="lucide-ellipsis-vertical"], [class*="lucide-more-vertical"]') }).first();
-    await menuTrigger.click({ force: true });
+    await gotoMyHome(page);
+    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
     await page.waitForTimeout(500);
     await page.screenshot({ path: iphoneImg('03-menu.png') });
   });
@@ -673,17 +715,12 @@ test.describe('iPhone App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    // Open MoreVertical menu → Share Home
-    const menuTrigger = page.locator('button').filter({ has: page.locator('[class*="lucide-ellipsis-vertical"], [class*="lucide-more-vertical"]') }).first();
-    await menuTrigger.click({ force: true });
+    await gotoMyHome(page);
+    // Open header menu → Share
+    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
     await page.waitForTimeout(300);
-    const shareItem = page.locator('[role="menuitem"]').filter({ hasText: 'Share Home' });
-    if (await shareItem.isVisible()) {
-      await shareItem.click();
-      await page.waitForTimeout(1000);
-    }
+    await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: iphoneImg('04-sharing.png') });
   });
 
@@ -694,8 +731,7 @@ test.describe('iPhone App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
     if (await menuBtn.isVisible()) {
       await menuBtn.click({ force: true });
@@ -719,8 +755,7 @@ test.describe('iPad App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: ipadImg('01-home-overview.png') });
   });
 
@@ -731,8 +766,7 @@ test.describe('iPad App Store screenshots', () => {
       [`room:${ROOMS.livingRoom}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}&room=${ROOMS.livingRoom}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page, 'Living Room');
     await page.screenshot({ path: ipadImg('02-living-room.png') });
   });
 
@@ -743,11 +777,8 @@ test.describe('iPad App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-aurora', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    // Open MoreVertical menu
-    const menuTrigger = page.locator('button').filter({ has: page.locator('[class*="lucide-ellipsis-vertical"], [class*="lucide-more-vertical"]') }).first();
-    await menuTrigger.click({ force: true });
+    await gotoMyHome(page);
+    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
     await page.waitForTimeout(500);
     await page.screenshot({ path: ipadImg('03-menu.png') });
   });
@@ -759,16 +790,11 @@ test.describe('iPad App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
-    const homeBtn = page.locator('button').filter({ hasText: 'My Home' }).first();
-    await homeBtn.click({ button: 'right', force: true });
-    await page.waitForTimeout(500);
-    const shareItem = page.locator('[role="menuitem"]').filter({ hasText: 'Share Home' });
-    if (await shareItem.isVisible()) {
-      await shareItem.click();
-      await page.waitForTimeout(1000);
-    }
+    await gotoMyHome(page);
+    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
+    await page.waitForTimeout(300);
+    await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: ipadImg('04-sharing.png') });
   });
 
@@ -779,8 +805,7 @@ test.describe('iPad App Store screenshots', () => {
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-mountains', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForTimeout(3000);
+    await gotoMyHome(page);
     await page.screenshot({ path: ipadImg('05-compact-mode.png') });
   });
 });
