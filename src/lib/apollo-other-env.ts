@@ -7,6 +7,8 @@ export type HomecastEnv = "production" | "staging";
 
 const PROD_API = "https://api.homecast.cloud";
 const STAGING_API = "https://staging.api.homecast.cloud";
+const PROD_WEB = "https://homecast.cloud";
+const STAGING_WEB = "https://staging.homecast.cloud";
 
 function currentEnvFromConfig(): HomecastEnv | null {
   if (isCommunity) return null;
@@ -20,6 +22,9 @@ export const OTHER_ENV: HomecastEnv | null =
   CURRENT_ENV === "production" ? "staging" : CURRENT_ENV === "staging" ? "production" : null;
 
 const OTHER_API_BASE = OTHER_ENV === "production" ? PROD_API : OTHER_ENV === "staging" ? STAGING_API : null;
+
+export const OTHER_WEB_BASE: string | null =
+  OTHER_ENV === "production" ? PROD_WEB : OTHER_ENV === "staging" ? STAGING_WEB : null;
 
 const OTHER_REQUEST_TIMEOUT_MS = 15_000;
 

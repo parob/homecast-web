@@ -15,12 +15,6 @@ function readStored(): AdminEnvVisibility {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (typeof parsed?.production === "boolean" && typeof parsed?.staging === "boolean") {
-        // Invariant: at least one env visible. A stale {false,false} value
-        // (e.g. from an older build that didn't guard on set) would
-        // otherwise hide every admin page on load. Self-heal to both-on.
-        if (!parsed.production && !parsed.staging) {
-          return { production: true, staging: true };
-        }
         return { production: parsed.production, staging: parsed.staging };
       }
     }
@@ -79,13 +73,9 @@ if (typeof window !== "undefined") {
 export function useAdminEnvToggle() {
   const visibility = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // Keep the state sane:
-  //  - In Community mode (no OTHER_ENV) neither toggle has meaning; both stay on.
-  //  - If we somehow land in {false, false}, self-heal to {true, true} so the
-  //    admin panel never shows empty because of a stale / racy stored value.
+  // Community mode: neither toggle has meaning, so clamp both to on.
   useEffect(() => {
-    const bothOff = !visibility.production && !visibility.staging;
-    if (bothOff || !OTHER_ENV) {
+    if (!OTHER_ENV) {
       if (!visibility.production || !visibility.staging) {
         state = { production: true, staging: true };
         persist();
@@ -95,10 +85,7 @@ export function useAdminEnvToggle() {
   }, [visibility.production, visibility.staging]);
 
   const setVisible = useCallback((env: HomecastEnv, visible: boolean) => {
-    // Invariant: at least one env visible.
-    const next: AdminEnvVisibility = { ...state, [env]: visible };
-    if (!next.production && !next.staging) return;
-    state = next;
+    state = { ...state, [env]: visible };
     persist();
     emit();
   }, []);
