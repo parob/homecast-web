@@ -15,9 +15,15 @@ const ENV_STYLES: Record<HomecastEnv, { label: string; cssColor: string }> = {
 export function EnvHeading({ env, extra }: { env: HomecastEnv; extra?: ReactNode }) {
   const style = ENV_STYLES[env];
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-2 px-3 py-1.5 rounded border-l-4"
+      style={{
+        borderLeftColor: style.cssColor,
+        background: `color-mix(in oklch, ${style.cssColor} 10%, transparent)`,
+      }}
+    >
       <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: style.cssColor }} />
-      <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
+      <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: style.cssColor }}>
         {style.label}
       </span>
       {extra}
