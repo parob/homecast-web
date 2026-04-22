@@ -1,67 +1,69 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useQuery } from '@apollo/client/react';
 import type { DocumentNode, OperationVariables } from '@apollo/client/core';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { otherEnvClient, OTHER_ENV } from '@/lib/apollo-other-env';
+import { Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { otherEnvClient, OTHER_ENV, CURRENT_ENV, type HomecastEnv } from '@/lib/apollo-other-env';
+import { useAdminEnvToggle } from '@/hooks/useAdminEnvToggle';
 
-// Inlined from cloud package's analytics/shared.tsx so this component can
-// live in the host web app (cloud-dir is only mounted at build time).
-const ENV_STYLES = {
+const ENV_STYLES: Record<HomecastEnv, { label: string; cssColor: string }> = {
   production: { label: 'Production', cssColor: 'hsl(var(--primary))' },
   staging: { label: 'Staging', cssColor: 'hsl(38 92% 50%)' },
-} as const;
+};
+
+export function EnvHeader({ env, label }: { env: HomecastEnv; label?: string }) {
+  const style = ENV_STYLES[env];
+  return (
+    <div className="flex items-center gap-2">
+      <span className="inline-block h-2 w-2 rounded-full" style={{ background: style.cssColor }} />
+      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+        {label ?? style.label}
+      </span>
+    </div>
+  );
+}
 
 /**
- * Collapsible read-only panel showing a query's result on the "other"
- * environment (prod if currently on staging, or vice versa).
+ * Renders the same query's result on the "other" environment (prod if on
+ * staging, or vice versa), styled identically to the current-env view so
+ * both envs carry equal visual weight.
  *
- * Added to admin pages that are primarily tables/data views — lets an admin
- * see the sibling environment's rows without duplicating the page's
- * mutation flow or routing logic. Mutations stay on the current env only.
+ * Visibility is controlled by the sidebar toggles — if the sibling env is
+ * toggled off, nothing renders. If the current env is toggled off, the
+ * page's own content should be hidden by the caller using
+ * `useAdminEnvToggle().showCurrent`.
  */
 export function OtherEnvCompanion<TData = unknown, TVars extends OperationVariables = OperationVariables>({
   label,
   query,
   variables,
   children,
-  defaultOpen = false,
 }: {
   label: string;
   query: DocumentNode;
   variables?: TVars;
   children: (data: TData | undefined) => ReactNode;
-  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const { showOther, showCurrent, otherEnv } = useAdminEnvToggle();
 
-  if (!otherEnvClient || !OTHER_ENV) return null;
-
-  const envColor = ENV_STYLES[OTHER_ENV].cssColor;
-  const envLabel = ENV_STYLES[OTHER_ENV].label;
+  if (!otherEnvClient || !otherEnv) return null;
+  if (!showOther) return null;
 
   return (
-    <Card className="mt-4 border-dashed">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: envColor }} />
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {label} · {envLabel}
-          </span>
-          <span className="text-[10px] text-muted-foreground italic">(read-only)</span>
-        </div>
-      </button>
-      {open && (
-        <CardContent className="pt-0 pb-3 px-4">
-          <CompanionContent<TData, TVars> query={query} variables={variables}>
-            {children}
-          </CompanionContent>
-        </CardContent>
-      )}
+    <Card>
+      <CardHeader className="pb-2 pt-3 px-4">
+        <CardTitle className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+          {/* Only show env label on the header when both envs are visible at
+              once — otherwise it's redundant. */}
+          {showCurrent && <EnvHeader env={otherEnv} />}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 pb-3 px-4">
+        <CompanionContent<TData, TVars> query={query} variables={variables}>
+          {children}
+        </CompanionContent>
+      </CardContent>
     </Card>
   );
 }
@@ -99,5 +101,58 @@ function CompanionContent<TData, TVars extends OperationVariables>({
     );
   }
 
-  return <div className="pointer-events-none opacity-90">{children(data)}</div>;
+  return <>{children(data)}</>;
+}
+
+/**
+ * Wraps the current env's native content so it sits in a visually matched
+ * card with an env-label header, mirroring the OtherEnvCompanion.
+ *
+ * Respects the sidebar toggle — returns null when the current env is off.
+ * When only the current env is visible, the env-label header is suppressed
+ * (no need to announce "Production" when it's the only thing on screen).
+ */
+export function CurrentEnvSection({
+  label,
+  children,
+  noCard = false,
+}: {
+  label?: string;
+  children: ReactNode;
+  noCard?: boolean;
+}) {
+  const { showCurrent, showOther, currentEnv } = useAdminEnvToggle();
+
+  if (!showCurrent) return null;
+  if (!currentEnv) return <>{children}</>;
+
+  const showEnvHeader = showOther;
+
+  if (noCard) {
+    return (
+      <div className="space-y-2">
+        {showEnvHeader && <EnvHeader env={currentEnv} label={label} />}
+        {children}
+      </div>
+    );
+  }
+
+  if (!showEnvHeader && !label) {
+    // No envelope needed — just pass through.
+    return <>{children}</>;
+  }
+
+  return (
+    <Card>
+      {(showEnvHeader || label) && (
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="flex items-center justify-between">
+            {label && <span className="text-xs font-medium text-muted-foreground">{label}</span>}
+            {showEnvHeader && <EnvHeader env={currentEnv} />}
+          </CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className="pt-0 pb-3 px-4">{children}</CardContent>
+    </Card>
+  );
 }
