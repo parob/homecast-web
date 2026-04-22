@@ -31,26 +31,30 @@ export interface DualEnvQueryResult<TData> {
 export function useDualEnvQuery<TData = unknown, TVars extends OperationVariables = OperationVariables>(
   query: DocumentNode,
   options?: {
-    variables?: TVars;
-    skip?: boolean;
+    /** Skip the current-env query (the one fired against the page's own API). */
+    skipCurrent?: boolean;
+    /** Skip the other-env query (the one fired via `otherEnvClient`). */
     skipOther?: boolean;
+    /** @deprecated prefer `skipCurrent`. Kept to match earlier call sites. */
+    skip?: boolean;
+    variables?: TVars;
     pollInterval?: number;
     fetchPolicy?: "cache-first" | "network-only" | "cache-and-network" | "no-cache";
   }
 ): DualEnvQueryResult<TData> {
-  const skip = options?.skip ?? false;
+  const skipCurrent = options?.skipCurrent ?? options?.skip ?? false;
   const skipOther = options?.skipOther ?? false;
 
   const currentQ = useQuery<TData, TVars>(query, {
     variables: options?.variables,
-    skip,
+    skip: skipCurrent,
     pollInterval: options?.pollInterval,
     fetchPolicy: options?.fetchPolicy,
   });
 
   const otherQ = useQuery<TData, TVars>(query, {
     variables: options?.variables,
-    skip: skip || skipOther || !otherEnvClient,
+    skip: skipOther || !otherEnvClient,
     pollInterval: options?.pollInterval,
     fetchPolicy: options?.fetchPolicy,
     client: otherEnvClient ?? undefined,
