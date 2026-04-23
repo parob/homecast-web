@@ -243,8 +243,14 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   // Route GraphQL to Mac's server (works for both relay Mac and external browsers)
   const communityGraphQL = async (operationName: string, variables: Record<string, unknown>) => {
     if (isRelayRef.current) {
-      // Relay Mac: call directly (same IndexedDB)
-      return handleGraphQL({ operationName, variables });
+      // Relay Mac: call directly (same IndexedDB). Attach the current token so
+      // that when auth-enabled is on, resolvers can verify the caller.
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('homecast-token') : null;
+      return handleGraphQL({
+        operationName,
+        variables,
+        authorization: token ? `Bearer ${token}` : undefined,
+      });
     }
     // External browser/iOS client: HTTP POST to the relay server
     // Retry on 503 (bridge still initializing)

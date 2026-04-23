@@ -21,6 +21,13 @@ export class ExecutionContext {
   readonly automationName: string;
   readonly triggerData: TriggerData;
   readonly abortController: AbortController;
+  /**
+   * Chain of automationIds that led to this execution (via toggle_automation
+   * "trigger" action). Used to detect sub-workflow cycles. The current
+   * automationId is NOT included in this list — it is appended when this
+   * context triggers a further sub-automation.
+   */
+  readonly ancestorIds: readonly string[];
 
   // Mutable state
   variables: Record<string, unknown>;
@@ -40,6 +47,7 @@ export class ExecutionContext {
     automationName: string,
     triggerData: TriggerData,
     initialVariables?: Record<string, unknown>,
+    ancestorIds: readonly string[] = [],
   ) {
     this.traceId = crypto.randomUUID();
     this.automationId = automationId;
@@ -48,6 +56,7 @@ export class ExecutionContext {
     this.abortController = new AbortController();
     this.variables = { ...initialVariables };
     this.startedAt = new Date().toISOString();
+    this.ancestorIds = ancestorIds;
   }
 
   get signal(): AbortSignal {

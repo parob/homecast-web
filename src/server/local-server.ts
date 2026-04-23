@@ -98,10 +98,12 @@ export function initLocalServer(): void {
     setCommunityClientCount(connectedClients.size);
   };
 
-  // GraphQL handler — called by Swift when an HTTP POST / request arrives
-  // Note: Auth enforcement for device control is on the WebSocket handler, not here.
-  // Swift doesn't pass the HTTP Authorization header to the JS bridge, so we can't
-  // validate tokens on GraphQL requests. GraphQL ops are mostly UI/settings data.
+  // GraphQL handler — called by Swift when an HTTP POST / request arrives.
+  // Device-control actions have their own auth check on the WebSocket handler;
+  // here we also pass the Authorization header down to handleGraphQL so that,
+  // when auth is enabled, non-public mutations are rejected for unauthenticated
+  // callers. (The Swift HTTP front-end on older builds does not yet forward
+  // the Authorization header on this path; once it does, this is fully wired.)
   w.__localserver_graphql_handler = async (clientId: string, request) => {
     recordCommunityActivity();
     const win = window as Window & { webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } } };
@@ -115,7 +117,12 @@ export function initLocalServer(): void {
       return;
     }
 
-    const result = await handleGraphQL(request);
+    const result = await handleGraphQL({
+      operationName: request.operationName,
+      query: request.query,
+      variables: request.variables,
+      authorization: request.authorization,
+    });
     win.webkit?.messageHandlers?.localServer?.postMessage({
       action: 'graphqlResponse',
       clientId,

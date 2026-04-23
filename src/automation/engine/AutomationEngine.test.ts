@@ -4,8 +4,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AutomationEngine, type AutomationEngineConfig } from './AutomationEngine';
 import type { HomeKitBridge, EngineCallbacks } from './ActionExecutor';
 import type { ServiceGroupResolver } from './TriggerManager';
+import type { CodeInput, CodeSandbox } from './CodeSandbox';
 import type { Automation, TriggerData } from '../types/automation';
 import type { ExecutionTrace } from '../types/execution';
+
+// Test-only sandbox mirroring the inline one in ActionExecutor.test.ts.
+// Production uses WorkerCodeSandbox; see the CodeSandbox module for the real impl.
+const inlineCodeSandbox: CodeSandbox = {
+  async run(code: string, input: CodeInput): Promise<unknown> {
+    const runtimeInput = {
+      trigger: input.trigger,
+      variables: input.variables,
+      nodes: input.nodes,
+      states: (id: string, type: string) => input.stateSnapshot?.[id]?.[type],
+    };
+    const fn = new Function('input', `"use strict";\n${code}`);
+    return fn(runtimeInput);
+  },
+};
 
 function makeConfig(overrides?: Partial<AutomationEngineConfig>): AutomationEngineConfig {
   return {
@@ -16,6 +32,7 @@ function makeConfig(overrides?: Partial<AutomationEngineConfig>): AutomationEngi
     },
     onTraceComplete: vi.fn(),
     onNotify: vi.fn().mockResolvedValue(undefined),
+    codeSandbox: inlineCodeSandbox,
     ...overrides,
   };
 }
@@ -415,6 +432,48 @@ describe('AutomationEngine integration', () => {
   // ============================================================
   // Error trigger — fires when automation fails
   // ============================================================
+
+  describe('sub-automation cycle detection', () => {
+    it('refuses to run an automation that would cycle back on itself', async () => {
+      const automationA: Automation = {
+        id: 'auto-A',
+        name: 'A',
+        homeId: 'home-1',
+        enabled: true,
+        mode: 'parallel',
+        triggers: [{ type: 'event', id: 't-a', eventType: 'start' }],
+        conditions: { operator: 'and', conditions: [] },
+        actions: [
+          { type: 'toggle_automation', id: 'tog-a', automationId: 'auto-B', action: 'trigger' },
+        ],
+        metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+      };
+      const automationB: Automation = {
+        id: 'auto-B',
+        name: 'B',
+        homeId: 'home-1',
+        enabled: true,
+        mode: 'parallel',
+        triggers: [],
+        conditions: { operator: 'and', conditions: [] },
+        actions: [
+          { type: 'toggle_automation', id: 'tog-b', automationId: 'auto-A', action: 'trigger' },
+        ],
+        metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+      };
+
+      engine.loadAutomations([automationA, automationB]);
+      await engine.manualTrigger('auto-A');
+
+      // A completes normally — it successfully triggered B, but didn't itself
+      // form the cycle. B then tried to trigger A which IS in its chain, so
+      // B errors. Two traces: A=success, B=error with "Cycle detected".
+      const byAutomation = new Map(traces.map((t) => [t.automationId, t]));
+      expect(byAutomation.get('auto-A')?.status).toBe('success');
+      expect(byAutomation.get('auto-B')?.status).toBe('error');
+      expect(JSON.stringify(byAutomation.get('auto-B'))).toMatch(/Cycle detected/i);
+    });
+  });
 
   describe('error trigger event', () => {
     it('fires automation.error event when automation fails', async () => {

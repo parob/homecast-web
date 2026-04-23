@@ -5,7 +5,34 @@ import { ActionExecutor, type HomeKitBridge, type EngineCallbacks } from './Acti
 import { ExecutionContext } from './ExecutionContext';
 import { ConditionEvaluator } from './ConditionEvaluator';
 import { StateStore } from '../state/StateStore';
+import type { CodeInput, CodeSandbox } from './CodeSandbox';
 import type { TriggerData, Action } from '../types/automation';
+
+/**
+ * Test-only in-process Code sandbox. The production sandbox runs in a Web
+ * Worker, which isn't available in vitest's Node environment. These tests
+ * verify wiring (input shape, output capture, error propagation) — not the
+ * security isolation, which is verified manually in the WKWebView (see the
+ * audit plan's verification section).
+ */
+function makeInlineCodeSandbox(): CodeSandbox {
+  return {
+    async run(code: string, input: CodeInput, timeoutMs: number): Promise<unknown> {
+      const runtimeInput = {
+        trigger: input.trigger,
+        variables: input.variables,
+        nodes: input.nodes,
+        states: (id: string, type: string) => input.stateSnapshot?.[id]?.[type],
+      };
+      const fn = new Function('input', `"use strict";\n${code}`);
+      const execPromise = Promise.resolve().then(() => fn(runtimeInput));
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Code execution timeout (${timeoutMs}ms)`)), timeoutMs),
+      );
+      return await Promise.race([execPromise, timeoutPromise]);
+    },
+  };
+}
 
 function makeTriggerData(overrides?: Partial<TriggerData>): TriggerData {
   return {
@@ -43,7 +70,7 @@ describe('ActionExecutor', () => {
       executeScript: vi.fn().mockResolvedValue({ result: 'ok' }),
       registerTemporaryTrigger: vi.fn().mockReturnValue(() => {}),
     };
-    executor = new ActionExecutor(stateStore, conditionEvaluator, bridge, callbacks);
+    executor = new ActionExecutor(stateStore, conditionEvaluator, bridge, callbacks, makeInlineCodeSandbox());
   });
 
   // ============================================================
@@ -201,6 +228,74 @@ describe('ActionExecutor', () => {
       expect(output?.ok).toBe(false);
       expect(output?.error).toContain('Network error');
     });
+
+    describe('SSRF guard', () => {
+      const blockedUrls = [
+        'http://127.0.0.1/admin',
+        'http://127.1/admin',                  // short-form loopback
+        'http://localhost:5656/rest/state',
+        'http://homeassistant.local/',
+        'http://[::1]/',
+        'http://[::ffff:127.0.0.1]/',          // IPv4-mapped loopback
+        'http://169.254.169.254/latest/meta',  // link-local / AWS metadata
+        'http://10.0.0.1/',
+        'http://172.17.0.1/',                  // docker bridge default
+        'http://192.168.1.1/',
+        'http://2130706433/',                  // 127.0.0.1 as decimal integer
+        'http://0x7f000001/',                  // 127.0.0.1 as hex
+        'http://017700000001/',                // 127.0.0.1 as octal
+        'http://255.255.255.255/',
+        'http://router/',                      // bare hostname
+        'file:///etc/passwd',
+        'ftp://internal.example.com/',
+      ];
+
+      for (const url of blockedUrls) {
+        it(`blocks ${url}`, async () => {
+          const fetchMock = vi.fn();
+          globalThis.fetch = fetchMock as any;
+
+          const ctx = makeCtx();
+          const action: Action = {
+            type: 'fire_webhook',
+            id: 'http-ssrf',
+            url,
+          };
+
+          // executeFireWebhook catches errors internally and records them on output
+          await executor.executeSequence([action], ctx);
+
+          const output = ctx.getNodeOutput('http-ssrf');
+          expect(output?.ok).toBe(false);
+          expect(output?.error).toMatch(/\[SSRF\]/);
+          expect(fetchMock).not.toHaveBeenCalled();
+        });
+      }
+
+      it('allows ordinary public URLs', async () => {
+        const mockResponse = {
+          status: 200,
+          statusText: 'OK',
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: vi.fn().mockResolvedValue({ ok: true }),
+          text: vi.fn(),
+        };
+        const fetchMock = vi.fn().mockResolvedValue(mockResponse);
+        globalThis.fetch = fetchMock as any;
+
+        const ctx = makeCtx();
+        const action: Action = {
+          type: 'fire_webhook',
+          id: 'http-ok',
+          url: 'https://api.example.com/hello',
+        };
+
+        await executor.executeSequence([action], ctx);
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(ctx.getNodeOutput('http-ok')?.ok).toBe(true);
+      });
+    });
   });
 
   describe('variables output', () => {
@@ -260,6 +355,22 @@ describe('ActionExecutor', () => {
       await executor.executeSequence([action], ctx);
 
       expect(ctx.getNodeOutput('delay-1')).toEqual({ durationMs: 0 });
+    });
+
+    it('clamps absurdly long delays to the 24h cap', async () => {
+      const ctx = makeCtx();
+      const action: Action = {
+        type: 'delay',
+        id: 'delay-2',
+        duration: { hours: 365 * 24 }, // ~1 year in hours (Duration supports hours/minutes/seconds)
+      };
+
+      // Abort immediately so we don't actually wait 24h
+      setTimeout(() => ctx.cancel(), 10);
+      await executor.executeSequence([action], ctx);
+
+      const out = ctx.getNodeOutput('delay-2') as { durationMs: number };
+      expect(out.durationMs).toBe(24 * 60 * 60 * 1000);
     });
   });
 

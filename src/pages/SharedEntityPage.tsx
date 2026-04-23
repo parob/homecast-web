@@ -38,16 +38,7 @@ import { SharedAccessoryView } from '@/components/shared/SharedAccessoryView';
 import { SharedAccessoryGroupView } from '@/components/shared/SharedAccessoryGroupView';
 import { SharedRoomGroupView } from '@/components/shared/SharedRoomGroupView';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
-
-// Detect if running inside Mac native app WebView
-const checkIsInMacApp = () => {
-  if (typeof window === 'undefined') return false;
-  const w = window as any;
-  if (w.isHomecastMacApp) return true;
-  if (w.navigator?.standalone && /Mac/.test(navigator.userAgent)) return true;
-  if (w.webkit?.messageHandlers?.homecast && !w.isHomecastIOSApp) return true;
-  return false;
-};
+import { checkIsInMacApp } from '@/lib/platform';
 
 // Detect if running inside a mobile native app WebView (iOS or Android)
 const checkIsInMobileApp = () => {

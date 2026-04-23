@@ -145,9 +145,11 @@ const communityLocalLink = new ApolloLink((operation, forward) => {
   return new Observable(observer => {
     // Lazy import to avoid circular dependency at module load time
     import('../server/local-graphql').then(({ handleGraphQL }) => {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('homecast-token') : null;
       handleGraphQL({
         operationName: operation.operationName,
         variables: operation.variables,
+        authorization: token ? `Bearer ${token}` : undefined,
       }).then(result => {
         observer.next(result as any);
         observer.complete();

@@ -479,6 +479,16 @@ describe('REST endpoint routing (handleREST)', () => {
 // ===================================================================
 
 describe('GET /rest/state response format', () => {
+  // Accessory-limit globals persist across describe blocks (module-level state
+  // in local-handler.ts). Earlier tests in "Accessory limit enforcement" leave
+  // accessoryLimit set, which would make filterAccessories() strip every
+  // accessory from the /rest/state response. Reset on every test here so this
+  // block runs in "unlimited" mode regardless of ordering.
+  beforeEach(() => {
+    setAccessoryLimit(null);
+    setAllowedAccessoryIds(null);
+  });
+
   it('includes _meta with fetched_at in ISO format and message', async () => {
     const { HomeKit } = await import('@/native/homekit-bridge');
     (HomeKit.listHomes as any).mockResolvedValueOnce([]);

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
 import { cn } from '@/lib/utils';
 import { config, isCommunity } from '@/lib/config';
+import { checkIsInMacApp } from '@/lib/platform';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useLazyQuery, useMutation, useApolloClient } from '@apollo/client/react';
@@ -252,20 +253,6 @@ const parseCharacteristicValue = (value: any): any => {
   } catch {
     return value; // Return as-is if not valid JSON
   }
-};
-
-// Detect if running inside Mac app WebView (as a function to check dynamically)
-// Check for webkit messageHandlers (iOS/macOS) or global flag set by Mac app
-const checkIsInMacApp = () => {
-  if (typeof window === 'undefined') return false;
-  const w = window as any;
-  // Explicitly check for Mac app flag first (excludes iOS)
-  if (w.isHomecastMacApp) return true;
-  // Check for macOS standalone mode (PWA-like)
-  if (w.navigator?.standalone && /Mac/.test(navigator.userAgent)) return true;
-  // Check webkit messageHandlers but exclude iOS
-  if (w.webkit?.messageHandlers?.homecast && !w.isHomecastIOSApp) return true;
-  return false;
 };
 
 // Detect if running inside a mobile native app WebView (iOS or Android)

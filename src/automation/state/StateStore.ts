@@ -35,6 +35,22 @@ export class StateStore {
     return this.deviceStates.get(accessoryId)?.get(characteristicType);
   }
 
+  /**
+   * Returns a plain-object copy of all known device states, keyed by
+   * accessoryId → characteristicType → value. Used by the Code node sandbox
+   * so it can resolve `input.states(...)` without reaching back into the
+   * parent realm.
+   */
+  snapshot(): Record<string, Record<string, unknown>> {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [accessoryId, charMap] of this.deviceStates) {
+      const inner: Record<string, unknown> = {};
+      for (const [type, value] of charMap) inner[type] = value;
+      out[accessoryId] = inner;
+    }
+    return out;
+  }
+
   getLastChanged(accessoryId: string, characteristicType: string): number | undefined {
     return this.lastChanged.get(accessoryId)?.get(characteristicType);
   }

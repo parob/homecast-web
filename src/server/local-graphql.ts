@@ -14,15 +14,49 @@ interface GraphQLRequest {
   operationName?: string;
   query?: string;
   variables?: Record<string, unknown>;
+  /**
+   * `Authorization` header value from the HTTP request (e.g. "Bearer …"), or
+   * the raw JWT. The local server forwards this from the Swift-side HTTP
+   * request when available; the Apollo in-process link also attaches the
+   * current user's token from localStorage.
+   */
+  authorization?: string;
 }
 
 /**
+ * GraphQL operations that never require authentication — they're either used
+ * before a user is onboarded, or expose non-sensitive capability data.
+ */
+const GRAPHQL_PUBLIC_OPS = new Set([
+  'IsOnboarded', 'GetVersion', 'Login', 'Signup', 'GetAuthEnabled',
+]);
+
+/**
  * Handle a GraphQL request and return the response body.
+ *
+ * When `auth-enabled` is on, every operation outside `GRAPHQL_PUBLIC_OPS`
+ * requires a valid JWT. This closes a gap where external callers (including
+ * on the LAN) could invoke any mutation without credentials — e.g. create or
+ * delete users, toggle auth, read secrets — because the Swift HTTP front-end
+ * does not currently forward the Authorization header on the GraphQL path.
+ * The plumbing here accepts the header once Swift is updated, and the
+ * in-process Apollo link passes the logged-in user's token inline today.
  */
 export async function handleGraphQL(request: GraphQLRequest): Promise<unknown> {
-  const { operationName, variables = {} } = request;
+  const { operationName, variables = {}, authorization } = request;
 
   try {
+    if (operationName && !GRAPHQL_PUBLIC_OPS.has(operationName)) {
+      const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
+      if (authEnabled) {
+        const token = extractToken(authorization);
+        const payload = token ? await auth.verifyToken(token) : null;
+        if (!payload) {
+          return { data: null, errors: [{ message: 'Authentication required' }] };
+        }
+      }
+    }
+
     const data = await resolveOperation(operationName, variables);
     return { data };
   } catch (error: any) {
@@ -31,6 +65,15 @@ export async function handleGraphQL(request: GraphQLRequest): Promise<unknown> {
       errors: [{ message: error.message || 'Unknown error' }],
     };
   }
+}
+
+function extractToken(authorization: string | undefined): string | null {
+  if (!authorization) return null;
+  const trimmed = authorization.trim();
+  if (!trimmed) return null;
+  const m = trimmed.match(/^Bearer\s+(.+)$/i);
+  const jwt = (m ? m[1] : trimmed).trim();
+  return jwt && jwt !== 'community' ? jwt : null;
 }
 
 async function resolveOperation(
@@ -59,9 +102,16 @@ async function resolveOperation(
     }
 
     case 'Login': {
-      const result = await auth.login(variables.email as string, variables.password as string);
-      if (!result) return { login: { success: false, error: 'Invalid name or password', token: null, __typename: 'LoginResult' } };
-      return { login: { success: true, token: result.token, error: null, __typename: 'LoginResult' } };
+      try {
+        const result = await auth.login(variables.email as string, variables.password as string);
+        if (!result) return { login: { success: false, error: 'Invalid name or password', token: null, __typename: 'LoginResult' } };
+        return { login: { success: true, token: result.token, error: null, __typename: 'LoginResult' } };
+      } catch (e) {
+        if (e instanceof auth.LoginRateLimitError) {
+          return { login: { success: false, error: e.message, token: null, __typename: 'LoginResult' } };
+        }
+        throw e;
+      }
     }
 
     case 'Signup': {

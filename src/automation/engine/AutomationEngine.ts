@@ -6,6 +6,7 @@ import { TriggerManager, type ServiceGroupResolver } from './TriggerManager';
 import { ConditionEvaluator } from './ConditionEvaluator';
 import { ActionExecutor, StopExecutionError } from './ActionExecutor';
 import type { HomeKitBridge, EngineCallbacks } from './ActionExecutor';
+import type { CodeSandbox } from './CodeSandbox';
 import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
 import type { Automation, Trigger, TriggerData, AutomationMode } from '../types/automation';
@@ -21,6 +22,8 @@ export interface AutomationEngineConfig {
   serviceGroupResolver?: ServiceGroupResolver;
   onTraceComplete: (trace: ExecutionTrace) => void;
   onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
+  /** Optional sandbox for Code action nodes. Defaults to the Worker-based sandbox in production. */
+  codeSandbox?: CodeSandbox;
 }
 
 /**
@@ -53,7 +56,7 @@ export class AutomationEngine {
       fireEvent: (type, data) => this.fireEvent(type, data),
       sendNotification: (msg, title, data, automationId) => this.config.onNotify(msg, title, data, automationId),
       setAutomationEnabled: (id, enabled) => this.setEnabled(id, enabled),
-      triggerAutomation: (id) => this.manualTrigger(id).then(() => {}),
+      triggerAutomation: (id, ancestorIds) => this.manualTrigger(id, { ancestorIds }).then(() => {}),
       executeScript: (id, vars) => this.scriptRunner.execute(id, vars),
       registerTemporaryTrigger: (triggers, callback) => this.registerTemporaryTrigger(triggers, callback),
     };
@@ -63,6 +66,7 @@ export class AutomationEngine {
       this.conditionEvaluator,
       config.bridge,
       callbacks,
+      config.codeSandbox,
     );
 
     this.scriptRunner = new ScriptRunner(this.actionExecutor, (trace) => {
@@ -355,9 +359,15 @@ export class AutomationEngine {
    * Manually trigger an automation (for testing).
    * Accepts optional custom trigger data and evaluates conditions when provided.
    */
-  async manualTrigger(automationId: string, options?: { triggerData?: Partial<TriggerData>; skipConditions?: boolean }): Promise<ExecutionTrace | null> {
+  async manualTrigger(automationId: string, options?: { triggerData?: Partial<TriggerData>; skipConditions?: boolean; ancestorIds?: readonly string[] }): Promise<ExecutionTrace | null> {
     const automation = this.automations.get(automationId);
     if (!automation) return null;
+
+    const ancestorIds = options?.ancestorIds ?? [];
+    if (ancestorIds.includes(automationId)) {
+      console.warn(`[AutomationEngine] Refusing to trigger ${automationId} — already in trigger chain: ${ancestorIds.join(' → ')}`);
+      return null;
+    }
 
     const triggerData: TriggerData = {
       triggerId: options?.triggerData?.triggerId ?? '__manual__',
@@ -372,6 +382,7 @@ export class AutomationEngine {
       automation.name,
       triggerData,
       automation.variables,
+      ancestorIds,
     );
 
     let status: ExecutionStatus = 'success';

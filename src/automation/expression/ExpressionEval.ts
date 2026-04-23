@@ -4,14 +4,31 @@
 import type { ASTNode } from './ExpressionParser';
 import type { ExpressionContext, BuiltinFunction } from './functions';
 
+/** Max AST recursion depth — prevents stack overflow from deeply nested expressions. */
+const MAX_EVAL_DEPTH = 100;
+
 /**
  * Evaluates an AST against an expression context.
  * Safe: no access to window, document, or prototype chains.
  */
 export class ExpressionEvaluator {
+  private depth = 0;
+
   constructor(private functions: Map<string, BuiltinFunction>) {}
 
   evaluate(node: ASTNode, ctx: ExpressionContext): unknown {
+    if (++this.depth > MAX_EVAL_DEPTH) {
+      this.depth--;
+      throw new Error(`Expression nesting depth exceeded (> ${MAX_EVAL_DEPTH}) — likely a malformed or malicious expression`);
+    }
+    try {
+      return this.evaluateInner(node, ctx);
+    } finally {
+      this.depth--;
+    }
+  }
+
+  private evaluateInner(node: ASTNode, ctx: ExpressionContext): unknown {
     switch (node.type) {
       case 'number': return node.value;
       case 'string': return node.value;

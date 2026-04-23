@@ -30,6 +30,8 @@ import type {
 import { durationToMs } from '../types/automation';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
+import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
+import { assertSafeOutboundUrl } from './ssrfGuard';
 
 /** Bridge interface for calling HomeKit operations */
 export interface HomeKitBridge {
@@ -43,10 +45,19 @@ export interface EngineCallbacks {
   fireEvent(eventType: string, eventData?: Record<string, unknown>): void;
   sendNotification(message: string, title?: string, data?: Record<string, unknown>, automationId?: string): Promise<void>;
   setAutomationEnabled(automationId: string, enabled: boolean): void;
-  triggerAutomation(automationId: string): Promise<void>;
+  /**
+   * Trigger another automation. `ancestorIds` lists the IDs of automations
+   * already in this trigger chain — used by the engine to detect cycles.
+   */
+  triggerAutomation(automationId: string, ancestorIds?: readonly string[]): Promise<void>;
   executeScript(scriptId: string, variables?: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
   registerTemporaryTrigger(triggers: import('../types/automation').Trigger[], callback: (data: TriggerData) => void): () => void;
 }
+
+/** Longest chain of `toggle_automation → trigger` allowed before the engine bails. */
+export const MAX_SUB_AUTOMATION_DEPTH = 5;
+/** Maximum duration a `delay` action may wait, to avoid piling up long-lived timers. */
+export const MAX_DELAY_MS = 24 * 60 * 60 * 1000;
 
 // Safety limits
 const MAX_LOOP_ITERATIONS = 1000;
@@ -77,6 +88,7 @@ export class ActionExecutor {
     private conditionEvaluator: ConditionEvaluator,
     private bridge: HomeKitBridge,
     private callbacks: EngineCallbacks,
+    private codeSandbox: CodeSandbox = new WorkerCodeSandbox(),
   ) {}
 
   /**
@@ -262,9 +274,14 @@ export class ActionExecutor {
   // ============================================================
 
   private async executeDelay(action: DelayAction, ctx: ExecutionContext): Promise<void> {
-    const ms = durationToMs(action.duration);
+    const raw = durationToMs(action.duration);
+    const ms = Math.max(0, Math.min(raw, MAX_DELAY_MS));
     const stepIdx = ctx.beginStep('action', action.id, 'delay',
-      `Wait ${this.formatDuration(action.duration)}`, { durationMs: ms });
+      `Wait ${this.formatDuration(action.duration)}`, { durationMs: ms, requestedMs: raw });
+
+    if (raw > MAX_DELAY_MS) {
+      console.warn(`[ActionExecutor] Delay clamped from ${raw}ms to ${MAX_DELAY_MS}ms (24h cap)`);
+    }
 
     await this.abortableDelay(ms, ctx);
     const output = { durationMs: ms };
@@ -606,6 +623,7 @@ export class ActionExecutor {
       `${action.method ?? 'POST'} ${url.slice(0, 50)}`, { url, method: action.method });
 
     try {
+      assertSafeOutboundUrl(url);
       const body = action.body ? JSON.stringify(this.resolveTemplateValue(action.body, ctx)) : undefined;
       const headers: Record<string, string> = { ...action.headers };
       if (body && !headers['Content-Type']) {
@@ -616,6 +634,7 @@ export class ActionExecutor {
         method: action.method ?? 'POST',
         headers,
         body,
+        redirect: 'error',
         signal: AbortSignal.timeout(30_000),
       });
 
@@ -666,9 +685,17 @@ export class ActionExecutor {
           // Toggle is handled by the engine
           this.callbacks.setAutomationEnabled(action.automationId, true); // simplified
           break;
-        case 'trigger':
-          await this.callbacks.triggerAutomation(action.automationId);
+        case 'trigger': {
+          const chain = [...ctx.ancestorIds, ctx.automationId];
+          if (chain.includes(action.automationId)) {
+            throw new Error(`[Automation] Cycle detected — ${action.automationId} is already in the trigger chain: ${chain.join(' → ')}`);
+          }
+          if (chain.length > MAX_SUB_AUTOMATION_DEPTH) {
+            throw new Error(`[Automation] Sub-automation depth exceeded (max ${MAX_SUB_AUTOMATION_DEPTH})`);
+          }
+          await this.callbacks.triggerAutomation(action.automationId, chain);
           break;
+        }
       }
       const output = { automationId: action.automationId, action: action.action, success: true };
       ctx.setNodeOutput(action.id, output);
@@ -774,31 +801,16 @@ export class ActionExecutor {
       `Code (${action.code.length} chars)`, {});
 
     try {
-      // Build input context for the user code
       const input = {
         trigger: ctx.triggerData,
         variables: { ...ctx.variables },
         nodes: ctx.getNodeOutputsForExpressions(),
-        states: (accessoryId: string, characteristicType: string) =>
-          this.stateStore.getState(accessoryId, characteristicType),
+        stateSnapshot: this.stateStore.snapshot(),
       };
 
-      // Execute in sandboxed Function constructor
-      // The function receives `input` and should return a value
-      const fn = new Function('input', `"use strict";\n${action.code}`);
-
-      // Run with timeout
       const timeoutMs = action.timeout ?? 5000;
-      let result: unknown;
+      const result = await this.codeSandbox.run(action.code, input, timeoutMs);
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Code execution timeout (${timeoutMs}ms)`)), timeoutMs),
-      );
-
-      const execPromise = Promise.resolve().then(() => fn(input));
-      result = await Promise.race([execPromise, timeoutPromise]);
-
-      // Normalize output
       const output: Record<string, unknown> = typeof result === 'object' && result !== null
         ? (result as Record<string, unknown>)
         : { result };

@@ -280,6 +280,27 @@ describe('ExpressionEngine', () => {
   // evaluateBoolean
   // ============================================================
 
+  describe('depth limit', () => {
+    it('throws on deeply nested member access', () => {
+      let expr = 'a';
+      for (let i = 0; i < 200; i++) expr += '.a';
+      const ctx = makeContext({ variables: { a: { a: { a: {} } } } });
+      expect(() => engine.evaluate(expr, ctx)).toThrow(/nesting depth/i);
+    });
+
+    it('throws on deeply nested index access', () => {
+      let expr = 'v';
+      for (let i = 0; i < 200; i++) expr += '[0]';
+      const ctx = makeContext({ variables: { v: [0] } });
+      expect(() => engine.evaluate(expr, ctx)).toThrow(/nesting depth/i);
+    });
+
+    it('evaluates normally-deep expressions', () => {
+      const ctx = makeContext({ variables: { v: { a: { b: { c: 42 } } } } });
+      expect(engine.evaluate('v.a.b.c', ctx)).toBe(42);
+    });
+  });
+
   describe('evaluateBoolean', () => {
     it('truthy values', () => {
       const ctx = makeContext();
