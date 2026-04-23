@@ -3160,7 +3160,6 @@ const Dashboard = () => {
   // Filter hidden rooms when not in edit mode, and exclude rooms that are in room groups
   const visibleRooms = useMemo(() => {
     if (!selectedHomeId) return sortedRooms;
-    if (false) return sortedRooms; // Show all in edit mode
     return sortedRooms.filter(r => {
       // Exclude hidden rooms
       if (isRoomHidden(selectedHomeId, r.id)) return false;
