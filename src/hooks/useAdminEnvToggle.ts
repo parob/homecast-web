@@ -8,8 +8,18 @@ export interface AdminEnvVisibility {
 
 const STORAGE_KEY = "homecast-admin-env-visibility";
 
+// On first visit, default to only the env that matches the URL hosting the
+// admin panel — staging on staging.homecast.cloud, prod on homecast.cloud.
+// Users can flip the other one on via the sidebar. Community mode has no
+// notion of the "other" env, so we default both to on (toggles are inert).
+function defaultVisibility(): AdminEnvVisibility {
+  if (CURRENT_ENV === "production") return { production: true, staging: false };
+  if (CURRENT_ENV === "staging") return { production: false, staging: true };
+  return { production: true, staging: true };
+}
+
 function readStored(): AdminEnvVisibility {
-  if (typeof window === "undefined") return { production: true, staging: true };
+  if (typeof window === "undefined") return defaultVisibility();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -19,7 +29,7 @@ function readStored(): AdminEnvVisibility {
       }
     }
   } catch { /* ignore */ }
-  return { production: true, staging: true };
+  return defaultVisibility();
 }
 
 // Module-level store so all components share the same state + same storage
