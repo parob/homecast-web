@@ -766,6 +766,17 @@ async function resolveOperation(
         } else if (access.entityType === 'room') {
           const result = await executeHomeKitAction('accessories.list', { roomId: access.entityId, includeValues: true, includeAll: true }) as any;
           accessories = result?.accessories || [];
+          if (access.homeId) {
+            const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: access.homeId }).catch(() => ({ serviceGroups: [] })) as any;
+            const roomAccIds = new Set(
+              accessories.map((a: any) => String(a.id || '').toLowerCase().replace(/-/g, ''))
+            );
+            serviceGroups = (sgResult?.serviceGroups || []).filter((g: any) =>
+              (g.accessoryIds || []).some((id: string) =>
+                roomAccIds.has(String(id || '').toLowerCase().replace(/-/g, ''))
+              )
+            );
+          }
         } else if (access.entityType === 'accessory_group') {
           // Fetch service group from HomeKit to get member accessory IDs
           // Search the specified home, or all homes if homeId is missing
