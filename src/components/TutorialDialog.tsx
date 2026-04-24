@@ -71,8 +71,8 @@ const STEPS: TourStep[] = [
       { target: 'sidebar-home-item', action: 'contextmenu' },
     ],
     title: 'Share a home or room',
-    description: 'Right-click any home in the sidebar to open its menu — Share is right here. Pick Admin, Control or View-only and they\'ll get an email invite. (The same works on rooms.)',
-    mobileDescription: 'Long-press any home in the sidebar to open its menu, then tap Share to invite family. Pick Admin, Control or View-only and they\'ll get an email invite. (The same works on rooms.)',
+    description: 'Right-click any home or room in the sidebar to open its menu — Share is right here. Pick Admin, Control or View-only and they\'ll get an email invite.',
+    mobileDescription: 'Long-press any home or room in the sidebar to open its menu, then tap Share to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
     position: 'right',
   },
   {
@@ -172,8 +172,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
           if (trigEl) {
             triggersFiredRef.current += 1;
             if (spec.action === 'contextmenu') {
-              const r = trigEl.getBoundingClientRect();
-              trigEl.dispatchEvent(new MouseEvent('contextmenu', {
+              // Radix attaches its onContextMenu listener to the asChild element,
+              // which is typically a descendant of our data-tour wrapper. Events
+              // bubble up, not down, so dispatching on the wrapper never reaches
+              // the listener — fire on the deepest first descendant so the event
+              // bubbles back up through any wrappers Radix has decorated.
+              let dispatchEl: HTMLElement = trigEl;
+              while (dispatchEl.firstElementChild) {
+                dispatchEl = dispatchEl.firstElementChild as HTMLElement;
+              }
+              const r = dispatchEl.getBoundingClientRect();
+              dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
                 bubbles: true,
                 cancelable: true,
                 view: window,
