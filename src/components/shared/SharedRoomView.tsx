@@ -522,7 +522,7 @@ export function SharedRoomView({
                 onAccessorySlider={canControl ? handleSlider : undefined}
                 getEffectiveValue={getEffectiveValue}
                 compact={false}
-                iconStyle="standard"
+                iconStyle={(layout?.iconStyle as 'standard' | 'colourful') || 'colourful'}
                 disabled={!canControl}
                 disableTooltip
               />
@@ -541,7 +541,7 @@ export function SharedRoomView({
               onSlider={canControl ? handleSlider : () => {}}
               getEffectiveValue={getEffectiveValue}
               compact={false}
-              iconStyle="standard"
+              iconStyle={(layout?.iconStyle as 'standard' | 'colourful') || 'colourful'}
               disabled={!canControl}
             />
           ))}

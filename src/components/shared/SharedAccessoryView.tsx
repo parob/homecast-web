@@ -339,7 +339,7 @@ export function SharedAccessoryView({
               onSlider={canControl ? handleSlider : () => {}}
               getEffectiveValue={getEffectiveValue}
               compact={false}
-              iconStyle="standard"
+              iconStyle="colourful"
               disabled={!canControl}
             />
           </div>

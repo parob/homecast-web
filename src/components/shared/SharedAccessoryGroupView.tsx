@@ -444,7 +444,7 @@ export function SharedAccessoryGroupView({
               onAccessorySlider={canControl ? handleSlider : undefined}
               getEffectiveValue={getEffectiveValue}
               compact={false}
-              iconStyle="standard"
+              iconStyle="colourful"
               disabled={!canControl}
               disableTooltip
             />
