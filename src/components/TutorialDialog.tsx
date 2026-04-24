@@ -16,12 +16,20 @@ function openDocLink(path: string) {
   }
 }
 
+interface OpenTriggerSpec {
+  target: string; // data-tour of the element to invoke
+  action?: 'click' | 'contextmenu'; // default: click
+}
+
 interface TourStep {
   target: string; // data-tour attribute value, or '' for centered card
   mobileTarget?: string; // Alternative target on mobile (e.g., hamburger button instead of sidebar)
-  // data-tour of a trigger to click if `target` isn't in the DOM — e.g. the hamburger
-  // to open the sidebar sheet, or the header-menu button to open its dropdown.
-  // When we click it, we press Escape on step exit to close it again.
+  // Chained triggers that fire if `target` isn't yet in the DOM. Each one opens
+  // a container so the next is reachable (e.g. open the sidebar sheet, then
+  // right-click the first home). On step exit we press Escape once per fired
+  // trigger to unwind.
+  openTriggers?: OpenTriggerSpec[];
+  // Shorthand for a single click trigger — equivalent to openTriggers: [{ target }].
   openTrigger?: string;
   title: string;
   description: string;
@@ -54,12 +62,18 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    target: 'share-menu-item',
-    openTrigger: 'header-menu',
+    // Open the sidebar (no-op on desktop) then right-click the first home so
+    // its context menu appears with Share spotlit.
+    target: 'sidebar-home-share-item',
+    mobileTarget: 'sidebar-home-share-item',
+    openTriggers: [
+      { target: 'sidebar-menu', action: 'click' },
+      { target: 'sidebar-home-item', action: 'contextmenu' },
+    ],
     title: 'Share a home or room',
-    description: 'Select a home or room in the sidebar first — then use Share here to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
-    mobileDescription: 'Tap a home or room in the sidebar first — then use Share here to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
-    position: 'left',
+    description: 'Right-click any home in the sidebar to open its menu — Share is right here. Pick Admin, Control or View-only and they\'ll get an email invite. (The same works on rooms.)',
+    mobileDescription: 'Long-press any home in the sidebar to open its menu, then tap Share to invite family. Pick Admin, Control or View-only and they\'ll get an email invite. (The same works on rooms.)',
+    position: 'right',
   },
   {
     target: 'widget-area',
@@ -117,13 +131,13 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const isMobile = useIsMobile();
   const rafRef = useRef<number>(0);
-  // Tracks whether we triggered openTrigger for the current step — used to close on exit.
-  const openedTriggerRef = useRef(false);
+  // Number of openTriggers we've fired for the current step. On exit we press
+  // Escape once per fired trigger to unwind any menus/sheets we opened.
+  const triggersFiredRef = useRef(0);
 
   const currentStep = STEPS[step];
   // On mobile, use mobileTarget if available (e.g., hamburger button instead of sidebar)
   const effectiveTarget = (isMobile && currentStep.mobileTarget) || currentStep.target;
-  const openTrigger = currentStep.openTrigger;
   const isCenter = !effectiveTarget || !targetRect;
 
   // Measure and track the target element
@@ -134,7 +148,9 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       return;
     }
 
-    openedTriggerRef.current = false;
+    const triggers: OpenTriggerSpec[] = currentStep.openTriggers
+      ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
+    triggersFiredRef.current = 0;
 
     const measure = () => {
       const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
@@ -147,13 +163,27 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         }
       } else {
         setTargetRect(null);
-        // Target isn't in the DOM — if we have a trigger (e.g. the hamburger button
-        // or header-menu button) click it once to reveal the target.
-        if (openTrigger && !openedTriggerRef.current) {
-          const trigger = document.querySelector(`[data-tour="${openTrigger}"]`) as HTMLElement | null;
-          if (trigger) {
-            openedTriggerRef.current = true;
-            trigger.click();
+        // Target isn't in the DOM — advance through the chain of openTriggers.
+        // We fire one per measure tick so each opener has a frame to mount its
+        // child before we try to act on the next one.
+        if (triggersFiredRef.current < triggers.length) {
+          const spec = triggers[triggersFiredRef.current];
+          const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
+          if (trigEl) {
+            triggersFiredRef.current += 1;
+            if (spec.action === 'contextmenu') {
+              const r = trigEl.getBoundingClientRect();
+              trigEl.dispatchEvent(new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                button: 2,
+                clientX: r.left + r.width / 2,
+                clientY: r.top + r.height / 2,
+              }));
+            } else {
+              trigEl.click();
+            }
           }
         }
       }
@@ -167,14 +197,16 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     return () => {
       clearTimeout(timer);
       cancelAnimationFrame(rafRef.current);
-      // If we opened a menu/sheet for this step, press Escape to close it.
-      // Radix DropdownMenu and Sheet both dismiss on Escape, so one handler works for both.
-      if (openedTriggerRef.current) {
+      // Unwind each trigger we fired by pressing Escape. Radix DropdownMenu,
+      // ContextMenu, and Sheet all dismiss on Escape, so one handler covers
+      // every opener type.
+      const fired = triggersFiredRef.current;
+      triggersFiredRef.current = 0;
+      for (let i = 0; i < fired; i++) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        openedTriggerRef.current = false;
       }
     };
-  }, [open, step, effectiveTarget, openTrigger]);
+  }, [open, step, effectiveTarget, currentStep]);
 
   const handleNext = useCallback(() => {
     if (step < STEPS.length - 1) {

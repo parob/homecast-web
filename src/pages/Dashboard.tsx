@@ -659,9 +659,10 @@ interface SortableHomeItemProps {
   children?: React.ReactNode;
   isDarkBackground?: boolean;
   editMode?: boolean;
+  tourId?: string;
 }
 
-const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode }) => {
+const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
   const {
     attributes,
     listeners,
@@ -736,14 +737,14 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
   );
 
   return (
-    <div>
+    <div data-tour={tourId}>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           {buttonContent}
         </ContextMenuTrigger>
         <ContextMenuContent>
           {onShare && (
-            <ContextMenuItem onClick={onShare}>
+            <ContextMenuItem data-tour="sidebar-home-share-item" onClick={onShare}>
               <Share2 className="h-4 w-4 mr-2" />
               Share Home
             </ContextMenuItem>
@@ -5417,10 +5418,11 @@ const Dashboard = () => {
                             strategy={verticalListSortingStrategy}
                           >
                             <div className="space-y-1">
-                              {visibleHomes.map((home) => (
+                              {visibleHomes.map((home, homeIdx) => (
                                   <SortableHomeItem
                                     key={home.id}
                                     home={home}
+                                    tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
                                     isSelected={pendingHomeId === home.id}
                                     hasSelectedChild={selectedRoomId !== null && pendingHomeId === home.id}
                                     hideAccessoryCounts={hideAccessoryCounts}
@@ -5907,10 +5909,11 @@ const Dashboard = () => {
                       strategy={verticalListSortingStrategy}
                     >
                       <div className="space-y-1">
-                        {visibleHomes.map((home) => (
+                        {visibleHomes.map((home, homeIdx) => (
                             <SortableHomeItem
                               key={home.id}
                               home={home}
+                              tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
                               isSelected={pendingHomeId === home.id}
                               hasSelectedChild={selectedRoomId !== null && pendingHomeId === home.id}
                               hideAccessoryCounts={hideAccessoryCounts}
