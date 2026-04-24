@@ -145,10 +145,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   // Measure and track the target element
   useEffect(() => {
     if (!open) return;
-    if (!effectiveTarget) {
-      setTargetRect(null);
-      return;
-    }
+    // Clear last step's rect synchronously so the card doesn't render at the
+    // previous spotlight position while we wait for this step's target.
+    setTargetRect(null);
+    if (!effectiveTarget) return;
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
@@ -320,10 +320,19 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         />
       )}
 
-      {/* Floating card — z-index must be above Sheet overlay (10015) */}
+      {/* Floating card — z-index must be above Sheet overlay (10015). When a
+          step targets a specific element but its rect isn't measured yet
+          (because openTriggers are still mounting the menu/sheet), hide the
+          card so it doesn't briefly flash centered or at the previous step's
+          position. */}
       <div
         className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
-        style={{ ...cardStyle, zIndex: 10050 }}
+        style={{
+          ...cardStyle,
+          zIndex: 10050,
+          opacity: effectiveTarget && !targetRect ? 0 : 1,
+          pointerEvents: effectiveTarget && !targetRect ? 'none' : 'auto',
+        }}
       >
         {/* Close button */}
         <button
