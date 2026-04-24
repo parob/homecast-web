@@ -131,8 +131,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const isMobile = useIsMobile();
   const rafRef = useRef<number>(0);
-  // Number of openTriggers we've fired for the current step. On exit we press
-  // Escape once per fired trigger to unwind any menus/sheets we opened.
+  // Index of the next trigger to attempt for the current step.
+  const triggersAttemptedRef = useRef(0);
+  // Number of openTriggers we actually fired (i.e. found their element). On
+  // exit we press Escape once per fired trigger to unwind any menus/sheets.
   const triggersFiredRef = useRef(0);
 
   const currentStep = STEPS[step];
@@ -150,6 +152,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
+    triggersAttemptedRef.current = 0;
     triggersFiredRef.current = 0;
 
     const measure = () => {
@@ -164,14 +167,16 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       } else {
         setTargetRect(null);
         // Target isn't in the DOM — advance through the chain of openTriggers.
-        // We fire one per measure tick so each opener has a frame to mount its
-        // child before we try to act on the next one.
-        if (triggersFiredRef.current < triggers.length) {
-          const spec = triggers[triggersFiredRef.current];
+        // Skip past any whose elements aren't present (e.g. mobile-only hamburger
+        // on desktop). Fire at most one per tick so each opener has a frame to
+        // mount its children before we try the next one.
+        while (triggersAttemptedRef.current < triggers.length) {
+          const spec = triggers[triggersAttemptedRef.current];
           const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
-          if (trigEl) {
-            triggersFiredRef.current += 1;
-            if (spec.action === 'contextmenu') {
+          triggersAttemptedRef.current += 1;
+          if (!trigEl) continue;
+          triggersFiredRef.current += 1;
+          if (spec.action === 'contextmenu') {
               // Radix attaches its onContextMenu listener to the asChild element,
               // which is typically a descendant of our data-tour wrapper. Events
               // bubble up, not down, so dispatching on the wrapper never reaches
@@ -193,9 +198,9 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
             } else {
               trigEl.click();
             }
+            break;
           }
         }
-      }
       rafRef.current = requestAnimationFrame(measure);
     };
 
