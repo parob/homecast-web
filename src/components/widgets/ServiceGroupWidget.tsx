@@ -532,7 +532,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
                 : isDarkBackground
-                  ? 'bg-black/40'
+                  ? (accIsOn ? 'bg-white/20' : 'bg-white/10')
                   : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
@@ -764,7 +764,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
                 ? accIconColor.cardBg
                 : isDarkBackground
-                  ? 'bg-black/40'
+                  ? (accIsOn ? 'bg-white/20' : 'bg-white/10')
                   : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
               const accIconBgClass = iconStyle === 'colourful' && accIconColor
                 ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
