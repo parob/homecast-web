@@ -19,6 +19,10 @@ function openDocLink(path: string) {
 interface TourStep {
   target: string; // data-tour attribute value, or '' for centered card
   mobileTarget?: string; // Alternative target on mobile (e.g., hamburger button instead of sidebar)
+  // data-tour of a trigger to click if `target` isn't in the DOM — e.g. the hamburger
+  // to open the sidebar sheet, or the header-menu button to open its dropdown.
+  // When we click it, we press Escape on step exit to close it again.
+  openTrigger?: string;
   title: string;
   description: string;
   mobileDescription?: string; // Alternative description on mobile
@@ -36,10 +40,9 @@ const STEPS: TourStep[] = [
   },
   {
     target: 'sidebar-homes',
-    mobileTarget: 'sidebar-menu',
+    openTrigger: 'sidebar-menu',
     title: 'Your Homes',
     description: 'Your Apple Home houses appear here. Select a home to see its rooms, then pick a room to filter your devices.',
-    mobileDescription: 'Tap this menu to see your homes and rooms. Select a home, then pick a room to filter your devices.',
     docPath: '/getting-started/dashboard',
     position: 'right',
   },
@@ -51,18 +54,46 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
+    target: 'share-menu-item',
+    openTrigger: 'header-menu',
+    title: 'Share a home or room',
+    description: 'Select a home or room in the sidebar first — then use Share here to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
+    mobileDescription: 'Tap a home or room in the sidebar first — then use Share here to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
+    position: 'left',
+  },
+  {
+    target: 'widget-area',
+    title: 'Share a single device',
+    description: 'Right-click any device widget and choose Share to invite someone to just that accessory.',
+    mobileDescription: 'Long-press any device widget and tap Share to invite someone to just that accessory.',
+    position: 'bottom',
+  },
+  {
     target: 'sidebar-collections',
-    mobileTarget: 'sidebar-menu',
+    openTrigger: 'sidebar-menu',
     title: 'Collections',
     description: 'Group devices from different rooms into custom views. Right-click a home or use the menu to create one — great for "All Lights" or "Bedtime" shortcuts.',
-    mobileDescription: 'Open the menu to find Collections below your homes. Group devices from different rooms into custom views like "All Lights" or "Bedtime".',
+    mobileDescription: 'Group devices from different rooms into custom views like "All Lights" or "Bedtime" — right here below your homes.',
     docPath: '/guides/collections',
     position: 'right',
   },
   {
+    target: 'automations',
+    title: 'Automations',
+    description: 'Automations run your devices on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
+    position: 'bottom',
+  },
+  {
+    target: 'background-menu-item',
+    openTrigger: 'header-menu',
+    title: 'Make it yours',
+    description: 'Set a background here, and visit Settings for icon styles, layout density and more. Drag widgets on the dashboard to reorder them.',
+    position: 'left',
+  },
+  {
     target: 'header-menu',
     title: 'Settings & More',
-    description: 'Open this menu to access Settings, where you can customise your layout, backgrounds, icon styles, sharing, and more. You can also replay this tutorial from Settings → Account.',
+    description: 'Open this menu any time for Settings, to switch homes or sign out, or to replay this tutorial from Settings → Account.',
     docPath: '/getting-started/account',
     position: 'bottom',
   },
@@ -86,10 +117,13 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const isMobile = useIsMobile();
   const rafRef = useRef<number>(0);
+  // Tracks whether we triggered openTrigger for the current step — used to close on exit.
+  const openedTriggerRef = useRef(false);
 
   const currentStep = STEPS[step];
   // On mobile, use mobileTarget if available (e.g., hamburger button instead of sidebar)
   const effectiveTarget = (isMobile && currentStep.mobileTarget) || currentStep.target;
+  const openTrigger = currentStep.openTrigger;
   const isCenter = !effectiveTarget || !targetRect;
 
   // Measure and track the target element
@@ -99,6 +133,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       setTargetRect(null);
       return;
     }
+
+    openedTriggerRef.current = false;
 
     const measure = () => {
       const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
@@ -111,6 +147,15 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         }
       } else {
         setTargetRect(null);
+        // Target isn't in the DOM — if we have a trigger (e.g. the hamburger button
+        // or header-menu button) click it once to reveal the target.
+        if (openTrigger && !openedTriggerRef.current) {
+          const trigger = document.querySelector(`[data-tour="${openTrigger}"]`) as HTMLElement | null;
+          if (trigger) {
+            openedTriggerRef.current = true;
+            trigger.click();
+          }
+        }
       }
       rafRef.current = requestAnimationFrame(measure);
     };
@@ -122,8 +167,14 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     return () => {
       clearTimeout(timer);
       cancelAnimationFrame(rafRef.current);
+      // If we opened a menu/sheet for this step, press Escape to close it.
+      // Radix DropdownMenu and Sheet both dismiss on Escape, so one handler works for both.
+      if (openedTriggerRef.current) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        openedTriggerRef.current = false;
+      }
     };
-  }, [open, step, effectiveTarget]);
+  }, [open, step, effectiveTarget, openTrigger]);
 
   const handleNext = useCallback(() => {
     if (step < STEPS.length - 1) {

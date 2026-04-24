@@ -5176,7 +5176,7 @@ const Dashboard = () => {
                 <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
               if (home) setSidebarShareHome(home);
             }}>
@@ -5220,7 +5220,7 @@ const Dashboard = () => {
               )}
             </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
               setBackgroundSettingsTarget({
                 type: 'home',
@@ -6512,7 +6512,9 @@ const Dashboard = () => {
                   className="mb-4"
                 />
                 {selectedHomeId && !selectedRoomId && (
-                  <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} />
+                  <div data-tour="automations">
+                    <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} />
+                  </div>
                 )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
