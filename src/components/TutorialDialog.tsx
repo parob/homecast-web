@@ -179,12 +179,37 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     // the spotlight target is already in the DOM. This lets a step like
     // "show the menu visible" use openTriggers to open a context menu while
     // its spotlight target (e.g. the home item) is already on screen.
+    // Tracks how long we've been waiting for the current trigger's target to
+    // become visible. We give it a budget of ~600ms before we just fire anyway
+    // (or skip and move on).
+    let triggerWaitFrames = 0;
+    const TRIGGER_WAIT_MAX_FRAMES = 36; // ~600ms at 60fps
+
     const fireNextTrigger = () => {
       while (triggersAttemptedRef.current < triggers.length) {
         const spec = triggers[triggersAttemptedRef.current];
         const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
+        if (!trigEl) {
+          // Element doesn't exist at all (e.g. mobile-only on desktop) — skip.
+          triggersAttemptedRef.current += 1;
+          triggerWaitFrames = 0;
+          continue;
+        }
+        // Element exists; ensure it's actually on-screen before firing. While
+        // a Sheet animates in via transform, getBoundingClientRect can return
+        // negative coordinates — dispatching at those coords confuses Radix's
+        // ContextMenu, which then renders the popover off-screen (top-left).
+        const r = trigEl.getBoundingClientRect();
+        const onScreen = r.width > 0 && r.height > 0
+          && r.right > 0 && r.bottom > 0
+          && r.left >= 0 && r.left < window.innerWidth;
+        if (!onScreen && triggerWaitFrames < TRIGGER_WAIT_MAX_FRAMES) {
+          triggerWaitFrames += 1;
+          requestAnimationFrame(fireNextTrigger);
+          return;
+        }
+        triggerWaitFrames = 0;
         triggersAttemptedRef.current += 1;
-        if (!trigEl) continue;
         triggersFiredRef.current += 1;
         if (spec.action === 'contextmenu') {
           // Radix attaches onContextMenu to the asChild descendant — bubble up
@@ -202,6 +227,20 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
             clientY: r.top + r.height / 2,
           }));
         } else {
+          // Radix Sheet/DropdownMenu triggers can listen on pointerdown rather
+          // than click. Dispatch a full pointer→mouse sequence so any listener
+          // shape opens the popup. Fall back to .click() for browsers without
+          // PointerEvent (e.g. older jsdom).
+          const r = trigEl.getBoundingClientRect();
+          const center = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+          try {
+            trigEl.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, ...center }));
+            trigEl.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, ...center }));
+          } catch {
+            // PointerEvent unavailable — mousedown/mouseup as fallback.
+            trigEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ...center }));
+            trigEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, ...center }));
+          }
           trigEl.click();
         }
         // Wait a frame so the opener can mount its children before the next.
