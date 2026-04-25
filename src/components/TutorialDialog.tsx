@@ -230,8 +230,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
 
     const measure = () => {
       const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
-      if (el) {
-        const rect = el.getBoundingClientRect();
+      const rect = el?.getBoundingClientRect();
+      // Treat a zero-sized rect as "not found" — happens when the element is
+      // inside a closed Sheet/Dropdown that's still mounted but display:none
+      // or off-screen-translated. Without this we'd land the card at ~0,0.
+      const hasRect = !!rect && rect.width > 0 && rect.height > 0;
+      if (el && rect && hasRect) {
         setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
         setReadyToShow(true);
         if (rect.top < 0 || rect.bottom > window.innerHeight) {
