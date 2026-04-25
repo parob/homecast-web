@@ -4925,7 +4925,7 @@ const Dashboard = () => {
                 <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
               const collection = allCollections.find(c => c.id === selectedCollectionId);
               const collectionPayloadForGroup = collection ? parseCollectionPayload(collection.payload) : { groups: [], items: [] };
               const group = collectionPayloadForGroup.groups.find(g => g.id === selectedCollectionGroupId);
@@ -4938,7 +4938,7 @@ const Dashboard = () => {
               <Plus className="h-4 w-4 mr-2" />
               Select Accessories
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
               setBackgroundSettingsTarget({
                 type: 'collectionGroup',
@@ -4990,7 +4990,7 @@ const Dashboard = () => {
                 <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
               const collection = allCollections.find(c => c.id === selectedCollectionId);
               if (collection) setSidebarShareCollection(collection);
             }}>
@@ -5034,7 +5034,7 @@ const Dashboard = () => {
               <FolderPlus className="h-4 w-4 mr-2" />
               Create Group
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               setBackgroundSettingsTarget({
                 type: 'collection',
                 id: selectedCollectionId,
@@ -5087,7 +5087,7 @@ const Dashboard = () => {
                 <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
               const room = rooms.find(r => r.id === selectedRoomId);
               if (room) setSidebarShareRoom({ room, homeId: selectedHomeId! });
             }}>
@@ -5124,7 +5124,7 @@ const Dashboard = () => {
               )}
             </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => {
+            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const room = rooms.find(r => r.id === selectedRoomId);
               setBackgroundSettingsTarget({
                 type: 'room',

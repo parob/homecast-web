@@ -31,6 +31,9 @@ interface TourStep {
   openTriggers?: OpenTriggerSpec[];
   // Shorthand for a single click trigger — equivalent to openTriggers: [{ target }].
   openTrigger?: string;
+  // Show an animated gesture indicator over the spotlit target. Picks
+  // right-click on desktop, long-press on mobile/touch.
+  gestureAnimation?: boolean;
   title: string;
   description: string;
   mobileDescription?: string; // Alternative description on mobile
@@ -62,17 +65,28 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    // Open the sidebar (no-op on desktop) then right-click the first home so
-    // its context menu appears with Share spotlit.
+    // First show the gesture: highlight the first home and animate a
+    // right-click/long-press over it. We only open the sidebar (mobile only),
+    // not the context menu — that comes on the next step.
+    target: 'sidebar-home-item',
+    openTriggers: [
+      { target: 'sidebar-menu', action: 'click' },
+    ],
+    gestureAnimation: true,
+    title: 'Share a home or room',
+    description: 'Right-click any home or room in the sidebar to open its menu.',
+    mobileDescription: 'Long-press any home or room in the sidebar to open its menu.',
+    position: 'right',
+  },
+  {
+    // Now open the context menu and spotlight the Share row inside it.
     target: 'sidebar-home-share-item',
-    mobileTarget: 'sidebar-home-share-item',
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
       { target: 'sidebar-home-item', action: 'contextmenu' },
     ],
-    title: 'Share a home or room',
-    description: 'Right-click any home or room in the sidebar to open its menu — Share is right here. Pick Admin, Control or View-only and they\'ll get an email invite.',
-    mobileDescription: 'Long-press any home or room in the sidebar to open its menu, then tap Share to invite family. Pick Admin, Control or View-only and they\'ll get an email invite.',
+    title: 'Then choose Share',
+    description: 'Pick Admin, Control or View-only and they\'ll get an email invite.',
     position: 'right',
   },
   {
@@ -165,7 +179,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     // Fallback: after this many ms we give up waiting and show the card
     // centered with whatever description the step has, so the tutorial doesn't
     // get stuck on an unloaded/empty Dashboard.
-    const fallbackTimer = setTimeout(() => setReadyToShow(true), 1500);
+    const fallbackTimer = setTimeout(() => setReadyToShow(true), 800);
 
     const measure = () => {
       const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
@@ -334,6 +348,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         />
       )}
 
+      {/* Animated gesture indicator — pulses a right-click pointer (desktop) or
+          a long-press finger (mobile/touch) over the spotlit element. */}
+      {targetRect && currentStep.gestureAnimation && (
+        <GestureIndicator rect={targetRect} mode={isMobile ? 'long-press' : 'right-click'} />
+      )}
+
       {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
           while we wait for the target to mount (so it doesn't flash at the
           wrong position); after a short fallback timeout we show centered so
@@ -414,5 +434,100 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       </div>
     </div>,
     document.body
+  );
+}
+
+interface GestureIndicatorProps {
+  rect: TargetRect;
+  mode: 'right-click' | 'long-press';
+}
+
+function GestureIndicator({ rect, mode }: GestureIndicatorProps) {
+  // Anchor the indicator near the right edge of the spotlit row so it doesn't
+  // cover the row's content. Slight vertical offset so it sits below centre.
+  const x = rect.left + rect.width - 24;
+  const y = rect.top + rect.height / 2;
+
+  return (
+    <>
+      <style>{`
+        @keyframes hc-tour-rclick {
+          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
+          45%      { transform: translate(-50%, -50%) scale(0.85); opacity: 1; }
+          55%      { transform: translate(-50%, -50%) scale(0.85); opacity: 1; }
+        }
+        @keyframes hc-tour-rclick-ring {
+          0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+          40%  { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+          50%  { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+          100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+        }
+        @keyframes hc-tour-press {
+          0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+          15%  { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
+          80%  { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
+          100% { transform: translate(-50%, -50%) scale(1.05); opacity: 0; }
+        }
+        @keyframes hc-tour-press-ring {
+          0%, 15% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+          80%     { transform: translate(-50%, -50%) scale(2.4); opacity: 0.6; }
+          100%    { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+        }
+      `}</style>
+      <div
+        className="absolute pointer-events-none"
+        style={{ top: y, left: x, zIndex: 10049 }}
+      >
+        {mode === 'right-click' ? (
+          <>
+            <div
+              className="absolute rounded-full bg-primary/30"
+              style={{
+                top: 0,
+                left: 0,
+                width: 56,
+                height: 56,
+                animation: 'hc-tour-rclick-ring 1.6s ease-out infinite',
+              }}
+            />
+            <div
+              className="absolute rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center text-[11px] font-semibold"
+              style={{
+                top: 0,
+                left: 0,
+                width: 44,
+                height: 44,
+                animation: 'hc-tour-rclick 1.6s ease-in-out infinite',
+              }}
+            >
+              R-Click
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              className="absolute rounded-full border-2 border-primary"
+              style={{
+                top: 0,
+                left: 0,
+                width: 36,
+                height: 36,
+                animation: 'hc-tour-press-ring 1.6s ease-out infinite',
+              }}
+            />
+            <div
+              className="absolute rounded-full bg-primary/80 shadow-lg"
+              style={{
+                top: 0,
+                left: 0,
+                width: 36,
+                height: 36,
+                animation: 'hc-tour-press 1.6s ease-in-out infinite',
+              }}
+            />
+          </>
+        )}
+      </div>
+    </>
   );
 }
