@@ -62,12 +62,12 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    // Stage 1: open the home's context menu so the user sees what right-click
-    // / long-press produces. Spotlight the home itself.
+    // Stage 1: just spotlight the home and tell the user the gesture. We open
+    // the sidebar sheet on mobile so the home is visible, but do NOT open the
+    // context menu — that comes on stage 2.
     target: 'sidebar-home-item',
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
-      { target: 'sidebar-home-item', action: 'contextmenu' },
     ],
     title: 'Share a home or room',
     description: 'Right-click any home or room in the sidebar to open its menu.',
@@ -75,7 +75,7 @@ const STEPS: TourStep[] = [
     position: 'right',
   },
   {
-    // Stage 2: spotlight the Share row inside the same menu.
+    // Stage 2: open the context menu and spotlight the Share row.
     target: 'sidebar-home-share-item',
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
@@ -106,13 +106,6 @@ const STEPS: TourStep[] = [
     title: 'Automations',
     description: 'Automations run your devices on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
     position: 'bottom',
-  },
-  {
-    target: 'background-menu-item',
-    openTrigger: 'header-menu',
-    title: 'Make it yours',
-    description: 'Set a background here, and visit Settings for icon styles, layout density and more. Drag widgets on the dashboard to reorder them.',
-    position: 'left',
   },
   {
     target: 'header-menu',
