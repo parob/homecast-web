@@ -137,11 +137,23 @@ test.describe('Tutorial Spotlight Tour (Mobile)', () => {
     await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-1-welcome.png' });
 
-    // Step 1: Your Homes — opens the sidebar sheet, spotlights sidebar-homes inside it
+    // Step 1: Your Homes — opens the sidebar sheet, spotlights sidebar-homes inside it.
+    // Regression: prior bug returned the hidden desktop sidebar (rect 0×0) so
+    // the ring never rendered. Assert the spotlight ring lands on the visible
+    // homes section in the open sheet.
     await page.click('button:has-text("Next")');
     await page.waitForTimeout(1500);
     await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-2-homes.png' });
+    const homesRingRect = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('div'));
+      const ring = candidates.find(d => getComputedStyle(d).borderColor.includes('rgb(59, 130, 246)'));
+      const r = ring?.getBoundingClientRect();
+      return r ? { top: r.top, left: r.left, w: r.width, h: r.height } : null;
+    });
+    expect(homesRingRect, 'Your Homes spotlight ring should be present and sized').not.toBeNull();
+    expect(homesRingRect!.w, 'ring width should be a real homes section').toBeGreaterThan(50);
+    expect(homesRingRect!.h, 'ring height should be a real homes section').toBeGreaterThan(50);
 
     // Step 2: Device Widgets
     await page.click('button:has-text("Next")');

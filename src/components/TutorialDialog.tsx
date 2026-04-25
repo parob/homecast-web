@@ -185,10 +185,19 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     let triggerWaitFrames = 0;
     const TRIGGER_WAIT_MAX_FRAMES = 36; // ~600ms at 60fps
 
+    const findVisible = (tour: string): HTMLElement | null => {
+      const list = document.querySelectorAll(`[data-tour="${tour}"]`);
+      for (const c of list) {
+        const r = c.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return c as HTMLElement;
+      }
+      return null;
+    };
+
     const fireNextTrigger = () => {
       while (triggersAttemptedRef.current < triggers.length) {
         const spec = triggers[triggersAttemptedRef.current];
-        const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
+        const trigEl = findVisible(spec.target);
         if (!trigEl) {
           // Element doesn't exist at all (e.g. mobile-only on desktop) — skip.
           triggersAttemptedRef.current += 1;
@@ -282,11 +291,22 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     const fallbackTimer = setTimeout(() => setReadyToShow(true), 800);
 
     const measure = () => {
-      const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
-      const rect = el?.getBoundingClientRect();
-      // Treat a zero-sized rect as "not found" — happens when the element is
-      // inside a closed Sheet/Dropdown that's still mounted but display:none
-      // or off-screen-translated. Without this we'd land the card at ~0,0.
+      // Some data-tour values are duplicated (sidebar-homes, sidebar-collections
+      // exist in both the desktop sidebar and the mobile sheet — only one is
+      // visible at a time). querySelector returns DOM order, which can pick
+      // the hidden one with a 0×0 rect. Walk all candidates and pick the first
+      // one with a non-zero rect.
+      const candidates = document.querySelectorAll(`[data-tour="${effectiveTarget}"]`);
+      let el: Element | null = null;
+      let rect: DOMRect | undefined;
+      for (const c of candidates) {
+        const r = c.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          el = c;
+          rect = r;
+          break;
+        }
+      }
       const hasRect = !!rect && rect.width > 0 && rect.height > 0;
       if (el && rect && hasRect) {
         setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -394,7 +414,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         <rect
           width="100%"
           height="100%"
-          fill="rgba(0, 0, 0, 0.5)"
+          fill="rgba(0, 0, 0, 0.7)"
           mask="url(#tour-spotlight-mask)"
         />
       </svg>
@@ -402,15 +422,19 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       {/* Clickable overlay (outside spotlight) to prevent interaction */}
       <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
 
-      {/* Spotlight ring highlight */}
+      {/* Spotlight ring highlight — thick + saturated so it reads clearly
+          against the darkened backdrop on every theme. */}
       {targetRect && (
         <div
-          className="absolute rounded-xl ring-2 ring-primary/60 pointer-events-none transition-all duration-300"
+          className="absolute rounded-xl pointer-events-none transition-all duration-300"
           style={{
             top: targetRect.top - spotlightPad,
             left: targetRect.left - spotlightPad,
             width: targetRect.width + spotlightPad * 2,
             height: targetRect.height + spotlightPad * 2,
+            border: '4px solid rgb(59, 130, 246)',
+            boxShadow: '0 0 32px 12px rgba(59, 130, 246, 0.65)',
+            zIndex: 10045,
           }}
         />
       )}
