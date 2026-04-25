@@ -129,6 +129,9 @@ interface TargetRect {
 export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialogProps) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
+  // True once we either measured the target or gave up waiting for it. We hide
+  // the card while this is false to avoid a flash at the wrong position.
+  const [readyToShow, setReadyToShow] = useState(true);
   const isMobile = useIsMobile();
   const rafRef = useRef<number>(0);
   // Index of the next trigger to attempt for the current step.
@@ -148,6 +151,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     // Clear last step's rect synchronously so the card doesn't render at the
     // previous spotlight position while we wait for this step's target.
     setTargetRect(null);
+    // Steps without a target are intentionally centered — show immediately.
+    // Steps with a target hide the card until measured (or until the fallback
+    // timer fires, in case the page is still loading or has no homes/devices).
+    setReadyToShow(!effectiveTarget);
     if (!effectiveTarget) return;
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
@@ -155,11 +162,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     triggersAttemptedRef.current = 0;
     triggersFiredRef.current = 0;
 
+    // Fallback: after this many ms we give up waiting and show the card
+    // centered with whatever description the step has, so the tutorial doesn't
+    // get stuck on an unloaded/empty Dashboard.
+    const fallbackTimer = setTimeout(() => setReadyToShow(true), 1500);
+
     const measure = () => {
       const el = document.querySelector(`[data-tour="${effectiveTarget}"]`);
       if (el) {
         const rect = el.getBoundingClientRect();
         setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+        setReadyToShow(true);
         // Scroll into view if needed
         if (rect.top < 0 || rect.bottom > window.innerHeight) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -210,6 +223,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
 
     return () => {
       clearTimeout(timer);
+      clearTimeout(fallbackTimer);
       cancelAnimationFrame(rafRef.current);
       // Unwind each trigger we fired by pressing Escape. Radix DropdownMenu,
       // ContextMenu, and Sheet all dismiss on Escape, so one handler covers
@@ -320,18 +334,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         />
       )}
 
-      {/* Floating card — z-index must be above Sheet overlay (10015). When a
-          step targets a specific element but its rect isn't measured yet
-          (because openTriggers are still mounting the menu/sheet), hide the
-          card so it doesn't briefly flash centered or at the previous step's
-          position. */}
+      {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
+          while we wait for the target to mount (so it doesn't flash at the
+          wrong position); after a short fallback timeout we show centered so
+          the tutorial isn't stuck if the page is empty or still loading. */}
       <div
         className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
         style={{
           ...cardStyle,
           zIndex: 10050,
-          opacity: effectiveTarget && !targetRect ? 0 : 1,
-          pointerEvents: effectiveTarget && !targetRect ? 'none' : 'auto',
+          opacity: readyToShow ? 1 : 0,
+          pointerEvents: readyToShow ? 'auto' : 'none',
         }}
       >
         {/* Close button */}
