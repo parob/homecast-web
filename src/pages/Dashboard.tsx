@@ -3099,6 +3099,8 @@ const Dashboard = () => {
 
   // Filter hidden homes when not showing hidden items
   const visibleHomes = useMemo(() => {
+    // Tutorial demo bypasses every filter — we always render the demo home.
+    if (tutorialDemoActive) return sortedHomes;
     // Build set of shared home names to suppress stale owned duplicates
     const sharedHomeNames = new Set(
       sortedHomes.filter(h => h.role && h.role !== 'owner').map(h => h.name.toLowerCase())
@@ -3115,7 +3117,7 @@ const Dashboard = () => {
       if (h.role === 'owner' && !h.relayConnected && sharedHomeNames.has(h.name.toLowerCase())) return false;
       return true;
     });
-  }, [sortedHomes, visibility.ui.hiddenHomes, showHiddenItems, filteredAccessoryCountByHome, pendingEnrollments]);
+  }, [sortedHomes, visibility.ui.hiddenHomes, showHiddenItems, filteredAccessoryCountByHome, pendingEnrollments, tutorialDemoActive]);
 
   // Calculate hidden counts for edit mode badges (including cascading hidden devices, avoiding double-counting)
   const hiddenCounts = useMemo(() => {
