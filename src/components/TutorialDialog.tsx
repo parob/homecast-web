@@ -31,9 +31,6 @@ interface TourStep {
   openTriggers?: OpenTriggerSpec[];
   // Shorthand for a single click trigger — equivalent to openTriggers: [{ target }].
   openTrigger?: string;
-  // Show an animated gesture indicator over the spotlit target. Picks
-  // right-click on desktop, long-press on mobile/touch.
-  gestureAnimation?: boolean;
   title: string;
   description: string;
   mobileDescription?: string; // Alternative description on mobile
@@ -65,21 +62,20 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    // First show the gesture: highlight the first home and animate a
-    // right-click/long-press over it. We only open the sidebar (mobile only),
-    // not the context menu — that comes on the next step.
+    // Stage 1: open the home's context menu so the user sees what right-click
+    // / long-press produces. Spotlight the home itself.
     target: 'sidebar-home-item',
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
+      { target: 'sidebar-home-item', action: 'contextmenu' },
     ],
-    gestureAnimation: true,
     title: 'Share a home or room',
     description: 'Right-click any home or room in the sidebar to open its menu.',
     mobileDescription: 'Long-press any home or room in the sidebar to open its menu.',
     position: 'right',
   },
   {
-    // Now open the context menu and spotlight the Share row inside it.
+    // Stage 2: spotlight the Share row inside the same menu.
     target: 'sidebar-home-share-item',
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
@@ -169,12 +165,60 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
     // Steps with a target hide the card until measured (or until the fallback
     // timer fires, in case the page is still loading or has no homes/devices).
     setReadyToShow(!effectiveTarget);
-    if (!effectiveTarget) return;
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
     triggersAttemptedRef.current = 0;
     triggersFiredRef.current = 0;
+
+    // Fire each openTrigger in sequence on step enter, regardless of whether
+    // the spotlight target is already in the DOM. This lets a step like
+    // "show the menu visible" use openTriggers to open a context menu while
+    // its spotlight target (e.g. the home item) is already on screen.
+    const fireNextTrigger = () => {
+      while (triggersAttemptedRef.current < triggers.length) {
+        const spec = triggers[triggersAttemptedRef.current];
+        const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
+        triggersAttemptedRef.current += 1;
+        if (!trigEl) continue;
+        triggersFiredRef.current += 1;
+        if (spec.action === 'contextmenu') {
+          // Radix attaches onContextMenu to the asChild descendant — bubble up
+          // by dispatching on the deepest first child of the data-tour wrapper.
+          let dispatchEl: HTMLElement = trigEl;
+          while (dispatchEl.firstElementChild) {
+            dispatchEl = dispatchEl.firstElementChild as HTMLElement;
+          }
+          const r = dispatchEl.getBoundingClientRect();
+          dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 2,
+            clientX: r.left + r.width / 2,
+            clientY: r.top + r.height / 2,
+          }));
+        } else {
+          trigEl.click();
+        }
+        // Wait a frame so the opener can mount its children before the next.
+        if (triggersAttemptedRef.current < triggers.length) {
+          requestAnimationFrame(fireNextTrigger);
+        }
+        return;
+      }
+    };
+
+    if (!effectiveTarget) {
+      requestAnimationFrame(fireNextTrigger);
+      return () => {
+        const fired = triggersFiredRef.current;
+        triggersFiredRef.current = 0;
+        for (let i = 0; i < fired; i++) {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        }
+      };
+    }
 
     // Fallback: after this many ms we give up waiting and show the card
     // centered with whatever description the step has, so the tutorial doesn't
@@ -187,51 +231,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         const rect = el.getBoundingClientRect();
         setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
         setReadyToShow(true);
-        // Scroll into view if needed
         if (rect.top < 0 || rect.bottom > window.innerHeight) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } else {
         setTargetRect(null);
-        // Target isn't in the DOM — advance through the chain of openTriggers.
-        // Skip past any whose elements aren't present (e.g. mobile-only hamburger
-        // on desktop). Fire at most one per tick so each opener has a frame to
-        // mount its children before we try the next one.
-        while (triggersAttemptedRef.current < triggers.length) {
-          const spec = triggers[triggersAttemptedRef.current];
-          const trigEl = document.querySelector(`[data-tour="${spec.target}"]`) as HTMLElement | null;
-          triggersAttemptedRef.current += 1;
-          if (!trigEl) continue;
-          triggersFiredRef.current += 1;
-          if (spec.action === 'contextmenu') {
-              // Radix attaches its onContextMenu listener to the asChild element,
-              // which is typically a descendant of our data-tour wrapper. Events
-              // bubble up, not down, so dispatching on the wrapper never reaches
-              // the listener — fire on the deepest first descendant so the event
-              // bubbles back up through any wrappers Radix has decorated.
-              let dispatchEl: HTMLElement = trigEl;
-              while (dispatchEl.firstElementChild) {
-                dispatchEl = dispatchEl.firstElementChild as HTMLElement;
-              }
-              const r = dispatchEl.getBoundingClientRect();
-              dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                button: 2,
-                clientX: r.left + r.width / 2,
-                clientY: r.top + r.height / 2,
-              }));
-            } else {
-              trigEl.click();
-            }
-            break;
-          }
-        }
+      }
       rafRef.current = requestAnimationFrame(measure);
     };
 
     const timer = setTimeout(() => {
+      requestAnimationFrame(fireNextTrigger);
       measure();
     }, 100);
 
@@ -239,9 +249,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
       cancelAnimationFrame(rafRef.current);
-      // Unwind each trigger we fired by pressing Escape. Radix DropdownMenu,
-      // ContextMenu, and Sheet all dismiss on Escape, so one handler covers
-      // every opener type.
       const fired = triggersFiredRef.current;
       triggersFiredRef.current = 0;
       for (let i = 0; i < fired; i++) {
@@ -348,12 +355,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
         />
       )}
 
-      {/* Animated gesture indicator — pulses a right-click pointer (desktop) or
-          a long-press finger (mobile/touch) over the spotlit element. */}
-      {targetRect && currentStep.gestureAnimation && (
-        <GestureIndicator rect={targetRect} mode={isMobile ? 'long-press' : 'right-click'} />
-      )}
-
       {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
           while we wait for the target to mount (so it doesn't flash at the
           wrong position); after a short fallback timeout we show centered so
@@ -434,100 +435,5 @@ export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialo
       </div>
     </div>,
     document.body
-  );
-}
-
-interface GestureIndicatorProps {
-  rect: TargetRect;
-  mode: 'right-click' | 'long-press';
-}
-
-function GestureIndicator({ rect, mode }: GestureIndicatorProps) {
-  // Anchor the indicator near the right edge of the spotlit row so it doesn't
-  // cover the row's content. Slight vertical offset so it sits below centre.
-  const x = rect.left + rect.width - 24;
-  const y = rect.top + rect.height / 2;
-
-  return (
-    <>
-      <style>{`
-        @keyframes hc-tour-rclick {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
-          45%      { transform: translate(-50%, -50%) scale(0.85); opacity: 1; }
-          55%      { transform: translate(-50%, -50%) scale(0.85); opacity: 1; }
-        }
-        @keyframes hc-tour-rclick-ring {
-          0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-          40%  { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-          50%  { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
-          100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
-        }
-        @keyframes hc-tour-press {
-          0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
-          15%  { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
-          80%  { transform: translate(-50%, -50%) scale(1); opacity: 0.95; }
-          100% { transform: translate(-50%, -50%) scale(1.05); opacity: 0; }
-        }
-        @keyframes hc-tour-press-ring {
-          0%, 15% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
-          80%     { transform: translate(-50%, -50%) scale(2.4); opacity: 0.6; }
-          100%    { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
-        }
-      `}</style>
-      <div
-        className="absolute pointer-events-none"
-        style={{ top: y, left: x, zIndex: 10049 }}
-      >
-        {mode === 'right-click' ? (
-          <>
-            <div
-              className="absolute rounded-full bg-primary/30"
-              style={{
-                top: 0,
-                left: 0,
-                width: 56,
-                height: 56,
-                animation: 'hc-tour-rclick-ring 1.6s ease-out infinite',
-              }}
-            />
-            <div
-              className="absolute rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center text-[11px] font-semibold"
-              style={{
-                top: 0,
-                left: 0,
-                width: 44,
-                height: 44,
-                animation: 'hc-tour-rclick 1.6s ease-in-out infinite',
-              }}
-            >
-              R-Click
-            </div>
-          </>
-        ) : (
-          <>
-            <div
-              className="absolute rounded-full border-2 border-primary"
-              style={{
-                top: 0,
-                left: 0,
-                width: 36,
-                height: 36,
-                animation: 'hc-tour-press-ring 1.6s ease-out infinite',
-              }}
-            />
-            <div
-              className="absolute rounded-full bg-primary/80 shadow-lg"
-              style={{
-                top: 0,
-                left: 0,
-                width: 36,
-                height: 36,
-                animation: 'hc-tour-press 1.6s ease-in-out infinite',
-              }}
-            />
-          </>
-        )}
-      </div>
-    </>
   );
 }
