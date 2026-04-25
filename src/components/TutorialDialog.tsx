@@ -197,7 +197,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
             bubbles: true,
             cancelable: true,
-            view: window,
             button: 2,
             clientX: r.left + r.width / 2,
             clientY: r.top + r.height / 2,
