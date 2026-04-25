@@ -137,29 +137,53 @@ test.describe('Tutorial Spotlight Tour (Mobile)', () => {
     await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-1-welcome.png' });
 
-    // Step 1: Your Homes — spotlights hamburger menu button on mobile
+    // Step 1: Your Homes — opens the sidebar sheet, spotlights sidebar-homes inside it
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(1500);
     await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-2-homes.png' });
 
     // Step 2: Device Widgets
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(1200);
     await expect(page.locator('h3:has-text("Device Widgets")')).toBeVisible();
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-3-widgets.png' });
 
-    // Step 3: Collections — spotlights hamburger menu button on mobile
+    // Step 3: Share a home or room — stage 1 (spotlight home only)
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
-    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-4-collections.png' });
+    await page.waitForTimeout(1500);
+    await expect(page.locator('h3:has-text("Share a home or room")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-4-share-stage1.png' });
 
-    // Step 4: Settings & More
+    // Step 4: Then choose Share — stage 2 (open context menu)
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(1800);
+    await expect(page.locator('h3:has-text("Then choose Share")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-5-share-stage2.png' });
+
+    // Step 5: Share a single device
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1200);
+    await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-6-share-device.png' });
+
+    // Step 6: Collections
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1500);
+    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-7-collections.png' });
+
+    // Step 7: Automations
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1500);
+    await expect(page.locator('h3:has-text("Automations")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-8-automations.png' });
+
+    // Step 8: Settings & More
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1200);
     await expect(page.locator('h3:has-text("Settings & More")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-5-settings.png' });
+    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-9-settings.png' });
 
     // Done
     await page.click('button:has-text("Done")');

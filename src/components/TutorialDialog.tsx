@@ -212,19 +212,19 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         triggersAttemptedRef.current += 1;
         triggersFiredRef.current += 1;
         if (spec.action === 'contextmenu') {
-          // Radix attaches onContextMenu to the asChild descendant — bubble up
-          // by dispatching on the deepest first child of the data-tour wrapper.
-          let dispatchEl: HTMLElement = trigEl;
-          while (dispatchEl.firstElementChild) {
-            dispatchEl = dispatchEl.firstElementChild as HTMLElement;
-          }
-          const r = dispatchEl.getBoundingClientRect();
+          // Radix attaches onContextMenu to the asChild element (the immediate
+          // first child of our data-tour wrapper). Dispatch directly on it so
+          // the listener fires on the source element with sensible coordinates.
+          // Walking to the deepest leaf gives us tiny rects (icon <path>s, etc.)
+          // and Radix renders the popover at those near-zero coordinates.
+          const dispatchEl = (trigEl.firstElementChild as HTMLElement | null) ?? trigEl;
+          const wrapperRect = trigEl.getBoundingClientRect();
           dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
             bubbles: true,
             cancelable: true,
             button: 2,
-            clientX: r.left + r.width / 2,
-            clientY: r.top + r.height / 2,
+            clientX: wrapperRect.left + wrapperRect.width / 2,
+            clientY: wrapperRect.top + wrapperRect.height / 2,
           }));
         } else {
           // Radix Sheet/DropdownMenu triggers can listen on pointerdown rather
