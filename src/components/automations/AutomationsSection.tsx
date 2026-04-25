@@ -19,9 +19,12 @@ interface AutomationsSectionProps {
   compact?: boolean;
   isDarkBackground?: boolean;
   hideAccessoryCounts?: boolean;
+  // When set, render this fixed list instead of fetching real automations.
+  // Used by the tutorial demo flow so the Automations step always has rows.
+  demoAutomations?: HomeKitAutomation[];
 }
 
-export function AutomationsSection({ homeId, compact, isDarkBackground, hideAccessoryCounts }: AutomationsSectionProps) {
+export function AutomationsSection({ homeId, compact, isDarkBackground, hideAccessoryCounts, demoAutomations }: AutomationsSectionProps) {
   const [expanded, setExpanded] = useState(false);
   const [selectedAutomation, setSelectedAutomation] = useState<HomeKitAutomation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -39,7 +42,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
     GET_AUTOMATIONS,
     {
       variables: { homeId },
-      skip: !homeId,
+      skip: !homeId || !!demoAutomations,
       fetchPolicy: 'cache-first',
       errorPolicy: 'ignore',
     }
@@ -48,12 +51,12 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
   // Homecast-managed automations — only fetch when section is expanded
   const { data: hcData, loading: hcLoading, refetch: hcRefetch } = useQuery(HC_AUTOMATIONS, {
     variables: { homeId },
-    skip: !homeId || !expanded,
+    skip: !homeId || !expanded || !!demoAutomations,
     fetchPolicy: 'cache-first',
     errorPolicy: 'all',
   });
 
-  const rawAutomations = data?.automations || [];
+  const rawAutomations = demoAutomations ?? (data?.automations || []);
   const relayNeedsUpdate = rawAutomations.some(a => a.id === '__relay_update_required__');
   const automations = relayNeedsUpdate ? [] : rawAutomations;
 

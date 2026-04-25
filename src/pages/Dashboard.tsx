@@ -988,6 +988,123 @@ function AccessoryDealBadge({ accessory }: { accessory: import('@/lib/graphql/ty
   return <DealBadge deal={match.deal} isRelated={match.isRelated} />;
 }
 
+// --- Tutorial demo dataset --------------------------------------------------
+// While the tutorial is active, the Dashboard renders this hard-coded data so
+// every spotlight target lands on a real DOM element regardless of the user's
+// real homes/devices/collections. Ids are prefixed `__demo_` so mutation guards
+// can detect and short-circuit them.
+const DEMO_HOME_ID = '__demo_home__';
+const DEMO_ROOM_ID = '__demo_room__';
+const DEMO_COLLECTION_ID = '__demo_collection__';
+
+const DEMO_HOMES: HomeKitHome[] = [{
+  id: DEMO_HOME_ID,
+  name: 'Demo Home',
+  isPrimary: true,
+  roomCount: 1,
+  accessoryCount: 3,
+  role: 'owner',
+  relayConnected: true,
+  isCloudManaged: false,
+}];
+
+const DEMO_ROOMS: HomeKitRoom[] = [{
+  id: DEMO_ROOM_ID,
+  name: 'Living Room',
+  accessoryCount: 3,
+}];
+
+const DEMO_ACCESSORIES: HomeKitAccessory[] = [
+  {
+    id: '__demo_acc_lamp__',
+    name: 'Living Room Lamp',
+    homeId: DEMO_HOME_ID,
+    homeName: 'Demo Home',
+    roomId: DEMO_ROOM_ID,
+    roomName: 'Living Room',
+    category: 'lightbulb',
+    isReachable: true,
+    services: [{
+      id: '__demo_svc_lamp__',
+      name: 'Living Room Lamp',
+      serviceType: 'lightbulb',
+      characteristics: [
+        { id: '__demo_char_lamp_on__', characteristicType: 'on', value: true, isReadable: true, isWritable: true },
+        { id: '__demo_char_lamp_brightness__', characteristicType: 'brightness', value: 80, isReadable: true, isWritable: true, minValue: 0, maxValue: 100, stepValue: 1 },
+      ],
+    }],
+  },
+  {
+    id: '__demo_acc_thermostat__',
+    name: 'Thermostat',
+    homeId: DEMO_HOME_ID,
+    homeName: 'Demo Home',
+    roomId: DEMO_ROOM_ID,
+    roomName: 'Living Room',
+    category: 'thermostat',
+    isReachable: true,
+    services: [{
+      id: '__demo_svc_thermostat__',
+      name: 'Thermostat',
+      serviceType: 'thermostat',
+      characteristics: [
+        { id: '__demo_char_temp__', characteristicType: 'current_temperature', value: 21, isReadable: true, isWritable: false },
+        { id: '__demo_char_target_temp__', characteristicType: 'target_temperature', value: 22, isReadable: true, isWritable: true, minValue: 10, maxValue: 30, stepValue: 0.5 },
+        { id: '__demo_char_target_state__', characteristicType: 'target_heating_cooling_state', value: 1, isReadable: true, isWritable: true },
+        { id: '__demo_char_current_state__', characteristicType: 'current_heating_cooling_state', value: 1, isReadable: true, isWritable: false },
+      ],
+    }],
+  },
+  {
+    id: '__demo_acc_fan__',
+    name: 'Ceiling Fan',
+    homeId: DEMO_HOME_ID,
+    homeName: 'Demo Home',
+    roomId: DEMO_ROOM_ID,
+    roomName: 'Living Room',
+    category: 'fan',
+    isReachable: true,
+    services: [{
+      id: '__demo_svc_fan__',
+      name: 'Ceiling Fan',
+      serviceType: 'fan',
+      characteristics: [
+        { id: '__demo_char_fan_on__', characteristicType: 'on', value: false, isReadable: true, isWritable: true },
+      ],
+    }],
+  },
+];
+
+const DEMO_COLLECTIONS: Collection[] = [{
+  id: DEMO_COLLECTION_ID,
+  name: 'All Lights',
+  payload: JSON.stringify({ groups: [], items: [{ accessory_id: '__demo_acc_lamp__' }] }),
+  createdAt: '2026-01-01T00:00:00Z',
+}];
+
+const DEMO_AUTOMATIONS: HomeKitAutomation[] = [
+  {
+    id: '__demo_auto_sunset__',
+    name: 'Lights on at sunset',
+    isEnabled: true,
+    homeId: DEMO_HOME_ID,
+    trigger: { type: 'event', events: [{ type: 'significant_event', significantEvent: 'sunset' }] },
+    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'on', targetValue: 'true' }],
+  },
+  {
+    id: '__demo_auto_bedtime__',
+    name: 'Bedtime routine',
+    isEnabled: true,
+    homeId: DEMO_HOME_ID,
+    trigger: { type: 'event', events: [{ type: 'time' }] },
+    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'on', targetValue: 'false' }],
+  },
+];
+
+function isDemoEntityId(id: string | null | undefined): boolean {
+  return typeof id === 'string' && id.startsWith('__demo_');
+}
+
 const Dashboard = () => {
   // Cloud admin components — resolved at render time so initCloud() has completed
   const _cloud = getCloud();
@@ -1171,6 +1288,31 @@ const Dashboard = () => {
     if (urlRoom) return urlRoom;
     return localStorage.getItem('homecast-selected-room');
   });
+
+  // Tutorial demo: snapshot the real selection on enter, force demo home
+  // selected (no room/collection), and restore on exit.
+  useEffect(() => {
+    if (tutorialDemoActive) {
+      tutorialPrevSelectionRef.current = {
+        home: selectedHomeId,
+        room: selectedRoomId,
+        collectionId: selectedCollectionId,
+        collection: selectedCollection,
+      };
+      setSelectedHomeIdRaw(DEMO_HOME_ID);
+      setSelectedRoomId(null);
+      setSelectedCollectionId(null);
+      setSelectedCollection(null);
+    } else if (tutorialPrevSelectionRef.current) {
+      const prev = tutorialPrevSelectionRef.current;
+      setSelectedHomeIdRaw(prev.home);
+      setSelectedRoomId(prev.room);
+      setSelectedCollectionId(prev.collectionId);
+      setSelectedCollection(prev.collection);
+      tutorialPrevSelectionRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialDemoActive]);
 
   // Search
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1587,6 +1729,12 @@ const Dashboard = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   // State for tutorial walkthrough
   const [showTutorial, setShowTutorial] = useState(false);
+  // True while the tutorial dialog is open. While set, the Dashboard renders
+  // a hard-coded demo dataset (homes, rooms, accessories, collection,
+  // automations) so every spotlight target lands on a real DOM element. The
+  // user's real selection is snapshotted on enter and restored on exit.
+  const [tutorialDemoActive, setTutorialDemoActive] = useState(false);
+  const tutorialPrevSelectionRef = useRef<{ home: string | null; room: string | null; collectionId: string | null; collection: Collection | null } | null>(null);
   // Track which setting failed to save (for showing error tooltip)
   const [settingSaveError, setSettingSaveError] = useState<string | null>(null);
 
@@ -1882,7 +2030,7 @@ const Dashboard = () => {
     GET_COLLECTIONS,
     { skip: !isAuthenticated, fetchPolicy: 'cache-first' }
   );
-  const allCollections = allCollectionsData?.collections || [];
+  const allCollections = tutorialDemoActive ? DEMO_COLLECTIONS : (allCollectionsData?.collections || []);
 
   // Update settings when loaded from backend
   useEffect(() => {
@@ -2574,10 +2722,10 @@ const Dashboard = () => {
 
   // Hoisted above the useEffects below so they can appear in deps arrays without
   // hitting a let/const TDZ at render time.
-  const homes = homesData?.homes || [];
+  const homes = tutorialDemoActive ? DEMO_HOMES : (homesData?.homes || []);
   const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
   const anyRelayConnected = homes.some(h => h.relayConnected === true);
-  const hasContentAccess = hasDeviceAccess || hasSharedHomes || anyRelayConnected;
+  const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
   // Onboarding: check if user has completed onboarding (cloud mode only)
   useEffect(() => {
@@ -2809,9 +2957,9 @@ const Dashboard = () => {
     updateAccessoryCharacteristicInCache(homeId, accessoryId, characteristicType, parsedValue, false);
   }, [selectedHomeId]);
 
-  const rooms = roomsData?.rooms || [];
-  const accessories = (accessoriesData?.accessories || []) as HomeKitAccessory[];
-  const serviceGroups = serviceGroupsData?.serviceGroups || [];
+  const rooms = tutorialDemoActive ? DEMO_ROOMS : (roomsData?.rooms || []);
+  const accessories = tutorialDemoActive ? DEMO_ACCESSORIES : ((accessoriesData?.accessories || []) as HomeKitAccessory[]);
+  const serviceGroups = tutorialDemoActive ? [] : (serviceGroupsData?.serviceGroups || []);
 
   // Selected home role - used to enforce view-only permissions
   const selectedHomeRole = useMemo(() => {
@@ -6385,7 +6533,7 @@ const Dashboard = () => {
                     Loading accessories…
                   </p>
                 </div>
-              ) : filteredRooms.length === 0 ? (
+              ) : filteredRooms.length === 0 && !tutorialDemoActive ? (
                 <Card className={isDarkBackground ? "bg-black/30 border-white/20" : ""}>
                   <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? "text-white" : ""}`}>
                     <Lightbulb className={`mb-4 h-12 w-12 ${isDarkBackground ? "text-white/60" : "text-muted-foreground"}`} />
@@ -6516,7 +6664,7 @@ const Dashboard = () => {
                 />
                 {selectedHomeId && !selectedRoomId && (
                   <div data-tour="automations">
-                    <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} />
+                    <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </div>
                 )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
@@ -8148,6 +8296,7 @@ const Dashboard = () => {
         open={showTutorial}
         onOpenChange={(open) => { if (!open) handleTutorialComplete(); }}
         onComplete={handleTutorialComplete}
+        onDemoActiveChange={setTutorialDemoActive}
       />
         </div>{/* close main container */}
     {/* Loading overlay */}

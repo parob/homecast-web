@@ -120,6 +120,9 @@ interface TutorialDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
+  // Notifies the host (Dashboard) to swap real data for a fixed demo dataset
+  // so every step's spotlight lands on a guaranteed-present DOM element.
+  onDemoActiveChange?: (active: boolean) => void;
 }
 
 interface TargetRect {
@@ -129,13 +132,21 @@ interface TargetRect {
   height: number;
 }
 
-export function TutorialDialog({ open, onOpenChange, onComplete }: TutorialDialogProps) {
+export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveChange }: TutorialDialogProps) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   // True once we either measured the target or gave up waiting for it. We hide
   // the card while this is false to avoid a flash at the wrong position.
   const [readyToShow, setReadyToShow] = useState(true);
   const isMobile = useIsMobile();
+
+  // Toggle demo data on the host while the tutorial is open.
+  useEffect(() => {
+    if (!open) return;
+    setStep(0);
+    onDemoActiveChange?.(true);
+    return () => { onDemoActiveChange?.(false); };
+  }, [open, onDemoActiveChange]);
   const rafRef = useRef<number>(0);
   // Index of the next trigger to attempt for the current step.
   const triggersAttemptedRef = useRef(0);
