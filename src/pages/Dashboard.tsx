@@ -1289,6 +1289,15 @@ const Dashboard = () => {
     return localStorage.getItem('homecast-selected-room');
   });
 
+  // True while the tutorial dialog is open. While set, the Dashboard renders
+  // a hard-coded demo dataset (homes, rooms, accessories, collection,
+  // automations) so every spotlight target lands on a real DOM element. The
+  // user's real selection is snapshotted on enter and restored on exit.
+  // Declared here (and not next to other tutorial state below) so the effect
+  // immediately following can reference these values without TDZ errors.
+  const [tutorialDemoActive, setTutorialDemoActive] = useState(false);
+  const tutorialPrevSelectionRef = useRef<{ home: string | null; room: string | null; collectionId: string | null; collection: Collection | null } | null>(null);
+
   // Tutorial demo: snapshot the real selection on enter, force demo home
   // selected (no room/collection), and restore on exit.
   useEffect(() => {
@@ -1729,12 +1738,6 @@ const Dashboard = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   // State for tutorial walkthrough
   const [showTutorial, setShowTutorial] = useState(false);
-  // True while the tutorial dialog is open. While set, the Dashboard renders
-  // a hard-coded demo dataset (homes, rooms, accessories, collection,
-  // automations) so every spotlight target lands on a real DOM element. The
-  // user's real selection is snapshotted on enter and restored on exit.
-  const [tutorialDemoActive, setTutorialDemoActive] = useState(false);
-  const tutorialPrevSelectionRef = useRef<{ home: string | null; room: string | null; collectionId: string | null; collection: Collection | null } | null>(null);
   // Track which setting failed to save (for showing error tooltip)
   const [settingSaveError, setSettingSaveError] = useState<string | null>(null);
 
