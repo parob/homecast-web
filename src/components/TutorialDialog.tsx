@@ -212,20 +212,34 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         triggersAttemptedRef.current += 1;
         triggersFiredRef.current += 1;
         if (spec.action === 'contextmenu') {
-          // Radix attaches onContextMenu to the asChild element (the immediate
-          // first child of our data-tour wrapper). Dispatch directly on it so
-          // the listener fires on the source element with sensible coordinates.
-          // Walking to the deepest leaf gives us tiny rects (icon <path>s, etc.)
-          // and Radix renders the popover at those near-zero coordinates.
+          // Radix's ContextMenu reads event.clientX/clientY from the contextmenu
+          // event to anchor its popover. Synthetic MouseEvents in some browsers
+          // strip these fields, so the menu lands at (0, 0). Defensive fix:
+          // dispatch the event AND patch clientX/clientY/pageX/pageY/screenX/Y
+          // onto the event object before bubbling, so any Radix codepath sees
+          // the correct coordinates.
           const dispatchEl = (trigEl.firstElementChild as HTMLElement | null) ?? trigEl;
           const wrapperRect = trigEl.getBoundingClientRect();
-          dispatchEl.dispatchEvent(new MouseEvent('contextmenu', {
+          const cx = wrapperRect.left + wrapperRect.width / 2;
+          const cy = wrapperRect.top + wrapperRect.height / 2;
+          const evt = new MouseEvent('contextmenu', {
             bubbles: true,
             cancelable: true,
             button: 2,
-            clientX: wrapperRect.left + wrapperRect.width / 2,
-            clientY: wrapperRect.top + wrapperRect.height / 2,
-          }));
+            clientX: cx,
+            clientY: cy,
+            screenX: cx,
+            screenY: cy,
+          });
+          // Force pageX/pageY too — some browsers compute pageX = clientX +
+          // window.scrollX synchronously, but this keeps a clean value.
+          try {
+            Object.defineProperty(evt, 'pageX', { value: cx + window.scrollX });
+            Object.defineProperty(evt, 'pageY', { value: cy + window.scrollY });
+          } catch {
+            // some envs make these read-only at definition time; ignore
+          }
+          dispatchEl.dispatchEvent(evt);
         } else {
           // Radix Sheet/DropdownMenu triggers can listen on pointerdown rather
           // than click. Dispatch a full pointer→mouse sequence so any listener

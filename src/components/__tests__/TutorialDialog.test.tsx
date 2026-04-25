@@ -79,8 +79,12 @@ describe('TutorialDialog', () => {
     document.body.appendChild(home);
 
     let contextMenuFired = 0;
-    homeInner.addEventListener('contextmenu', () => {
+    let lastClientX = -1;
+    let lastClientY = -1;
+    homeInner.addEventListener('contextmenu', (evt) => {
       contextMenuFired += 1;
+      lastClientX = (evt as MouseEvent).clientX;
+      lastClientY = (evt as MouseEvent).clientY;
       // Simulate the Radix ContextMenu mounting its content.
       const share = document.createElement('div');
       share.setAttribute('data-tour', 'sidebar-home-share-item');
@@ -130,5 +134,11 @@ describe('TutorialDialog', () => {
     // Share row, which then becomes the spotlight target.
     expect(contextMenuFired).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('[data-tour="sidebar-home-share-item"]')).not.toBeNull();
+
+    // Coordinates should be the centre of the home wrapper (rect 0,100 + 200x36
+    // → centre at clientX=100, clientY=118). Anchor for Radix's ContextMenu
+    // popover positioning — if these are 0/0 the menu lands top-left.
+    expect(lastClientX).toBeCloseTo(100, 0);
+    expect(lastClientY).toBeCloseTo(118, 0);
   });
 });
