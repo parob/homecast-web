@@ -148,11 +148,14 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     return () => { onDemoActiveChange?.(false); };
   }, [open, onDemoActiveChange]);
   const rafRef = useRef<number>(0);
-  // Index of the next trigger to attempt for the current step.
-  const triggersAttemptedRef = useRef(0);
-  // Number of openTriggers we actually fired (i.e. found their element). On
-  // exit we press Escape once per fired trigger to unwind any menus/sheets.
-  const triggersFiredRef = useRef(0);
+  // Currently-open trigger targets, in opening order. Persists across steps
+  // so that consecutive steps requesting the same opener don't cause a
+  // close-then-reopen flicker.
+  const openedTriggersRef = useRef<string[]>([]);
+  // Bumped whenever the effect re-runs. Async callbacks (rAF chains for
+  // closeNext / fireNextTrigger) compare against the captured epoch and bail
+  // out if they're now stale.
+  const triggerEpochRef = useRef(0);
 
   const currentStep = STEPS[step];
   // On mobile, use mobileTarget if available (e.g., hamburger button instead of sidebar)
@@ -161,7 +164,20 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
 
   // Measure and track the target element
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Tutorial closed: unwind any triggers we still have open.
+      const stillOpen = openedTriggersRef.current.length;
+      openedTriggersRef.current = [];
+      let i = 0;
+      const fireEscape = () => {
+        if (i >= stillOpen) return;
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        i += 1;
+        if (i < stillOpen) requestAnimationFrame(fireEscape);
+      };
+      fireEscape();
+      return;
+    }
     // Clear last step's rect synchronously so the card doesn't render at the
     // previous spotlight position while we wait for this step's target.
     setTargetRect(null);
@@ -172,18 +188,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
-    triggersAttemptedRef.current = 0;
-    triggersFiredRef.current = 0;
-
-    // Fire each openTrigger in sequence on step enter, regardless of whether
-    // the spotlight target is already in the DOM. This lets a step like
-    // "show the menu visible" use openTriggers to open a context menu while
-    // its spotlight target (e.g. the home item) is already on screen.
-    // Tracks how long we've been waiting for the current trigger's target to
-    // become visible. We give it a budget of ~600ms before we just fire anyway
-    // (or skip and move on).
-    let triggerWaitFrames = 0;
-    const TRIGGER_WAIT_MAX_FRAMES = 36; // ~600ms at 60fps
+    const desiredTargets = triggers.map(t => t.target);
 
     const findVisible = (tour: string): HTMLElement | null => {
       const list = document.querySelectorAll(`[data-tour="${tour}"]`);
@@ -194,13 +199,57 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       return null;
     };
 
+    // Reconcile triggers: close any currently-open trigger that the new step
+    // doesn't want (in reverse opening order, so nested layers unwind), and
+    // open any new ones the step wants but we don't have. Triggers shared
+    // between consecutive steps stay open — no flicker.
+    triggerEpochRef.current += 1;
+    const myEpoch = triggerEpochRef.current;
+    const isStale = () => triggerEpochRef.current !== myEpoch;
+
+    const toClose = [...openedTriggersRef.current].reverse().filter(t => !desiredTargets.includes(t));
+    let closedIdx = 0;
+    const closeNext = () => {
+      if (isStale()) return;
+      if (closedIdx >= toClose.length) {
+        // After closing, advance to opening any new triggers.
+        startOpening();
+        return;
+      }
+      const target = toClose[closedIdx];
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const idx = openedTriggersRef.current.indexOf(target);
+      if (idx >= 0) openedTriggersRef.current.splice(idx, 1);
+      closedIdx += 1;
+      // Wait a frame so Radix has time to unmount before the next Escape
+      // (otherwise consecutive Escapes can hit the same DismissableLayer).
+      requestAnimationFrame(closeNext);
+    };
+
+    let triggerWaitFrames = 0;
+    const TRIGGER_WAIT_MAX_FRAMES = 36; // ~600ms at 60fps
+    let openIdx = 0;
+
+    const startOpening = () => {
+      if (isStale()) return;
+      openIdx = 0;
+      requestAnimationFrame(fireNextTrigger);
+    };
+
     const fireNextTrigger = () => {
-      while (triggersAttemptedRef.current < triggers.length) {
-        const spec = triggers[triggersAttemptedRef.current];
+      if (isStale()) return;
+      while (openIdx < triggers.length) {
+        const spec = triggers[openIdx];
+        if (openedTriggersRef.current.includes(spec.target)) {
+          // Already open from a previous step — skip.
+          openIdx += 1;
+          triggerWaitFrames = 0;
+          continue;
+        }
         const trigEl = findVisible(spec.target);
         if (!trigEl) {
           // Element doesn't exist at all (e.g. mobile-only on desktop) — skip.
-          triggersAttemptedRef.current += 1;
+          openIdx += 1;
           triggerWaitFrames = 0;
           continue;
         }
@@ -218,8 +267,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           return;
         }
         triggerWaitFrames = 0;
-        triggersAttemptedRef.current += 1;
-        triggersFiredRef.current += 1;
+        openIdx += 1;
+        openedTriggersRef.current.push(spec.target);
         if (spec.action === 'contextmenu') {
           // Radix's ContextMenu reads event.clientX/clientY from the contextmenu
           // event to anchor its popover. Synthetic MouseEvents in some browsers
@@ -267,22 +316,20 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           trigEl.click();
         }
         // Wait a frame so the opener can mount its children before the next.
-        if (triggersAttemptedRef.current < triggers.length) {
+        if (openIdx < triggers.length) {
           requestAnimationFrame(fireNextTrigger);
         }
         return;
       }
     };
 
+    // Kick off the close-then-open reconcile.
+    requestAnimationFrame(closeNext);
+
     if (!effectiveTarget) {
-      requestAnimationFrame(fireNextTrigger);
-      return () => {
-        const fired = triggersFiredRef.current;
-        triggersFiredRef.current = 0;
-        for (let i = 0; i < fired; i++) {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        }
-      };
+      // No spotlight target — nothing to measure; just leave triggers in
+      // their reconciled state.
+      return;
     }
 
     // Fallback: after this many ms we give up waiting and show the card
@@ -321,7 +368,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     };
 
     const timer = setTimeout(() => {
-      requestAnimationFrame(fireNextTrigger);
       measure();
     }, 100);
 
@@ -329,11 +375,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
       cancelAnimationFrame(rafRef.current);
-      const fired = triggersFiredRef.current;
-      triggersFiredRef.current = 0;
-      for (let i = 0; i < fired; i++) {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      }
+      // Triggers are NOT closed here — they're reconciled at the start of
+      // the next step's effect (or unwound when `open` becomes false). This
+      // is what stops the close-then-reopen flicker between consecutive
+      // steps that share an opener.
     };
   }, [open, step, effectiveTarget, currentStep]);
 
@@ -414,16 +459,22 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         <rect
           width="100%"
           height="100%"
-          fill="rgba(0, 0, 0, 0.7)"
+          fill="rgba(0, 0, 0, 0.5)"
           mask="url(#tour-spotlight-mask)"
         />
       </svg>
 
-      {/* Clickable overlay (outside spotlight) to prevent interaction */}
-      <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
+      {/* Clickable overlay outside the spotlight. Stops pointerdown too so
+          Radix Sheet/Dialog don't interpret card clicks as outside-clicks
+          and close the sheet between steps. */}
+      <div
+        className="absolute inset-0"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
 
-      {/* Spotlight ring highlight — thick + saturated so it reads clearly
-          against the darkened backdrop on every theme. */}
+      {/* Spotlight ring highlight — subtle ring so the cutout itself does the
+          highlighting work. */}
       {targetRect && (
         <div
           className="absolute rounded-xl pointer-events-none transition-all duration-300"
@@ -432,8 +483,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
             left: targetRect.left - spotlightPad,
             width: targetRect.width + spotlightPad * 2,
             height: targetRect.height + spotlightPad * 2,
-            border: '4px solid rgb(59, 130, 246)',
-            boxShadow: '0 0 32px 12px rgba(59, 130, 246, 0.65)',
+            boxShadow: '0 0 0 2px rgba(255, 255, 255, 0.35)',
             zIndex: 10045,
           }}
         />
@@ -451,6 +501,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           opacity: readyToShow ? 1 : 0,
           pointerEvents: readyToShow ? 'auto' : 'none',
         }}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button

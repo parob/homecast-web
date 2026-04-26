@@ -146,8 +146,13 @@ test.describe('Tutorial Spotlight Tour (Mobile)', () => {
     await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-2-homes.png' });
     const homesRingRect = await page.evaluate(() => {
+      // The ring is the absolute-positioned div with z-index 10045 inside the
+      // tutorial overlay (which itself is at z-index 10040).
       const candidates = Array.from(document.querySelectorAll('div'));
-      const ring = candidates.find(d => getComputedStyle(d).borderColor.includes('rgb(59, 130, 246)'));
+      const ring = candidates.find(d => {
+        const cs = getComputedStyle(d);
+        return cs.position === 'absolute' && cs.zIndex === '10045';
+      });
       const r = ring?.getBoundingClientRect();
       return r ? { top: r.top, left: r.left, w: r.width, h: r.height } : null;
     });
