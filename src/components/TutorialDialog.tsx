@@ -139,6 +139,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   // the card while this is false to avoid a flash at the wrong position.
   const [readyToShow, setReadyToShow] = useState(true);
   const isMobile = useIsMobile();
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Toggle demo data on the host while the tutorial is open.
   useEffect(() => {
@@ -147,11 +148,40 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     onDemoActiveChange?.(true);
     return () => { onDemoActiveChange?.(false); };
   }, [open, onDemoActiveChange]);
+
+  // Block all user-generated pointer/click input outside the tutorial card.
+  // Programmatic events the tutorial itself dispatches (`el.click()`,
+  // `dispatchEvent(new PointerEvent(...))`) have `isTrusted === false`, so the
+  // tutorial's own opening sequence still works. Real user clicks are absorbed
+  // — they can't toggle a demo widget, dismiss the sheet, or otherwise mess
+  // with the underlying UI while the tour is running.
+  useEffect(() => {
+    if (!open) return;
+    const blocker = (e: Event) => {
+      if (!(e as { isTrusted?: boolean }).isTrusted) return;
+      const target = e.target as Node | null;
+      if (target && cardRef.current && cardRef.current.contains(target)) return;
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+    };
+    const events = [
+      'pointerdown', 'pointerup', 'mousedown', 'mouseup',
+      'click', 'dblclick', 'auxclick', 'contextmenu',
+      'touchstart', 'touchend',
+    ];
+    events.forEach(name => document.addEventListener(name, blocker, true));
+    return () => {
+      events.forEach(name => document.removeEventListener(name, blocker, true));
+    };
+  }, [open]);
   const rafRef = useRef<number>(0);
-  // Currently-open trigger targets, in opening order. Persists across steps
-  // so that consecutive steps requesting the same opener don't cause a
-  // close-then-reopen flicker.
-  const openedTriggersRef = useRef<string[]>([]);
+  // Currently-open triggers (target + opening action), in opening order.
+  // Persists across steps so consecutive steps requesting the same opener
+  // don't cause a close-then-reopen flicker. The action is used to choose how
+  // to close: click-opened (Sheet, DropdownMenu) toggles closed by clicking
+  // again; contextmenu-opened menus close on Escape.
+  const openedTriggersRef = useRef<{ target: string; action: 'click' | 'contextmenu' }[]>([]);
   // Bumped whenever the effect re-runs. Async callbacks (rAF chains for
   // closeNext / fireNextTrigger) compare against the captured epoch and bail
   // out if they're now stale.
@@ -164,20 +194,52 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
 
   // Measure and track the target element
   useEffect(() => {
+    const findVisible = (tour: string): HTMLElement | null => {
+      const list = document.querySelectorAll(`[data-tour="${tour}"]`);
+      for (const c of list) {
+        const r = c.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return c as HTMLElement;
+      }
+      return null;
+    };
+
+    // Close a trigger using the same action that opened it: click-opened
+    // (Sheet, DropdownMenu) toggle off when their trigger is clicked again;
+    // contextmenu-opened menus close on Escape.
+    const makeEscape = () => new KeyboardEvent('keydown', {
+      key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true,
+    });
+    const closeTrigger = (entry: { target: string; action: 'click' | 'contextmenu' }) => {
+      if (entry.action === 'click') {
+        // Click the trigger again to toggle the popup closed.
+        const el = findVisible(entry.target);
+        if (el) el.click();
+      } else {
+        // Dispatch Escape both on focused element and document so Radix's
+        // DismissableLayer keydown listener fires regardless of focus state.
+        const active = document.activeElement as HTMLElement | null;
+        if (active && active !== document.body) active.dispatchEvent(makeEscape());
+        document.dispatchEvent(makeEscape());
+      }
+    };
+
     if (!open) {
-      // Tutorial closed: unwind any triggers we still have open.
-      const stillOpen = openedTriggersRef.current.length;
+      // Tutorial closed: unwind any triggers we still have open, in reverse
+      // opening order so nested layers (e.g. context menu over sheet) come
+      // off the top first.
+      const toUnwind = [...openedTriggersRef.current].reverse();
       openedTriggersRef.current = [];
       let i = 0;
-      const fireEscape = () => {
-        if (i >= stillOpen) return;
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const fireClose = () => {
+        if (i >= toUnwind.length) return;
+        closeTrigger(toUnwind[i]);
         i += 1;
-        if (i < stillOpen) requestAnimationFrame(fireEscape);
+        if (i < toUnwind.length) setTimeout(fireClose, 120);
       };
-      fireEscape();
+      fireClose();
       return;
     }
+
     // Clear last step's rect synchronously so the card doesn't render at the
     // previous spotlight position while we wait for this step's target.
     setTargetRect(null);
@@ -190,15 +252,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
     const desiredTargets = triggers.map(t => t.target);
 
-    const findVisible = (tour: string): HTMLElement | null => {
-      const list = document.querySelectorAll(`[data-tour="${tour}"]`);
-      for (const c of list) {
-        const r = c.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) return c as HTMLElement;
-      }
-      return null;
-    };
-
     // Reconcile triggers: close any currently-open trigger that the new step
     // doesn't want (in reverse opening order, so nested layers unwind), and
     // open any new ones the step wants but we don't have. Triggers shared
@@ -207,7 +260,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     const myEpoch = triggerEpochRef.current;
     const isStale = () => triggerEpochRef.current !== myEpoch;
 
-    const toClose = [...openedTriggersRef.current].reverse().filter(t => !desiredTargets.includes(t));
+    const toClose = [...openedTriggersRef.current].reverse()
+      .filter(entry => !desiredTargets.includes(entry.target));
     let closedIdx = 0;
     const closeNext = () => {
       if (isStale()) return;
@@ -216,14 +270,15 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         startOpening();
         return;
       }
-      const target = toClose[closedIdx];
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      const idx = openedTriggersRef.current.indexOf(target);
+      const entry = toClose[closedIdx];
+      closeTrigger(entry);
+      const idx = openedTriggersRef.current.findIndex(o => o.target === entry.target);
       if (idx >= 0) openedTriggersRef.current.splice(idx, 1);
       closedIdx += 1;
-      // Wait a frame so Radix has time to unmount before the next Escape
-      // (otherwise consecutive Escapes can hit the same DismissableLayer).
-      requestAnimationFrame(closeNext);
+      // Wait long enough for Radix to unmount the dismissed layer before the
+      // next close (otherwise a single rAF tick can leave the prior layer's
+      // listener still attached and confuse the next dismiss).
+      setTimeout(closeNext, 120);
     };
 
     let triggerWaitFrames = 0;
@@ -240,7 +295,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       if (isStale()) return;
       while (openIdx < triggers.length) {
         const spec = triggers[openIdx];
-        if (openedTriggersRef.current.includes(spec.target)) {
+        const action = spec.action ?? 'click';
+        if (openedTriggersRef.current.some(o => o.target === spec.target)) {
           // Already open from a previous step — skip.
           openIdx += 1;
           triggerWaitFrames = 0;
@@ -268,7 +324,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         }
         triggerWaitFrames = 0;
         openIdx += 1;
-        openedTriggersRef.current.push(spec.target);
+        openedTriggersRef.current.push({ target: spec.target, action });
         if (spec.action === 'contextmenu') {
           // Radix's ContextMenu reads event.clientX/clientY from the contextmenu
           // event to anchor its popover. Synthetic MouseEvents in some browsers
@@ -464,14 +520,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         />
       </svg>
 
-      {/* Clickable overlay outside the spotlight. Stops pointerdown too so
-          Radix Sheet/Dialog don't interpret card clicks as outside-clicks
-          and close the sheet between steps. */}
-      <div
-        className="absolute inset-0"
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-      />
+      {/* Visual-only layer over the dimmed area. The capture-phase document
+          listener (see useEffect above) absorbs trusted user input outside the
+          tutorial card, so we don't need React handlers here. */}
+      <div className="absolute inset-0" />
 
       {/* Spotlight ring highlight — subtle ring so the cutout itself does the
           highlighting work. */}
@@ -494,6 +546,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           wrong position); after a short fallback timeout we show centered so
           the tutorial isn't stuck if the page is empty or still loading. */}
       <div
+        ref={cardRef}
         className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
         style={{
           ...cardStyle,
@@ -501,7 +554,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           opacity: readyToShow ? 1 : 0,
           pointerEvents: readyToShow ? 'auto' : 'none',
         }}
-        onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button

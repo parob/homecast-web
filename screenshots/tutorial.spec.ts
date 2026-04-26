@@ -180,8 +180,18 @@ test.describe('Tutorial Spotlight Tour (Mobile)', () => {
 
     // Step 5: Share a single device
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(2000);
     await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
+    const stage6Debug = await page.evaluate(() => {
+      const sheet = document.querySelector('[role="dialog"]');
+      const sheetState = sheet?.getAttribute('data-state');
+      const sheetVisible = sheet ? (sheet as HTMLElement).offsetWidth > 0 : false;
+      const ctxMenu = document.querySelector('[role="menu"]');
+      const ctxState = ctxMenu?.getAttribute('data-state');
+      return { sheetState, sheetVisible, ctxMenuExists: !!ctxMenu, ctxState };
+    });
+    // eslint-disable-next-line no-console
+    console.log('STAGE 6 DEBUG:', JSON.stringify(stage6Debug));
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-6-share-device.png' });
 
     // Step 6: Collections
