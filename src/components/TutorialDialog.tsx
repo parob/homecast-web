@@ -203,23 +203,31 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       return null;
     };
 
-    // Close a trigger using the same action that opened it: click-opened
-    // (Sheet, DropdownMenu) toggle off when their trigger is clicked again;
-    // contextmenu-opened menus close on Escape.
+    // Close a trigger by dispatching Escape. We can't "click the trigger
+    // again" to close — Radix Dialog (which Sheet uses) only ever fires
+    // open=true from its trigger, so a second click leaves the sheet open.
+    // Escape works for Sheet, Dialog, DropdownMenu and ContextMenu alike;
+    // when multiple layers are stacked, Radix only dismisses the topmost
+    // per Escape, so the closeNext loop spaces them by 120ms.
     const makeEscape = () => new KeyboardEvent('keydown', {
       key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true,
     });
-    const closeTrigger = (entry: { target: string; action: 'click' | 'contextmenu' }) => {
-      if (entry.action === 'click') {
-        // Click the trigger again to toggle the popup closed.
-        const el = findVisible(entry.target);
-        if (el) el.click();
-      } else {
-        // Dispatch Escape both on focused element and document so Radix's
-        // DismissableLayer keydown listener fires regardless of focus state.
-        const active = document.activeElement as HTMLElement | null;
-        if (active && active !== document.body) active.dispatchEvent(makeEscape());
-        document.dispatchEvent(makeEscape());
+    const closeTrigger = (_entry: { target: string; action: 'click' | 'contextmenu' }) => {
+      // Dispatch Escape broadly. Radix DismissableLayer attaches keydown on
+      // ownerDocument and gates dismissal on pointer-events being enabled for
+      // the layer; firing on multiple targets covers stacked layers (Sheet
+      // under ContextMenu) and any focus state.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body) active.dispatchEvent(makeEscape());
+      document.body.dispatchEvent(makeEscape());
+      document.dispatchEvent(makeEscape());
+      // Also try clicking the topmost dialog/menu's built-in close button if
+      // present — Radix Sheet ships an X button as a child of its content.
+      const layers = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]'));
+      const topmost = layers[layers.length - 1] as HTMLElement | undefined;
+      if (topmost) {
+        const closeBtn = topmost.querySelector('button[aria-label="Close" i], button[data-radix-collection-item][data-state]') as HTMLElement | null;
+        if (closeBtn) closeBtn.click();
       }
     };
 
@@ -234,7 +242,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         if (i >= toUnwind.length) return;
         closeTrigger(toUnwind[i]);
         i += 1;
-        if (i < toUnwind.length) setTimeout(fireClose, 120);
+        if (i < toUnwind.length) setTimeout(fireClose, 400);
       };
       fireClose();
       return;
@@ -275,10 +283,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       const idx = openedTriggersRef.current.findIndex(o => o.target === entry.target);
       if (idx >= 0) openedTriggersRef.current.splice(idx, 1);
       closedIdx += 1;
-      // Wait long enough for Radix to unmount the dismissed layer before the
-      // next close (otherwise a single rAF tick can leave the prior layer's
-      // listener still attached and confuse the next dismiss).
-      setTimeout(closeNext, 120);
+      // Radix's DismissableLayer Escape only dismisses the highest layer,
+      // and the dismissed layer stays in the stack until its exit animation
+      // finishes (~250–300ms for Sheet/ContextMenu). 120ms wasn't enough —
+      // the next Escape fired while the previous layer was still "highest"
+      // and got swallowed. 400ms covers the longest exit animation.
+      setTimeout(closeNext, 400);
     };
 
     let triggerWaitFrames = 0;
@@ -520,10 +530,14 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         />
       </svg>
 
-      {/* Visual-only layer over the dimmed area. The capture-phase document
-          listener (see useEffect above) absorbs trusted user input outside the
-          tutorial card, so we don't need React handlers here. */}
-      <div className="absolute inset-0" />
+      {/* Dim layer outside the spotlight. stopPropagation so Radix Sheet's
+          DismissableLayer (listening on document) doesn't see card-area clicks
+          as outside-clicks and dismiss the sheet between steps. */}
+      <div
+        className="absolute inset-0"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
 
       {/* Spotlight ring highlight — subtle ring so the cutout itself does the
           highlighting work. */}
@@ -554,6 +568,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           opacity: readyToShow ? 1 : 0,
           pointerEvents: readyToShow ? 'auto' : 'none',
         }}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button

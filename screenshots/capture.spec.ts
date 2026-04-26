@@ -512,6 +512,163 @@ test.describe('Standalone page screenshots', () => {
 
 });
 
+// ── MQTT Screenshots ─────────────────────────────────────────────────────────
+
+test.describe('MQTT screenshots', () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
+    await setupMocks(page);
+  });
+
+  test('mqtt browser — topic tree with live state', async ({ page }) => {
+    // Override GetCachedHomes to return mqttEnabled+relayConnected so the
+    // home chip renders green and topic counts show. Also satisfy the
+    // CreateMqttToken mutation so the browser thinks it has credentials.
+    await page.route(/^https?:\/\/(api\.homecast\.cloud|localhost:8080)\/?$/, async (route) => {
+      const req = route.request();
+      if (req.method() !== 'POST') return route.fallback();
+      const body = req.postDataJSON() as { query?: string; operationName?: string };
+      const opName = body.operationName ?? body.query?.match(/(?:query|mutation)\s+(\w+)/)?.[1];
+      if (opName === 'GetCachedHomes') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { cachedHomes: [
+            { id: '11111111-1111-1111-1111-111111111111', name: 'My Home', updatedAt: new Date().toISOString(), role: 'owner', ownerEmail: 'rob@homecast.cloud', mqttEnabled: true, relayConnected: true, relayLastSeenAt: new Date().toISOString(), __typename: 'CachedHome' },
+            { id: '22222222-2222-2222-2222-222222222222', name: 'Beach House', updatedAt: new Date().toISOString(), role: 'control', ownerEmail: 'sam@example.com', mqttEnabled: true, relayConnected: true, relayLastSeenAt: new Date().toISOString(), __typename: 'CachedHome' },
+          ] } }),
+        });
+      }
+      if (opName === 'createMqttToken' || (body.query ?? '').includes('createMqttToken')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { createMqttToken: 'hc_mock_token_for_screenshot' } }),
+        });
+      }
+      return route.fallback();
+    });
+
+    // Stub the mqtt.js library: load it from unpkg returns a script that
+    // defines window.mqtt with a fake client. The fake client emits 'connect'
+    // immediately and replays a curated set of mock topics on subscribe.
+    await page.route(/^https?:\/\/unpkg\.com\/mqtt@.*$/, (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/javascript',
+        body: `
+          (function() {
+            var topics = [
+              ['homecast/my-home-1111/status', 'online'],
+              ['homecast/my-home-1111/living-room-a1b2/ceiling-light-c3d4', '{"brightness":80,"on":true}'],
+              ['homecast/my-home-1111/living-room-a1b2/ceiling-light-c3d4/availability', 'online'],
+              ['homecast/my-home-1111/living-room-a1b2/floor-lamp-e5f6', '{"brightness":45,"hue":28,"on":true,"saturation":85}'],
+              ['homecast/my-home-1111/living-room-a1b2/floor-lamp-e5f6/availability', 'online'],
+              ['homecast/my-home-1111/living-room-a1b2/thermostat-7890', '{"cool_target":24,"current_temp":20.5,"heat_target":20}'],
+              ['homecast/my-home-1111/living-room-a1b2/thermostat-7890/availability', 'online'],
+              ['homecast/my-home-1111/bedroom-aabb/bedside-lamp-ccdd', '{"brightness":40,"on":false}'],
+              ['homecast/my-home-1111/bedroom-aabb/bedside-lamp-ccdd/availability', 'online'],
+              ['homecast/my-home-1111/kitchen-eeff/under-cabinet-1122', '{"brightness":100,"on":true}'],
+              ['homecast/my-home-1111/kitchen-eeff/under-cabinet-1122/availability', 'online'],
+              ['homecast/my-home-1111/kitchen-eeff/all-kitchen-lights-3344/members', '["my-home-1111/kitchen-eeff/under-cabinet-1122"]'],
+              ['homecast/my-home-1111/kitchen-eeff/all-kitchen-lights-3344', '{"on":true}'],
+              ['homecast/my-home-1111/front-door-5566/door-lock-7788', '{"locked":true}'],
+              ['homecast/my-home-1111/front-door-5566/door-lock-7788/availability', 'online'],
+              ['homecast/my-home-1111/front-door-5566/doorbell-99aa', '{"motion":false}'],
+              ['homecast/my-home-1111/front-door-5566/doorbell-99aa/availability', 'online'],
+              ['homecast/beach-house-2222/status', 'online'],
+              ['homecast/beach-house-2222/patio-bbcc/string-lights-ddee', '{"brightness":60,"on":true}'],
+              ['homecast/beach-house-2222/patio-bbcc/string-lights-ddee/availability', 'online'],
+            ];
+            window.mqtt = {
+              connect: function(_url, _opts) {
+                var handlers = {};
+                var client = {
+                  on: function(ev, cb) { handlers[ev] = cb; return client; },
+                  subscribe: function(_topic) {
+                    setTimeout(function() {
+                      topics.forEach(function(t) {
+                        if (handlers.message) handlers.message(t[0], t[1]);
+                      });
+                    }, 80);
+                  },
+                  publish: function() {},
+                  end: function() {},
+                };
+                setTimeout(function() { if (handlers.connect) handlers.connect(); }, 30);
+                return client;
+              }
+            };
+          })();
+        `,
+      });
+    });
+
+    await page.goto('/mqtt');
+    // Wait for mqtt.js to load, connect, and topics to flush in
+    await page.waitForTimeout(3500);
+    // Expand "my-home-1111" so the room tree is visible. Home headers are
+    // buttons whose accessible text includes the slug, chevron and count —
+    // hasText with a substring match handles that.
+    const myHomeRow = page.locator('button:has-text("my-home-1111")').first();
+    if (await myHomeRow.isVisible()) {
+      await myHomeRow.click({ force: true });
+      await page.waitForTimeout(400);
+    }
+    // Expand a couple of rooms inside My Home
+    for (const room of ['living-room-a1b2', 'kitchen-eeff', 'front-door-5566']) {
+      const roomRow = page.locator(`button:has-text("${room}")`).first();
+      if (await roomRow.isVisible()) {
+        await roomRow.click({ force: true });
+        await page.waitForTimeout(150);
+      }
+    }
+    await page.waitForTimeout(500);
+    // Crop to the centered content area so the screenshot isn't mostly whitespace.
+    // Page uses max-w-4xl (~896px) centered in a 1280-wide viewport at 2x DPR.
+    await page.screenshot({
+      path: img('mqtt-browser.png'),
+      clip: { x: 160, y: 0, width: 960, height: 600 },
+    });
+  });
+
+  test('mqtt setup — Home Detail with broker toggle', async ({ page }) => {
+    overrideSettings({ ...BASE_SETTINGS, developerMode: true });
+    // Stub the per-home MQTT queries with a sane default
+    await page.route(/^https?:\/\/(api\.homecast\.cloud|localhost:8080)\/?$/, async (route) => {
+      const req = route.request();
+      if (req.method() !== 'POST') return route.fallback();
+      const body = req.postDataJSON() as { query?: string; operationName?: string };
+      const opName = body.operationName ?? body.query?.match(/(?:query|mutation)\s+(\w+)/)?.[1];
+      if (opName === 'GetHomeMqttEnabled') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { homeMqttEnabled: true } }) });
+      }
+      if (opName === 'GetHomeMqttBrokers') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { homeMqttBrokers: [] } }) });
+      }
+      return route.fallback();
+    });
+
+    await gotoMyHome(page);
+    await openSettings(page, 'Homes');
+    // Click "My Home" in the Homes section to open its detail view
+    const homeRow = page.locator('[role="dialog"] button').filter({ hasText: /My Home/ }).first();
+    if (await homeRow.isVisible()) {
+      await homeRow.click({ force: true });
+      await page.waitForTimeout(800);
+    }
+    // Scroll the MQTT label into view so the toggle is visible in the screenshot
+    const mqttLabel = page.locator('[role="dialog"]').getByText('MQTT', { exact: true }).first();
+    if (await mqttLabel.isVisible()) {
+      await mqttLabel.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+    }
+    const dialog = page.locator('[role="dialog"]').first();
+    await prepareDialogScreenshot(page);
+    await dialog.screenshot({ path: img('mqtt-setup.png'), omitBackground: true });
+  });
+});
+
 // ── Mac App Store Screenshots (2560×1600 at 2x) ─────────────────────────────
 
 const BASE_SETTINGS = {

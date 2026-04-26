@@ -56,17 +56,41 @@ test.describe('Tutorial Spotlight Tour', () => {
     await expect(page.locator('h3:has-text("Device Widgets")')).toBeVisible();
     await page.screenshot({ path: 'screenshots/output/tutorial-3-widgets.png' });
 
-    // Step 3: Collections — use more specific locator since sidebar also has "Collections" heading
+    // Step 3: Share home/room stage 1
     await page.click('button:has-text("Next")');
     await page.waitForTimeout(600);
-    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-4-collections.png' });
+    await expect(page.locator('h3:has-text("Share a home or room")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-4-share-stage1.png' });
 
-    // Step 4: Settings & More
+    // Step 4: Then choose Share — opens context menu
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1200);
+    await expect(page.locator('h3:has-text("Then choose Share")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-5-share-stage2.png' });
+
+    // Step 5: Share a single device
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(1500);
+    await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-6-share-device.png' });
+
+    // Step 6: Collections — use more specific locator since sidebar also has "Collections" heading
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(800);
+    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-7-collections.png' });
+
+    // Step 7: Automations
+    await page.click('button:has-text("Next")');
+    await page.waitForTimeout(800);
+    await expect(page.locator('h3:has-text("Automations")')).toBeVisible();
+    await page.screenshot({ path: 'screenshots/output/tutorial-8-automations.png' });
+
+    // Step 8: Settings & More
     await page.click('button:has-text("Next")');
     await page.waitForTimeout(600);
     await expect(page.locator('h3:has-text("Settings & More")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-5-settings.png' });
+    await page.screenshot({ path: 'screenshots/output/tutorial-9-settings.png' });
 
     // Done
     await page.click('button:has-text("Done")');
@@ -170,28 +194,45 @@ test.describe('Tutorial Spotlight Tour (Mobile)', () => {
     await page.click('button:has-text("Next")');
     await page.waitForTimeout(1500);
     await expect(page.locator('h3:has-text("Share a home or room")')).toBeVisible();
+    // Sheet must remain open after the Next click — earlier regression: the
+    // trusted Next click bubbled to document and Radix DismissableLayer
+    // dismissed the Sheet as a "pointer down outside" event.
+    const stage4State = await page.evaluate(() => {
+      const sheet = document.querySelector('[role="dialog"]');
+      return sheet?.getAttribute('data-state');
+    });
+    expect(stage4State, 'sheet should stay open between sheet-using stages').toBe('open');
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-4-share-stage1.png' });
 
     // Step 4: Then choose Share — stage 2 (open context menu)
     await page.click('button:has-text("Next")');
     await page.waitForTimeout(1800);
     await expect(page.locator('h3:has-text("Then choose Share")')).toBeVisible();
+    // Stage 2 should have BOTH sheet and context menu open.
+    const stage5State = await page.evaluate(() => {
+      const sheet = document.querySelector('[role="dialog"][data-state="open"]');
+      const menu = document.querySelector('[role="menu"][data-state="open"]');
+      return { sheetOpen: !!sheet, menuOpen: !!menu };
+    });
+    expect(stage5State.sheetOpen, 'sheet stays open under context menu').toBe(true);
+    expect(stage5State.menuOpen, 'context menu open').toBe(true);
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-5-share-stage2.png' });
 
-    // Step 5: Share a single device
+    // Step 5: Share a single device — closes both ctx-menu and sheet
+    // sequentially (Radix only dismisses one layer per Escape, with ~400ms
+    // between to let exit animations finish), so wait long enough.
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
     await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
-    const stage6Debug = await page.evaluate(() => {
-      const sheet = document.querySelector('[role="dialog"]');
-      const sheetState = sheet?.getAttribute('data-state');
-      const sheetVisible = sheet ? (sheet as HTMLElement).offsetWidth > 0 : false;
-      const ctxMenu = document.querySelector('[role="menu"]');
-      const ctxState = ctxMenu?.getAttribute('data-state');
-      return { sheetState, sheetVisible, ctxMenuExists: !!ctxMenu, ctxState };
+    // Both sheet and context menu must close before Share-a-single-device's
+    // widget-area spotlight is reached.
+    const stage6State = await page.evaluate(() => {
+      const sheet = document.querySelector('[role="dialog"][data-state="open"]');
+      const menu = document.querySelector('[role="menu"][data-state="open"]');
+      return { sheetOpen: !!sheet, menuOpen: !!menu };
     });
-    // eslint-disable-next-line no-console
-    console.log('STAGE 6 DEBUG:', JSON.stringify(stage6Debug));
+    expect(stage6State.sheetOpen, 'sheet must close when next step has no triggers').toBe(false);
+    expect(stage6State.menuOpen, 'context menu must close when next step has no triggers').toBe(false);
     await page.screenshot({ path: 'screenshots/output/tutorial-mobile-6-share-device.png' });
 
     // Step 6: Collections

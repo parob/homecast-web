@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Check, Copy, Plus } from 'lucide-react';
+import { Check, Copy, Plus, ExternalLink } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -118,27 +118,41 @@ export function ConnectDialog({ open, onOpenChange, homes }: {
           <div className="space-y-2">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Topics</p>
             <div className="rounded-md border bg-muted/30 divide-y text-[12px]">
-              <div className="px-3 py-2 space-y-1">
-                <p className="text-muted-foreground text-[11px]">Read device state — retained JSON per accessory:</p>
-                <code className="block font-mono text-[11px] break-all">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}</code>
-                <p className="text-muted-foreground text-[11px]">Example payload: <code className="font-mono">{`{"on":true,"brightness":72}`}</code></p>
+              <div className="px-3 py-2.5 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Read state</p>
+                <p className="text-[11px] text-muted-foreground">Retained JSON, one message per accessory.</p>
+                <code className="block font-mono text-[11px] break-all bg-background border rounded px-2 py-1">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}</code>
+                <p className="text-[10px] text-muted-foreground">e.g. <code className="font-mono bg-muted px-1.5 py-0.5 rounded">{`{"on":true,"brightness":72}`}</code></p>
               </div>
-              <div className="px-3 py-2 space-y-1">
-                <p className="text-muted-foreground text-[11px]">Control a device — publish JSON to the <code className="font-mono">/set</code> subtopic:</p>
-                <code className="block font-mono text-[11px] break-all">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}/set</code>
-                <p className="text-muted-foreground text-[11px]">Payload keys map 1:1 to state keys — send only what you want to change: <code className="font-mono">{`{"on":false}`}</code></p>
+              <div className="px-3 py-2.5 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Control a device</p>
+                <p className="text-[11px] text-muted-foreground">Publish to the <code className="font-mono">/set</code> subtopic. Keys map 1:1 to state — send only what's changing.</p>
+                <code className="block font-mono text-[11px] break-all bg-background border rounded px-2 py-1">homecast/{'{home}'}/{'{room}'}/{'{accessory}'}/set</code>
+                <p className="text-[10px] text-muted-foreground">e.g. <code className="font-mono bg-muted px-1.5 py-0.5 rounded">{`{"on":false}`}</code></p>
               </div>
-              <div className="px-3 py-2 space-y-1">
-                <p className="text-muted-foreground text-[11px]">Other topics you'll see:</p>
-                <ul className="text-[11px] space-y-0.5">
-                  <li><code className="font-mono">.../availability</code> — <span className="text-muted-foreground">"online" / "offline" per device</span></li>
-                  <li><code className="font-mono">.../members</code> — <span className="text-muted-foreground">JSON array of accessory slugs in a service group</span></li>
-                  <li><code className="font-mono">homecast/{'{home}'}/status</code> — <span className="text-muted-foreground">home-level online/offline LWT</span></li>
-                </ul>
+              <div className="px-3 py-2.5 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Other topics</p>
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] items-center">
+                  <code className="font-mono">.../availability</code>
+                  <span className="text-muted-foreground">online / offline per device</span>
+                  <code className="font-mono">.../members</code>
+                  <span className="text-muted-foreground">group member slugs (JSON array)</span>
+                  <code className="font-mono">homecast/{'{home}'}/status</code>
+                  <span className="text-muted-foreground">home-level LWT</span>
+                </div>
               </div>
               <div className="px-3 py-2">
-                <p className="text-muted-foreground text-[11px]">Slugs are lowercase-kebab with a 4-hex UUID suffix (e.g. <code className="font-mono">county-hall-2d10</code>, <code className="font-mono">kitchen-dfee</code>). Subscribe to <code className="font-mono">homecast/#</code> to see everything your token is scoped to.</p>
+                <p className="text-[10px] text-muted-foreground">Slugs are lowercase-kebab with a 4-hex UUID suffix (e.g. <code className="font-mono">county-hall-2d10</code>, <code className="font-mono">kitchen-dfee</code>). Subscribe to <code className="font-mono">homecast/#</code> to see everything your token is scoped to.</p>
               </div>
+              <a
+                href="https://docs.homecast.cloud/reference/mqtt"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between px-3 py-2 text-[11px] text-primary hover:bg-muted/50 transition-colors"
+              >
+                <span>Full MQTT reference</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
             </div>
           </div>
 
