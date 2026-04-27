@@ -1764,6 +1764,7 @@ export interface TraceSummaryEntry {
   startTime: string;
   endTime: string | null;
   totalLatencyMs: number | null;
+  relayLatencyMs: number | null;
   success: boolean | null;
   error: string | null;
   hopCount: number;

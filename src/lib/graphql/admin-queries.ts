@@ -672,6 +672,7 @@ export const GET_TRACES = gql`
         startTime
         endTime
         totalLatencyMs
+        relayLatencyMs
         success
         error
         hopCount
