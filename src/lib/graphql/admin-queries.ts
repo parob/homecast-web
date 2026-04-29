@@ -734,6 +734,7 @@ export const GET_ANALYTICS_INTERNAL = gql`
         mrrEstimate
         totalHomes
         totalAccessories
+        currency
       }
       signups { date value }
       accountTypes { free standard cloud managed waitlist }
@@ -816,6 +817,7 @@ export const GET_COSTS_AND_REVENUE = gql`
         churnedSubscriptions
         churnRate
         revenueTimeseries { date value }
+        currency
         available
         error
       }

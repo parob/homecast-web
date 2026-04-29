@@ -1807,6 +1807,7 @@ export interface AnalyticsKPIs {
   mrrEstimate: number;
   totalHomes: number;
   totalAccessories: number;
+  currency: string;
 }
 
 export interface AccountTypeBreakdown {
@@ -1946,6 +1947,7 @@ export interface StripeRevenueData {
   churnedSubscriptions: number;
   churnRate: number;
   revenueTimeseries: TimeseriesPoint[];
+  currency: string;
   available: boolean;
   error: string | null;
 }
