@@ -3,7 +3,8 @@ import { FAQ, FAQItem } from '@/components/FAQ';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import { Link } from 'react-router-dom';
-import { getPricing } from '@/lib/pricing';
+import { usePricing } from '@/lib/pricing';
+import type { Pricing as PricingShape } from '@/lib/pricing';
 import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 
 const CheckItem = ({ children }: { children: React.ReactNode }) => (
@@ -42,7 +43,7 @@ function FeatureCell({ value }: { value: CellValue }) {
   return <span className="text-sm text-muted-foreground">{value}</span>;
 }
 
-function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }; cloud: { formatted: string } } }) {
+function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
   const features: FeatureRow[] = [
     { label: 'Price', community: 'Free', basic: 'Free', standard: `${pricing.standard.formatted}/mo`, cloud: `${pricing.cloud.formatted}/mo` },
     { label: 'Accessories', community: 'Unlimited', basic: '10', standard: 'Unlimited', cloud: 'Unlimited' },
@@ -113,7 +114,18 @@ function FeatureMatrix({ pricing }: { pricing: { standard: { formatted: string }
 }
 
 const Pricing = () => {
-  const pricing = getPricing();
+  const pricing = usePricing();
+
+  // While native (StoreKit) prices are loading inside the App Store WKWebView,
+  // render nothing rather than fall back to web prices. Anti-steering: don't
+  // show the lower web price even momentarily inside the App Store build.
+  if (!pricing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading pricing…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background relative">

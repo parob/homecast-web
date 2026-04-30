@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Monitor, Cloud, Loader2, Copy, Check, ChevronDown, ChevronUp, AlertCircle, Users, ArrowRight } from 'lucide-react';
 import { config } from '@/lib/config';
-import { getPricing } from '@/lib/pricing';
+import { usePricing } from '@/lib/pricing';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { CONFIRM_INVITE_SENT, RESET_INVITE_STATUS } from '@/lib/graphql/mutations';
 import type { MyCloudManagedEnrollmentsResponse, CustomerEnrollmentInfo, HomeKitHome } from '@/lib/graphql/types';
@@ -403,7 +403,9 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
   cloudSignupsAvailable?: boolean;
   isInMobileApp?: boolean;
 }) {
-  const pricing = getPricing();
+  const pricing = usePricing();
+
+  if (!pricing) return null;
 
   return (
     <div className="space-y-5 max-w-lg mx-auto">
@@ -638,7 +640,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
                   <button onClick={onSetupCloud} className="text-primary hover:underline">
                     Switch to a cloud relay
                   </button>
-                  <span className="ml-1">· Always on · {getPricing().cloud.formatted}/mo</span>
+                  <span className="ml-1">· Always on · {pricing.cloud.formatted}/mo</span>
                 </>
               ) : (
                 'Cloud relay · signups paused — at capacity'

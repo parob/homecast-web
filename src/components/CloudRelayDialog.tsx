@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Cloud, Plus, Home as HomeIcon } from 'lucide-react';
-import { getPricing, getRegion } from '@/lib/pricing';
+import { usePricing, getPricing } from '@/lib/pricing';
+import { isNativePurchaseAvailable } from '@/lib/platform';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import type {
@@ -100,8 +101,13 @@ export function CloudRelayDialog({ open, onOpenChange, homes, prefilledHomeName 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [homeName, setHomeName] = useState(prefilledHomeName || '');
   const [loading, setLoading] = useState(false);
-  const pricing = getPricing();
-  const pricingRegion = getRegion();
+  const livePricing = usePricing();
+  const PLACEHOLDER_PRICE = { amount: 0, symbol: '', formatted: '—' };
+  const pricing = livePricing ?? (
+    isNativePurchaseAvailable()
+      ? { standard: PLACEHOLDER_PRICE, cloud: PLACEHOLDER_PRICE }
+      : getPricing()
+  );
 
   const { data, refetch } = useQuery<MyCloudManagedEnrollmentsResponse>(GET_MY_ENROLLMENTS, {
     skip: !open,
@@ -135,7 +141,7 @@ export function CloudRelayDialog({ open, onOpenChange, homes, prefilledHomeName 
     setLoading(true);
     try {
       const { data: result } = await createCheckout({
-        variables: { homeName: homeName.trim(), region: pricingRegion },
+        variables: { homeName: homeName.trim() },
       });
       const r = result?.createCloudManagedCheckout;
       if (r?.checkoutUrl) {
@@ -153,7 +159,7 @@ export function CloudRelayDialog({ open, onOpenChange, homes, prefilledHomeName 
     } finally {
       setLoading(false);
     }
-  }, [homeName, pricingRegion, createCheckout, refetch]);
+  }, [homeName, createCheckout, refetch]);
 
   return (
     <>
@@ -220,7 +226,8 @@ export function CloudRelayDialog({ open, onOpenChange, homes, prefilledHomeName 
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              {pricing.cloud.formatted}/mo. You'll be redirected to Stripe to complete payment.
+              {pricing.cloud.formatted}/mo.
+              {!isNativePurchaseAvailable() && " You'll be redirected to Stripe to complete payment."}
             </p>
             <p className="text-xs text-amber-600">
               Requires an Apple Home Hub (Apple TV or HomePod) on your home network.

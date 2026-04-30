@@ -250,20 +250,25 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 Sponsor on GitHub →
               </a>
             </div>
-            <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-sm font-medium">Want remote access & cloud features?</p>
-              <p className="text-xs text-muted-foreground">
-                Switch to Homecast Cloud for remote access from anywhere, cloud sync, and more.
-              </p>
-              <a
-                href="https://homecast.cloud/pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-              >
-                View plans →
-              </a>
-            </div>
+            {/* Anti-steering: external "View plans" link is hidden in App Store
+                builds. Community users on the App Store still see the
+                Community panel above; they switch to Cloud via mode change. */}
+            {!(window as any).isHomecastNativePurchaseAvailable && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <p className="text-sm font-medium">Want remote access & cloud features?</p>
+                <p className="text-xs text-muted-foreground">
+                  Switch to Homecast Cloud for remote access from anywhere, cloud sync, and more.
+                </p>
+                <a
+                  href="https://homecast.cloud/pricing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                >
+                  View plans →
+                </a>
+              </div>
+            )}
           </div>
         ) : PlanSection ? (
           <PlanSection

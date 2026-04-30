@@ -7,4 +7,9 @@ export const checkIsInMacApp = (): boolean => {
   return false;
 };
 
+export const isNativePurchaseAvailable = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return !!(window as any).isHomecastNativePurchaseAvailable;
+};
+
 export const MAC_APP_TITLEBAR_INSET_PX = 33;

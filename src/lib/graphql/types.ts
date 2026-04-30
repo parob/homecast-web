@@ -47,6 +47,7 @@ export interface AccountInfo {
   smartDealsEnabled: boolean;
   hasSubscription: boolean;
   cloudSignupsAvailable: boolean;
+  subscriptionSource: 'stripe' | 'apple' | null;
 }
 
 export interface GetAccountResponse {

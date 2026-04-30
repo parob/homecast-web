@@ -4,10 +4,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Monitor, Cloud, Users, ArrowLeft, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { getPricing, getRegion } from '@/lib/pricing';
-import { CREATE_CHECKOUT_SESSION, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION } from '@/lib/graphql/mutations';
+import { usePricing } from '@/lib/pricing';
+import { purchasePlan } from '@/lib/purchase';
+import { ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION } from '@/lib/graphql/mutations';
 import { GET_PENDING_INVITATIONS } from '@/lib/graphql/queries';
-import type { CreateCheckoutSessionResponse, GetPendingInvitationsResponse, PendingInvitation } from '@/lib/graphql/types';
+import type { GetPendingInvitationsResponse, PendingInvitation } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { config } from '@/lib/config';
 
@@ -63,7 +64,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
   isInMobileApp?: boolean;
   onSelect: (step: WizardStep) => void;
   onSkip: () => void;
-  pricing: ReturnType<typeof getPricing>;
+  pricing: NonNullable<ReturnType<typeof usePricing>>;
   cloudSignupsAvailable?: boolean;
 }) {
   const macLabel = isInMacApp ? 'Use this Mac as your relay' : 'I have a Mac at home';
@@ -128,7 +129,7 @@ function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard
   onComplete: () => void;
   onUpgradeStandard: () => void;
   onBack: () => void;
-  pricing: ReturnType<typeof getPricing>;
+  pricing: NonNullable<ReturnType<typeof usePricing>>;
   accountType?: string;
 }) {
   const openAppStore = useCallback(() => {
@@ -221,14 +222,11 @@ function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard
 function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = true }: {
   onComplete: (enrollmentId?: string) => void;
   onBack: () => void;
-  pricing: ReturnType<typeof getPricing>;
+  pricing: NonNullable<ReturnType<typeof usePricing>>;
   cloudSignupsAvailable?: boolean;
 }) {
   const [homeName, setHomeName] = useState('');
   const [loading, setLoading] = useState(false);
-  const pricingRegion = getRegion();
-
-  const [createCheckout] = useMutation<CreateCheckoutSessionResponse>(CREATE_CHECKOUT_SESSION);
 
   const handleCheckout = useCallback(async () => {
     if (!homeName.trim()) {
@@ -237,24 +235,19 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
     }
     setLoading(true);
     try {
-      const { data } = await createCheckout({
-        variables: { plan: 'cloud', homeName: homeName.trim(), region: pricingRegion },
-      });
-      const result = data?.createCheckoutSession;
-      if (result?.url) {
-        window.location.href = result.url;
-      } else if (result?.upgraded) {
+      const result = await purchasePlan('cloud', { homeName: homeName.trim() });
+      if (result.upgraded) {
         toast.success('Cloud relay activated!');
         onComplete();
-      } else if (result?.error) {
+      } else if (result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+      } else if (result.error) {
         toast.error(result.error);
       }
-    } catch {
-      toast.error('Failed to start checkout');
     } finally {
       setLoading(false);
     }
-  }, [homeName, pricingRegion, createCheckout, onComplete]);
+  }, [homeName, onComplete]);
 
   if (!cloudSignupsAvailable) {
     return (
@@ -452,7 +445,7 @@ const stepDescriptions: Record<WizardStep, string> = {
 
 export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType }: OnboardingOverlayProps) {
   const [step, setStep] = useState<WizardStep>('intent');
-  const pricing = getPricing();
+  const pricing = usePricing();
 
   const handleIntentSelect = useCallback((selected: WizardStep) => {
     setStep(selected);
@@ -473,6 +466,10 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
   const handleSharedComplete = useCallback(() => {
     onComplete('shared-home');
   }, [onComplete]);
+
+  // Inside the App Store WKWebView, native StoreKit prices haven't loaded yet
+  // on first render. Don't show the dialog with web prices baked in.
+  if (!pricing) return null;
 
   return (
     <Dialog open onOpenChange={() => {

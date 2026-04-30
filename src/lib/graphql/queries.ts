@@ -64,6 +64,7 @@ export const GET_ACCOUNT = gql`
       smartDealsEnabled
       hasSubscription
       cloudSignupsAvailable
+      subscriptionSource
     }
   }
 `;

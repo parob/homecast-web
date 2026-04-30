@@ -95,8 +95,8 @@ export const CREATE_CHECKOUT_SESSION = gql`
 `;
 
 export const DOWNGRADE_TO_STANDARD = gql`
-  mutation DowngradeToStandard($region: String) {
-    downgradeToStandard(region: $region) {
+  mutation DowngradeToStandard {
+    downgradeToStandard {
       url
       error
       upgraded
@@ -108,6 +108,27 @@ export const CREATE_PORTAL_SESSION = gql`
   mutation CreatePortalSession {
     createPortalSession {
       url
+      error
+    }
+  }
+`;
+
+export const VALIDATE_APPLE_PURCHASE = gql`
+  mutation ValidateApplePurchase($jwsTransaction: String!, $productId: String!, $homeName: String) {
+    validateApplePurchase(jwsTransaction: $jwsTransaction, productId: $productId, homeName: $homeName) {
+      accountType
+      productId
+      error
+    }
+  }
+`;
+
+export const RESTORE_APPLE_PURCHASES = gql`
+  mutation RestoreApplePurchases($jwsTransactions: [String!]!) {
+    restoreApplePurchases(jwsTransactions: $jwsTransactions) {
+      accountType
+      productId
+      restored
       error
     }
   }

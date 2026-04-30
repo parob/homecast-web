@@ -143,7 +143,9 @@ import { OnboardingOverlay } from '@/components/OnboardingOverlay';
 import { TutorialDialog } from '@/components/TutorialDialog';
 import type { SetupPath } from '@/components/OnboardingOverlay';
 import { SetupState, EnrollmentTrackerCard } from '@/components/SetupState';
-import { getPricing, getRegion } from '@/lib/pricing';
+import { usePricing, getPricing } from '@/lib/pricing';
+import { purchasePlan, openManageSubscriptions } from '@/lib/purchase';
+import { isNativePurchaseAvailable } from '@/lib/platform';
 
 const formatTimeAgo = (date: Date): string => {
   const now = new Date();
@@ -1974,8 +1976,16 @@ const Dashboard = () => {
   const [createCheckoutMutation] = useMutation<CreateCheckoutSessionResponse>(CREATE_CHECKOUT_SESSION);
   const [createPortalMutation] = useMutation<CreatePortalSessionResponse>(CREATE_PORTAL_SESSION);
   const [downgradeMutation] = useMutation<DowngradeToStandardResponse>(DOWNGRADE_TO_STANDARD);
-  const pricing = getPricing();
-  const pricingRegion = getRegion();
+  // In native builds, web prices must NEVER be shown — wait for StoreKit
+  // to return live IAP prices. Show a "—" placeholder until then. On the
+  // browser we use the static USD pricing.
+  const livePricing = usePricing();
+  const PLACEHOLDER_PRICE = { amount: 0, symbol: '', formatted: '—' };
+  const pricing = livePricing ?? (
+    isNativePurchaseAvailable()
+      ? { standard: PLACEHOLDER_PRICE, cloud: PLACEHOLDER_PRICE }
+      : getPricing()
+  );
 
   // Onboarding check is below, after homes data is declared
 
@@ -4789,17 +4799,16 @@ const Dashboard = () => {
 
   // Upgrade handler
   const handleUpgrade = useCallback(async () => {
-    try {
-      const { data } = await createCheckoutMutation({ variables: { region: pricingRegion } });
-      if (data?.createCheckoutSession?.url) {
-        window.location.href = data.createCheckoutSession.url;
-      } else if (data?.createCheckoutSession?.error) {
-        toast.error(data.createCheckoutSession.error);
-      }
-    } catch (e) {
-      toast.error('Failed to start checkout');
+    const result = await purchasePlan('standard');
+    if (result.upgraded) {
+      toast.success('Upgraded to Standard');
+      refetchAccount?.();
+    } else if (result.redirectUrl) {
+      window.location.href = result.redirectUrl;
+    } else if (result.error) {
+      toast.error(result.error);
     }
-  }, [createCheckoutMutation, pricingRegion]);
+  }, [refetchAccount]);
 
   // Smart Deal badge — rendered as a child component so it reads DealsContext from inside the provider
   const getDealBadge = useCallback((accessory: import('@/lib/graphql/types').HomeKitAccessory) => {
@@ -4807,8 +4816,12 @@ const Dashboard = () => {
     return <AccessoryDealBadge accessory={accessory} />;
   }, [showSmartDeals]);
 
-  // Manage subscription handler
+  // Manage subscription handler — Apple's manage-subs sheet for IAP, Stripe portal for web
   const handleManageSubscription = useCallback(async () => {
+    if (isNativePurchaseAvailable()) {
+      openManageSubscriptions();
+      return;
+    }
     try {
       const { data } = await createPortalMutation();
       if (data?.createPortalSession?.url) {
@@ -4823,28 +4836,22 @@ const Dashboard = () => {
 
   // Upgrade to Cloud handler
   const handleUpgradeToCloud = useCallback(async () => {
-    try {
-      const { data } = await createCheckoutMutation({ variables: { region: pricingRegion, plan: 'cloud' } });
-      const result = data?.createCheckoutSession;
-      if (result?.upgraded) {
-        toast.success('Upgraded to Cloud plan!');
-        // Refetch account data to update UI
-        refetchAccount?.();
-      } else if (result?.url) {
-        window.location.href = result.url;
-      } else if (result?.error) {
-        toast.error(result.error);
-      }
-    } catch {
-      toast.error('Failed to upgrade to Cloud');
+    const result = await purchasePlan('cloud');
+    if (result.upgraded) {
+      toast.success('Upgraded to Cloud plan!');
+      refetchAccount?.();
+    } else if (result.redirectUrl) {
+      window.location.href = result.redirectUrl;
+    } else if (result.error) {
+      toast.error(result.error);
     }
-  }, [createCheckoutMutation, pricingRegion, refetchAccount]);
+  }, [refetchAccount]);
 
   // Downgrade to Standard handler
   const handleDowngradeToStandard = useCallback(async () => {
     if (!confirm('This will cancel your cloud relay enrollments and downgrade to Standard. Continue?')) return;
     try {
-      const { data } = await downgradeMutation({ variables: { region: pricingRegion } });
+      const { data } = await downgradeMutation({ variables: {} });
       const result = data?.downgradeToStandard;
       if (result?.upgraded) {
         toast.success('Downgraded to Standard plan');
@@ -4855,7 +4862,7 @@ const Dashboard = () => {
     } catch {
       toast.error('Failed to downgrade');
     }
-  }, [downgradeMutation, pricingRegion, refetchAccount]);
+  }, [downgradeMutation, refetchAccount]);
 
   // Onboarding completion handler
   const handleOnboardingComplete = useCallback(async (setupPath: SetupPath, enrollmentId?: string) => {

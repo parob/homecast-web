@@ -18,7 +18,8 @@ import { Badge } from '@/components/ui/badge';
 import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-react';
 import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
-import { getPricing, getRegion } from '@/lib/pricing';
+import { usePricing, getPricing } from '@/lib/pricing';
+import { isNativePurchaseAvailable } from '@/lib/platform';
 import { isCommunity } from '@/lib/config';
 import { regionLabel } from '@/lib/regions';
 import { config } from '@/lib/config';
@@ -244,8 +245,13 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     if (onSelectHome) onSelectHome(home.id);
     else setSelectedHome(home);
   };
-  const pricing = getPricing();
-  const pricingRegion = getRegion();
+  const livePricing = usePricing();
+  const PLACEHOLDER_PRICE = { amount: 0, symbol: '', formatted: '—' };
+  const pricing = livePricing ?? (
+    isNativePurchaseAvailable()
+      ? { standard: PLACEHOLDER_PRICE, cloud: PLACEHOLDER_PRICE }
+      : getPricing()
+  );
 
   const openExternalUrl = (url: string) => {
     return (e: React.MouseEvent) => {
@@ -327,7 +333,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     setLoading(true);
     try {
       const { data: result } = await createCheckout({
-        variables: { homeName: homeName.trim(), region: pricingRegion },
+        variables: { homeName: homeName.trim() },
       });
       const r = result?.createCloudManagedCheckout;
       if (r?.enrollmentId) {
@@ -343,7 +349,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     } finally {
       setLoading(false);
     }
-  }, [homeName, pricingRegion, createCheckout, refetch]);
+  }, [homeName, createCheckout, refetch]);
 
   // If a home is selected, show its detail view (must be after all hooks)
   if (selectedHome) {
