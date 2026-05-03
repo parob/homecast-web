@@ -2,9 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, BellOff, Smartphone, Mail, Trash2, Loader2, Clock, ChevronDown, CheckCircle2, Globe } from 'lucide-react';
+import { Bell, BellOff, Smartphone, Mail, Trash2, Loader2, Clock, ChevronDown, Apple, AppWindow } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { toast } from 'sonner';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_HISTORY } from '@/lib/graphql/queries';
@@ -33,12 +32,6 @@ interface NotificationsSectionProps {
   pushTokens: PushTokenInfo[];
   preferences: NotificationPreferenceInfo[];
   refetch: () => void;
-  registerPushToken: (vars: {
-    token: string;
-    platform: string;
-    deviceFingerprint: string;
-    deviceName: string;
-  }) => Promise<unknown>;
   unregisterPushToken: (vars: { deviceFingerprint: string }) => Promise<unknown>;
   setNotificationPreference: (vars: {
     scope: string;
@@ -55,20 +48,11 @@ export function NotificationsSection({
   pushTokens,
   preferences,
   refetch,
-  registerPushToken,
   unregisterPushToken,
   setNotificationPreference,
   sendTestNotification,
   userEmail,
 }: NotificationsSectionProps) {
-  const {
-    permission,
-    isAvailable,
-    isRegistering,
-    requestPermission,
-    unregister,
-  } = usePushNotifications(registerPushToken, unregisterPushToken);
-
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSavingPref, setIsSavingPref] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
@@ -78,11 +62,6 @@ export function NotificationsSection({
     emailEnabled: false,
     localEnabled: true,
   };
-
-  const handleEnablePush = useCallback(async () => {
-    const success = await requestPermission();
-    if (success) refetch();
-  }, [requestPermission, refetch]);
 
   const handleRemoveDevice = useCallback(async (fingerprint: string) => {
     await unregisterPushToken({ deviceFingerprint: fingerprint });
@@ -132,59 +111,55 @@ export function NotificationsSection({
     );
   }
 
-  const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp;
-  const currentFingerprint = localStorage.getItem('homecast-push-fingerprint');
-  const thisBrowserRegistered = pushTokens.some(t => t.deviceFingerprint === currentFingerprint);
-  const otherDevices = pushTokens.filter(t => t.deviceFingerprint !== currentFingerprint);
+  const w = window as any;
+  const isNativeAppWithPush = !!w.isHomecastMacApp || !!w.isHomecastIOSApp || !!w.isHomecastAndroidApp;
 
   return (
     <div className="space-y-6">
-      {/* This Browser (hidden in Mac app WKWebView — relay gets local notifications automatically) */}
-      {!isNativeApp && <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">This Browser</p>
-        {thisBrowserRegistered ? (
-          <div className="flex items-center gap-2 py-2 px-3 rounded-md border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
-            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm">Registered for notifications</p>
-              <p className="text-xs text-muted-foreground">
-                {pushTokens.find(t => t.deviceFingerprint === currentFingerprint)?.deviceName || 'This browser'}
+      {/* Install-app prompt — shown when the user is in a regular browser (or a desktop Tauri shell without push). */}
+      {!isNativeAppWithPush && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-4">
+          <div className="flex items-start gap-3">
+            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Get push notifications</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Install the Homecast app on your Mac, iPhone, or Android phone to receive push notifications. Push isn&apos;t supported in the browser.
               </p>
-            </div>
-          </div>
-        ) : isAvailable ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-4">
-            <div className="flex items-start gap-3">
-              <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">This browser isn&apos;t receiving notifications</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Allow notifications so this browser shows alerts when your automations fire.
-                </p>
+              <div className="flex flex-wrap gap-2 mt-3">
                 <Button
                   size="sm"
-                  className="mt-3"
-                  onClick={handleEnablePush}
-                  disabled={isRegistering || permission === 'denied'}
+                  variant="outline"
+                  asChild
                 >
-                  {isRegistering ? (
-                    <><Loader2 className="h-3 w-3 animate-spin mr-1.5" /> Registering...</>
-                  ) : permission === 'denied' ? (
-                    'Blocked by browser'
-                  ) : (
-                    'Allow Browser Notifications'
-                  )}
+                  <a
+                    href="https://apps.apple.com/us/app/homecast-app/id6759559232"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Apple className="h-3.5 w-3.5 mr-1.5" />
+                    Mac &amp; iOS
+                  </a>
                 </Button>
-                {permission === 'denied' && (
-                  <p className="text-xs text-destructive mt-2">
-                    Notifications are blocked. Reset in your browser&apos;s site settings.
-                  </p>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                >
+                  <a
+                    href="https://homecast.cloud/download"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <AppWindow className="h-3.5 w-3.5 mr-1.5" />
+                    Android
+                  </a>
+                </Button>
               </div>
             </div>
           </div>
-        ) : null}
-      </div>}
+        </div>
+      )}
 
       {/* Delivery Channels */}
       <div>
@@ -199,7 +174,7 @@ export function NotificationsSection({
               <div>
                 <p className="text-sm">Push</p>
                 <p className="text-xs text-muted-foreground">
-                  Web Push to registered browsers (via FCM) and native notifications to the Homecast Mac and iOS apps (via APNs).
+                  Native notifications to the Homecast Mac and iOS apps (APNs) and the Android app (FCM).
                 </p>
               </div>
             </div>
@@ -258,12 +233,11 @@ export function NotificationsSection({
         {pushTokens.length === 0 ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
             <BellOff className="h-4 w-4" />
-            <span>No browsers or apps registered. Enable browser notifications above, or open Homecast on your Mac to register automatically.</span>
+            <span>No apps registered. Open Homecast on your Mac, iPhone, or Android phone to register automatically.</span>
           </div>
         ) : (
           <div className="space-y-2">
             {pushTokens.map((token) => {
-              const isThisBrowser = token.deviceFingerprint === currentFingerprint;
               return (
                 <div
                   key={token.id}
@@ -274,12 +248,9 @@ export function NotificationsSection({
                     <div className="min-w-0">
                       <p className="text-sm truncate">
                         {token.deviceName || token.platform}
-                        {isThisBrowser && (
-                          <span className="ml-1.5 text-xs text-blue-600 dark:text-blue-400">(this browser)</span>
-                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {token.platform === 'web' ? 'Web Push' : token.platform === 'macos' ? 'APNs (macOS)' : token.platform === 'ios' ? 'APNs (iOS)' : token.platform}
+                        {token.platform === 'macos' ? 'APNs (macOS)' : token.platform === 'ios' ? 'APNs (iOS)' : token.platform === 'android' ? 'FCM (Android)' : token.platform}
                         {' '}&middot; registered {new Date(token.createdAt).toLocaleDateString()}
                       </p>
                     </div>

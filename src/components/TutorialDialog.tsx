@@ -483,6 +483,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     cardStyle.top = '50%';
     cardStyle.left = '50%';
     cardStyle.transform = 'translate(-50%, -50%)';
+  } else if (targetRects.length > 1) {
+    // Multi-highlight steps: anchor the card to the bottom-center so it sits
+    // clear of both rects (which between them can cover most of the viewport).
+    cardStyle.top = window.innerHeight - 220;
+    cardStyle.left = '50%';
+    cardStyle.transform = 'translateX(-50%)';
   } else if (targetRect) {
     const pos = currentStep.position || 'bottom';
     if (pos === 'right') {
