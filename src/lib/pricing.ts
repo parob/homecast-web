@@ -15,7 +15,7 @@ export interface Pricing {
 
 const WEB_PRICING: Pricing = {
   standard: { amount: 8, symbol: '$', formatted: '$8' },
-  cloud: { amount: 11, symbol: '$', formatted: '$11' },
+  cloud: { amount: 16, symbol: '$', formatted: '$16' },
 };
 
 /**
