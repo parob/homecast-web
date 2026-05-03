@@ -27,6 +27,10 @@ export interface NativeProduct {
 export interface PurchaseResult {
   success: boolean;
   upgraded?: boolean;
+  /** account_type the server actually applied — may differ from the
+   *  requested plan if StoreKit re-emitted a different unfinished
+   *  transaction. Use this for toast/UI text instead of the requested plan. */
+  accountType?: string;
   redirectUrl?: string;   // Stripe checkout URL (web path only)
   error?: string;
 }
@@ -156,7 +160,7 @@ export async function purchasePlan(
       });
       const result = data?.validateApplePurchase;
       if (result?.error) return { success: false, error: result.error };
-      return { success: true, upgraded: true };
+      return { success: true, upgraded: true, accountType: result?.accountType };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Purchase failed';
       return { success: false, error: message };

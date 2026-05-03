@@ -4802,9 +4802,9 @@ const Dashboard = () => {
   const handleUpgrade = useCallback(async () => {
     const result = await purchasePlan('standard');
     if (result.upgraded) {
-      toast.success('Upgraded to Standard');
-      // Force a fresh account fetch (skip Apollo cache) so the UI reflects
-      // the new account_type without a page reload.
+      const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
+      const label = labels[result.accountType || 'standard'] || 'a paid plan';
+      toast.success(`Upgraded to ${label}`);
       await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
     } else if (result.redirectUrl) {
       window.location.href = result.redirectUrl;
@@ -4855,7 +4855,13 @@ const Dashboard = () => {
   const handleUpgradeToCloud = useCallback(async () => {
     const result = await purchasePlan('cloud');
     if (result.upgraded) {
-      toast.success('Upgraded to Cloud plan!');
+      const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
+      const label = labels[result.accountType || 'cloud'] || 'a paid plan';
+      if (result.accountType && result.accountType !== 'cloud') {
+        toast.warning(`Already on ${label} — open Xcode → Debug → StoreKit → Manage Transactions and delete the dangling transaction, then retry.`);
+      } else {
+        toast.success(`Upgraded to ${label} plan!`);
+      }
       await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
     } else if (result.redirectUrl) {
       window.location.href = result.redirectUrl;
