@@ -557,6 +557,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
   accountType?: string;
   cloudSignupsAvailable?: boolean;
 }) {
+  const pricing = usePricing();
   const offlineHomes = homes.filter(h => h.relayConnected === false);
   const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
   const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
@@ -640,7 +641,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
                   <button onClick={onSetupCloud} className="text-primary hover:underline">
                     Switch to a cloud relay
                   </button>
-                  <span className="ml-1">· Always on · {pricing.cloud.formatted}/mo</span>
+                  {pricing && <span className="ml-1">· Always on · {pricing.cloud.formatted}/mo</span>}
                 </>
               ) : (
                 'Cloud relay · signups paused — at capacity'
