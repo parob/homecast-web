@@ -51,6 +51,24 @@ if (typeof window !== 'undefined') {
     if (response.error) cb.reject(new Error(response.error));
     else cb.resolve(response.result);
   };
+
+  // Background transaction updates from StoreKit (renewals, family-sharing,
+  // unfinished transactions completing after server-side validation issues).
+  // PurchaseManager.start() emits these via the native bridge — we forward
+  // them to the server so account_type stays in sync without user action.
+  (window as any).__purchase_event = async (event: { type?: string; jws?: string }) => {
+    if (event?.type !== 'transactionUpdate' || !event.jws) return;
+    try {
+      await apolloClient.mutate({
+        mutation: VALIDATE_APPLE_PURCHASE,
+        variables: { jwsTransaction: event.jws, productId: '' },
+      });
+      // Refetch account so the UI updates without a page reload.
+      await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
+    } catch (err) {
+      console.warn('[purchase] background transaction validation failed', err);
+    }
+  };
 }
 
 function callNativePurchase<T = any>(method: string, payload: Record<string, unknown> = {}, timeoutMs = 120_000): Promise<T> {
