@@ -4798,20 +4798,30 @@ const Dashboard = () => {
     setAccessorySelectionOpen(true);
   }, [accountType, serverConnected, settingsData, homesData, includedAccessoryIds]);
 
+  // Tracks which billing action is in-flight so the relevant button can show
+  // a spinner and ignore duplicate clicks.
+  const [billingBusy, setBillingBusy] = useState<null | 'upgrade' | 'upgradeCloud' | 'downgrade' | 'manage'>(null);
+
   // Upgrade handler
   const handleUpgrade = useCallback(async () => {
-    const result = await purchasePlan('standard');
-    if (result.upgraded) {
-      const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
-      const label = labels[result.accountType || 'standard'] || 'a paid plan';
-      toast.success(`Upgraded to ${label}`);
-      await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
-    } else if (result.redirectUrl) {
-      window.location.href = result.redirectUrl;
-    } else if (result.error) {
-      toast.error(result.error);
+    if (billingBusy) return;
+    setBillingBusy('upgrade');
+    try {
+      const result = await purchasePlan('standard');
+      if (result.upgraded) {
+        const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
+        const label = labels[result.accountType || 'standard'] || 'a paid plan';
+        toast.success(`Upgraded to ${label}`);
+        await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
+      } else if (result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+      } else if (result.error) {
+        toast.error(result.error);
+      }
+    } finally {
+      setBillingBusy(null);
     }
-  }, []);
+  }, [billingBusy]);
 
   // Smart Deal badge — rendered as a child component so it reads DealsContext from inside the provider
   const getDealBadge = useCallback((accessory: import('@/lib/graphql/types').HomeKitAccessory) => {
@@ -4824,16 +4834,16 @@ const Dashboard = () => {
   // portal (works for legacy web customers signed into the App Store build,
   // managing an existing externally-paid sub which Apple permits).
   const handleManageSubscription = useCallback(async () => {
-    const source = accountData?.account?.subscriptionSource;
-    if (source === 'apple') {
-      openManageSubscriptions();
-      return;
-    }
+    if (billingBusy) return;
+    setBillingBusy('manage');
     try {
+      const source = accountData?.account?.subscriptionSource;
+      if (source === 'apple') {
+        openManageSubscriptions();
+        return;
+      }
       const { data } = await createPortalMutation();
       if (data?.createPortalSession?.url) {
-        // Inside the App Store WKWebView, navigate via the openUrl bridge so
-        // the portal opens in Safari (not the web view).
         const w = window as any;
         if (w.webkit?.messageHandlers?.homecast) {
           w.webkit.messageHandlers.homecast.postMessage({
@@ -4848,44 +4858,64 @@ const Dashboard = () => {
       }
     } catch (e) {
       toast.error('Failed to open subscription management');
+    } finally {
+      setBillingBusy(null);
     }
-  }, [accountData, createPortalMutation]);
+  }, [accountData, createPortalMutation, billingBusy]);
 
   // Upgrade to Cloud handler
   const handleUpgradeToCloud = useCallback(async () => {
-    const result = await purchasePlan('cloud');
-    if (result.upgraded) {
-      const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
-      const label = labels[result.accountType || 'cloud'] || 'a paid plan';
-      if (result.accountType && result.accountType !== 'cloud') {
-        toast.warning(`Already on ${label} — open Xcode → Debug → StoreKit → Manage Transactions and delete the dangling transaction, then retry.`);
-      } else {
-        toast.success(`Upgraded to ${label} plan!`);
+    if (billingBusy) return;
+    setBillingBusy('upgradeCloud');
+    try {
+      const result = await purchasePlan('cloud');
+      if (result.upgraded) {
+        const labels: Record<string, string> = { standard: 'Standard', cloud: 'Cloud' };
+        const label = labels[result.accountType || 'cloud'] || 'a paid plan';
+        if (result.accountType && result.accountType !== 'cloud') {
+          toast.warning(`Already on ${label} — open Xcode → Debug → StoreKit → Manage Transactions and delete the dangling transaction, then retry.`);
+        } else {
+          toast.success(`Upgraded to ${label} plan!`);
+        }
+        await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
+      } else if (result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+      } else if (result.error) {
+        toast.error(result.error);
       }
-      await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
-    } else if (result.redirectUrl) {
-      window.location.href = result.redirectUrl;
-    } else if (result.error) {
-      toast.error(result.error);
+    } finally {
+      setBillingBusy(null);
     }
-  }, []);
+  }, [billingBusy]);
 
   // Downgrade to Standard handler
   const handleDowngradeToStandard = useCallback(async () => {
+    if (billingBusy) return;
     if (!confirm('This will cancel your cloud relay enrollments and downgrade to Standard. Continue?')) return;
+    // For Apple-paid users, downgrade goes through Apple's manage-subs sheet
+    // (Standard and Cloud are in the same subscription group, so Apple
+    // handles the tier change with proration).
+    if (accountData?.account?.subscriptionSource === 'apple') {
+      openManageSubscriptions();
+      toast.info('Pick the Standard plan in the manage-subscriptions sheet to downgrade.');
+      return;
+    }
+    setBillingBusy('downgrade');
     try {
       const { data } = await downgradeMutation({ variables: {} });
       const result = data?.downgradeToStandard;
       if (result?.upgraded) {
         toast.success('Downgraded to Standard plan');
-        refetchAccount?.();
+        await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
       } else if (result?.error) {
         toast.error(result.error);
       }
     } catch {
       toast.error('Failed to downgrade');
+    } finally {
+      setBillingBusy(null);
     }
-  }, [downgradeMutation, refetchAccount]);
+  }, [downgradeMutation, accountData, billingBusy]);
 
   // Onboarding completion handler
   const handleOnboardingComplete = useCallback(async (setupPath: SetupPath, enrollmentId?: string) => {
@@ -5916,6 +5946,7 @@ const Dashboard = () => {
               handleUpgradeToCloud={handleUpgradeToCloud}
               handleDowngradeToStandard={handleDowngradeToStandard}
               handleManageSubscription={handleManageSubscription}
+              billingBusy={billingBusy}
               hasSubscription={hasSubscription}
               cloudSignupsAvailable={cloudSignupsAvailable}
               isRelayCapable={isRelayCapable}
