@@ -24,6 +24,10 @@ interface OpenTriggerSpec {
 interface TourStep {
   target: string; // data-tour attribute value, or '' for centered card
   mobileTarget?: string; // Alternative target on mobile (e.g., hamburger button instead of sidebar)
+  // Extra data-tour selectors to spotlight alongside `target`. The primary
+  // `target` still drives card positioning and the `mobileTarget` override;
+  // additional targets are highlight-only and silently skipped if missing.
+  additionalTargets?: string[];
   // Chained triggers that fire if `target` isn't yet in the DOM. Each one opens
   // a container so the next is reachable (e.g. open the sidebar sheet, then
   // right-click the first home). On step exit we press Escape once per fired
@@ -62,16 +66,18 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    // Stage 1: just spotlight the home and tell the user the gesture. We open
-    // the sidebar sheet on mobile so the home is visible, but do NOT open the
-    // context menu — that comes on stage 2.
+    // Stage 1: spotlight both share entry points (sidebar home/room and the
+    // device widget area) so the user sees in one shot that sharing works at
+    // home, room, or single-device granularity. Stage 2 then demonstrates the
+    // right-click flow on the home/room.
     target: 'sidebar-home-item',
+    additionalTargets: ['widget-area'],
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
     ],
-    title: 'Share a home or room',
-    description: 'Right-click any home or room in the sidebar to open its menu.',
-    mobileDescription: 'Long-press any home or room in the sidebar to open its menu.',
+    title: 'Share homes, rooms, or devices',
+    description: 'Right-click any home or room in the sidebar — or any device widget — to open its share menu.',
+    mobileDescription: 'Long-press any home or room in the sidebar — or any device widget — to open its share menu.',
     position: 'right',
   },
   {
@@ -84,13 +90,6 @@ const STEPS: TourStep[] = [
     title: 'Then choose Share',
     description: 'Pick Admin, Control or View-only and they\'ll get an email invite.',
     position: 'right',
-  },
-  {
-    target: 'widget-area',
-    title: 'Share a single device',
-    description: 'Right-click any device widget and choose Share to invite someone to just that accessory.',
-    mobileDescription: 'Long-press any device widget and tap Share to invite someone to just that accessory.',
-    position: 'bottom',
   },
   {
     target: 'sidebar-collections',
@@ -134,7 +133,8 @@ interface TargetRect {
 
 export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveChange }: TutorialDialogProps) {
   const [step, setStep] = useState(0);
-  const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
+  const [targetRects, setTargetRects] = useState<TargetRect[]>([]);
+  const targetRect = targetRects[0] ?? null;
   // True once we either measured the target or gave up waiting for it. We hide
   // the card while this is false to avoid a flash at the wrong position.
   const [readyToShow, setReadyToShow] = useState(true);
@@ -248,9 +248,9 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       return;
     }
 
-    // Clear last step's rect synchronously so the card doesn't render at the
+    // Clear last step's rects synchronously so the card doesn't render at the
     // previous spotlight position while we wait for this step's target.
-    setTargetRect(null);
+    setTargetRects([]);
     // Steps without a target are intentionally centered — show immediately.
     // Steps with a target hide the card until measured (or until the fallback
     // timer fires, in case the page is still loading or has no homes/devices).
@@ -403,32 +403,40 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     // get stuck on an unloaded/empty Dashboard.
     const fallbackTimer = setTimeout(() => setReadyToShow(true), 800);
 
+    const allTargets = [effectiveTarget, ...(currentStep.additionalTargets ?? [])]
+      .filter((t): t is string => !!t);
+
     const measure = () => {
       // Some data-tour values are duplicated (sidebar-homes, sidebar-collections
       // exist in both the desktop sidebar and the mobile sheet — only one is
       // visible at a time). querySelector returns DOM order, which can pick
       // the hidden one with a 0×0 rect. Walk all candidates and pick the first
       // one with a non-zero rect.
-      const candidates = document.querySelectorAll(`[data-tour="${effectiveTarget}"]`);
-      let el: Element | null = null;
-      let rect: DOMRect | undefined;
-      for (const c of candidates) {
-        const r = c.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          el = c;
-          rect = r;
-          break;
+      const pickVisible = (tour: string): { el: Element; rect: DOMRect } | null => {
+        const candidates = document.querySelectorAll(`[data-tour="${tour}"]`);
+        for (const c of candidates) {
+          const r = c.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) return { el: c, rect: r };
         }
-      }
-      const hasRect = !!rect && rect.width > 0 && rect.height > 0;
-      if (el && rect && hasRect) {
-        setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+        return null;
+      };
+
+      const found = allTargets
+        .map(t => pickVisible(t))
+        .filter((m): m is { el: Element; rect: DOMRect } => m !== null);
+
+      if (found.length > 0) {
+        setTargetRects(found.map(({ rect }) => ({
+          top: rect.top, left: rect.left, width: rect.width, height: rect.height,
+        })));
         setReadyToShow(true);
-        if (rect.top < 0 || rect.bottom > window.innerHeight) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Only scroll the primary target into view (card anchors to it).
+        const primary = found[0];
+        if (primary.rect.top < 0 || primary.rect.bottom > window.innerHeight) {
+          primary.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } else {
-        setTargetRect(null);
+        setTargetRects([]);
       }
       rafRef.current = requestAnimationFrame(measure);
     };
@@ -510,16 +518,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         <defs>
           <mask id="tour-spotlight-mask">
             <rect width="100%" height="100%" fill="white" />
-            {targetRect && (
+            {targetRects.map((r, i) => (
               <rect
-                x={targetRect.left - spotlightPad}
-                y={targetRect.top - spotlightPad}
-                width={targetRect.width + spotlightPad * 2}
-                height={targetRect.height + spotlightPad * 2}
+                key={i}
+                x={r.left - spotlightPad}
+                y={r.top - spotlightPad}
+                width={r.width + spotlightPad * 2}
+                height={r.height + spotlightPad * 2}
                 rx={spotlightRadius}
                 fill="black"
               />
-            )}
+            ))}
           </mask>
         </defs>
         <rect
@@ -540,20 +549,21 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       />
 
       {/* Spotlight ring highlight — subtle ring so the cutout itself does the
-          highlighting work. */}
-      {targetRect && (
+          highlighting work. One per target rect. */}
+      {targetRects.map((r, i) => (
         <div
+          key={i}
           className="absolute rounded-xl pointer-events-none transition-all duration-300"
           style={{
-            top: targetRect.top - spotlightPad,
-            left: targetRect.left - spotlightPad,
-            width: targetRect.width + spotlightPad * 2,
-            height: targetRect.height + spotlightPad * 2,
+            top: r.top - spotlightPad,
+            left: r.left - spotlightPad,
+            width: r.width + spotlightPad * 2,
+            height: r.height + spotlightPad * 2,
             boxShadow: '0 0 0 2px rgba(255, 255, 255, 0.35)',
             zIndex: 10045,
           }}
         />
-      )}
+      ))}
 
       {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
           while we wait for the target to mount (so it doesn't flash at the
