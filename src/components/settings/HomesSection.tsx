@@ -372,8 +372,6 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             </div>
             {!cloudSignupsAvailable ? (
               <p className="text-xs text-muted-foreground text-center">Signups paused — at capacity</p>
-            ) : isInMacApp || isInMobileApp ? (
-              <p className="text-xs text-muted-foreground text-center">Visit <a href={`${config.webUrl}/subscribe`} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline" onClick={openExternalUrl(`${config.webUrl}/subscribe`)}>{new URL(config.webUrl).host}/subscribe</a> to upgrade to Cloud</p>
             ) : (
               <Button size="sm" className="w-full text-xs" onClick={handleUpgradeToCloud}>
                 Upgrade to Cloud — {pricing.cloud.formatted}/mo
