@@ -86,7 +86,10 @@ function callNativePurchase<T = any>(method: string, payload: Record<string, unk
 
 let _cachedProducts: Record<PlanId, NativeProduct> | null = null;
 
-/** Fetch live prices from StoreKit (cached). Returns null on web. */
+/** Fetch live prices from StoreKit (cached). Returns null on web or when
+ *  StoreKit returns no products (which means the config isn't loaded or
+ *  the app isn't approved for IAP yet). Callers should treat null as
+ *  "pricing unknown" and show a placeholder. */
 export async function getNativeProducts(): Promise<Record<PlanId, NativeProduct> | null> {
   if (!isNativePurchaseAvailable()) return null;
   if (_cachedProducts) return _cachedProducts;
@@ -94,10 +97,18 @@ export async function getNativeProducts(): Promise<Record<PlanId, NativeProduct>
     const products = await callNativePurchase<NativeProduct[]>('getProducts', {
       productIds: Object.values(NATIVE_PRODUCT_IDS),
     });
+    if (!Array.isArray(products) || products.length === 0) {
+      console.warn('[purchase] StoreKit returned no products');
+      return null;
+    }
     const byPlan: Record<PlanId, NativeProduct> = {} as any;
     for (const p of products) {
       const plan = (Object.entries(NATIVE_PRODUCT_IDS).find(([, id]) => id === p.productId) || [])[0] as PlanId | undefined;
       if (plan) byPlan[plan] = p;
+    }
+    if (!byPlan.standard && !byPlan.cloud) {
+      console.warn('[purchase] StoreKit returned products but none matched expected IDs', products);
+      return null;
     }
     _cachedProducts = byPlan;
     return byPlan;

@@ -4816,23 +4816,37 @@ const Dashboard = () => {
     return <AccessoryDealBadge accessory={accessory} />;
   }, [showSmartDeals]);
 
-  // Manage subscription handler — Apple's manage-subs sheet for IAP, Stripe portal for web
+  // Manage subscription handler — branches on which billing system owns the
+  // user's active sub. Apple-paid → StoreKit sheet. Stripe-paid → Stripe
+  // portal (works for legacy web customers signed into the App Store build,
+  // managing an existing externally-paid sub which Apple permits).
   const handleManageSubscription = useCallback(async () => {
-    if (isNativePurchaseAvailable()) {
+    const source = accountData?.account?.subscriptionSource;
+    if (source === 'apple') {
       openManageSubscriptions();
       return;
     }
     try {
       const { data } = await createPortalMutation();
       if (data?.createPortalSession?.url) {
-        window.location.href = data.createPortalSession.url;
+        // Inside the App Store WKWebView, navigate via the openUrl bridge so
+        // the portal opens in Safari (not the web view).
+        const w = window as any;
+        if (w.webkit?.messageHandlers?.homecast) {
+          w.webkit.messageHandlers.homecast.postMessage({
+            action: 'openUrl',
+            url: data.createPortalSession.url,
+          });
+        } else {
+          window.location.href = data.createPortalSession.url;
+        }
       } else if (data?.createPortalSession?.error) {
         toast.error(data.createPortalSession.error);
       }
     } catch (e) {
       toast.error('Failed to open subscription management');
     }
-  }, [createPortalMutation]);
+  }, [accountData, createPortalMutation]);
 
   // Upgrade to Cloud handler
   const handleUpgradeToCloud = useCallback(async () => {
