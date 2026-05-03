@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useR
 import { cn } from '@/lib/utils';
 import { config, isCommunity } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
+import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useLazyQuery, useMutation, useApolloClient } from '@apollo/client/react';
@@ -4802,13 +4803,15 @@ const Dashboard = () => {
     const result = await purchasePlan('standard');
     if (result.upgraded) {
       toast.success('Upgraded to Standard');
-      refetchAccount?.();
+      // Force a fresh account fetch (skip Apollo cache) so the UI reflects
+      // the new account_type without a page reload.
+      await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
     } else if (result.redirectUrl) {
       window.location.href = result.redirectUrl;
     } else if (result.error) {
       toast.error(result.error);
     }
-  }, [refetchAccount]);
+  }, []);
 
   // Smart Deal badge — rendered as a child component so it reads DealsContext from inside the provider
   const getDealBadge = useCallback((accessory: import('@/lib/graphql/types').HomeKitAccessory) => {
@@ -4853,13 +4856,13 @@ const Dashboard = () => {
     const result = await purchasePlan('cloud');
     if (result.upgraded) {
       toast.success('Upgraded to Cloud plan!');
-      refetchAccount?.();
+      await apolloClient.refetchQueries({ include: ['GetAccount', 'GetMe'] });
     } else if (result.redirectUrl) {
       window.location.href = result.redirectUrl;
     } else if (result.error) {
       toast.error(result.error);
     }
-  }, [refetchAccount]);
+  }, []);
 
   // Downgrade to Standard handler
   const handleDowngradeToStandard = useCallback(async () => {
