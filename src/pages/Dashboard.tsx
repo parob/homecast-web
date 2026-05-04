@@ -4892,15 +4892,17 @@ const Dashboard = () => {
   // Downgrade to Standard handler
   const handleDowngradeToStandard = useCallback(async () => {
     if (billingBusy) return;
-    if (!confirm('This will cancel your cloud relay enrollments and downgrade to Standard. Continue?')) return;
-    // For Apple-paid users, downgrade goes through Apple's manage-subs sheet
-    // (Standard and Cloud are in the same subscription group, so Apple
-    // handles the tier change with proration).
+    // Apple-paid users go through Apple's manage-subs sheet (Standard +
+    // Cloud are in the same subscription group, Apple handles the tier
+    // change with proration). The sheet IS the confirmation step, and
+    // window.confirm doesn't render in WKWebView without a WKUIDelegate
+    // panel handler — so we skip it for the Apple path.
     if (accountData?.account?.subscriptionSource === 'apple') {
       openManageSubscriptions();
-      toast.info('Pick the Standard plan in the manage-subscriptions sheet to downgrade.');
+      toast.info('Pick Standard in the App Store sheet to switch tiers.');
       return;
     }
+    if (!window.confirm('This will cancel your cloud relay enrollments and downgrade to Standard. Continue?')) return;
     setBillingBusy('downgrade');
     try {
       const { data } = await downgradeMutation({ variables: {} });
