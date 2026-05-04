@@ -4806,6 +4806,14 @@ const Dashboard = () => {
   // Upgrade handler
   const handleUpgrade = useCallback(async () => {
     if (billingBusy) return;
+    // Apple-paid users on the web portal can't initiate a Stripe purchase
+    // (server would reject it to prevent double-billing). Route them to
+    // Apple's manage-subs page where they can switch tiers natively.
+    if (accountData?.account?.subscriptionSource === 'apple') {
+      openManageSubscriptions();
+      toast.info('Switch tiers from the App Store subscriptions page.');
+      return;
+    }
     setBillingBusy('upgrade');
     try {
       const result = await purchasePlan('standard');
@@ -4822,7 +4830,7 @@ const Dashboard = () => {
     } finally {
       setBillingBusy(null);
     }
-  }, [billingBusy]);
+  }, [billingBusy, accountData]);
 
   // Smart Deal badge — rendered as a child component so it reads DealsContext from inside the provider
   const getDealBadge = useCallback((accessory: import('@/lib/graphql/types').HomeKitAccessory) => {
@@ -4867,6 +4875,12 @@ const Dashboard = () => {
   // Upgrade to Cloud handler
   const handleUpgradeToCloud = useCallback(async () => {
     if (billingBusy) return;
+    // Same Apple-on-web guard as handleUpgrade above.
+    if (accountData?.account?.subscriptionSource === 'apple') {
+      openManageSubscriptions();
+      toast.info('Switch tiers from the App Store subscriptions page.');
+      return;
+    }
     setBillingBusy('upgradeCloud');
     try {
       const result = await purchasePlan('cloud');
@@ -4887,7 +4901,7 @@ const Dashboard = () => {
     } finally {
       setBillingBusy(null);
     }
-  }, [billingBusy]);
+  }, [billingBusy, accountData]);
 
   // Downgrade to Standard handler
   const handleDowngradeToStandard = useCallback(async () => {
@@ -5950,6 +5964,7 @@ const Dashboard = () => {
               handleDowngradeToStandard={handleDowngradeToStandard}
               handleManageSubscription={handleManageSubscription}
               billingBusy={billingBusy}
+              subscriptionSource={accountData?.account?.subscriptionSource ?? null}
               hasSubscription={hasSubscription}
               cloudSignupsAvailable={cloudSignupsAvailable}
               isRelayCapable={isRelayCapable}

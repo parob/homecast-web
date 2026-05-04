@@ -71,6 +71,9 @@ export interface SettingsDialogProps {
   handleManageSubscription: () => Promise<void>;
   /** Which billing action (if any) is currently in flight — drives spinner + disable on Plan tab buttons. */
   billingBusy?: 'upgrade' | 'upgradeCloud' | 'downgrade' | 'manage' | null;
+  /** Where the user's active sub came from. Used by the Plan tab to swap
+   *  buttons + price labels for Apple-paid users in the web portal. */
+  subscriptionSource?: 'stripe' | 'apple' | null;
   hasSubscription: boolean;
   cloudSignupsAvailable: boolean;
   isRelayCapable: () => boolean;
@@ -285,6 +288,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             handleDowngradeToStandard={props.handleDowngradeToStandard}
             handleManageSubscription={props.handleManageSubscription}
             billingBusy={props.billingBusy}
+            subscriptionSource={props.subscriptionSource}
             hasSubscription={props.hasSubscription}
             cloudSignupsAvailable={props.cloudSignupsAvailable}
             isRelayCapable={props.isRelayCapable}
