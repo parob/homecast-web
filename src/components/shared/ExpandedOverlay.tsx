@@ -111,7 +111,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       <div ref={parentRef} className="hidden" />
       {shouldRender && createPortal(
         <div
-          className="fixed z-[10060] pointer-events-auto"
+          className="fixed z-[10018] pointer-events-auto"
           style={{
             left: coords.x,
             // Anchor overlay's content to sit TOP_OFFSET px below the widget's

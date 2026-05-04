@@ -141,7 +141,8 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   const isMobile = useIsMobile();
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  // Toggle demo data on the host while the tutorial is open.
+  // Toggle demo data on the host while the tutorial is open. Reset step to 0
+  // when the dialog opens (false → true).
   useEffect(() => {
     if (!open) return;
     setStep(0);

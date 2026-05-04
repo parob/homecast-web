@@ -8,8 +8,6 @@ interface DisplaySectionProps {
   toggleHideAccessoryCounts: (value: boolean) => void;
   groupByRoom: boolean;
   toggleGroupByRoom: (value: boolean) => void;
-  groupByType: boolean;
-  toggleGroupByType: (value: boolean) => void;
   layoutMode: 'grid' | 'masonry';
   changeLayoutMode: (mode: 'grid' | 'masonry') => void;
   fullWidth: boolean;
@@ -34,8 +32,6 @@ export function DisplaySection({
   toggleHideAccessoryCounts,
   groupByRoom,
   toggleGroupByRoom,
-  groupByType,
-  toggleGroupByType,
   layoutMode,
   changeLayoutMode,
   fullWidth,
@@ -105,8 +101,6 @@ export function DisplaySection({
           />
         </div>
       </div>
-      {/* Group by type hidden — always off for now */}
-
       {/* Layout picker hidden — always masonry for now (may reintroduce later)
       <div className="border-t pt-4" />
 

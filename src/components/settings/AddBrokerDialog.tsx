@@ -13,7 +13,9 @@ import { Switch } from '@/components/ui/switch';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useMutation } from '@apollo/client/react';
 import { ADD_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
+import { addMQTTBroker, updateMQTTBroker, testMQTTConnection } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
+import { isCommunity } from '@/lib/config';
 import { toast } from 'sonner';
 
 interface AddBrokerDialogProps {
@@ -58,7 +60,24 @@ export function AddBrokerDialog({ open, onOpenChange, homeId, editBroker, onSave
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
-    // TODO: server-side connection test
+    if (isCommunity) {
+      try {
+        const r = await testMQTTConnection({
+          host,
+          port: parseInt(port) || 1883,
+          username: username || undefined,
+          password: password || undefined,
+          useTLS,
+        });
+        setTestResult(r);
+      } catch (e: any) {
+        setTestResult({ success: false, error: e?.message || 'Connection failed' });
+      } finally {
+        setTesting(false);
+      }
+      return;
+    }
+    // Cloud: server-side test not yet wired; treat as success after a beat.
     setTimeout(() => {
       setTestResult({ success: true });
       setTesting(false);
@@ -73,19 +92,46 @@ export function AddBrokerDialog({ open, onOpenChange, homeId, editBroker, onSave
 
     setSaving(true);
     try {
-      await addHomeMqttBroker({
-        variables: {
-          homeId,
-          name: name || host,
-          host,
-          port: parseInt(port) || 1883,
-          username: username || undefined,
-          password: password || undefined,
-          useTls: useTLS,
-          topicPrefix: topicPrefix || 'homecast',
-          haDiscovery,
-        },
-      });
+      if (isCommunity) {
+        if (isEditing && editBroker) {
+          await updateMQTTBroker(homeId, editBroker.id, {
+            name: name || host,
+            host,
+            port: parseInt(port) || 1883,
+            username: username || undefined,
+            ...(password ? { password } : {}),
+            useTLS,
+            topicPrefix: topicPrefix || 'homecast',
+            haDiscovery,
+          });
+        } else {
+          await addMQTTBroker(homeId, {
+            name: name || host,
+            host,
+            port: parseInt(port) || 1883,
+            username: username || undefined,
+            password: password || undefined,
+            useTLS,
+            topicPrefix: topicPrefix || 'homecast',
+            haDiscovery,
+            haDiscoveryPrefix: 'homeassistant',
+          });
+        }
+      } else {
+        await addHomeMqttBroker({
+          variables: {
+            homeId,
+            name: name || host,
+            host,
+            port: parseInt(port) || 1883,
+            username: username || undefined,
+            password: password || undefined,
+            useTls: useTLS,
+            topicPrefix: topicPrefix || 'homecast',
+            haDiscovery,
+          },
+        });
+      }
       toast.success(isEditing ? 'Broker updated' : 'Broker added');
       onSaved();
       onOpenChange(false);

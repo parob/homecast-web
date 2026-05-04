@@ -564,7 +564,6 @@ export interface DeviceDisplaySettings {
   hideAccessoryCounts?: boolean;
   layoutMode?: 'grid' | 'masonry';
   groupByRoom?: boolean;
-  groupByType?: boolean;
   iconStyle?: 'standard' | 'colourful';
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
@@ -578,7 +577,7 @@ export interface DeviceDisplaySettings {
 // Keys that are per-device (display/layout) vs global (ordering/data)
 export const DEVICE_SETTING_KEYS: readonly (keyof DeviceDisplaySettings)[] = [
   'compactMode', 'hideInfoDevices', 'hideAccessoryCounts',
-  'layoutMode', 'groupByRoom', 'groupByType', 'iconStyle',
+  'layoutMode', 'groupByRoom', 'iconStyle',
   'fontSize', 'autoBackgrounds', 'fullWidth', 'pinnedTabs', 'lastView',
 ] as const;
 
@@ -608,7 +607,6 @@ export interface UserSettingsData {
   hideAccessoryCounts?: boolean;
   layoutMode?: 'grid' | 'masonry';
   groupByRoom?: boolean;
-  groupByType?: boolean;
   iconStyle?: 'standard' | 'colourful';
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;

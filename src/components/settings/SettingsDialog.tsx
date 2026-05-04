@@ -25,6 +25,8 @@ import {
   ArrowLeft,
   Tag,
   Bell,
+  ExternalLink,
+  Copy,
 } from 'lucide-react';
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import { isCommunity } from '@/lib/config';
@@ -89,8 +91,6 @@ export interface SettingsDialogProps {
   toggleHideAccessoryCounts: (value: boolean) => void;
   groupByRoom: boolean;
   toggleGroupByRoom: (value: boolean) => void;
-  groupByType: boolean;
-  toggleGroupByType: (value: boolean) => void;
   // Style
   layoutMode: 'grid' | 'masonry';
   changeLayoutMode: (mode: 'grid' | 'masonry') => void;
@@ -230,6 +230,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return groups;
   }, [menuItems]);
 
+  const openExternalUrl = (url: string) => (e: React.MouseEvent) => {
+    const w = window as any;
+    if (w.webkit?.messageHandlers?.homecast) {
+      e.preventDefault();
+      w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url });
+    }
+  };
+
   const renderSection = (tab: SettingsTab) => {
     switch (tab) {
       case 'plan':
@@ -242,6 +250,33 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </p>
             </div>
             <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-sm font-medium">Local portal</p>
+              <p className="text-xs text-muted-foreground">
+                Open Homecast from any device on your network at this address.
+              </p>
+              <div className="flex items-center gap-2">
+                <a
+                  href={window.location.origin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={openExternalUrl(window.location.origin)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline font-mono truncate"
+                >
+                  {window.location.origin}
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => props.copyToClipboard(window.location.origin)}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Copy local portal URL"
+                >
+                  <Copy className="h-3 w-3" />
+                  Copy
+                </button>
+              </div>
+            </div>
+            <div className="rounded-lg border p-3 space-y-2">
               <p className="text-sm font-medium">Support Homecast</p>
               <p className="text-xs text-muted-foreground">
                 Homecast Community is free and open. If you find it useful, consider supporting the project.
@@ -250,30 +285,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 href={GITHUB_SPONSORS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={openExternalUrl(GITHUB_SPONSORS_URL)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
                 Sponsor on GitHub →
               </a>
             </div>
-            {/* Anti-steering: external "View plans" link is hidden in App Store
-                builds. Community users on the App Store still see the
-                Community panel above; they switch to Cloud via mode change. */}
-            {!(window as any).isHomecastNativePurchaseAvailable && (
-              <div className="rounded-lg border p-3 space-y-2">
-                <p className="text-sm font-medium">Want remote access & cloud features?</p>
-                <p className="text-xs text-muted-foreground">
-                  Switch to Homecast Cloud for remote access from anywhere, cloud sync, and more.
-                </p>
-                <a
-                  href="https://homecast.cloud/pricing"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                >
-                  View plans →
-                </a>
-              </div>
-            )}
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-sm font-medium">Want remote access & cloud features?</p>
+              <p className="text-xs text-muted-foreground">
+                Switch to Homecast Cloud for remote access from anywhere, cloud sync, and more.
+              </p>
+              <a
+                href="https://homecast.cloud/pricing"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={openExternalUrl('https://homecast.cloud/pricing')}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                View plans →
+              </a>
+            </div>
           </div>
         ) : PlanSection ? (
           <PlanSection
@@ -315,8 +347,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
             toggleHideAccessoryCounts={props.toggleHideAccessoryCounts}
             groupByRoom={props.groupByRoom}
             toggleGroupByRoom={props.toggleGroupByRoom}
-            groupByType={props.groupByType}
-            toggleGroupByType={props.toggleGroupByType}
             layoutMode={props.layoutMode}
             changeLayoutMode={props.changeLayoutMode}
             fullWidth={props.fullWidth}

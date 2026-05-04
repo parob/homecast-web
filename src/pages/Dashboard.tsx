@@ -1424,8 +1424,6 @@ const Dashboard = () => {
   const [sidebarRoomsExpanded, setSidebarRoomsExpanded] = useState(true);
   const [sidebarGroupsExpanded, setSidebarGroupsExpanded] = useState(true);
 
-  // Track which service groups are expanded
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // Track which individual widget is expanded (for click-to-expand in compact mode)
   const [expandedWidgetId, setExpandedWidgetId] = useState<string | null>(null);
   // All user settings - loaded from backend, defaults applied until loaded
@@ -1435,7 +1433,6 @@ const Dashboard = () => {
   const [hideAccessoryCounts, setHideAccessoryCounts] = useState<boolean>(true);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'masonry'>('masonry');
   const [groupByRoom, setGroupByRoom] = useState<boolean>(true);
-  const [groupByType, setGroupByType] = useState<boolean>(false);
   const [iconStyle, setIconStyle] = useState<'standard' | 'colourful'>('colourful');
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('large');
   const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(false);
@@ -2060,7 +2057,6 @@ const Dashboard = () => {
         // Layout picker hidden — always masonry for now (may reintroduce later)
         // if (display.layoutMode === 'grid' || display.layoutMode === 'masonry') setLayoutMode(display.layoutMode);
         if (typeof display.groupByRoom === 'boolean') setGroupByRoom(display.groupByRoom);
-        if (typeof display.groupByType === 'boolean') setGroupByType(display.groupByType);
         // Handle iconStyle with migration from old values
         if (display.iconStyle === 'standard' || display.iconStyle === 'colourful') {
           setIconStyle(display.iconStyle);
@@ -2253,7 +2249,7 @@ const Dashboard = () => {
     // Current device display state
     const currentDeviceSettings = {
       compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode,
-      groupByRoom, groupByType, iconStyle, fontSize, autoBackgrounds,
+      groupByRoom, iconStyle, fontSize, autoBackgrounds,
       fullWidth, pinnedTabs, lastView,
     };
 
@@ -2263,8 +2259,11 @@ const Dashboard = () => {
       visibility, includedAccessoryIds, includedServiceGroupIds, developerMode,
     };
 
-    // Merge: global at top level, device settings nested under devices[deviceId]
+    // Merge: global at top level, device settings nested under devices[deviceId].
+    // Spread fullBlob first so top-level keys Dashboard doesn't track
+    // (tutorialCompleted, onboarding, smartDealsEnabled, etc.) survive the save.
     const merged: UserSettingsData = {
+      ...fullBlob,
       ...currentGlobalSettings,
       ...globalUpdates,
       devices: {
@@ -2296,7 +2295,7 @@ const Dashboard = () => {
       }
       return false;
     }
-  }, [compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, groupByType, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, lastView, settingsData, updateSettingsMutation]);
+  }, [compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, lastView, settingsData, updateSettingsMutation]);
 
   // Keep saveSettingsRef in sync so debouncedSaveLastView (defined early) can call it
   saveSettingsRef.current = saveSettings;
@@ -3721,19 +3720,6 @@ const Dashboard = () => {
     return ids;
   }, [serviceGroups, accessories]);
 
-  // Toggle group expanded state (not persisted - always closed on refresh)
-  const toggleGroupExpanded = useCallback((groupId: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  }, []);
-
   // Toggle compact mode (optimistic update with transition for smooth UI)
   const toggleCompactMode = useCallback((value: boolean) => {
     startCompactModeTransition(() => {
@@ -3764,12 +3750,6 @@ const Dashboard = () => {
   const toggleGroupByRoom = useCallback((value: boolean) => {
     setGroupByRoom(value);
     saveSettings({ groupByRoom: value }, 'groupByRoom');
-  }, [saveSettings]);
-
-  // Toggle group by type (optimistic)
-  const toggleGroupByType = useCallback((value: boolean) => {
-    setGroupByType(value);
-    saveSettings({ groupByType: value }, 'groupByType');
   }, [saveSettings]);
 
   const toggleDeveloperMode = useCallback((value: boolean) => {
@@ -3974,38 +3954,6 @@ const Dashboard = () => {
     }
   }, [selectedHomeId, serviceGroups, allServiceGroupsData, homes, accessories, updateCharacteristicInCache, isViewOnly]);
 
-  // Get averaged characteristics for a group (for tooltip display)
-  const getGroupAverageCharacteristics = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = accessories.filter(a => group.accessoryIds.includes(a.id));
-    if (groupAccessories.length === 0) return [];
-
-    // Collect all characteristic values by type
-    const charValues: Record<string, { values: number[], type: string }> = {};
-    const charTypes = ['brightness', 'color_temperature', 'target_position', 'current_position', 'current_temperature', 'target_temperature'];
-
-    for (const acc of groupAccessories) {
-      for (const service of acc.services || []) {
-        for (const char of service.characteristics || []) {
-          if (charTypes.includes(char.characteristicType)) {
-            const val = parseFloat(String(char.value));
-            if (!isNaN(val)) {
-              if (!charValues[char.characteristicType]) {
-                charValues[char.characteristicType] = { values: [], type: char.characteristicType };
-              }
-              charValues[char.characteristicType].values.push(val);
-            }
-          }
-        }
-      }
-    }
-
-    // Calculate averages
-    return Object.entries(charValues).map(([type, data]) => ({
-      type,
-      value: Math.round(data.values.reduce((a, b) => a + b, 0) / data.values.length)
-    }));
-  }, [accessories]);
-
   // Auto-select home: use saved preference, or primary home, or first home
   // But NOT if a collection is selected
   // Uses visibleHomes so free-plan users don't land on a home with 0 included accessories
@@ -4077,79 +4025,6 @@ const Dashboard = () => {
   const getAccessoriesInGroup = useCallback((group: HomeKitServiceGroup) => {
     return accessories.filter(a => group.accessoryIds.includes(a.id));
   }, [accessories]);
-
-  // Check if all accessories in a group are on
-  const isGroupOn = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = getAccessoriesInGroup(group);
-    return groupAccessories.some(accessory => {
-      for (const service of accessory.services || []) {
-        for (const char of service.characteristics || []) {
-          if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
-            const value = parseCharacteristicValue(char.value);
-            if (value === true || value === 1) return true;
-          }
-        }
-      }
-      return false;
-    });
-  }, [getAccessoriesInGroup]);
-
-  // Check if a group contains window covering devices
-  const isWindowCoveringGroup = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = getAccessoriesInGroup(group);
-    return groupAccessories.length > 0 && groupAccessories.every(accessory =>
-      hasServiceType(accessory, 'window_covering')
-    );
-  }, [getAccessoriesInGroup]);
-
-  // Get the average position of all window coverings in a group
-  const getGroupAveragePosition = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = getAccessoriesInGroup(group);
-    let total = 0;
-    let count = 0;
-    for (const accessory of groupAccessories) {
-      const posChar = getCharacteristic(accessory, 'current_position');
-      if (posChar) {
-        const value = posChar.value;
-        // Handle false/invalid values
-        const numValue = (value === false || value === 'false' || value === null || value === undefined)
-          ? 0
-          : Number(value);
-        if (!isNaN(numValue)) {
-          total += numValue;
-          count++;
-        }
-      }
-    }
-    return count > 0 ? Math.round(total / count) : 0;
-  }, [getAccessoriesInGroup]);
-
-  // Get the average brightness of all lights in a group
-  const getGroupAverageBrightness = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = getAccessoriesInGroup(group);
-    let total = 0;
-    let count = 0;
-    for (const accessory of groupAccessories) {
-      const brightnessChar = getCharacteristic(accessory, 'brightness');
-      if (brightnessChar) {
-        const value = brightnessChar.value;
-        const numValue = value !== null && value !== undefined ? Number(value) : null;
-        if (numValue !== null && !isNaN(numValue)) {
-          total += numValue;
-          count++;
-        }
-      }
-    }
-    return count > 0 ? Math.round(total / count) : null;
-  }, [getAccessoriesInGroup]);
-
-  // Check if a group is a light group (has dimmable lights)
-  const isLightGroup = useCallback((group: HomeKitServiceGroup) => {
-    const groupAccessories = getAccessoriesInGroup(group);
-    return groupAccessories.some(acc =>
-      hasServiceType(acc, 'lightbulb') && getCharacteristic(acc, 'brightness') !== null
-    );
-  }, [getAccessoriesInGroup]);
 
   // Categorize accessories by type
   const getAccessoryCategory = useCallback((accessory: HomeKitAccessory): string => {
@@ -4229,13 +4104,6 @@ const Dashboard = () => {
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoomId, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, visibility, visibilityVersion]);
-
-  // Get category for a service group (based on first accessory)
-  const getGroupCategory = (group: HomeKitServiceGroup): string => {
-    const groupAccessories = accessories.filter(a => group.accessoryIds.includes(a.id));
-    if (groupAccessories.length === 0) return 'Other';
-    return getAccessoryCategory(groupAccessories[0]);
-  };
 
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
@@ -4980,7 +4848,17 @@ const Dashboard = () => {
     try {
       const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
       const updated = { ...currentSettings, tutorialCompleted: true };
-      await updateSettingsMutation({ variables: { data: JSON.stringify(updated) } });
+      const updatedJson = JSON.stringify(updated);
+      await updateSettingsMutation({
+        variables: { data: updatedJson },
+        optimisticResponse: {
+          updateSettings: {
+            __typename: 'UpdateSettingsResult',
+            success: true,
+            settings: { __typename: 'UserSettings', data: updatedJson },
+          },
+        },
+      });
     } catch { /* ignore save errors */ }
   }, [settingsData, updateSettingsMutation]);
 
@@ -5985,8 +5863,6 @@ const Dashboard = () => {
               toggleHideAccessoryCounts={toggleHideAccessoryCounts}
               groupByRoom={groupByRoom}
               toggleGroupByRoom={toggleGroupByRoom}
-              groupByType={groupByType}
-              toggleGroupByType={toggleGroupByType}
               layoutMode={layoutMode}
               changeLayoutMode={changeLayoutMode}
               fullWidth={fullWidth}
@@ -6799,7 +6675,7 @@ const Dashboard = () => {
                       {(() => {
 
                         // Get unified ordered items (groups and accessories interleaved)
-                        const orderedItems = selectedHomeId && !groupByType
+                        const orderedItems = selectedHomeId
                           ? getOrderedItems(selectedHomeId, contextId, roomGroups, displayAccessories, null as any)
                           : [
                               ...roomGroups.map(g => ({ type: 'group' as const, data: g })),
@@ -6831,7 +6707,7 @@ const Dashboard = () => {
                         }
                       >
                         {/* Unified rendering of groups and accessories - interleaved based on order */}
-                        {!groupByType && orderedItems.map((item) => {
+                        {orderedItems.map((item) => {
                           if (item.type === 'group') {
                             const group = item.data;
                             const groupAccessories = getAccessoriesInGroup(group);
@@ -7063,7 +6939,7 @@ const Dashboard = () => {
                           setItemOrderVersion(v => v + 1);
                         };
 
-                        return !groupByType && selectedHomeId ? (
+                        return selectedHomeId ? (
                           <DraggableGrid
                             enabled={dndEnabled}
                             touchMode={isTouchDevice}
@@ -7093,610 +6969,6 @@ const Dashboard = () => {
                         ) : gridContent;
                       })()}
 
-                      {/* Group by type - render each category separately */}
-                      {groupByType && (() => {
-                        // Reuse pre-computed room context and visible items from outer scope
-                        const ungroupedAccessories = displayAccessories;
-
-                        // Categorize accessories and sort by widget type within each category
-                        const accessoriesByCategory = ungroupedAccessories.reduce((acc, accessory) => {
-                          const cat = getAccessoryCategory(accessory);
-                          if (!acc[cat]) acc[cat] = [];
-                          acc[cat].push(accessory);
-                          return acc;
-                        }, {} as Record<string, HomeKitAccessory[]>);
-
-                        // Sort each category by primary service type so same widget types are together
-                        Object.keys(accessoriesByCategory).forEach(cat => {
-                          accessoriesByCategory[cat].sort((a, b) => {
-                            const aType = getPrimaryServiceType(a) || 'zzz';
-                            const bType = getPrimaryServiceType(b) || 'zzz';
-                            return aType.localeCompare(bType);
-                          });
-                        });
-
-                        // Categorize groups
-                        const groupsByCategory = roomGroups.reduce((acc, group) => {
-                          const cat = getGroupCategory(group);
-                          if (!acc[cat]) acc[cat] = [];
-                          acc[cat].push(group);
-                          return acc;
-                        }, {} as Record<string, HomeKitServiceGroup[]>);
-
-                        // Get all categories that have either accessories or groups
-                        const sortedCategories = CATEGORY_ORDER.filter(cat =>
-                          (accessoriesByCategory[cat]?.length > 0) || (groupsByCategory[cat]?.length > 0)
-                        );
-
-                        return sortedCategories.map((category, catIndex) => (
-                          <div key={category} className={catIndex > 0 ? (compactMode ? 'mt-2' : 'mt-4') : (compactMode ? 'mt-1' : 'mt-2')}>
-                            <p className={`text-[10px] ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/50'} ${compactMode ? 'mb-1' : 'mb-2'}`}>
-                              {category}
-                            </p>
-                            <MasonryGrid
-                              enabled={layoutMode === 'masonry' && !compactMode && !isMobile}
-                              compact={compactMode}
-                              minColumnWidth={fontSize === 'small' ? 250 : 290}
-                              className={
-                                layoutMode === 'masonry' && !compactMode && !isMobile
-                                  ? ''
-                                  : compactMode
-                                    ? (fontSize === 'small'
-                                      ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
-                                      : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
-                                    : (fontSize === 'small'
-                                      ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
-                                      : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')
-                              }
-                            >
-                              {/* Groups in this category */}
-                              {(groupsByCategory[category] || []).map((group) => {
-                                const isBlindsGroup = isWindowCoveringGroup(group);
-                                const isLightsGroup = isLightGroup(group);
-                                const groupAccessories = getAccessoriesInGroup(group);
-                                const actualGroupOn = isBlindsGroup ? getGroupAveragePosition(group) > 50 : isGroupOn(group);
-                                const isExpanded = expandedGroups.has(group.id);
-                                const groupPosition = isBlindsGroup ? getGroupAveragePosition(group) : 0;
-                                const groupBrightness = isLightsGroup ? getGroupAverageBrightness(group) : null;
-                                const isGroupWidgetExpanded = expandedWidgetId === `group-${group.id}`;
-
-                                
-                                
-                                const showCompact = compactMode;
-                                const groupOn = actualGroupOn;
-                                const groupHidden = selectedHomeId ? isGroupHidden(selectedHomeId, group.id, contextId) : false;
-                                
-
-                                // Calculate how many accessories are on for partial state
-                                const onCount = !isBlindsGroup ? groupAccessories.filter(accessory => {
-                                  for (const service of accessory.services || []) {
-                                    for (const char of service.characteristics || []) {
-                                      if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
-                                        const value = parseCharacteristicValue(char.value);
-                                        if (value === true || value === 1) return true;
-                                      }
-                                    }
-                                  }
-                                  return false;
-                                }).length : 0;
-                                const isPartiallyOn = !isBlindsGroup && onCount > 0 && onCount < groupAccessories.length;
-
-                                // Determine group service type for icon coloring
-                                const groupServiceType = isBlindsGroup
-                                  ? 'window_covering'
-                                  : (groupAccessories[0] ? getPrimaryServiceType(groupAccessories[0]) : 'lightbulb') || 'lightbulb';
-                                const groupIconColor = (activeIconStyle === 'standard' || activeIconStyle === 'colourful') ? getIconColor(groupServiceType) : null;
-                                const groupIconBgClass = groupIconColor
-                                  ? (groupOn ? groupIconColor.bg : groupIconColor.bgOff)
-                                  : (groupOn ? 'bg-primary' : 'bg-muted');
-                                const groupIconTextClass = groupIconColor
-                                  ? (groupOn ? groupIconColor.text : groupIconColor.textOff)
-                                  : (groupOn ? 'text-primary-foreground' : '');
-                                // Card background based on service type when colourful mode is active (no hover change)
-                                const groupCardBgClass = activeIconStyle === 'colourful' && groupIconColor && groupOn
-                                  ? groupIconColor.cardBg
-                                  : (groupOn ? 'bg-primary/15' : 'bg-muted/30');
-
-                                // Create color context for group sliders
-                                const groupColorContext = {
-                                  colors: groupIconColor || DEFAULT_ICON_COLOR,
-                                  isOn: groupOn,
-                                  iconStyle: activeIconStyle,
-                                };
-
-                                // Get averaged characteristics for tooltip
-                                const groupAvgChars = getGroupAverageCharacteristics(group);
-                                const groupHomeName = getHomeName(groupAccessories[0]?.homeId);
-                                const groupRoomName = groupAccessories[0]?.roomName;
-
-                                return (
-                                  <WidgetColorContext.Provider value={groupColorContext}>
-                                  <TooltipProvider>
-                                  <Tooltip delayDuration={300}>
-                                  <TooltipTrigger asChild>
-                                  <div
-                                    key={`group-${group.id}`}
-                                    className={`relative bg-card rounded-[20px] ${compactMode ? 'cursor-pointer' : ''} `}
-                                    onClick={compactMode ? () => handleWidgetClick(`group-${group.id}`) : undefined}
-                                    onMouseLeave={isGroupWidgetExpanded ? handleWidgetMouseLeave : undefined}
-                                  >
-                                    <div>
-                                    {/* Compact group card */}
-                                    <Card
-                                      className={`relative ${groupCardBgClass} `}
-                                    >
-                                    <CardHeader className={showCompact ? 'p-2.5' : 'p-4 pb-2'}>
-                                      <div className={`flex items-center justify-between ${showCompact ? 'gap-1.5' : 'gap-2'}`}>
-                                        <div className={`flex items-center min-w-0 ${showCompact ? 'gap-1.5' : 'gap-2'}`}>
-                                          <div className={`shrink-0 flex items-center justify-center ${
-                                            showCompact ? 'h-6 w-6 rounded-md' : 'h-8 w-8 rounded-lg'
-                                          } ${groupIconBgClass} ${groupIconTextClass} ${groupOn ? 'shadow-sm' : 'opacity-30'}`}>
-                                            {isBlindsGroup
-                                              ? <Blinds className={showCompact ? 'h-3 w-3' : 'h-4 w-4'} />
-                                              : <Lightbulb className={showCompact ? 'h-3 w-3' : 'h-4 w-4'} />
-                                            }
-                                          </div>
-                                          <div className="min-w-0">
-                                            <CardTitle className={`truncate font-medium leading-tight selectable ${showCompact ? 'text-[11px]' : 'text-sm'}`}>
-                                              {getDisplayName(group.name, roomName)}
-                                            </CardTitle>
-                                            <div className={`overflow-hidden ${showCompact ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
-                                              <CardDescription className="text-xs mt-0.5 flex items-center gap-1.5 selectable">
-                                                {isBlindsGroup ? `${groupPosition}% open` : `${groupAccessories.length} device${groupAccessories.length !== 1 ? 's' : ''}`}
-                                                {isPartiallyOn && (
-                                                  <Badge variant="secondary" className={`text-[9px] px-1 py-0 h-4 ${activeIconStyle === 'colourful' && groupIconColor ? `${groupIconColor.accentMuted}` : ''}`}>
-                                                    {onCount}/{groupAccessories.length} on
-                                                  </Badge>
-                                                )}
-                                              </CardDescription>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        {!isBlindsGroup && (
-                                          <div className={`shrink-0 ${showCompact ? 'scale-75 origin-right' : ''}`} onClick={(e) => e.stopPropagation()}>
-                                            <Switch
-                                              checked={actualGroupOn}
-                                              onCheckedChange={(checked) => handleGroupToggle(group.id, checked)}
-                                              className="shrink-0"
-                                              checkedColorClass={activeIconStyle === 'colourful' ? groupIconColor?.switchBg : undefined}
-                                            />
-                                          </div>
-                                        )}
-                                      </div>
-                                    </CardHeader>
-                                    <AnimatedCollapse open={!showCompact}>
-                                      <CardContent className="px-4 pb-3 pt-1 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                        {isBlindsGroup && (
-                                          <SliderControl
-                                            label="All Blinds"
-                                            value={groupPosition}
-                                            step={5}
-                                            unit="%"
-                                            onCommit={(v) => handleGroupSlider(group.id, 'target_position', v)}
-                                          />
-                                        )}
-                                        {isLightsGroup && actualGroupOn && groupBrightness !== null && (
-                                          <SliderControl
-                                            label="All Lights"
-                                            value={groupBrightness}
-                                            step={1}
-                                            unit="%"
-                                            onCommit={(v) => handleGroupSlider(group.id, 'brightness', v)}
-                                          />
-                                        )}
-                                        {(
-                                          <Button
-                                            variant="ghost"
-                                            className={`ml-auto h-7 px-2 gap-1 text-xs rounded-md text-muted-foreground ${activeIconStyle === 'colourful' && groupOn && groupIconColor ? `${groupIconColor.accentMuted} ${groupIconColor.accentMutedHover}` : 'bg-background hover:bg-muted'}`}
-                                            onClick={() => toggleGroupExpanded(group.id)}
-                                            disabled={false}
-                                          >
-                                            {isExpanded ? 'Hide devices' : 'Show devices'}
-                                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                          </Button>
-                                        )}
-                                      </CardContent>
-                                    </AnimatedCollapse>
-                                    <AnimatedCollapse open={isExpanded && !showCompact}>
-                                      <CardContent className="px-3 pb-3 pt-0 relative z-50 isolate" onPointerDownCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()} onTouchStartCapture={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                                        <div className="space-y-2 pt-1">
-                                          {groupAccessories.map((accessory) => {
-                                            const isBlind = hasServiceType(accessory, 'window_covering');
-                                            const characteristics = getDisplayableCharacteristics(accessory);
-                                            const powerChar = characteristics.find(c => c.meta.controlType === 'toggle');
-                                            const powerValue = powerChar ? getEffectiveValue(accessory.id, powerChar.type, powerChar.value) : null;
-                                            const posChar = isBlind ? getCharacteristic(accessory, 'current_position') : null;
-                                            const posValue = posChar?.value;
-                                            const position = (posValue === false || posValue === 'false' || posValue === null || posValue === undefined)
-                                              ? 0
-                                              : Number(posValue) || 0;
-                                            const accIsOn = isBlind ? position > 50 : (powerValue === true || powerValue === 1);
-                                            const accServiceType = getPrimaryServiceType(accessory) || 'lightbulb';
-                                            const accIconColor = (activeIconStyle === 'standard' || activeIconStyle === 'colourful') ? getIconColor(accServiceType) : null;
-                                            const accIconBgClass = accIconColor
-                                              ? (accIsOn ? accIconColor.bg : accIconColor.bgOff)
-                                              : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
-                                            const accIconTextClass = accIconColor
-                                              ? (accIsOn ? accIconColor.text : accIconColor.textOff)
-                                              : '';
-                                            // Card background for accessory item
-                                            const accCardBgClass = activeIconStyle === 'colourful' && accIconColor && accIsOn
-                                              ? accIconColor.accentMuted
-                                              : (accIsOn ? 'bg-primary/10' : 'bg-background');
-                                            const getServiceIcon = () => {
-                                              switch (accServiceType) {
-                                                case 'lightbulb': return <Lightbulb className="h-3 w-3" />;
-                                                case 'switch': return <Power className="h-3 w-3" />;
-                                                case 'outlet': return <Plug className="h-3 w-3" />;
-                                                case 'fan': return <Wind className="h-3 w-3" />;
-                                                case 'window_covering': return <Blinds className="h-3 w-3" />;
-                                                case 'lock': return <Lock className="h-3 w-3" />;
-                                                case 'thermostat': return <Thermometer className="h-3 w-3" />;
-                                                case 'speaker': return <Speaker className="h-3 w-3" />;
-                                                default: return <Power className="h-3 w-3" />;
-                                              }
-                                            };
-                                            const isAccessoryExpanded = expandedWidgetId === `group-acc-${accessory.id}`;
-                                            return (
-                                              <div
-                                                key={accessory.id}
-                                                className="relative cursor-pointer"
-                                                onClick={(e) => { e.stopPropagation(); handleWidgetClick(`group-acc-${accessory.id}`); }}
-                                                onMouseLeave={isAccessoryExpanded ? handleWidgetMouseLeave : undefined}
-                                              >
-                                                <div className={`rounded-md px-2 py-1.5 ${accCardBgClass} ${isBlind ? 'space-y-2' : ''}`} onClick={(e) => { e.stopPropagation(); handleWidgetClick(`group-acc-${accessory.id}`); }}>
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${accIconBgClass} ${accIconTextClass}`}>
-                                                        {getServiceIcon()}
-                                                      </div>
-                                                      <span className="truncate text-xs">{getDisplayName(accessory.name, accessory.roomName)}</span>
-                                                      {isBlind && (
-                                                        <span className="text-[10px] text-muted-foreground">{position}%</span>
-                                                      )}
-                                                    </div>
-                                                    {!isBlind && powerChar && (
-                                                      <Switch
-                                                        checked={accIsOn}
-                                                        onCheckedChange={() => handleToggle(accessory.id, powerChar.type, accIsOn)}
-                                                        disabled={!accessory.isReachable || isViewOnly}
-                                                        className="scale-75"
-                                                        checkedColorClass={activeIconStyle === 'colourful' ? accIconColor?.switchBg : undefined}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      />
-                                                    )}
-                                                  </div>
-                                                  {isBlind && (
-                                                    <div className="pl-8" onClick={(e) => e.stopPropagation()}>
-                                                      <Slider
-                                                        value={[position]}
-                                                        min={0}
-                                                        max={100}
-                                                        step={5}
-                                                        onValueCommit={(v) => handleSlider(accessory.id, 'target_position', v[0])}
-                                                        disabled={!accessory.isReachable || isViewOnly}
-                                                        className="w-full"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                <ExpandedOverlay isExpanded={isAccessoryExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
-                                                  <AccessoryWidget
-                                              homeName={getHomeName(accessory.homeId)}
-                                                    accessory={accessory}
-                                                    onToggle={handleToggle}
-                                                    onSlider={handleSlider}
-                                                    getEffectiveValue={getEffectiveValue}
-                                                    compact={false}
-
-                                                    onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
-                                                    iconStyle={activeIconStyle}
-                                                  />
-                                                </ExpandedOverlay>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </CardContent>
-                                    </AnimatedCollapse>
-                                    </Card>
-
-                                    {/* Expanded group card (non-compact size) */}
-                                    <ExpandedOverlay isExpanded={isGroupWidgetExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
-                                      <Card
-                                        className={groupCardBgClass}
-                                      >
-                                        <CardHeader className="p-4 pb-2">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center min-w-0 gap-2">
-                                              <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-lg ${groupIconBgClass} ${groupIconTextClass} ${groupOn ? 'shadow-sm' : 'opacity-30'}`}>
-                                                {isBlindsGroup
-                                                  ? <Blinds className="h-4 w-4" />
-                                                  : <Lightbulb className="h-4 w-4" />
-                                                }
-                                              </div>
-                                              <div className="min-w-0">
-                                                <CardTitle className="truncate font-medium leading-tight text-sm">
-                                                  {getDisplayName(group.name, roomName)}
-                                                </CardTitle>
-                                                <CardDescription className="text-xs mt-0.5 flex items-center gap-1.5">
-                                                  {isBlindsGroup ? `${groupPosition}% open` : `${groupAccessories.length} device${groupAccessories.length !== 1 ? 's' : ''}`}
-                                                  {isPartiallyOn && (
-                                                    <Badge variant="secondary" className={`text-[9px] px-1 py-0 h-4 ${activeIconStyle === 'colourful' && groupIconColor ? `${groupIconColor.accentMuted}` : ''}`}>
-                                                      {onCount}/{groupAccessories.length} on
-                                                    </Badge>
-                                                  )}
-                                                </CardDescription>
-                                              </div>
-                                            </div>
-                                            {!isBlindsGroup && (
-                                              <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                <Switch
-                                                  checked={actualGroupOn}
-                                                  onCheckedChange={(checked) => handleGroupToggle(group.id, checked)}
-                                                  className="shrink-0"
-                                                  checkedColorClass={activeIconStyle === 'colourful' ? groupIconColor?.switchBg : undefined}
-                                                />
-                                              </div>
-                                            )}
-                                          </div>
-                                        </CardHeader>
-                                        <CardContent className="px-4 pb-3 pt-1 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                          {isBlindsGroup && (
-                                            <SliderControl
-                                              label="All Blinds"
-                                              value={groupPosition}
-                                              step={5}
-                                              unit="%"
-                                              onCommit={(v) => handleGroupSlider(group.id, 'target_position', v)}
-                                            />
-                                          )}
-                                          {isLightsGroup && actualGroupOn && groupBrightness !== null && (
-                                            <SliderControl
-                                              label="All Lights"
-                                              value={groupBrightness}
-                                              step={1}
-                                              unit="%"
-                                              onCommit={(v) => handleGroupSlider(group.id, 'brightness', v)}
-                                            />
-                                          )}
-                                          <Button
-                                            variant="ghost"
-                                            className={`ml-auto h-7 px-2 gap-1 text-xs rounded-md text-muted-foreground ${activeIconStyle === 'colourful' && groupOn && groupIconColor ? `${groupIconColor.accentMuted} ${groupIconColor.accentMutedHover}` : 'bg-background hover:bg-muted'}`}
-                                            onClick={() => toggleGroupExpanded(group.id)}
-                                          >
-                                            {isExpanded ? 'Hide devices' : 'Show devices'}
-                                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                          </Button>
-                                        </CardContent>
-                                        <AnimatedCollapse open={isExpanded}>
-                                          <CardContent className="px-3 pb-3 pt-0 relative z-50 isolate" onPointerDownCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()} onTouchStartCapture={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                                            <div className="space-y-2 pt-1">
-                                              {groupAccessories.map((accessory) => {
-                                                const isBlind = hasServiceType(accessory, 'window_covering');
-                                                const characteristics = getDisplayableCharacteristics(accessory);
-                                                const powerChar = characteristics.find(c => c.meta.controlType === 'toggle');
-                                                const powerValue = powerChar ? getEffectiveValue(accessory.id, powerChar.type, powerChar.value) : null;
-                                                const posChar = isBlind ? getCharacteristic(accessory, 'current_position') : null;
-                                                const posValue = posChar?.value;
-                                                const position = (posValue === false || posValue === 'false' || posValue === null || posValue === undefined)
-                                                  ? 0
-                                                  : Number(posValue) || 0;
-                                                const accIsOn = isBlind ? position > 50 : (powerValue === true || powerValue === 1);
-                                                const accServiceType = getPrimaryServiceType(accessory) || 'lightbulb';
-                                                const accIconColor = (activeIconStyle === 'standard' || activeIconStyle === 'colourful') ? getIconColor(accServiceType) : null;
-                                                const accIconBgClass = accIconColor
-                                                  ? (accIsOn ? accIconColor.bg : accIconColor.bgOff)
-                                                  : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
-                                                const accIconTextClass = accIconColor
-                                                  ? (accIsOn ? accIconColor.text : accIconColor.textOff)
-                                                  : '';
-                                                // Card background for accessory item
-                                                const accCardBgClass = activeIconStyle === 'colourful' && accIconColor && accIsOn
-                                                  ? accIconColor.accentMuted
-                                                  : (accIsOn ? 'bg-primary/10' : 'bg-background');
-                                                const getServiceIcon = () => {
-                                                  switch (accServiceType) {
-                                                    case 'lightbulb': return <Lightbulb className="h-3 w-3" />;
-                                                    case 'switch': return <Power className="h-3 w-3" />;
-                                                    case 'outlet': return <Plug className="h-3 w-3" />;
-                                                    case 'fan': return <Wind className="h-3 w-3" />;
-                                                    case 'window_covering': return <Blinds className="h-3 w-3" />;
-                                                    case 'lock': return <Lock className="h-3 w-3" />;
-                                                    case 'thermostat': return <Thermometer className="h-3 w-3" />;
-                                                    case 'speaker': return <Speaker className="h-3 w-3" />;
-                                                    default: return <Power className="h-3 w-3" />;
-                                                  }
-                                                };
-                                                const isAccessoryExpanded = expandedWidgetId === `group-acc-${accessory.id}`;
-                                                return (
-                                                  <div
-                                                    key={accessory.id}
-                                                    className="relative cursor-pointer"
-                                                    onClick={(e) => { e.stopPropagation(); handleWidgetClick(`group-acc-${accessory.id}`); }}
-                                                    onMouseLeave={isAccessoryExpanded ? handleWidgetMouseLeave : undefined}
-                                                  >
-                                                    <div className={`rounded-md px-2 py-1.5 ${accCardBgClass} ${isBlind ? 'space-y-2' : ''}`} onClick={(e) => { e.stopPropagation(); handleWidgetClick(`group-acc-${accessory.id}`); }}>
-                                                      <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${accIconBgClass} ${accIconTextClass}`}>
-                                                            {getServiceIcon()}
-                                                          </div>
-                                                          <span className="truncate text-xs">{getDisplayName(accessory.name, accessory.roomName)}</span>
-                                                          {isBlind && (
-                                                            <span className="text-[10px] text-muted-foreground">{position}%</span>
-                                                          )}
-                                                        </div>
-                                                        {!isBlind && powerChar && (
-                                                          <Switch
-                                                            checked={accIsOn}
-                                                            onCheckedChange={() => handleToggle(accessory.id, powerChar.type, accIsOn)}
-                                                            disabled={!accessory.isReachable || isViewOnly}
-                                                            className="scale-75"
-                                                            checkedColorClass={activeIconStyle === 'colourful' ? accIconColor?.switchBg : undefined}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                          />
-                                                        )}
-                                                      </div>
-                                                      {isBlind && (
-                                                        <div className="pl-8" onClick={(e) => e.stopPropagation()}>
-                                                          <Slider
-                                                            value={[position]}
-                                                            min={0}
-                                                            max={100}
-                                                            step={5}
-                                                            onValueCommit={(v) => handleSlider(accessory.id, 'target_position', v[0])}
-                                                            disabled={!accessory.isReachable || isViewOnly}
-                                                            className="w-full"
-                                                          />
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                    <ExpandedOverlay isExpanded={isAccessoryExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
-                                                      <AccessoryWidget
-                                              homeName={getHomeName(accessory.homeId)}
-                                                        accessory={accessory}
-                                                        onToggle={handleToggle}
-                                                        onSlider={handleSlider}
-                                                        getEffectiveValue={getEffectiveValue}
-                                                        compact={false}
-
-                                                        onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
-                                                        iconStyle={activeIconStyle}
-                                                      />
-                                                    </ExpandedOverlay>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          </CardContent>
-                                        </AnimatedCollapse>
-                                      </Card>
-                                    </ExpandedOverlay>
-                                    </div>
-                                  </div>
-                                  </TooltipTrigger>
-                                  {(groupHomeName || groupRoomName || groupAvgChars.length > 0) && (
-                                    <TooltipContent side="bottom" align="center" className="w-56 p-3">
-                                      <div className="space-y-1.5">
-                                        {(groupHomeName || groupRoomName) && (
-                                          <div className="text-xs text-muted-foreground pb-1 mb-1 border-b">
-                                            {groupHomeName && groupRoomName
-                                              ? `${groupHomeName} · ${groupRoomName}`
-                                              : groupHomeName || groupRoomName}
-                                          </div>
-                                        )}
-                                        <div className="flex justify-between text-xs">
-                                          <span className="text-muted-foreground">Devices</span>
-                                          <span>{groupAccessories.length}</span>
-                                        </div>
-                                        {groupAvgChars.map((char, i) => (
-                                          <div key={i} className="flex justify-between text-xs">
-                                            <span className="text-muted-foreground">
-                                              {formatCharacteristicType(char.type)} (avg)
-                                            </span>
-                                            <span>{formatCharacteristicValue(char.type, char.value)}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </TooltipContent>
-                                  )}
-                                  </Tooltip>
-                                  </TooltipProvider>
-                                  </WidgetColorContext.Provider>
-                                );
-                              })}
-                              {/* Accessories in this category */}
-                              {(accessoriesByCategory[category] || []).map((accessory) => {
-                                const isExpanded = compactMode && expandedWidgetId === accessory.id;
-                                const isHidden = selectedHomeId ? isDeviceActuallyHidden(selectedHomeId, contextId, accessory.id) : false;
-                                
-                                const isCurrentlyHidden = isHidden;
-
-                                return compactMode ? (
-                                  // Compact mode: show compact widget with click-to-expand
-                                  <div
-                                    key={accessory.id}
-                                    className={`relative 'cursor-pointer'`}
-                                    style={undefined}
-                                    onClick={() => handleWidgetClick(accessory.id)}
-                                    onMouseLeave={isExpanded ? handleWidgetMouseLeave : undefined}
-                                  >
-                                    {/* Compact widget */}
-                                    <AccessoryWidget
-                                              homeName={getHomeName(accessory.homeId)}
-                                      accessory={accessory}
-                                      onToggle={handleToggle}
-                                      onSlider={handleSlider}
-                                      getEffectiveValue={getEffectiveValue}
-                                      compact={true}
-                                      
-                                      onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
-                                      iconStyle={activeIconStyle}
-                                      isHidden={isHidden}
-
-                                      onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                      hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
-                                showHiddenItems={showHiddenItems}
-                                onToggleShowHidden={handleToggleShowHidden}
-                                onShare={canShare ? () => accessory.homeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId }) : undefined}
-                                    />
-                                    {getDealBadge(accessory)}
-
-                                    {/* Expanded widget (floating overlay) */}
-                                    <ExpandedOverlay isExpanded={isExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
-                                      <AccessoryWidget
-                                              homeName={getHomeName(accessory.homeId)}
-                                        accessory={accessory}
-                                        onToggle={handleToggle}
-                                        onSlider={handleSlider}
-                                        getEffectiveValue={getEffectiveValue}
-                                        compact={false}
-
-                                        onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
-                                        iconStyle={activeIconStyle}
-                                        isHidden={isHidden}
-                                        onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                        hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
-                                showHiddenItems={showHiddenItems}
-                                onToggleShowHidden={handleToggleShowHidden}
-                                onShare={canShare ? () => accessory.homeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId }) : undefined}
-                                      />
-                                    </ExpandedOverlay>
-                                  </div>
-                                ) : (
-                                  // Normal mode: show full widget directly
-                                  <div
-                                    key={accessory.id}
-                                    className="relative"
-                                    style={undefined}
-                                  >
-                                    <AccessoryWidget
-                                              homeName={getHomeName(accessory.homeId)}
-                                      accessory={accessory}
-                                      onToggle={handleToggle}
-                                      onSlider={handleSlider}
-                                      getEffectiveValue={getEffectiveValue}
-                                      compact={false}
-
-                                      onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
-                                      iconStyle={activeIconStyle}
-                                      isHidden={isHidden}
-
-                                      onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                      hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
-                                showHiddenItems={showHiddenItems}
-                                onToggleShowHidden={handleToggleShowHidden}
-                                onShare={canShare ? () => accessory.homeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId }) : undefined}
-                                    />
-                                    {getDealBadge(accessory)}
-                                  </div>
-                                );
-                              })}
-                            </MasonryGrid>
-                          </div>
-                        ));
-                      })()}
                     </div>
                     );
                   }))

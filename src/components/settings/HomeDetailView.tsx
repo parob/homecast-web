@@ -20,7 +20,7 @@ import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
-import { isMQTTAvailable } from '@/lib/mqtt-bridge';
+import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import type { HomeKitHome } from '@/lib/graphql/types';
@@ -134,13 +134,43 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
   });
   const mqttEnabled = mqttData?.homeMqttEnabled ?? false;
 
-  // Load custom brokers from server
-  const { data: brokersData, refetch: refetchBrokers, loading: brokersLoading } = useQuery(GET_HOME_MQTT_BROKERS, {
+  // Load custom brokers — server (Cloud) or native bridge (Community).
+  const { data: brokersData, refetch: refetchBrokers, loading: cloudBrokersLoading } = useQuery(GET_HOME_MQTT_BROKERS, {
     variables: { homeId: home.id },
     skip: isCommunity,
     fetchPolicy: 'network-only',
   });
-  const brokers: MQTTBrokerConfig[] = brokersData?.homeMqttBrokers ?? [];
+  const [communityBrokers, setCommunityBrokers] = useState<MQTTBrokerConfig[]>([]);
+  const [communityBrokersLoaded, setCommunityBrokersLoaded] = useState(false);
+
+  const refetchCommunityBrokers = useCallback(async () => {
+    if (!isCommunity || !isMQTTAvailable()) {
+      setCommunityBrokersLoaded(true);
+      return;
+    }
+    try {
+      const all = await getMQTTBrokers();
+      setCommunityBrokers((all && all[home.id]) ?? []);
+    } catch (e) {
+      console.warn('[HomeDetailView] getMQTTBrokers failed', e);
+    } finally {
+      setCommunityBrokersLoaded(true);
+    }
+  }, [home.id]);
+
+  useEffect(() => {
+    if (isCommunity) {
+      refetchCommunityBrokers();
+      const id = setInterval(refetchCommunityBrokers, 5_000);
+      return () => clearInterval(id);
+    }
+  }, [refetchCommunityBrokers]);
+
+  const communityBrokersLoading = isCommunity && !communityBrokersLoaded;
+
+  const brokers: MQTTBrokerConfig[] = isCommunity ? communityBrokers : (brokersData?.homeMqttBrokers ?? []);
+  const brokersLoading = isCommunity ? communityBrokersLoading : cloudBrokersLoading;
+  const refetchBrokersAny = isCommunity ? refetchCommunityBrokers : refetchBrokers;
 
   const handleToggleMqtt = async (enabled: boolean) => {
     setMqttToggling(true);
@@ -157,8 +187,13 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
 
   const handleRemoveBroker = async (brokerId: string) => {
     try {
-      await removeHomeMqttBrokerMut({ variables: { homeId: home.id, brokerId } });
-      await refetchBrokers();
+      if (isCommunity) {
+        await removeMQTTBroker(home.id, brokerId);
+        await refetchCommunityBrokers();
+      } else {
+        await removeHomeMqttBrokerMut({ variables: { homeId: home.id, brokerId } });
+        await refetchBrokers();
+      }
       toast.success('Broker removed');
     } catch (e: any) {
       const msg = e?.graphQLErrors?.[0]?.message || e?.message || 'Failed to remove broker';
@@ -192,53 +227,57 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
         )}
       </div>
 
-      {/* Connection */}
+      {/* Connection / Home */}
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Connection</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{isCommunity ? 'Home' : 'Connection'}</p>
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <RelayKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-medium">{relayKindLabel}</span>
-            </div>
-            <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${
-              relayOnline
-                ? 'bg-green-500/10 text-green-600'
-                : 'bg-red-500/10 text-red-600'
-            }`}>
-              {relayOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-              {relayOnline ? 'Online' : 'Offline'}
-            </span>
-          </div>
+          {!isCommunity && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RelayKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-medium">{relayKindLabel}</span>
+                </div>
+                <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${
+                  relayOnline
+                    ? 'bg-green-500/10 text-green-600'
+                    : 'bg-red-500/10 text-red-600'
+                }`}>
+                  {relayOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                  {relayOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
 
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Last online</span>
-            <span className="font-medium">
-              {home.relayLastSeenAt ? formatRelativeAgo(home.relayLastSeenAt) : 'Never'}
-            </span>
-          </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last online</span>
+                <span className="font-medium">
+                  {home.relayLastSeenAt ? formatRelativeAgo(home.relayLastSeenAt) : 'Never'}
+                </span>
+              </div>
 
-          {roleLabel && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Your access</span>
-              <span className="font-medium">{roleLabel}</span>
-            </div>
-          )}
+              {roleLabel && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Your access</span>
+                  <span className="font-medium">{roleLabel}</span>
+                </div>
+              )}
 
-          {isShared && home.ownerEmail && (
-            <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground shrink-0">Home owner</span>
-              <span className="font-medium truncate max-w-[180px]" title={home.ownerEmail}>{home.ownerEmail}</span>
-            </div>
-          )}
+              {isShared && home.ownerEmail && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0">Home owner</span>
+                  <span className="font-medium truncate max-w-[180px]" title={home.ownerEmail}>{home.ownerEmail}</span>
+                </div>
+              )}
 
-          {home.relayOwnerEmail && home.relayOwnerEmail !== home.ownerEmail && (
-            <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground shrink-0 flex items-center gap-1">
-                <Users className="h-3 w-3" /> Relay operator
-              </span>
-              <span className="font-medium break-all text-right">{home.relayOwnerEmail}</span>
-            </div>
+              {home.relayOwnerEmail && home.relayOwnerEmail !== home.ownerEmail && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0 flex items-center gap-1">
+                    <Users className="h-3 w-3" /> Relay operator
+                  </span>
+                  <span className="font-medium break-all text-right">{home.relayOwnerEmail}</span>
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex justify-between">
@@ -250,7 +289,7 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
             <span className="font-medium">{home.roomCount ?? 0}</span>
           </div>
 
-          {home.relayId && (
+          {!isCommunity && home.relayId && (
             <div className="flex justify-between gap-2">
               <span className="text-muted-foreground shrink-0">Relay ID</span>
               <span className="font-mono text-[10px] truncate max-w-[180px]" title={home.relayId}>{home.relayId}</span>
@@ -266,7 +305,7 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
         </div>
       </div>
 
-      {/* MQTT (developer mode only) */}
+      {/* MQTT (developer mode only). Community: custom brokers via native bridge. Cloud: managed broker + custom brokers via server. */}
       {developerMode && <div className="space-y-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
 
@@ -304,7 +343,7 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
         })()}
 
         {/* Custom MQTT Brokers */}
-        {!isCommunity && (
+        {(!isCommunity || isMQTTAvailable()) && (
           <>
             <div className="flex items-center justify-between pt-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom MQTT Brokers</p>
@@ -319,7 +358,7 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
               <p className="text-xs text-muted-foreground py-2 text-center">No custom brokers configured.</p>
             ) : (
               brokers.map((broker: any) => (
-                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokers()} onRemove={handleRemoveBroker} />
+                <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokersAny()} onRemove={handleRemoveBroker} />
               ))
             )}
           </>
@@ -333,7 +372,7 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
         open={addOpen}
         onOpenChange={setAddOpen}
         homeId={home.id}
-        onSaved={() => refetchBrokers()}
+        onSaved={() => refetchBrokersAny()}
       />
     </div>
   );
