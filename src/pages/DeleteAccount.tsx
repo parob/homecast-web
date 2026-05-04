@@ -17,9 +17,33 @@ const DeleteAccount = () => {
 
             <div className="space-y-8">
               <div>
+                <h2 className="text-xl font-semibold mb-3">Before You Request Deletion</h2>
+                <p className="text-muted-foreground leading-relaxed mb-4">
+                  If you have an active subscription, please cancel it first:
+                </p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4 mb-4">
+                  <li>
+                    <strong className="text-foreground">App Store subscription:</strong>{' '}
+                    cancel from{' '}
+                    <a href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-primary transition-colors underline">
+                      apps.apple.com/account/subscriptions
+                    </a>{' '}
+                    or System Settings → Subscriptions on your Apple device. Apple continues
+                    billing your Apple ID until you cancel there — deleting your Homecast
+                    account does not stop Apple's charges.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Web subscription:</strong>{' '}
+                    open Settings → Plan → Manage Subscription inside the Homecast app
+                    or web portal, then cancel via Stripe.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
                 <h2 className="text-xl font-semibold mb-3">How to Request Deletion</h2>
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  To delete your Homecast account and associated data, follow these steps:
+                  Once any active subscription is cancelled, follow these steps:
                 </p>
                 <ol className="list-decimal list-inside text-muted-foreground space-y-3 ml-4">
                   <li>

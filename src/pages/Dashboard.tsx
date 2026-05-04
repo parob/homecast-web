@@ -4800,8 +4800,15 @@ const Dashboard = () => {
   }, [accountType, serverConnected, settingsData, homesData, includedAccessoryIds]);
 
   // Tracks which billing action is in-flight so the relevant button can show
-  // a spinner and ignore duplicate clicks.
+  // a spinner and ignore duplicate clicks. Watchdog clears it after 60s if
+  // a try/finally somehow gets bypassed (e.g. background-tabbed during a
+  // StoreKit prompt) so the buttons never become permanently disabled.
   const [billingBusy, setBillingBusy] = useState<null | 'upgrade' | 'upgradeCloud' | 'downgrade' | 'manage'>(null);
+  useEffect(() => {
+    if (!billingBusy) return;
+    const t = setTimeout(() => setBillingBusy(null), 60_000);
+    return () => clearTimeout(t);
+  }, [billingBusy]);
 
   // Upgrade handler
   const handleUpgrade = useCallback(async () => {
