@@ -147,7 +147,7 @@ export function NotificationsSection({
                   asChild
                 >
                   <a
-                    href="https://homecast.cloud/download"
+                    href="https://play.google.com/store/apps/details?id=cloud.homecast.app"
                     target="_blank"
                     rel="noreferrer"
                   >

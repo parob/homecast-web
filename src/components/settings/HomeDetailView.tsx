@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useQuery, useMutation } from '@apollo/client/react';
@@ -271,19 +271,37 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
 
         {/* Homecast MQTT Broker (cloud only) */}
-        {!isCommunity && (
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <p className="text-sm font-medium">Homecast MQTT Broker</p>
-              <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
+        {!isCommunity && (() => {
+          const mqttUrl = `https://${location.hostname.includes('staging') ? 'staging.mqtt.homecast.cloud' : 'mqtt.homecast.cloud'}`;
+          return (
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <a
+                  href={mqttUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    const w = window as any;
+                    if (w.webkit?.messageHandlers?.homecast) {
+                      e.preventDefault();
+                      w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: mqttUrl });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                >
+                  Homecast MQTT Broker
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </a>
+                <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
+              </div>
+              <Switch
+                checked={mqttEnabled}
+                disabled={mqttToggling || !isAdmin}
+                onCheckedChange={handleToggleMqtt}
+              />
             </div>
-            <Switch
-              checked={mqttEnabled}
-              disabled={mqttToggling || !isAdmin}
-              onCheckedChange={handleToggleMqtt}
-            />
-          </div>
-        )}
+          );
+        })()}
 
         {/* Custom MQTT Brokers */}
         {!isCommunity && (

@@ -165,10 +165,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   }, [open, initialTab]);
 
-  // Clear home selection whenever the active tab leaves 'homes'
+  // Clear home selection whenever neither the desktop tab nor the mobile section is on 'homes'
   useEffect(() => {
-    if (activeTab !== 'homes' && selectedHomeId) setSelectedHomeId(null);
-  }, [activeTab, selectedHomeId]);
+    if (activeTab !== 'homes' && mobileSection !== 'homes' && selectedHomeId) setSelectedHomeId(null);
+  }, [activeTab, mobileSection, selectedHomeId]);
 
   // If developer mode is toggled off and we're on a developer-only tab, fall back to plan
   useEffect(() => {

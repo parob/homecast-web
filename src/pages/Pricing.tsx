@@ -250,10 +250,10 @@ const Pricing = () => {
                       </div>
                       <ul className="space-y-2 flex-1">
                         <CheckItem><strong>Unlimited</strong> accessories</CheckItem>
-                        <CheckItem>No Mac required</CheckItem>
                         <CheckItem>Smart Deals optional</CheckItem>
                         <CheckItem>Push notifications</CheckItem>
                         <CheckItem>MQTT broker</CheckItem>
+                        <CheckItem>No Mac required</CheckItem>
                       </ul>
                       <p className="text-xs text-muted-foreground mt-3">Requires an Apple Home Hub (Apple TV or HomePod) on your home network.</p>
                     </div>
