@@ -12,7 +12,20 @@
 
 import { apolloClient } from './apollo';
 import { VALIDATE_APPLE_PURCHASE, RESTORE_APPLE_PURCHASES, CREATE_CHECKOUT_SESSION } from './graphql/mutations';
+import { GET_ME } from './graphql/queries';
 import { isNativePurchaseAvailable } from './platform';
+
+/** Read the current Homecast user's UUID from Apollo's cached GET_ME
+ *  response. Used to bind StoreKit transactions via appAccountToken so
+ *  the server can verify the JWS belongs to the JWT-authenticated user. */
+function currentUserId(): string | null {
+  try {
+    const data = apolloClient.readQuery<{ me: { id: string } }>({ query: GET_ME });
+    return data?.me?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export type PlanId = 'standard' | 'cloud';
 
@@ -150,8 +163,9 @@ export async function purchasePlan(
 ): Promise<PurchaseResult> {
   if (isNativePurchaseAvailable()) {
     const productId = NATIVE_PRODUCT_IDS[plan];
+    const userId = currentUserId();  // bind transaction to this Homecast user via appAccountToken
     try {
-      const native = await callNativePurchase<{ jws: string; cancelled?: boolean }>('buy', { productId });
+      const native = await callNativePurchase<{ jws: string; cancelled?: boolean }>('buy', { productId, userId });
       if (native.cancelled) return { success: false };
 
       const { data } = await apolloClient.mutate({
