@@ -221,9 +221,19 @@ export async function restorePurchases(): Promise<PurchaseResult> {
   }
 }
 
-/** App Store builds only: open Apple's manage-subscriptions sheet/URL. */
+/** Open Apple's manage-subscriptions UI.
+ *  - In the App Store WKWebView: presents Apple's native sheet via the bridge.
+ *  - In a regular browser (web portal user with an Apple sub): opens
+ *    Apple's web manage-subs page in a new tab. Apple supports the same
+ *    URL for users to manage their App Store subscriptions over the web.
+ */
 export function openManageSubscriptions(): void {
-  if (!isNativePurchaseAvailable()) return;
-  callNativePurchase('openManageSubscriptions', {}).catch(() => { /* noop */ });
+  if (isNativePurchaseAvailable()) {
+    callNativePurchase('openManageSubscriptions', {}).catch(() => { /* noop */ });
+    return;
+  }
+  if (typeof window !== 'undefined') {
+    window.open('https://apps.apple.com/account/subscriptions', '_blank', 'noopener,noreferrer');
+  }
 }
 
