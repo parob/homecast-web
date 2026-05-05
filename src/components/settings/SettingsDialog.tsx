@@ -362,6 +362,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+            <p className="text-[11px] text-muted-foreground text-center pt-1">
+              <a
+                href="https://homecast.cloud/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={openExternalUrl('https://homecast.cloud/terms')}
+                className="text-primary hover:underline"
+              >Terms of Use</a>
+              {' · '}
+              <a
+                href="https://homecast.cloud/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={openExternalUrl('https://homecast.cloud/privacy')}
+                className="text-primary hover:underline"
+              >Privacy Policy</a>
+            </p>
           </div>
         ) : PlanSection ? (
           <PlanSection
