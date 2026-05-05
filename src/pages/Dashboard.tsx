@@ -1737,6 +1737,11 @@ const Dashboard = () => {
   const [cloudCheckoutJustCompleted, setCloudCheckoutJustCompleted] = useState(false);
   // State for onboarding overlay
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<'intent' | 'mac-setup' | 'cloud-setup' | 'shared-home'>('intent');
+  const handleSwitchToCloud = useCallback(() => {
+    setOnboardingInitialStep('cloud-setup');
+    setShowOnboarding(true);
+  }, []);
   // State for tutorial walkthrough
   const [showTutorial, setShowTutorial] = useState(false);
   // Set when the tutorial is dismissed/completed in this session. Guards the
@@ -4832,6 +4837,7 @@ const Dashboard = () => {
   // Onboarding completion handler
   const handleOnboardingComplete = useCallback(async (setupPath: SetupPath, enrollmentId?: string) => {
     setShowOnboarding(false);
+    setOnboardingInitialStep('intent');
     try {
       const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
       const updated = {
@@ -6458,6 +6464,7 @@ const Dashboard = () => {
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   onSetupMac={handleSetupMac}
+                  onSwitchToCloud={handleSwitchToCloud}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
@@ -6472,6 +6479,7 @@ const Dashboard = () => {
                   isInMobileApp={isInMobileApp}
                   onSetupCloud={() => openSettingsTo('homes')}
                   onSetupMac={handleSetupMac}
+                  onSwitchToCloud={handleSwitchToCloud}
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
@@ -7670,6 +7678,7 @@ const Dashboard = () => {
           onInvalidateHomes={invalidateHomeKitCache}
           cloudSignupsAvailable={cloudSignupsAvailable}
           accountType={accountType}
+          initialStep={onboardingInitialStep}
         />
       )}
 

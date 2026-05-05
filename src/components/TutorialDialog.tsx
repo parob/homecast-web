@@ -66,19 +66,19 @@ const STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    // Stage 1: spotlight both share entry points (sidebar home/room and the
-    // device widget area) so the user sees in one shot that sharing works at
-    // home, room, or single-device granularity. Stage 2 then demonstrates the
-    // right-click flow on the home/room.
-    target: 'sidebar-home-item',
-    additionalTargets: ['widget-area'],
+    // Stage 1: spotlight both share entry points (the device widget area as
+    // the primary so the card lands directly below the widgets, and the
+    // sidebar home/room as an additional highlight). Stage 2 then
+    // demonstrates the right-click flow on the home/room.
+    target: 'widget-area',
+    additionalTargets: ['sidebar-home-item'],
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
     ],
     title: 'Share homes, rooms, or devices',
     description: 'Right-click any home or room in the sidebar — or any device widget — to open its share menu.',
     mobileDescription: 'Long-press any home or room in the sidebar — or any device widget — to open its share menu.',
-    position: 'right',
+    position: 'bottom',
   },
   {
     // Stage 2: open the context menu and spotlight the Share row.
@@ -177,6 +177,11 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     };
   }, [open]);
   const rafRef = useRef<number>(0);
+  // Last rects we wrote to state. The rAF measurement loop compares against
+  // this and skips setState when nothing changed — without that gate, every
+  // frame produces a fresh array and re-fires the card's `transition-all`
+  // 300ms animation, which looks like jerky movement.
+  const prevRectsRef = useRef<TargetRect[]>([]);
   // Currently-open triggers (target + opening action), in opening order.
   // Persists across steps so consecutive steps requesting the same opener
   // don't cause a close-then-reopen flicker. The action is used to choose how
@@ -249,13 +254,17 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       return;
     }
 
-    // Clear last step's rects synchronously so the card doesn't render at the
-    // previous spotlight position while we wait for this step's target.
-    setTargetRects([]);
-    // Steps without a target are intentionally centered — show immediately.
-    // Steps with a target hide the card until measured (or until the fallback
-    // timer fires, in case the page is still loading or has no homes/devices).
-    setReadyToShow(!effectiveTarget);
+    // For target-less (welcome) steps, snap to center immediately. For
+    // targeted steps, KEEP the previous step's rects in state so the card
+    // and spotlight glide smoothly to the new target once measurement
+    // succeeds — clearing them here would flash the card through the
+    // centered intermediate state and produce the jerk we're trying to
+    // avoid.
+    if (!effectiveTarget) {
+      setTargetRects([]);
+      prevRectsRef.current = [];
+    }
+    setReadyToShow(true);
 
     const triggers: OpenTriggerSpec[] = currentStep.openTriggers
       ?? (currentStep.openTrigger ? [{ target: currentStep.openTrigger }] : []);
@@ -427,16 +436,31 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         .filter((m): m is { el: Element; rect: DOMRect } => m !== null);
 
       if (found.length > 0) {
-        setTargetRects(found.map(({ rect }) => ({
+        const next: TargetRect[] = found.map(({ rect }) => ({
           top: rect.top, left: rect.left, width: rect.width, height: rect.height,
-        })));
+        }));
+        const prev = prevRectsRef.current;
+        const same = prev.length === next.length && next.every((r, i) =>
+          r.top === prev[i].top && r.left === prev[i].left
+          && r.width === prev[i].width && r.height === prev[i].height
+        );
+        if (!same) {
+          prevRectsRef.current = next;
+          setTargetRects(next);
+        }
         setReadyToShow(true);
         // Only scroll the primary target into view (card anchors to it).
+        // For `position: 'bottom'` steps the card needs ~280px of room below
+        // the spotlight, so scroll the target near the top of the viewport
+        // rather than centred — otherwise on shorter screens the card gets
+        // clamped back over the widgets.
         const primary = found[0];
+        const block: ScrollLogicalPosition = currentStep.position === 'bottom' ? 'start' : 'center';
         if (primary.rect.top < 0 || primary.rect.bottom > window.innerHeight) {
-          primary.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          primary.el.scrollIntoView({ behavior: 'smooth', block });
         }
-      } else {
+      } else if (prevRectsRef.current.length > 0) {
+        prevRectsRef.current = [];
         setTargetRects([]);
       }
       rafRef.current = requestAnimationFrame(measure);
@@ -484,12 +508,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     cardStyle.top = '50%';
     cardStyle.left = '50%';
     cardStyle.transform = 'translate(-50%, -50%)';
-  } else if (targetRects.length > 1) {
-    // Multi-highlight steps: anchor the card to the bottom-center so it sits
-    // clear of both rects (which between them can cover most of the viewport).
-    cardStyle.top = window.innerHeight - 220;
-    cardStyle.left = '50%';
-    cardStyle.transform = 'translateX(-50%)';
   } else if (targetRect) {
     const pos = currentStep.position || 'bottom';
     if (pos === 'right') {
@@ -534,6 +552,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
                 height={r.height + spotlightPad * 2}
                 rx={spotlightRadius}
                 fill="black"
+                // Match the ring + card 250ms transition so the spotlight
+                // cutout slides between targets together with everything
+                // else, instead of snapping while the ring smoothly slides.
+                style={{ transition: 'x 250ms ease-out, y 250ms ease-out, width 250ms ease-out, height 250ms ease-out' }}
               />
             ))}
           </mask>
@@ -560,7 +582,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       {targetRects.map((r, i) => (
         <div
           key={i}
-          className="absolute rounded-xl pointer-events-none transition-all duration-300"
+          className="absolute rounded-xl pointer-events-none"
+          // Match the SVG cutout's transition so the ring slides in lockstep
+          // with the spotlight; without an explicit transition it would snap
+          // while the cutout slides.
           style={{
             top: r.top - spotlightPad,
             left: r.left - spotlightPad,
@@ -568,6 +593,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
             height: r.height + spotlightPad * 2,
             boxShadow: '0 0 0 2px rgba(255, 255, 255, 0.35)',
             zIndex: 10045,
+            transition: 'top 250ms ease-out, left 250ms ease-out, width 250ms ease-out, height 250ms ease-out',
           }}
         />
       ))}
@@ -578,12 +604,15 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           the tutorial isn't stuck if the page is empty or still loading. */}
       <div
         ref={cardRef}
-        className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3 transition-all duration-300"
+        className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3"
         style={{
           ...cardStyle,
           zIndex: 10050,
           opacity: readyToShow ? 1 : 0,
           pointerEvents: readyToShow ? 'auto' : 'none',
+          // Aligned with the ring + SVG cutout transitions so the whole
+          // spotlight + card moves together as one smooth unit between steps.
+          transition: 'top 250ms ease-out, left 250ms ease-out, opacity 200ms ease-out',
         }}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -637,6 +666,11 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           </div>
 
           <div className="flex gap-1.5">
+            {step === 0 && (
+              <Button variant="ghost" size="sm" onClick={handleSkip} className="h-8 text-muted-foreground">
+                Skip tutorial
+              </Button>
+            )}
             {step > 0 && (
               <Button variant="ghost" size="sm" onClick={handleBack} className="h-8">
                 <ChevronLeft className="h-4 w-4" />

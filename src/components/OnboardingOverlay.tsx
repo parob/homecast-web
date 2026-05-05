@@ -25,6 +25,7 @@ interface OnboardingOverlayProps {
   onInvalidateHomes?: () => void;
   cloudSignupsAvailable?: boolean;
   accountType?: string;
+  initialStep?: WizardStep;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -59,13 +60,14 @@ function CollapsibleHelp({ title, children }: { title: string; children: React.R
   );
 }
 
-function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, cloudSignupsAvailable = true }: {
+function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, cloudSignupsAvailable = true, accountType }: {
   isInMacApp: boolean;
   isInMobileApp?: boolean;
   onSelect: (step: WizardStep) => void;
   onSkip: () => void;
   pricing: NonNullable<ReturnType<typeof usePricing>>;
   cloudSignupsAvailable?: boolean;
+  accountType?: string;
 }) {
   const macLabel = isInMacApp ? 'Use this Mac as your relay' : 'I have a Mac at home';
   const macDescription = isInMacApp
@@ -80,11 +82,21 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
           <span className="text-sm font-medium">{macLabel}</span>
         </div>
         <p className="text-xs text-muted-foreground">{macDescription}</p>
-        <p className="text-xs text-muted-foreground">
-          Free · 10 accessories
-          <span className="mx-1.5">·</span>
-          Standard · {pricing.standard.formatted}/mo · unlimited
-        </p>
+        {accountType === 'standard' ? (
+          <>
+            <p className="text-xs font-medium text-green-600 flex items-center gap-1">
+              <Check className="h-3 w-3" />
+              Standard plan active · unlimited accessories
+            </p>
+            <p className="text-xs text-muted-foreground">Free tier · 10 accessories</p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Free · 10 accessories
+            <span className="mx-1.5">·</span>
+            Standard · {pricing.standard.formatted}/mo · unlimited
+          </p>
+        )}
       </button>
 
       <button
@@ -443,8 +455,8 @@ const stepDescriptions: Record<WizardStep, string> = {
   'shared-home': 'Check for home invitations',
 };
 
-export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType }: OnboardingOverlayProps) {
-  const [step, setStep] = useState<WizardStep>('intent');
+export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType, initialStep = 'intent' }: OnboardingOverlayProps) {
+  const [step, setStep] = useState<WizardStep>(initialStep);
   const pricing = usePricing();
 
   const handleIntentSelect = useCallback((selected: WizardStep) => {
@@ -492,6 +504,7 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
             onSkip={handleSkip}
             pricing={pricing}
             cloudSignupsAvailable={cloudSignupsAvailable}
+            accountType={accountType}
           />
         )}
 

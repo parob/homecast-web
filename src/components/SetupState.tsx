@@ -67,6 +67,7 @@ interface SetupStateProps {
   isInMobileApp?: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
+  onSwitchToCloud?: () => void;
   accountType?: string;
   pendingEnrollmentId?: string;
   cloudSignupsAvailable?: boolean;
@@ -104,12 +105,17 @@ export function CollapsibleHelp({ title, children }: { title: string; children: 
   );
 }
 
-function WaitingForMac({ isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
+function WaitingForMac({ isDarkBackground, onSetupCloud, onSwitchToCloud, accountType, cloudSignupsAvailable = true }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
+  onSwitchToCloud?: () => void;
   accountType?: string;
   cloudSignupsAvailable?: boolean;
 }) {
+  const pricing = usePricing();
+  const switchAction = onSwitchToCloud ?? onSetupCloud;
+  const isStandard = accountType === 'standard';
+
   return (
     <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
       <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
@@ -149,20 +155,28 @@ function WaitingForMac({ isDarkBackground, onSetupCloud, accountType, cloudSignu
           </div>
         </div>
 
-        {onSetupCloud && (
-          <div className={`w-full max-w-sm border-t pt-4 mt-4 ${isDarkBackground ? 'border-white/20' : ''}`}>
-            <p className={`text-xs ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
-              {cloudSignupsAvailable ? (
-                <>
-                  Changed your mind?{' '}
-                  <button onClick={onSetupCloud} className="text-primary hover:underline">
-                    Set up a cloud relay instead
-                  </button>
-                </>
-              ) : (
-                'Cloud relay · signups paused — at capacity'
-              )}
-            </p>
+        {switchAction && (
+          <div className={`w-full max-w-sm border-t pt-6 mt-6 ${isDarkBackground ? 'border-white/20' : ''}`}>
+            {cloudSignupsAvailable ? (
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`gap-2 ${isDarkBackground ? 'bg-white/10 border-white/30 text-white hover:bg-white/20' : ''}`}
+                  onClick={switchAction}
+                >
+                  <Cloud className="h-3.5 w-3.5" />
+                  {isStandard ? 'Switch to Cloud relay instead' : 'Set up a Cloud relay instead'}
+                </Button>
+                <p className={`text-xs text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
+                  Always on · no Mac needed{pricing ? ` · ${pricing.cloud.formatted}/mo` : ''}
+                </p>
+              </div>
+            ) : (
+              <p className={`text-xs text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
+                Cloud relay · signups paused — at capacity
+              </p>
+            )}
           </div>
         )}
       </CardContent>
@@ -394,7 +408,7 @@ function WaitingForInvite({ isDarkBackground, userEmail, onSetupCloud, onSetupMa
   );
 }
 
-function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, relayLastSeenAt = null, cloudSignupsAvailable = true }: {
+function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, relayLastSeenAt = null, cloudSignupsAvailable = true, accountType }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
@@ -402,6 +416,7 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
   relayLastSeenAt?: string | null;
   cloudSignupsAvailable?: boolean;
   isInMobileApp?: boolean;
+  accountType?: string;
 }) {
   const pricing = usePricing();
 
@@ -433,9 +448,21 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
               <p className={`text-xs ml-11 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
                 Run the Homecast Mac app on your home network to bridge your devices.
               </p>
-              <p className={`text-xs mt-1.5 ml-11 font-medium ${isDarkBackground ? 'text-green-400' : 'text-green-600'}`}>
-                Free · up to 10 accessories
-              </p>
+              {accountType === 'standard' ? (
+                <>
+                  <p className={`text-xs mt-1.5 ml-11 font-medium flex items-center gap-1 ${isDarkBackground ? 'text-green-400' : 'text-green-600'}`}>
+                    <Check className="h-3 w-3" />
+                    Standard plan active · unlimited accessories
+                  </p>
+                  <p className={`text-xs mt-0.5 ml-11 ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground'}`}>
+                    Free tier · up to 10 accessories
+                  </p>
+                </>
+              ) : (
+                <p className={`text-xs mt-1.5 ml-11 font-medium ${isDarkBackground ? 'text-green-400' : 'text-green-600'}`}>
+                  Free · up to 10 accessories
+                </p>
+              )}
               {relayOffline && (
                 <div className={`mt-3 ml-11 flex items-start gap-2 rounded-md border px-2.5 py-2 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
                   <Monitor className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
@@ -500,6 +527,7 @@ export function SetupState({
   isInMobileApp = false,
   onSetupCloud,
   onSetupMac,
+  onSwitchToCloud,
   accountType,
   pendingEnrollmentId,
   cloudSignupsAvailable = true,
@@ -526,7 +554,7 @@ export function SetupState({
       return (
         <>
           <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
-          <WaitingForMac isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />
+          <WaitingForMac isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSwitchToCloud={onSwitchToCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />
         </>
       );
     case 'cloud-relay':
@@ -543,7 +571,7 @@ export function SetupState({
       return (
         <>
           <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
-          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} relayLastSeenAt={mostRecentLastSeen(homes)} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} />
+          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} relayLastSeenAt={mostRecentLastSeen(homes)} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} accountType={accountType} />
         </>
       );
   }
