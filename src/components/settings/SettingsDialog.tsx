@@ -276,39 +276,34 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </button>
               </div>
             </div>
-            {/* Anti-steering: hidden in App Store builds — App Review 3.1.1
-                rejects external tip/donation links inside the binary. */}
-            {!(window as any).isHomecastApp && (
-              <div className="rounded-lg border p-3 space-y-2">
-                <p className="text-sm font-medium">Support Homecast</p>
-                <p className="text-xs text-muted-foreground">
-                  Homecast Community is free and open. If you find it useful, consider supporting the project.
-                </p>
-                <a
-                  href={GITHUB_SPONSORS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={openExternalUrl(GITHUB_SPONSORS_URL)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                >
-                  Sponsor on GitHub →
-                </a>
-              </div>
-            )}
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-sm font-medium">Support Homecast</p>
+              <p className="text-xs text-muted-foreground">
+                Homecast Community is free and open. If you find it useful, consider supporting the project.
+              </p>
+              <a
+                href={GITHUB_SPONSORS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={openExternalUrl(GITHUB_SPONSORS_URL)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                Sponsor on GitHub →
+              </a>
+            </div>
             <div className="rounded-lg border p-3 space-y-2">
               <p className="text-sm font-medium">Want remote access & cloud features?</p>
               <p className="text-xs text-muted-foreground">
-                Switch to Homecast Cloud for remote access from anywhere, cloud sync, and more.
+                Switch to Homecast Cloud for remote access, sharing, and more. You'll need to reset
+                this app and sign in with a Cloud account.
               </p>
-              <a
-                href="https://homecast.cloud/pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={openExternalUrl('https://homecast.cloud/pricing')}
+              <button
+                type="button"
+                onClick={() => props.resetAndUninstall?.()}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
-                View plans →
-              </a>
+                Reset & uninstall →
+              </button>
             </div>
           </div>
         ) : PlanSection ? (
