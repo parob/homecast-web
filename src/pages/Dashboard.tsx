@@ -1739,6 +1739,12 @@ const Dashboard = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   // State for tutorial walkthrough
   const [showTutorial, setShowTutorial] = useState(false);
+  // Set when the tutorial is dismissed/completed in this session. Guards the
+  // auto-open effect against the brief render window between
+  // `setShowTutorial(false)` and the optimistic `tutorialCompleted: true`
+  // settings update — without it, the effect re-fires with stale settings and
+  // re-opens the dialog (which then resets step to 0).
+  const tutorialDismissedRef = useRef(false);
   // Track which setting failed to save (for showing error tooltip)
   const [settingSaveError, setSettingSaveError] = useState<string | null>(null);
 
@@ -2763,6 +2769,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!settingsData?.settings?.data || !isAuthenticated) return;
     if (homesLoading || showOnboarding) return;
+    if (tutorialDismissedRef.current) return;
     try {
       const parsed = JSON.parse(settingsData.settings.data) as import('@/lib/graphql/types').UserSettingsData;
       if (parsed.tutorialCompleted) return;
@@ -4650,7 +4657,9 @@ const Dashboard = () => {
     }
   }, [saveSettings, refetchAccessories]);
 
-  // Auto-open accessory selection when free plan and no selection exists (relay mode)
+  // Auto-open accessory selection when free plan and no selection exists (relay mode).
+  // Skipped during onboarding — new users haven't picked a relay/cloud mode yet,
+  // so prompting them to pick "which 10 accessories matter" is premature noise.
   const autoOpenedSelectionRef = useRef(false);
   useEffect(() => {
     if (accountType !== 'free') return;
@@ -4658,14 +4667,25 @@ const Dashboard = () => {
     if (autoOpenedSelectionRef.current) return;
     if (!serverConnected) return;
     if (!settingsData) return; // Wait for settings to load
+    if (showOnboarding) return; // Hold off until they've completed setup
     if (includedAccessoryIds.length > 0) return; // Already has selection
+
+    // Also bail if onboarding flag isn't set yet — covers the brief window
+    // between sign-in and the onboarding overlay appearing on cloud mode.
+    try {
+      const parsed = settingsData?.settings?.data
+        ? JSON.parse(settingsData.settings.data) as import('@/lib/graphql/types').UserSettingsData
+        : null;
+      const completed = parsed?.onboarding?.completed || parsed?.onboardingCompleted;
+      if (!isCommunity && !completed) return;
+    } catch { /* fall through */ }
 
     const homes = homesData?.homes;
     if (!homes || homes.length === 0) return;
 
     autoOpenedSelectionRef.current = true;
     setAccessorySelectionOpen(true);
-  }, [accountType, serverConnected, settingsData, homesData, includedAccessoryIds]);
+  }, [accountType, serverConnected, settingsData, homesData, includedAccessoryIds, showOnboarding]);
 
   // Tracks which billing action is in-flight so the relevant button can show
   // a spinner and ignore duplicate clicks. Watchdog clears it after 60s if
@@ -4844,6 +4864,7 @@ const Dashboard = () => {
 
   // Tutorial completion handler
   const handleTutorialComplete = useCallback(async () => {
+    tutorialDismissedRef.current = true;
     setShowTutorial(false);
     try {
       const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
@@ -5895,6 +5916,7 @@ const Dashboard = () => {
               maxPinnedTabs={MAX_PINNED_TABS}
               onReplayTutorial={() => {
                 setSettingsOpen(false);
+                tutorialDismissedRef.current = false;
                 setTimeout(() => setShowTutorial(true), 300);
               }}
               notificationProps={isCommunity ? undefined : {

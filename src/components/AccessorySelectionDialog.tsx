@@ -202,7 +202,7 @@ export const AccessorySelectionDialog = memo(function AccessorySelectionDialog({
                 Cancel
               </Button>
             )}
-            <Button onClick={handleSave} disabled={saving || selectedIds.size === 0}>
+            <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
               Save ({usedSlots}/{limit})
             </Button>
