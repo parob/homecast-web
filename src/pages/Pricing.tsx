@@ -7,6 +7,12 @@ import { usePricing } from '@/lib/pricing';
 import type { Pricing as PricingShape } from '@/lib/pricing';
 import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 
+// Apple's anti-steering rules forbid pointing App Store users to external
+// payment / tipping mechanisms. Inside the App Store build we hide every
+// donation, sponsor, and external-checkout reference. Detected via the
+// flag injected by the WKWebView host in HomecastApp.swift.
+const isInAppStoreBuild = typeof window !== 'undefined' && !!(window as any).isHomecastApp;
+
 const CheckItem = ({ children }: { children: React.ReactNode }) => (
   <li className="flex items-center gap-2 text-sm">
     <Check className="h-4 w-4 text-green-500 shrink-0" />
@@ -174,10 +180,12 @@ const Pricing = () => {
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                       <span>Some technical knowledge required</span>
                     </div>
-                    <div className="flex items-start gap-1.5 text-xs text-zinc-400">
-                      <Heart className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span>Donations welcome if you'd like to support development</span>
-                    </div>
+                    {!isInAppStoreBuild && (
+                      <div className="flex items-start gap-1.5 text-xs text-zinc-400">
+                        <Heart className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        <span>Donations welcome if you'd like to support development</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -336,11 +344,13 @@ const Pricing = () => {
                 through homecast.cloud, which handles remote access, authentication, real-time
                 syncing, home sharing, webhooks, and API access out of the box.
               </FAQItem>
-              <FAQItem question="Can I donate to support Homecast?">
-                Yes! The Community Edition is free and always will be. If you find it useful
-                and want to support ongoing development, you can{' '}
-                <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">sponsor us on GitHub</a>.
-              </FAQItem>
+              {!isInAppStoreBuild && (
+                <FAQItem question="Can I donate to support Homecast?">
+                  Yes! The Community Edition is free and always will be. If you find it useful
+                  and want to support ongoing development, you can{' '}
+                  <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">sponsor us on GitHub</a>.
+                </FAQItem>
+              )}
             </FAQ>
             <div className="mt-10 text-center">
               <p className="text-sm text-muted-foreground mb-4">Have more questions?</p>
