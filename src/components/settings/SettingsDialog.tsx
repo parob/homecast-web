@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { GITHUB_SPONSORS_URL } from '@/lib/donate-config';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -31,6 +30,17 @@ import {
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import { isCommunity } from '@/lib/config';
 import { getCloud } from '@/lib/cloud';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Cloud components — resolved at render time (not module-load time)
 // because initCloud() is async and hasn't completed when static imports run.
@@ -277,18 +287,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </div>
             </div>
             <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-sm font-medium">Support Homecast</p>
+              <p className="text-sm font-medium">Open source</p>
               <p className="text-xs text-muted-foreground">
-                Homecast Community is free and open. If you find it useful, consider supporting the project.
+                Homecast Community is open source under the MIT licence. View the source, file
+                issues, and follow development on GitHub.
               </p>
               <a
-                href={GITHUB_SPONSORS_URL}
+                href="https://github.com/parob/homecast"
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={openExternalUrl(GITHUB_SPONSORS_URL)}
+                onClick={openExternalUrl('https://github.com/parob/homecast')}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
-                Sponsor on GitHub →
+                View on GitHub →
               </a>
             </div>
             <div className="rounded-lg border p-3 space-y-2">
@@ -297,13 +308,39 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 Switch to Homecast Cloud for remote access, sharing, and more. You'll need to reset
                 this app and sign in with a Cloud account.
               </p>
-              <button
-                type="button"
-                onClick={() => props.resetAndUninstall?.()}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-              >
-                Reset & uninstall →
-              </button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                  >
+                    Reset & uninstall →
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Homecast?</AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-2 text-sm">
+                        <p>This will:</p>
+                        <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                          <li>Sign you out of the Community account on this Mac</li>
+                          <li>Erase all local Community data (homes, settings, automations, accessory layouts)</li>
+                          <li>Stop the local relay server and clear cached web content</li>
+                          <li>Return to the mode-selector screen, where you can pick Homecast Cloud</li>
+                        </ul>
+                        <p className="text-foreground font-medium pt-1">This cannot be undone.</p>
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => props.resetAndUninstall?.()}>
+                      Reset & uninstall
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ) : PlanSection ? (
