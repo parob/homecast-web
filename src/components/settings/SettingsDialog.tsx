@@ -286,22 +286,42 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </button>
               </div>
             </div>
-            <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-sm font-medium">Open source</p>
-              <p className="text-xs text-muted-foreground">
-                Homecast Community is open source under the MIT licence. View the source, file
-                issues, and follow development on GitHub.
-              </p>
-              <a
-                href="https://github.com/parob/homecast"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={openExternalUrl('https://github.com/parob/homecast')}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-              >
-                View on GitHub →
-              </a>
-            </div>
+            {/* Inside the App Store build → link to the repo (anti-steering safe).
+                In a regular browser → keep the GitHub Sponsors call-to-action. */}
+            {(window as any).isHomecastApp ? (
+              <div className="rounded-lg border p-3 space-y-2">
+                <p className="text-sm font-medium">Open source</p>
+                <p className="text-xs text-muted-foreground">
+                  Homecast Community is open source under the MIT licence. View the source, file
+                  issues, and follow development on GitHub.
+                </p>
+                <a
+                  href="https://github.com/parob/homecast"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={openExternalUrl('https://github.com/parob/homecast')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                >
+                  View on GitHub →
+                </a>
+              </div>
+            ) : (
+              <div className="rounded-lg border p-3 space-y-2">
+                <p className="text-sm font-medium">Support Homecast</p>
+                <p className="text-xs text-muted-foreground">
+                  Homecast Community is free and open. If you find it useful, consider supporting the project.
+                </p>
+                <a
+                  href="https://github.com/sponsors/parob"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={openExternalUrl('https://github.com/sponsors/parob')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                >
+                  Sponsor on GitHub →
+                </a>
+              </div>
+            )}
             <div className="rounded-lg border p-3 space-y-2">
               <p className="text-sm font-medium">Want remote access & cloud features?</p>
               <p className="text-xs text-muted-foreground">

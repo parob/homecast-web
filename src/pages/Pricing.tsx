@@ -6,6 +6,11 @@ import { Link } from 'react-router-dom';
 import { usePricing } from '@/lib/pricing';
 import type { Pricing as PricingShape } from '@/lib/pricing';
 
+// True inside the App Store build (WKWebView host injects the flag); false
+// in a regular browser. Used to swap external donation/sponsor links for
+// neutral repo links — Apple Review flagged the former as 3.1.1 tipping.
+const isInAppStoreBuild = typeof window !== 'undefined' && !!(window as any).isHomecastApp;
+
 const CheckItem = ({ children }: { children: React.ReactNode }) => (
   <li className="flex items-center gap-2 text-sm">
     <Check className="h-4 w-4 text-green-500 shrink-0" />
@@ -175,7 +180,7 @@ const Pricing = () => {
                     </div>
                     <div className="flex items-start gap-1.5 text-xs text-zinc-400">
                       <Heart className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span>Open source under the MIT licence</span>
+                      <span>{isInAppStoreBuild ? 'Open source under the MIT licence' : 'Donations welcome if you\u2019d like to support development'}</span>
                     </div>
                   </div>
                 </div>
@@ -340,6 +345,13 @@ const Pricing = () => {
                 file issues, and follow development on{' '}
                 <a href="https://github.com/parob/homecast" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">GitHub</a>.
               </FAQItem>
+              {!isInAppStoreBuild && (
+                <FAQItem question="Can I donate to support Homecast?">
+                  Yes! The Community Edition is free and always will be. If you find it useful
+                  and want to support ongoing development, you can{' '}
+                  <a href="https://github.com/sponsors/parob" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">sponsor us on GitHub</a>.
+                </FAQItem>
+              )}
             </FAQ>
             <div className="mt-10 text-center">
               <p className="text-sm text-muted-foreground mb-4">Have more questions?</p>
