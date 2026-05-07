@@ -23,6 +23,7 @@ import {
 import {
   Layers,
   Loader2,
+  PackageX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -405,6 +406,19 @@ export function SharedAccessoryGroupView({
             </div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  // Stale share: the relay responded fine, but the group no longer exists.
+  if (!accessoriesError && parsedData?.entityMissing) {
+    return (
+      <div className="space-y-6">
+        <ErrorWithTrace
+          icon={PackageX}
+          title="Group No Longer Available"
+          message="This shared group has been renamed or removed in HomeKit. Ask the owner to share it again."
+        />
       </div>
     );
   }

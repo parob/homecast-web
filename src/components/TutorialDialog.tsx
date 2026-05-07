@@ -546,23 +546,30 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       {/* Overlay with spotlight cutout */}
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
         <defs>
+          {/* Blur the mask cutout so the dim → spotlight transition feathers
+              softly instead of hard-clipping at the rect edge. */}
+          <filter id="tour-spotlight-blur" x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
           <mask id="tour-spotlight-mask">
             <rect width="100%" height="100%" fill="white" />
-            {targetRects.map((r, i) => (
-              <rect
-                key={i}
-                x={r.left - spotlightPad}
-                y={r.top - spotlightPad}
-                width={r.width + spotlightPad * 2}
-                height={r.height + spotlightPad * 2}
-                rx={spotlightRadius}
-                fill="black"
-                // Match the ring + card 250ms transition so the spotlight
-                // cutout slides between targets together with everything
-                // else, instead of snapping while the ring smoothly slides.
-                style={{ transition: 'x 250ms ease-out, y 250ms ease-out, width 250ms ease-out, height 250ms ease-out' }}
-              />
-            ))}
+            <g filter="url(#tour-spotlight-blur)">
+              {targetRects.map((r, i) => (
+                <rect
+                  key={i}
+                  x={r.left - spotlightPad}
+                  y={r.top - spotlightPad}
+                  width={r.width + spotlightPad * 2}
+                  height={r.height + spotlightPad * 2}
+                  rx={spotlightRadius}
+                  fill="black"
+                  // Match the ring + card 250ms transition so the spotlight
+                  // cutout slides between targets together with everything
+                  // else, instead of snapping while the ring smoothly slides.
+                  style={{ transition: 'x 250ms ease-out, y 250ms ease-out, width 250ms ease-out, height 250ms ease-out' }}
+                />
+              ))}
+            </g>
           </mask>
         </defs>
         <rect
@@ -582,26 +589,6 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         onPointerDown={(e) => e.stopPropagation()}
       />
 
-      {/* Spotlight ring highlight — subtle ring so the cutout itself does the
-          highlighting work. One per target rect. */}
-      {targetRects.map((r, i) => (
-        <div
-          key={i}
-          className="absolute rounded-xl pointer-events-none"
-          // Match the SVG cutout's transition so the ring slides in lockstep
-          // with the spotlight; without an explicit transition it would snap
-          // while the cutout slides.
-          style={{
-            top: r.top - spotlightPad,
-            left: r.left - spotlightPad,
-            width: r.width + spotlightPad * 2,
-            height: r.height + spotlightPad * 2,
-            boxShadow: '0 0 0 2px rgba(255, 255, 255, 0.35)',
-            zIndex: 10045,
-            transition: 'top 250ms ease-out, left 250ms ease-out, width 250ms ease-out, height 250ms ease-out',
-          }}
-        />
-      ))}
 
       {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
           while we wait for the target to mount (so it doesn't flash at the

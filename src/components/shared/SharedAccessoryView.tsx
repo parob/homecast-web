@@ -21,6 +21,7 @@ import {
   Eye,
   Zap,
   Loader2,
+  PackageX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -79,6 +80,17 @@ export function SharedAccessoryView({
       return accessories[0] || null;
     } catch {
       return null;
+    }
+  }, [accessoriesData]);
+
+  // Detect stale share — server signals `entityMissing` when the accessory
+  // is no longer present on the relay.
+  const entityMissing = useMemo((): boolean => {
+    if (!accessoriesData?.publicEntityAccessories) return false;
+    try {
+      return Boolean(JSON.parse(accessoriesData.publicEntityAccessories).entityMissing);
+    } catch {
+      return false;
     }
   }, [accessoriesData]);
 
@@ -288,6 +300,19 @@ export function SharedAccessoryView({
             </div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  // Stale share: relay responded but the accessory no longer exists.
+  if (!accessoriesError && entityMissing) {
+    return (
+      <div className="space-y-6">
+        <ErrorWithTrace
+          icon={PackageX}
+          title="Accessory No Longer Available"
+          message="This shared accessory has been removed from HomeKit. Ask the owner to share it again."
+        />
       </div>
     );
   }

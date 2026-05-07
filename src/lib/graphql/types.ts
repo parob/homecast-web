@@ -892,6 +892,10 @@ export interface PublicEntityAccessoriesData {
   serviceGroups?: HomeKitServiceGroup[];
   layout?: HomeLayoutData & { rooms?: Record<string, RoomLayoutData>; roomGroups?: Array<{ id: string; name: string; roomIds: string[]; layout?: Record<string, any> }> };
   entityName?: string;
+  // True when the share's target accessory / service group no longer exists
+  // on the relay (renamed or removed in HomeKit). Lets the UI distinguish a
+  // stale share from a relay that's offline.
+  entityMissing?: boolean;
 }
 
 // Stored entity query/mutation response types
