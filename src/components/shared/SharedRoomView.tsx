@@ -8,6 +8,7 @@ import type {
   HomeKitServiceGroup,
   GetPublicEntityAccessoriesResponse,
   PublicEntitySetCharacteristicResponse,
+  PublicEntitySetServiceGroupResponse,
   PublicEntityAccessoriesData,
   RoomLayoutData,
 } from '@/lib/graphql/types';
@@ -190,7 +191,7 @@ export function SharedRoomView({
   const [setCharacteristic] = useMutation<PublicEntitySetCharacteristicResponse>(
     PUBLIC_ENTITY_SET_CHARACTERISTIC
   );
-  const [setServiceGroup] = useMutation<PublicEntitySetCharacteristicResponse>(
+  const [setServiceGroup] = useMutation<PublicEntitySetServiceGroupResponse>(
     PUBLIC_ENTITY_SET_SERVICE_GROUP
   );
 
@@ -325,8 +326,18 @@ export function SharedRoomView({
         }
       }
 
+      const revert = () => {
+        setOptimisticValues((prev) => {
+          const next = { ...prev };
+          for (const key of touchedKeys) {
+            delete next[key];
+          }
+          return next;
+        });
+      };
+
       try {
-        await setServiceGroup({
+        const res = await setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -335,14 +346,12 @@ export function SharedRoomView({
             passcode,
           },
         });
+        if (!res.data?.publicEntitySetServiceGroup?.success) {
+          revert();
+          toast.error('Failed to control group');
+        }
       } catch (err) {
-        setOptimisticValues((prev) => {
-          const next = { ...prev };
-          for (const key of touchedKeys) {
-            delete next[key];
-          }
-          return next;
-        });
+        revert();
         toast.error('Failed to control group');
       }
     },

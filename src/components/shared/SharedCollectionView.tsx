@@ -10,6 +10,7 @@ import type {
   HomeKitServiceGroup,
   GetPublicEntityAccessoriesResponse,
   PublicEntitySetCharacteristicResponse,
+  PublicEntitySetServiceGroupResponse,
   PublicEntityAccessoriesData,
   CollectionLayoutData,
 } from '@/lib/graphql/types';
@@ -255,7 +256,7 @@ export function SharedCollectionView({
   const [setCharacteristic] = useMutation<PublicEntitySetCharacteristicResponse>(
     PUBLIC_ENTITY_SET_CHARACTERISTIC
   );
-  const [setServiceGroup] = useMutation<PublicEntitySetCharacteristicResponse>(
+  const [setServiceGroup] = useMutation<PublicEntitySetServiceGroupResponse>(
     PUBLIC_ENTITY_SET_SERVICE_GROUP
   );
 

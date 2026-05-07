@@ -784,6 +784,15 @@ export interface PublicEntitySetCharacteristicResponse {
   };
 }
 
+export interface PublicEntitySetServiceGroupResponse {
+  publicEntitySetServiceGroup: {
+    success: boolean;
+    accessoryId: string;
+    characteristicType: string;
+    value: any;
+  };
+}
+
 // Response for fetching full accessory data from a shared entity
 export interface GetPublicEntityAccessoriesResponse {
   publicEntityAccessories: string | null; // JSON string of PublicEntityAccessoriesData
