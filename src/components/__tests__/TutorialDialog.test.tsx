@@ -5,9 +5,12 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { TutorialDialog } from '../TutorialDialog';
 
 // Walk the tutorial forward N times by clicking the Next button.
+// `findByRole` waits up to 1s for the button to appear — covers the dialog's
+// initial warm-up state (where only a loading spinner is rendered until the
+// host's demo data sentinel is visible) without explicit timing in each test.
 async function advance(n: number) {
   for (let i = 0; i < n; i++) {
-    const next = screen.getByRole('button', { name: /next/i });
+    const next = await screen.findByRole('button', { name: /next/i });
     await act(async () => { fireEvent.click(next); });
     await act(async () => { await new Promise(r => setTimeout(r, 200)); });
   }

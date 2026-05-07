@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_PUBLIC_ENTITY_ACCESSORIES } from '@/lib/graphql/queries';
-import { PUBLIC_ENTITY_SET_CHARACTERISTIC } from '@/lib/graphql/mutations';
+import { PUBLIC_ENTITY_SET_CHARACTERISTIC, PUBLIC_ENTITY_SET_SERVICE_GROUP } from '@/lib/graphql/mutations';
 import type {
   SharedEntityData,
   HomeKitAccessory,
@@ -385,6 +385,9 @@ export function SharedRoomGroupView({
   const [setCharacteristic] = useMutation<PublicEntitySetCharacteristicResponse>(
     PUBLIC_ENTITY_SET_CHARACTERISTIC
   );
+  const [setServiceGroup] = useMutation<PublicEntitySetCharacteristicResponse>(
+    PUBLIC_ENTITY_SET_SERVICE_GROUP
+  );
 
   const handleToggle = useCallback(
     async (accessoryId: string, characteristicType: string, currentValue: boolean) => {
@@ -483,7 +486,7 @@ export function SharedRoomGroupView({
       .filter((acc): acc is HomeKitAccessory => acc !== undefined);
   }, [accessoryById]);
 
-  // Handle service group toggle - toggle all accessories in the group
+  // Handle service group toggle - one atomic relay call via publicEntitySetServiceGroup
   const handleGroupToggle = useCallback(
     async (group: HomeKitServiceGroup, newValue: boolean) => {
       if (!canControl) {
@@ -493,44 +496,45 @@ export function SharedRoomGroupView({
 
       const groupAccessories = getGroupAccessories(group);
 
-      // Toggle each accessory in the group
+      const touchedKeys: string[] = [];
       for (const accessory of groupAccessories) {
-        // Find the power characteristic
         for (const service of accessory.services || []) {
           for (const char of service.characteristics || []) {
             if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
               const key = `${accessory.id}-${char.characteristicType}`;
-              // Optimistic update
+              touchedKeys.push(key);
               setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
-
-              try {
-                await setCharacteristic({
-                  variables: {
-                    shareHash,
-                    accessoryId: accessory.id,
-                    characteristicType: char.characteristicType,
-                    value: JSON.stringify(newValue),
-                    passcode,
-                  },
-                });
-              } catch (err) {
-                // Revert on error
-                setOptimisticValues((prev) => {
-                  const next = { ...prev };
-                  delete next[key];
-                  return next;
-                });
-              }
               break;
             }
           }
         }
       }
+
+      try {
+        await setServiceGroup({
+          variables: {
+            shareHash,
+            groupId: group.id,
+            characteristicType: 'on',
+            value: JSON.stringify(newValue),
+            passcode,
+          },
+        });
+      } catch (err) {
+        setOptimisticValues((prev) => {
+          const next = { ...prev };
+          for (const key of touchedKeys) {
+            delete next[key];
+          }
+          return next;
+        });
+        toast.error('Failed to control group');
+      }
     },
-    [canControl, shareHash, passcode, setCharacteristic, getGroupAccessories]
+    [canControl, shareHash, passcode, setServiceGroup, getGroupAccessories]
   );
 
-  // Handle service group slider - set all accessories in the group
+  // Handle service group slider - one atomic relay call for brightness/hue/etc.
   const handleGroupSlider = useCallback(
     async (group: HomeKitServiceGroup, characteristicType: string, value: number) => {
       if (!canControl) {
@@ -540,36 +544,33 @@ export function SharedRoomGroupView({
 
       const groupAccessories = getGroupAccessories(group);
 
-      // Set each accessory in the group
       for (const accessory of groupAccessories) {
-        // Find the characteristic
         for (const service of accessory.services || []) {
           for (const char of service.characteristics || []) {
             if (char.characteristicType === characteristicType) {
               const key = `${accessory.id}-${char.characteristicType}`;
-              // Optimistic update
               setOptimisticValues((prev) => ({ ...prev, [key]: value }));
-
-              try {
-                await setCharacteristic({
-                  variables: {
-                    shareHash,
-                    accessoryId: accessory.id,
-                    characteristicType,
-                    value: JSON.stringify(value),
-                    passcode,
-                  },
-                });
-              } catch (err) {
-                // Revert on error (keep value for now, WebSocket will correct)
-              }
               break;
             }
           }
         }
       }
+
+      try {
+        await setServiceGroup({
+          variables: {
+            shareHash,
+            groupId: group.id,
+            characteristicType,
+            value: JSON.stringify(value),
+            passcode,
+          },
+        });
+      } catch (err) {
+        // Keep optimistic values — WebSocket update will reconcile
+      }
     },
-    [canControl, shareHash, passcode, setCharacteristic, getGroupAccessories]
+    [canControl, shareHash, passcode, setServiceGroup, getGroupAccessories]
   );
 
   // Check if we have rooms to show in sidebar

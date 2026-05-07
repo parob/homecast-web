@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
+import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X, Loader2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const DOCS_BASE = 'https://docs.homecast.cloud';
@@ -138,6 +138,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   // True once we either measured the target or gave up waiting for it. We hide
   // the card while this is false to avoid a flash at the wrong position.
   const [readyToShow, setReadyToShow] = useState(true);
+  // True from the moment the dialog opens until the host dashboard has
+  // rendered demo data (sentinel = `[data-tour="widget-area"]` visible). On
+  // a slow first paint — Apollo queries still in flight, sheet animating in,
+  // demo data not yet swapped — this prevents the welcome card from rendering
+  // over a half-loaded dashboard, and we show a small spinner instead.
+  const [warming, setWarming] = useState(false);
   const isViewportMobile = useIsMobile();
   // Mac app users always have right-click available, even at narrow widths.
   // Treat them as desktop for instructional copy that distinguishes long-press
@@ -151,9 +157,43 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   useEffect(() => {
     if (!open) return;
     setStep(0);
+    setWarming(true);
     onDemoActiveChange?.(true);
     return () => { onDemoActiveChange?.(false); };
   }, [open, onDemoActiveChange]);
+
+  // Wait for a sentinel target (widget-area) to appear before clearing the
+  // warming flag. This blocks step 0 from rendering until the dashboard has
+  // actually committed the demo data — avoids the tutorial flashing over a
+  // half-loaded layout. Times out after 6s so we never hang forever.
+  useEffect(() => {
+    if (!open || !warming) return;
+    const start = Date.now();
+    let raf = 0;
+    const isVisible = (sel: string) => {
+      const list = document.querySelectorAll(sel);
+      for (const el of list) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return true;
+      }
+      return false;
+    };
+    const check = () => {
+      // Either spotlight target works as a sentinel — whichever paints first
+      // means the host has committed demo data and is ready for the tour.
+      if (isVisible('[data-tour="widget-area"]') || isVisible('[data-tour="sidebar-homes"]')) {
+        setWarming(false);
+        return;
+      }
+      if (Date.now() - start > 6000) {
+        setWarming(false);
+        return;
+      }
+      raf = requestAnimationFrame(check);
+    };
+    raf = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(raf);
+  }, [open, warming]);
 
   // Block all user-generated pointer/click input outside the tutorial card.
   // Programmatic events the tutorial itself dispatches (`el.click()`,
@@ -547,8 +587,21 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
         <defs>
           {/* Blur the mask cutout so the dim → spotlight transition feathers
-              softly instead of hard-clipping at the rect edge. */}
-          <filter id="tour-spotlight-blur" x="-10%" y="-10%" width="120%" height="120%">
+              softly instead of hard-clipping at the rect edge.
+
+              filterUnits="userSpaceOnUse" with an oversized region keeps the
+              blur from getting clipped — the default objectBoundingBox region
+              only extends 10% past the cutout's bbox, which Safari clips on
+              short or narrow targets where the 12px blur radius spills past
+              that buffer. */}
+          <filter
+            id="tour-spotlight-blur"
+            filterUnits="userSpaceOnUse"
+            x="-10000"
+            y="-10000"
+            width="20000"
+            height="20000"
+          >
             <feGaussianBlur stdDeviation="6" />
           </filter>
           <mask id="tour-spotlight-mask">
@@ -590,11 +643,41 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       />
 
 
+      {/* While warming up the demo data, show a centered loading card
+          instead of the regular tutorial card. The dim overlay above is
+          already in place, so the page underneath is hidden — even if it's
+          still mid-skeleton. Spinner clears as soon as the sentinel target
+          appears (or the 6s safety timeout fires). */}
+      {warming && (
+        <div
+          ref={cardRef}
+          className="absolute w-[260px] rounded-xl border bg-background shadow-xl p-5 flex flex-col items-center gap-3"
+          style={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 10050,
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={handleSkip}
+            className="absolute top-3 right-3 p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground"
+            aria-label="Skip tutorial"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <Loader2 className="h-6 w-6 text-primary animate-spin" />
+          <p className="text-sm text-muted-foreground text-center">Setting up the tour…</p>
+        </div>
+      )}
+
       {/* Floating card — z-index must be above Sheet overlay (10015). Hidden
           while we wait for the target to mount (so it doesn't flash at the
           wrong position); after a short fallback timeout we show centered so
           the tutorial isn't stuck if the page is empty or still loading. */}
-      <div
+      {!warming && <div
         ref={cardRef}
         className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3"
         style={{
@@ -678,7 +761,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
             </Button>
           </div>
         </div>
-      </div>
+      </div>}
     </div>,
     document.body
   );
