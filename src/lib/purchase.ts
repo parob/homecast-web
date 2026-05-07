@@ -183,7 +183,7 @@ export async function purchasePlan(
 
   // Web / Stripe path
   try {
-    const { data } = await client.mutate({
+    const { data } = await apolloClient.mutate({
       mutation: CREATE_CHECKOUT_SESSION,
       variables: { plan, homeName: options.homeName },
     });
@@ -208,7 +208,7 @@ export async function restorePurchases(): Promise<PurchaseResult> {
     if (!native.jwsTransactions?.length) {
       return { success: false, error: 'No purchases to restore' };
     }
-    const { data } = await client.mutate({
+    const { data } = await apolloClient.mutate({
       mutation: RESTORE_APPLE_PURCHASES,
       variables: { jwsTransactions: native.jwsTransactions },
     });
