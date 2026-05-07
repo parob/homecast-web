@@ -799,6 +799,45 @@ export function SharedCollectionView({
 
       {/* Main content */}
       <div className="flex-1 space-y-6 min-w-0">
+        {/* Mobile-only horizontal group picker — see SharedHomeView. */}
+        {hasGroups && (
+          <div className="md:hidden -mx-3 px-3 overflow-x-auto scrollbar-hidden">
+            <div className="flex gap-2 w-max">
+              <button
+                onClick={() => setSelectedGroup(null)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
+                  isDarkBackground
+                    ? `text-white ${selectedGroup === null ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
+                    : selectedGroup === null
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted/80"
+                )}
+              >
+                <Folder className="h-3.5 w-3.5" />
+                <span className="truncate max-w-[120px]">{collectionName}</span>
+              </button>
+              {payload.groups.map((group) => (
+                <button
+                  key={group.id}
+                  onClick={() => setSelectedGroup(group.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
+                    isDarkBackground
+                      ? `text-white ${selectedGroup === group.id ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
+                      : selectedGroup === group.id
+                        ? "bg-secondary text-secondary-foreground"
+                        : "bg-muted hover:bg-muted/80"
+                  )}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span className="truncate max-w-[120px]">{group.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Area Summary - aggregated sensor readings */}
         <AreaSummary accessories={accessories} isDarkBackground={isDarkBackground} />
 

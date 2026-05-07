@@ -379,6 +379,12 @@ export const SET_USER_ACCOUNT_TYPE = gql`
   }
 `;
 
+export const DELETE_USER = gql`
+  mutation DeleteUser($userId: String!) {
+    deleteUser(userId: $userId)
+  }
+`;
+
 export const SET_STAGING_ACCESS = gql`
   mutation SetStagingAccess($userId: String!, $stagingAccess: Boolean!) {
     setStagingAccess(userId: $userId, stagingAccess: $stagingAccess)

@@ -138,7 +138,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   // True once we either measured the target or gave up waiting for it. We hide
   // the card while this is false to avoid a flash at the wrong position.
   const [readyToShow, setReadyToShow] = useState(true);
-  const isMobile = useIsMobile();
+  const isViewportMobile = useIsMobile();
+  // Mac app users always have right-click available, even at narrow widths.
+  // Treat them as desktop for instructional copy that distinguishes long-press
+  // from right-click.
+  const isInMacApp = typeof window !== 'undefined' && !!(window as Window & { isHomecastMacApp?: boolean }).isHomecastMacApp;
+  const isMobile = isViewportMobile && !isInMacApp;
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Toggle demo data on the host while the tutorial is open. Reset step to 0
@@ -652,9 +657,9 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         )}
 
         {/* Footer: dots + navigation */}
-        <div className="flex items-center justify-between pt-1 border-t">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 pt-1 border-t">
           {/* Step dots */}
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 shrink-0">
             {STEPS.map((_, i) => (
               <div
                 key={i}
@@ -665,14 +670,14 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
             ))}
           </div>
 
-          <div className="flex gap-1.5">
+          <div className="flex items-center gap-1 shrink-0">
             {step === 0 && (
-              <Button variant="ghost" size="sm" onClick={handleSkip} className="h-8 text-muted-foreground">
-                Skip tutorial
+              <Button variant="ghost" size="sm" onClick={handleSkip} className="h-8 px-2 text-xs text-muted-foreground">
+                Skip
               </Button>
             )}
             {step > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleBack} className="h-8">
+              <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 px-2">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             )}

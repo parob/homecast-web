@@ -717,6 +717,48 @@ export function SharedRoomGroupView({
 
         {/* Main content */}
         <div className="flex-1 space-y-6 min-w-0">
+          {/* Mobile-only horizontal room picker — see SharedHomeView. */}
+          {hasRooms && (
+            <div className="md:hidden -mx-3 px-3 overflow-x-auto scrollbar-hidden">
+              <div className="flex gap-2 w-max">
+                <button
+                  onClick={() => setSelectedRoom(null)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
+                    isDarkBackground
+                      ? `text-white ${selectedRoom === null ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
+                      : selectedRoom === null
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted hover:bg-muted/80"
+                  )}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span className="truncate max-w-[120px]">{groupName}</span>
+                </button>
+                {roomNames.map((roomName) => {
+                  const RoomIcon = getRoomIcon(roomName);
+                  return (
+                    <button
+                      key={roomName}
+                      onClick={() => setSelectedRoom(roomName)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
+                        isDarkBackground
+                          ? `text-white ${selectedRoom === roomName ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
+                          : selectedRoom === roomName
+                            ? "bg-secondary text-secondary-foreground"
+                            : "bg-muted hover:bg-muted/80"
+                      )}
+                    >
+                      <RoomIcon className="h-3.5 w-3.5" />
+                      <span className="truncate max-w-[120px]">{roomName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Area Summary - aggregated sensor readings */}
           <AreaSummary accessories={accessories} isDarkBackground={isDarkBackground} />
 
