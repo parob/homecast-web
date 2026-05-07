@@ -10,7 +10,7 @@ const Terms = () => {
         <section className="w-full py-16 px-6">
           <div className="mx-auto max-w-3xl">
             <h1 className="text-4xl font-bold mb-2">Terms of Service</h1>
-            <p className="text-muted-foreground mb-12">Last updated: March 2025</p>
+            <p className="text-muted-foreground mb-12">Last updated: May 2026</p>
 
             <div className="space-y-8">
               <div>
@@ -68,10 +68,58 @@ const Terms = () => {
 
               <div>
                 <h2 className="text-xl font-semibold mb-3">6. Subscriptions and Payments</h2>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  Some features require a paid subscription. We currently offer two
+                  auto-renewing monthly subscription plans:
+                </p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4 mb-3">
+                  <li><strong>Standard</strong> — unlimited HomeKit accessories, push notifications, MQTT broker. Billed monthly. App Store: $10.99/month (or local equivalent). Web (Stripe): $8/month.</li>
+                  <li><strong>Cloud</strong> — everything in Standard, plus a managed cloud relay we host for you on dedicated Apple hardware (no Mac required at home). Billed monthly. App Store: $21.99/month (or local equivalent). Web (Stripe): $16/month.</li>
+                </ul>
+
+                <h3 className="text-base font-semibold mt-4 mb-2">6.1 Auto-renewal</h3>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  Subscriptions automatically renew at the end of each billing period unless
+                  cancelled at least 24 hours before the end of the current period. Your
+                  payment method (Apple ID for App Store purchases, or your card on file for
+                  web purchases through Stripe) will be charged for renewal within 24 hours
+                  prior to the end of the current period at the then-current price for the
+                  same plan length.
+                </p>
+
+                <h3 className="text-base font-semibold mt-4 mb-2">6.2 Managing your subscription</h3>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  <strong>App Store subscribers:</strong> manage or cancel from your{' '}
+                  <a href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">App Store account settings</a>{' '}
+                  (Settings → Apple ID → Subscriptions on iOS, or System Settings → [your name] → Media &amp; Purchases → Subscriptions on macOS). Cancellation takes effect at the end of the current paid period; access continues until then.
+                </p>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  <strong>Web subscribers:</strong> manage or cancel from Settings → Plan → Manage Subscription
+                  inside the Homecast web portal, which opens the Stripe customer portal where
+                  you can update payment, view invoices, or cancel.
+                </p>
+
+                <h3 className="text-base font-semibold mt-4 mb-2">6.3 Pricing changes</h3>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  We may change subscription prices from time to time. Material price changes
+                  will be communicated in advance. Apple notifies App Store subscribers and
+                  requires explicit consent to a price increase before the next renewal cycle;
+                  if not consented to, the subscription will not renew.
+                </p>
+
+                <h3 className="text-base font-semibold mt-4 mb-2">6.4 Refunds</h3>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  We do not provide refunds for partial periods. App Store purchases are
+                  refunded according to{' '}
+                  <a href="https://support.apple.com/en-us/HT204084" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Apple's refund policy</a>;
+                  refund requests for App Store purchases are handled by Apple directly.
+                  Web (Stripe) purchases follow Stripe's standard refund handling.
+                </p>
+
+                <h3 className="text-base font-semibold mt-4 mb-2">6.5 No trials currently</h3>
                 <p className="text-muted-foreground leading-relaxed">
-                  Some features require a paid subscription. Subscriptions are billed monthly or annually
-                  in advance. You may cancel at any time; cancellation takes effect at the end of the
-                  current billing period. We do not provide refunds for partial periods.
+                  We do not currently offer free trials or introductory pricing. The free tier
+                  (Basic) is genuinely free and ad-supported as described in section 7.
                 </p>
               </div>
 
