@@ -84,28 +84,34 @@ const Login = () => {
       return;
     }
 
-    // Check relay status — poll every 5s until relay is ready
+    // Show the form immediately — don't gate the UI on the relay poll.
+    // Only flip to the "Relay not ready" screen after several consecutive
+    // failures, so a transient network hiccup doesn't bounce the user
+    // away from the form they're trying to use.
+    setCommunityChecked(true);
+
     let cancelled = false;
     const checkRelay = async () => {
-      let attempt = 0;
+      let consecutiveFailures = 0;
       while (!cancelled) {
         try {
           const r = await fetch(config.graphqlUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ operationName: 'IsOnboarded', query: '{ isOnboarded }', variables: {} }),
+            signal: AbortSignal.timeout(4000),
           });
           const result = await r.json();
           const relayReady = result?.data?.relayReady ?? false;
           if (relayReady) {
             setRelayNotReady(false);
-            setCommunityChecked(true);
             return;
           }
+          consecutiveFailures += 1;
         } catch {
+          consecutiveFailures += 1;
         }
-        setRelayNotReady(true);
-        setCommunityChecked(true);
+        if (consecutiveFailures >= 3) setRelayNotReady(true);
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     };

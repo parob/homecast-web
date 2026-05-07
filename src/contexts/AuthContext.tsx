@@ -60,7 +60,7 @@ function mightBeMacApp(): boolean {
 
 // Wait for native bridge to be ready (Mac app only)
 // Returns true if relay capable, false if timeout or browser mode
-async function waitForNativeBridge(maxWaitMs = 2000): Promise<boolean> {
+async function waitForNativeBridge(maxWaitMs = 500): Promise<boolean> {
   if (!mightBeMacApp()) {
     // Browser mode - don't wait
     return false;
@@ -121,7 +121,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
   const isRelayRef = React.useRef(false);
   const [bridgeReady, setBridgeReady] = React.useState(false);
   React.useEffect(() => {
-    waitForNativeBridge(2000).then(result => {
+    waitForNativeBridge(500).then(result => {
       isRelayRef.current = result;
       setBridgeReady(true);
     });
