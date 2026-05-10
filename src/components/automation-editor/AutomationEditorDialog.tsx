@@ -464,7 +464,7 @@ function AutomationEditorInner({
 
 
   return (
-    <div className="flex flex-col h-full" data-testid="automation-editor">
+    <div className="flex flex-col h-full safe-area-top safe-area-bottom safe-area-left safe-area-right" data-testid="automation-editor">
       {/* Toolbar */}
       <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
         {/* Mobile palette toggle */}
