@@ -1,4 +1,5 @@
-import React, { createContext, useContext, memo } from 'react';
+import React, { createContext, useContext, useEffect, memo } from 'react';
+import { requestAccessoryRefresh } from '@/lib/accessoryRefresh';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   ContextMenu,
@@ -152,6 +153,16 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const effectiveCompact = compact;
   const effectiveIsOn = isReachable ? isOn : false;
   const effectiveOnExpandToggle = onExpandToggle;
+
+  // Apple Home reads characteristic values on-demand when it shows a tile.
+  // Mirror that: if a tile mounts looking stale, nudge HomeKit to re-read.
+  // The scheduler enforces a per-accessory cooldown + global concurrency cap
+  // so this is cheap even on a 50-tile dashboard.
+  const accessoryId = accessory?.id;
+  useEffect(() => {
+    if (!accessoryId || isReachable !== false) return;
+    requestAccessoryRefresh(accessoryId);
+  }, [accessoryId, isReachable]);
 
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
   const useServiceColors = (iconStyle === 'standard' || iconStyle === 'colourful') && serviceType;
