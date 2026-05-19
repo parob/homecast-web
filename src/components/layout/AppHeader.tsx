@@ -22,12 +22,19 @@ interface AppHeaderProps {
 export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Android: window.HomecastAndroid (JS bridge) is registered on WebView
+  // creation and is therefore available at the first React render — whereas
+  // window.isHomecastAndroidApp is injected by Tauri on PageLoadEvent::Started,
+  // which lands AFTER React mounts. Falling back to the bridge guarantees the
+  // header reserves status-bar inset on first paint, not after a rerender.
+  const inMobileApp = isInMobileApp || (typeof window !== 'undefined' && !!(window as Window & { HomecastAndroid?: unknown }).HomecastAndroid);
+
   return (
     <header
       className={cn(
         "fixed top-0 left-0 right-0 z-[10001]",
         "overscroll-none pointer-events-none",
-        isInMobileApp && "safe-area-top",
+        inMobileApp && "safe-area-top",
         isInMacApp && "window-drag"
       )}
       style={isInMacApp ? { paddingTop: '33px' } : undefined}
