@@ -1435,7 +1435,7 @@ const Dashboard = () => {
   const [groupByRoom, setGroupByRoom] = useState<boolean>(true);
   const [iconStyle, setIconStyle] = useState<'standard' | 'colourful'>('colourful');
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('large');
-  const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(false);
+  const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(true);
   const [fullWidth, setFullWidth] = useState<boolean>(true);
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
   const [roomOrderByHome, setRoomOrderByHome] = useState<Record<string, string[]>>({});
