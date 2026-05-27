@@ -194,6 +194,17 @@ const Login = () => {
   // Redirect to portal if authenticated
   if (isAuthenticated && !isOAuthFlow) {
     const destination = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/portal';
+    // mqtt_sync hand-off needs a full reload so AuthContext.checkAuth re-runs
+    // and bounces the user back to mqtt.* — client-side Navigate skips it.
+    if (destination.includes('mqtt_sync=1')) {
+      window.location.replace(destination);
+      return (
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-primary/10" />
+          <Loader2 className="relative z-10 h-8 w-8 animate-spin text-primary" />
+        </div>
+      );
+    }
     return <Navigate to={destination} replace />;
   }
 

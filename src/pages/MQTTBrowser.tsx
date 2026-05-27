@@ -45,7 +45,7 @@ export default function MQTTBrowser() {
   const [retryDelay, setRetryDelay] = useState(0);
   const [groupByHome, setGroupByHome] = useState(() => {
     const p = searchParams.get('groupByHome');
-    return p === '1' ? true : p === '0' ? false : false;
+    return p === '0' ? false : true;
   });
   const [groupByRoom, setGroupByRoom] = useState(() => {
     const p = searchParams.get('groupByRoom');
@@ -56,7 +56,6 @@ export default function MQTTBrowser() {
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
   const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set());
-  const appliedHomeDefaultRef = useRef(false);
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams(prev => {
@@ -118,16 +117,6 @@ export default function MQTTBrowser() {
     }
     return Array.from(byName.values());
   }, [homesData, cookieHomes]);
-
-  // Default Homes grouping on when the user has >1 mqtt-enabled home. Runs
-  // once after homes load; a manual URL param or explicit toggle wins.
-  useEffect(() => {
-    if (appliedHomeDefaultRef.current) return;
-    if (homes.length === 0) return;
-    if (searchParams.has('groupByHome')) { appliedHomeDefaultRef.current = true; return; }
-    if (homes.filter(h => h.mqttEnabled).length > 1) setGroupByHome(true);
-    appliedHomeDefaultRef.current = true;
-  }, [homes, searchParams]);
 
   // Derive topic counts + rooms per home from messages
   const { topicCountByHome, roomsByHome } = useMemo(() => {
