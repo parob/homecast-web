@@ -333,11 +333,22 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
                 </a>
                 <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
               </div>
-              <Switch
-                checked={mqttEnabled}
-                disabled={mqttToggling || !isAdmin}
-                onCheckedChange={handleToggleMqtt}
-              />
+              <div className="flex items-center gap-2 shrink-0">
+                {mqttEnabled && (
+                  <span
+                    className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${relayOnline ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}
+                    title={relayOnline ? 'Relay online — publishing device state' : 'Enabled, but the relay is offline so no state is being published'}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${relayOnline ? 'bg-green-500' : 'bg-amber-500'}`} />
+                    {relayOnline ? 'Active' : 'Relay offline'}
+                  </span>
+                )}
+                <Switch
+                  checked={mqttEnabled}
+                  disabled={mqttToggling || !isAdmin}
+                  onCheckedChange={handleToggleMqtt}
+                />
+              </div>
             </div>
           );
         })()}
