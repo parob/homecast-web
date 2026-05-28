@@ -1626,6 +1626,8 @@ export interface ManagedRelayHomeInfo {
   webClientCount: number;
   subscriptionCount: number;
   webhookCount: number;
+  automationCount?: number;
+  mqttEnabled?: boolean;
 }
 
 export interface ManagedRelayInfo {

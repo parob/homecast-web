@@ -347,18 +347,29 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {mqttEnabled && (() => {
-                  // Live status: green "Active" when the relay's-pod bridge is
-                  // serving + broker-connected; amber "Relay offline" otherwise.
-                  const active = !!(mqttStatus?.serving && mqttStatus?.brokerConnected) || (relayOnline && mqttStatus === undefined);
+                  // Three states:
+                  //  • Active — relay's-pod bridge is serving + broker-connected
+                  //  • Awaiting relay — relay is online but the bridge hasn't
+                  //    started serving this home yet (just enabled; takes up to
+                  //    ~1 min) — also the loading state while the relay is up
+                  //  • Relay offline — relay is genuinely down, nothing publishes
+                  const active = !!(mqttStatus?.serving && mqttStatus?.brokerConnected);
                   const last = mqttStatus?.lastPublishAt;
-                  const lastLabel = last ? `Last published ${formatRelativeAgo(new Date(last * 1000).toISOString())}` : 'No state published yet';
+                  const tone = active
+                    ? { cls: 'bg-green-500/10 text-green-600 dark:text-green-400', dot: 'bg-green-500',
+                        label: 'Active',
+                        tip: last ? `Last published ${formatRelativeAgo(new Date(last * 1000).toISOString())}` : 'Publishing device state' }
+                    : relayOnline
+                    ? { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', dot: 'bg-sky-500 animate-pulse',
+                        label: 'Awaiting relay',
+                        tip: 'Broker enabled — waiting for the relay to start publishing (up to a minute)' }
+                    : { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', dot: 'bg-amber-500',
+                        label: 'Relay offline',
+                        tip: 'Enabled, but the relay is offline so no state is being published' };
                   return (
-                    <span
-                      className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${active ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}
-                      title={active ? lastLabel : 'Enabled, but the relay is offline so no state is being published'}
-                    >
-                      <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-amber-500'}`} />
-                      {active ? 'Active' : 'Relay offline'}
+                    <span className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${tone.cls}`} title={tone.tip}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                      {tone.label}
                     </span>
                   );
                 })()}

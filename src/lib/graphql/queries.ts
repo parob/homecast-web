@@ -679,6 +679,7 @@ export const GET_MY_MANAGED_RELAY_INFO = gql`
         subscriptionCount
         webhookCount
         automationCount
+        mqttEnabled
       }
       pendingEnrollmentCount
       activeEnrollmentCount
