@@ -763,10 +763,10 @@ export default function MQTTBrowser() {
                 )}
                 {/* Content: stacked + tab-toggled on narrow; side-by-side on lg+ */}
                 <div className="px-3 py-1 flex flex-col lg:flex-row gap-3 items-start">
-                  <div className={`w-full lg:flex-1 lg:max-w-sm ${rawMode ? 'hidden lg:block' : ''}`}>
+                  <div className={`w-full lg:flex-1 lg:max-w-sm min-w-0 ${rawMode ? 'hidden lg:block' : ''}`}>
                     {renderControls()}
                   </div>
-                  <div className={`w-full lg:flex-1 ${!rawMode ? 'hidden lg:block' : ''}`}>
+                  <div className={`w-full lg:flex-1 min-w-0 ${!rawMode ? 'hidden lg:block' : ''}`}>
                     {renderJson()}
                   </div>
                 </div>
