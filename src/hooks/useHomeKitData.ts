@@ -939,20 +939,31 @@ export function updateServiceGroupCharacteristicInCache(
     return;
   }
 
-  // Get service groups from cache
-  const groups = cache.get<HomeKitServiceGroup[]>(`serviceGroups:${homeId}`);
+  // Get service groups from cache. UUIDs are case-insensitive (RFC 4122) but
+  // sources disagree on case: the relay/HomeKit (and thus this cache) use
+  // UPPERCASE, while the cloud MQTT bridge relays serviceGroup.set with a
+  // LOWERCASE homeId. A case-sensitive lookup here silently missed the cache
+  // and left the group + its members stale on MQTT-initiated changes (single
+  // accessories dodged it because the relay re-derives homeId via accessory.get).
+  let effectiveHomeId = homeId;
+  let groups = cache.get<HomeKitServiceGroup[]>(`serviceGroups:${homeId}`);
+  if (!groups) {
+    for (const k of [homeId.toUpperCase(), homeId.toLowerCase()]) {
+      const g = cache.get<HomeKitServiceGroup[]>(`serviceGroups:${k}`);
+      if (g) { groups = g; effectiveHomeId = k; break; }
+    }
+  }
   if (!groups) {
     if (import.meta.env.DEV) console.log(`[DataCache] updateServiceGroup: no groups cached for home ${homeId.slice(0, 8)}`);
     return;
   }
 
-  // Find the group
-  const group = groups.find(g => g.id === groupId);
+  // Find the group (case-insensitive — see UUID note above)
+  const group = groups.find(g => g.id === groupId)
+    || groups.find(g => g.id.toUpperCase() === groupId.toUpperCase());
   if (!group) {
     if (import.meta.env.DEV) {
       console.log(`[DataCache] updateServiceGroup: group ${groupId.slice(0, 8)} not found in ${groups.length} groups`);
-      console.log(`[DataCache] Looking for: "${groupId}"`);
-      console.log(`[DataCache] Available groups: ${groups.map(g => `"${g.id}"`).join(', ')}`);
     }
     return;
   }
@@ -964,12 +975,13 @@ export function updateServiceGroupCharacteristicInCache(
 
   for (const accessoryId of group.accessoryIds) {
     // Pass isServerUpdate=false here since we've already checked at the group level
-    // and we want these individual updates to always apply
-    updateAccessoryCharacteristicInCache(homeId, accessoryId, characteristicType, value, false);
+    // and we want these individual updates to always apply. Use effectiveHomeId
+    // (the case that actually hit the cache) so the accessories cache matches too.
+    updateAccessoryCharacteristicInCache(effectiveHomeId, accessoryId, characteristicType, value, false);
     // Also update the alternate power characteristic as fallback
     if (isPowerCharacteristic) {
       const altCharType = characteristicType === 'on' ? 'power_state' : 'on';
-      updateAccessoryCharacteristicInCache(homeId, accessoryId, altCharType, value, false);
+      updateAccessoryCharacteristicInCache(effectiveHomeId, accessoryId, altCharType, value, false);
     }
   }
 
