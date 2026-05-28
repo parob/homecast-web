@@ -5,6 +5,9 @@ import { Radio, Send, Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRig
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
 import { isMqttDomain, getApiBase, getAuthHeaders, getJWT } from './mqtt-browser/util';
 import { formatUptime, PropertyEditor, TopicPath, FmtVal } from './mqtt-browser/helpers';
+import { AccessoryTypeIcon } from './mqtt-browser/InlineRowControls';
+import { mqttToAccessory, mqttPublishFor } from './mqtt-browser/widget-adapter';
+import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 import { HomeInfoDialog } from './mqtt-browser/HomeInfoDialog';
 
@@ -18,9 +21,11 @@ export default function MQTTBrowser() {
   // hand off to homecast.cloud with ?mqtt_sync=1&return=… — that page's
   // AuthContext rewrites the cookie from localStorage (or sends the user
   // through /login) and bounces them back here with the cookie set.
-  const needsMqttSync = isMqttDomain() && !getJWT();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [connected, setConnected] = useState(false);
+  const mockMode = searchParams.get('mock') === '1';
+  // In mock mode we never need cookie sync — we skip the broker entirely.
+  const needsMqttSync = !mockMode && isMqttDomain() && !getJWT();
+  const [connected, setConnected] = useState(mockMode);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
@@ -56,6 +61,17 @@ export default function MQTTBrowser() {
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
   const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set());
+
+  // Keep the JSON textarea in sync with the expanded topic's payload, so
+  // publishes that came from the widget show up live. Skip while the user is
+  // actively typing into the textarea.
+  useEffect(() => {
+    if (!expandedTopic) return;
+    if (document.activeElement?.tagName === 'TEXTAREA') return;
+    const raw = messages[expandedTopic]?.payload || '{}';
+    try { setPublishValue(JSON.stringify(JSON.parse(raw), null, 2)); }
+    catch { setPublishValue(raw); }
+  }, [expandedTopic, messages]);
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams(prev => {
@@ -157,15 +173,66 @@ export default function MQTTBrowser() {
     location.replace(`${target}?mqtt_sync=1&return=${encodeURIComponent(location.href)}`);
   }, [needsMqttSync]);
 
-  // Load mqtt.js
+  // Load mqtt.js (skipped in mock mode — no broker needed)
   useEffect(() => {
-    if (needsMqttSync) return;
+    if (needsMqttSync || mockMode) return;
     const s = document.createElement('script');
     s.src = 'https://unpkg.com/mqtt@5.10.0/dist/mqtt.min.js';
     s.onload = () => { mqttLibRef.current = (window as any).mqtt; };
     document.head.appendChild(s);
     return () => { s.remove(); };
-  }, [needsMqttSync]);
+  }, [needsMqttSync, mockMode]);
+
+  // ?mock=1 — seed realistic fake topics so the UI can be iterated without
+  // a broker, login, or relay. Publishes from inline controls update the
+  // local mock state instead of going to MQTT.
+  useEffect(() => {
+    if (!mockMode) return;
+    const now = Date.now();
+    const mk = (payload: object, ageSec = 0): TopicMessage => ({ payload: JSON.stringify(payload), timestamp: now - ageSec * 1000, updates: 1 });
+    setCookieUser({ id: 'mock-user', email: 'mock@homecast.cloud', name: 'Mock User' });
+    setCookieHomes([
+      { id: '11111111-1111-1111-1111-111111111111', name: 'Beach House', role: 'owner', mqttEnabled: true, relayConnected: true, ownerEmail: 'mock@homecast.cloud' },
+      { id: '22222222-2222-2222-2222-222222222222', name: 'County Hall', role: 'owner', mqttEnabled: true, relayConnected: false, ownerEmail: 'mock@homecast.cloud' },
+    ]);
+    const topics: Record<string, TopicMessage> = {
+      // --- Beach House / kitchen ---
+      'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2':       mk({ on: true,  brightness: 72, color_temp: 350, hue: 45, saturation: 80 }, 3),
+      'homecast/beach-house-1111/kitchen-aaaa/fan-9c8d':        mk({ active: 1, speed: 30 }, 12),
+      'homecast/beach-house-1111/kitchen-aaaa/outlet-77b1':     mk({ on: false }, 60),
+      'homecast/beach-house-1111/kitchen-aaaa/sensor-44f1':     mk({ current_temp: 22.5, relative_humidity: 45, battery_level: 88 }, 8),
+      'homecast/beach-house-1111/kitchen-aaaa/lights-group':    mk({ on: true, brightness: 40 }, 4),
+      // --- Beach House / bedroom ---
+      'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2':       mk({ on: false, brightness: 0, color_temp: 270 }, 600),
+      'homecast/beach-house-1111/bedroom-bbbb/thermo-22a3':     mk({ active: 1, current_temp: 19.5, heat_target: 21, cool_target: 24, hvac_mode: 'heat', relative_humidity: 48 }, 30),
+      'homecast/beach-house-1111/bedroom-bbbb/lock-9911':       mk({ locked: 1 }, 3600),
+      'homecast/beach-house-1111/bedroom-bbbb/motion-12cd':     mk({ motion: false, battery_level: 72 }, 90),
+      // --- County Hall (offline relay) ---
+      'homecast/county-hall-2222/lounge-cccc/lamp-ff00':        mk({ on: true, brightness: 100 }, 5000),
+      'homecast/county-hall-2222/lounge-cccc/speaker-3344':     mk({ volume: 35, mute: false }, 5000),
+    };
+    setMessages(topics);
+    setAvailability({
+      'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2':       'online',
+      'homecast/beach-house-1111/kitchen-aaaa/fan-9c8d':        'online',
+      'homecast/beach-house-1111/kitchen-aaaa/outlet-77b1':     'online',
+      'homecast/beach-house-1111/kitchen-aaaa/sensor-44f1':     'online',
+      'homecast/beach-house-1111/kitchen-aaaa/lights-group':    'online',
+      'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2':       'online',
+      'homecast/beach-house-1111/bedroom-bbbb/thermo-22a3':     'online',
+      'homecast/beach-house-1111/bedroom-bbbb/lock-9911':       'online',
+      'homecast/beach-house-1111/bedroom-bbbb/motion-12cd':     'online',
+      'homecast/county-hall-2222/lounge-cccc/lamp-ff00':        'offline',
+      'homecast/county-hall-2222/lounge-cccc/speaker-3344':     'offline',
+    });
+    setGroupMembers({
+      'homecast/beach-house-1111/kitchen-aaaa/lights-group': [
+        'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2',
+        'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2',
+      ],
+    });
+    setConnStats({ connectedAt: now - 60_000, totalMessages: 11, clientId: 'mock-client-id' });
+  }, [mockMode]);
 
   const connect = useCallback(async () => {
     if (!mqttLibRef.current) { setError('MQTT library not loaded yet'); return; }
@@ -254,20 +321,54 @@ export default function MQTTBrowser() {
     return homes.find(h => homeSlugForName(h.name) === slug);
   }, [homes, homeSlugForName]);
 
+  // In mock mode, "publishes" just mutate local state so the UI reacts the
+  // same way it would when a retained message comes back over MQTT. We mirror
+  // the relay's behavior of translating /set write-keys to state-keys
+  // (e.g. lock_target → locked, target → position) so widgets visually flip.
+  const mockPublish = useCallback((topic: string, payload: string) => {
+    const base = topic.replace(/\/set$/, '');
+    const simulateRelay = (incoming: Record<string, unknown>) => {
+      const out: Record<string, unknown> = { ...incoming };
+      if ('lock_target' in out) {
+        out.locked = (out.lock_target === true || out.lock_target === 1 || out.lock_target === 'true') ? 1 : 0;
+        delete out.lock_target;
+      }
+      if ('target' in out) {
+        out.position = Number(out.target);
+        delete out.target;
+      }
+      return out;
+    };
+    setMessages(prev => {
+      const prevMsg = prev[base];
+      let nextPayload = payload;
+      try {
+        const incoming = JSON.parse(payload);
+        const echoed = simulateRelay(incoming);
+        const existing = prevMsg ? JSON.parse(prevMsg.payload) : {};
+        nextPayload = JSON.stringify({ ...existing, ...echoed });
+      } catch { /* keep raw */ }
+      return { ...prev, [base]: { payload: nextPayload, timestamp: Date.now(), updates: (prevMsg?.updates || 0) + 1 } };
+    });
+    addToHistory(topic.endsWith('/set') ? topic : topic + '/set', payload);
+  }, [addToHistory]);
+
   const publishToSet = useCallback((topic: string, payload: string) => {
+    if (mockMode) { mockPublish(topic, payload); return; }
     if (!clientRef.current || !connected) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     clientRef.current.publish(t, payload);
     addToHistory(t, payload);
-  }, [connected, addToHistory]);
+  }, [connected, addToHistory, mockMode, mockPublish]);
 
   const publishProp = useCallback((topic: string, key: string, value: unknown) => {
+    if (mockMode) { mockPublish(topic, JSON.stringify({ [key]: value })); return; }
     if (!clientRef.current || !connected) return;
     const t = topic.endsWith('/set') ? topic : topic + '/set';
     const p = JSON.stringify({ [key]: value });
     clientRef.current.publish(t, p);
     addToHistory(t, p);
-  }, [connected, addToHistory]);
+  }, [connected, addToHistory, mockMode, mockPublish]);
 
   // Auto-connect with exponential backoff. On each consecutive failure we wait
   // longer (500ms, 1s, 2s, … capped at 10s) so a broken token or broker doesn't
@@ -573,6 +674,9 @@ export default function MQTTBrowser() {
             {connected ? 'Waiting for messages...' : 'Connect to see device state from your homes'}
           </div>
         ) : (() => {
+          // Pluralize and join: [[3, 'device'], [1, 'group']] → "3 devices · 1 group"
+          const fmtCounts = (parts: Array<[number, string]>) =>
+            parts.filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}${n === 1 ? '' : 's'}`).join(' · ');
           // --- Shared topic row renderer ---
           const getEffectivePayload = (topic: string, payload: string) => {
             if (!groupMembers[topic]) return payload;
@@ -599,59 +703,73 @@ export default function MQTTBrowser() {
             try { setPublishValue(JSON.stringify(JSON.parse(ep), null, 2)); } catch { setPublishValue(ep); }
           };
 
-          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx?: number) => {
+          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, _insetPx?: number) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
-            // Indent the panel just enough to nest under its row, no extra slack.
-            const ml = Math.max(insetPx || 0, 12);
-            const members = groupMembers[topic];
             const topicHome = homeForSlug(topic.split('/')[1] || '');
             const homeOffline = topicHome?.relayConnected === false;
+            // Render the widget (or PropertyEditor fallback) for the Controls side.
+            const renderControls = () => {
+              const adapted = mqttToAccessory(topic, ep, !homeOffline);
+              if (!adapted) {
+                return <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />;
+              }
+              const { accessory, type } = adapted;
+              return (
+                <AccessoryWidget
+                  accessory={accessory}
+                  onToggle={(_id, characteristicType, currentValue) => {
+                    const out = mqttPublishFor(type, characteristicType, !currentValue);
+                    if (!out) return;
+                    publishProp(topic, out.key, out.value);
+                  }}
+                  onSlider={(_id, characteristicType, value) => {
+                    const out = mqttPublishFor(type, characteristicType, value);
+                    if (!out) return;
+                    publishProp(topic, out.key, out.value);
+                  }}
+                  getEffectiveValue={(_id, _characteristicType, serverValue) => serverValue}
+                />
+              );
+            };
+            const renderJson = () => (
+              <div className="space-y-1.5">
+                <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <span className="font-mono text-[10px] text-muted-foreground truncate min-w-0" title={topic + '/set'}>{topic}/set</span>
+                  <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
+                    <Send className="h-3 w-3" /> Publish
+                  </button>
+                </div>
+              </div>
+            );
             return (
-              <div className="my-1 mr-3 border rounded-lg bg-background overflow-hidden" style={{ marginLeft: ml }}>
-                {/* Header: status + Controls/JSON toggle */}
-                <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
+              <div className="my-1 mr-3 ml-auto w-full max-w-sm lg:max-w-3xl">
+                {/* Header: status + Controls/JSON toggle (toggle hidden on lg+ where both render side-by-side) */}
+                <div className="flex items-center justify-between px-3 py-1">
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                    {availability[topic] && (
-                      <span className={`inline-flex items-center gap-1 ${availability[topic] === 'offline' ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${availability[topic] === 'offline' ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />
-                        {availability[topic]}
-                      </span>
-                    )}
                     {messages[topic]?.updates > 1 && <span>{messages[topic].updates} updates</span>}
                   </span>
-                  <div className="flex border rounded overflow-hidden">
-                    <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={`px-2 py-0.5 text-[10px] ${!rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>Controls</button>
-                    <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={`px-2 py-0.5 text-[10px] border-l ${rawMode ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}>JSON</button>
+                  <div className="flex items-center gap-2 text-[10px] lg:hidden">
+                    <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={!rawMode ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}>Controls</button>
+                    <span className="text-muted-foreground/40">·</span>
+                    <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={rawMode ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}>JSON</button>
                   </div>
                 </div>
                 {/* Relay-offline hint */}
                 {homeOffline && (
-                  <div className="px-3 py-1.5 border-b text-[10px] text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                  <div className="px-3 py-1 text-[10px] text-amber-700 dark:text-amber-400">
                     Relay offline — publishes won't reach the device.
                   </div>
                 )}
-                {/* Controls / JSON */}
-                <div className="px-3 py-2">
-                  {rawMode ? (
-                    <div className="space-y-1.5">
-                      <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
-                      <div className="flex justify-end">
-                        <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                          <Send className="h-3 w-3" /> Publish
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />
-                  )}
-                </div>
-                {/* Group members footer */}
-                {members && members.length > 0 && (
-                  <div className="px-3 py-1.5 border-t text-[10px] text-muted-foreground font-mono">
-                    <span className="text-purple-500 dark:text-purple-400 mr-1">ᴳ</span>
-                    {members.map((s: string) => s.split('/').pop()?.replace(/-[a-f0-9]{4,}$/, '')).join(' · ')}
+                {/* Content: stacked + tab-toggled on narrow; side-by-side on lg+ */}
+                <div className="px-3 py-1 flex flex-col lg:flex-row gap-3 items-start">
+                  <div className={`w-full lg:flex-1 lg:max-w-sm ${rawMode ? 'hidden lg:block' : ''}`}>
+                    {renderControls()}
                   </div>
-                )}
+                  <div className={`w-full lg:flex-1 ${!rawMode ? 'hidden lg:block' : ''}`}>
+                    {renderJson()}
+                  </div>
+                </div>
               </div>
             );
           };
@@ -665,21 +783,24 @@ export default function MQTTBrowser() {
             const depth = opts?.depth || 0;
             const insetPx = depth * 16 + (opts?.short ? 20 : 0);
 
+            const toggleExpand = () => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); };
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
-                <button onClick={() => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); }}
-                  className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
+                <div role="button" tabIndex={0} onClick={toggleExpand}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(); } }}
+                  className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 cursor-pointer ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
                   style={{ paddingLeft: Math.max(insetPx, 12) }}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
+                  <AccessoryTypeIcon payload={ep} />
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
                     {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                   </span>
                   <span className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[11px]"><FmtVal payload={ep} /></span>
+                    <span className="font-mono text-[11px] text-right"><FmtVal payload={ep} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                     {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
-                </button>
+                </div>
                 {isThisExpanded && renderDetailPanel(topic, payload, timestamp, insetPx)}
               </div>
             );
@@ -710,17 +831,22 @@ export default function MQTTBrowser() {
                   >
                     {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                   </button>
-                  <button
+                  <div
+                    role="button" tabIndex={0}
                     onClick={openEditor}
-                    className="flex-1 flex items-center justify-between pr-3 py-1.5 text-left"
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(); } }}
+                    className="flex-1 flex items-center justify-between pr-3 py-1.5 text-left cursor-pointer"
                     title="Edit group state"
                   >
-                    <span className="font-mono truncate">{groupSlug}</span>
-                    <span className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono text-[11px] font-normal"><FmtVal payload={ep} /></span>
-                      <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{g.memberTopics.length}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <AccessoryTypeIcon payload={ep} />
+                      <span className="font-mono truncate">{groupSlug}</span>
                     </span>
-                  </button>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono text-[11px] font-normal text-right"><FmtVal payload={ep} /></span>
+                      <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{fmtCounts([[g.memberTopics.length, 'device']])}</span>
+                    </span>
+                  </div>
                 </div>
                 {isEditorOpen && renderDetailPanel(g.topic, g.payload.payload, g.payload.timestamp, headerPadLeft)}
                 {isOpen && (
@@ -738,7 +864,7 @@ export default function MQTTBrowser() {
           // grouping; headerDepth=1 when rooms are nested inside a home.
           const renderRoomBucket = (r: RoomBucket, headerDepth: number) => {
             const topicDepth = headerDepth;
-            const bodyCount = r.plain.length + r.groups.length;
+            const bodyLabel = fmtCounts([[r.plain.length, 'device'], [r.groups.length, 'group']]);
             const renderBody = (innerDepth: number) => (
               <>
                 {r.groups.map(g => renderGroupBucket(g, innerDepth))}
@@ -761,7 +887,7 @@ export default function MQTTBrowser() {
                     {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
                     <span className="font-mono">{r.slug}</span>
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{bodyCount}</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">{bodyLabel}</span>
                 </button>
                 {isOpen && (
                   <div className="divide-y">{renderBody(topicDepth + 1)}</div>
@@ -795,6 +921,9 @@ export default function MQTTBrowser() {
                     return <div key="_nohome" className="divide-y">{renderHomeBody(homeBucket, 0)}</div>;
                   }
                   const isOpen = openHomes.has(homeSlug);
+                  const homeDevices = homeBucket.plain.length + homeBucket.rooms.reduce((s, rr) => s + rr.plain.length, 0);
+                  const homeGroups = homeBucket.groups.length + homeBucket.rooms.reduce((s, rr) => s + rr.groups.length, 0);
+                  const homeLabel = fmtCounts([[homeBucket.rooms.length, 'room'], [homeDevices, 'device'], [homeGroups, 'group']]);
                   return (
                     <div key={homeSlug}>
                       <button onClick={() => setOpenHomes(prev => { const n = new Set(prev); if (n.has(homeSlug)) n.delete(homeSlug); else n.add(homeSlug); return n; })}
@@ -803,7 +932,7 @@ export default function MQTTBrowser() {
                           {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
                           <span className="font-mono">{homeSlug}</span>
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{homeBucket.allTopicCount}</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">{homeLabel}</span>
                       </button>
                       {isOpen && (
                         <div className="divide-y">{renderHomeBody(homeBucket, 1)}</div>
