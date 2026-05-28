@@ -795,10 +795,10 @@ export default function MQTTBrowser() {
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
                     {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                   </span>
+                  {messages[topic]?.updates > 1 && <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{messages[topic].updates} updates</span>}
                   <span className="ml-auto flex items-center gap-2 shrink-0">
                     <span className="font-mono text-[11px] text-right"><FmtVal payload={ep} /></span>
                     <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                    {messages[topic]?.updates > 1 && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 tabular-nums">{messages[topic].updates}</span>}
                   </span>
                 </div>
                 {isThisExpanded && renderDetailPanel(topic, payload, timestamp, insetPx)}
