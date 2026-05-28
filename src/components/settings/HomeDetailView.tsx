@@ -17,7 +17,7 @@ import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOf
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS } from '@/lib/graphql/queries';
+import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
@@ -133,6 +133,18 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
     fetchPolicy: 'network-only',
   });
   const mqttEnabled = mqttData?.homeMqttEnabled ?? false;
+
+  // Live managed-broker status (cloud only). Polls while the section is open so
+  // the pill reflects current publishing state. Only meaningful when enabled.
+  const { data: mqttStatusData } = useQuery(GET_HOME_MQTT_STATUS, {
+    variables: { homeId: home.id },
+    skip: isCommunity || !mqttEnabled,
+    fetchPolicy: 'network-only',
+    pollInterval: 15000,
+  });
+  const mqttStatus = mqttStatusData?.homeMqttStatus as
+    | { enabled: boolean; brokerConnected: boolean; serving: boolean; subscribed: boolean; lastPublishAt: number | null }
+    | undefined;
 
   // Load custom brokers — server (Cloud) or native bridge (Community).
   const { data: brokersData, refetch: refetchBrokers, loading: cloudBrokersLoading } = useQuery(GET_HOME_MQTT_BROKERS, {
@@ -334,15 +346,22 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
                 <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {mqttEnabled && (
-                  <span
-                    className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${relayOnline ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}
-                    title={relayOnline ? 'Relay online — publishing device state' : 'Enabled, but the relay is offline so no state is being published'}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${relayOnline ? 'bg-green-500' : 'bg-amber-500'}`} />
-                    {relayOnline ? 'Active' : 'Relay offline'}
-                  </span>
-                )}
+                {mqttEnabled && (() => {
+                  // Live status: green "Active" when the relay's-pod bridge is
+                  // serving + broker-connected; amber "Relay offline" otherwise.
+                  const active = !!(mqttStatus?.serving && mqttStatus?.brokerConnected) || (relayOnline && mqttStatus === undefined);
+                  const last = mqttStatus?.lastPublishAt;
+                  const lastLabel = last ? `Last published ${formatRelativeAgo(new Date(last * 1000).toISOString())}` : 'No state published yet';
+                  return (
+                    <span
+                      className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${active ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}
+                      title={active ? lastLabel : 'Enabled, but the relay is offline so no state is being published'}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      {active ? 'Active' : 'Relay offline'}
+                    </span>
+                  );
+                })()}
                 <Switch
                   checked={mqttEnabled}
                   disabled={mqttToggling || !isAdmin}

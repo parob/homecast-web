@@ -894,6 +894,12 @@ export const GET_HOME_MQTT_BROKERS = gql`
   }
 `;
 
+export const GET_HOME_MQTT_STATUS = gql`
+  query GetHomeMqttStatus($homeId: String!) {
+    homeMqttStatus(homeId: $homeId)
+  }
+`;
+
 export const GET_NOTIFICATION_HISTORY = gql`
   query GetNotificationHistory($limit: Int, $offset: Int, $automationId: String) {
     notificationHistory(limit: $limit, offset: $offset, automationId: $automationId) {
