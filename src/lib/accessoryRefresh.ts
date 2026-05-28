@@ -23,9 +23,18 @@ let inFlight = 0;
 async function runOne(accessoryId: string): Promise<void> {
   inFlight++;
   try {
+    // Don't bother the server if we already know the relay isn't reachable.
+    // The server would just return NO_DEVICE and we'd log it as an error per
+    // visible tile — a dashboard with 10 tiles produces 10 console errors
+    // every time the user opens the page on an offline home.
+    const conn = serverConnection.getState();
+    if (!conn.isActive || conn.connectionState !== 'connected') return;
     await serverConnection.request('accessory.refresh', { accessoryId });
   } catch (err) {
-    if (import.meta.env.DEV) {
+    // NO_DEVICE just means the relay went offline between the gate above and
+    // the request landing — silent in prod, warn in dev only.
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== 'NO_DEVICE' && import.meta.env.DEV) {
       console.warn(`[accessoryRefresh] ${accessoryId.slice(0, 8)} failed`, err);
     }
   } finally {
