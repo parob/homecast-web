@@ -897,7 +897,15 @@ export class ServerWebSocket {
     this.pendingRequests.delete(message.id);
 
     if (message.error) {
-      console.error(`[ServerWS] Request failed: ${message.action}`, message.error);
+      // NO_DEVICE just means the home's relay is offline/asleep — an expected
+      // condition (e.g. per-tile accessory.refresh on an offline home), not a
+      // server bug. Keep it out of error reporting (browserLogger ships
+      // console.error to Cloud Logging); genuine failures still log loudly.
+      if (message.error.code === 'NO_DEVICE') {
+        if (import.meta.env.DEV) console.debug(`[ServerWS] Request skipped (relay offline): ${message.action}`);
+      } else {
+        console.error(`[ServerWS] Request failed: ${message.action}`, message.error);
+      }
       pending.reject(new HomecastError(message.error.code, message.error.message, message._trace));
     } else {
       if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, message.payload);
