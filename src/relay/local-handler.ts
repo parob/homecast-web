@@ -82,6 +82,124 @@ function filterAccessories(accessories: any[]): any[] {
   return [];
 }
 
+// --- Relay probe (end-to-end uptime verification) ---
+//
+// The cloud server calls relay.probe periodically and uses the result to
+// distinguish "we can reach the relay" (WS up, status=connected) from "we
+// actually verified the relay → HomeKit → accessory pipeline" (status=
+// verified). We pick one accessory in the home, read a characteristic, and
+// return whatever HomeKit hands back. The cloud trusts the value itself as
+// proof — we don't need to validate the range, the fact that HomeKit
+// answered with *anything* means the framework is alive.
+
+// Round-robin cursor per home so consecutive probes exercise different
+// accessories. Reset on process restart (acceptable).
+const _probeCursors = new Map<string, number>();
+
+// Characteristics we prefer to read: sensor-like, frequently updated by the
+// underlying framework, and effectively always present where they apply. If
+// none match, we fall back to any readable characteristic.
+const PREFERRED_CHARS = [
+  'CurrentTemperature',
+  'CurrentRelativeHumidity',
+  'CurrentAmbientLightLevel',
+  'CurrentLightLevel',
+  'BatteryLevel',
+  'CurrentPosition',
+  'On',
+  'CurrentDoorState',
+  'LockCurrentState',
+  'CurrentHeatingCoolingState',
+  'AirQuality',
+  'Name',
+];
+
+interface ProbeCandidate {
+  accessoryId: string;
+  accessoryName: string;
+  characteristicType: string;
+  priority: number; // lower = preferred
+}
+
+function collectProbeCandidates(accessories: any[]): ProbeCandidate[] {
+  const out: ProbeCandidate[] = [];
+  for (const acc of accessories) {
+    if (!acc || acc.isReachable === false) continue;
+    const services = Array.isArray(acc.services) ? acc.services : [];
+    for (const svc of services) {
+      const chars = Array.isArray(svc.characteristics) ? svc.characteristics : [];
+      for (const ch of chars) {
+        if (!ch?.isReadable) continue;
+        const idx = PREFERRED_CHARS.indexOf(ch.characteristicType);
+        const priority = idx >= 0 ? idx : PREFERRED_CHARS.length;
+        out.push({
+          accessoryId: acc.id,
+          accessoryName: acc.name,
+          characteristicType: ch.characteristicType,
+          priority,
+        });
+      }
+    }
+  }
+  out.sort((a, b) => a.priority - b.priority);
+  return out;
+}
+
+async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
+  let accessories: any[];
+  try {
+    accessories = await HomeKit.listAccessories({ homeId, includeValues: false }) as any[];
+  } catch (err: any) {
+    // HomeKit framework didn't answer — explicit signal the cloud uses to
+    // record a connected-but-not-verified sample, not a probe-target-missing
+    // sample. The error code travels back so we can surface it.
+    return {
+      error: 'homekit_error',
+      message: err?.message ? String(err.message).slice(0, 200) : String(err),
+    };
+  }
+
+  const candidates = collectProbeCandidates(accessories);
+  if (candidates.length === 0) {
+    return { noProbeTarget: true, reason: 'no_readable_accessory' };
+  }
+
+  // Round-robin within the highest-priority tier so we exercise different
+  // accessories over time but always prefer sensors over Name reads.
+  const topPriority = candidates[0].priority;
+  const topTier = candidates.filter((c) => c.priority === topPriority);
+  const cursor = _probeCursors.get(homeId) ?? 0;
+  const pick = topTier[cursor % topTier.length];
+  _probeCursors.set(homeId, cursor + 1);
+
+  const readAt = new Date().toISOString();
+  try {
+    const result = await HomeKit.getCharacteristic(pick.accessoryId, pick.characteristicType);
+    return {
+      accessoryId: pick.accessoryId,
+      accessoryName: pick.accessoryName,
+      characteristicType: pick.characteristicType,
+      value: result?.value ?? null,
+      readAt,
+      source: 'homekit',
+    };
+  } catch (err: any) {
+    // Distinguish "accessory unreachable" (HomeKit responded; this
+    // accessory is offline) from "HomeKit hung" (the cloud sees a timeout
+    // and treats it differently — that path doesn't hit this handler).
+    const code = err?.code ?? '';
+    const message = err?.message ? String(err.message).slice(0, 200) : 'unknown';
+    return {
+      accessoryId: pick.accessoryId,
+      accessoryName: pick.accessoryName,
+      characteristicType: pick.characteristicType,
+      error: code === 'ACCESSORY_UNREACHABLE' ? 'unreachable' : 'read_error',
+      message,
+      readAt,
+    };
+  }
+}
+
 export async function executeHomeKitAction(
   action: string,
   payload: Record<string, unknown> = {}
@@ -256,6 +374,11 @@ export async function executeHomeKitAction(
 
     case 'ping':
       return { pong: true, timestamp: Date.now() };
+
+    case 'relay.probe': {
+      const { homeId } = payload as { homeId: string };
+      return await runRelayProbe(homeId);
+    }
 
     default:
       throw Object.assign(new Error(`Unknown action: ${action}`), { code: ErrorCode.UNKNOWN_ACTION });

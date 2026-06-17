@@ -23,6 +23,7 @@ import type { GetNotificationPreferencesResponse, SetNotificationPreferenceRespo
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
+import { UptimeSection } from './UptimeSection';
 import type { HomeKitHome } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { useHomes } from '@/hooks/useHomeKitData';
@@ -316,6 +317,10 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
           )}
         </div>
       </div>
+
+      {/* Reliability — relay + per-home uptime with end-to-end probe results.
+          Cloud-only because Community mode has no cloud backend to record samples. */}
+      {!isCommunity && <UptimeSection homeId={home.id} />}
 
       {/* MQTT (developer mode only). Community: custom brokers via native bridge. Cloud: managed broker + custom brokers via server. */}
       {developerMode && <div className="space-y-2">

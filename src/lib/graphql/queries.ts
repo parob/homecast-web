@@ -901,6 +901,41 @@ export const GET_HOME_MQTT_STATUS = gql`
   }
 `;
 
+export const GET_HOME_UPTIME = gql`
+  query GetHomeUptime($homeId: String!, $days: Int) {
+    homeUptime(homeId: $homeId, days: $days) {
+      currentStatus
+      uptimePercent24h
+      uptimePercent7d
+      uptimePercent30d
+      verifiedRatio7d
+      avgLatencyMs
+      lastProbe {
+        probedAt
+        status
+        accessoryName
+        characteristicType
+        value
+        reason
+      }
+      timeline {
+        bucketStart
+        verified
+        connected
+        degraded
+        offline
+        total
+      }
+      outages {
+        startedAt
+        endedAt
+        durationSeconds
+        severity
+      }
+    }
+  }
+`;
+
 export const GET_NOTIFICATION_HISTORY = gql`
   query GetNotificationHistory($limit: Int, $offset: Int, $automationId: String) {
     notificationHistory(limit: $limit, offset: $offset, automationId: $automationId) {

@@ -850,3 +850,48 @@ export const ADMIN_SEND_NOTIFICATION = gql`
     }
   }
 `;
+
+export const ADMIN_RELAY_UPTIME_SUMMARY = gql`
+  query AdminRelayUptimeSummary($userIds: [String!]!, $days: Int) {
+    adminRelayUptimeSummary(userIds: $userIds, days: $days) {
+      userId
+      uptimePercent
+      verifiedRatio
+    }
+  }
+`;
+
+export const ADMIN_HOME_UPTIME = gql`
+  query AdminHomeUptime($homeId: String!, $days: Int) {
+    adminHomeUptime(homeId: $homeId, days: $days) {
+      currentStatus
+      uptimePercent24h
+      uptimePercent7d
+      uptimePercent30d
+      verifiedRatio7d
+      avgLatencyMs
+      lastProbe {
+        probedAt
+        status
+        accessoryName
+        characteristicType
+        value
+        reason
+      }
+      timeline {
+        bucketStart
+        verified
+        connected
+        degraded
+        offline
+        total
+      }
+      outages {
+        startedAt
+        endedAt
+        durationSeconds
+        severity
+      }
+    }
+  }
+`;
