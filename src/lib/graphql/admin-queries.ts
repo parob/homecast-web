@@ -886,6 +886,13 @@ export const ADMIN_HOMES = gql`
         currentStatus
         uptimePercent7d
         verifiedRatio7d
+        dailyUptime7d {
+          date
+          verified
+          connected
+          degraded
+          offline
+        }
       }
     }
   }
@@ -933,6 +940,16 @@ export const ADMIN_WORST_RELAYS = gql`
       uptimePercent
       verifiedRatio
       samplesTotal
+    }
+  }
+`;
+
+export const ADMIN_FLEET_OUTAGE_STATS = gql`
+  query AdminFleetOutageStats($days: Int) {
+    adminFleetOutageStats(days: $days) {
+      outageCount
+      avgDurationSeconds
+      days
     }
   }
 `;
