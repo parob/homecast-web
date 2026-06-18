@@ -861,6 +861,56 @@ export const ADMIN_RELAY_UPTIME_SUMMARY = gql`
   }
 `;
 
+export const ADMIN_HOMES = gql`
+  query AdminHomes($limit: Int, $offset: Int, $sortBy: String, $search: String) {
+    adminHomes(limit: $limit, offset: $offset, sortBy: $sortBy, search: $search) {
+      totalCount
+      homes {
+        homeId
+        name
+        ownerUserId
+        ownerEmail
+        accessoryCount
+        roomCount
+        isPrimary
+        relayLastSeenAt
+        currentStatus
+        uptimePercent7d
+        verifiedRatio7d
+      }
+    }
+  }
+`;
+
+export const ADMIN_HOME_DETAIL = gql`
+  query AdminHomeDetail($homeId: String!) {
+    adminHomeDetail(homeId: $homeId) {
+      homeId
+      name
+      ownerUserId
+      ownerEmail
+      ownerAccountType
+      accessoryCount
+      roomCount
+      isPrimary
+      mqttEnabled
+      relayLastSeenAt
+    }
+  }
+`;
+
+export const ADMIN_WORST_RELAYS = gql`
+  query AdminWorstRelays($days: Int, $limit: Int) {
+    adminWorstRelays(days: $days, limit: $limit) {
+      userId
+      userEmail
+      uptimePercent
+      verifiedRatio
+      samplesTotal
+    }
+  }
+`;
+
 export const ADMIN_HOME_UPTIME = gql`
   query AdminHomeUptime($homeId: String!, $days: Int) {
     adminHomeUptime(homeId: $homeId, days: $days) {

@@ -1115,6 +1115,8 @@ const Dashboard = () => {
   const AdminDashboard = _cloud?.AdminDashboard ?? null;
   const AdminUsers = _cloud?.AdminUsers ?? null;
   const UserDetail = _cloud?.UserDetail ?? null;
+  const AdminHomes = _cloud?.AdminHomes ?? null;
+  const AdminHomeDetail = _cloud?.AdminHomeDetail ?? null;
   const AdminSessions = _cloud?.AdminSessions ?? null;
   const AdminWebhooks = _cloud?.AdminWebhooks ?? null;
   const AdminEnrollments = _cloud?.AdminEnrollments ?? null;
@@ -7593,6 +7595,10 @@ const Dashboard = () => {
                 {adminSubPath === '/users' && <AdminUsers />}
                 {adminSubPath.startsWith('/users/') && (
                   <UserDetail userId={adminSubPath.replace('/users/', '')} />
+                )}
+                {adminSubPath === '/homes' && AdminHomes && <AdminHomes />}
+                {adminSubPath.startsWith('/homes/') && AdminHomeDetail && (
+                  <AdminHomeDetail homeId={adminSubPath.replace('/homes/', '')} />
                 )}
                 {adminSubPath === '/sessions' && <AdminSessions />}
                 {adminSubPath === '/enrollments' && <AdminEnrollments />}
