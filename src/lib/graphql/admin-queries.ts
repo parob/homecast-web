@@ -912,6 +912,19 @@ export const ADMIN_HOME_DETAIL = gql`
   }
 `;
 
+export const ADMIN_FLEET_RELIABILITY = gql`
+  query AdminFleetReliability($days: Int) {
+    adminFleetReliability(days: $days) {
+      verified
+      connected
+      degraded
+      offline
+      total
+      fleetUptimePercent
+    }
+  }
+`;
+
 export const ADMIN_WORST_RELAYS = gql`
   query AdminWorstRelays($days: Int, $limit: Int) {
     adminWorstRelays(days: $days, limit: $limit) {
