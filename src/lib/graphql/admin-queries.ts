@@ -538,8 +538,10 @@ export const GET_PENDING_ENROLLMENTS = gql`
         id
         customerEmail
         customerName
+        customerUserId
         homeName
         managedUserEmail
+        managedUserId
         status
         matchedHomeId
         matchedHomeName
@@ -569,8 +571,10 @@ export const GET_ALL_ENROLLMENTS = gql`
         id
         customerEmail
         customerName
+        customerUserId
         homeName
         managedUserEmail
+        managedUserId
         status
         matchedHomeId
         matchedHomeName
