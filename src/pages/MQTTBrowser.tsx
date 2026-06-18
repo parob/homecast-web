@@ -15,6 +15,23 @@ interface TopicMessage { payload: string; timestamp: number; updates: number; }
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
 interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean; ownerEmail?: string | null }
 
+// Entity-type tag shown on the left of each MQTT browser row.
+type MqttRowType = 'home' | 'room' | 'group' | 'accessory';
+function TypeBadge({ type }: { type: MqttRowType }) {
+  const meta: Record<MqttRowType, { label: string; cls: string }> = {
+    home: { label: 'Home', cls: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30' },
+    room: { label: 'Room', cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30' },
+    group: { label: 'Group', cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+    accessory: { label: 'Accessory', cls: 'bg-muted text-muted-foreground border-border' },
+  };
+  const m = meta[type];
+  return (
+    <span className={`shrink-0 inline-flex items-center justify-center rounded border px-1 h-4 text-[9px] font-medium uppercase tracking-wide leading-none ${m.cls}`}>
+      {m.label}
+    </span>
+  );
+}
+
 export default function MQTTBrowser() {
   // On mqtt.* the only auth signal is the cross-subdomain cookie. If it's
   // not there we can't read localStorage either (different origin), so we
@@ -792,6 +809,15 @@ export default function MQTTBrowser() {
                   style={{ paddingLeft: Math.max(insetPx, 12) }}>
                   {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
                   <AccessoryTypeIcon payload={ep} />
+                  {(() => {
+                    const parts = topic.split('/');
+                    const rowType: MqttRowType = groupMembers[topic]
+                      ? 'group'
+                      : (parts[0] === 'homecast' && parts.length === 3 && parts[2] === 'status')
+                        ? 'home'
+                        : 'accessory';
+                    return <TypeBadge type={rowType} />;
+                  })()}
                   <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
                     {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
                   </span>
@@ -840,6 +866,7 @@ export default function MQTTBrowser() {
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <AccessoryTypeIcon payload={ep} />
+                      <TypeBadge type="group" />
                       <span className="font-mono truncate">{groupSlug}</span>
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
@@ -885,6 +912,7 @@ export default function MQTTBrowser() {
                   style={{ paddingLeft: headerPadLeft }}>
                   <span className="flex items-center gap-1.5">
                     {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                    <TypeBadge type="room" />
                     <span className="font-mono">{r.slug}</span>
                   </span>
                   <span className="text-[10px] text-muted-foreground font-normal">{bodyLabel}</span>
@@ -930,6 +958,7 @@ export default function MQTTBrowser() {
                         className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/20 hover:bg-muted/40 text-xs font-semibold">
                         <span className="flex items-center gap-1.5">
                           {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                          <TypeBadge type="home" />
                           <span className="font-mono">{homeSlug}</span>
                         </span>
                         <span className="text-[10px] text-muted-foreground font-normal">{homeLabel}</span>
