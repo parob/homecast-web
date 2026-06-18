@@ -870,9 +870,14 @@ export const ADMIN_HOMES = gql`
         name
         ownerUserId
         ownerEmail
+        ownerAccountType
+        ownerRegion
         accessoryCount
         roomCount
         isPrimary
+        mqttEnabled
+        mqttBrokerCount
+        memberCount
         relayLastSeenAt
         currentStatus
         uptimePercent7d
@@ -890,11 +895,15 @@ export const ADMIN_HOME_DETAIL = gql`
       ownerUserId
       ownerEmail
       ownerAccountType
+      ownerRegion
       accessoryCount
       roomCount
       isPrimary
       mqttEnabled
+      mqttBrokerCount
+      memberCount
       relayLastSeenAt
+      updatedAt
     }
   }
 `;
