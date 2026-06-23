@@ -833,6 +833,8 @@ export const GET_APP_INSTALLS = gql`
       androidAvailable
       iosError
       androidError
+      downloadsByCountry { label value }
+      downloadsBySource { label value }
     }
   }
 `;

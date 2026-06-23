@@ -1864,6 +1864,11 @@ export interface GA4TrafficData {
   error: string | null;
 }
 
+export interface LabeledCount {
+  label: string;
+  value: number;
+}
+
 export interface AppInstallsData {
   iosDownloads: TimeseriesPoint[];
   macDownloads: TimeseriesPoint[];
@@ -1874,6 +1879,8 @@ export interface AppInstallsData {
   androidAvailable: boolean;
   iosError: string | null;
   androidError: string | null;
+  downloadsByCountry: LabeledCount[];
+  downloadsBySource: LabeledCount[];
 }
 
 export interface AnalyticsDashboard {
