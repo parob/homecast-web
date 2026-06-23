@@ -801,6 +801,42 @@ export const GET_ANALYTICS_EXTERNAL = gql`
   }
 `;
 
+// Split, independently-loadable variants of the external analytics so each
+// source reports its own loading state (GA4 ~3s vs the slow App Store call).
+export const GET_GA4_TRAFFIC = gql`
+  query GetGa4Traffic($days: Int) {
+    ga4Traffic(days: $days) {
+      sessions { date value }
+      pageViews { date value }
+      users { date value }
+      newUsers { date value }
+      topSources { source sessions }
+      deviceDesktop
+      deviceMobile
+      deviceTablet
+      propertyName
+      available
+      error
+    }
+  }
+`;
+
+export const GET_APP_INSTALLS = gql`
+  query GetAppInstalls($days: Int) {
+    appInstalls(days: $days) {
+      iosDownloads { date value }
+      macDownloads { date value }
+      iosImpressions { date value }
+      iosProductPageViews { date value }
+      androidInstalls { date value }
+      iosAvailable
+      androidAvailable
+      iosError
+      androidError
+    }
+  }
+`;
+
 export const GET_COSTS_AND_REVENUE = gql`
   query GetCostsAndRevenue($days: Int) {
     costsAndRevenue(days: $days) {

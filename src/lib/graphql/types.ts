@@ -1913,6 +1913,14 @@ export interface AnalyticsExternalResponse {
   analyticsExternal: AnalyticsExternalData;
 }
 
+export interface Ga4TrafficResponse {
+  ga4Traffic: GA4TrafficData | null;
+}
+
+export interface AppInstallsResponse {
+  appInstalls: AppInstallsData | null;
+}
+
 // --- Cost & Revenue Types ---
 
 export interface GCPServiceCost {
