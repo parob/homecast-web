@@ -53,6 +53,31 @@ function clearAuthToken() {
   syncTokenCookie(null);
 }
 
+// POST the (likely expired) JWT to /auth/refresh. The server accepts tokens
+// up to 30 days past expiry (auth.refresh_expired_token) and re-issues a fresh
+// one. Mirrors the WebSocket reconnect path in server/websocket.ts so cold-open
+// page loads can also recover instead of bouncing users to /login.
+async function tryRefreshExpiredToken(oldToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${config.apiUrl}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: oldToken }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data?.token) return null;
+    setAuthToken(data.token);
+    // Keep the Mac app's Keychain in sync if we're inside the WKWebView —
+    // otherwise the next cold launch would read the old expired token back.
+    const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
+    win.webkit?.messageHandlers?.homecast?.postMessage({ action: 'login', token: data.token });
+    return data.token;
+  } catch {
+    return null;
+  }
+}
+
 // Check if we might be in a Mac app (before native bridge is fully ready)
 function mightBeMacApp(): boolean {
   return !!(window as any).isHomecastMacApp;
@@ -426,8 +451,17 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
             (e) => e.message?.toLowerCase().includes('authentication')
           );
           if (isAuthError) {
-            console.log('Token invalid, clearing session');
-            clearAuthToken();
+            const refreshed = await tryRefreshExpiredToken(token);
+            if (refreshed) {
+              const retry = await getMe();
+              if (retry.data?.me) {
+                setUser(retry.data.me);
+              } else {
+                clearAuthToken();
+              }
+            } else {
+              clearAuthToken();
+            }
           } else {
             // Network error - keep token, user might be offline
             console.log('Network error during auth check, keeping token');
@@ -437,7 +471,17 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Auth check failed:', error);
         // Only clear token on explicit auth errors
         if (error?.message?.toLowerCase().includes('authentication')) {
-          clearAuthToken();
+          const refreshed = await tryRefreshExpiredToken(token);
+          if (refreshed) {
+            const retry = await getMe();
+            if (retry.data?.me) {
+              setUser(retry.data.me);
+            } else {
+              clearAuthToken();
+            }
+          } else {
+            clearAuthToken();
+          }
         }
       }
     }
