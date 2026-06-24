@@ -6443,7 +6443,7 @@ const Dashboard = () => {
                     {!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
                   </p>
                 </div>
-              ) : (!isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading) || (settingsLoading && !settingsData))) ? (
+              ) : (!tutorialDemoActive && !isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading) || (settingsLoading && !settingsData))) ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
@@ -6476,7 +6476,7 @@ const Dashboard = () => {
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
-              ) : selectedHomeRelayOffline ? (
+              ) : (!tutorialDemoActive && selectedHomeRelayOffline) ? (
                 <SetupState
                   setupPath={undefined}
                   homes={homes}
@@ -6491,14 +6491,14 @@ const Dashboard = () => {
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
-              ) : (accessoriesLoading && !accessoriesData) ? (
+              ) : (!tutorialDemoActive && accessoriesLoading && !accessoriesData) ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
                     {!serverConnected ? 'Connecting to server\u2026' : 'Loading accessories\u2026'}
                   </p>
                 </div>
-              ) : accessoriesError && !accessoriesData ? (
+              ) : (!tutorialDemoActive && accessoriesError && !accessoriesData) ? (
                 <ErrorWithTrace
                   title="Unable to load accessories"
                   message={
