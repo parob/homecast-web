@@ -7613,8 +7613,9 @@ const Dashboard = () => {
                 {adminSubPath === '/approvals' && <AdminApprovals />}
                 {(adminSubPath === '/traces' || adminSubPath === '/observability') && <AdminObservability />}
                 {adminSubPath === '/reliability' && AdminReliability && <AdminReliability />}
-                {adminSubPath === '/infrastructure' && AdminInfrastructure && <AdminInfrastructure />}
-                {adminSubPath === '/infrastructure/pods' && AdminInfrastructurePods && <AdminInfrastructurePods />}
+                {/* Overview now also serves the old /infrastructure/pods path
+                    (the standalone Pods page was merged into it). */}
+                {(adminSubPath === '/infrastructure' || adminSubPath === '/infrastructure/pods') && AdminInfrastructure && <AdminInfrastructure />}
                 {adminSubPath.startsWith('/infrastructure/pods/') && AdminInfrastructurePodDetail && (
                   <AdminInfrastructurePodDetail podName={adminSubPath.replace('/infrastructure/pods/', '')} />
                 )}
