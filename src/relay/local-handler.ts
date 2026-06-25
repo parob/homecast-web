@@ -96,6 +96,12 @@ function filterAccessories(accessories: any[]): any[] {
 // accessories. Reset on process restart (acceptable).
 const _probeCursors = new Map<string, number>();
 
+// How many DISTINCT accessories a single probe will try before giving up. A
+// single unreachable accessory (e.g. a powered-off bulb HomeKit still lists as
+// reachable) must not fail the whole probe and make a healthy home look
+// "not fully verified" — we fall through to the next accessory until one reads.
+const PROBE_MAX_ATTEMPTS = 5;
+
 // Characteristics we prefer to read: sensor-like, frequently updated by the
 // underlying framework, and effectively always present where they apply. If
 // none match, we fall back to any readable characteristic.
@@ -165,39 +171,59 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
   }
 
   // Round-robin within the highest-priority tier so we exercise different
-  // accessories over time but always prefer sensors over Name reads.
+  // accessories over time but always prefer sensors over Name reads. The cursor
+  // sets the STARTING point; we then try up to PROBE_MAX_ATTEMPTS distinct
+  // accessories from there so one dead device doesn't fail the whole probe.
   const topPriority = candidates[0].priority;
   const topTier = candidates.filter((c) => c.priority === topPriority);
   const cursor = _probeCursors.get(homeId) ?? 0;
-  const pick = topTier[cursor % topTier.length];
   _probeCursors.set(homeId, cursor + 1);
 
-  const readAt = new Date().toISOString();
-  try {
-    const result = await HomeKit.getCharacteristic(pick.accessoryId, pick.characteristicType);
-    return {
-      accessoryId: pick.accessoryId,
-      accessoryName: pick.accessoryName,
-      characteristicType: pick.characteristicType,
-      value: result?.value ?? null,
-      readAt,
-      source: 'homekit',
-    };
-  } catch (err: any) {
-    // Distinguish "accessory unreachable" (HomeKit responded; this
-    // accessory is offline) from "HomeKit hung" (the cloud sees a timeout
-    // and treats it differently — that path doesn't hit this handler).
-    const code = err?.code ?? '';
-    const message = err?.message ? String(err.message).slice(0, 200) : 'unknown';
-    return {
-      accessoryId: pick.accessoryId,
-      accessoryName: pick.accessoryName,
-      characteristicType: pick.characteristicType,
-      error: code === 'ACCESSORY_UNREACHABLE' ? 'unreachable' : 'read_error',
-      message,
-      readAt,
-    };
+  // Attempt order: one characteristic per accessory (so each try exercises a
+  // different physical device), starting at the cursor.
+  const attempts: ProbeCandidate[] = [];
+  const seenAccessories = new Set<string>();
+  for (let i = 0; i < topTier.length && attempts.length < PROBE_MAX_ATTEMPTS; i++) {
+    const c = topTier[(cursor + i) % topTier.length];
+    if (seenAccessories.has(c.accessoryId)) continue;
+    seenAccessories.add(c.accessoryId);
+    attempts.push(c);
   }
+
+  // Try each in turn; return on the FIRST successful read. Only if every
+  // attempt fails do we report the (last) error as connected-not-verified.
+  let lastError: Record<string, unknown> | null = null;
+  for (const pick of attempts) {
+    const readAt = new Date().toISOString();
+    try {
+      const result = await HomeKit.getCharacteristic(pick.accessoryId, pick.characteristicType);
+      return {
+        accessoryId: pick.accessoryId,
+        accessoryName: pick.accessoryName,
+        characteristicType: pick.characteristicType,
+        value: result?.value ?? null,
+        readAt,
+        source: 'homekit',
+      };
+    } catch (err: any) {
+      // Distinguish "accessory unreachable" (HomeKit responded; this accessory
+      // is offline) from "HomeKit hung" (the cloud sees a timeout and treats it
+      // differently — that path doesn't hit this handler). Keep the latest
+      // failure and fall through to the next accessory.
+      const code = err?.code ?? '';
+      const message = err?.message ? String(err.message).slice(0, 200) : 'unknown';
+      lastError = {
+        accessoryId: pick.accessoryId,
+        accessoryName: pick.accessoryName,
+        characteristicType: pick.characteristicType,
+        error: code === 'ACCESSORY_UNREACHABLE' ? 'unreachable' : 'read_error',
+        message,
+        readAt,
+      };
+    }
+  }
+  // Every attempted accessory failed to read — genuinely connected-not-verified.
+  return lastError ?? { error: 'read_error', message: 'no accessory could be read' };
 }
 
 export async function executeHomeKitAction(
