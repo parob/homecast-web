@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
+import { sameAccessoryId, resolveAccessoriesCacheKey } from './accessoryCacheKeys';
 
 /**
  * Derive `isReachable` from value presence + the framework flag before the
@@ -816,7 +817,9 @@ function updateCharacteristicInCacheKey(
 
   let updated = false;
   const newAccessories = accessories.map(acc => {
-    if (acc.id !== accessoryId) return acc;
+    // Case-insensitive ID match — see sameAccessoryId. A case-sensitive compare
+    // here silently dropped MQTT-initiated single-accessory updates.
+    if (!sameAccessoryId(acc.id, accessoryId)) return acc;
     const withValue = {
       ...acc,
       services: acc.services.map(service => ({
@@ -862,8 +865,9 @@ export function updateAccessoryCharacteristicInCache(
   // JSON-stringify the value to match the format from HomeKit
   const jsonEncodedValue = JSON.stringify(value);
 
-  // Update home-specific cache
-  const homeKey = `accessories:${homeId}`;
+  // Update home-specific cache, resolving the key case-insensitively so a
+  // lowercase-homeId echo still lands (see resolveAccessoriesCacheKey).
+  const homeKey = resolveAccessoriesCacheKey(homeId, k => !!cache.get<HomeKitAccessory[]>(k));
   const homeUpdated = updateCharacteristicInCacheKey(homeKey, accessoryId, characteristicType, jsonEncodedValue);
 
   // Also update the "all accessories" cache used by collections
@@ -887,7 +891,8 @@ function updateReachabilityInCacheKey(
 
   let updated = false;
   const newAccessories = accessories.map(acc => {
-    if (acc.id !== accessoryId) return acc;
+    // Case-insensitive ID match (see sameAccessoryId).
+    if (!sameAccessoryId(acc.id, accessoryId)) return acc;
     // Apply the incoming flag, then re-derive so a stuck `false` doesn't
     // drown out the values we still have cached.
     const derived = withDerivedReachability({ ...acc, isReachable });
@@ -911,7 +916,9 @@ export function updateAccessoryReachabilityInCache(
   accessoryId: string,
   isReachable: boolean
 ): void {
-  const homeUpdated = updateReachabilityInCacheKey(`accessories:${homeId}`, accessoryId, isReachable);
+  // Resolve the home key case-insensitively (see resolveAccessoriesCacheKey).
+  const homeKey = resolveAccessoriesCacheKey(homeId, k => !!cache.get<HomeKitAccessory[]>(k));
+  const homeUpdated = updateReachabilityInCacheKey(homeKey, accessoryId, isReachable);
   const allUpdated = updateReachabilityInCacheKey('accessories:all', accessoryId, isReachable);
 
   if (homeUpdated || allUpdated) {
