@@ -3013,6 +3013,29 @@ const Dashboard = () => {
     return home.relayConnected === false;
   }, [selectedHomeId, homes]);
 
+  // A flapping relay (e.g. a cloud-managed Mac on a flaky link) can drop for up
+  // to ~60s every few minutes. Without a grace period the whole dashboard flashes
+  // the "Setting up… / Waiting for relay to accept" onboarding on every blip.
+  // Treat the relay as genuinely offline only after it's stayed down past the
+  // grace window; until then a drop on an already-loaded home is "reconnecting",
+  // and we keep the last-known dashboard with a calm banner instead of the flash.
+  const RELAY_OFFLINE_GRACE_MS = 120000;
+  const [relayOfflineConfirmed, setRelayOfflineConfirmed] = useState(false);
+  useEffect(() => {
+    if (!selectedHomeRelayOffline) {
+      setRelayOfflineConfirmed(false);
+      return;
+    }
+    const timer = setTimeout(() => setRelayOfflineConfirmed(true), RELAY_OFFLINE_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [selectedHomeRelayOffline, selectedHomeId]);
+
+  // Show the full offline/setup screen only when the relay is conclusively
+  // offline (grace elapsed) OR there's no cached data to keep showing. A brief
+  // drop on an already-loaded home reads as "reconnecting", not "needs setup".
+  const showRelayOfflineSetup = selectedHomeRelayOffline && (relayOfflineConfirmed || !accessoriesData);
+  const relayReconnecting = selectedHomeRelayOffline && !showRelayOfflineSetup;
+
   // Home name lookup map
   const homeNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -6387,6 +6410,14 @@ const Dashboard = () => {
                   </div>
                 </DialogContent>
               </Dialog>
+              {/* Transient relay drop on an already-loaded home: keep the
+                  dashboard visible, just flag that it's reconnecting. */}
+              {relayReconnecting && (
+                <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/15 px-4 py-1.5 text-xs font-medium text-amber-700 shadow-sm backdrop-blur dark:text-amber-200">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Reconnecting to {homes.find(h => h.id === selectedHomeId)?.name || 'your home'}…
+                </div>
+              )}
               {/* Enrollment Setup View */}
               {selectedEnrollmentId && (() => {
                 const enrollment = pendingEnrollments.find(e => e.id === selectedEnrollmentId)
@@ -6476,7 +6507,7 @@ const Dashboard = () => {
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
-              ) : (!tutorialDemoActive && selectedHomeRelayOffline) ? (
+              ) : (!tutorialDemoActive && showRelayOfflineSetup) ? (
                 <SetupState
                   setupPath={undefined}
                   homes={homes}
