@@ -586,18 +586,24 @@ const Index = () => {
               <h3 className="text-3xl font-bold">Android App</h3>
             </div>
             <p className="text-muted-foreground mb-4">
-              The Homecast Android app requires either the <strong className="text-foreground">Homecast macOS app</strong> running as a relay or a <strong className="text-foreground">Cloud plan</strong> to work.
+              The Homecast Android app is a remote control for your Apple Home — it doesn't talk to HomeKit on its own. To reach your devices it needs <strong className="text-foreground">one of</strong>:
             </p>
-            <p className="text-sm text-muted-foreground mb-6">
-              The Android app is coming soon and we're looking for testers! Email <a href="mailto:rob@homecast.cloud" className="text-foreground underline">rob@homecast.cloud</a> for an invite.
-            </p>
+            <ul className="text-sm text-muted-foreground mb-6 space-y-1.5 list-disc pl-5">
+              <li>The <strong className="text-foreground">Homecast Mac app</strong> running on a Mac at home, acting as your relay, or</li>
+              <li>A paid <strong className="text-foreground">Cloud plan</strong>, which provides an always-on relay so you don't need a Mac.</li>
+            </ul>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setShowAndroidModal(false)} className="flex-1">
                 Cancel
               </Button>
               <Button asChild className="flex-1 bg-green-600 hover:bg-green-700">
-                <a href="mailto:rob@homecast.cloud" onClick={() => setShowAndroidModal(false)}>
-                  Request Invite
+                <a
+                  href="https://play.google.com/store/apps/details?id=cloud.homecast.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowAndroidModal(false)}
+                >
+                  Get it on Google Play
                 </a>
               </Button>
             </div>
