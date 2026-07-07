@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Plus, ChevronRight, Loader2, Check } from 'lucide-react';
@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { AutomationCard } from './AutomationCard';
 import { AutomationDetailDialog } from './AutomationDetailDialog';
 import { AutomationFormDialog } from './AutomationFormDialog';
-import AutomationEditorDialog from '@/components/automation-editor/AutomationEditorDialog';
+// Lazy: pulls in the whole flow editor (@xyflow/react) — only load once the user opens it
+const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
 import { GET_AUTOMATIONS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
 import type { HomeKitAutomation, GetAutomationsResponse } from '@/lib/graphql/types';
@@ -31,6 +32,9 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
   const [formOpen, setFormOpen] = useState(false);
   const [editingAutomation, setEditingAutomation] = useState<HomeKitAutomation | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // Once opened, stays mounted so the close animation still plays
+  const [editorMounted, setEditorMounted] = useState(false);
+  const openEditor = () => { setEditorMounted(true); setEditorOpen(true); };
   const [editingHcAutomation, setEditingHcAutomation] = useState<Automation | undefined>(undefined);
   const [newTypeOpen, setNewTypeOpen] = useState(false);
 
@@ -102,7 +106,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
 
   const handleHcAutomationClick = (automation: Automation) => {
     setEditingHcAutomation(automation);
-    setEditorOpen(true);
+    openEditor();
   };
 
   const handleToggleHcAutomation = async (automation: Automation) => {
@@ -210,21 +214,25 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
       />
 
       {/* Homecast flow editor dialog */}
-      <AutomationEditorDialog
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        homeId={homeId}
-        existingAutomation={editingHcAutomation}
-        onSaved={() => {
-          hcRefetch();
-          setEditorOpen(false);
-        }}
-        onDelete={async (id) => {
-          await deleteHcAutomation({ variables: { automationId: id } });
-          hcRefetch();
-          toast.success('Automation deleted');
-        }}
-      />
+      {editorMounted && (
+        <Suspense fallback={null}>
+          <AutomationEditorDialog
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            homeId={homeId}
+            existingAutomation={editingHcAutomation}
+            onSaved={() => {
+              hcRefetch();
+              setEditorOpen(false);
+            }}
+            onDelete={async (id) => {
+              await deleteHcAutomation({ variables: { automationId: id } });
+              hcRefetch();
+              toast.success('Automation deleted');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* New automation type picker dialog */}
       <Dialog open={newTypeOpen} onOpenChange={setNewTypeOpen}>
@@ -263,7 +271,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
             <button
               type="button"
               data-testid="new-advanced-automation"
-              onClick={() => { setNewTypeOpen(false); setEditingHcAutomation(undefined); setEditorOpen(true); }}
+              onClick={() => { setNewTypeOpen(false); setEditingHcAutomation(undefined); openEditor(); }}
               className="flex flex-col items-center text-center rounded-xl border p-4 transition-all hover:border-primary/40 hover:shadow-sm"
             >
               <img src="/icon-192.png" alt="Homecast" className="h-10 w-10 rounded-lg mb-3" />

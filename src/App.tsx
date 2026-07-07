@@ -14,22 +14,24 @@ import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
 import { lazy, Suspense } from "react";
-import Index from "./pages/Index";
-import HowItWorks from "./pages/HowItWorks";
-import Pricing from "./pages/Pricing";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
-import Cookies from "./pages/Cookies";
-import DeleteAccount from "./pages/DeleteAccount";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import Dashboard from "./pages/Dashboard";
-import SharedEntityPage from "./pages/SharedEntityPage";
 import OAuthConsent from "./pages/OAuthConsent";
 import NotFound from "./pages/NotFound";
 import ShareControlRedirect from "./pages/ShareControlRedirect";
-import MQTTBrowser from "./pages/MQTTBrowser";
-import Diagnostics from "./pages/Diagnostics";
+
+// Heavy pages — lazy loaded so the entry chunk stays small
+const Index = lazy(() => import("./pages/Index"));
+const HowItWorks = lazy(() => import("./pages/HowItWorks"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Cookies = lazy(() => import("./pages/Cookies"));
+const DeleteAccount = lazy(() => import("./pages/DeleteAccount"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const SharedEntityPage = lazy(() => import("./pages/SharedEntityPage"));
+const MQTTBrowser = lazy(() => import("./pages/MQTTBrowser"));
+const Diagnostics = lazy(() => import("./pages/Diagnostics"));
 
 // Cloud-only pages — lazy loaded from @homecast/cloud if available
 const VerifyEmail = lazy(() => hasCloud()
@@ -120,6 +122,7 @@ const App = () => (
           <ScrollToTop />
           <StagingBanner />
           <CookieConsent />
+          <Suspense fallback={null}>
           <Routes>
             {/* MQTT browser on mqtt.* domains — no auth/websocket providers needed */}
             {location.hostname.includes('mqtt.') ? (
@@ -139,6 +142,7 @@ const App = () => (
               </>
             )}
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
