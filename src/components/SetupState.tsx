@@ -12,6 +12,7 @@ import type { SetupPath } from '@/components/OnboardingOverlay';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { serverConnection } from '@/server/connection';
 import { formatLastOnline } from '@/lib/relay-last-seen';
+import { buildDiagnosticsBundle, buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
 
 function openExternalUrl(url: string) {
   const w = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; url?: string }) => void } } } };
@@ -577,6 +578,42 @@ export function SetupState({
   }
 }
 
+// Subtle affordance on the offline card: copies the full diagnostics bundle
+// (connection state, recent WS/GQL log, relay-offline snapshot) so a user
+// seeing a suspect "relay offline" can paste us everything in one go.
+function CopyDiagnosticsLink({ homes, selectedHomeId, isDarkBackground }: {
+  homes: HomeKitHome[];
+  selectedHomeId?: string | null;
+  isDarkBackground: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    const bundle = buildDiagnosticsBundle({
+      relayOffline: buildRelayOfflineSnapshot({
+        trigger: 'setup-state-render',
+        homes,
+        homeId: selectedHomeId,
+      }),
+    });
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked — nothing actionable to show here.
+    }
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className={`mt-3 inline-flex items-center gap-1 text-xs ${isDarkBackground ? 'text-white/40 hover:text-white/70' : 'text-muted-foreground/60 hover:text-muted-foreground'}`}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? 'Copied' : 'Copy diagnostics'}
+    </button>
+  );
+}
+
 function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
   homes: HomeKitHome[];
   selectedHomeId?: string | null;
@@ -586,6 +623,19 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
   cloudSignupsAvailable?: boolean;
 }) {
   const pricing = usePricing();
+
+  // Diagnostics: this card appearing means the user was told their relay is
+  // offline — ship a snapshot so false positives are traceable. Deduped
+  // against the Dashboard-side rising-edge log.
+  useEffect(() => {
+    logRelayOfflineBanner(buildRelayOfflineSnapshot({
+      trigger: 'setup-state-render',
+      homes,
+      homeId: selectedHomeId,
+    }));
+    // Log once per mount — the offline set at first render is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const offlineHomes = homes.filter(h => h.relayConnected === false);
   const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
   const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
@@ -627,6 +677,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
           <p className={`mt-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
             {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(sharedHomes))}.
           </p>
+          <CopyDiagnosticsLink homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} />
         </CardContent>
       </Card>
     );
@@ -653,6 +704,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
         <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
           {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.
         </p>
+        <CopyDiagnosticsLink homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} />
         {onSetupCloud && (
           <div className={`border-t pt-4 mt-2 ${isDarkBackground ? 'border-white/20' : ''}`}>
             <p className={`text-xs text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>

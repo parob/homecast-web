@@ -190,6 +190,25 @@ class BrowserLogger {
     if (traceId && last) last.trace_id = traceId;
   }
 
+  /** Ship a WARNING entry with metadata — for anomalies worth alerting on
+   *  (e.g. the relay-offline banner appearing) that aren't hard errors. */
+  logWarn(message: string, metadata?: Record<string, unknown>, traceId?: string) {
+    this.add({
+      type: 'LOG',
+      severity: 'warn',
+      summary: message.slice(0, 200),
+      details: metadata ? JSON.stringify(metadata).slice(0, 500) : undefined,
+      ship: true,
+      traceId,
+    });
+    const last = this.pending[this.pending.length - 1];
+    if (last && metadata) {
+      last.metadata = { ...(last.metadata || {}), ...metadata };
+    }
+    if (traceId && last) last.trace_id = traceId;
+    this.kickFlush();
+  }
+
   /** Explicit error logging — prefer this over raw console.error for
    *  catch blocks where you want structured metadata on the server side. */
   logError(message: string, metadata?: Record<string, unknown>, traceId?: string) {

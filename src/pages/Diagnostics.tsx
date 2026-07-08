@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { browserLogger, BrowserLogEntry } from '@/lib/browser-logger';
 import { serverConnection, ServerConnectionState } from '@/server/connection';
+import { buildDiagnosticsBundle } from '@/lib/relay-diagnostics';
 import { config } from '@/lib/config';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -60,23 +61,7 @@ export default function Diagnostics() {
   }, [entries, filter]);
 
   const handleCopy = async () => {
-    const bundle = {
-      generatedAt: new Date().toISOString(),
-      app: {
-        version: config.version,
-        apiUrl: config.apiUrl,
-        isCommunity: config.isCommunity,
-        isStaging: config.isStaging,
-      },
-      connection: {
-        state: conn.connectionState,
-        isActive: conn.isActive,
-        relayStatus: conn.relayStatus,
-        error: conn.error ? String(conn.error) : null,
-      },
-      userAgent: navigator.userAgent,
-      entries: entries.slice(-500),
-    };
+    const bundle = buildDiagnosticsBundle();
     try {
       await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
       toast.success('Diagnostics copied to clipboard');

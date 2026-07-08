@@ -3,6 +3,7 @@ import { HomeKit, isRelayCapable } from '../native/homekit-bridge';
 import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
 import { toast } from 'sonner';
 
 // Logger - dev only to avoid Chrome energy warnings from high-frequency logging
@@ -163,7 +164,10 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       localStorage.removeItem('homecast-token');
       window.location.href = '/login';
     } else if (message.type === 'relay_status_update') {
-      // Relay came online/offline for a shared home — re-fetch homes list
+      // Relay came online/offline for a shared home — re-fetch homes list.
+      // Record the broadcast first so relay-offline diagnostics can show
+      // what status pushes the client actually received.
+      recordRelayStatusUpdate(message);
       invalidateHomeKitCache();
     } else if (message.type === 'enrollment_cancelled') {
       toast.info(`"${message.homeName}" was removed from cloud relay`, {

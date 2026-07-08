@@ -795,6 +795,15 @@ export function invalidateHomeKitCache(key?: string, options?: { prefix?: boolea
 }
 
 /**
+ * When the cache entry for a key was last written, or null if absent.
+ * Used by diagnostics to report how fresh the data behind a UI state was.
+ */
+export function getCacheTimestamp(key: string): number | null {
+  const entry = cache.getSnapshot().get(key);
+  return entry ? entry.timestamp : null;
+}
+
+/**
  * Set service groups in the cache for a specific home.
  * Used by CollectionDetail which fetches service groups directly.
  */

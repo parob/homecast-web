@@ -41,6 +41,8 @@ import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
 import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, normalizeAccessories } from '@/hooks/useHomeKitData';
+import { buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
+import { browserLogger } from '@/lib/browser-logger';
 import { useEntitySync } from '@/hooks/useEntitySync';
 import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLayout, useRoomGroupLayout } from '@/hooks/useEntityLayout';
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
@@ -3035,6 +3037,30 @@ const Dashboard = () => {
   // drop on an already-loaded home reads as "reconnecting", not "needs setup".
   const showRelayOfflineSetup = selectedHomeRelayOffline && (relayOfflineConfirmed || !accessoriesData);
   const relayReconnecting = selectedHomeRelayOffline && !showRelayOfflineSetup;
+
+  // Diagnostics: the relay-offline screen appearing is rare and should always
+  // be explainable. Ship a snapshot on the rising edge (and a lighter marker
+  // when we enter the "reconnecting" state) so intermittent false offlines
+  // can be diagnosed from Cloud Logging without a repro.
+  const prevShowOfflineRef = useRef(false);
+  useEffect(() => {
+    if (showRelayOfflineSetup && !prevShowOfflineRef.current) {
+      logRelayOfflineBanner(buildRelayOfflineSnapshot({
+        trigger: relayOfflineConfirmed ? 'grace-elapsed' : 'no-accessories-data',
+        homes,
+        homeId: selectedHomeId,
+      }));
+    }
+    prevShowOfflineRef.current = showRelayOfflineSetup;
+  }, [showRelayOfflineSetup, relayOfflineConfirmed, homes, selectedHomeId]);
+
+  const prevReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (relayReconnecting && !prevReconnectingRef.current) {
+      browserLogger.logInfo('relay_reconnecting_shown', { homeId: selectedHomeId });
+    }
+    prevReconnectingRef.current = relayReconnecting;
+  }, [relayReconnecting, selectedHomeId]);
 
   // Home name lookup map
   const homeNameMap = useMemo(() => {

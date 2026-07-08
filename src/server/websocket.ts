@@ -768,7 +768,11 @@ export class ServerWebSocket {
       const message = JSON.parse(event.data);
       browserLogger.logWsReceive(
         `${message.type}${message.action ? ':' + message.action : ''}`,
-        message.id
+        // Broadcasts have no id — for relay status show the payload instead so
+        // the diagnostics timeline captures which home went online/offline.
+        message.type === 'relay_status_update'
+          ? `connected=${message.connected} home=${message.homeId ?? (Array.isArray(message.home_ids) ? message.home_ids.join(',') : '')}`
+          : message.id
       );
 
       if (message.type === 'request') {
