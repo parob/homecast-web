@@ -1,4 +1,35 @@
-import { formatDistanceToNowStrict } from 'date-fns';
+/**
+ * Relative-time helpers for relay status lines.
+ *
+ * Uses the browser-native Intl.RelativeTimeFormat rather than date-fns:
+ * this module is imported by many components across different lazy chunks,
+ * so pulling in date-fns here hoisted a ~460 KB shared chunk onto every
+ * route. Intl is built in and free.
+ */
+
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'always' });
+
+// Largest-unit-wins, mirroring date-fns formatDistanceToNowStrict (no weeks).
+const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 31_536_000],
+  ['month', 2_592_000],
+  ['day', 86_400],
+  ['hour', 3_600],
+  ['minute', 60],
+  ['second', 1],
+];
+
+/** "5 seconds ago" / "3 months ago" for a past timestamp (ms since epoch). */
+function relativeAgo(ms: number): string {
+  const diffSec = Math.round((ms - Date.now()) / 1000); // negative = past
+  const abs = Math.abs(diffSec);
+  for (const [unit, secs] of UNITS) {
+    if (abs >= secs || unit === 'second') {
+      return rtf.format(Math.round(diffSec / secs), unit);
+    }
+  }
+  return rtf.format(0, 'second');
+}
 
 /**
  * Format a "last online X ago" string for relay-offline indicators.
@@ -15,7 +46,7 @@ export function formatLastOnline(input: number | string | null | undefined): str
   if (!Number.isFinite(ms) || ms <= 0) return 'Never online';
   const elapsed = Date.now() - ms;
   if (elapsed < 10_000) return 'Last online just now';
-  return `Last online ${formatDistanceToNowStrict(new Date(ms), { addSuffix: true })}`;
+  return `Last online ${relativeAgo(ms)}`;
 }
 
 /**
@@ -27,5 +58,5 @@ export function formatRelativeAgo(input: number | string | null | undefined): st
   const ms = typeof input === 'number' ? input : Date.parse(input);
   if (!Number.isFinite(ms) || ms <= 0) return 'never';
   if (Date.now() - ms < 10_000) return 'just now';
-  return formatDistanceToNowStrict(new Date(ms), { addSuffix: true });
+  return relativeAgo(ms);
 }

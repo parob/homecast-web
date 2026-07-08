@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Percent, ExternalLink } from 'lucide-react';
 import { useMutation, useLazyQuery } from '@apollo/client/react';
 import { TRACK_DEAL_CLICK } from '@/lib/graphql/mutations';
@@ -11,13 +11,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  ReferenceLine,
-  YAxis,
-} from 'recharts';
+
+// recharts (~400 KB) is loaded only when a deal popover with price history is
+// shown — keeps it off the main dashboard bundle.
+const DealPriceChart = lazy(() => import('./DealPriceChart'));
 
 interface DealBadgeProps {
   deal: DealInfo;
@@ -118,36 +115,16 @@ export function DealBadge({ deal, isRelated }: DealBadgeProps) {
               </span>
             </div>
 
-            {/* Price history sparkline (lazy-loaded) */}
+            {/* Price history sparkline (recharts, lazy-loaded on open) */}
             {chartData.length > 1 && (
-              <div className="h-[60px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-                    <defs>
-                      <linearGradient id={`deal-grad-${deal.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={style.color} stopOpacity={0.3} />
-                        <stop offset="100%" stopColor={style.color} stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <YAxis domain={['dataMin - 2', 'dataMax + 2']} hide />
-                    <Area
-                      type="monotone"
-                      dataKey="price"
-                      stroke={style.color}
-                      strokeWidth={1.5}
-                      fill={`url(#deal-grad-${deal.id})`}
-                    />
-                    {atlPrice != null && (
-                      <ReferenceLine
-                        y={atlPrice}
-                        stroke={style.color}
-                        strokeDasharray="3 3"
-                        strokeOpacity={0.5}
-                      />
-                    )}
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <Suspense fallback={<div className="h-[60px] w-full" />}>
+                <DealPriceChart
+                  chartData={chartData}
+                  color={style.color}
+                  gradientId={`deal-grad-${deal.id}`}
+                  atlPrice={atlPrice}
+                />
+              </Suspense>
             )}
 
             {/* Price line */}
