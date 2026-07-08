@@ -12,6 +12,9 @@ export interface HomeKitHome {
   accessoryCount: number;
   role?: string;
   relayConnected?: boolean;
+  /** "connected" | "reconnecting" | "offline" — relayConnected is the
+   *  grace-applied boolean (reconnecting counts as connected). */
+  relayState?: string;
   relayLastSeenAt?: string | null;
   relayId?: string | null;
   relayOwnerEmail?: string | null;

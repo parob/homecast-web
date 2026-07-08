@@ -3032,11 +3032,33 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, [selectedHomeRelayOffline, selectedHomeId]);
 
+  // With no cached accessories (fresh page load, never-loaded home) the old
+  // behavior showed the offline banner from a single homes.list snapshot — if
+  // that snapshot landed in a relay reconnect window, the user saw a false
+  // "relay offline" until they refreshed. Hold a short grace with one quick
+  // homes re-poll before believing it; genuinely offline relays still surface
+  // within ~12s on a fresh load.
+  const RELAY_OFFLINE_INITIAL_GRACE_MS = 12000;
+  const hasAccessoriesData = !!accessoriesData;
+  const [relayOfflineInitialConfirmed, setRelayOfflineInitialConfirmed] = useState(false);
+  useEffect(() => {
+    if (!selectedHomeRelayOffline || hasAccessoriesData) {
+      setRelayOfflineInitialConfirmed(false);
+      return;
+    }
+    const refetchTimer = setTimeout(() => { refetchHomes(); }, 5000);
+    const confirmTimer = setTimeout(() => setRelayOfflineInitialConfirmed(true), RELAY_OFFLINE_INITIAL_GRACE_MS);
+    return () => { clearTimeout(refetchTimer); clearTimeout(confirmTimer); };
+  }, [selectedHomeRelayOffline, hasAccessoriesData, selectedHomeId, refetchHomes]);
+
   // Show the full offline/setup screen only when the relay is conclusively
-  // offline (grace elapsed) OR there's no cached data to keep showing. A brief
-  // drop on an already-loaded home reads as "reconnecting", not "needs setup".
-  const showRelayOfflineSetup = selectedHomeRelayOffline && (relayOfflineConfirmed || !accessoriesData);
-  const relayReconnecting = selectedHomeRelayOffline && !showRelayOfflineSetup;
+  // offline (grace elapsed) OR there's no cached data to keep showing and the
+  // short initial grace has passed. A brief drop on an already-loaded home
+  // reads as "reconnecting", not "needs setup".
+  const showRelayOfflineSetup = selectedHomeRelayOffline && (relayOfflineConfirmed || (!accessoriesData && relayOfflineInitialConfirmed));
+  // No cached data and not yet confirmed — render a spinner, not the banner.
+  const relayOfflinePendingConfirm = selectedHomeRelayOffline && !accessoriesData && !showRelayOfflineSetup;
+  const relayReconnecting = selectedHomeRelayOffline && !!accessoriesData && !showRelayOfflineSetup;
 
   // Diagnostics: the relay-offline screen appearing is rare and should always
   // be explainable. Ship a snapshot on the rising edge (and a lighter marker
@@ -3072,10 +3094,21 @@ const Dashboard = () => {
   }, [homes]);
   const getHomeName = useCallback((homeId?: string) => homeId ? homeNameMap.get(homeId) : undefined, [homeNameMap]);
 
-  // Auto-refresh when there are no homes and no accessories (every 5 seconds when page is visible)
+  // Auto-refresh while the page is visible:
+  //  - every 5s when there's no data at all (first load / empty account)
+  //  - every 20s while any home's relay isn't fully connected — relay status
+  //    is otherwise push-only, so a client that fetched homes during a relay
+  //    blip (or missed the reconnect broadcast) would show a stale offline
+  //    state forever. The poll self-heals it without a manual refresh, and
+  //    also picks up the reconnecting→offline transition when the server-side
+  //    grace expires.
+  const anyRelayNotConnected = useMemo(
+    () => homes.some(h => (h.relayState ? h.relayState !== 'connected' : h.relayConnected === false)),
+    [homes]
+  );
   useEffect(() => {
     const hasNoData = homes.length === 0 && accessories.length === 0;
-    if (!hasNoData || !hasContentAccess) return;
+    if ((!hasNoData && !anyRelayNotConnected) || !hasContentAccess) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -3083,10 +3116,10 @@ const Dashboard = () => {
       if (intervalId) return;
       intervalId = setInterval(() => {
         refetchHomes();
-        if (selectedHomeId) {
+        if (hasNoData && selectedHomeId) {
           refetchAccessories();
         }
-      }, 5000);
+      }, hasNoData ? 5000 : 20000);
     };
 
     const stopPolling = () => {
@@ -3120,7 +3153,7 @@ const Dashboard = () => {
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [homes.length, accessories.length, hasContentAccess, selectedHomeId, refetchHomes, refetchAccessories]);
+  }, [homes.length, accessories.length, anyRelayNotConnected, hasContentAccess, selectedHomeId, refetchHomes, refetchAccessories]);
 
   // Refetch settings + accessories when relay changes accessory selection (free plan)
   useEffect(() => {
@@ -6533,6 +6566,16 @@ const Dashboard = () => {
                   accountType={accountType}
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
+              ) : (!tutorialDemoActive && relayOfflinePendingConfirm) ? (
+                /* Relay reported offline but not yet past the initial grace —
+                   probably a reconnect blip caught mid-fetch. Spin briefly
+                   instead of flashing the offline banner. */
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
+                    Connecting to {homes.find(h => h.id === selectedHomeId)?.name || 'your home'}…
+                  </p>
+                </div>
               ) : (!tutorialDemoActive && showRelayOfflineSetup) ? (
                 <SetupState
                   setupPath={undefined}

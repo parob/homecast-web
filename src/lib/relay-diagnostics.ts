@@ -84,6 +84,7 @@ export interface RelayOfflineSnapshot {
   trigger: RelayOfflineTrigger;
   homeId: string | null;
   relayConnected: boolean | undefined;
+  relayState: string | undefined;
   relayLastSeenAt: string | null | undefined;
   relayLastSeenAgeSeconds: number | null;
   isCloudManaged: boolean | undefined;
@@ -114,6 +115,7 @@ export function buildRelayOfflineSnapshot(args: {
     trigger,
     homeId: homeId ?? null,
     relayConnected: home?.relayConnected,
+    relayState: home?.relayState,
     relayLastSeenAt: lastSeen,
     relayLastSeenAgeSeconds: lastSeenAge,
     isCloudManaged: home?.isCloudManaged,
