@@ -206,10 +206,9 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
         {/* Last probe detail */}
         {lastProbe && (
           <div className="rounded border bg-background/60 p-2 text-[11px]">
-            {lastProbe.status === 'verified' && lastProbe.accessoryName && lastProbe.characteristicType && lastProbe.value !== null ? (
+            {lastProbe.status === 'verified' ? (
               <span>
-                Read <span className="font-mono">{lastProbe.characteristicType} = {lastProbe.value}</span>
-                {' '}from <span className="font-medium">{lastProbe.accessoryName}</span>
+                <span className="font-medium">Verified</span> — live accessory read
                 {' '}<span className="text-muted-foreground">{formatRelativeAgo(lastProbe.probedAt)}</span>
               </span>
             ) : lastProbe.reason ? (
