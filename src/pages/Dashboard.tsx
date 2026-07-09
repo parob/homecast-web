@@ -702,7 +702,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           }`}
         >
           {isLoading && isSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <House className="h-4 w-4" />}
-          <span className="flex-1 truncate text-left">{home.name}</span>
+          <span className="flex-1 truncate text-left font-semibold">{home.name}</span>
           {home.role && home.role !== 'owner' && (
             home.isCloudManaged
               ? <TooltipProvider delayDuration={300}>
@@ -5617,7 +5617,15 @@ const Dashboard = () => {
                 </SheetTrigger>
                 <SheetContent side="left" className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'bg-black/40 backdrop-blur-xl' : 'bg-background'}`} style={{ width: mobileSidebarWidth }} aria-describedby={undefined}>
                   <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                  <div className="h-full flex flex-col overflow-hidden">
+                  <div
+                    className="h-full flex flex-col overflow-hidden"
+                    onClick={(e) => {
+                      // Clicking empty space (not a home/room/link/button/interactive control) closes the menu
+                      if (!(e.target as HTMLElement).closest('button, a, input, textarea, select, [role="button"], [role="menuitem"]')) {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                  >
                     <div className="px-3 py-3 mt-3">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center justify-center rounded-lg bg-primary" style={{ height: 32, width: 32 }}>
