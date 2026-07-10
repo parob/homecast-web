@@ -116,11 +116,14 @@ const TOOLS = [
   {
     name: 'get_automations',
     description:
-      'List HomeKit automations for every home (or filter by home). Returns {home_key: [automation]}; ' +
-      'each automation has id, name, enabled, editable, trigger, actions, last_fired. ' +
-      'trigger and actions use the same format accepted by create_automation/update_automation, ' +
-      'so they can be edited and sent back directly. Automations with editable=false ' +
-      '(presence, location, or app-specific triggers) can only be renamed, enabled/disabled, or deleted.',
+      'List HomeKit automations in every home (or filter by home). Returns {home_key: [automation], _meta}. ' +
+      'Each automation has id, name, enabled, editable, trigger, actions, and last_fired. ' +
+      'trigger and actions are returned in exactly the format create_automation/update_automation accept, ' +
+      'so you can copy one, edit it, and send it back. ' +
+      'editable=false means the trigger was created outside Homecast (presence, location, or app-specific) ' +
+      'and cannot be recreated: the automation can still be renamed, enabled/disabled (update_automation) or deleted, ' +
+      'but its trigger/actions cannot be changed. ' +
+      'trigger.activation_issue (e.g. "disabledNoHomeHub") means HomeKit has deactivated it — usually a home hub is required.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -132,20 +135,31 @@ const TOOLS = [
   {
     name: 'create_automation',
     description:
-      'Create a HomeKit automation. trigger is either a TIMER: {"type":"timer","fireDate":"ISO8601"} or ' +
-      '{"type":"timer","hour":H,"minute":M,"recurrenceType":"once"|"daily"|"weekly","timeZone":"IANA id (optional)"} — ' +
-      'or an EVENT trigger: {"type":"event","events":[...],"endEvents":[...] (optional),"conditions":[...] (optional),' +
-      '"recurrences":[{"weekday":1-7},...] (optional, 1=Sunday),"executeOnce":bool (optional)}. ' +
-      'Event objects: {"type":"characteristic","accessory":"<slug>","characteristic":"<property>","value":<v>} ' +
-      '(fires when property becomes value, e.g. motion=true, on=true) | ' +
-      '{"type":"significantTime","significantEvent":"sunrise"|"sunset","offsetMinutes":<±min, optional>} | ' +
-      '{"type":"calendar","calendarComponents":{"hour":H,"minute":M,"weekday":1-7 (optional),"day","month" (optional)}} | ' +
-      '{"type":"duration","durationSeconds":n}. ' +
-      'Conditions (all must be true, equality only): {"type":"characteristic","accessory":"<slug>",' +
-      '"characteristic":"<property>","value":<v>}. ' +
-      'actions is a list of {"accessory":"<slug>","room":"<slug>" (optional), plus settable properties as in set_state: ' +
-      'on, brightness, hue, saturation, color_temp, active, heat_target, cool_target, hvac_mode, lock_target, ' +
-      'alarm_target, speed, volume, mute, target}. Get home/accessory slugs and properties from get_state.',
+      'Create a HomeKit automation: WHEN the trigger fires (and all conditions pass), the actions set device properties. ' +
+      'Call get_state first to learn home/accessory slug keys and property names — automations use the same vocabulary. ' +
+      'TRIGGER is exactly one of two forms. ' +
+      '(1) TIMER — fires at a time: {"type":"timer","hour":7,"minute":30,"recurrenceType":"daily"|"weekly"|"once",' +
+      '"timeZone":"Europe/London" (optional, defaults to home timezone)} or {"type":"timer","fireDate":"<ISO8601>"} for one-off. ' +
+      '(2) EVENT: {"type":"event","events":[<event>,...],"conditions":[<condition>,...] (optional),' +
+      '"endEvents":[<event>,...] (optional, deactivates it),"recurrences":[{"weekday":1},...] ' +
+      '(optional, limits which days it may fire; weekday 1=Sunday...7=Saturday),"executeOnce":true|false (optional)}. ' +
+      'The ONLY creatable event types: ' +
+      '{"type":"characteristic","accessory":"<slug>","characteristic":"<property>","value":<v>} — fires when a device ' +
+      'property becomes that value (e.g. characteristic "motion" value true; "contact" value 1; "on" value true) | ' +
+      '{"type":"significantTime","significantEvent":"sunrise"|"sunset","offsetMinutes":-30 (optional, negative=before)} | ' +
+      '{"type":"calendar","calendarComponents":{"hour":22,"minute":0,"weekday":6 (optional),"day","month" (optional)}} — time-of-day | ' +
+      '{"type":"duration","durationSeconds":3600} — repeating interval. ' +
+      'Presence and location (arrive/leave home) triggers CANNOT be created — Apple restricts them to the Home app; ' +
+      'tell the user to create those in Apple Home. ' +
+      'CONDITIONS must ALL be true for actions to run and support equality only ' +
+      '(e.g. only while alarm_state is "away"): {"type":"characteristic","accessory":"<slug>","characteristic":"<property>","value":<v>}. ' +
+      'No greater/less-than or time-window conditions. ' +
+      'ACTIONS is a list of device property changes using the set_state vocabulary: {"accessory":"<slug>","room":"<slug>" (optional), ' +
+      'plus any of on, brightness, hue, saturation, color_temp, active, heat_target, cool_target, hvac_mode ("auto"/"heat"/"cool"), ' +
+      'lock_target, alarm_target ("home"/"away"/"night"/"off"), speed, volume, mute, target}. ' +
+      'Actions can only set device properties — running a scene from an automation is not supported ' +
+      '(set the same properties the scene would). ' +
+      'Returns {home, automation, message}; automation.id identifies it for update_automation/delete_automation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,9 +202,11 @@ const TOOLS = [
     name: 'update_automation',
     description:
       'Update a HomeKit automation. Provide home and id (from get_automations) plus any of: name, trigger, actions, enabled. ' +
-      'Set enabled to enable/disable. NOTE: changing trigger (and on some automations, actions) recreates the automation ' +
-      'in HomeKit — the result may have a NEW id; always use the returned id afterwards. ' +
-      'trigger/actions use the same format as create_automation.',
+      'enabled=true/false enables or disables it (the usual way to turn automations on/off). ' +
+      'trigger and actions use exactly the create_automation format; supplying actions REPLACES all existing actions. ' +
+      'IMPORTANT: changing trigger deletes and recreates the automation inside HomeKit, so the result may have a NEW id — ' +
+      'always use the id from the response afterwards. ' +
+      'Automations with editable=false (presence/location/app-specific triggers) accept only name and enabled changes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -211,7 +227,10 @@ const TOOLS = [
   },
   {
     name: 'delete_automation',
-    description: 'Permanently delete a HomeKit automation. Get id from get_automations. This cannot be undone.',
+    description:
+      'Permanently delete a HomeKit automation (get id from get_automations). This cannot be undone — ' +
+      'the automation is removed from HomeKit and Apple Home immediately. ' +
+      'To temporarily stop an automation, use update_automation with enabled=false instead.',
     inputSchema: {
       type: 'object',
       properties: {
