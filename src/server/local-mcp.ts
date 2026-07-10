@@ -159,7 +159,11 @@ const TOOLS = [
       'lock_target, alarm_target ("home"/"away"/"night"/"off"), speed, volume, mute, target}. ' +
       'Actions can only set device properties — running a scene from an automation is not supported ' +
       '(set the same properties the scene would). ' +
-      'Returns {home, automation, message}; automation.id identifies it for update_automation/delete_automation.',
+      'Returns {home, automation, message}; automation.id identifies it for update_automation/delete_automation. ' +
+      'Requires the Homecast relay\'s Apple ID to have edit access in Apple Home ' +
+      '("Add & Edit Accessories" / "Allow Editing"); if it doesn\'t, the error will say so. ' +
+      'If a timer\'s hour/minute has already passed today, older relays may reject with ' +
+      '"Fire date is in the past" — retry with fireDate set to tomorrow.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -206,7 +210,9 @@ const TOOLS = [
       'trigger and actions use exactly the create_automation format; supplying actions REPLACES all existing actions. ' +
       'IMPORTANT: changing trigger deletes and recreates the automation inside HomeKit, so the result may have a NEW id — ' +
       'always use the id from the response afterwards. ' +
-      'Automations with editable=false (presence/location/app-specific triggers) accept only name and enabled changes.',
+      'Automations with editable=false (presence/location/app-specific triggers) accept only name and enabled changes. ' +
+      'Requires the Homecast relay\'s Apple ID to have edit access in Apple Home ' +
+      '("Add & Edit Accessories" / "Allow Editing"); if it doesn\'t, the error will say so.',
     inputSchema: {
       type: 'object',
       properties: {

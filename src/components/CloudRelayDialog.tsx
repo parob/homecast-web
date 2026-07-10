@@ -58,7 +58,7 @@ function EnrollmentCard({ enrollment, onCancel }: { enrollment: CustomerEnrollme
           <p className="text-xs text-muted-foreground">Matched: {enrollment.matchedHomeName}</p>
         )}
         {enrollment.status === 'pending' && enrollment.inviteEmail && (
-          <p className="text-xs text-muted-foreground">Invite {enrollment.inviteEmail} to your Apple Home</p>
+          <p className="text-xs text-muted-foreground">Invite {enrollment.inviteEmail} to your Apple Home and enable "Add &amp; Edit Accessories" for it</p>
         )}
         {enrollment.status === 'needs_home_id' && (
           <p className="text-xs text-muted-foreground">Multiple homes found with this name</p>

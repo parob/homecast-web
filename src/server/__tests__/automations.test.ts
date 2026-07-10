@@ -579,6 +579,50 @@ describe('personalized tool descriptions (tools/list)', () => {
   });
 });
 
+describe('HomeKit privileges error translation', () => {
+  it('translates "Insufficient privileges" from the bridge into actionable guidance', async () => {
+    mockHome();
+    vi.mocked(HomeKit.createAutomation).mockRejectedValue(
+      Object.assign(new Error('Automation creation failed: Insufficient privileges.'), {
+        code: 'AUTOMATION_CREATION_FAILED',
+      })
+    );
+
+    await expect(handleCreateAutomation({
+      home: HOME_SLUG,
+      name: 'X',
+      trigger: { type: 'timer', fireDate: '2027-01-01T07:00:00Z' },
+      actions: [{ accessory: LIGHT_SLUG, on: true }],
+    })).rejects.toThrow(/Add & Edit Accessories/);
+  });
+
+  it('translates the new INSUFFICIENT_HOMEKIT_PRIVILEGES code', async () => {
+    mockHome();
+    vi.mocked(HomeKit.updateAutomation).mockRejectedValue(
+      Object.assign(new Error('The relay cannot edit this home'), {
+        code: 'INSUFFICIENT_HOMEKIT_PRIVILEGES',
+      })
+    );
+
+    await expect(handleUpdateAutomation({ home: HOME_SLUG, id: 'AUTO-1', enabled: false }))
+      .rejects.toThrow(/Allow Editing/);
+  });
+
+  it('passes unrelated bridge errors through untouched', async () => {
+    mockHome();
+    vi.mocked(HomeKit.createAutomation).mockRejectedValue(
+      new Error('Automation creation failed: Fire date is in the past.')
+    );
+
+    await expect(handleCreateAutomation({
+      home: HOME_SLUG,
+      name: 'X',
+      trigger: { type: 'timer', hour: 4, minute: 0, recurrenceType: 'daily' },
+      actions: [{ accessory: LIGHT_SLUG, on: true }],
+    })).rejects.toThrow('Fire date is in the past.');
+  });
+});
+
 describe('handleDeleteAutomation', () => {
   it('deletes by id and reports success', async () => {
     mockHome();

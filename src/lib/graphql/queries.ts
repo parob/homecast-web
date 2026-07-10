@@ -159,6 +159,7 @@ export const GET_HOMES = gql`
       roomCount
       accessoryCount
       role
+      isAdmin
     }
   }
 `;

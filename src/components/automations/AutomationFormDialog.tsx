@@ -15,6 +15,7 @@ import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { GET_ACCESSORIES, GET_HOMES } from '@/lib/graphql/queries';
 import { CREATE_AUTOMATION, UPDATE_AUTOMATION } from '@/lib/graphql/mutations';
 import { charLabel, formatValue } from './format';
+import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
 type TriggerCategory = 'time' | 'accessory' | 'sensor';
@@ -304,8 +305,11 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         await createAutomation({ variables: { homeId, name, trigger: JSON.stringify(payload), actions: JSON.stringify(validActions) } });
       }
       onOpenChange(false); onSaved?.();
-    } catch (error) { setErrors({ save: String(error) }); } finally { setSaving(false); }
+    } catch (error) { setErrors({ save: translateHomeKitError(error) }); } finally { setSaving(false); }
   };
+
+  // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay)
+  const relayCannotEdit = homes.find(h => h.id === homeId)?.isAdmin === false;
 
   const triggerAccessory = accessories.find(a => a.id === triggerAccessoryId);
   const triggerChars = triggerCategory === 'sensor' ? getReadableChars(triggerAccessory) : getWritableChars(triggerAccessory);
@@ -357,6 +361,14 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
           </div>
           <Input value={name} onChange={(e) => { setName(e.target.value); setErrors({}); }} placeholder="Automation name" className={`h-auto text-lg font-semibold placeholder:text-muted-foreground/40 ${isEditing ? 'px-3 py-2 rounded-lg' : 'border-0 p-0 shadow-none focus-visible:ring-0'}`} />
           {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+          {relayCannotEdit && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-50/80 dark:bg-amber-950/20 p-2.5 mt-2">
+              <span className="text-amber-500 shrink-0 text-sm">!</span>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                The relay has view-only access to this home, so HomeKit automations can't be saved. {HOMEKIT_EDIT_PERMISSION_FIX}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Step tabs */}
@@ -669,7 +681,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         <div className="shrink-0 px-6 pb-5 pt-2 flex justify-between">
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
           {(isEditing || step === 'actions') && (
-            <Button size="sm" onClick={handleSave} disabled={saving || (isEditing && !isDirty)}>
+            <Button size="sm" onClick={handleSave} disabled={saving || relayCannotEdit || (isEditing && !isDirty)}>
               {saving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
               {isEditing ? 'Save' : 'Create'}
             </Button>

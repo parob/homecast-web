@@ -10,9 +10,10 @@ import { AutomationDetailDialog } from './AutomationDetailDialog';
 import { AutomationFormDialog } from './AutomationFormDialog';
 // Lazy: pulls in the whole flow editor (@xyflow/react) — only load once the user opens it
 const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
-import { GET_AUTOMATIONS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
+import { GET_AUTOMATIONS, GET_HOMES, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
-import type { HomeKitAutomation, GetAutomationsResponse } from '@/lib/graphql/types';
+import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
+import type { HomeKitAutomation, HomeKitHome, GetAutomationsResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 
 interface AutomationsSectionProps {
@@ -63,6 +64,14 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
   const rawAutomations = demoAutomations ?? (data?.automations || []);
   const relayNeedsUpdate = rawAutomations.some(a => a.id === '__relay_update_required__');
   const automations = relayNeedsUpdate ? [] : rawAutomations;
+
+  // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay)
+  const { data: homesData } = useQuery<{ homes: HomeKitHome[] }>(GET_HOMES, {
+    skip: !homeId || !!demoAutomations,
+    fetchPolicy: 'cache-first',
+    errorPolicy: 'ignore',
+  });
+  const relayCannotEdit = homesData?.homes?.find(h => h.id === homeId)?.isAdmin === false;
 
   const hcAutomations = useMemo(() => {
     const entities = hcData?.hcAutomations || [];
@@ -143,6 +152,12 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
           {relayNeedsUpdate && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               HomeKit automations require a relay update. Homecast automations are unaffected.
+            </p>
+          )}
+          {relayCannotEdit && (
+            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+              The relay has view-only access to this home, so HomeKit automations can't be created or edited here.{' '}
+              {HOMEKIT_EDIT_PERMISSION_FIX} Homecast automations are unaffected.
             </p>
           )}
           <div className={
@@ -243,10 +258,10 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
             <button
               type="button"
               data-testid="new-homekit-automation"
-              disabled={relayNeedsUpdate}
+              disabled={relayNeedsUpdate || relayCannotEdit}
               onClick={() => { setNewTypeOpen(false); setEditingAutomation(null); setFormOpen(true); }}
               className={`flex flex-col items-center text-center rounded-xl border p-4 transition-all ${
-                relayNeedsUpdate
+                relayNeedsUpdate || relayCannotEdit
                   ? 'opacity-50 cursor-not-allowed'
                   : 'hover:border-primary/40 hover:shadow-sm'
               }`}
@@ -262,8 +277,8 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
                 <li className="flex items-start gap-1.5"><Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" /> Time and device triggers</li>
                 <li className="flex items-start gap-1.5"><Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" /> Works without relay</li>
               </ul>
-              <Button variant="outline" size="sm" className="mt-4 w-full" disabled={relayNeedsUpdate}>
-                {relayNeedsUpdate ? 'Relay update required' : 'Create'}
+              <Button variant="outline" size="sm" className="mt-4 w-full" disabled={relayNeedsUpdate || relayCannotEdit}>
+                {relayNeedsUpdate ? 'Relay update required' : relayCannotEdit ? 'Editing not allowed' : 'Create'}
               </Button>
             </button>
 

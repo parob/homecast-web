@@ -11,6 +11,24 @@
 
 import { executeHomeKitAction } from '../relay/local-handler';
 import { uniqueKey, getSimpleName, formatValue } from './local-rest';
+import { isInsufficientHomeKitPrivileges, HOMEKIT_EDIT_PERMISSION_MESSAGE } from '../lib/homekit-errors';
+
+/**
+ * Run an automation write against the native bridge, translating HomeKit's
+ * "Insufficient privileges" (the relay Mac's Apple ID lacks edit access in
+ * Apple Home) into actionable guidance. Wording mirrors the cloud server's
+ * homekit_errors.py.
+ */
+async function executeAutomationWrite(action: string, payload: Record<string, unknown>): Promise<unknown> {
+  try {
+    return await executeHomeKitAction(action, payload);
+  } catch (error) {
+    if (isInsufficientHomeKitPrivileges(error)) {
+      throw new Error(HOMEKIT_EDIT_PERMISSION_MESSAGE);
+    }
+    throw error;
+  }
+}
 
 // Simple property name → characteristic name accepted by the native
 // automation path (CharacteristicMapper.characteristicMap). Matches the
@@ -444,7 +462,7 @@ export async function handleCreateAutomation(args: {
   const trigger = buildTriggerPayload(args.trigger, index);
   const actions = buildActionsPayload(args.actions, index);
 
-  const result = await executeHomeKitAction('automation.create', {
+  const result = await executeAutomationWrite('automation.create', {
     homeId,
     name: args.name,
     trigger,
@@ -492,7 +510,7 @@ export async function handleUpdateAutomation(args: {
     throw new Error('Provide at least one of: name, trigger, actions, enabled');
   }
 
-  const result = await executeHomeKitAction('automation.update', payload) as any;
+  const result = await executeAutomationWrite('automation.update', payload) as any;
   const automation = normalizeAutomation(result?.automation || result || {}, index);
 
   let message = `Updated automation "${automation.name || args.id}"`;
@@ -508,6 +526,6 @@ export async function handleDeleteAutomation(args: {
 }): Promise<Record<string, any>> {
   const { homeKey } = await resolveHome(args.home);
   if (!args.id) throw new Error("'id' is required");
-  await executeHomeKitAction('automation.delete', { automationId: args.id });
+  await executeAutomationWrite('automation.delete', { automationId: args.id });
   return { success: true, id: args.id, home: homeKey, message: 'Automation deleted' };
 }

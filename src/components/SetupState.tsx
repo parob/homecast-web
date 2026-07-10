@@ -306,6 +306,7 @@ export function EnrollmentTrackerCard({ enrollment, isDarkBackground }: {
                       <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">3</span><span>Choose the <strong>Resident</strong> role (not Guest)</span></div>
                       <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">4</span><span>Enter the relay email address above in the <strong>To</strong> field</span></div>
                       <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">5</span><span>Tap or click <strong>Send Invite</strong></span></div>
+                      <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">6</span><span>After the relay accepts, tap the relay user in <strong>Home Settings</strong> and enable <strong>"Add &amp; Edit Accessories"</strong> ("Allow Editing" on older iOS) so Homecast can create automations</span></div>
                     </CollapsibleHelp>
                     <Button
                       size="sm"
