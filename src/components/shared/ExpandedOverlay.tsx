@@ -93,6 +93,58 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     }
   }, [isExpanded, shouldRender]);
 
+  // Dismiss when tapping outside the overlay, or when scrolling past a
+  // threshold. Needed for touch/compact mode where there's no mouse-leave to
+  // trigger a collapse. The overlay is position:fixed, so any scroll would
+  // otherwise leave it detached from the widget it expanded from.
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    // The placeholder's parent is the compact trigger widget — taps on it
+    // should be handled by the widget's own toggle, not treated as "outside".
+    const triggerEl = parentRef.current?.parentElement ?? null;
+
+    const isInsideOverlay = (target: EventTarget | null): boolean => {
+      const node = target as Node | null;
+      if (!node) return false;
+      if (contentRef.current?.contains(node)) return true;
+      if (triggerEl?.contains(node)) return true;
+      return false;
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!isInsideOverlay(e.target)) onClose();
+    };
+
+    const SCROLL_THRESHOLD = 40;
+    const getScrollY = (t: EventTarget | null): number => {
+      if (!t || t === document || t === window) return window.scrollY;
+      const el = t as HTMLElement;
+      return typeof el.scrollTop === 'number' ? el.scrollTop : window.scrollY;
+    };
+    let startTarget: EventTarget | null = null;
+    let startY = 0;
+    const handleScroll = (e: Event) => {
+      // Scrolling within the overlay's own content (e.g. a long device list)
+      // must not dismiss it — only scrolling the page behind it should.
+      if (isInsideOverlay(e.target)) return;
+      if (startTarget === null) {
+        startTarget = e.target;
+        startY = getScrollY(e.target);
+        return;
+      }
+      if (e.target !== startTarget) return;
+      if (Math.abs(getScrollY(e.target) - startY) > SCROLL_THRESHOLD) onClose();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isExpanded, onClose]);
+
   // Handle mouse leave - call immediately
   const handleMouseLeave = useCallback(() => {
     onMouseLeave?.();
