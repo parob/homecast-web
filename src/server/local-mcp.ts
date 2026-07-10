@@ -249,6 +249,73 @@ function uniqueKey(name: string, uuid: string): string {
   return `${sanitized}_${uuid.slice(-4).toLowerCase()}`;
 }
 
+// --- Personalized tool descriptions ---
+// tools/list appends the account's actual home keys and room names to the
+// get_state/get_automations descriptions so the model knows valid filter
+// values without a discovery call. Cached briefly — homes/rooms rarely change.
+
+const HOME_CONTEXT_TTL_MS = 60_000;
+const HOME_CONTEXT_MAX_HOMES = 10;
+const HOME_CONTEXT_MAX_ROOMS = 15;
+const PERSONALIZED_TOOLS = new Set(['get_state', 'get_automations']);
+
+let homeContextCache: { expires: number; block: string } | null = null;
+
+export function resetHomeContextCache(): void {
+  homeContextCache = null;
+}
+
+async function getHomeContextBlock(): Promise<string> {
+  if (homeContextCache && homeContextCache.expires > Date.now()) {
+    return homeContextCache.block;
+  }
+  let block = '';
+  try {
+    const homesResult = await executeHomeKitAction('homes.list') as any;
+    const allHomes = homesResult?.homes || [];
+    const homes = allHomes.slice(0, HOME_CONTEXT_MAX_HOMES);
+    if (homes.length > 0) {
+      const parts: string[] = [];
+      for (const home of homes) {
+        const slug = uniqueKey(home.name, home.id);
+        let rooms: string[] = [];
+        try {
+          const roomsResult = await executeHomeKitAction('rooms.list', { homeId: home.id }) as any;
+          rooms = (roomsResult?.rooms || [])
+            .map((r: any) => (r.name || '').toLowerCase())
+            .filter(Boolean);
+        } catch {
+          // Rooms unavailable — list the home without them
+        }
+        const shown = rooms.slice(0, HOME_CONTEXT_MAX_ROOMS);
+        const more = rooms.length - shown.length;
+        parts.push(
+          shown.length > 0
+            ? `${slug} (rooms: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''})`
+            : slug
+        );
+      }
+      const extraHomes = allHomes.length - homes.length;
+      block =
+        `\n\nThis account's homes: ${parts.join('; ')}` +
+        (extraHomes > 0 ? `; +${extraHomes} more homes` : '') +
+        `. Use the exact home key for home/filter_by_home parameters; room names work as filter_by_room values.`;
+    }
+  } catch {
+    block = '';
+  }
+  homeContextCache = { expires: Date.now() + HOME_CONTEXT_TTL_MS, block };
+  return block;
+}
+
+async function listToolsPersonalized(): Promise<typeof TOOLS> {
+  const block = await getHomeContextBlock();
+  if (!block) return TOOLS;
+  return TOOLS.map((tool) =>
+    PERSONALIZED_TOOLS.has(tool.name) ? { ...tool, description: tool.description + block } : tool
+  );
+}
+
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'get_state': {
@@ -360,7 +427,7 @@ function handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcResponse> {
         return {
           jsonrpc: '2.0' as const,
           id: request.id ?? null,
-          result: { tools: TOOLS },
+          result: { tools: await listToolsPersonalized() },
         };
 
       case 'tools/call': {

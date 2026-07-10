@@ -53,6 +53,7 @@ vi.mock('@/server/local-db', () => ({
 }));
 
 import { HomeKit } from '@/native/homekit-bridge';
+import { handleMCP, resetHomeContextCache } from '@/server/local-mcp';
 import {
   convertSimpleValue,
   buildAccessoryIndex,
@@ -110,6 +111,7 @@ async function index() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetHomeContextCache();
 });
 
 // ---------------------------------------------------------------------------
@@ -538,6 +540,42 @@ describe('handleUpdateAutomation', () => {
     mockHome();
     await expect(handleUpdateAutomation({ home: HOME_SLUG, id: 'AUTO-1' }))
       .rejects.toThrow(/at least one of/);
+  });
+});
+
+describe('personalized tool descriptions (tools/list)', () => {
+  it('appends the home/room context block to get_state and get_automations only', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listRooms).mockResolvedValue([
+      { id: 'R1', name: 'Porch' },
+      { id: 'R2', name: 'Hall' },
+    ] as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/list',
+    })));
+
+    const byName: Record<string, any> = {};
+    for (const tool of response.result.tools) byName[tool.name] = tool;
+
+    for (const name of ['get_state', 'get_automations']) {
+      expect(byName[name].description).toContain(`This account's homes: ${HOME_SLUG} (rooms: porch, hall)`);
+    }
+    for (const name of ['set_state', 'run_scene', 'create_automation', 'update_automation', 'delete_automation']) {
+      expect(byName[name].description).not.toContain("This account's homes");
+    }
+  });
+
+  it('omits the block when no homes exist and caches the lookup', async () => {
+    vi.mocked(HomeKit.listHomes).mockResolvedValue([] as any);
+
+    const call = () => handleMCP(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }));
+    const first = JSON.parse(await call());
+    expect(first.result.tools.find((t: any) => t.name === 'get_state').description)
+      .not.toContain("This account's homes");
+
+    await call();
+    expect(HomeKit.listHomes).toHaveBeenCalledTimes(1);
   });
 });
 
