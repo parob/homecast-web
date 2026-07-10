@@ -178,6 +178,35 @@ export function ApiAccessSection({ homes, copyToClipboard, accountType }: ApiAcc
                 );
               })() : 'Available on the Cloud plan. Enable per home in Settings → Homes.',
             }] : []),
+            {
+              label: 'HA',
+              url: 'https://github.com/parob/homecast-hass',
+              key: 'api-hass',
+              info: (() => {
+                const guideUrl = 'https://docs.homecast.cloud/guides/home-assistant';
+                return (
+                  <>
+                    Home Assistant integration — add this repo in HACS, devices appear as native HA entities.{' '}
+                    <a
+                      href={guideUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        const w = window as any;
+                        if (w.webkit?.messageHandlers?.homecast) {
+                          e.preventDefault();
+                          w.webkit.messageHandlers.homecast.postMessage({ action: 'openUrl', url: guideUrl });
+                        }
+                      }}
+                      className="inline-flex items-center gap-0.5 font-semibold underline decoration-green-700/60 decoration-1 underline-offset-2 hover:decoration-green-700 dark:decoration-green-400/60 dark:hover:decoration-green-400"
+                    >
+                      Setup guide
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  </>
+                );
+              })(),
+            },
           ] as { label: string; url: string; key: string; info?: React.ReactNode }[]).map(({ label, url, key, info }) => (
             <div key={key} className="px-2.5 py-1.5">
               <div className="flex items-center gap-2">
