@@ -213,7 +213,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.result.capabilities).toHaveProperty('tools');
   });
 
-  it('responds to tools/list with exactly 3 tools matching cloud', async () => {
+  it('responds to tools/list with exactly 7 tools matching cloud', async () => {
     const response = JSON.parse(await handleMCP(JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -223,10 +223,18 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.jsonrpc).toBe('2.0');
     expect(response.id).toBe(2);
     const tools = response.result.tools;
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(7);
 
     const toolNames = tools.map((t: any) => t.name).sort();
-    expect(toolNames).toEqual(['get_state', 'run_scene', 'set_state']);
+    expect(toolNames).toEqual([
+      'create_automation',
+      'delete_automation',
+      'get_automations',
+      'get_state',
+      'run_scene',
+      'set_state',
+      'update_automation',
+    ]);
   });
 
   it('get_state tool has correct filter parameters', async () => {
@@ -292,6 +300,75 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(runScene.inputSchema.properties).toHaveProperty('home');
     expect(runScene.inputSchema.properties).toHaveProperty('name');
     expect(runScene.annotations.readOnlyHint).toBe(false);
+  });
+
+  it('get_automations tool is read-only with optional home filter', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'tools/list',
+    })));
+
+    const getAutomations = response.result.tools.find((t: any) => t.name === 'get_automations');
+    expect(getAutomations.inputSchema.properties).toHaveProperty('filter_by_home');
+    expect(getAutomations.inputSchema.required).toBeUndefined();
+    expect(getAutomations.annotations.readOnlyHint).toBe(true);
+    expect(getAutomations.annotations.destructiveHint).toBe(false);
+  });
+
+  it('create_automation requires home/name/trigger/actions', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 11,
+      method: 'tools/list',
+    })));
+
+    const createAutomation = response.result.tools.find((t: any) => t.name === 'create_automation');
+    expect(createAutomation.inputSchema.required).toEqual(['home', 'name', 'trigger', 'actions']);
+    expect(createAutomation.inputSchema.properties.trigger.type).toBe('object');
+    expect(createAutomation.inputSchema.properties.actions.type).toBe('array');
+    // Action items use the set_state vocabulary minus home/room requirement
+    const items = createAutomation.inputSchema.properties.actions.items;
+    expect(items.required).toEqual(['accessory']);
+    const propNames = Object.keys(items.properties);
+    for (const prop of ['on', 'brightness', 'hue', 'saturation', 'color_temp', 'active',
+      'heat_target', 'cool_target', 'hvac_mode', 'lock_target', 'alarm_target',
+      'speed', 'volume', 'mute', 'target']) {
+      expect(propNames).toContain(prop);
+    }
+    expect(createAutomation.annotations.readOnlyHint).toBe(false);
+    expect(createAutomation.annotations.destructiveHint).toBe(false);
+  });
+
+  it('update_automation requires home/id and accepts partial changes', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 12,
+      method: 'tools/list',
+    })));
+
+    const updateAutomation = response.result.tools.find((t: any) => t.name === 'update_automation');
+    expect(updateAutomation.inputSchema.required).toEqual(['home', 'id']);
+    const props = updateAutomation.inputSchema.properties;
+    expect(props).toHaveProperty('name');
+    expect(props).toHaveProperty('trigger');
+    expect(props).toHaveProperty('actions');
+    expect(props).toHaveProperty('enabled');
+    expect(updateAutomation.annotations.readOnlyHint).toBe(false);
+    expect(updateAutomation.annotations.destructiveHint).toBe(false);
+  });
+
+  it('delete_automation requires home/id and is destructive', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 13,
+      method: 'tools/list',
+    })));
+
+    const deleteAutomation = response.result.tools.find((t: any) => t.name === 'delete_automation');
+    expect(deleteAutomation.inputSchema.required).toEqual(['home', 'id']);
+    expect(deleteAutomation.annotations.readOnlyHint).toBe(false);
+    expect(deleteAutomation.annotations.destructiveHint).toBe(true);
   });
 
   it('responds to ping', async () => {

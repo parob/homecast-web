@@ -180,7 +180,7 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
 // --- GET /rest/state — simplified, AI-friendly state representation ---
 
 // Characteristic type → simple name mapping (matches cloud server)
-const CHAR_TO_SIMPLE: Record<string, string> = {
+export const CHAR_TO_SIMPLE: Record<string, string> = {
   on: 'on', power_state: 'on', active: 'active', status_active: 'status_active',
   brightness: 'brightness', hue: 'hue', saturation: 'saturation', color_temperature: 'color_temp',
   current_temperature: 'current_temp', heating_threshold: 'heat_target',
@@ -192,7 +192,7 @@ const CHAR_TO_SIMPLE: Record<string, string> = {
   volume: 'volume', mute: 'mute',
 };
 
-const UUID_TO_SIMPLE: Record<string, string> = {
+export const UUID_TO_SIMPLE: Record<string, string> = {
   '000000b1-0000-1000-8000-0026bb765291': 'hvac_state',
   '000000b2-0000-1000-8000-0026bb765291': 'hvac_mode',
 };
@@ -204,12 +204,12 @@ function sanitizeName(name: string): string {
   return name.trim().replace(/\s+/g, '_').toLowerCase();
 }
 
-function uniqueKey(name: string, uuid: string): string {
+export function uniqueKey(name: string, uuid: string): string {
   const shortId = uuid ? uuid.slice(-4).toLowerCase() : '0000';
   return `${sanitizeName(name)}_${shortId}`;
 }
 
-function getSimpleName(charType: string): string | null {
+export function getSimpleName(charType: string): string | null {
   if (CHAR_TO_SIMPLE[charType]) return CHAR_TO_SIMPLE[charType];
   if (UUID_TO_SIMPLE[charType.toLowerCase()]) return UUID_TO_SIMPLE[charType.toLowerCase()];
   if (SKIP_CHARS.has(charType)) return null;
@@ -217,7 +217,7 @@ function getSimpleName(charType: string): string | null {
   return charType;
 }
 
-function formatValue(value: any, simpleName: string): any {
+export function formatValue(value: any, simpleName: string): any {
   if (value == null) return null;
   if (simpleName === 'alarm_state') {
     const states: Record<number, string> = { 0: 'home', 1: 'away', 2: 'night', 3: 'off', 4: 'triggered' };
