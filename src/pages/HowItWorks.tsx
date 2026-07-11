@@ -57,7 +57,8 @@ const ArchitectureDiagram = () => {
   const icon1Ref = React.useRef<HTMLDivElement>(null);
   const icon2Ref = React.useRef<HTMLDivElement>(null);
   const icon3Ref = React.useRef<HTMLDivElement>(null);
-  const icon6Ref = React.useRef<HTMLDivElement>(null);
+  const appBoxRef = React.useRef<HTMLDivElement>(null);
+  const apisBoxRef = React.useRef<HTMLDivElement>(null);
   const selfHostedRef = React.useRef<HTMLDivElement>(null);
   const cloudManagedRef = React.useRef<HTMLDivElement>(null);
   const card1Ref = React.useRef<HTMLDivElement>(null);
@@ -69,14 +70,15 @@ const ArchitectureDiagram = () => {
   React.useEffect(() => {
     const updatePaths = () => {
       if (!containerRef.current || !icon1Ref.current || !icon2Ref.current ||
-          !icon3Ref.current || !icon6Ref.current) return;
+          !icon3Ref.current || !appBoxRef.current || !apisBoxRef.current) return;
 
       const containerRect = containerRef.current.getBoundingClientRect();
-      const icons = [icon1Ref, icon2Ref, icon3Ref, icon6Ref].map(ref =>
+      const icons = [icon1Ref, icon2Ref, icon3Ref].map(ref =>
         ref.current!.getBoundingClientRect()
       );
 
       const newArrows: Array<{ path: string; head: string }> = [];
+      // Straight horizontal arrows for the Devices → Hub → Relay chain
       for (let i = 0; i < icons.length - 1; i++) {
         const from = icons[i];
         const to = icons[i + 1];
@@ -88,11 +90,44 @@ const ArchitectureDiagram = () => {
         const head = `${x2},${y} ${x2 - 8},${y - 5} ${x2 - 8},${y + 5}`;
         newArrows.push({ path: finalPath, head });
       }
+
+      // Relay branches into two: one arrow to the App box, one to the APIs box.
+      const relay = icons[2];
+      const rx = relay.right - containerRect.left;
+      const ry = relay.top - containerRect.top + relay.height / 2;
+      const branchTo = (rect: DOMRect) => {
+        const tx = rect.left - containerRect.left;
+        const ty = rect.top - containerRect.top + rect.height / 2;
+        const r = 8;
+        // Turn down/up in the gap just before the target box so the vertical
+        // segment stays clear of the relay's centered label text.
+        const bx = tx - 22;
+        let path: string;
+        if (Math.abs(ty - ry) < r * 2) {
+          path = `M ${rx} ${ry} L ${tx - 8} ${ty}`;
+        } else {
+          const vdir = ty > ry ? 1 : -1;
+          path = `M ${rx} ${ry} L ${bx - r} ${ry} Q ${bx} ${ry}, ${bx} ${ry + vdir * r} ` +
+            `L ${bx} ${ty - vdir * r} Q ${bx} ${ty}, ${bx + r} ${ty} L ${tx - 8} ${ty}`;
+        }
+        const head = `${tx},${ty} ${tx - 8},${ty - 5} ${tx - 8},${ty + 5}`;
+        return { path, head };
+      };
+      newArrows.push(branchTo(appBoxRef.current.getBoundingClientRect()));
+      newArrows.push(branchTo(apisBoxRef.current.getBoundingClientRect()));
       setArrows(newArrows);
 
-      // Relay connecting arrows: selfHosted icons → card1, cloudManaged icon → card2
+      // Relay connecting arrows: selfHosted icons → card1, cloudManaged icon → card2.
+      // Smooth S-curves (cubic béziers with vertical tangents at both ends) read
+      // more organically than right-angle elbows.
       if (selfHostedRef.current && cloudManagedRef.current && card1Ref.current && card2Ref.current) {
-        const r = 10;
+        const curve = (startX: number, startY: number, endX: number, endY: number) => {
+          // Control points pulled toward the vertical midpoint so the path leaves
+          // the source going straight down and arrives at the target going straight down.
+          const c1y = startY + (endY - startY) * 0.55;
+          const c2y = startY + (endY - startY) * 0.45;
+          return `M ${startX} ${startY} C ${startX} ${c1y}, ${endX} ${c2y}, ${endX} ${endY}`;
+        };
 
         // Arrow from Mac mini/MacBook area → Self-Hosted card
         const sh = selfHostedRef.current.getBoundingClientRect();
@@ -101,12 +136,7 @@ const ArchitectureDiagram = () => {
         const startY1 = sh.bottom - containerRect.top;
         const endX1 = c1.left - containerRect.left + c1.width / 2;
         const endY1 = c1.top - containerRect.top;
-        const midY1 = startY1 + (endY1 - startY1) / 2;
-        const dir1 = endX1 < startX1 ? -1 : 1;
-        const dx1 = Math.abs(endX1 - startX1);
-        const path1 = dx1 < r * 2
-          ? `M ${startX1} ${startY1} L ${startX1} ${endY1}`
-          : `M ${startX1} ${startY1} L ${startX1} ${midY1 - r} Q ${startX1} ${midY1}, ${startX1 + dir1 * r} ${midY1} L ${endX1 - dir1 * r} ${midY1} Q ${endX1} ${midY1}, ${endX1} ${midY1 + r} L ${endX1} ${endY1}`;
+        const path1 = curve(startX1, startY1, endX1, endY1);
 
         // Arrow from homecast.cloud icon → Cloud Managed card
         const cm = cloudManagedRef.current.getBoundingClientRect();
@@ -115,12 +145,7 @@ const ArchitectureDiagram = () => {
         const startY2 = cm.bottom - containerRect.top;
         const endX2 = c2.left - containerRect.left + c2.width / 2;
         const endY2 = c2.top - containerRect.top;
-        const midY2 = startY2 + (endY2 - startY2) / 2;
-        const dir2 = endX2 < startX2 ? -1 : 1;
-        const dx2 = Math.abs(endX2 - startX2);
-        const path2 = dx2 < r * 2
-          ? `M ${startX2} ${startY2} L ${startX2} ${endY2}`
-          : `M ${startX2} ${startY2} L ${startX2} ${midY2 - r} Q ${startX2} ${midY2}, ${startX2 + dir2 * r} ${midY2} L ${endX2 - dir2 * r} ${midY2} Q ${endX2} ${midY2}, ${endX2} ${midY2 + r} L ${endX2} ${endY2}`;
+        const path2 = curve(startX2, startY2, endX2, endY2);
 
         // Downward-pointing arrowheads at the end of each path
         const head1 = `${endX1},${endY1} ${endX1 - 5},${endY1 - 8} ${endX1 + 5},${endY1 - 8}`;
@@ -141,7 +166,7 @@ const ArchitectureDiagram = () => {
         <svg className="absolute inset-0 pointer-events-none overflow-visible" style={{ width: '100%', height: '100%' }}>
           {arrows.map((arrow, i) => (
             <g key={i}>
-              <path d={arrow.path} stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" className="text-muted-foreground/50" fill="none" />
+              <path d={arrow.path} stroke="currentColor" strokeWidth="1.5" className="text-muted-foreground/50" fill="none" />
               <polygon className="text-muted-foreground/50" fill="currentColor" points={arrow.head} />
             </g>
           ))}
@@ -208,56 +233,71 @@ const ArchitectureDiagram = () => {
             </div>
             <span className="text-base font-medium mt-3 whitespace-nowrap">Homecast Relay</span>
             <p className="text-[11px] text-muted-foreground text-center mt-1">Run on your own Mac or let us host it for you.</p>
-            <div className="flex w-full justify-evenly mt-2">
-              <div ref={selfHostedRef} className="flex gap-4">
-                <div className="flex flex-col items-center">
-                  <MacMiniIcon />
-                  <span className="text-[9px] text-muted-foreground">Mac mini</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <Laptop className="h-6 w-6 text-foreground" />
-                  <span className="text-[9px] text-muted-foreground">MacBook</span>
+            <div className="flex w-full justify-evenly mt-3 items-start">
+              <div className="flex flex-col items-center gap-1.5">
+                <span className="bg-primary/10 text-primary text-[9px] font-medium px-2 py-0.5 rounded-full">Option 1</span>
+                <div ref={selfHostedRef} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <MacMiniIcon />
+                    <span className="text-[9px] text-muted-foreground">Mac mini</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <Laptop className="h-6 w-6 text-foreground" />
+                    <span className="text-[9px] text-muted-foreground">MacBook</span>
+                  </div>
                 </div>
               </div>
-              <div ref={cloudManagedRef} className="flex flex-col items-center">
-                <Cloud className="h-6 w-6 text-foreground" />
-                <span className="text-[9px] text-muted-foreground">homecast.cloud</span>
+              <span className="text-[10px] font-medium text-muted-foreground self-center pt-3">or</span>
+              <div className="flex flex-col items-center gap-1.5">
+                <span className="bg-blue-500/10 text-blue-500 text-[9px] font-medium px-2 py-0.5 rounded-full">Option 2</span>
+                <div ref={cloudManagedRef} className="flex flex-col items-center">
+                  <Cloud className="h-6 w-6 text-foreground" />
+                  <span className="text-[9px] text-muted-foreground">homecast.cloud</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Protocols/Clients */}
-          <div className="flex flex-col items-center">
-            <div ref={icon6Ref} className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border">
+          {/* App + APIs */}
+          <div className="flex flex-col items-center justify-center gap-5">
+            {/* Homecast App — visually distinct, primary-tinted */}
+            <div ref={appBoxRef} className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
               <div className="flex items-center gap-2">
-                <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-primary to-primary/80">
-                  <Home className="h-3 w-3 text-primary-foreground" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
+                  <Home className="h-4 w-4 text-primary-foreground" />
                 </div>
-                <span className="text-[10px] font-medium">Homecast App</span>
+                <span className="text-[11px] font-semibold">Homecast App</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pl-0.5">
                 <Globe className="h-5 w-5 text-blue-500" />
                 <span className="text-[10px] font-medium">Web</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pl-0.5">
                 <Smartphone className="h-5 w-5 text-green-500" />
                 <span className="text-[10px] font-medium">iOS / Android</span>
               </div>
-              <div className="flex items-center gap-2">
-                <GraphQLLogo />
-                <span className="text-[10px] font-medium">GraphQL</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <RestLogo />
-                <span className="text-[10px] font-medium">REST API</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MCPLogo />
-                <span className="text-[10px] font-medium">MCP</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Bell className="h-5 w-5 text-amber-500" />
-                <span className="text-[10px] font-medium">Webhooks</span>
+            </div>
+
+            {/* APIs */}
+            <div className="flex flex-col items-center gap-1.5 w-full">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground self-start pl-1">APIs</span>
+              <div ref={apisBoxRef} className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border w-full">
+                <div className="flex items-center gap-2">
+                  <GraphQLLogo />
+                  <span className="text-[10px] font-medium">GraphQL</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RestLogo />
+                  <span className="text-[10px] font-medium">REST API</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MCPLogo />
+                  <span className="text-[10px] font-medium">MCP</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-amber-500" />
+                  <span className="text-[10px] font-medium">Webhooks</span>
+                </div>
               </div>
             </div>
           </div>
@@ -310,45 +350,53 @@ const ArchitectureDiagram = () => {
         <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
 
         {/* Access Methods */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border">
+        <div className="flex flex-col items-center gap-4 w-[200px]">
+          {/* Homecast App — visually distinct */}
+          <div className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
             <div className="flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-primary to-primary/80">
-                <Home className="h-3 w-3 text-primary-foreground" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
+                <Home className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-[10px] font-medium">Homecast App</span>
+              <span className="text-[11px] font-semibold">Homecast App</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pl-0.5">
               <Globe className="h-5 w-5 text-blue-500" />
               <span className="text-[10px] font-medium">Web</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pl-0.5">
               <Smartphone className="h-5 w-5 text-green-500" />
               <span className="text-[10px] font-medium">iOS / Android</span>
             </div>
-            <div className="flex items-center gap-2">
-              <GraphQLLogo />
-              <span className="text-[10px] font-medium">GraphQL</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <RestLogo />
-              <span className="text-[10px] font-medium">REST API</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <MCPLogo />
-              <span className="text-[10px] font-medium">MCP</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-amber-500" />
-              <span className="text-[10px] font-medium">Webhooks</span>
+          </div>
+
+          {/* APIs */}
+          <div className="flex flex-col items-center gap-1.5 w-full">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground self-start pl-1">APIs</span>
+            <div className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border w-full">
+              <div className="flex items-center gap-2">
+                <GraphQLLogo />
+                <span className="text-[10px] font-medium">GraphQL</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <RestLogo />
+                <span className="text-[10px] font-medium">REST API</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MCPLogo />
+                <span className="text-[10px] font-medium">MCP</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-amber-500" />
+                <span className="text-[10px] font-medium">Webhooks</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Relay option cards — visible on all screen sizes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12 lg:mt-24 px-8">
-        <div ref={card1Ref} className="p-6 rounded-2xl border border-border bg-background border-t-2 border-t-primary">
+      <div className="flex flex-col md:flex-row items-stretch gap-4 mt-12 lg:mt-24 px-8">
+        <div ref={card1Ref} className="flex-1 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -376,7 +424,9 @@ const ArchitectureDiagram = () => {
           </div>
         </div>
 
-        <div ref={card2Ref} className="p-6 rounded-2xl border border-border bg-background border-t-2 border-t-blue-500">
+        <div className="flex items-center justify-center shrink-0 text-sm font-medium text-muted-foreground">or</div>
+
+        <div ref={card2Ref} className="flex-1 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10">
@@ -447,7 +497,7 @@ const HowItWorks = () => {
 
             <div className="grid md:grid-cols-2 gap-8">
               {/* Self-Hosted Path */}
-              <div className="p-6 rounded-2xl border border-border bg-background border-t-2 border-t-primary transition-all duration-200 hover:border-primary/30 hover:shadow-lg dark:hover:shadow-primary/5">
+              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30 transition-all duration-200 hover:shadow-lg dark:hover:shadow-primary/5">
                 <div className="flex items-center gap-3 mb-6">
                   <span className="bg-primary/10 text-primary text-xs font-medium px-2.5 py-0.5 rounded-full">Option 1</span>
                 </div>
@@ -576,7 +626,7 @@ const HowItWorks = () => {
               </div>
 
               {/* Cloud Managed Path */}
-              <div className="p-6 rounded-2xl border border-border bg-background border-t-2 border-t-blue-500 transition-all duration-200 hover:border-blue-500/30 hover:shadow-lg dark:hover:shadow-blue-500/5">
+              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30 transition-all duration-200 hover:shadow-lg dark:hover:shadow-blue-500/5">
                 <div className="flex items-center gap-3 mb-6">
                   <span className="bg-blue-500/10 text-blue-500 text-xs font-medium px-2.5 py-0.5 rounded-full">Option 2</span>
                 </div>

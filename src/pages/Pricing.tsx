@@ -160,7 +160,7 @@ const Pricing = () => {
                 </div>
                 <p className="text-sm text-zinc-400 mb-4 sm:mb-6">Local only</p>
 
-                <div className="relative rounded-xl border border-zinc-700 bg-zinc-800 p-4 sm:p-5 flex flex-col">
+                <div className="relative rounded-xl bg-zinc-800 p-4 sm:p-5 flex flex-col">
                   <div className="mb-3 sm:mb-4">
                     <h4 className="text-base font-semibold text-zinc-100 mb-1">Community</h4>
                     <span className="text-2xl sm:text-3xl font-bold text-zinc-100">Free</span>
@@ -205,7 +205,7 @@ const Pricing = () => {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Basic Tier */}
-                      <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
+                      <div className="relative rounded-lg bg-slate-50 dark:bg-slate-800/30 p-4 sm:p-5 flex flex-col">
                         <div className="mb-3 sm:mb-4">
                           <h5 className="text-base font-semibold mb-1">Basic</h5>
                           <span className="text-2xl sm:text-3xl font-bold">Free</span>
@@ -217,7 +217,7 @@ const Pricing = () => {
                       </div>
 
                       {/* Standard Tier */}
-                      <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col">
+                      <div className="relative rounded-lg bg-slate-50 dark:bg-slate-800/30 p-4 sm:p-5 flex flex-col">
                         <div className="mb-3 sm:mb-4">
                           <h5 className="text-base font-semibold mb-1">Standard</h5>
                           <div className="flex items-baseline gap-1">
@@ -244,7 +244,7 @@ const Pricing = () => {
                     <p className="text-xs text-muted-foreground mb-3">We run it for you</p>
 
                     {/* Cloud Tier */}
-                    <div className="relative rounded-lg border border-border bg-background p-4 sm:p-5 flex flex-col h-[calc(100%-52px)]">
+                    <div className="relative rounded-lg bg-slate-50 dark:bg-slate-800/30 p-4 sm:p-5 flex flex-col h-[calc(100%-52px)]">
                       <div className="mb-3 sm:mb-4">
                         <h5 className="text-base font-semibold mb-1">Cloud</h5>
                         <div className="flex items-baseline gap-1">

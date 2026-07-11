@@ -10,8 +10,15 @@ const isPrivateIP = (h: string) =>
  *
  * Fallback: hostname detection (localhost, .local, private IPs).
  */
+// Dev-only escape hatch: `?cloud=1` on the dev server forces cloud mode so
+// marketing pages (/how-it-works, /pricing, …) can be previewed on localhost.
+// Compiled out of production builds (import.meta.env.DEV is false there).
+const forceCloud =
+  !!(window as any).__HOMECAST_FORCE_CLOUD__ ||
+  (import.meta.env.DEV && new URLSearchParams(window.location.search).get('cloud') === '1');
+
 export const isCommunity: boolean =
-  !(window as any).__HOMECAST_FORCE_CLOUD__ && (
+  !forceCloud && (
     !!(window as any).__HOMECAST_COMMUNITY__ ||
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
