@@ -161,6 +161,8 @@ const TOOLS = [
       'lock_target, alarm_target ("home"/"away"/"night"/"off"), speed, volume, mute, target}. ' +
       'Actions can only set device properties — running a scene from an automation is not supported ' +
       '(set the same properties the scene would). ' +
+      'NAME rule: automation names must end with a letter or number — HomeKit rejects trailing punctuation ' +
+      '(e.g. "Lights (evening)" fails; use "Lights evening" or "Evening lights"). ' +
       'Returns {home, automation, message}; automation.id identifies it for update_automation/delete_automation. ' +
       'Requires the Homecast relay\'s Apple ID to have edit access in Apple Home ' +
       '("Add & Edit Accessories" / "Allow Editing"); if it doesn\'t, the error will say so. ' +
@@ -210,6 +212,7 @@ const TOOLS = [
       'Update a HomeKit automation. Provide home and id (from get_automations) plus any of: name, trigger, actions, enabled. ' +
       'enabled=true/false enables or disables it (the usual way to turn automations on/off). ' +
       'trigger and actions use exactly the create_automation format; supplying actions REPLACES all existing actions. ' +
+      'Names must end with a letter or number (HomeKit rejects trailing punctuation). ' +
       'IMPORTANT: changing trigger deletes and recreates the automation inside HomeKit, so the result may have a NEW id — ' +
       'always use the id from the response afterwards. ' +
       'Automations with editable=false (presence/location/app-specific triggers) accept only name and enabled changes. ' +

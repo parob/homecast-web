@@ -61,7 +61,7 @@ import {
   buildTriggerPayload,
   buildActionsPayload,
   normalizeAutomation,
-  sanitizeAutomationName,
+  validateAutomationName,
   handleGetAutomations,
   handleCreateAutomation,
   handleUpdateAutomation,
@@ -614,39 +614,34 @@ describe('personalized tool descriptions (tools/list)', () => {
   });
 });
 
-describe('sanitizeAutomationName', () => {
-  it('rebalances trailing paren groups (mirrors cloud suite)', () => {
-    expect(sanitizeAutomationName('Aircon Off Every 2 Hours (9am-9pm)')).toBe('Aircon Off Every 2 Hours 9am-9pm');
-    expect(sanitizeAutomationName('Lights (evening)')).toBe('Lights evening');
+describe('validateAutomationName', () => {
+  it('rejects trailing punctuation with a suggested valid name (mirrors cloud suite)', () => {
+    expect(() => validateAutomationName('Aircon Off Every 2 Hours (9am-9pm)'))
+      .toThrow(/end with a letter or number.*Try "Aircon Off Every 2 Hours 9am-9pm"/s);
+    expect(() => validateAutomationName('Lights (evening)')).toThrow(/Try "Lights evening"/);
+    expect(() => validateAutomationName('Good night!!')).toThrow(/Try "Good night"/);
   });
 
-  it('trims trailing punctuation and whitespace', () => {
-    expect(sanitizeAutomationName('Good night!! ')).toBe('Good night');
-    expect(sanitizeAutomationName('Morning routine.')).toBe('Morning routine');
+  it('accepts valid names unchanged (inner punctuation is fine)', () => {
+    expect(validateAutomationName('Aircon Off Every 2 Hours 9am to 9pm')).toBe('Aircon Off Every 2 Hours 9am to 9pm');
+    expect(validateAutomationName('Heating (winter) schedule')).toBe('Heating (winter) schedule');
+    expect(validateAutomationName('  Wake up 7  ')).toBe('Wake up 7');
   });
 
-  it('leaves valid names untouched', () => {
-    expect(sanitizeAutomationName('Aircon Off Every 2 Hours 9am to 9pm')).toBe('Aircon Off Every 2 Hours 9am to 9pm');
-    expect(sanitizeAutomationName('Heating (winter) schedule')).toBe('Heating (winter) schedule');
+  it('rejects names with no letters or numbers (no suggestion possible)', () => {
+    expect(() => validateAutomationName('!!!')).toThrow(/end with a letter or number/);
+    expect(() => validateAutomationName('   ')).toThrow(/end with a letter or number/);
   });
 
-  it('rejects names with no letters or numbers', () => {
-    expect(() => sanitizeAutomationName('!!!')).toThrow(/letters or numbers/);
-    expect(() => sanitizeAutomationName('   ')).toThrow(/letters or numbers/);
-  });
-
-  it('applies to create (sanitized name reaches the bridge)', async () => {
+  it('blocks bad names before anything reaches the bridge (no half-created debris)', async () => {
     mockHome();
-    vi.mocked(HomeKit.createAutomation).mockResolvedValue({ ...RAW_EVENT_AUTOMATION, name: 'Test evening' } as any);
-    await handleCreateAutomation({
+    await expect(handleCreateAutomation({
       home: HOME_SLUG,
       name: 'Test (evening)',
       trigger: { type: 'timer', fireDate: '2027-01-01T07:00:00Z' },
       actions: [{ accessory: LIGHT_SLUG, on: true }],
-    });
-    expect(HomeKit.createAutomation).toHaveBeenCalledWith(
-      HOME.id, 'Test evening', expect.anything(), expect.anything(),
-    );
+    })).rejects.toThrow(/Try "Test evening"/);
+    expect(HomeKit.createAutomation).not.toHaveBeenCalled();
   });
 });
 
