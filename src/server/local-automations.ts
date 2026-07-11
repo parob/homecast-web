@@ -76,6 +76,39 @@ const HVAC_STATE_VALUES: Record<string, number> = { inactive: 0, idle: 1, heatin
 const CREATABLE_EVENT_TYPES = ['characteristic', 'significantTime', 'calendar', 'duration'];
 
 /**
+ * Make a name acceptable to HomeKit.
+ *
+ * HomeKit requires trigger/action-set names to end with a letter or digit —
+ * a trailing ")" (e.g. "Lights (evening)") fails with "Name does not end
+ * with valid characters" AND leaves a half-created, disabled automation
+ * behind (the trigger is added before the action-set name is validated).
+ * Trim trailing non-alphanumerics rather than reject: agent-friendly and
+ * loses nothing meaningful.
+ */
+export function sanitizeAutomationName(name: string): string {
+  let sanitized = (name || '').trim();
+  while (sanitized && !/[\p{L}\p{N}]$/u.test(sanitized)) {
+    sanitized = sanitized.slice(0, -1).trimEnd();
+  }
+  // Drop any bracket left unbalanced by the trim so "Lights (evening)"
+  // becomes "Lights evening", not "Lights (evening".
+  for (const [opener, closer] of [['(', ')'], ['[', ']'], ['{', '}']] as const) {
+    while (sanitized.split(opener).length > sanitized.split(closer).length) {
+      const idx = sanitized.lastIndexOf(opener);
+      sanitized = (sanitized.slice(0, idx) + sanitized.slice(idx + 1)).trim();
+    }
+  }
+  sanitized = sanitized.split(/\s+/).join(' ');
+  if (!sanitized) {
+    throw new Error(
+      'Automation name must contain letters or numbers ' +
+      '(HomeKit requires names to end with a letter or digit)'
+    );
+  }
+  return sanitized;
+}
+
+/**
  * Convert a friendly property value to the numeric value HomeKit expects.
  * Exact-name checks only — no substring matching.
  */
@@ -467,6 +500,7 @@ export async function handleCreateAutomation(args: {
 }): Promise<Record<string, any>> {
   const { homeId, homeKey } = await resolveHome(args.home);
   if (!args.name) throw new Error("'name' is required");
+  const name = sanitizeAutomationName(args.name);
   const index = await buildAccessoryIndex(homeId);
 
   const trigger = buildTriggerPayload(args.trigger, index);
@@ -474,13 +508,13 @@ export async function handleCreateAutomation(args: {
 
   const result = await executeAutomationWrite('automation.create', {
     homeId,
-    name: args.name,
+    name,
     trigger,
     actions,
   }) as any;
 
   const automation = normalizeAutomation(result?.automation || result || {}, index);
-  return { home: homeKey, automation, message: `Created automation "${args.name}"` };
+  return { home: homeKey, automation, message: `Created automation "${name}"` };
 }
 
 export async function handleUpdateAutomation(args: {
@@ -512,7 +546,7 @@ export async function handleUpdateAutomation(args: {
   }
 
   const payload: Record<string, any> = { automationId: args.id };
-  if (args.name !== undefined) payload.name = args.name;
+  if (args.name !== undefined) payload.name = sanitizeAutomationName(args.name);
   if (args.enabled !== undefined) payload.enabled = args.enabled;
   if (args.trigger !== undefined) payload.trigger = buildTriggerPayload(args.trigger, index);
   if (args.actions !== undefined) payload.actions = buildActionsPayload(args.actions, index);
