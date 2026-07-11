@@ -254,6 +254,8 @@ export const GET_SCENES = gql`
       id
       name
       actionCount
+      actionSetType
+      automationName
     }
   }
 `;

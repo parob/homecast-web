@@ -118,6 +118,12 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         return result?.scenes || [];
       }
 
+      // DELETE /rest/scenes/:id
+      case method === 'DELETE' && route.startsWith('/scenes/'): {
+        const sceneId = route.replace('/scenes/', '');
+        return await executeHomeKitAction('scene.delete', { sceneId });
+      }
+
       // POST /rest/scenes/:id/execute
       case method === 'POST' && route.match(/^\/scenes\/[^/]+\/execute$/): {
         const sceneId = route.split('/')[2];

@@ -23,6 +23,7 @@ vi.mock('@/native/homekit-bridge', () => ({
     setCharacteristic: vi.fn().mockResolvedValue(null),
     listScenes: vi.fn().mockResolvedValue([]),
     executeScene: vi.fn().mockResolvedValue(null),
+    deleteScene: vi.fn().mockResolvedValue(null),
     listServiceGroups: vi.fn().mockResolvedValue([]),
     setServiceGroupCharacteristic: vi.fn().mockResolvedValue(null),
     setState: vi.fn().mockResolvedValue(null),
@@ -686,6 +687,39 @@ describe('HomeKit privileges error translation', () => {
       trigger: { type: 'timer', hour: 4, minute: 0, recurrenceType: 'daily' },
       actions: [{ accessory: LIGHT_SLUG, on: true }],
     })).rejects.toThrow('Fire date is in the past.');
+  });
+});
+
+describe('delete_scene tool', () => {
+  it('deletes a free-standing scene by name', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listScenes).mockResolvedValue([
+      { id: 'S1', name: 'Movie Night', actionCount: 3 },
+    ] as any);
+    vi.mocked(HomeKit.deleteScene).mockResolvedValue({ success: true, sceneId: 'S1' } as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'delete_scene', arguments: { home: HOME_SLUG, name: 'movie night' } },
+    })));
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result.success).toBe(true);
+    expect(HomeKit.deleteScene).toHaveBeenCalledWith('S1');
+  });
+
+  it('refuses to delete automation-owned scenes with guidance', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listScenes).mockResolvedValue([
+      { id: 'S2', name: 'Aircon Off Daily', actionCount: 6, automationName: 'Aircon Off Daily' },
+    ] as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'delete_scene', arguments: { home: HOME_SLUG, name: 'Aircon Off Daily' } },
+    })));
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain('delete the automation instead');
+    expect(HomeKit.deleteScene).not.toHaveBeenCalled();
   });
 });
 

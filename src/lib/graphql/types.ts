@@ -237,6 +237,11 @@ export interface HomeKitScene {
   id: string;
   name: string;
   actionCount: number;
+  /** HomeKit action-set type (built-ins can't be deleted). Newer relays only. */
+  actionSetType?: string;
+  /** Non-null when the scene is an automation's action list — delete the
+   *  automation instead of the scene. Newer relays only. */
+  automationName?: string | null;
 }
 
 export interface AutomationAction {

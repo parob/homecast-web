@@ -79,6 +79,11 @@ export interface HomeKitScene {
   id: string;
   name: string;
   actionCount: number;
+  /** HomeKit action-set type (built-ins can't be deleted). Newer relays only. */
+  actionSetType?: string;
+  /** Non-null when the scene is an automation's action list — delete the
+   *  automation instead of the scene. Newer relays only. */
+  automationName?: string | null;
 }
 
 export interface AutomationAction {
@@ -321,6 +326,15 @@ export const HomeKit = {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call('scene.execute', { sceneId });
+  },
+
+  /**
+   * Delete a scene (blocked natively for built-ins and automation-owned scenes)
+   */
+  async deleteScene(sceneId: string): Promise<{ success: boolean; sceneId: string }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('scene.delete', { sceneId });
   },
 
   /**

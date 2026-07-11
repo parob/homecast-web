@@ -371,6 +371,25 @@ async function resolveOperation(
       return { removeSession: { success: true } };
 
     // --- Empty responses for cloud-only features ---
+    case 'GetScenes': {
+      const result = await executeHomeKitAction('scenes.list', { homeId: variables.homeId }) as any;
+      return {
+        scenes: (result?.scenes || []).map((s: any) => ({
+          actionSetType: null,
+          automationName: null,
+          ...s,
+          __typename: 'HomeKitScene',
+        })),
+      };
+    }
+    case 'ExecuteScene': {
+      const result = await executeHomeKitAction('scene.execute', { sceneId: variables.sceneId }) as any;
+      return { executeScene: { success: result?.success ?? true, sceneId: variables.sceneId, __typename: 'SceneExecuteResult' } };
+    }
+    case 'DeleteScene': {
+      const result = await executeHomeKitAction('scene.delete', { sceneId: variables.sceneId }) as any;
+      return { deleteScene: { success: result?.success ?? true, sceneId: variables.sceneId, __typename: 'SceneDeleteResult' } };
+    }
     case 'GetCachedHomes': {
       try {
         const homesResult = await executeHomeKitAction('homes.list', {}) as any;

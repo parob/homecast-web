@@ -29,6 +29,7 @@ vi.mock('@/native/homekit-bridge', () => ({
     setCharacteristic: vi.fn().mockResolvedValue(null),
     listScenes: vi.fn().mockResolvedValue([]),
     executeScene: vi.fn().mockResolvedValue(null),
+    deleteScene: vi.fn().mockResolvedValue(null),
     listServiceGroups: vi.fn().mockResolvedValue([]),
     setServiceGroupCharacteristic: vi.fn().mockResolvedValue(null),
     setState: vi.fn().mockResolvedValue(null),
@@ -213,7 +214,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.result.capabilities).toHaveProperty('tools');
   });
 
-  it('responds to tools/list with exactly 7 tools matching cloud', async () => {
+  it('responds to tools/list with exactly 8 tools matching cloud', async () => {
     const response = JSON.parse(await handleMCP(JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -223,18 +224,32 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.jsonrpc).toBe('2.0');
     expect(response.id).toBe(2);
     const tools = response.result.tools;
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(8);
 
     const toolNames = tools.map((t: any) => t.name).sort();
     expect(toolNames).toEqual([
       'create_automation',
       'delete_automation',
+      'delete_scene',
       'get_automations',
       'get_state',
       'run_scene',
       'set_state',
       'update_automation',
     ]);
+  });
+
+  it('delete_scene requires home/name and is destructive', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 14,
+      method: 'tools/list',
+    })));
+
+    const deleteScene = response.result.tools.find((t: any) => t.name === 'delete_scene');
+    expect(deleteScene.inputSchema.required).toEqual(['home', 'name']);
+    expect(deleteScene.annotations.readOnlyHint).toBe(false);
+    expect(deleteScene.annotations.destructiveHint).toBe(true);
   });
 
   it('get_state tool has correct filter parameters', async () => {

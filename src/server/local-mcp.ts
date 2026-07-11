@@ -114,6 +114,24 @@ const TOOLS = [
     annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
   },
   {
+    name: 'delete_scene',
+    description:
+      'Permanently delete a scene by name in a specific home. This cannot be undone. ' +
+      'Built-in scenes and scenes that belong to an automation cannot be deleted this way ' +
+      '(delete the automation instead — the error will say which one). ' +
+      'Use get_state to see available scenes in _scenes. ' +
+      'Requires a relay app version with scene deletion support; older relays return an unsupported-method error.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
+        name: { type: 'string', description: 'Scene name (e.g., "Movie Night")' },
+      },
+      required: ['home', 'name'],
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: true },
+  },
+  {
     name: 'get_automations',
     description:
       'List HomeKit automations in every home (or filter by home). Returns {home_key: [automation], _meta}. ' +
@@ -377,6 +395,40 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
 
       await executeHomeKitAction('scene.execute', { sceneId: scene.id });
       return { success: true, scene: scene.name, home: homeSlug };
+    }
+
+    case 'delete_scene': {
+      const homeSlug = args.home as string;
+      const sceneName = args.name as string;
+      if (!homeSlug || !sceneName) {
+        throw new Error("Both 'home' and 'name' are required");
+      }
+
+      const homesResult = await executeHomeKitAction('homes.list') as any;
+      const homes = homesResult?.homes || [];
+      const homeEntry = homes.find((h: any) => uniqueKey(h.name, h.id) === homeSlug);
+      if (!homeEntry) {
+        throw new Error(`Home not found: ${homeSlug}`);
+      }
+
+      const scenesResult = await executeHomeKitAction('scenes.list', { homeId: homeEntry.id }) as any;
+      const scenes = scenesResult?.scenes || [];
+      const scene = scenes.find((s: any) =>
+        s.name?.toLowerCase() === sceneName.toLowerCase()
+      );
+      if (!scene) {
+        const available = scenes.map((s: any) => s.name);
+        throw new Error(`Scene not found: "${sceneName}" in ${homeSlug}. Available: [${available.join(', ')}]`);
+      }
+      if (scene.automationName) {
+        throw new Error(
+          `Scene "${scene.name}" is used by automation "${scene.automationName}" — ` +
+          'delete the automation instead (delete_automation).'
+        );
+      }
+
+      await executeHomeKitAction('scene.delete', { sceneId: scene.id });
+      return { success: true, scene: scene.name, home: homeSlug, message: 'Scene deleted' };
     }
 
     case 'get_automations': {

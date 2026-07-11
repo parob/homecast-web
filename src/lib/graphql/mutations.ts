@@ -212,6 +212,15 @@ export const EXECUTE_SCENE = gql`
   }
 `;
 
+export const DELETE_SCENE = gql`
+  mutation DeleteScene($sceneId: String!, $homeId: String) {
+    deleteScene(sceneId: $sceneId, homeId: $homeId) {
+      success
+      sceneId
+    }
+  }
+`;
+
 // Automation mutations
 export const CREATE_AUTOMATION = gql`
   mutation CreateAutomation($homeId: String!, $name: String!, $trigger: String!, $actions: String!) {

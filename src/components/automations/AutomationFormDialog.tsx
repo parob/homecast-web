@@ -129,6 +129,9 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   // Time fields
   const [hour, setHour] = useState(7);
   const [minute, setMinute] = useState(0);
+  // Additional firing times for daily/weekly triggers (HomeKit allows
+  // multiple calendar events per trigger, e.g. "every 2 hours 9am–9pm")
+  const [extraTimes, setExtraTimes] = useState<Array<{ hour: number; minute: number }>>([]);
   const [recurrenceType, setRecurrenceType] = useState<'once' | 'daily' | 'weekly' | 'weekdays'>('daily');
   const [triggerDate, setTriggerDate] = useState(() => new Date().toISOString().split('T')[0]);
   // Sun fields
@@ -180,7 +183,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   // Edit pre-population
   useEffect(() => {
     if (!open) return;
-    setTriggerCategory(null); setTimeSubType('specific'); setHour(7); setMinute(0); setRecurrenceType('daily');
+    setTriggerCategory(null); setTimeSubType('specific'); setHour(7); setMinute(0); setExtraTimes([]); setRecurrenceType('daily');
     setTriggerDate(new Date().toISOString().split('T')[0]); setSigEvent('sunset'); setOffsetMinutes(0);
     setAccessoryTrigger({ id: '', name: '', charType: '', value: true, operator: 'equal' });
     setSensorTrigger({ id: '', name: '', charType: '', value: true, operator: 'equal' });
@@ -197,9 +200,21 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         }
         if (firstEvent?.type === 'calendar' && firstEvent.calendarComponents) {
           try {
-            const cc = typeof firstEvent.calendarComponents === 'string' ? JSON.parse(firstEvent.calendarComponents) : firstEvent.calendarComponents;
+            const parseCC = (raw: unknown) => (typeof raw === 'string' ? JSON.parse(raw) : raw) as { hour?: number; minute?: number };
+            const cc = parseCC(firstEvent.calendarComponents);
             if (cc.hour !== undefined) setHour(cc.hour);
             if (cc.minute !== undefined) setMinute(cc.minute);
+            // Additional calendar events = additional firing times
+            const rest = (automation.trigger?.events ?? []).slice(1)
+              .filter(e => e.type === 'calendar' && e.calendarComponents)
+              .map(e => {
+                try {
+                  const c = parseCC(e.calendarComponents);
+                  return { hour: c.hour ?? 0, minute: c.minute ?? 0 };
+                } catch { return null; }
+              })
+              .filter((t): t is { hour: number; minute: number } => t !== null);
+            setExtraTimes(rest);
           } catch {}
         }
       } else if (firstEvent?.type === 'significantTime') {
@@ -241,9 +256,9 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
 
   // Dirty tracking — snapshot current form state as a string for comparison
   const currentSnapshot = useMemo(() => JSON.stringify({
-    name, triggerCategory, timeSubType, hour, minute, recurrenceType, triggerDate,
+    name, triggerCategory, timeSubType, hour, minute, extraTimes, recurrenceType, triggerDate,
     sigEvent, offsetMinutes, accessoryTrigger, sensorTrigger, actions, conditions,
-  }), [name, triggerCategory, timeSubType, hour, minute, recurrenceType, triggerDate,
+  }), [name, triggerCategory, timeSubType, hour, minute, extraTimes, recurrenceType, triggerDate,
     sigEvent, offsetMinutes, accessoryTrigger, sensorTrigger, actions, conditions]);
 
   // Capture initial snapshot on first render after open
@@ -276,7 +291,13 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         const jsDay = new Date().getDay(); // 0=Sun..6=Sat
         recurrences = [{ weekday: jsDay + 1 }]; // Apple: 1=Sun..7=Sat
       }
-      return { type: 'event', events: [{ type: 'calendar', calendarComponents: { hour, minute } }], ...(recurrences && { recurrences }) };
+      // One calendar event per firing time, de-duplicated and sorted
+      const seen = new Set<string>();
+      const events = [{ hour, minute }, ...extraTimes]
+        .filter(t => { const k = `${t.hour}:${t.minute}`; if (seen.has(k)) return false; seen.add(k); return true; })
+        .sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute))
+        .map(t => ({ type: 'calendar', calendarComponents: { hour: t.hour, minute: t.minute } }));
+      return { type: 'event', events, ...(recurrences && { recurrences }) };
     }
     if (triggerCategory === 'time' && timeSubType === 'sun') {
       return { type: 'event', events: [{ type: 'significantTime', significantEvent: sigEvent, ...(offsetMinutes !== 0 && { offsetMinutes }) }] };
@@ -341,7 +362,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
       ? (offsetMinutes === 0 ? `At ${sigEvent}` : `${Math.abs(offsetMinutes)} min ${offsetMinutes < 0 ? 'before' : 'after'} ${sigEvent}`)
       : (recurrenceType === 'once'
         ? `${triggerDate} at ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-        : `${recurrenceType === 'daily' ? 'Daily' : recurrenceType === 'weekly' ? 'Weekly' : 'Weekdays'} at ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`))
+        : `${recurrenceType === 'daily' ? 'Daily' : recurrenceType === 'weekly' ? 'Weekly' : 'Weekdays'} at ${[{ hour, minute }, ...extraTimes].map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`).join(', ')}`))
     : (triggerCategory === 'accessory' || triggerCategory === 'sensor')
       ? (triggerAccessoryId
         ? `When ${triggerAccessory?.name || triggerAccessoryName || 'device'} ${triggerCharType ? charLabel(triggerCharType) : ''} ${formatValue(triggerValue, triggerCharType) || 'changes'}`.trim()
@@ -420,6 +441,22 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                         <span className="text-lg font-bold">:</span>
                         <Select value={String(minute)} onValueChange={(v) => setMinute(Number(v))}><SelectTrigger className="h-12 w-20 text-lg text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 60 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
                       </div>
+                      {recurrenceType !== 'once' && extraTimes.map((t, idx) => (
+                        <div key={idx} className="flex items-center gap-2 justify-center">
+                          <Select value={String(t.hour)} onValueChange={(v) => setExtraTimes(prev => prev.map((p, i) => i === idx ? { ...p, hour: Number(v) } : p))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 24 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
+                          <span className="font-bold">:</span>
+                          <Select value={String(t.minute)} onValueChange={(v) => setExtraTimes(prev => prev.map((p, i) => i === idx ? { ...p, minute: Number(v) } : p))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 60 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
+                          <button onClick={() => setExtraTimes(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-red-500" title="Remove time">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      {recurrenceType !== 'once' && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs w-full"
+                          onClick={() => setExtraTimes(prev => [...prev, { hour: Math.min(23, (prev.length > 0 ? prev[prev.length - 1].hour : hour) + 1), minute }])}>
+                          <Plus className="h-3 w-3 mr-1" /> Add time
+                        </Button>
+                      )}
                       <div className="flex gap-1.5">
                         {(['once', 'daily', 'weekly', 'weekdays'] as const).map(r => (
                           <Button key={r} variant={recurrenceType === r ? 'default' : 'outline'} size="sm" className="flex-1 h-8 text-xs" onClick={() => setRecurrenceType(r)}>

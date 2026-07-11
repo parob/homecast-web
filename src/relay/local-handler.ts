@@ -319,6 +319,11 @@ export async function executeHomeKitAction(
       return await HomeKit.executeScene(sceneId);
     }
 
+    case 'scene.delete': {
+      const { sceneId } = payload as { sceneId: string };
+      return await HomeKit.deleteScene(sceneId);
+    }
+
     case 'automations.list': {
       const { homeId } = payload as { homeId: string };
       return { automations: await HomeKit.listAutomations(homeId) };

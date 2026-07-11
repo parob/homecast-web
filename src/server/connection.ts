@@ -102,7 +102,7 @@ const VALUE_WRITE_ACTIONS = new Set([
 // Structure-changing writes: may add/remove accessories or change state unpredictably.
 // These clear the communityCache so the next read re-fetches from HomeKit.
 const CACHE_INVALIDATING_ACTIONS = new Set([
-  'scene.execute', 'accessory.refresh',
+  'scene.execute', 'scene.delete', 'accessory.refresh',
   'automation.create', 'automation.update', 'automation.delete',
   'automation.enable', 'automation.disable',
 ]);
