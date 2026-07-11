@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
+import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
@@ -291,6 +292,21 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
                 </div>
               )}
             </>
+          )}
+
+          {/* Relay's Apple Home permission level (reported by relay 1.1.2+; hidden when unknown) */}
+          {typeof home.isAdmin === 'boolean' && (
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Apple Home access</span>
+                <span className="font-medium">{home.isAdmin ? 'Full access' : 'View-only'}</span>
+              </div>
+              {!home.isAdmin && (
+                <p className="text-[11px] text-muted-foreground/70 leading-snug">
+                  HomeKit automations are read-only from Homecast. To let Homecast manage them, {HOMEKIT_EDIT_PERMISSION_FIX}
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex justify-between">

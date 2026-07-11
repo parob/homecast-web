@@ -1634,6 +1634,9 @@ export interface ManagedRelayHomeInfo {
   webhookCount: number;
   automationCount?: number;
   mqttEnabled?: boolean;
+  /** Whether the relay's Apple ID can edit this home in Apple Home.
+   *  null/undefined = unknown (older relay). */
+  isAdmin?: boolean | null;
 }
 
 export interface ManagedRelayInfo {

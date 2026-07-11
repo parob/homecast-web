@@ -422,6 +422,7 @@ export async function handleGetAutomations(filterByHome?: string): Promise<Recor
 
   const result: Record<string, any> = {};
   let total = 0;
+  const viewOnlyHomes: string[] = [];
   for (const home of homes) {
     const homeKey = uniqueKey(home.name, home.id);
     if (homeFilter && !homeKey.includes(homeFilter)) continue;
@@ -433,6 +434,7 @@ export async function handleGetAutomations(filterByHome?: string): Promise<Recor
     const automations = automationsResult?.automations || [];
     result[homeKey] = automations.map((a: any) => normalizeAutomation(a, index));
     total += automations.length;
+    if (home.isAdmin === false) viewOnlyHomes.push(homeKey);
   }
 
   const homeKeys = Object.keys(result);
@@ -445,7 +447,15 @@ export async function handleGetAutomations(filterByHome?: string): Promise<Recor
     const homeWord = homeKeys.length === 1 ? 'home' : 'homes';
     message = `Found ${total} automation${total === 1 ? '' : 's'} across ${homeKeys.length} ${homeWord}`;
   }
+  if (viewOnlyHomes.length > 0) {
+    message +=
+      ` The relay has view-only access to ${viewOnlyHomes.join(', ')}; ` +
+      'HomeKit automations there are read-only from Homecast.';
+  }
   result._meta = { fetched_at: fetchedAt(), message };
+  if (viewOnlyHomes.length > 0) {
+    result._meta.view_only_homes = viewOnlyHomes;
+  }
   return result;
 }
 

@@ -458,6 +458,27 @@ describe('handleGetAutomations', () => {
     expect(Object.keys(result)).toEqual(['_meta']);
     expect(result._meta.message).toBe('No homes match filter: beach');
   });
+
+  it('notes view-only homes in _meta when the relay reports isAdmin=false', async () => {
+    vi.mocked(HomeKit.listHomes).mockResolvedValue([{ ...HOME, isAdmin: false }] as any);
+    vi.mocked(HomeKit.listAccessories).mockResolvedValue(ACCESSORIES as any);
+    vi.mocked(HomeKit.listAutomations).mockResolvedValue([RAW_EVENT_AUTOMATION] as any);
+
+    const result = await handleGetAutomations();
+    expect(result._meta.view_only_homes).toEqual([HOME_SLUG]);
+    expect(result._meta.message).toContain(
+      `The relay has view-only access to ${HOME_SLUG}; HomeKit automations there are read-only from Homecast.`
+    );
+  });
+
+  it('stays silent about view-only when isAdmin is absent (older relay)', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listAutomations).mockResolvedValue([RAW_EVENT_AUTOMATION] as any);
+
+    const result = await handleGetAutomations();
+    expect(result._meta.view_only_homes).toBeUndefined();
+    expect(result._meta.message).not.toContain('view-only');
+  });
 });
 
 describe('handleCreateAutomation', () => {
@@ -564,6 +585,19 @@ describe('personalized tool descriptions (tools/list)', () => {
     for (const name of ['set_state', 'run_scene', 'create_automation', 'update_automation', 'delete_automation']) {
       expect(byName[name].description).not.toContain("This account's homes");
     }
+  });
+
+  it('annotates view-only homes in the context block (isAdmin=false only)', async () => {
+    vi.mocked(HomeKit.listHomes).mockResolvedValue([{ ...HOME, isAdmin: false }] as any);
+    vi.mocked(HomeKit.listRooms).mockResolvedValue([{ id: 'R1', name: 'Porch' }] as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/list',
+    })));
+    const getState = response.result.tools.find((t: any) => t.name === 'get_state');
+    expect(getState.description).toContain(
+      `This account's homes: ${HOME_SLUG} (rooms: porch; HomeKit automations read-only)`
+    );
   });
 
   it('omits the block when no homes exist and caches the lookup', async () => {

@@ -189,6 +189,11 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
               {ROLE_LABELS[home.role] || home.role}
             </Badge>
           )}
+          {home.isAdmin === false && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground" title="The relay's Apple ID has view-only access in Apple Home — HomeKit automations are read-only from Homecast">
+              View-only
+            </Badge>
+          )}
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${isCloud ? 'border-blue-500/50 text-blue-600 dark:text-blue-400' : ''}`}>
             {isCloud ? 'Cloud Relay' : 'Self-hosted Relay'}
           </Badge>

@@ -811,6 +811,24 @@ const HowItWorks = () => {
                 </p>
               </FAQItem>
 
+              <FAQItem question="Does Homecast need edit access to my Apple Home?">
+                <p>
+                  No. With view-only access, everything works: device control, scenes, monitoring,
+                  the APIs, AI assistants, and Homecast automations.
+                </p>
+                <p className="mt-2">
+                  Edit access is only needed if you want Homecast or an AI assistant to <strong>create or
+                  change HomeKit-native automations</strong> (the ones that also appear in Apple Home).
+                  Without it, those automations are simply read-only in Homecast.
+                </p>
+                <p className="mt-2">
+                  You can grant or revoke it anytime: in the Apple Home app, open <strong>Home Settings</strong>,
+                  tap the relay user, and toggle <strong>"Add &amp; Edit Accessories"</strong> ("Allow Editing"
+                  on older iOS versions). Homecast shows the current level under
+                  Settings → your home → <strong>Apple Home access</strong>.
+                </p>
+              </FAQItem>
+
               <FAQItem question="What about HomeKit Secure Video?">
                 <p>
                   HomeKit Secure Video cameras appear as accessories in Homecast, but video streaming is not

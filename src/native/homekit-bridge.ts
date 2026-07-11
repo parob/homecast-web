@@ -20,6 +20,9 @@ export interface HomeKitHome {
   relayOwnerEmail?: string | null;
   isCloudManaged?: boolean;
   roomFingerprint?: string;
+  /** Whether the relay's Apple ID can edit this home in Apple Home
+   *  ("Add & Edit Accessories"). null/undefined = unknown (older relay). */
+  isAdmin?: boolean | null;
 }
 
 export interface HomeKitRoom {

@@ -278,7 +278,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
                 <li className="flex items-start gap-1.5"><Check className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" /> Works without relay</li>
               </ul>
               <Button variant="outline" size="sm" className="mt-4 w-full" disabled={relayNeedsUpdate || relayCannotEdit}>
-                {relayNeedsUpdate ? 'Relay update required' : relayCannotEdit ? 'Editing not allowed' : 'Create'}
+                {relayNeedsUpdate ? 'Relay update required' : relayCannotEdit ? 'View-only' : 'Create'}
               </Button>
             </button>
 

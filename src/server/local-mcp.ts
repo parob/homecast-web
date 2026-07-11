@@ -123,7 +123,9 @@ const TOOLS = [
       'editable=false means the trigger was created outside Homecast (presence, location, or app-specific) ' +
       'and cannot be recreated: the automation can still be renamed, enabled/disabled (update_automation) or deleted, ' +
       'but its trigger/actions cannot be changed. ' +
-      'trigger.activation_issue (e.g. "disabledNoHomeHub") means HomeKit has deactivated it — usually a home hub is required.',
+      'trigger.activation_issue (e.g. "disabledNoHomeHub") means HomeKit has deactivated it — usually a home hub is required. ' +
+      "Homes where the relay's Apple ID is view-only in Apple Home are listed in _meta.view_only_homes " +
+      '(their automations are read-only from Homecast).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -295,11 +297,15 @@ async function getHomeContextBlock(): Promise<string> {
         }
         const shown = rooms.slice(0, HOME_CONTEXT_MAX_ROOMS);
         const more = rooms.length - shown.length;
-        parts.push(
-          shown.length > 0
-            ? `${slug} (rooms: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''})`
-            : slug
-        );
+        const annotations: string[] = [];
+        if (shown.length > 0) {
+          annotations.push(`rooms: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`);
+        }
+        // Relay's Apple ID is view-only in Apple Home (undefined = unknown/older relay)
+        if (home.isAdmin === false) {
+          annotations.push('HomeKit automations read-only');
+        }
+        parts.push(annotations.length > 0 ? `${slug} (${annotations.join('; ')})` : slug);
       }
       const extraHomes = allHomes.length - homes.length;
       block =
