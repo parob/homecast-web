@@ -6773,27 +6773,27 @@ const Dashboard = () => {
                 </h2>
                 {/* Area Summary - aggregated sensor readings + scenes/automations pills */}
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
-                  <AreaSummary
-                    accessories={filteredRooms.flatMap(([_, accs]) => accs)}
-                    isDarkBackground={isDarkBackground}
-                  />
                   {selectedHomeId && !selectedRoomId && (
                     <>
                       <ScenesPill
                         homeId={selectedHomeId}
                         open={scenesOpen}
-                        onToggle={() => setScenesOpen(o => !o)}
+                        onToggle={() => { setAutomationsOpen(false); setScenesOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                       />
                       <AutomationsPill
                         homeId={selectedHomeId}
                         open={automationsOpen}
-                        onToggle={() => setAutomationsOpen(o => !o)}
+                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
                       />
                     </>
                   )}
+                  <AreaSummary
+                    accessories={filteredRooms.flatMap(([_, accs]) => accs)}
+                    isDarkBackground={isDarkBackground}
+                  />
                 </div>
                 {selectedHomeId && !selectedRoomId && (
                   <>
