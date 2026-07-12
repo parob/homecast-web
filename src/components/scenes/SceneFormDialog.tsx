@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Plus, Zap } from 'lucide-react';
+import { Loader2, Plus, Trash2, Zap } from 'lucide-react';
 import { AutomationActionRow } from '@/components/automations/AutomationActionRow';
 import { GET_ACCESSORIES } from '@/lib/graphql/queries';
 import { CREATE_SCENE, UPDATE_SCENE } from '@/lib/graphql/mutations';
@@ -23,6 +23,8 @@ interface SceneFormDialogProps {
   /** When set, edit this scene; otherwise create a new one. */
   scene?: HomeKitScene | null;
   onSaved?: () => void;
+  /** Shown as a Delete button when editing a deletable scene. */
+  onDelete?: () => void;
 }
 
 function parseSceneActions(scene: HomeKitScene | null | undefined): ActionData[] {
@@ -38,8 +40,19 @@ function parseSceneActions(scene: HomeKitScene | null | undefined): ActionData[]
   }));
 }
 
-export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved }: SceneFormDialogProps) {
+function formatActionValue(value: unknown): string {
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  return String(value);
+}
+
+function formatCharacteristic(type: string): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, onDelete }: SceneFormDialogProps) {
   const isEditing = !!scene;
+  // Automation-owned scenes can't be modified — show their actions read-only
+  const readOnly = !!scene?.automationName;
   const [name, setName] = useState('');
   const [actions, setActions] = useState<ActionData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -108,44 +121,87 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved }: 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0">
-        <DialogTitle className="sr-only">{isEditing ? 'Edit Scene' : 'Create Scene'}</DialogTitle>
+        <DialogTitle className="sr-only">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'Create Scene'}</DialogTitle>
         <div className="shrink-0 px-6 pt-5 pb-3">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground font-medium">{isEditing ? 'Edit Scene' : 'New Scene'}</span>
+            <span className="text-xs text-muted-foreground font-medium">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'New Scene'}</span>
           </div>
-          <Input
-            value={name}
-            onChange={(e) => { setName(e.target.value); setError(null); }}
-            placeholder="Scene name"
-            className="h-auto text-lg font-semibold placeholder:text-muted-foreground/40 border-0 p-0 shadow-none focus-visible:ring-0"
-          />
+          {readOnly ? (
+            <p className="text-lg font-semibold break-words">{scene?.name}</p>
+          ) : (
+            <Input
+              value={name}
+              onChange={(e) => { setName(e.target.value); setError(null); }}
+              placeholder="Scene name"
+              className="h-auto text-lg font-semibold placeholder:text-muted-foreground/40 border-0 p-0 shadow-none focus-visible:ring-0"
+            />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-2">
+          {readOnly && (
+            <p className="text-xs text-muted-foreground">
+              This scene belongs to the automation "{scene?.automationName}" — edit that automation to change it.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">Device states this scene applies when run:</p>
-          {actions.map((action, idx) => (
-            <AutomationActionRow
-              key={idx}
-              action={action}
-              accessories={accessories}
-              onChange={(updated) => setActions(prev => prev.map((a, i) => i === idx ? updated : a))}
-              onRemove={() => setActions(prev => prev.filter((_, i) => i !== idx))}
-            />
-          ))}
-          <Button variant="outline" size="sm" className="w-full h-8 text-xs"
-            onClick={() => setActions(prev => [...prev, { accessoryId: '', characteristicType: '', targetValue: null }])}>
-            <Plus className="h-3 w-3 mr-1" /> Add device
-          </Button>
+          {isEditing && scene?.actions == null ? (
+            <p className="text-xs text-muted-foreground/70 rounded-lg border border-dashed p-3">
+              Viewing a scene's actions needs a newer version of the Homecast relay app.
+            </p>
+          ) : readOnly ? (
+            actions.length === 0 ? (
+              <p className="text-xs text-muted-foreground/70 rounded-lg border border-dashed p-3">No actions.</p>
+            ) : (
+              actions.map((action, idx) => {
+                const accessory = accessories.find(a => a.id === action.accessoryId);
+                return (
+                  <div key={idx} className="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+                    <span className="min-w-0 truncate font-medium">{accessory?.name ?? 'Unknown device'}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {formatCharacteristic(action.characteristicType)} → {formatActionValue(action.targetValue)}
+                    </span>
+                  </div>
+                );
+              })
+            )
+          ) : (
+            <>
+              {actions.map((action, idx) => (
+                <AutomationActionRow
+                  key={idx}
+                  action={action}
+                  accessories={accessories}
+                  onChange={(updated) => setActions(prev => prev.map((a, i) => i === idx ? updated : a))}
+                  onRemove={() => setActions(prev => prev.filter((_, i) => i !== idx))}
+                />
+              ))}
+              <Button variant="outline" size="sm" className="w-full h-8 text-xs"
+                onClick={() => setActions(prev => [...prev, { accessoryId: '', characteristicType: '', targetValue: null }])}>
+                <Plus className="h-3 w-3 mr-1" /> Add device
+              </Button>
+            </>
+          )}
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
 
-        <div className="shrink-0 flex justify-end gap-2 border-t px-6 py-3">
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-            {isEditing ? 'Save' : 'Create'}
+        <div className="shrink-0 flex items-center gap-2 border-t px-6 py-3">
+          {isEditing && !readOnly && onDelete && (
+            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600" onClick={onDelete} disabled={saving}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
+            {readOnly ? 'Close' : 'Cancel'}
           </Button>
+          {!readOnly && (
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {isEditing ? 'Save' : 'Create'}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

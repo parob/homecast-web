@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { ChevronRight, Loader2, Pencil, Play, Plus, Trash2, Zap } from 'lucide-react';
+import { ChevronRight, Loader2, Play, Plus, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -123,11 +123,15 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
             {scenes.map(scene => (
               <div
                 key={scene.id}
-                className={`group flex items-center gap-2 rounded-xl border p-3 ${isDarkBackground ? 'border-white/15 bg-white/5' : 'bg-card'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => { setEditingScene(scene); setFormOpen(true); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
+                className={`flex items-center gap-2 rounded-xl border p-3 cursor-pointer transition-colors ${isDarkBackground ? 'border-white/15 bg-white/5 hover:bg-white/10' : 'bg-card hover:bg-muted/40'}`}
               >
                 <Zap className={`h-4 w-4 shrink-0 ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground'}`} />
                 <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-medium truncate ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
+                  <p className={`text-sm font-medium break-words line-clamp-2 ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
                   <p className={`text-[11px] ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/60'}`}>
                     {scene.automationName
                       ? `Used by automation "${scene.automationName}"`
@@ -135,31 +139,13 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                   </p>
                 </div>
                 <button
-                  onClick={() => handleRun(scene)}
+                  onClick={(e) => { e.stopPropagation(); handleRun(scene); }}
                   disabled={runningId === scene.id}
                   title="Run scene"
                   className={`shrink-0 rounded-lg p-1.5 transition-colors ${isDarkBackground ? 'hover:bg-white/10 text-white/70' : 'hover:bg-muted text-muted-foreground'}`}
                 >
                   {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 </button>
-                {!scene.automationName && (
-                  <>
-                    <button
-                      onClick={() => { setEditingScene(scene); setFormOpen(true); }}
-                      title="Edit scene"
-                      className={`shrink-0 rounded-lg p-1.5 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${isDarkBackground ? 'hover:bg-white/10 text-white/50 hover:text-white' : 'hover:bg-muted text-muted-foreground/60 hover:text-foreground'}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(scene)}
-                      title="Delete scene"
-                      className={`shrink-0 rounded-lg p-1.5 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${isDarkBackground ? 'hover:bg-white/10 text-white/50 hover:text-red-400' : 'hover:bg-muted text-muted-foreground/60 hover:text-red-500'}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </>
-                )}
               </div>
             ))}
             <button
@@ -178,6 +164,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
         homeId={homeId}
         scene={editingScene}
         onSaved={() => refetch()}
+        onDelete={() => { setFormOpen(false); setConfirmDelete(editingScene); }}
       />
 
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
