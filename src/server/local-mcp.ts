@@ -7,6 +7,7 @@
  *   - get_state: Read state across all homes
  *   - set_state: Set accessory state with flat update list
  *   - run_scene: Execute a scene by home + name
+ *   - create_scene / update_scene / delete_scene: Manage scenes
  *   - get_automations: List HomeKit automations
  *   - create_automation / update_automation / delete_automation: Manage HomeKit automations
  */
@@ -17,6 +18,10 @@ import {
   handleCreateAutomation,
   handleUpdateAutomation,
   handleDeleteAutomation,
+  resolveHome,
+  buildAccessoryIndex,
+  buildActionsPayload,
+  validateAutomationName,
 } from './local-automations';
 import { executeHomeKitAction } from '../relay/local-handler';
 
@@ -108,6 +113,75 @@ const TOOLS = [
       properties: {
         home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
         name: { type: 'string', description: 'Scene name (e.g., "Good Morning")' },
+      },
+      required: ['home', 'name'],
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
+  },
+  {
+    name: 'create_scene',
+    description:
+      'Create a scene: a named snapshot of device states that can be run on demand (run_scene). ' +
+      'actions is a list of {"accessory":"<slug>","room":"<slug>" (optional), plus settable properties as in set_state: ' +
+      'on, brightness, hue, saturation, color_temp, active, heat_target, cool_target, hvac_mode, lock_target, ' +
+      'alarm_target, speed, volume, mute, target}. ' +
+      'Scene names must end with a letter or number (HomeKit rejects trailing punctuation). ' +
+      'Get home/accessory slugs and properties from get_state. ' +
+      'Requires a relay app version with scene management support; older relays return an unsupported-method error.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
+        name: { type: 'string', description: 'Scene name' },
+        actions: {
+          type: 'array',
+          description: 'Accessory state changes the scene applies when run',
+          items: {
+            type: 'object',
+            properties: {
+              accessory: { type: 'string', description: 'Accessory slug key (e.g., "ceiling_light_c3d4")' },
+              room: { type: 'string', description: 'Room slug key (optional, informational)' },
+              on: { type: 'boolean' },
+              brightness: { type: 'integer', description: '0-100' },
+              hue: { type: 'integer', description: '0-360' },
+              saturation: { type: 'integer', description: '0-100' },
+              color_temp: { type: 'integer', description: '140-500 mirek' },
+              active: { type: 'boolean' },
+              heat_target: { type: 'number' },
+              cool_target: { type: 'number' },
+              hvac_mode: { type: 'string', description: 'auto/heat/cool' },
+              lock_target: { type: 'boolean' },
+              alarm_target: { type: 'string', description: 'home/away/night/off' },
+              speed: { type: 'integer', description: '0-100' },
+              volume: { type: 'integer', description: '0-100' },
+              mute: { type: 'boolean' },
+              target: { type: 'integer', description: '0-100 (blinds)' },
+            },
+            required: ['accessory'],
+          },
+        },
+      },
+      required: ['home', 'name', 'actions'],
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
+  },
+  {
+    name: 'update_scene',
+    description:
+      'Update a scene identified by name: rename it (new_name) and/or REPLACE all of its actions ' +
+      '(same format as create_scene). Built-in scenes and scenes that belong to an automation cannot be modified. ' +
+      'Requires a relay app version with scene management support.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        home: { type: 'string', description: 'Home slug key (e.g., "my_house_0bf8")' },
+        name: { type: 'string', description: 'Current scene name (e.g., "Movie Night")' },
+        new_name: { type: 'string', description: 'New scene name' },
+        actions: {
+          type: 'array',
+          description: 'New accessory state changes (replaces all existing actions; same format as create_scene)',
+          items: { type: 'object' },
+        },
       },
       required: ['home', 'name'],
     },
@@ -395,6 +469,63 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
 
       await executeHomeKitAction('scene.execute', { sceneId: scene.id });
       return { success: true, scene: scene.name, home: homeSlug };
+    }
+
+    case 'create_scene': {
+      const homeSlug = args.home as string;
+      const sceneName = args.name as string;
+      const actions = args.actions as Array<Record<string, unknown>>;
+      if (!homeSlug || !sceneName || !actions) {
+        throw new Error("'home', 'name' and 'actions' are required");
+      }
+
+      const { homeId } = await resolveHome(homeSlug);
+      const name = validateAutomationName(sceneName);
+      const index = await buildAccessoryIndex(homeId);
+      const actionsPayload = buildActionsPayload(actions, index);
+
+      await executeHomeKitAction('scene.create', { homeId, name, actions: actionsPayload });
+      return { success: true, scene: name, home: homeSlug, message: 'Scene created' };
+    }
+
+    case 'update_scene': {
+      const homeSlug = args.home as string;
+      const sceneName = args.name as string;
+      if (!homeSlug || !sceneName) {
+        throw new Error("Both 'home' and 'name' are required");
+      }
+
+      const { homeId } = await resolveHome(homeSlug);
+      const scenesResult = await executeHomeKitAction('scenes.list', { homeId }) as any;
+      const scenes = scenesResult?.scenes || [];
+      const scene = scenes.find((s: any) =>
+        s.name?.toLowerCase() === sceneName.toLowerCase()
+      );
+      if (!scene) {
+        const available = scenes.map((s: any) => s.name);
+        throw new Error(`Scene not found: "${sceneName}" in ${homeSlug}. Available: [${available.join(', ')}]`);
+      }
+      if (scene.automationName) {
+        throw new Error(
+          `Scene "${scene.name}" is used by automation "${scene.automationName}" — ` +
+          'it cannot be modified; delete or edit the automation instead (update_automation).'
+        );
+      }
+
+      const payload: Record<string, unknown> = { sceneId: scene.id };
+      if (args.new_name !== undefined) {
+        payload.name = validateAutomationName(args.new_name as string);
+      }
+      if (args.actions !== undefined) {
+        const index = await buildAccessoryIndex(homeId);
+        payload.actions = buildActionsPayload(args.actions as Array<Record<string, unknown>>, index);
+      }
+      if (Object.keys(payload).length === 1) {
+        throw new Error('Provide at least one of: new_name, actions');
+      }
+
+      await executeHomeKitAction('scene.update', payload);
+      return { success: true, scene: (payload.name as string) || scene.name, home: homeSlug, message: 'Scene updated' };
     }
 
     case 'delete_scene': {

@@ -1,30 +1,71 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { ChevronRight, Loader2, Play, Trash2, Zap } from 'lucide-react';
+import { ChevronRight, Loader2, Pencil, Play, Plus, Trash2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
+import { SceneFormDialog } from './SceneFormDialog';
 import type { HomeKitScene } from '@/lib/graphql/types';
 
 interface ScenesSectionProps {
   homeId: string;
   compact?: boolean;
   isDarkBackground?: boolean;
-  hideAccessoryCounts?: boolean;
+  /** Controlled expansion (pill in the summary row drives it). */
+  open: boolean;
 }
 
-export function ScenesSection({ homeId, compact, isDarkBackground, hideAccessoryCounts }: ScenesSectionProps) {
-  const [expanded, setExpanded] = useState(false);
+/**
+ * Compact bubble button for the sensor-summary row. Toggles the
+ * ScenesSection content rendered elsewhere on the page.
+ */
+export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
+  homeId: string;
+  open: boolean;
+  onToggle: () => void;
+  isDarkBackground?: boolean;
+}) {
+  const { data } = useQuery<{ scenes: HomeKitScene[] }>(GET_SCENES, {
+    variables: { homeId },
+    skip: !homeId,
+    fetchPolicy: 'cache-first',
+    errorPolicy: 'ignore',
+  });
+  const count = data?.scenes?.length ?? 0;
+  if (count === 0) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+        isDarkBackground
+          ? (open ? 'bg-white/25 text-white' : 'bg-black/25 text-white/90 hover:bg-black/35')
+          : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'),
+      )}
+    >
+      <Zap className="h-3 w-3" />
+      <span>Scenes {count}</span>
+      <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
+    </button>
+  );
+}
+
+export function ScenesSection({ homeId, compact, isDarkBackground, open }: ScenesSectionProps) {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<HomeKitScene | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingScene, setEditingScene] = useState<HomeKitScene | null>(null);
 
-  const { data, loading, refetch } = useQuery<{ scenes: HomeKitScene[] }>(GET_SCENES, {
+  const { data, refetch } = useQuery<{ scenes: HomeKitScene[] }>(GET_SCENES, {
     variables: { homeId },
     skip: !homeId,
     fetchPolicy: 'cache-first',
@@ -34,7 +75,6 @@ export function ScenesSection({ homeId, compact, isDarkBackground, hideAccessory
   const [deleteScene] = useMutation(DELETE_SCENE);
 
   const scenes = data?.scenes ?? [];
-  const hidden = !loading && scenes.length === 0;
 
   const handleRun = async (scene: HomeKitScene) => {
     setRunningId(scene.id);
@@ -60,7 +100,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, hideAccessory
       const message = String(e?.message ?? e);
       if (/UNKNOWN_METHOD|Unknown method/i.test(message)) {
         toast.error('Relay update required', {
-          description: 'Deleting scenes needs a newer version of the Homecast relay app.',
+          description: 'Managing scenes needs a newer version of the Homecast relay app.',
         });
       } else {
         toast.error('Could not delete scene', { description: message });
@@ -73,21 +113,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, hideAccessory
 
   return (
     <>
-      <div className={`flex items-center gap-2 ${compact ? 'mb-1.5 mt-1' : 'mb-3 mt-2'} ${hidden ? 'hidden' : ''}`}>
-        <button
-          onClick={() => !loading && setExpanded(!expanded)}
-          className={`flex items-center gap-1 text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
-        >
-          Scenes{!hideAccessoryCounts && scenes.length > 0 ? ` (${scenes.length})` : ''}
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-          )}
-        </button>
-      </div>
-
-      <AnimatedCollapse open={expanded && !hidden}>
+      <AnimatedCollapse open={open}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
           <div className={
             compact
@@ -117,21 +143,44 @@ export function ScenesSection({ homeId, compact, isDarkBackground, hideAccessory
                   {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 </button>
                 {!scene.automationName && (
-                  <button
-                    onClick={() => setConfirmDelete(scene)}
-                    title="Delete scene"
-                    className={`shrink-0 rounded-lg p-1.5 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${isDarkBackground ? 'hover:bg-white/10 text-white/50 hover:text-red-400' : 'hover:bg-muted text-muted-foreground/60 hover:text-red-500'}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setEditingScene(scene); setFormOpen(true); }}
+                      title="Edit scene"
+                      className={`shrink-0 rounded-lg p-1.5 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${isDarkBackground ? 'hover:bg-white/10 text-white/50 hover:text-white' : 'hover:bg-muted text-muted-foreground/60 hover:text-foreground'}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(scene)}
+                      title="Delete scene"
+                      className={`shrink-0 rounded-lg p-1.5 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${isDarkBackground ? 'hover:bg-white/10 text-white/50 hover:text-red-400' : 'hover:bg-muted text-muted-foreground/60 hover:text-red-500'}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
                 )}
               </div>
             ))}
+            <button
+              onClick={() => { setEditingScene(null); setFormOpen(true); }}
+              className={`flex items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-xs font-medium transition-colors ${isDarkBackground ? 'border-white/20 text-white/50 hover:text-white hover:bg-white/5' : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+            >
+              <Plus className="h-3.5 w-3.5" /> New scene
+            </button>
           </div>
         </div>
       </AnimatedCollapse>
 
-      <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+      <SceneFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        homeId={homeId}
+        scene={editingScene}
+        onSaved={() => refetch()}
+      />
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete "{confirmDelete?.name}"?</AlertDialogTitle>

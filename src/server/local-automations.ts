@@ -107,7 +107,7 @@ export function validateAutomationName(name: string): string {
   const suggestion = suggestValidName(stripped);
   const hint = suggestion ? ` Try "${suggestion}".` : '';
   throw new Error(
-    `Invalid automation name "${name}": HomeKit requires names to end ` +
+    `Invalid name "${name}": HomeKit requires names to end ` +
     `with a letter or number (no trailing punctuation like ")" or "!").${hint}`
   );
 }

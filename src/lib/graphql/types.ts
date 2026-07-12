@@ -242,6 +242,9 @@ export interface HomeKitScene {
   /** Non-null when the scene is an automation's action list — delete the
    *  automation instead of the scene. Newer relays only. */
   automationName?: string | null;
+  /** The scene's characteristic writes. Cloud GraphQL serializes as a JSON
+   *  string; CE returns the raw array. Newer relays only. */
+  actions?: AutomationAction[] | string | null;
 }
 
 export interface AutomationAction {

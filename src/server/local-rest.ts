@@ -118,6 +118,21 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         return result?.scenes || [];
       }
 
+      // POST /rest/scenes — create a scene {homeId, name, actions}
+      case method === 'POST' && route === '/scenes': {
+        if (!req.body) return { error: 'Missing body' };
+        const body = JSON.parse(req.body);
+        return await executeHomeKitAction('scene.create', body);
+      }
+
+      // PATCH /rest/scenes/:id — update a scene {name?, actions?}
+      case method === 'PATCH' && route.startsWith('/scenes/'): {
+        const sceneId = route.replace('/scenes/', '');
+        if (!req.body) return { error: 'Missing body' };
+        const body = JSON.parse(req.body);
+        return await executeHomeKitAction('scene.update', { sceneId, ...body });
+      }
+
       // DELETE /rest/scenes/:id
       case method === 'DELETE' && route.startsWith('/scenes/'): {
         const sceneId = route.replace('/scenes/', '');

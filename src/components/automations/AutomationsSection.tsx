@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { Plus, ChevronRight, Loader2, Check } from 'lucide-react';
+import { Plus, ChevronRight, Check, Workflow } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,14 +20,62 @@ interface AutomationsSectionProps {
   homeId: string;
   compact?: boolean;
   isDarkBackground?: boolean;
-  hideAccessoryCounts?: boolean;
+  /** Controlled expansion (pill in the summary row drives it). */
+  open: boolean;
   // When set, render this fixed list instead of fetching real automations.
   // Used by the tutorial demo flow so the Automations step always has rows.
   demoAutomations?: HomeKitAutomation[];
 }
 
-export function AutomationsSection({ homeId, compact, isDarkBackground, hideAccessoryCounts, demoAutomations }: AutomationsSectionProps) {
-  const [expanded, setExpanded] = useState(false);
+/**
+ * Compact bubble button for the sensor-summary row. Toggles the
+ * AutomationsSection content rendered elsewhere on the page.
+ */
+export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demoAutomations }: {
+  homeId: string;
+  open: boolean;
+  onToggle: () => void;
+  isDarkBackground?: boolean;
+  demoAutomations?: HomeKitAutomation[];
+}) {
+  const { data } = useQuery<GetAutomationsResponse>(GET_AUTOMATIONS, {
+    variables: { homeId },
+    skip: !homeId || !!demoAutomations,
+    fetchPolicy: 'cache-first',
+    errorPolicy: 'ignore',
+  });
+  const { data: hcData } = useQuery(HC_AUTOMATIONS, {
+    variables: { homeId },
+    skip: !homeId || !!demoAutomations,
+    fetchPolicy: 'cache-first',
+    errorPolicy: 'all',
+  });
+  const raw = demoAutomations ?? (data?.automations || []);
+  const relayNeedsUpdate = raw.some(a => a.id === '__relay_update_required__');
+  const hkCount = relayNeedsUpdate ? 0 : raw.length;
+  const hcCount = (hcData?.hcAutomations || []).length;
+  const count = hkCount + hcCount;
+  if (count === 0 && !relayNeedsUpdate) return null;
+
+  return (
+    <button
+      type="button"
+      data-tour="automations"
+      onClick={onToggle}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+        isDarkBackground
+          ? (open ? 'bg-white/25 text-white' : 'bg-black/25 text-white/90 hover:bg-black/35')
+          : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80')
+      }`}
+    >
+      <Workflow className="h-3 w-3" />
+      <span>Automations {count > 0 ? count : ''}</span>
+      <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+    </button>
+  );
+}
+
+export function AutomationsSection({ homeId, compact, isDarkBackground, open: expanded, demoAutomations }: AutomationsSectionProps) {
   const [selectedAutomation, setSelectedAutomation] = useState<HomeKitAutomation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -132,21 +180,6 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, hideAcce
 
   return (
     <>
-      {/* Header */}
-      <div className={`flex items-center gap-2 ${compact ? 'mb-1.5 mt-1' : 'mb-3 mt-2'} ${hidden ? 'hidden' : ''}`}>
-        <button
-          onClick={() => !isLoading && setExpanded(!expanded)}
-          className={`flex items-center gap-1 text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
-        >
-          Automations{!hideAccessoryCounts && totalCount > 0 ? ` (${totalCount})` : ''}
-          {isLoading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-          )}
-        </button>
-      </div>
-
       <AnimatedCollapse open={expanded && !hidden}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
           {relayNeedsUpdate && (

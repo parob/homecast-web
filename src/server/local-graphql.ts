@@ -390,6 +390,43 @@ async function resolveOperation(
       const result = await executeHomeKitAction('scene.delete', { sceneId: variables.sceneId }) as any;
       return { deleteScene: { success: result?.success ?? true, sceneId: variables.sceneId, __typename: 'SceneDeleteResult' } };
     }
+    case 'CreateScene': {
+      // actions arrives as a JSON string (matches how automations pass actions over GraphQL)
+      const actions = typeof variables.actions === 'string' ? JSON.parse(variables.actions as string) : variables.actions;
+      const result = await executeHomeKitAction('scene.create', {
+        homeId: variables.homeId,
+        name: variables.name,
+        actions,
+      }) as any;
+      return {
+        createScene: {
+          actionSetType: null,
+          automationName: null,
+          ...result,
+          // Cloud serializes scene actions as a JSON string over GraphQL
+          actions: result?.actions != null ? JSON.stringify(result.actions) : null,
+          __typename: 'HomeKitScene',
+        },
+      };
+    }
+    case 'UpdateScene': {
+      const payload: Record<string, unknown> = { sceneId: variables.sceneId };
+      if (variables.name !== undefined && variables.name !== null) payload.name = variables.name;
+      if (variables.actions !== undefined && variables.actions !== null) {
+        payload.actions = typeof variables.actions === 'string' ? JSON.parse(variables.actions as string) : variables.actions;
+      }
+      const result = await executeHomeKitAction('scene.update', payload) as any;
+      return {
+        updateScene: {
+          actionSetType: null,
+          automationName: null,
+          ...result,
+          // Cloud serializes scene actions as a JSON string over GraphQL
+          actions: result?.actions != null ? JSON.stringify(result.actions) : null,
+          __typename: 'HomeKitScene',
+        },
+      };
+    }
     case 'GetCachedHomes': {
       try {
         const homesResult = await executeHomeKitAction('homes.list', {}) as any;

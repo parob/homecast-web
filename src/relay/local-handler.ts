@@ -324,6 +324,20 @@ export async function executeHomeKitAction(
       return await HomeKit.deleteScene(sceneId);
     }
 
+    case 'scene.create': {
+      const { homeId, name, actions } = payload as {
+        homeId: string;
+        name: string;
+        actions: Array<{ accessoryId: string; characteristicType: string; targetValue: unknown }>;
+      };
+      return await HomeKit.createScene(homeId, name, actions);
+    }
+
+    case 'scene.update': {
+      const { sceneId, ...rest } = payload as { sceneId: string; [key: string]: unknown };
+      return await HomeKit.updateScene(sceneId, rest as Parameters<typeof HomeKit.updateScene>[1]);
+    }
+
     case 'automations.list': {
       const { homeId } = payload as { homeId: string };
       return { automations: await HomeKit.listAutomations(homeId) };

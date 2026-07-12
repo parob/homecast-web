@@ -221,6 +221,26 @@ export const DELETE_SCENE = gql`
   }
 `;
 
+export const CREATE_SCENE = gql`
+  mutation CreateScene($homeId: String!, $name: String!, $actions: String!) {
+    createScene(homeId: $homeId, name: $name, actions: $actions) {
+      id
+      name
+      actionCount
+    }
+  }
+`;
+
+export const UPDATE_SCENE = gql`
+  mutation UpdateScene($sceneId: String!, $homeId: String, $name: String, $actions: String) {
+    updateScene(sceneId: $sceneId, homeId: $homeId, name: $name, actions: $actions) {
+      id
+      name
+      actionCount
+    }
+  }
+`;
+
 // Automation mutations
 export const CREATE_AUTOMATION = gql`
   mutation CreateAutomation($homeId: String!, $name: String!, $trigger: String!, $actions: String!) {

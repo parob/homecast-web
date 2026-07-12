@@ -30,6 +30,8 @@ vi.mock('@/native/homekit-bridge', () => ({
     listScenes: vi.fn().mockResolvedValue([]),
     executeScene: vi.fn().mockResolvedValue(null),
     deleteScene: vi.fn().mockResolvedValue(null),
+    createScene: vi.fn().mockResolvedValue(null),
+    updateScene: vi.fn().mockResolvedValue(null),
     listServiceGroups: vi.fn().mockResolvedValue([]),
     setServiceGroupCharacteristic: vi.fn().mockResolvedValue(null),
     setState: vi.fn().mockResolvedValue(null),
@@ -214,7 +216,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.result.capabilities).toHaveProperty('tools');
   });
 
-  it('responds to tools/list with exactly 8 tools matching cloud', async () => {
+  it('responds to tools/list with exactly 10 tools matching cloud', async () => {
     const response = JSON.parse(await handleMCP(JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -224,11 +226,12 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.jsonrpc).toBe('2.0');
     expect(response.id).toBe(2);
     const tools = response.result.tools;
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(10);
 
     const toolNames = tools.map((t: any) => t.name).sort();
     expect(toolNames).toEqual([
       'create_automation',
+      'create_scene',
       'delete_automation',
       'delete_scene',
       'get_automations',
@@ -236,6 +239,7 @@ describe('MCP endpoint (handleMCP)', () => {
       'run_scene',
       'set_state',
       'update_automation',
+      'update_scene',
     ]);
   });
 
@@ -250,6 +254,45 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(deleteScene.inputSchema.required).toEqual(['home', 'name']);
     expect(deleteScene.annotations.readOnlyHint).toBe(false);
     expect(deleteScene.annotations.destructiveHint).toBe(true);
+  });
+
+  it('create_scene requires home/name/actions and is not destructive', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 15,
+      method: 'tools/list',
+    })));
+
+    const createScene = response.result.tools.find((t: any) => t.name === 'create_scene');
+    expect(createScene.inputSchema.required).toEqual(['home', 'name', 'actions']);
+    expect(createScene.inputSchema.properties.actions.type).toBe('array');
+    // Action items use the set_state vocabulary minus home/room requirement
+    const items = createScene.inputSchema.properties.actions.items;
+    expect(items.required).toEqual(['accessory']);
+    const propNames = Object.keys(items.properties);
+    for (const prop of ['on', 'brightness', 'hue', 'saturation', 'color_temp', 'active',
+      'heat_target', 'cool_target', 'hvac_mode', 'lock_target', 'alarm_target',
+      'speed', 'volume', 'mute', 'target']) {
+      expect(propNames).toContain(prop);
+    }
+    expect(createScene.annotations.readOnlyHint).toBe(false);
+    expect(createScene.annotations.destructiveHint).toBe(false);
+  });
+
+  it('update_scene requires home/name and accepts partial changes', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 16,
+      method: 'tools/list',
+    })));
+
+    const updateScene = response.result.tools.find((t: any) => t.name === 'update_scene');
+    expect(updateScene.inputSchema.required).toEqual(['home', 'name']);
+    const props = updateScene.inputSchema.properties;
+    expect(props).toHaveProperty('new_name');
+    expect(props).toHaveProperty('actions');
+    expect(updateScene.annotations.readOnlyHint).toBe(false);
+    expect(updateScene.annotations.destructiveHint).toBe(false);
   });
 
   it('get_state tool has correct filter parameters', async () => {

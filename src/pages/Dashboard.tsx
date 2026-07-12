@@ -48,8 +48,8 @@ import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLa
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
-import { AutomationsSection } from '@/components/automations/AutomationsSection';
-import { ScenesSection } from '@/components/scenes/ScenesSection';
+import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
+import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
@@ -1321,6 +1321,7 @@ const Dashboard = () => {
       setSelectedRoomId(null);
       setSelectedCollectionId(null);
       setSelectedCollection(null);
+      setAutomationsOpen(true);
     } else if (tutorialPrevSelectionRef.current) {
       const prev = tutorialPrevSelectionRef.current;
       setSelectedHomeIdRaw(prev.home);
@@ -1468,6 +1469,9 @@ const Dashboard = () => {
 
   // Temporarily show hidden items (homes, rooms, accessories) for unhiding
   const [showHiddenItems, setShowHiddenItems] = useState(false);
+  // Scenes/Automations sections, toggled by the pills in the sensor-summary row
+  const [scenesOpen, setScenesOpen] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
   // Version counter to force re-renders when visibility changes
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   // Version counter to force re-renders when item order changes (for home view cache reads)
@@ -6767,18 +6771,34 @@ const Dashboard = () => {
                     homes.find(h => h.id === selectedHomeId)?.name || 'Home'
                   )}
                 </h2>
-                {/* Area Summary - aggregated sensor readings */}
-                <AreaSummary
-                  accessories={filteredRooms.flatMap(([_, accs]) => accs)}
-                  isDarkBackground={isDarkBackground}
-                  className="mb-4"
-                />
+                {/* Area Summary - aggregated sensor readings + scenes/automations pills */}
+                <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
+                  <AreaSummary
+                    accessories={filteredRooms.flatMap(([_, accs]) => accs)}
+                    isDarkBackground={isDarkBackground}
+                  />
+                  {selectedHomeId && !selectedRoomId && (
+                    <>
+                      <ScenesPill
+                        homeId={selectedHomeId}
+                        open={scenesOpen}
+                        onToggle={() => setScenesOpen(o => !o)}
+                        isDarkBackground={isDarkBackground}
+                      />
+                      <AutomationsPill
+                        homeId={selectedHomeId}
+                        open={automationsOpen}
+                        onToggle={() => setAutomationsOpen(o => !o)}
+                        isDarkBackground={isDarkBackground}
+                        demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
+                      />
+                    </>
+                  )}
+                </div>
                 {selectedHomeId && !selectedRoomId && (
                   <>
-                    <ScenesSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} />
-                    <div data-tour="automations">
-                      <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} hideAccessoryCounts={hideAccessoryCounts} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
-                    </div>
+                    <ScenesSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
+                    <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </>
                 )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>

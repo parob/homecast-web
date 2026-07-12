@@ -24,6 +24,8 @@ vi.mock('@/native/homekit-bridge', () => ({
     listScenes: vi.fn().mockResolvedValue([]),
     executeScene: vi.fn().mockResolvedValue(null),
     deleteScene: vi.fn().mockResolvedValue(null),
+    createScene: vi.fn().mockResolvedValue(null),
+    updateScene: vi.fn().mockResolvedValue(null),
     listServiceGroups: vi.fn().mockResolvedValue([]),
     setServiceGroupCharacteristic: vi.fn().mockResolvedValue(null),
     setState: vi.fn().mockResolvedValue(null),
@@ -720,6 +722,87 @@ describe('delete_scene tool', () => {
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0].text).toContain('delete the automation instead');
     expect(HomeKit.deleteScene).not.toHaveBeenCalled();
+  });
+});
+
+describe('create_scene tool', () => {
+  it('creates a scene with translated action payloads', async () => {
+    mockHome();
+    vi.mocked(HomeKit.createScene).mockResolvedValue({
+      id: 'S9', name: 'Evening lights', actionCount: 1,
+    } as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: {
+        name: 'create_scene',
+        arguments: { home: HOME_SLUG, name: 'Evening lights', actions: [{ accessory: LIGHT_SLUG, on: true }] },
+      },
+    })));
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result.success).toBe(true);
+    expect(result.scene).toBe('Evening lights');
+    expect(HomeKit.createScene).toHaveBeenCalledWith(
+      HOME.id,
+      'Evening lights',
+      [{ accessoryId: ACCESSORIES[0].id, characteristicType: 'power_state', targetValue: true }],
+    );
+  });
+
+  it('rejects invalid scene names before anything reaches the bridge', async () => {
+    mockHome();
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: {
+        name: 'create_scene',
+        arguments: { home: HOME_SLUG, name: '(evening)', actions: [{ accessory: LIGHT_SLUG, on: true }] },
+      },
+    })));
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain('end with a letter or number');
+    expect(HomeKit.createScene).not.toHaveBeenCalled();
+  });
+});
+
+describe('update_scene tool', () => {
+  it('refuses to modify automation-owned scenes with guidance', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listScenes).mockResolvedValue([
+      { id: 'S2', name: 'Aircon Off Daily', actionCount: 6, automationName: 'Aircon Off Daily' },
+    ] as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'update_scene', arguments: { home: HOME_SLUG, name: 'Aircon Off Daily', new_name: 'Aircon Off' } },
+    })));
+    expect(response.result.isError).toBe(true);
+    expect(response.result.content[0].text).toContain('delete or edit the automation instead');
+    expect(HomeKit.updateScene).not.toHaveBeenCalled();
+  });
+
+  it('renames and replaces actions on a free-standing scene', async () => {
+    mockHome();
+    vi.mocked(HomeKit.listScenes).mockResolvedValue([
+      { id: 'S1', name: 'Movie Night', actionCount: 3 },
+    ] as any);
+    vi.mocked(HomeKit.updateScene).mockResolvedValue({
+      id: 'S1', name: 'Cinema Night', actionCount: 1,
+    } as any);
+
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: {
+        name: 'update_scene',
+        arguments: { home: HOME_SLUG, name: 'movie night', new_name: 'Cinema Night', actions: [{ accessory: LIGHT_SLUG, on: false }] },
+      },
+    })));
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result.success).toBe(true);
+    expect(HomeKit.updateScene).toHaveBeenCalledWith('S1', {
+      name: 'Cinema Night',
+      actions: [{ accessoryId: ACCESSORIES[0].id, characteristicType: 'power_state', targetValue: false }],
+    });
   });
 });
 

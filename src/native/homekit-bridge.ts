@@ -84,6 +84,9 @@ export interface HomeKitScene {
   /** Non-null when the scene is an automation's action list — delete the
    *  automation instead of the scene. Newer relays only. */
   automationName?: string | null;
+  /** The scene's characteristic writes. Newer relays only (scene.create /
+   *  scene.update responses). */
+  actions?: AutomationAction[];
 }
 
 export interface AutomationAction {
@@ -335,6 +338,25 @@ export const HomeKit = {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call('scene.delete', { sceneId });
+  },
+
+  /**
+   * Create a scene (named snapshot of device states)
+   */
+  async createScene(homeId: string, name: string, actions: Array<{ accessoryId: string; characteristicType: string; targetValue: unknown }>): Promise<HomeKitScene> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<HomeKitScene>('scene.create', { homeId, name, actions });
+  },
+
+  /**
+   * Update a scene (rename and/or replace its actions; blocked natively for
+   * built-ins and automation-owned scenes)
+   */
+  async updateScene(sceneId: string, params: { name?: string; actions?: Array<{ accessoryId: string; characteristicType: string; targetValue: unknown }> }): Promise<HomeKitScene> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<HomeKitScene>('scene.update', { sceneId, ...params });
   },
 
   /**
