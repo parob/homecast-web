@@ -8,6 +8,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { getIconColor } from '@/components/widgets/iconColors';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
 import { SceneFormDialog } from './SceneFormDialog';
@@ -57,6 +58,8 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
     </button>
   );
 }
+
+const sceneColors = getIconColor('scene');
 
 export function ScenesSection({ homeId, compact, isDarkBackground, open }: ScenesSectionProps) {
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -129,7 +132,9 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
                 className={`flex items-center gap-2 rounded-xl border p-3 cursor-pointer transition-colors ${isDarkBackground ? 'border-white/15 bg-white/5 hover:bg-white/10' : 'bg-card hover:bg-muted/40'}`}
               >
-                <Zap className={`h-4 w-4 shrink-0 ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground'}`} />
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
+                  <Zap className="h-4 w-4" />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm font-medium break-words line-clamp-2 ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
                   <p className={`text-[11px] ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/60'}`}>

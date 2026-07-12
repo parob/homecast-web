@@ -689,6 +689,26 @@ export const ICON_COLORS: Record<string, IconColor> = {
     blurBgOff: 'bg-black/40',
   },
 
+  // Scenes - amber (Zap)
+  scene: {
+    bg: 'bg-amber-400',
+    bgOff: 'bg-amber-100 dark:bg-amber-950',
+    text: 'text-amber-900',
+    textOff: 'text-amber-600 dark:text-amber-400',
+    cardBg: 'bg-amber-100/80 dark:bg-amber-950/50',
+    cardBgHover: 'hover:bg-amber-200/80 dark:hover:bg-amber-900/50',
+    cardBorder: 'ring-amber-300 dark:ring-amber-700',
+    accent: 'bg-amber-500 hover:bg-amber-600',
+    accentHover: 'hover:bg-amber-600',
+    accentMuted: 'bg-amber-200 dark:bg-amber-900',
+    accentMutedHover: 'hover:bg-amber-300 dark:hover:bg-amber-800',
+    sliderTrack: 'bg-amber-500',
+    sliderThumb: 'bg-amber-600',
+    switchBg: 'bg-amber-500',
+    blurBg: 'bg-amber-200/75 dark:bg-amber-400/60',
+    blurBgOff: 'bg-black/40',
+  },
+
   // Bridges/Hubs - slate grey
   bridge: {
     bg: 'bg-slate-500',

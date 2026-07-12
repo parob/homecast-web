@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react';
 import { AutomationActionRow } from '@/components/automations/AutomationActionRow';
+import { getIconColor } from '@/components/widgets/iconColors';
 import { GET_ACCESSORIES } from '@/lib/graphql/queries';
 import { CREATE_SCENE, UPDATE_SCENE } from '@/lib/graphql/mutations';
 import { translateHomeKitError } from '@/lib/homekit-errors';
@@ -39,6 +40,8 @@ function parseSceneActions(scene: HomeKitScene | null | undefined): ActionData[]
     targetValue: a.targetValue,
   }));
 }
+
+const sceneColors = getIconColor('scene');
 
 function formatActionValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
@@ -124,7 +127,9 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
         <DialogTitle className="sr-only">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'Create Scene'}</DialogTitle>
         <div className="shrink-0 px-6 pt-5 pb-3">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
+              <Zap className="h-3.5 w-3.5" />
+            </div>
             <span className="text-xs text-muted-foreground font-medium">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'New Scene'}</span>
           </div>
           {readOnly ? (
