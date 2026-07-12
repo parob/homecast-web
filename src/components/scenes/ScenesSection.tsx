@@ -130,32 +130,41 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 tabIndex={0}
                 onClick={() => { setEditingScene(scene); setFormOpen(true); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
-                className={`flex items-center gap-2 rounded-xl border p-3 cursor-pointer transition-colors ${isDarkBackground ? 'border-white/15 bg-white/5 hover:bg-white/10' : 'bg-card hover:bg-muted/40'}`}
+                className={`relative rounded-[20px] h-fit cursor-pointer transition-all ${!isDarkBackground ? 'ring-1 ring-inset ring-slate-200' : ''}`}
+                style={{ contain: 'layout style paint' }}
               >
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
-                  <Zap className="h-4 w-4" />
+                {/* Blur layer — matches WidgetWrapper */}
+                <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-sm ${isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80'} transform-gpu`} />
+                <div className="relative z-[1] flex items-center gap-2 p-3">
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
+                    <Zap className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-medium break-words line-clamp-2 ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
+                    <p className={`text-[11px] ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60'}`}>
+                      {scene.automationName
+                        ? `Used by automation "${scene.automationName}"`
+                        : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRun(scene); }}
+                    disabled={runningId === scene.id}
+                    title="Run scene"
+                    className={`shrink-0 rounded-lg p-1.5 transition-colors ${isDarkBackground ? 'hover:bg-white/10 text-white/70' : 'hover:bg-muted text-muted-foreground'}`}
+                  >
+                    {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  </button>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-medium break-words line-clamp-2 ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
-                  <p className={`text-[11px] ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/60'}`}>
-                    {scene.automationName
-                      ? `Used by automation "${scene.automationName}"`
-                      : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
-                  </p>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRun(scene); }}
-                  disabled={runningId === scene.id}
-                  title="Run scene"
-                  className={`shrink-0 rounded-lg p-1.5 transition-colors ${isDarkBackground ? 'hover:bg-white/10 text-white/70' : 'hover:bg-muted text-muted-foreground'}`}
-                >
-                  {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                </button>
               </div>
             ))}
             <button
               onClick={() => { setEditingScene(null); setFormOpen(true); }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-xs font-medium transition-colors ${isDarkBackground ? 'border-white/20 text-white/50 hover:text-white hover:bg-white/5' : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+              className={`flex items-center justify-center gap-1.5 rounded-[20px] border-2 border-dashed p-3 text-xs font-medium transition-colors ${
+                isDarkBackground
+                  ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
+                  : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
+              }`}
             >
               <Plus className="h-3.5 w-3.5" /> New scene
             </button>
