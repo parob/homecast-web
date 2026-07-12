@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react';
 import { AutomationActionRow } from '@/components/automations/AutomationActionRow';
 import { getIconColor } from '@/components/widgets/iconColors';
+import { isBuiltInScene } from '@/lib/scenes';
 import { GET_ACCESSORIES } from '@/lib/graphql/queries';
 import { CREATE_SCENE, UPDATE_SCENE } from '@/lib/graphql/mutations';
 import { translateHomeKitError } from '@/lib/homekit-errors';
@@ -54,8 +55,9 @@ function formatCharacteristic(type: string): string {
 
 export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, onDelete }: SceneFormDialogProps) {
   const isEditing = !!scene;
-  // Automation-owned scenes can't be modified — show their actions read-only
-  const readOnly = !!scene?.automationName;
+  // Automation-owned and built-in scenes can't be modified — show actions read-only
+  const builtIn = isBuiltInScene(scene);
+  const readOnly = !!scene?.automationName || builtIn;
   const [name, setName] = useState('');
   const [actions, setActions] = useState<ActionData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +149,9 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
         <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-2">
           {readOnly && (
             <p className="text-xs text-muted-foreground">
-              This scene belongs to the automation "{scene?.automationName}" — edit that automation to change it.
+              {scene?.automationName
+                ? `This scene belongs to the automation "${scene.automationName}" — edit that automation to change it.`
+                : 'This is a built-in HomeKit scene — it can be run, but only the Apple Home app can change or remove it.'}
             </p>
           )}
           <p className="text-xs text-muted-foreground">Device states this scene applies when run:</p>

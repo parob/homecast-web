@@ -7,6 +7,7 @@
  */
 
 import { HomeKit } from '../native/homekit-bridge';
+import { isHiddenBuiltInScene } from '@/lib/scenes';
 
 /** Standard error codes matching the Cloud Edition */
 export const ErrorCode = {
@@ -311,7 +312,9 @@ export async function executeHomeKitAction(
 
     case 'scenes.list': {
       const { homeId } = payload as { homeId: string };
-      return { homeId, scenes: await HomeKit.listScenes(homeId) };
+      const scenes = await HomeKit.listScenes(homeId);
+      // Apple Home hides never-configured built-in scenes (Good Morning, …)
+      return { homeId, scenes: scenes.filter(s => !isHiddenBuiltInScene(s)) };
     }
 
     case 'scene.execute': {

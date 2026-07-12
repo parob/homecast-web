@@ -201,11 +201,8 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         if (firstEvent?.type === 'calendar' && firstEvent.calendarComponents) {
           try {
             const parseCC = (raw: unknown) => (typeof raw === 'string' ? JSON.parse(raw) : raw) as { hour?: number; minute?: number };
-            const cc = parseCC(firstEvent.calendarComponents);
-            if (cc.hour !== undefined) setHour(cc.hour);
-            if (cc.minute !== undefined) setMinute(cc.minute);
-            // Additional calendar events = additional firing times
-            const rest = (automation.trigger?.events ?? []).slice(1)
+            // All calendar events = firing times; sort so the earliest is primary
+            const times = (automation.trigger?.events ?? [])
               .filter(e => e.type === 'calendar' && e.calendarComponents)
               .map(e => {
                 try {
@@ -213,8 +210,13 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                   return { hour: c.hour ?? 0, minute: c.minute ?? 0 };
                 } catch { return null; }
               })
-              .filter((t): t is { hour: number; minute: number } => t !== null);
-            setExtraTimes(rest);
+              .filter((t): t is { hour: number; minute: number } => t !== null)
+              .sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute));
+            if (times.length > 0) {
+              setHour(times[0].hour);
+              setMinute(times[0].minute);
+              setExtraTimes(times.slice(1));
+            }
           } catch {}
         }
       } else if (firstEvent?.type === 'significantTime') {
@@ -437,16 +439,18 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                   {timeSubType === 'specific' && (
                     <>
                       <div className="flex items-center gap-2 justify-center">
-                        <Select value={String(hour)} onValueChange={(v) => setHour(Number(v))}><SelectTrigger className="h-12 w-20 text-lg text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 24 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
-                        <span className="text-lg font-bold">:</span>
-                        <Select value={String(minute)} onValueChange={(v) => setMinute(Number(v))}><SelectTrigger className="h-12 w-20 text-lg text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 60 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
+                        <Select value={String(hour)} onValueChange={(v) => setHour(Number(v))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 24 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
+                        <span className="font-bold">:</span>
+                        <Select value={String(minute)} onValueChange={(v) => setMinute(Number(v))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 60 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
+                        {/* Spacer matching the extras' remove button keeps the columns aligned */}
+                        {recurrenceType !== 'once' && extraTimes.length > 0 && <span className="w-6" />}
                       </div>
                       {recurrenceType !== 'once' && extraTimes.map((t, idx) => (
                         <div key={idx} className="flex items-center gap-2 justify-center">
                           <Select value={String(t.hour)} onValueChange={(v) => setExtraTimes(prev => prev.map((p, i) => i === idx ? { ...p, hour: Number(v) } : p))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 24 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
                           <span className="font-bold">:</span>
                           <Select value={String(t.minute)} onValueChange={(v) => setExtraTimes(prev => prev.map((p, i) => i === idx ? { ...p, minute: Number(v) } : p))}><SelectTrigger className="h-10 w-20 text-center"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 60 }, (_, i) => (<SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}</SelectItem>))}</SelectContent></Select>
-                          <button onClick={() => setExtraTimes(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-red-500" title="Remove time">
+                          <button onClick={() => setExtraTimes(prev => prev.filter((_, i) => i !== idx))} className="p-1 w-6 text-muted-foreground hover:text-red-500" title="Remove time">
                             <X className="h-4 w-4" />
                           </button>
                         </div>

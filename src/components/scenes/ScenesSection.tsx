@@ -9,6 +9,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { getIconColor } from '@/components/widgets/iconColors';
+import { isBuiltInScene, isHiddenBuiltInScene } from '@/lib/scenes';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
 import { SceneFormDialog } from './SceneFormDialog';
@@ -38,7 +39,7 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
-  const count = data?.scenes?.length ?? 0;
+  const count = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s)).length;
   if (count === 0) return null;
 
   return (
@@ -77,7 +78,8 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
-  const scenes = data?.scenes ?? [];
+  // Filter here too — older relays list unconfigured built-ins
+  const scenes = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s));
 
   const handleRun = async (scene: HomeKitScene) => {
     setRunningId(scene.id);
@@ -144,7 +146,9 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                     <p className={`text-[11px] ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60'}`}>
                       {scene.automationName
                         ? `Used by automation "${scene.automationName}"`
-                        : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
+                        : isBuiltInScene(scene)
+                          ? `Built-in · ${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`
+                          : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
                     </p>
                   </div>
                   <button
