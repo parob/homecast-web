@@ -51,16 +51,16 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
   const features: FeatureRow[] = [
     { label: 'Price', community: 'Free', basic: 'Free', standard: `${pricing.standard.formatted}/mo`, cloud: `${pricing.cloud.formatted}/mo` },
     { label: 'Accessories', community: 'Unlimited', basic: '10', standard: 'Unlimited', cloud: 'Unlimited' },
-    { label: 'Works without a Mac *', community: false, basic: false, standard: false, cloud: true },
+    { label: 'Works without a Mac **', community: false, basic: false, standard: false, cloud: true },
     { label: 'Account required', community: false, basic: true, standard: true, cloud: true },
-    { label: 'Remote access', community: 'X **', basic: true, standard: true, cloud: true },
-    { label: 'Sharing', community: '✓ **', basic: true, standard: true, cloud: true },
-    { label: 'REST & GraphQL API', community: '✓ **', basic: true, standard: true, cloud: true },
-    { label: 'MCP (AI assistants)', community: '✓ **', basic: true, standard: true, cloud: true },
-    { label: 'Webhooks', community: '✓ **', basic: true, standard: true, cloud: true },
-    { label: 'Custom MQTT Broker', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'Remote access', community: 'X *', basic: true, standard: true, cloud: true },
+    { label: 'Sharing', community: '✓ *', basic: true, standard: true, cloud: true },
+    { label: 'REST & GraphQL API', community: '✓ *', basic: true, standard: true, cloud: true },
+    { label: 'MCP (AI assistants)', community: '✓ *', basic: true, standard: true, cloud: true },
+    { label: 'Webhooks', community: '✓ *', basic: true, standard: true, cloud: true },
+    { label: 'Custom MQTT Broker', community: '✓ *', basic: true, standard: true, cloud: true },
     { label: 'Homecast MQTT Broker', community: false, basic: false, standard: true, cloud: true },
-    { label: 'Home Assistant', community: '✓ **', basic: true, standard: true, cloud: true },
+    { label: 'Home Assistant', community: '✓ *', basic: true, standard: true, cloud: true },
     { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
 
     { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
@@ -69,9 +69,9 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm table-fixed">
+      <table className="w-full min-w-[560px] text-sm table-fixed">
         <colgroup>
-          <col className="w-[200px]" />
+          <col className="w-[140px] sm:w-[200px]" />
           <col />
           <col />
           <col />
@@ -79,7 +79,7 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
         </colgroup>
         <thead>
           <tr>
-            <th className="w-[200px]" />
+            <th className="sticky left-0 z-10 bg-background w-[140px] sm:w-[200px]" />
             <th />
             <th colSpan={3} className="border border-border/60 border-b-0 rounded-t-lg bg-muted/30 py-1.5 px-3">
               <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -89,7 +89,7 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
             </th>
           </tr>
           <tr className="border-b border-border">
-            <th className="text-left py-3 pr-4 font-medium text-muted-foreground w-[200px]" />
+            <th className="sticky left-0 z-10 bg-background text-left py-3 pr-4 font-medium text-muted-foreground w-[140px] sm:w-[200px]" />
             <th className="py-3 px-3 font-semibold text-center">Community</th>
             <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Basic</th>
             <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Standard</th>
@@ -99,7 +99,7 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
         <tbody>
           {features.map((row) => (
             <tr key={row.label} className="border-b border-border/50">
-              <td className="py-3 pr-4 text-sm font-medium">{row.label}</td>
+              <td className="sticky left-0 z-10 bg-background py-3 pr-4 text-sm font-medium">{row.label}</td>
               <td className="py-3 px-3 text-center"><FeatureCell value={row.community} /></td>
               <td className="py-3 px-3 text-center"><FeatureCell value={row.basic} /></td>
               <td className="py-3 px-3 text-center"><FeatureCell value={row.standard} /></td>
@@ -109,8 +109,8 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
         </tbody>
       </table>
       <div className="text-xs text-muted-foreground mt-4 space-y-1">
-        <p>* Community, Basic, and Standard require a Mac running the Homecast Relay app at all times.</p>
-        <p>** Community Edition runs on your local network only. Remote access, sharing, API, MCP, and webhooks require Tailscale, Cloudflare Tunnel, or similar tools to work outside your home network.</p>
+        <p>* Community Edition runs on your local network only. Remote access, sharing, API, MCP, and webhooks require Tailscale, Cloudflare Tunnel, or similar tools to work outside your home network.</p>
+        <p>** Community, Basic, and Standard require a Mac running the Homecast Relay app at all times.</p>
         <p>*** Smart Deals can be turned off in settings.</p>
       </div>
     </div>

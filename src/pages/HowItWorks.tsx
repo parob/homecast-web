@@ -160,7 +160,7 @@ const ArchitectureDiagram = () => {
   }, []);
 
   return (
-    <div className="p-8 pr-12">
+    <div className="lg:p-8 lg:pr-12">
       {/* Desktop layout */}
       <div ref={containerRef} className="hidden lg:block relative">
         <svg className="absolute inset-0 pointer-events-none overflow-visible" style={{ width: '100%', height: '100%' }}>
@@ -395,7 +395,7 @@ const ArchitectureDiagram = () => {
       </div>
 
       {/* Relay option cards — visible on all screen sizes */}
-      <div className="flex flex-col md:flex-row items-stretch gap-4 mt-12 lg:mt-24 px-8">
+      <div className="flex flex-col md:flex-row items-stretch gap-4 mt-12 lg:mt-24 lg:px-8">
         <div ref={card1Ref} className="flex-1 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -407,7 +407,7 @@ const ArchitectureDiagram = () => {
                 <p className="text-sm text-muted-foreground">Run on your own Mac</p>
               </div>
             </div>
-            <span className="bg-primary/10 text-primary text-xs font-medium px-2.5 py-0.5 rounded-full">Option 1</span>
+            <span className="shrink-0 whitespace-nowrap bg-primary/10 text-primary text-xs font-medium px-2.5 py-0.5 rounded-full">Option 1</span>
           </div>
           <div className="space-y-3 mb-4">
             <div className="flex gap-3">
@@ -437,7 +437,7 @@ const ArchitectureDiagram = () => {
                 <p className="text-sm text-muted-foreground">We run it for you</p>
               </div>
             </div>
-            <span className="bg-blue-500/10 text-blue-500 text-xs font-medium px-2.5 py-0.5 rounded-full">Option 2</span>
+            <span className="shrink-0 whitespace-nowrap bg-blue-500/10 text-blue-500 text-xs font-medium px-2.5 py-0.5 rounded-full">Option 2</span>
           </div>
           <div className="space-y-3 mb-4">
             <div className="flex gap-3">
