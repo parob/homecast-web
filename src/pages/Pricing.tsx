@@ -44,7 +44,7 @@ function FeatureCell({ value }: { value: CellValue }) {
       </span>
     );
   }
-  return <span className="text-sm text-muted-foreground">{value}</span>;
+  return <span className="text-[11px] sm:text-sm text-muted-foreground">{value}</span>;
 }
 
 function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
@@ -68,10 +68,10 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
   ];
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm table-fixed">
+    <div>
+      <table className="w-full text-sm table-fixed">
         <colgroup>
-          <col className="w-[140px] sm:w-[200px]" />
+          <col className="w-[88px] sm:w-[200px]" />
           <col />
           <col />
           <col />
@@ -79,31 +79,31 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
         </colgroup>
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 bg-background w-[140px] sm:w-[200px]" />
+            <th className="w-[88px] sm:w-[200px]" />
             <th />
-            <th colSpan={3} className="border border-border/60 border-b-0 rounded-t-lg bg-muted/30 py-1.5 px-3">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Cloud className="h-3 w-3" />
+            <th colSpan={3} className="border border-border/60 border-b-0 rounded-t-lg bg-muted/30 py-1.5 px-1 sm:px-3">
+              <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-xs font-medium text-muted-foreground">
+                <Cloud className="h-3 w-3 shrink-0" />
                 Homecast Cloud
               </div>
             </th>
           </tr>
           <tr className="border-b border-border">
-            <th className="sticky left-0 z-10 bg-background text-left py-3 pr-4 font-medium text-muted-foreground w-[140px] sm:w-[200px]" />
-            <th className="py-3 px-3 font-semibold text-center">Community</th>
-            <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Basic</th>
-            <th className="py-3 px-3 font-semibold text-center border-l border-border/60 bg-muted/30">Standard</th>
-            <th className="py-3 px-3 font-semibold text-center border-x border-border/60 bg-muted/30">Cloud</th>
+            <th className="text-left py-3 pr-2 sm:pr-4 font-medium text-muted-foreground w-[88px] sm:w-[200px]" />
+            <th className="py-3 px-0.5 sm:px-3 font-semibold text-center text-[11px] leading-tight sm:text-sm">Community</th>
+            <th className="py-3 px-0.5 sm:px-3 font-semibold text-center text-[11px] leading-tight sm:text-sm border-l border-border/60 bg-muted/30">Basic</th>
+            <th className="py-3 px-0.5 sm:px-3 font-semibold text-center text-[11px] leading-tight sm:text-sm border-l border-border/60 bg-muted/30">Standard</th>
+            <th className="py-3 px-0.5 sm:px-3 font-semibold text-center text-[11px] leading-tight sm:text-sm border-x border-border/60 bg-muted/30">Cloud</th>
           </tr>
         </thead>
         <tbody>
           {features.map((row) => (
             <tr key={row.label} className="border-b border-border/50">
-              <td className="sticky left-0 z-10 bg-background py-3 pr-4 text-sm font-medium">{row.label}</td>
-              <td className="py-3 px-3 text-center"><FeatureCell value={row.community} /></td>
-              <td className="py-3 px-3 text-center"><FeatureCell value={row.basic} /></td>
-              <td className="py-3 px-3 text-center"><FeatureCell value={row.standard} /></td>
-              <td className="py-3 px-3 text-center"><FeatureCell value={row.cloud} /></td>
+              <td className="py-3 pr-2 sm:pr-4 text-xs sm:text-sm font-medium">{row.label}</td>
+              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.community} /></td>
+              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.basic} /></td>
+              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.standard} /></td>
+              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.cloud} /></td>
             </tr>
           ))}
         </tbody>
