@@ -13,6 +13,16 @@ import { toast } from 'sonner';
 
 type ConnState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
+// Connection toasts are only material where live data is on screen. A
+// logged-in user browsing marketing pages (/, /pricing, /how-it-works, …)
+// still holds a background socket; a reconnect there is invisible noise.
+const CONNECTION_TOAST_ROUTES = ['/portal', '/mqtt', '/diagnostics'];
+
+function connectionToastsEnabled(): boolean {
+  const path = window.location.pathname;
+  return CONNECTION_TOAST_ROUTES.some(p => path === p || path.startsWith(`${p}/`));
+}
+
 // Suppress a toast for a state that just fired within the debounce window.
 const DEBOUNCE_MS = 2_000;
 const lastShown = new Map<string, number>();
@@ -35,6 +45,9 @@ function shouldShow(key: string): boolean {
  * Boring transitions (connecting ↔ connected on first load) are silent.
  */
 export function toastConnection(prev: ConnState, next: ConnState): void {
+  // Marketing/auth pages: stay silent even with a live background socket.
+  if (!connectionToastsEnabled()) return;
+
   // First connection on page load is silent.
   if (prev === 'disconnected' && next === 'connecting') return;
   if (prev === 'connecting' && next === 'connected') return;
