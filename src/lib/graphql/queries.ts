@@ -777,6 +777,7 @@ export const GET_MY_ENROLLMENTS = gql`
       homeName
       status
       inviteEmail
+      matchedHomeId
       matchedHomeName
       needsHomeId
       createdAt

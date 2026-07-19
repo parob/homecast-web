@@ -188,7 +188,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
           <p className="text-[10px] text-muted-foreground">Region: {regionLabel(enrollment.region)}</p>
         )}
       </div>
-      {enrollment.status !== 'cancelled' && (
+      {enrollment.status !== 'cancelled' && enrollment.status !== 'active' && (
         <div className="flex justify-end">
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -198,24 +198,20 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
                 className="h-6 text-xs text-destructive hover:text-destructive"
                 onClick={(e) => e.stopPropagation()}
               >
-                {enrollment.status === 'active' ? 'Remove Cloud Relay' : 'Cancel Setup'}
+                Cancel Setup
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent style={{ zIndex: 10050 }} onClick={(e) => e.stopPropagation()}>
               <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {enrollment.status === 'active' ? `Remove "${enrollment.homeName}" from the cloud relay?` : 'Cancel Setup?'}
-                </AlertDialogTitle>
+                <AlertDialogTitle>Cancel Setup?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {enrollment.status === 'active'
-                    ? 'This disconnects the home from Homecast — remote access, API, and automations through Homecast stop working. Your Apple Home itself is untouched, and you can also remove the relay user from it in the Apple Home app. You can re-enroll this home at any time.'
-                    : 'This will cancel the cloud relay setup for this home.'}
+                  This will cancel the cloud relay setup for this home.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep</AlertDialogCancel>
                 <AlertDialogAction onClick={onCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  {enrollment.status === 'active' ? 'Remove' : 'Cancel Setup'}
+                  Cancel Setup
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -420,7 +416,13 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
 
   // If a home is selected, show its detail view (must be after all hooks)
   if (selectedHome) {
-    return <HomeDetailView home={selectedHome} developerMode={developerMode} />;
+    return (
+      <HomeDetailView
+        home={selectedHome}
+        developerMode={developerMode}
+        onCloudRelayRemoved={() => { setSelectedHome(null); refetch(); }}
+      />
+    );
   }
 
   if (!isCloudPlan) {

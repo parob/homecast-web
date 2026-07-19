@@ -18,18 +18,20 @@ import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER } from '@/lib/graphql/mutations';
+import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
+import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import { UptimeSection } from './UptimeSection';
-import type { HomeKitHome } from '@/lib/graphql/types';
+import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { useHomes } from '@/hooks/useHomeKitData';
 
 interface HomeDetailViewProps {
+  /** Called after this home's cloud relay enrollment is removed (navigates back). */
+  onCloudRelayRemoved?: () => void;
   home: HomeKitHome;
   developerMode?: boolean;
 }
@@ -106,7 +108,7 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
   );
 }
 
-export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailViewProps) {
+export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemoved }: HomeDetailViewProps) {
   // Keep the detail view fresh so relayLastSeenAt / relayConnected reflect the
   // live server state instead of a frozen snapshot taken at settings-open time.
   const { data: liveHomes, refetch: refetchHomes } = useHomes();
@@ -218,6 +220,34 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
   const isOwner = !home.role || home.role === 'owner';
   const isShared = !isOwner;
   const isCloudManaged = home.isCloudManaged === true;
+
+  // Active cloud-managed enrollment backing this home (removal lives here on
+  // the individual home page, not in the homes list).
+  const { data: enrollmentsData } = useQuery<MyCloudManagedEnrollmentsResponse>(GET_MY_ENROLLMENTS, {
+    skip: !isCloudManaged || isCommunity,
+    fetchPolicy: 'cache-and-network',
+  });
+  const cloudEnrollment = (enrollmentsData?.myCloudManagedEnrollments || []).find(
+    e => e.status === 'active' && (
+      (e.matchedHomeId && e.matchedHomeId.toUpperCase() === home.id.toUpperCase()) ||
+      (e.matchedHomeName || e.homeName).toLowerCase() === home.name.toLowerCase()
+    )
+  );
+  const [cancelEnrollment] = useMutation(CANCEL_CLOUD_MANAGED_ENROLLMENT);
+  const [removingRelay, setRemovingRelay] = useState(false);
+  const handleRemoveFromCloudRelay = async () => {
+    if (!cloudEnrollment) return;
+    setRemovingRelay(true);
+    try {
+      await cancelEnrollment({ variables: { enrollmentId: cloudEnrollment.id } });
+      toast.success(`${home.name} removed from cloud relay`);
+      onCloudRelayRemoved?.();
+    } catch {
+      toast.error('Failed to remove home from cloud relay');
+    } finally {
+      setRemovingRelay(false);
+    }
+  };
   const relayKindLabel = isCloudManaged ? 'Cloud Relay' : 'Self-hosted relay';
   const RelayKindIcon = isCloudManaged ? Cloud : Monitor;
   const roleLabel = isShared
@@ -429,6 +459,39 @@ export function HomeDetailView({ home: homeProp, developerMode }: HomeDetailView
 
       {/* Notification Preferences (cloud only) */}
       {!isCommunity && <HomeNotificationPreferences homeId={home.id} />}
+
+      {/* Remove from cloud relay — only for the enrollment owner of a cloud-managed home */}
+      {isCloudManaged && cloudEnrollment && (
+        <div className="flex justify-end pt-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-xs text-destructive hover:text-destructive" disabled={removingRelay}>
+                {removingRelay ? 'Removing…' : 'Remove Home from Cloud Relay'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent style={{ zIndex: 10050 }}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove "{home.name}" from the cloud relay?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This disconnects the home from Homecast — remote access, API, and automations
+                  through Homecast stop working. Your Apple Home itself is untouched; you can also
+                  remove the relay user from it in the Apple Home app. You can re-enroll this home
+                  at any time.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => { void handleRemoveFromCloudRelay(); }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Remove
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
 
       <AddBrokerDialog
         open={addOpen}

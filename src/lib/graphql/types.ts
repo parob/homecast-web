@@ -1751,6 +1751,7 @@ export interface CustomerEnrollmentInfo {
   homeName: string;
   status: string;
   inviteEmail: string | null;
+  matchedHomeId: string | null;
   matchedHomeName: string | null;
   needsHomeId: boolean;
   createdAt: string;
