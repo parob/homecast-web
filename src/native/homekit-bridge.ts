@@ -220,6 +220,20 @@ export const HomeKit = {
     return bridge.call<HomeKitRoom[]>('rooms.list', { homeId });
   },
 
+  /** Create a room (no accessory needed) — used for the enrollment code
+   *  challenge. Requires the 1.1.4+ native build. */
+  async createRoom(homeId: string, name: string): Promise<{ id: string; name: string }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('room.create', { homeId, name });
+  },
+
+  async deleteRoom(homeId: string, roomId: string): Promise<{ success: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('room.delete', { homeId, roomId });
+  },
+
   /**
    * List zones in a home
    */

@@ -153,7 +153,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
           <div className="space-y-1.5 mt-1">
             <p className="text-xs text-muted-foreground">
               Waiting for the relay to accept — usually within a minute, occasionally up to 24 hours.
-              Once it joins, a scene named <strong>"Homecast Code&nbsp;····"</strong> appears in your
+              Once it joins, <strong>"Homecast Code&nbsp;····"</strong> appears in your
               Apple Home app and you'll verify your home here.
             </p>
             <button
@@ -167,7 +167,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
         {enrollment.status === 'invite_sent' && enrollment.codeEntryAvailable && onVerifyCode && (
           <div className="space-y-2 mt-1" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-muted-foreground">
-              The relay has joined. To verify this is your home, find the scene named{' '}
+              The relay has joined. To verify this is your home, find{' '}
               <strong>"Homecast Code&nbsp;XXXX"</strong> in your Apple Home app and enter the
               4-character code:
             </p>
@@ -188,9 +188,9 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
             <CollapsibleHelp title="Where do I find the code?">
               <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">1</span><span>Open the <strong>Home</strong> app on your iPhone, iPad, or Mac</span></div>
               <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">2</span><span>Make sure the right home is selected (top-left home picker)</span></div>
-              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">3</span><span>Look at your <strong>Scenes</strong> — you'll see one named <strong>"Homecast Code XXXX"</strong></span></div>
-              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">4</span><span>Type the 4 characters after "Homecast Code" into the box above — the scene disappears automatically once verified</span></div>
-              <p className="text-muted-foreground mt-1">Don't tap the scene itself — it does nothing, it's just how we deliver the code securely inside your home.</p>
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">3</span><span>Look for something named <strong>"Homecast Code XXXX"</strong> (it appears as a room or scene)</span></div>
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">4</span><span>Type the 4 characters after "Homecast Code" into the box above — it disappears automatically once verified</span></div>
+              <p className="text-muted-foreground mt-1">It's empty and does nothing — just how we deliver the code securely inside your home.</p>
             </CollapsibleHelp>
           </div>
         )}

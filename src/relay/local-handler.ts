@@ -240,6 +240,16 @@ export async function executeHomeKitAction(
       return { homeId, rooms: await HomeKit.listRooms(homeId) };
     }
 
+    case 'room.create': {
+      const { homeId, name } = payload as { homeId: string; name: string };
+      return await HomeKit.createRoom(homeId, name);
+    }
+
+    case 'room.delete': {
+      const { homeId, roomId } = payload as { homeId: string; roomId: string };
+      return await HomeKit.deleteRoom(homeId, roomId);
+    }
+
     case 'zones.list': {
       const { homeId } = payload as { homeId: string };
       return { homeId, zones: await HomeKit.listZones(homeId) };
