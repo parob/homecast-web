@@ -24,11 +24,12 @@ import { isCommunity } from '@/lib/config';
 import { regionLabel } from '@/lib/regions';
 import { config } from '@/lib/config';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, UPDATE_CLOUD_MANAGED_HOME_NAME } from '@/lib/graphql/mutations';
+import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, UPDATE_CLOUD_MANAGED_HOME_NAME, VERIFY_CLOUD_MANAGED_HOME } from '@/lib/graphql/mutations';
 import type {
   MyCloudManagedEnrollmentsResponse,
   CreateCloudManagedCheckoutResponse,
   CustomerEnrollmentInfo,
+  VerifyCloudManagedHomeResponse,
   HomeKitHome,
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
@@ -62,23 +63,44 @@ function statusBadge(status: string) {
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-orange-500/20 text-orange-700 dark:text-orange-400">Action Needed</Badge>;
     case 'awaiting_relay':
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Awaiting Relay</Badge>;
+    case 'expired':
+      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground">Expired</Badge>;
     default:
       return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status}</Badge>;
   }
 }
 
-function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onRename, developerMode, onClick }: {
+function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onRename, onVerifyCode, onRestart, developerMode, onClick }: {
   enrollment: CustomerEnrollmentInfo;
   onCancel: () => void;
   onConfirmInvite: () => void;
   onResetInvite: () => void;
   onRename?: (name: string) => Promise<void>;
+  onVerifyCode?: (code: string) => Promise<{ success: boolean; error?: string | null }>;
+  onRestart?: () => void;
   developerMode?: boolean;
   onClick?: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(enrollment.homeName);
   const [savingName, setSavingName] = useState(false);
+  const [codeDraft, setCodeDraft] = useState('');
+  const [verifyingCode, setVerifyingCode] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  const submitCode = async () => {
+    if (!onVerifyCode || codeDraft.trim().length < 4) return;
+    setVerifyingCode(true);
+    setCodeError(null);
+    try {
+      const result = await onVerifyCode(codeDraft.trim());
+      if (!result.success) setCodeError(result.error || 'Verification failed — try again');
+    } catch {
+      setCodeError('Verification failed — try again');
+    } finally {
+      setVerifyingCode(false);
+    }
+  };
   // A mistyped name can never match a home on the relay, so it must be
   // correctable any time before the enrollment goes active.
   const canRename = !!onRename &&
@@ -148,7 +170,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
       </div>
       <div className="space-y-0.5">
         <p className="text-xs text-muted-foreground">
-          {enrollment.status === 'active' ? (enrollment.inviteEmail ? `Managed by Homecast Cloud · ${enrollment.inviteEmail}` : 'Managed by Homecast Cloud') : enrollment.status === 'pending' ? 'Setting up cloud relay...' : enrollment.status === 'invite_sent' ? 'Waiting for relay to accept' : enrollment.status === 'needs_home_id' ? 'Action needed' : 'Cloud relay · ' + enrollment.status}
+          {enrollment.status === 'active' ? (enrollment.inviteEmail ? `Managed by Homecast Cloud · ${enrollment.inviteEmail}` : 'Managed by Homecast Cloud') : enrollment.status === 'pending' ? 'Setting up cloud relay...' : enrollment.status === 'invite_sent' ? (enrollment.codeEntryAvailable ? 'Verify your home to finish setup' : 'Waiting for relay to accept') : enrollment.status === 'needs_home_id' ? 'Action needed' : enrollment.status === 'expired' ? 'Setup expired' : 'Cloud relay · ' + enrollment.status}
         </p>
         {enrollment.status === 'pending' && enrollment.inviteEmail && (
           <div className="space-y-2 mt-1">
@@ -170,9 +192,13 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
             </Button>
           </div>
         )}
-        {enrollment.status === 'invite_sent' && (
+        {enrollment.status === 'invite_sent' && !enrollment.codeEntryAvailable && (
           <div className="space-y-1.5 mt-1">
-            <p className="text-xs text-muted-foreground">Waiting for the relay to accept — may take up to 24 hours.</p>
+            <p className="text-xs text-muted-foreground">
+              Waiting for the relay to accept — usually within a minute, occasionally up to 24 hours.
+              Once it joins, a scene named <strong>"Homecast Code&nbsp;····"</strong> appears in your
+              Apple Home app and you'll verify your home here.
+            </p>
             <button
               className="text-xs text-muted-foreground underline hover:text-foreground"
               onClick={onResetInvite}
@@ -181,8 +207,48 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
             </button>
           </div>
         )}
+        {enrollment.status === 'invite_sent' && enrollment.codeEntryAvailable && onVerifyCode && (
+          <div className="space-y-2 mt-1" onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs text-muted-foreground">
+              The relay has joined. To verify this is your home, find the scene named{' '}
+              <strong>"Homecast Code&nbsp;XXXX"</strong> in your Apple Home app and enter the
+              4-character code:
+            </p>
+            <div className="flex items-center gap-1.5">
+              <Input
+                value={codeDraft}
+                onChange={(e) => { setCodeDraft(e.target.value.toUpperCase()); setCodeError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }}
+                placeholder="e.g. 4F2K"
+                maxLength={4}
+                className="h-8 w-28 text-sm font-mono tracking-widest uppercase"
+              />
+              <Button size="sm" className="h-8" onClick={() => void submitCode()} disabled={verifyingCode || codeDraft.trim().length < 4}>
+                {verifyingCode ? 'Verifying…' : 'Verify Home'}
+              </Button>
+            </div>
+            {codeError && <p className="text-xs text-destructive">{codeError}</p>}
+            <CollapsibleHelp title="Where do I find the code?">
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">1</span><span>Open the <strong>Home</strong> app on your iPhone, iPad, or Mac</span></div>
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">2</span><span>Make sure the right home is selected (top-left home picker)</span></div>
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">3</span><span>Look at your <strong>Scenes</strong> — you'll see one named <strong>"Homecast Code XXXX"</strong></span></div>
+              <div className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold">4</span><span>Type the 4 characters after "Homecast Code" into the box above — the scene disappears automatically once verified</span></div>
+              <p className="text-muted-foreground mt-1">Don't tap the scene itself — it does nothing, it's just how we deliver the code securely inside your home.</p>
+            </CollapsibleHelp>
+          </div>
+        )}
         {enrollment.status === 'needs_home_id' && (
           <p className="text-xs text-muted-foreground">Multiple homes found with this name</p>
+        )}
+        {enrollment.status === 'expired' && (
+          <div className="space-y-1.5 mt-1">
+            <p className="text-xs text-muted-foreground">Setup wasn't completed within 48 hours and has expired.</p>
+            {onRestart && (
+              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onRestart(); }}>
+                Restart Setup
+              </Button>
+            )}
+          </div>
         )}
         {developerMode && enrollment.region && (
           <p className="text-[10px] text-muted-foreground">Region: {regionLabel(enrollment.region)}</p>
@@ -335,6 +401,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const [confirmInviteSent] = useMutation(CONFIRM_INVITE_SENT);
   const [resetInviteStatus] = useMutation(RESET_INVITE_STATUS);
   const [updateHomeName] = useMutation(UPDATE_CLOUD_MANAGED_HOME_NAME);
+  const [verifyHome] = useMutation<VerifyCloudManagedHomeResponse>(VERIFY_CLOUD_MANAGED_HOME);
 
   const enrollments = (data?.myCloudManagedEnrollments || []).filter(e => e.status !== 'cancelled');
   const enrolledHomeNames = new Set(enrollments.map(e => e.homeName.toLowerCase()));
@@ -494,6 +561,24 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 onRename={async (name) => {
                   await updateHomeName({ variables: { enrollmentId: enrollment.id, homeName: name } });
                   await refetch();
+                }}
+                onVerifyCode={async (code) => {
+                  const r = await verifyHome({ variables: { enrollmentId: enrollment.id, code } });
+                  const result = (r.data as VerifyCloudManagedHomeResponse | undefined)?.verifyCloudManagedHome;
+                  if (result?.success) {
+                    toast.success(`${enrollment.homeName} verified and connected`);
+                    await refetch();
+                    refetchHomes();
+                  }
+                  return result || { success: false, error: 'Verification failed' };
+                }}
+                onRestart={async () => {
+                  try {
+                    const r = await createCheckout({ variables: { homeName: enrollment.homeName } });
+                    const res = (r.data as CreateCloudManagedCheckoutResponse | undefined)?.createCloudManagedCheckout;
+                    if (res?.enrollmentId) { toast.success('Setup restarted'); await refetch(); }
+                    else if (res?.error) toast.error(res.error);
+                  } catch { toast.error('Failed to restart setup'); }
                 }}
                 developerMode={developerMode}
                 onClick={matchedHome ? () => handleSelectHome(matchedHome) : undefined}

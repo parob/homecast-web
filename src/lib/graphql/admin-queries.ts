@@ -531,6 +531,37 @@ export const UPDATE_MANAGED_USER = gql`
   }
 `;
 
+export const ADMIN_UNBOUND_HOMES = gql`
+  query AdminUnboundHomes {
+    adminUnboundHomes {
+      homeId
+      homeName
+      relayEmail
+      bindCode
+      firstSeenAt
+      cleanupAt
+      inflightEnrollments {
+        id
+        customerEmail
+        status
+        createdAt
+      }
+    }
+  }
+`;
+
+export const ADMIN_FORCE_HOME_LEAVE = gql`
+  mutation AdminForceHomeLeave($homeId: String!) {
+    adminForceHomeLeave(homeId: $homeId)
+  }
+`;
+
+export const ADMIN_BIND_HOME = gql`
+  mutation AdminBindHome($enrollmentId: String!, $homeId: String!) {
+    adminBindHome(enrollmentId: $enrollmentId, homeId: $homeId)
+  }
+`;
+
 export const GET_PENDING_ENROLLMENTS = gql`
   query GetPendingEnrollments($limit: Int) {
     pendingEnrollments(limit: $limit) {

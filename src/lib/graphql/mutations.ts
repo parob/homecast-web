@@ -181,6 +181,15 @@ export const UPDATE_CLOUD_MANAGED_HOME_NAME = gql`
   }
 `;
 
+export const VERIFY_CLOUD_MANAGED_HOME = gql`
+  mutation VerifyCloudManagedHome($enrollmentId: String!, $code: String!) {
+    verifyCloudManagedHome(enrollmentId: $enrollmentId, code: $code) {
+      success
+      error
+    }
+  }
+`;
+
 export const RESOLVE_CLOUD_MANAGED_HOME_ID = gql`
   mutation ResolveCloudManagedHomeId($enrollmentId: String!, $homeId: String!) {
     resolveCloudManagedHomeId(enrollmentId: $enrollmentId, homeId: $homeId) {

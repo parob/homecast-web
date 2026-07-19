@@ -783,6 +783,7 @@ export const GET_MY_ENROLLMENTS = gql`
       createdAt
       matchedAt
       region
+      codeEntryAvailable
     }
   }
 `;

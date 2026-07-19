@@ -474,9 +474,9 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
                 <AlertDialogTitle>Remove "{home.name}" from the cloud relay?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This disconnects the home from Homecast — remote access, API, and automations
-                  through Homecast stop working. Your Apple Home itself is untouched; you can also
-                  remove the relay user from it in the Apple Home app. You can re-enroll this home
-                  at any time.
+                  through Homecast stop working, and the relay leaves your Apple Home. Your Apple
+                  Home itself is untouched. To re-add the home later you'll send the relay a fresh
+                  invitation, just like the first time.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

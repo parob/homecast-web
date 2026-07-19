@@ -1757,6 +1757,29 @@ export interface CustomerEnrollmentInfo {
   createdAt: string;
   matchedAt: string | null;
   region: string | null;
+  codeEntryAvailable: boolean;
+}
+
+export interface AdminUnboundHomeInfo {
+  homeId: string;
+  homeName: string;
+  relayEmail: string;
+  bindCode: string | null;
+  firstSeenAt: string | null;
+  cleanupAt: string | null;
+  inflightEnrollments: Array<{
+    id: string;
+    customerEmail: string;
+    status: string;
+    createdAt: string;
+  }>;
+}
+
+export interface VerifyCloudManagedHomeResponse {
+  verifyCloudManagedHome: {
+    success: boolean;
+    error: string | null;
+  };
 }
 
 export interface CloudManagedCheckoutResult {
