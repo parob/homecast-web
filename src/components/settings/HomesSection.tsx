@@ -34,7 +34,7 @@ import type {
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
-import { useHomes } from '@/hooks/useHomeKitData';
+import { useHomes, invalidateHomeKitCache } from '@/hooks/useHomeKitData';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -487,7 +487,15 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
       <HomeDetailView
         home={selectedHome}
         developerMode={developerMode}
-        onCloudRelayRemoved={() => { setSelectedHome(null); refetch(); }}
+        onCloudRelayRemoved={() => {
+          setSelectedHome(null);
+          // The homes list is served from the client-side HomeKit cache —
+          // drop it so the removed home disappears immediately rather than
+          // lingering until the TTL expires.
+          invalidateHomeKitCache('homes');
+          refetch();
+          refetchHomes();
+        }}
       />
     );
   }
