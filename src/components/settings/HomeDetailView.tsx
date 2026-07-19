@@ -484,7 +484,7 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
                         We recommend also removing the relay from your home: in the Apple Home app,
                         open <strong>Home Settings</strong>, tap{' '}
                         <strong className="font-mono text-xs">{cloudEnrollment.inviteEmail}</strong>{' '}
-                        and choose <strong>Remove</strong>. (Optional — but tidiest.)
+                        and choose <strong>Remove</strong>.
                       </p>
                     )}
                   </div>
