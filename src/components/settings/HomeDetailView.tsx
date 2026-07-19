@@ -472,11 +472,22 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
             <AlertDialogContent style={{ zIndex: 10050 }}>
               <AlertDialogHeader>
                 <AlertDialogTitle>Remove "{home.name}" from the cloud relay?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This disconnects the home from Homecast — remote access, API, and automations
-                  through Homecast stop working, and the relay leaves your Apple Home. Your Apple
-                  Home itself is untouched. To re-add the home later you'll send the relay a fresh
-                  invitation, just like the first time.
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2">
+                    <p>
+                      This disconnects the home from Homecast — remote access, API, and automations
+                      through Homecast stop working. Your Apple Home itself is untouched, and you
+                      can re-enroll at any time.
+                    </p>
+                    {cloudEnrollment?.inviteEmail && (
+                      <p>
+                        We recommend also removing the relay from your home: in the Apple Home app,
+                        open <strong>Home Settings</strong>, tap{' '}
+                        <strong className="font-mono text-xs">{cloudEnrollment.inviteEmail}</strong>{' '}
+                        and choose <strong>Remove</strong>. (Optional — but tidiest.)
+                      </p>
+                    )}
+                  </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

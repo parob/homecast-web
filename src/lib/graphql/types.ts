@@ -1766,7 +1766,6 @@ export interface AdminUnboundHomeInfo {
   relayEmail: string;
   bindCode: string | null;
   firstSeenAt: string | null;
-  cleanupAt: string | null;
   inflightEnrollments: Array<{
     id: string;
     customerEmail: string;

@@ -327,14 +327,6 @@ export async function executeHomeKitAction(
       return await HomeKit.deleteScene(sceneId);
     }
 
-    case 'home.leave': {
-      // Relay leaves a shared Apple Home (enrollment removal hygiene).
-      // Pre-1.1.4 native builds reject this with UNKNOWN_METHOD — the
-      // server tolerates that.
-      const { homeId } = payload as { homeId: string };
-      return await HomeKit.leaveHome(homeId);
-    }
-
     case 'scene.create': {
       const { homeId, name, actions } = payload as {
         homeId: string;

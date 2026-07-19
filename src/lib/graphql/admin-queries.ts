@@ -539,7 +539,6 @@ export const ADMIN_UNBOUND_HOMES = gql`
       relayEmail
       bindCode
       firstSeenAt
-      cleanupAt
       inflightEnrollments {
         id
         customerEmail
@@ -547,12 +546,6 @@ export const ADMIN_UNBOUND_HOMES = gql`
         createdAt
       }
     }
-  }
-`;
-
-export const ADMIN_FORCE_HOME_LEAVE = gql`
-  mutation AdminForceHomeLeave($homeId: String!) {
-    adminForceHomeLeave(homeId: $homeId)
   }
 `;
 
