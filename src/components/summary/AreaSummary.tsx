@@ -41,9 +41,19 @@ interface SummaryItemProps {
   isDarkBackground?: boolean;
 }
 
+// Once the tooltip opens (usually from hover), clicks can't close it again until
+// this much time has passed — otherwise the click that follows a hover-open
+// immediately dismisses the tooltip the user was trying to open.
+const CLICK_CLOSE_GRACE_MS = 1000;
+
 function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackground }: SummaryItemProps) {
   const [open, setOpen] = useState(false);
-  const clickedRef = useRef(false);
+  const openedAtRef = useRef(0);
+  // Radix closes an open tooltip on pointerdown, before click fires — so the
+  // click toggle must decide from the state at press time, not at click time.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const pressOpenRef = useRef<boolean | null>(null);
 
   const variantStyles = {
     default: isDarkBackground
@@ -66,20 +76,33 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
       <Tooltip
         open={open}
         onOpenChange={(value) => {
-          // If the tooltip is being closed but we just clicked, keep it open
-          if (!value && clickedRef.current) {
-            clickedRef.current = false;
-            return;
-          }
+          if (value) openedAtRef.current = Date.now();
           setOpen(value);
         }}
       >
         <TooltipTrigger asChild>
           <button
             type="button"
-            onClick={() => {
-              clickedRef.current = true;
-              setOpen(prev => !prev);
+            // preventDefault suppresses Radix's internal close-on-press where
+            // the event is cancelable, avoiding a closed flicker mid-press
+            onPointerDown={(e) => {
+              pressOpenRef.current = openRef.current;
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              const wasOpen = pressOpenRef.current ?? openRef.current;
+              pressOpenRef.current = null;
+              if (!wasOpen) {
+                openedAtRef.current = Date.now();
+                setOpen(true);
+              } else if (Date.now() - openedAtRef.current >= CLICK_CLOSE_GRACE_MS) {
+                setOpen(false);
+              } else {
+                // Freshly opened (usually by the hover preceding this click):
+                // keep it open, restoring it if Radix's press-close slipped through
+                setOpen(true);
+              }
             }}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors cursor-default',
