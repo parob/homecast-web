@@ -141,8 +141,8 @@ export const REGISTER_CLOUD_INTEREST = gql`
 `;
 
 export const CREATE_CLOUD_MANAGED_CHECKOUT = gql`
-  mutation CreateCloudManagedCheckout($homeName: String!, $region: String) {
-    createCloudManagedCheckout(homeName: $homeName, region: $region) {
+  mutation CreateCloudManagedCheckout($region: String) {
+    createCloudManagedCheckout(region: $region) {
       success
       checkoutUrl
       enrollmentId

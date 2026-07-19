@@ -15,16 +15,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight, Pencil } from 'lucide-react';
+import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-react';
 import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
 import { usePricing, getPricing } from '@/lib/pricing';
 import { isNativePurchaseAvailable } from '@/lib/platform';
 import { isCommunity } from '@/lib/config';
-import { regionLabel } from '@/lib/regions';
+import { regionLabel, guessRegion, REGION_OPTIONS } from '@/lib/regions';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { config } from '@/lib/config';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, UPDATE_CLOUD_MANAGED_HOME_NAME, VERIFY_CLOUD_MANAGED_HOME } from '@/lib/graphql/mutations';
+import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, VERIFY_CLOUD_MANAGED_HOME } from '@/lib/graphql/mutations';
 import type {
   MyCloudManagedEnrollmentsResponse,
   CreateCloudManagedCheckoutResponse,
@@ -70,20 +71,16 @@ function statusBadge(status: string) {
   }
 }
 
-function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onRename, onVerifyCode, onRestart, developerMode, onClick }: {
+function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onVerifyCode, onRestart, developerMode, onClick }: {
   enrollment: CustomerEnrollmentInfo;
   onCancel: () => void;
   onConfirmInvite: () => void;
   onResetInvite: () => void;
-  onRename?: (name: string) => Promise<void>;
   onVerifyCode?: (code: string) => Promise<{ success: boolean; error?: string | null }>;
   onRestart?: () => void;
   developerMode?: boolean;
   onClick?: () => void;
 }) {
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState(enrollment.homeName);
-  const [savingName, setSavingName] = useState(false);
   const [codeDraft, setCodeDraft] = useState('');
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -101,22 +98,12 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
       setVerifyingCode(false);
     }
   };
-  // A mistyped name can never match a home on the relay, so it must be
-  // correctable any time before the enrollment goes active.
-  const canRename = !!onRename &&
-    ['pending', 'invite_sent', 'awaiting_relay', 'needs_home_id'].includes(enrollment.status);
 
-  const saveName = async () => {
-    const name = nameDraft.trim();
-    if (!name || name === enrollment.homeName) { setEditingName(false); return; }
-    setSavingName(true);
-    try {
-      await onRename!(name);
-      setEditingName(false);
-    } finally {
-      setSavingName(false);
-    }
-  };
+  // Before binding, the enrollment carries a placeholder label; the real
+  // Apple Home name is adopted on verification.
+  const displayName = enrollment.status === 'active'
+    ? enrollment.homeName
+    : (enrollment.homeName && enrollment.homeName !== 'New home' ? enrollment.homeName : 'New cloud home');
 
   return (
     <div
@@ -127,37 +114,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          {editingName ? (
-            <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
-              <Input
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void saveName();
-                  if (e.key === 'Escape') { setNameDraft(enrollment.homeName); setEditingName(false); }
-                }}
-                className="h-7 text-sm"
-                maxLength={100}
-                autoFocus
-              />
-              <Button size="sm" className="h-7 text-xs" onClick={() => void saveName()} disabled={savingName || !nameDraft.trim()}>
-                {savingName ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          ) : (
-            <>
-              <span className="text-sm font-medium truncate">{enrollment.homeName}</span>
-              {canRename && (
-                <button
-                  className="text-muted-foreground hover:text-foreground shrink-0"
-                  title="Edit home name"
-                  onClick={(e) => { e.stopPropagation(); setNameDraft(enrollment.homeName); setEditingName(true); }}
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-            </>
-          )}
+          <span className="text-sm font-medium truncate">{displayName}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {enrollment.status === 'active' ? (
@@ -365,8 +322,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   }, []);
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [homeName, setHomeName] = useState(prefilledHomeName || '');
-  const [homeNameLocked, setHomeNameLocked] = useState(false);
+  const [region, setRegion] = useState(guessRegion());
   const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
   const [loading, setLoading] = useState(false);
   const handleSelectHome = (home: HomeKitHome) => {
@@ -400,7 +356,6 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const [cancelEnrollment] = useMutation(CANCEL_CLOUD_MANAGED_ENROLLMENT);
   const [confirmInviteSent] = useMutation(CONFIRM_INVITE_SENT);
   const [resetInviteStatus] = useMutation(RESET_INVITE_STATUS);
-  const [updateHomeName] = useMutation(UPDATE_CLOUD_MANAGED_HOME_NAME);
   const [verifyHome] = useMutation<VerifyCloudManagedHomeResponse>(VERIFY_CLOUD_MANAGED_HOME);
 
   const enrollments = (data?.myCloudManagedEnrollments || []).filter(e => e.status !== 'cancelled');
@@ -456,20 +411,15 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   }, [resetInviteStatus, refetch]);
 
   const handleAdd = useCallback(async () => {
-    if (!homeName.trim()) {
-      toast.error('Please enter a home name');
-      return;
-    }
     setLoading(true);
     try {
       const { data: result } = await createCheckout({
-        variables: { homeName: homeName.trim() },
+        variables: { region },
       });
       const r = result?.createCloudManagedCheckout;
       if (r?.enrollmentId) {
-        toast.success('Home added to cloud relay!');
+        toast.success('Cloud home setup started');
         setAddDialogOpen(false);
-        setHomeName('');
         refetch();
       } else if (r?.error) {
         toast.error(r.error);
@@ -479,7 +429,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     } finally {
       setLoading(false);
     }
-  }, [homeName, createCheckout, refetch]);
+  }, [region, createCheckout, refetch]);
 
   // If a home is selected, show its detail view (must be after all hooks)
   if (selectedHome) {
@@ -566,15 +516,11 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 onCancel={() => handleCancel(enrollment.id)}
                 onConfirmInvite={() => handleConfirmInvite(enrollment.id)}
                 onResetInvite={() => handleResetInvite(enrollment.id)}
-                onRename={async (name) => {
-                  await updateHomeName({ variables: { enrollmentId: enrollment.id, homeName: name } });
-                  await refetch();
-                }}
                 onVerifyCode={async (code) => {
                   const r = await verifyHome({ variables: { enrollmentId: enrollment.id, code } });
                   const result = (r.data as VerifyCloudManagedHomeResponse | undefined)?.verifyCloudManagedHome;
                   if (result?.success) {
-                    toast.success(`${enrollment.homeName} verified and connected`);
+                    toast.success('Home verified and connected');
                     await refetch();
                     refetchHomes();
                   }
@@ -582,7 +528,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 }}
                 onRestart={async () => {
                   try {
-                    const r = await createCheckout({ variables: { homeName: enrollment.homeName } });
+                    const r = await createCheckout({ variables: { region: enrollment.region || guessRegion() } });
                     const res = (r.data as CreateCloudManagedCheckoutResponse | undefined)?.createCloudManagedCheckout;
                     if (res?.enrollmentId) { toast.success('Setup restarted'); await refetch(); }
                     else if (res?.error) toast.error(res.error);
@@ -598,7 +544,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               <SelfHostedHomeCard
                 key={home.id}
                 home={home}
-                onSwitchToCloud={() => { setHomeName(home.name); setHomeNameLocked(true); setAddDialogOpen(true); }}
+                onSwitchToCloud={() => { setRegion(guessRegion()); setAddDialogOpen(true); }}
                 onClick={() => handleSelectHome(home)}
               />
             ))}
@@ -619,7 +565,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => { setHomeName(prefilledHomeName || ''); setHomeNameLocked(false); setAddDialogOpen(true); }}
+            onClick={() => { setRegion(guessRegion()); setAddDialogOpen(true); }}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Home to Cloud Relay
@@ -637,22 +583,26 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-xs font-medium">Apple Home Name</label>
-              <Input
-                placeholder="My Home"
-                value={homeName}
-                onChange={(e) => setHomeName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                autoFocus={!homeNameLocked}
-                disabled={homeNameLocked}
-              />
+              <label className="text-xs font-medium">Where is your home?</label>
+              <Select value={region} onValueChange={setRegion}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent style={{ zIndex: 10040 }}>
+                  {REGION_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Enter the exact name of your Apple Home to set up a cloud relay.
+              We'll connect your home to a relay near you for the fastest control.
+              You'll pick your exact home in the next step, after inviting the relay
+              in the Apple Home app.
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleAdd} disabled={loading || !homeName.trim()}>
+              <Button size="sm" onClick={handleAdd} disabled={loading}>
                 {loading ? 'Loading...' : 'Continue'}
               </Button>
             </div>
