@@ -341,6 +341,16 @@ export const HomeKit = {
   },
 
   /**
+   * Leave a shared home (cloud-managed removal hygiene). Requires the 1.1.4
+   * native build; older builds throw UNKNOWN_METHOD.
+   */
+  async leaveHome(homeId: string): Promise<{ success: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('home.leave', { homeId });
+  },
+
+  /**
    * Create a scene (named snapshot of device states)
    */
   async createScene(homeId: string, name: string, actions: Array<{ accessoryId: string; characteristicType: string; targetValue: unknown }>): Promise<HomeKitScene> {
