@@ -175,6 +175,12 @@ export const RESET_INVITE_STATUS = gql`
   }
 `;
 
+export const UPDATE_CLOUD_MANAGED_HOME_NAME = gql`
+  mutation UpdateCloudManagedHomeName($enrollmentId: String!, $homeName: String!) {
+    updateCloudManagedHomeName(enrollmentId: $enrollmentId, homeName: $homeName)
+  }
+`;
+
 export const RESOLVE_CLOUD_MANAGED_HOME_ID = gql`
   mutation ResolveCloudManagedHomeId($enrollmentId: String!, $homeId: String!) {
     resolveCloudManagedHomeId(enrollmentId: $enrollmentId, homeId: $homeId) {

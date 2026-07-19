@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-react';
+import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight, Pencil } from 'lucide-react';
 import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
 import { usePricing, getPricing } from '@/lib/pricing';
@@ -24,7 +24,7 @@ import { isCommunity } from '@/lib/config';
 import { regionLabel } from '@/lib/regions';
 import { config } from '@/lib/config';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS } from '@/lib/graphql/mutations';
+import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, UPDATE_CLOUD_MANAGED_HOME_NAME } from '@/lib/graphql/mutations';
 import type {
   MyCloudManagedEnrollmentsResponse,
   CreateCloudManagedCheckoutResponse,
@@ -67,14 +67,35 @@ function statusBadge(status: string) {
   }
 }
 
-function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, developerMode, onClick }: {
+function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onRename, developerMode, onClick }: {
   enrollment: CustomerEnrollmentInfo;
   onCancel: () => void;
   onConfirmInvite: () => void;
   onResetInvite: () => void;
+  onRename?: (name: string) => Promise<void>;
   developerMode?: boolean;
   onClick?: () => void;
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(enrollment.homeName);
+  const [savingName, setSavingName] = useState(false);
+  // A mistyped name can never match a home on the relay, so it must be
+  // correctable any time before the enrollment goes active.
+  const canRename = !!onRename &&
+    ['pending', 'invite_sent', 'awaiting_relay', 'needs_home_id'].includes(enrollment.status);
+
+  const saveName = async () => {
+    const name = nameDraft.trim();
+    if (!name || name === enrollment.homeName) { setEditingName(false); return; }
+    setSavingName(true);
+    try {
+      await onRename!(name);
+      setEditingName(false);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   return (
     <div
       className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
@@ -82,9 +103,39 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
       role={onClick ? 'button' : undefined}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium truncate">{enrollment.homeName}</span>
+          {editingName ? (
+            <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
+              <Input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void saveName();
+                  if (e.key === 'Escape') { setNameDraft(enrollment.homeName); setEditingName(false); }
+                }}
+                className="h-7 text-sm"
+                maxLength={100}
+                autoFocus
+              />
+              <Button size="sm" className="h-7 text-xs" onClick={() => void saveName()} disabled={savingName || !nameDraft.trim()}>
+                {savingName ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <span className="text-sm font-medium truncate">{enrollment.homeName}</span>
+              {canRename && (
+                <button
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                  title="Edit home name"
+                  onClick={(e) => { e.stopPropagation(); setNameDraft(enrollment.homeName); setEditingName(true); }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {enrollment.status === 'active' ? (
@@ -137,25 +188,34 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
           <p className="text-[10px] text-muted-foreground">Region: {regionLabel(enrollment.region)}</p>
         )}
       </div>
-      {enrollment.status !== 'cancelled' && enrollment.status !== 'active' && (
+      {enrollment.status !== 'cancelled' && (
         <div className="flex justify-end">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 text-xs text-destructive hover:text-destructive">
-                Cancel Setup
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs text-destructive hover:text-destructive"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {enrollment.status === 'active' ? 'Remove Cloud Relay' : 'Cancel Setup'}
               </Button>
             </AlertDialogTrigger>
-            <AlertDialogContent style={{ zIndex: 10050 }}>
+            <AlertDialogContent style={{ zIndex: 10050 }} onClick={(e) => e.stopPropagation()}>
               <AlertDialogHeader>
-                <AlertDialogTitle>Cancel Setup?</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {enrollment.status === 'active' ? `Remove "${enrollment.homeName}" from the cloud relay?` : 'Cancel Setup?'}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will cancel the cloud relay setup for this home.
+                  {enrollment.status === 'active'
+                    ? 'This disconnects the home from Homecast — remote access, API, and automations through Homecast stop working. Your Apple Home itself is untouched, and you can also remove the relay user from it in the Apple Home app. You can re-enroll this home at any time.'
+                    : 'This will cancel the cloud relay setup for this home.'}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>Keep</AlertDialogCancel>
                 <AlertDialogAction onClick={onCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Cancel Setup
+                  {enrollment.status === 'active' ? 'Remove' : 'Cancel Setup'}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -278,6 +338,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const [cancelEnrollment] = useMutation(CANCEL_CLOUD_MANAGED_ENROLLMENT);
   const [confirmInviteSent] = useMutation(CONFIRM_INVITE_SENT);
   const [resetInviteStatus] = useMutation(RESET_INVITE_STATUS);
+  const [updateHomeName] = useMutation(UPDATE_CLOUD_MANAGED_HOME_NAME);
 
   const enrollments = (data?.myCloudManagedEnrollments || []).filter(e => e.status !== 'cancelled');
   const enrolledHomeNames = new Set(enrollments.map(e => e.homeName.toLowerCase()));
@@ -428,6 +489,10 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 onCancel={() => handleCancel(enrollment.id)}
                 onConfirmInvite={() => handleConfirmInvite(enrollment.id)}
                 onResetInvite={() => handleResetInvite(enrollment.id)}
+                onRename={async (name) => {
+                  await updateHomeName({ variables: { enrollmentId: enrollment.id, homeName: name } });
+                  await refetch();
+                }}
                 developerMode={developerMode}
                 onClick={matchedHome ? () => handleSelectHome(matchedHome) : undefined}
               />
