@@ -25,12 +25,13 @@ import { regionLabel, guessRegion, REGION_OPTIONS } from '@/lib/regions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { config } from '@/lib/config';
 import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, VERIFY_CLOUD_MANAGED_HOME } from '@/lib/graphql/mutations';
+import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, VERIFY_CLOUD_MANAGED_HOME, UPDATE_ENROLLMENT_APPLE_ID } from '@/lib/graphql/mutations';
 import type {
   MyCloudManagedEnrollmentsResponse,
   CreateCloudManagedCheckoutResponse,
   CustomerEnrollmentInfo,
   VerifyCloudManagedHomeResponse,
+  UpdateEnrollmentAppleIdResponse,
   HomeKitHome,
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
@@ -71,12 +72,13 @@ function statusBadge(status: string) {
   }
 }
 
-function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onVerifyCode, onRestart, developerMode, onClick }: {
+function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, onVerifyCode, onEditAppleId, onRestart, developerMode, onClick }: {
   enrollment: CustomerEnrollmentInfo;
   onCancel: () => void;
   onConfirmInvite: () => void;
   onResetInvite: () => void;
   onVerifyCode?: (code: string) => Promise<{ success: boolean; error?: string | null }>;
+  onEditAppleId?: (appleId: string) => Promise<{ success: boolean; error?: string | null }>;
   onRestart?: () => void;
   developerMode?: boolean;
   onClick?: () => void;
@@ -84,6 +86,29 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
   const [codeDraft, setCodeDraft] = useState('');
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [editingAppleId, setEditingAppleId] = useState(false);
+  const [appleIdDraft, setAppleIdDraft] = useState(enrollment.customerAppleId || '');
+  const [savingAppleId, setSavingAppleId] = useState(false);
+  const [appleIdError, setAppleIdError] = useState<string | null>(null);
+
+  const isInFlight = ['pending', 'invite_sent', 'awaiting_relay', 'needs_home_id'].includes(enrollment.status);
+
+  const submitAppleId = async () => {
+    if (!onEditAppleId) return;
+    const draft = appleIdDraft.trim().toLowerCase();
+    if (!draft.includes('@')) { setAppleIdError('Enter a valid Apple ID email'); return; }
+    setSavingAppleId(true);
+    setAppleIdError(null);
+    try {
+      const result = await onEditAppleId(draft);
+      if (result.success) setEditingAppleId(false);
+      else setAppleIdError(result.error || 'Failed to update Apple ID');
+    } catch {
+      setAppleIdError('Failed to update Apple ID');
+    } finally {
+      setSavingAppleId(false);
+    }
+  };
 
   const submitCode = async () => {
     if (!onVerifyCode || codeDraft.trim().length < 4) return;
@@ -213,6 +238,40 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
               <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onRestart(); }}>
                 Restart Setup
               </Button>
+            )}
+          </div>
+        )}
+        {isInFlight && onEditAppleId && (
+          <div className="mt-1.5 pt-1.5 border-t" onClick={(e) => e.stopPropagation()}>
+            {editingAppleId ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-muted-foreground">Correct the Apple ID you'll invite the relay from:</p>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="email"
+                    value={appleIdDraft}
+                    onChange={(e) => { setAppleIdDraft(e.target.value); setAppleIdError(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void submitAppleId(); }}
+                    placeholder="you@icloud.com"
+                    className="h-8 text-sm flex-1"
+                  />
+                  <Button size="sm" className="h-8" onClick={() => void submitAppleId()} disabled={savingAppleId || !appleIdDraft.trim().includes('@')}>
+                    {savingAppleId ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingAppleId(false); setAppleIdDraft(enrollment.customerAppleId || ''); setAppleIdError(null); }} disabled={savingAppleId}>
+                    Cancel
+                  </Button>
+                </div>
+                {appleIdError && <p className="text-xs text-destructive">{appleIdError}</p>}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="shrink-0">Inviting from:</span>
+                <span className="font-mono truncate">{enrollment.customerAppleId || 'not set'}</span>
+                <button className="underline hover:text-foreground shrink-0" onClick={() => { setAppleIdDraft(enrollment.customerAppleId || ''); setEditingAppleId(true); }}>
+                  Change
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -367,6 +426,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const [confirmInviteSent] = useMutation(CONFIRM_INVITE_SENT);
   const [resetInviteStatus] = useMutation(RESET_INVITE_STATUS);
   const [verifyHome] = useMutation<VerifyCloudManagedHomeResponse>(VERIFY_CLOUD_MANAGED_HOME);
+  const [updateEnrollmentAppleId] = useMutation<UpdateEnrollmentAppleIdResponse>(UPDATE_ENROLLMENT_APPLE_ID);
 
   const enrollments = (data?.myCloudManagedEnrollments || []).filter(e => e.status !== 'cancelled');
   const enrolledHomeNames = new Set(enrollments.map(e => e.homeName.toLowerCase()));
@@ -540,6 +600,15 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                     refetchHomes();
                   }
                   return result || { success: false, error: 'Verification failed' };
+                }}
+                onEditAppleId={async (appleId) => {
+                  const r = await updateEnrollmentAppleId({ variables: { enrollmentId: enrollment.id, appleId } });
+                  const result = (r.data as UpdateEnrollmentAppleIdResponse | undefined)?.updateEnrollmentAppleId;
+                  if (result?.success) {
+                    toast.success('Apple ID updated');
+                    await refetch();
+                  }
+                  return result || { success: false, error: 'Failed to update Apple ID' };
                 }}
                 onRestart={async () => {
                   try {

@@ -229,6 +229,33 @@ export const RELAY_CONFIRM_HOME_MATCH = gql`
   }
 `;
 
+export const RELAY_ASSIGN_HOME_TO_INVITE = gql`
+  mutation RelayAssignHomeToInvite($enrollmentId: String!, $homeId: String!) {
+    relayAssignHomeToInvite(enrollmentId: $enrollmentId, homeId: $homeId) {
+      success
+      error
+    }
+  }
+`;
+
+export const RELAY_UNASSIGN_HOME = gql`
+  mutation RelayUnassignHome($enrollmentId: String!) {
+    relayUnassignHome(enrollmentId: $enrollmentId) {
+      success
+      error
+    }
+  }
+`;
+
+export const UPDATE_ENROLLMENT_APPLE_ID = gql`
+  mutation UpdateEnrollmentAppleId($enrollmentId: String!, $appleId: String!) {
+    updateEnrollmentAppleId(enrollmentId: $enrollmentId, appleId: $appleId) {
+      success
+      error
+    }
+  }
+`;
+
 // HomeKit mutations (require connected Mac app)
 
 export const SET_CHARACTERISTIC = gql`

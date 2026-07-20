@@ -1628,6 +1628,7 @@ export interface ManagedRelayHomeInfo {
   homeName: string;
   accessoryCount: number;
   roomCount: number;
+  enrollmentId: string | null;
   customerEmail: string | null;
   customerName: string | null;
   customerAccountType: string | null;
@@ -1805,6 +1806,13 @@ export interface AdminUnboundHomeInfo {
 
 export interface VerifyCloudManagedHomeResponse {
   verifyCloudManagedHome: {
+    success: boolean;
+    error: string | null;
+  };
+}
+
+export interface UpdateEnrollmentAppleIdResponse {
+  updateEnrollmentAppleId: {
     success: boolean;
     error: string | null;
   };

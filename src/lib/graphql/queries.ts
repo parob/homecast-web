@@ -670,6 +670,7 @@ export const GET_MY_MANAGED_RELAY_INFO = gql`
         homeName
         accessoryCount
         roomCount
+        enrollmentId
         customerEmail
         customerName
         customerAccountType
