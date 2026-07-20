@@ -141,8 +141,8 @@ export const REGISTER_CLOUD_INTEREST = gql`
 `;
 
 export const CREATE_CLOUD_MANAGED_CHECKOUT = gql`
-  mutation CreateCloudManagedCheckout($region: String) {
-    createCloudManagedCheckout(region: $region) {
+  mutation CreateCloudManagedCheckout($region: String, $appleId: String) {
+    createCloudManagedCheckout(region: $region, appleId: $appleId) {
       success
       checkoutUrl
       enrollmentId
@@ -202,6 +202,30 @@ export const RESOLVE_CLOUD_MANAGED_HOME_ID = gql`
 export const RESCAN_RELAY_HOMES = gql`
   mutation RescanRelayHomes {
     rescanRelayHomes
+  }
+`;
+
+export const RELAY_OPEN_ACCEPT_WINDOW = gql`
+  mutation RelayOpenAcceptWindow($enrollmentId: String!) {
+    relayOpenAcceptWindow(enrollmentId: $enrollmentId) {
+      success
+      error
+    }
+  }
+`;
+
+export const RELAY_CLOSE_ACCEPT_WINDOW = gql`
+  mutation RelayCloseAcceptWindow($enrollmentId: String!) {
+    relayCloseAcceptWindow(enrollmentId: $enrollmentId)
+  }
+`;
+
+export const RELAY_CONFIRM_HOME_MATCH = gql`
+  mutation RelayConfirmHomeMatch($enrollmentId: String!, $homeId: String!) {
+    relayConfirmHomeMatch(enrollmentId: $enrollmentId, homeId: $homeId) {
+      success
+      error
+    }
   }
 `;
 

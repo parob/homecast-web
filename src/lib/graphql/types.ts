@@ -1666,6 +1666,34 @@ export interface MyManagedRelayInfoResponse {
   myManagedRelayInfo: ManagedRelayInfo | null;
 }
 
+export interface RelayPendingInvite {
+  id: string;
+  customerAppleId: string | null;
+  customerEmail: string | null;
+  region: string | null;
+  status: string;
+  createdAt: string;
+  acceptWindowOpen: boolean;
+  acceptWindowExpiresAt: string | null;
+}
+
+export interface RelayCandidateHome {
+  homeId: string;
+  homeName: string;
+  firstSeenAt: string | null;
+  unmatched: boolean;
+}
+
+export interface RelayInviteBoard {
+  pendingInvites: RelayPendingInvite[];
+  candidateHomes: RelayCandidateHome[];
+  acceptWindowOpen: boolean;
+}
+
+export interface MyRelayInviteBoardResponse {
+  myRelayInviteBoard: RelayInviteBoard | null;
+}
+
 // Managed relay log types
 export interface ManagedRelayWebhookDelivery {
   id: string;
@@ -1758,6 +1786,7 @@ export interface CustomerEnrollmentInfo {
   matchedAt: string | null;
   region: string | null;
   codeEntryAvailable: boolean;
+  customerAppleId: string | null;
 }
 
 export interface AdminUnboundHomeInfo {

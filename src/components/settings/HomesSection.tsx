@@ -131,6 +131,12 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
         </p>
         {enrollment.status === 'pending' && enrollment.inviteEmail && (
           <div className="space-y-2 mt-1">
+            {enrollment.customerAppleId && (
+              <p className="text-xs text-muted-foreground">
+                Send the invitation from <strong>{enrollment.customerAppleId}</strong> — the
+                relay checks who the invite came from before accepting.
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">Invite to your Apple Home as <strong>Resident</strong>:</p>
             <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5">
               <span className="text-xs flex-1 truncate font-mono selectable">{enrollment.inviteEmail}</span>
@@ -152,9 +158,12 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
         {enrollment.status === 'invite_sent' && !enrollment.codeEntryAvailable && (
           <div className="space-y-1.5 mt-1">
             <p className="text-xs text-muted-foreground">
-              Waiting for the relay to accept — usually within a minute, occasionally up to 24 hours.
-              Once it joins, <strong>"Homecast Code&nbsp;····"</strong> appears in your
-              Apple Home app and you'll verify your home here.
+              Waiting for the relay to accept your invitation
+              {enrollment.customerAppleId && (
+                <> from <strong>{enrollment.customerAppleId}</strong></>
+              )}
+              . The relay checks who the invite came from, accepts it, and your home
+              connects automatically — usually within a few hours.
             </p>
             <button
               className="text-xs text-muted-foreground underline hover:text-foreground"
@@ -323,6 +332,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const isCloudPlan = accountType === 'cloud';
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [region, setRegion] = useState(guessRegion());
+  const [appleId, setAppleId] = useState('');
   const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
   const [loading, setLoading] = useState(false);
   const handleSelectHome = (home: HomeKitHome) => {
@@ -411,10 +421,15 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   }, [resetInviteStatus, refetch]);
 
   const handleAdd = useCallback(async () => {
+    const trimmedAppleId = appleId.trim().toLowerCase();
+    if (!trimmedAppleId.includes('@')) {
+      toast.error('Enter the Apple ID email you’ll send the invitation from');
+      return;
+    }
     setLoading(true);
     try {
       const { data: result } = await createCheckout({
-        variables: { region },
+        variables: { region, appleId: trimmedAppleId },
       });
       const r = result?.createCloudManagedCheckout;
       if (r?.enrollmentId) {
@@ -429,7 +444,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     } finally {
       setLoading(false);
     }
-  }, [region, createCheckout, refetch]);
+  }, [region, appleId, createCheckout, refetch]);
 
   // If a home is selected, show its detail view (must be after all hooks)
   if (selectedHome) {
@@ -528,7 +543,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 }}
                 onRestart={async () => {
                   try {
-                    const r = await createCheckout({ variables: { region: enrollment.region || guessRegion() } });
+                    const r = await createCheckout({ variables: { region: enrollment.region || guessRegion(), appleId: enrollment.customerAppleId || undefined } });
                     const res = (r.data as CreateCloudManagedCheckoutResponse | undefined)?.createCloudManagedCheckout;
                     if (res?.enrollmentId) { toast.success('Setup restarted'); await refetch(); }
                     else if (res?.error) toast.error(res.error);
@@ -544,7 +559,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               <SelfHostedHomeCard
                 key={home.id}
                 home={home}
-                onSwitchToCloud={() => { setRegion(guessRegion()); setAddDialogOpen(true); }}
+                onSwitchToCloud={() => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); }}
                 onClick={() => handleSelectHome(home)}
               />
             ))}
@@ -565,7 +580,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => { setRegion(guessRegion()); setAddDialogOpen(true); }}
+            onClick={() => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); }}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Home to Cloud Relay
@@ -595,14 +610,27 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Which Apple ID will you invite the relay from?</label>
+              <Input
+                type="email"
+                value={appleId}
+                onChange={(e) => setAppleId(e.target.value)}
+                placeholder="you@icloud.com"
+                autoComplete="email"
+              />
+              <p className="text-xs text-muted-foreground">
+                The email on the Apple account that owns your home. We match your
+                invitation to your account by checking who sent it.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground">
               We'll connect your home to a relay near you for the fastest control.
-              You'll pick your exact home in the next step, after inviting the relay
-              in the Apple Home app.
+              In the next step you'll invite the relay in the Apple Home app.
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleAdd} disabled={loading}>
+              <Button size="sm" onClick={handleAdd} disabled={loading || !appleId.trim().includes('@')}>
                 {loading ? 'Loading...' : 'Continue'}
               </Button>
             </div>

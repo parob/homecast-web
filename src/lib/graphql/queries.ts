@@ -692,6 +692,30 @@ export const GET_MY_MANAGED_RELAY_INFO = gql`
   }
 `;
 
+export const MY_RELAY_INVITE_BOARD = gql`
+  query MyRelayInviteBoard {
+    myRelayInviteBoard {
+      pendingInvites {
+        id
+        customerAppleId
+        customerEmail
+        region
+        status
+        createdAt
+        acceptWindowOpen
+        acceptWindowExpiresAt
+      }
+      candidateHomes {
+        homeId
+        homeName
+        firstSeenAt
+        unmatched
+      }
+      acceptWindowOpen
+    }
+  }
+`;
+
 export const GET_MANAGED_RELAY_WEBHOOK_DELIVERIES = gql`
   query GetManagedRelayWebhookDeliveries($homeId: String, $status: String, $limit: Int, $offset: Int) {
     managedRelayWebhookDeliveries(homeId: $homeId, status: $status, limit: $limit, offset: $offset) {
@@ -784,6 +808,7 @@ export const GET_MY_ENROLLMENTS = gql`
       matchedAt
       region
       codeEntryAvailable
+      customerAppleId
     }
   }
 `;
