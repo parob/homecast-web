@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
@@ -125,6 +125,14 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
   }, []);
 
   const [addOpen, setAddOpen] = useState(false);
+  const editRightsDismissKey = `hc_editrights_dismissed_${homeProp.id}`;
+  const [editRightsDismissed, setEditRightsDismissed] = useState(() => {
+    try { return localStorage.getItem(editRightsDismissKey) === '1'; } catch { return false; }
+  });
+  const dismissEditRights = useCallback(() => {
+    setEditRightsDismissed(true);
+    try { localStorage.setItem(editRightsDismissKey, '1'); } catch { /* ignore */ }
+  }, [editRightsDismissKey]);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
   const isAdmin = !home.role || home.role === 'owner' || home.role === 'admin';
@@ -270,6 +278,37 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">Shared</Badge>
         )}
       </div>
+
+      {/* Optional prompt: grant the relay editing rights so Homecast can manage
+          HomeKit automations. Shown once a home is connected but the relay is
+          still view-only; dismissible and clearly optional. */}
+      {!isCommunity && home.isAdmin === false && !editRightsDismissed && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">Let Homecast manage HomeKit automations</p>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground shrink-0">Optional</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Homecast currently has <strong>view-only</strong> access — enough to control
+                devices and run Homecast automations. To also let Homecast and AI assistants
+                create and edit <strong>HomeKit</strong> automations, give the relay editing
+                rights: {HOMEKIT_EDIT_PERMISSION_FIX} You can skip this and everything else
+                still works.
+              </p>
+            </div>
+            <button
+              onClick={dismissEditRights}
+              className="text-muted-foreground/60 hover:text-foreground shrink-0"
+              title="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Connection / Home */}
       <div className="space-y-2">
