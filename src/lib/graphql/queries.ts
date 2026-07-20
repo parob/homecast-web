@@ -711,6 +711,7 @@ export const MY_RELAY_INVITE_BOARD = gql`
         homeName
         firstSeenAt
         unmatched
+        removedByCustomer
       }
       acceptWindowOpen
     }

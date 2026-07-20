@@ -1683,6 +1683,7 @@ export interface RelayCandidateHome {
   homeName: string;
   firstSeenAt: string | null;
   unmatched: boolean;
+  removedByCustomer: boolean;
 }
 
 export interface RelayInviteBoard {
