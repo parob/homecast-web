@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { config as appConfig } from '@/lib/config';
+import { getBrowserSessionId } from '@/server/connection';
 
 type CharacteristicUpdate = {
   type: 'characteristic_update';
@@ -143,9 +144,39 @@ export function useSharedWebSocket(
     }, UPDATE_BUFFER_INTERVAL_MS);
   }, [flushBufferedUpdates]);
 
+  // Tear down the current socket without letting its onclose schedule a reconnect
+  const teardownSocket = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+    const ws = wsRef.current;
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+      wsRef.current = null;
+    }
+  }, []);
+
   // Connect to WebSocket
   const connect = useCallback(() => {
     if (!shareHash) return;
+
+    // Already connected (or connecting) — nothing to do
+    const existing = wsRef.current;
+    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    // Never hold two sockets — replace any lingering one
+    teardownSocket();
 
     // Derive shared WebSocket URL from config
     // In Community mode, use the main WS port (no separate /ws/shared endpoint)
@@ -163,11 +194,13 @@ export function useSharedWebSocket(
       setIsConnected(true);
       setSubscribeError(null);
 
-      // Subscribe to share hash
+      // Subscribe to share hash. browserSessionId lets the server replace this
+      // tab's previous session instead of accumulating a new one per socket.
       ws.send(JSON.stringify({
         type: 'subscribe',
         shareHash,
-        passcode: passcode || undefined
+        passcode: passcode || undefined,
+        browserSessionId: getBrowserSessionId()
       }));
 
       // Start ping interval to keep connection alive
@@ -227,6 +260,9 @@ export function useSharedWebSocket(
     };
 
     ws.onclose = (event) => {
+      // A stale socket's close must never clobber the live socket's state
+      if (wsRef.current !== ws) return;
+
       console.log(`[SharedWS] Disconnected: ${event.code} ${event.reason}`);
       wsRef.current = null;
       setIsConnected(false);
@@ -238,8 +274,8 @@ export function useSharedWebSocket(
         pingIntervalRef.current = null;
       }
 
-      // Reconnect after delay (unless access denied)
-      if (event.code !== 4001 && event.code !== 4003) {
+      // Reconnect after delay (unless access denied or replaced by a newer connection)
+      if (![4001, 4002, 4003].includes(event.code)) {
         reconnectTimeoutRef.current = setTimeout(() => {
           console.log('[SharedWS] Reconnecting...');
           connect();
@@ -250,7 +286,7 @@ export function useSharedWebSocket(
     ws.onerror = (error) => {
       console.error('[SharedWS] Error:', error);
     };
-  }, [shareHash, passcode, scheduleFlush]);
+  }, [shareHash, passcode, scheduleFlush, teardownSocket]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
@@ -258,23 +294,18 @@ export function useSharedWebSocket(
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
-    }
     // Flush any pending updates before disconnecting
     if (flushTimeoutRef.current) {
       clearTimeout(flushTimeoutRef.current);
       flushTimeoutRef.current = null;
     }
     flushBufferedUpdates();
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+    // Detaches onclose before closing, so an intentional disconnect
+    // (unmount, tab hidden) can never schedule a reconnect
+    teardownSocket();
     setIsConnected(false);
     setIsSubscribed(false);
-  }, [flushBufferedUpdates]);
+  }, [flushBufferedUpdates, teardownSocket]);
 
   // Connect on mount, disconnect on unmount
   useEffect(() => {
