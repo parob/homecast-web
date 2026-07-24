@@ -347,6 +347,7 @@ function useCachedData<T>(
       setError(null);
     }
 
+    let willRetry = false;
     try {
       // Use getOrFetch to deduplicate requests across hook instances
       const result = await cache.getOrFetch(cacheKey, fetcher);
@@ -361,6 +362,7 @@ function useCachedData<T>(
         // Retry on failure if we haven't exceeded max retries
         if (retryCountRef.current < MAX_RETRIES) {
           retryCountRef.current++;
+          willRetry = true;
           console.log(`[DataCache] Fetch failed for ${cacheKey}, scheduling retry ${retryCountRef.current}/${MAX_RETRIES}`);
           retryTimerRef.current = setTimeout(() => {
             if (mountedRef.current) {
@@ -370,7 +372,11 @@ function useCachedData<T>(
         }
       }
     } finally {
-      if (mountedRef.current) {
+      // Keep the loading state while a retry is pending so a transient
+      // first-load failure (slow big-home, relay reconnecting) shows the
+      // loading spinner instead of flashing "Unable to load…". The error only
+      // surfaces once retries are exhausted (or when stale data is shown).
+      if (mountedRef.current && !willRetry) {
         setLoading(false);
       }
     }
