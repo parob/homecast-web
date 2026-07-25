@@ -917,6 +917,164 @@ export const ADMIN_SEND_NOTIFICATION = gql`
   }
 `;
 
+/** Fields the relay list and detail header both need. */
+const RELAY_TELEMETRY_FIELDS = `
+  appVersion
+  appBuild
+  osVersion
+  deviceModel
+  hostname
+  platform
+`;
+
+export const ADMIN_RELAYS = gql`
+  query AdminRelays(
+    $kind: String
+    $status: String
+    $search: String
+    $sortBy: String
+    $limit: Int
+    $offset: Int
+  ) {
+    adminRelays(
+      kind: $kind
+      status: $status
+      search: $search
+      sortBy: $sortBy
+      limit: $limit
+      offset: $offset
+    ) {
+      totalCount
+      totals {
+        total
+        online
+        homes
+        accessories
+        degraded
+      }
+      relays {
+        userId
+        email
+        name
+        kind
+        accountType
+        relayState
+        region
+        isActive
+        sessionCount
+        lastSeenAt
+        lastHeartbeat
+        homeCount
+        accessoryCount
+        roomCount
+        capacity
+        pendingEnrollmentCount
+        uptimePercent7d
+        verifiedRatio7d
+        currentStatus
+        telemetry { ${RELAY_TELEMETRY_FIELDS} }
+      }
+    }
+  }
+`;
+
+export const ADMIN_RELAY_DETAIL = gql`
+  query AdminRelayDetail($userId: String!) {
+    adminRelayDetail(userId: $userId) {
+      userId
+      email
+      name
+      kind
+      accountType
+      relayState
+      region
+      isActive
+      isAdminUser
+      createdAt
+      lastLoginAt
+      lastSeenAt
+      subscriptionSource
+      capacity
+      maxHomesPerRelay
+      accessoryLimit
+      telemetry { ${RELAY_TELEMETRY_FIELDS} }
+      sessions {
+        id
+        deviceId
+        name
+        clientType
+        instanceId
+        connectedAt
+        lastHeartbeat
+        homeIds
+        telemetry { ${RELAY_TELEMETRY_FIELDS} }
+      }
+      homes {
+        homeId
+        hcId
+        name
+        accessoryCount
+        roomCount
+        memberCount
+        isPrimary
+        isAdmin
+        mqttEnabled
+        mqttBrokerCount
+        bindCode
+        unmatched
+        firstSeenAt
+        updatedAt
+        customerEmail
+        enrollmentStatus
+        currentStatus
+        uptimePercent7d
+      }
+      activity {
+        days
+        commands
+        updates
+        daily { date commands updates }
+      }
+      enrollments {
+        id
+        status
+        customerEmail
+        homeName
+        matchedHomeId
+        createdAt
+        matchedAt
+      }
+    }
+  }
+`;
+
+export const ADMIN_RELAY_UPTIME = gql`
+  query AdminRelayUptime($userId: String!, $days: Int) {
+    adminRelayUptime(userId: $userId, days: $days) {
+      currentStatus
+      uptimePercent24h
+      uptimePercent7d
+      uptimePercent30d
+      verifiedRatio7d
+      avgLatencyMs
+      timeline {
+        bucketStart
+        verified
+        connected
+        degraded
+        offline
+        total
+      }
+      outages {
+        startedAt
+        endedAt
+        durationSeconds
+        severity
+      }
+    }
+  }
+`;
+
 export const ADMIN_RELAY_UPTIME_SUMMARY = gql`
   query AdminRelayUptimeSummary($userIds: [String!]!, $days: Int) {
     adminRelayUptimeSummary(userIds: $userIds, days: $days) {

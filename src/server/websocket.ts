@@ -131,6 +131,34 @@ const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
 
 /**
+ * Self-reported relay metadata, sent as query params on connect.
+ *
+ * The native app injects these onto `window` (HomecastApp.swift) — JS has no
+ * way to read the host's OS version, hardware model or hostname on its own.
+ * Everything is optional: a build that doesn't inject them just sends fewer
+ * params and the admin panel shows "not reported".
+ */
+function getRelayTelemetry(): Record<string, string | undefined> {
+  const win = window as Window & {
+    homecastAppVersion?: string;
+    homecastAppBuild?: string;
+    homecastOSVersion?: string;
+    homecastDeviceModel?: string;
+    homecastHostName?: string;
+    homecastPlatform?: string;
+    isHomecastMacApp?: boolean;
+  };
+  return {
+    app_version: win.homecastAppVersion,
+    app_build: win.homecastAppBuild,
+    os_version: win.homecastOSVersion,
+    device_model: win.homecastDeviceModel,
+    hostname: win.homecastHostName,
+    platform: win.homecastPlatform ?? (win.isHomecastMacApp ? 'macos' : undefined),
+  };
+}
+
+/**
  * WebSocket client for server communication.
  * Handles the PROTOCOL.md message format for both relay and browser modes.
  */
@@ -544,6 +572,13 @@ export class ServerWebSocket {
       // Explicitly identify as a HomeKit relay
       if (isRelayEnabled()) {
         url.searchParams.set('relay', 'true');
+        // Tell the cloud what's actually running this relay. Without it a relay
+        // is anonymous beyond its device_id, so the admin panel can't tell a
+        // stale build from a current one. All optional — the server stores
+        // whatever arrives and leaves the rest NULL.
+        for (const [param, value] of Object.entries(getRelayTelemetry())) {
+          if (value) url.searchParams.set(param, value);
+        }
       }
       // Add browser session ID for web clients (allows multiple tabs as separate sessions)
       if (this.config.browserSessionId) {

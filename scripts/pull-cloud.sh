@@ -16,6 +16,12 @@ if [ ! -d "$CLOUD_DIR" ]; then
 fi
 
 echo "[pull-cloud] Copying cloud components from homecast-cloud..."
+# Wipe first. `cp -r src dest` copies *into* dest when dest already exists, so
+# re-running used to nest src/cloud/pages/pages and leave the top-level files
+# stale — you'd then build against a mix of old and new cloud UI, with nothing
+# to indicate it. A clean copy every time is the only safe form here, and also
+# means files deleted upstream actually disappear.
+rm -rf "$WEB_DIR/src/cloud"
 mkdir -p "$WEB_DIR/src/cloud"
 cp -r "$CLOUD_DIR/pages" "$WEB_DIR/src/cloud/pages"
 cp -r "$CLOUD_DIR/components" "$WEB_DIR/src/cloud/components"

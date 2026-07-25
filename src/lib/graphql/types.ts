@@ -1566,6 +1566,147 @@ export interface ManagedUserSummary {
   region: string | null;
 }
 
+// --- Relays (AdminRelays / AdminRelayDetail) ---
+//
+// A relay is a user account running the Mac app in cloud mode — there is no
+// relay table. `kind` splits Homecast's own fleet Macs from customers'
+// self-hosted ones. Community-mode relays never contact the cloud, so they
+// can't appear in any of these.
+
+export type RelayKind = 'cloud' | 'self_hosted';
+export type RelayState = 'connected' | 'reconnecting' | 'offline' | 'never';
+
+/** What the relay reports about itself on connect. Null for any build older
+ *  than the telemetry protocol. */
+export interface RelayTelemetry {
+  appVersion: string | null;
+  appBuild: string | null;
+  osVersion: string | null;
+  deviceModel: string | null;
+  hostname: string | null;
+  platform: string | null;
+}
+
+export interface AdminRelayRow {
+  userId: string;
+  email: string;
+  name: string | null;
+  kind: RelayKind;
+  accountType: string;
+  relayState: RelayState;
+  region: string | null;
+  isActive: boolean;
+  sessionCount: number;
+  lastSeenAt: string | null;
+  lastHeartbeat: string | null;
+  homeCount: number;
+  accessoryCount: number;
+  roomCount: number;
+  /** Free home slots — cloud relays only, null for self-hosted. */
+  capacity: number | null;
+  pendingEnrollmentCount: number;
+  uptimePercent7d: number;
+  verifiedRatio7d: number;
+  currentStatus: string;
+  telemetry: RelayTelemetry | null;
+}
+
+/** Aggregates over the whole filtered set, not just the current page. */
+export interface AdminRelayTotals {
+  total: number;
+  online: number;
+  homes: number;
+  accessories: number;
+  degraded: number;
+}
+
+export interface AdminRelayListResult {
+  relays: AdminRelayRow[];
+  totalCount: number;
+  totals: AdminRelayTotals;
+}
+
+export interface AdminRelaySessionInfo {
+  id: string;
+  deviceId: string | null;
+  name: string | null;
+  clientType: string | null;
+  instanceId: string | null;
+  connectedAt: string | null;
+  lastHeartbeat: string | null;
+  homeIds: string[];
+  telemetry: RelayTelemetry | null;
+}
+
+export interface AdminRelayHomeInfo {
+  homeId: string;
+  hcId: string | null;
+  name: string;
+  accessoryCount: number | null;
+  roomCount: number | null;
+  memberCount: number;
+  isPrimary: boolean | null;
+  /** Relay's Apple ID can edit this home in Apple Home. Null = older relay. */
+  isAdmin: boolean | null;
+  mqttEnabled: boolean;
+  mqttBrokerCount: number;
+  bindCode: string | null;
+  unmatched: boolean;
+  firstSeenAt: string | null;
+  updatedAt: string | null;
+  customerEmail: string | null;
+  enrollmentStatus: string | null;
+  currentStatus: string;
+  uptimePercent7d: number;
+}
+
+export interface AdminRelayActivityDay {
+  date: string;
+  commands: number;
+  updates: number;
+}
+
+export interface AdminRelayActivity {
+  days: number;
+  commands: number;
+  updates: number;
+  daily: AdminRelayActivityDay[];
+}
+
+export interface AdminRelayEnrollmentInfo {
+  id: string;
+  status: string;
+  customerEmail: string | null;
+  homeName: string | null;
+  matchedHomeId: string | null;
+  createdAt: string | null;
+  matchedAt: string | null;
+}
+
+export interface AdminRelayDetailInfo {
+  userId: string;
+  email: string;
+  name: string | null;
+  kind: RelayKind;
+  accountType: string;
+  relayState: RelayState;
+  region: string | null;
+  isActive: boolean;
+  isAdminUser: boolean;
+  createdAt: string | null;
+  lastLoginAt: string | null;
+  lastSeenAt: string | null;
+  subscriptionSource: string | null;
+  capacity: number | null;
+  maxHomesPerRelay: number | null;
+  accessoryLimit: number | null;
+  telemetry: RelayTelemetry | null;
+  sessions: AdminRelaySessionInfo[];
+  homes: AdminRelayHomeInfo[];
+  activity: AdminRelayActivity | null;
+  enrollments: AdminRelayEnrollmentInfo[];
+}
+
 export interface ManagedUsersResult {
   users: ManagedUserSummary[];
   totalCount: number;
@@ -1595,8 +1736,12 @@ export interface ManagedEnrollmentInfo {
   id: string;
   customerEmail: string;
   customerName: string | null;
+  // Both ids are selected by GET_ALL_ENROLLMENTS and used to build deep links,
+  // but were missing here — the pages read them through an untyped hole.
+  customerUserId: string | null;
   homeName: string;
   managedUserEmail: string | null;
+  managedUserId: string | null;
   status: string;
   matchedHomeId: string | null;
   matchedHomeName: string | null;

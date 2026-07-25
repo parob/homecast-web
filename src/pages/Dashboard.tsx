@@ -1122,7 +1122,8 @@ const Dashboard = () => {
   const AdminHomeDetail = _cloud?.AdminHomeDetail ?? null;
   const AdminSessions = _cloud?.AdminSessions ?? null;
   const AdminWebhooks = _cloud?.AdminWebhooks ?? null;
-  const AdminEnrollments = _cloud?.AdminEnrollments ?? null;
+  const AdminRelays = _cloud?.AdminRelays ?? null;
+  const AdminRelayDetail = _cloud?.AdminRelayDetail ?? null;
   const AdminDeals = _cloud?.AdminDeals ?? null;
   const AdminHomeKit = _cloud?.AdminHomeKit ?? null;
   const AdminDevices = _cloud?.AdminDevices ?? null;
@@ -1142,7 +1143,6 @@ const Dashboard = () => {
   const AdminDebugInfo = _cloud?.AdminDebugInfo ?? null;
   const AdminMetrics = _cloud?.AdminMetrics ?? null;
   const AdminAnalytics = _cloud?.AdminAnalytics ?? null;
-  const AdminConnections = _cloud?.AdminConnections ?? null;
   const AdminSidebar = _cloud?.AdminSidebar ?? null;
   const TaskDialog = _cloud?.TaskDialog ?? null;
   const ManagedRelayDashboard = _cloud?.ManagedRelayDashboard ?? null;
@@ -7733,7 +7733,15 @@ const Dashboard = () => {
                   <AdminHomeDetail homeId={adminSubPath.replace('/homes/', '')} />
                 )}
                 {adminSubPath === '/sessions' && <AdminSessions />}
-                {adminSubPath === '/enrollments' && <AdminEnrollments />}
+                {adminSubPath === '/relays' && AdminRelays && <AdminRelays />}
+                {adminSubPath.startsWith('/relays/') && AdminRelayDetail && (
+                  <AdminRelayDetail userId={adminSubPath.replace('/relays/', '')} />
+                )}
+                {/* "Cloud Relays" became the general Relays page. Redirect the
+                    old path — it's in bookmarks and older emails. */}
+                {adminSubPath === '/enrollments' && (
+                  <Navigate to="/portal/admin/relays?kind=cloud" replace />
+                )}
                 {adminSubPath === '/webhooks' && <AdminWebhooks />}
 
                 {adminSubPath === '/deals' && <AdminDeals />}
