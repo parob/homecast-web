@@ -1573,8 +1573,8 @@ export interface ManagedUserSummary {
 // self-hosted ones. Community-mode relays never contact the cloud, so they
 // can't appear in any of these.
 
-export type RelayKind = 'cloud' | 'self_hosted';
-export type RelayState = 'connected' | 'reconnecting' | 'offline' | 'never';
+export type RelayKind = 'cloud' | 'self_hosted' | 'retired';
+export type RelayState = 'connected' | 'reconnecting' | 'offline' | 'retired' | 'never';
 
 /** What the relay reports about itself on connect. Null for any build older
  *  than the telemetry protocol. */
@@ -1614,6 +1614,9 @@ export interface AdminRelayRow {
 /** Aggregates over the whole filtered set, not just the current page. */
 export interface AdminRelayTotals {
   total: number;
+  /** Excludes retired relays — they own nothing and hold no session. */
+  active: number;
+  retired: number;
   online: number;
   homes: number;
   accessories: number;

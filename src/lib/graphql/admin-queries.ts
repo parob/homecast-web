@@ -947,6 +947,8 @@ export const ADMIN_RELAYS = gql`
       totalCount
       totals {
         total
+        active
+        retired
         online
         homes
         accessories
