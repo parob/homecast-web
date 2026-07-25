@@ -981,6 +981,18 @@ export const ADMIN_HOME_DETAIL = gql`
   }
 `;
 
+export const ADMIN_HOME_ROTATION_HISTORY = gql`
+  query AdminHomeRotationHistory($homeId: String!, $limit: Int) {
+    adminHomeRotationHistory(homeId: $homeId, limit: $limit) {
+      occurredAt
+      oldUuid
+      newUuid
+      matchMethod
+      detail
+    }
+  }
+`;
+
 export const ADMIN_FLEET_RELIABILITY = gql`
   query AdminFleetReliability($days: Int) {
     adminFleetReliability(days: $days) {
