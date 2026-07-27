@@ -45,6 +45,19 @@ function PickerButton({
   );
 }
 
+
+/**
+ * Close a picker on the next frame.
+ *
+ * Radix closes on pointer-down, so the trailing `click` would otherwise land
+ * on whatever is beneath the overlay — in the automation editor that's the
+ * React Flow pane, whose onPaneClick clears the open config panel. Deferring
+ * keeps the overlay mounted until the click has been fully dispatched.
+ */
+function closeAfterClick(setOpen: (v: boolean) => void): void {
+  requestAnimationFrame(() => setOpen(false));
+}
+
 // ============================================================
 // Device Picker (accessories only — for Set Device action)
 // ============================================================
@@ -73,7 +86,7 @@ export function DevicePicker({
         testId="select-device-button"
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
+        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
           <DialogTitle className="sr-only">Select Device</DialogTitle>
           <div className="max-h-[65vh] overflow-y-auto">
             <AccessoryPicker
@@ -84,7 +97,7 @@ export function DevicePicker({
                 const acc = accessories.find((a) => a.id === id);
                 if (acc) {
                   onChange(acc.id, acc.name);
-                  setOpen(false);
+                  closeAfterClick(setOpen);
                 }
               }}
             />
@@ -134,7 +147,7 @@ export function DeviceOrGroupPicker({
         testId="select-device-button"
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
+        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
           <DialogTitle className="sr-only">Select Device or Group</DialogTitle>
           <div className="max-h-[65vh] overflow-y-auto">
             <AccessoryPicker
@@ -145,7 +158,7 @@ export function DeviceOrGroupPicker({
                 const acc = accessories.find((a) => a.id === id);
                 if (acc) {
                   onSelectAccessory(acc.id, acc.name);
-                  setOpen(false);
+                  closeAfterClick(setOpen);
                 }
               }}
               serviceGroups={serviceGroups}
@@ -154,7 +167,7 @@ export function DeviceOrGroupPicker({
                 const group = serviceGroups.find((g) => g.id === id);
                 if (group) {
                   onSelectGroup(group.id, group.name);
-                  setOpen(false);
+                  closeAfterClick(setOpen);
                 }
               }}
             />

@@ -263,7 +263,19 @@ function AutomationEditorInner({
     setConfigNodeId(node.id);
   }, []);
 
-  const onPaneClick = useCallback(() => {
+  const onPaneClick = useCallback((event: React.MouseEvent) => {
+    // A nested picker (device / service group / characteristic / scene) closes
+    // on pointer-down, so the trailing `click` lands on the canvas underneath
+    // and would clear the very config panel the user was editing — the picker
+    // appeared to slam shut the moment you chose an accessory.
+    //
+    // Two guards: ignore a click whose target is no longer in the document
+    // (the overlay that received it has since unmounted), and ignore any click
+    // while another dialog is still open above us.
+    const target = event.target as globalThis.Node | null;
+    if (target && !document.contains(target)) return;
+    if (document.querySelector('[role="dialog"][data-state="open"] [data-picker-surface]')) return;
+
     setSelectedNodeId(null);
     setConfigNodeId(null);
     setContextMenu(null);
