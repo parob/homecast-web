@@ -15,7 +15,7 @@ import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { GET_ACCESSORIES, GET_HOMES } from '@/lib/graphql/queries';
 import { CREATE_AUTOMATION, UPDATE_AUTOMATION } from '@/lib/graphql/mutations';
 import { charLabel, formatValue } from './format';
-import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
+import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
 type TriggerCategory = 'time' | 'accessory' | 'sensor';
@@ -387,8 +387,13 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
           {relayCannotEdit && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-50/80 dark:bg-amber-950/20 p-2.5 mt-2">
               <span className="text-amber-500 shrink-0 text-sm">!</span>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                The relay has view-only access to this home, so HomeKit automations can't be saved. {HOMEKIT_EDIT_PERMISSION_FIX}
+              {/* The user is mid-save here, so the reason has to be present —
+                  but one line, with the full path on hover. */}
+              <p
+                className="text-xs text-amber-700 dark:text-amber-300"
+                title={`${HOMEKIT_EDIT_PERMISSION_FIX} ${HOMEKIT_EDIT_PERMISSION_ALIAS}`}
+              >
+                View-only in Apple Home — can't save.
               </p>
             </div>
           )}

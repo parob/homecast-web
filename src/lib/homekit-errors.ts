@@ -14,16 +14,35 @@
 
 export const INSUFFICIENT_HOMEKIT_PRIVILEGES = 'INSUFFICIENT_HOMEKIT_PRIVILEGES';
 
+/**
+ * The self-contained version, for errors surfaced over the API and to MCP
+ * agents. Unlike the inline UI notices it keeps the older-OS alias inline —
+ * there's no tooltip on an error payload, and a user on an older iOS looking
+ * for "Add & Edit Accessories" won't find it under that name.
+ */
 export const HOMEKIT_EDIT_PERMISSION_MESSAGE =
-  "The relay's Apple ID doesn't have permission to edit this home, so HomeKit " +
-  'automations can\'t be created or changed. In the Apple Home app, open Home Settings, ' +
-  'tap the relay user, and enable "Add & Edit Accessories" ' +
-  '(called "Allow Editing" on older iOS and macOS versions).';
+  "The relay's Apple ID has view-only access to this home, so HomeKit automations " +
+  'can\'t be changed. In Apple Home → Home Settings, enable "Add & Edit Accessories" ' +
+  'for the relay ("Allow Editing" on older iOS and macOS).';
 
-/** The fix instruction alone (for proactive notices where the failure hasn't happened yet). */
+/**
+ * The fix alone, as a path rather than a sentence.
+ *
+ * Written out longhand ("In the Apple Home app, open Home Settings, tap the
+ * relay user, and enable…") this ran to 25 words and got embedded inside
+ * another sentence, producing 40–50 word notices nobody read. A path is
+ * scannable and survives being dropped into any surface.
+ */
 export const HOMEKIT_EDIT_PERMISSION_FIX =
-  'In the Apple Home app, open Home Settings, tap the relay user, and enable ' +
-  '"Add & Edit Accessories" (called "Allow Editing" on older iOS and macOS versions).';
+  'Apple Home → Home Settings → the relay user → "Add & Edit Accessories".';
+
+/**
+ * The older-OS alias. Genuinely useful, but not worth a parenthetical in every
+ * inline notice — attach it as a `title` so it's there on hover without
+ * costing a line.
+ */
+export const HOMEKIT_EDIT_PERMISSION_ALIAS =
+  'Called "Allow Editing" on older iOS and macOS versions.';
 
 /**
  * How much the relay's Apple ID can do in a home, as one phrase.

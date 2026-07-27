@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
-import { HOMEKIT_EDIT_PERMISSION_FIX, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
+import { HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
@@ -291,11 +291,14 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
                 <p className="text-sm font-medium">Give the relay Full access</p>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground shrink-0">Optional</Badge>
               </div>
-              {/* Kept to two short sentences: what you gain, then how. The old
-                  copy spent four lines restating what still works, which buried
-                  the one instruction that matters. */}
-              <p className="text-xs text-muted-foreground leading-snug">
-                Lets Homecast manage HomeKit automations. {HOMEKIT_EDIT_PERMISSION_FIX}
+              {/* One line on what you gain, then the path. The original spent
+                  four lines restating what still works, which buried the only
+                  instruction that mattered. */}
+              <p className="text-xs text-muted-foreground leading-snug" title={HOMEKIT_EDIT_PERMISSION_ALIAS}>
+                Lets Homecast manage HomeKit automations.
+              </p>
+              <p className="text-xs font-medium leading-snug" title={HOMEKIT_EDIT_PERMISSION_ALIAS}>
+                {HOMEKIT_EDIT_PERMISSION_FIX}
               </p>
             </div>
             <button

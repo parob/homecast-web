@@ -406,6 +406,57 @@ export async function executeHomeKitAction(
       return { trace };
     }
 
+    // Automation config sync.
+    //
+    // These are requests rather than fire-and-forget events so they travel the
+    // same DirectRouter path as every other relay action — which means they
+    // cross pods, and the server learns whether the relay actually applied the
+    // change instead of assuming it. The event-based path is kept on the sync
+    // manager for older servers.
+    case 'automation.sync_all': {
+      const { automations } = payload as { automations?: unknown[] };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      const list = (automations ?? []) as Parameters<typeof engine.loadAutomations>[0];
+      engine.loadAutomations(list);
+      return { loaded: list.length };
+    }
+
+    case 'automation.sync': {
+      const { automation } = payload as { automation?: { id?: string } };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      if (!automation?.id) {
+        throw Object.assign(new Error('automation.id required'), { code: ErrorCode.INVALID_PARAMS });
+      }
+      engine.updateAutomation(automation as Parameters<typeof engine.updateAutomation>[0]);
+      return { synced: automation.id };
+    }
+
+    // Deliberately NOT 'automation.delete' — that name is already taken by the
+    // HomeKit-native automation delete above, and a duplicate case would be
+    // silently shadowed by it. This one only unloads a Homecast automation from
+    // the running engine; the row is already gone from the database.
+    case 'automation.unload': {
+      const { automationId } = payload as { automationId?: string };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      if (!automationId) {
+        throw Object.assign(new Error('automationId required'), { code: ErrorCode.INVALID_PARAMS });
+      }
+      engine.removeAutomation(automationId);
+      return { deleted: automationId };
+    }
+
     case 'state.set': {
       const { state, homeId } = payload as {
         state: Record<string, Record<string, Record<string, unknown>>>;

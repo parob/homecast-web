@@ -12,7 +12,7 @@ import { AutomationFormDialog } from './AutomationFormDialog';
 const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
 import { GET_AUTOMATIONS, GET_HOMES, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
-import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
+import { HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitHome, GetAutomationsResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 
@@ -189,12 +189,9 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
               HomeKit automations require a relay update. Homecast automations are unaffected.
             </p>
           )}
-          {relayCannotEdit && (
-            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
-              The relay has view-only access to this home, so HomeKit automations can't be created or edited here.{' '}
-              {HOMEKIT_EDIT_PERMISSION_FIX} Homecast automations are unaffected.
-            </p>
-          )}
+          {/* No notice here: the HomeKit option below is already disabled and
+              labelled "View-only", so a paragraph restating it is noise. The
+              fix lives in Settings → the home, where you can act on it. */}
           {isEmpty && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               No automations yet. Automations run your home for you — on a schedule, when a device

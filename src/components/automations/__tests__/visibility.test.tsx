@@ -99,7 +99,10 @@ describe('scenes/automations visibility with an empty list', () => {
     // loading is done. Asserting before this point passes even when the section
     // re-collapses itself on empty (AnimatedCollapse keeps children mounted
     // while loading, then unmounts 200ms after close).
-    expect(await screen.findByText(/no automations yet/i)).toBeTruthy();
+    // Generous timeout: this assertion waits on two Apollo queries settling,
+    // and the default 1s is tight enough to flake when the machine is loaded
+    // (seen when the web and server suites ran concurrently).
+    expect(await screen.findByText(/no automations yet/i, undefined, { timeout: 5000 })).toBeTruthy();
 
     // Past AnimatedCollapse's 200ms lazy-unmount window.
     await new Promise(r => setTimeout(r, 350));
