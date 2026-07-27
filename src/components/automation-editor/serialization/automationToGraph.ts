@@ -340,6 +340,14 @@ function extractActionConfig(action: Action): Record<string, unknown> {
     case 'code': return { code: action.code, timeout: action.timeout };
     case 'merge': return { mergeMode: action.mode, combineKey: action.combineKey };
     case 'call_script': return { automationId: action.scriptId };
+    case 'helper': return {
+      helperId: action.helperId,
+      operation: action.operation,
+      value: action.value,
+      duration: action.duration,
+      step: action.step,
+    };
+    case 'variables': return { variables: action.variables };
     default: return {};
   }
 }
@@ -363,6 +371,10 @@ function buildActionSummary(action: Action): string {
     case 'code': return `${action.code.split('\n').length} lines`;
     case 'merge': return `${action.mode} (${action.inputIds.length} inputs)`;
     case 'call_script': return `Script ${action.scriptId.slice(0, 8)}`;
+    case 'helper': return `${action.operation.replace(/_/g, ' ')} ${action.helperId}`;
+    case 'variables': return Object.keys(action.variables).join(', ');
+    case 'choose': return `${action.choices.length} branches`;
+    case 'parallel': return `${action.branches.length} branches`;
     default: return action.type;
   }
 }

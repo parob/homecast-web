@@ -278,3 +278,79 @@ describe('serialization: round-trip', () => {
     expect((actionNode!.data as FlowNodeData).config.accessoryId).toBe('light-2');
   });
 });
+
+// ============================================================
+// Node types the engine has always executed but the palette never exposed.
+// A node that serializes one way but not the other saves fine and then comes
+// back blank, so each of these needs a round trip, not just one direction.
+// ============================================================
+
+describe('serialization: newly exposed node types', () => {
+  function roundTrip(nodeType: string, config: Record<string, unknown>) {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_changed',
+        config: { accessoryId: 'acc-1', characteristicType: 'power_state', to: 1 } }),
+      makeNode('n1', { category: config.category as FlowNodeData['category'] ?? 'action', nodeType, config }),
+    ];
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'n1')], 'Test', 'home-1');
+    const graph = automationToGraph(auto);
+    return { auto, graph };
+  }
+
+  it('round-trips a helper node', () => {
+    const { auto, graph } = roundTrip('helper', {
+      helperId: 'guest_mode', operation: 'turn_on', category: 'action',
+    });
+
+    const action = auto.actions[0] as any;
+    expect(action.type).toBe('helper');
+    expect(action.helperId).toBe('guest_mode');
+    expect(action.operation).toBe('turn_on');
+
+    const node = graph.nodes.find(n => n.data.nodeType === 'helper')!;
+    expect(node.data.config.helperId).toBe('guest_mode');
+    expect(node.data.config.operation).toBe('turn_on');
+  });
+
+  it('round-trips a helper timer start with a duration', () => {
+    const { auto, graph } = roundTrip('helper', {
+      helperId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 }, category: 'action',
+    });
+
+    expect((auto.actions[0] as any).duration).toEqual({ minutes: 5 });
+    const node = graph.nodes.find(n => n.data.nodeType === 'helper')!;
+    expect(node.data.config.duration).toEqual({ minutes: 5 });
+  });
+
+  it('round-trips a repeat node', () => {
+    const { auto, graph } = roundTrip('repeat', { mode: 'count', count: 5, category: 'logic' });
+
+    expect((auto.actions[0] as any).type).toBe('repeat');
+    expect((auto.actions[0] as any).count).toBe(5);
+    const node = graph.nodes.find(n => n.data.nodeType === 'repeat')!;
+    expect(node.data.config.mode).toBe('count');
+    expect(node.data.config.count).toBe(5);
+  });
+
+  it('round-trips a stop node', () => {
+    const { auto, graph } = roundTrip('stop', { reason: 'Nothing to do', category: 'logic' });
+
+    expect((auto.actions[0] as any).type).toBe('stop');
+    const node = graph.nodes.find(n => n.data.nodeType === 'stop')!;
+    expect(node.data.config.reason).toBe('Nothing to do');
+  });
+
+  it('round-trips a variables node', () => {
+    const { auto, graph } = roundTrip('variables', { variables: { level: 42 }, category: 'logic' });
+
+    expect((auto.actions[0] as any).type).toBe('variables');
+    expect((auto.actions[0] as any).variables).toEqual({ level: 42 });
+    const node = graph.nodes.find(n => n.data.nodeType === 'variables')!;
+    expect(node.data.config.variables).toEqual({ level: 42 });
+  });
+
+  it('serializes choose and parallel nodes', () => {
+    expect((roundTrip('choose', { category: 'logic' }).auto.actions[0] as any).type).toBe('choose');
+    expect((roundTrip('parallel', { category: 'logic' }).auto.actions[0] as any).type).toBe('parallel');
+  });
+});

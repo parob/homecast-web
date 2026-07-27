@@ -39,6 +39,8 @@ import type {
   WaitForTriggerAction,
   CodeAction,
   MergeAction,
+  HelperAction,
+  ChooseAction,
   CallScriptAction,
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
@@ -443,6 +445,19 @@ function nodeToActionInner(
       return { type: 'parallel', id: node.id, branches: [] } satisfies ParallelAction;
     case 'code':
       return { type: 'code', id: node.id, code: (config.code as string) ?? '', timeout: config.timeout as number | undefined } satisfies CodeAction;
+    case 'helper':
+      return {
+        type: 'helper',
+        id: node.id,
+        helperId: (config.helperId as string) ?? '',
+        operation: (config.operation as HelperAction['operation']) ?? 'toggle',
+        value: config.value,
+        duration: config.duration as HelperAction['duration'],
+        step: config.step as number | undefined,
+      } satisfies HelperAction;
+    case 'choose':
+      // Branch actions are attached from the graph edges, as with if/repeat.
+      return { type: 'choose', id: node.id, choices: [] } satisfies ChooseAction;
     case 'sub_workflow':
       return { type: 'call_script', id: node.id, scriptId: (config.automationId as string) ?? '' } satisfies CallScriptAction;
     case 'merge': {

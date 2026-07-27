@@ -1077,6 +1077,96 @@ function renderConfigForm(
           </>
         );
 
+      case 'repeat':
+        return (
+          <>
+            <ConfigField label="Mode">
+              <Select value={(config.mode as string) ?? 'count'} onValueChange={(v) => updateConfig('mode', v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="count">A fixed number of times</SelectItem>
+                  <SelectItem value="for_each">Once per item in a list</SelectItem>
+                  <SelectItem value="while">While a condition holds</SelectItem>
+                  <SelectItem value="until">Until a condition holds</SelectItem>
+                </SelectContent>
+              </Select>
+            </ConfigField>
+            {((config.mode as string) ?? 'count') === 'count' && (
+              <ConfigField label="Repetitions">
+                <Input
+                  type="number"
+                  min={1}
+                  value={(config.count as number) ?? 1}
+                  onChange={(e) => updateConfig('count', Number(e.target.value))}
+                  className="h-8 text-xs"
+                />
+              </ConfigField>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-2">
+              Connect the steps to repeat below this node. Inside the loop, <code>{'{{ repeat.index }}'}</code> and{' '}
+              <code>{'{{ repeat.item }}'}</code> are available. Capped at 1000 iterations.
+            </p>
+          </>
+        );
+
+      case 'variables':
+        return (
+          <>
+            <ConfigField label="Variables (JSON)">
+              <Textarea
+                value={
+                  typeof config.variables === 'string'
+                    ? (config.variables as string)
+                    : JSON.stringify(config.variables ?? {}, null, 2)
+                }
+                onChange={(e) => {
+                  try {
+                    updateConfig('variables', JSON.parse(e.target.value));
+                  } catch {
+                    // Keep the raw text while it's mid-edit and not yet valid.
+                    updateConfig('variables', e.target.value);
+                  }
+                }}
+                placeholder={'{\n  "level": 80\n}'}
+                className="text-xs font-mono min-h-[90px]"
+              />
+            </ConfigField>
+            <p className="text-[10px] text-muted-foreground">
+              Later steps read these with <code>{'{{ variables.name }}'}</code>. Values may themselves be templates.
+            </p>
+          </>
+        );
+
+      case 'stop':
+        return (
+          <>
+            <ConfigField label="Reason (optional)">
+              <Input
+                value={(config.reason as string) ?? ''}
+                onChange={(e) => updateConfig('reason', e.target.value)}
+                placeholder="e.g., Nobody home"
+                className="h-8 text-xs"
+              />
+            </ConfigField>
+            <p className="text-[10px] text-muted-foreground">Ends the run here. The reason appears in the execution history.</p>
+          </>
+        );
+
+      case 'choose':
+        return (
+          <p className="text-[10px] text-muted-foreground">
+            Picks the first branch whose condition passes. Connect one IF node per branch below this node;
+            anything connected to the last output runs when nothing matches.
+          </p>
+        );
+
+      case 'parallel':
+        return (
+          <p className="text-[10px] text-muted-foreground">
+            Runs every connected branch at the same time and waits for all of them to finish.
+          </p>
+        );
+
       default:
         return <p className="text-xs text-muted-foreground">Configuration for {nodeType}</p>;
     }
@@ -1571,6 +1661,20 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
       case 'sub_workflow':
         if (config.automationId) return `ID: ${(config.automationId as string).slice(0, 8)}...`;
         break;
+      case 'repeat': {
+        const mode = (config.mode as string) ?? 'count';
+        return mode === 'count' ? `${config.count ?? 1}x` : mode.replace(/_/g, ' ');
+      }
+      case 'variables': {
+        const vars = config.variables;
+        if (vars && typeof vars === 'object') {
+          const keys = Object.keys(vars as Record<string, unknown>);
+          if (keys.length) return keys.join(', ');
+        }
+        break;
+      }
+      case 'stop':
+        return (config.reason as string) || 'Stop';
     }
   }
 
@@ -1628,6 +1732,13 @@ function isNodeConfigured(nodeType: string, category: string, config: Record<str
   }
   if (category === 'logic') {
     if (nodeType === 'sub_workflow') return !!config.automationId;
+    if (nodeType === 'repeat') {
+      return ((config.mode as string) ?? 'count') !== 'count' || !!(config.count as number);
+    }
+    if (nodeType === 'variables') {
+      const vars = config.variables;
+      return !!vars && typeof vars === 'object' && Object.keys(vars as Record<string, unknown>).length > 0;
+    }
     return true;
   }
   return false;

@@ -137,6 +137,11 @@ export const ACTION_NODES: NodeDefinition[] = [
     category: 'action',
     description: 'Run custom JavaScript to transform data',
   },
+  // NOTE: the `helper` action (virtual switches, modes, counters, timers) is
+  // implemented end-to-end in the engine, serializes both ways, and persists —
+  // but it is deliberately NOT in the palette yet. There is no UI to *create* a
+  // helper definition, so the node would reference helpers a user cannot make.
+  // Add it here alongside the helper-management screen.
 ];
 
 // ============================================================
@@ -171,6 +176,42 @@ export const LOGIC_NODES: NodeDefinition[] = [
     icon: 'Workflow',
     category: 'logic',
     description: 'Execute another automation as a sub-flow',
+  },
+  // The engine has always executed these; they were simply never in the palette.
+  {
+    type: 'repeat',
+    label: 'Repeat',
+    icon: 'Repeat',
+    category: 'logic',
+    description: 'Loop a sequence — a fixed count, over a list, or while a condition holds',
+  },
+  {
+    type: 'choose',
+    label: 'Choose',
+    icon: 'ListTree',
+    category: 'logic',
+    description: 'Pick the first matching branch out of many (multi-way IF)',
+  },
+  {
+    type: 'parallel',
+    label: 'Parallel',
+    icon: 'Split',
+    category: 'logic',
+    description: 'Run several branches at the same time',
+  },
+  {
+    type: 'variables',
+    label: 'Set Variable',
+    icon: 'Variable',
+    category: 'logic',
+    description: 'Store a value for later steps to reference',
+  },
+  {
+    type: 'stop',
+    label: 'Stop',
+    icon: 'CircleStop',
+    category: 'logic',
+    description: 'End the automation here',
   },
 ];
 
