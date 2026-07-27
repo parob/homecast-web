@@ -524,6 +524,37 @@ function renderConfigForm(
                 )}
               </div>
             )}
+
+            {/* "…and stays that way for" — Apple Home has no duration condition
+                at all, so "the garage has been open for 5 minutes" normally
+                costs a delay-switch chain plus a fake contact sensor. */}
+            <div className="mt-3 border-t pt-3">
+              <ConfigField label="Only after it stays that way for">
+                <div className="flex items-center gap-1.5">
+                  {([
+                    ['forHours', 'h'],
+                    ['forMinutes', 'm'],
+                    ['forSeconds', 's'],
+                  ] as const).map(([key, suffix]) => (
+                    <div key={key} className="flex flex-1 items-center gap-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={(config[key] as number) ?? ''}
+                        onChange={(e) => updateConfig(key, e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                        placeholder="0"
+                        className="h-8 text-xs"
+                      />
+                      <span className="text-[10px] text-muted-foreground">{suffix}</span>
+                    </div>
+                  ))}
+                </div>
+              </ConfigField>
+              <p className="text-[10px] text-muted-foreground">
+                Leave empty to fire immediately. If the device changes back before the time is up,
+                nothing runs.
+              </p>
+            </div>
           </>
         );
       }

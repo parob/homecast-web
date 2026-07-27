@@ -41,6 +41,7 @@ import type {
   MergeAction,
   HelperAction,
   ChooseAction,
+  Duration,
   CallScriptAction,
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
@@ -153,6 +154,22 @@ function getDownstreamNodes(
 // Node → Trigger (simplified → engine)
 // ============================================================
 
+/**
+ * Read the "for" duration off a trigger node's config, returning undefined when
+ * it's absent or zero so we don't write an empty duration into the automation.
+ */
+function buildForDuration(config: Record<string, unknown>): Duration | undefined {
+  const hours = Number(config.forHours ?? 0) || 0;
+  const minutes = Number(config.forMinutes ?? 0) || 0;
+  const seconds = Number(config.forSeconds ?? 0) || 0;
+  if (!hours && !minutes && !seconds) return undefined;
+  return {
+    ...(hours ? { hours } : {}),
+    ...(minutes ? { minutes } : {}),
+    ...(seconds ? { seconds } : {}),
+  };
+}
+
 function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
   const data = node.data as FlowNodeData;
   const config = data.config;
@@ -162,6 +179,9 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
     case 'device_changed': {
       const isGroup = !!config.serviceGroupId;
       const hasThresholds = config.above !== undefined || config.below !== undefined;
+      // "…and stays that way for N" — the engine cancels the pending fire if the
+      // value reverts first, which is what makes "left open for 5 minutes" work.
+      const forDuration = buildForDuration(config);
       if (hasThresholds) {
         return {
           type: 'numeric_state',
@@ -173,6 +193,7 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
           characteristicType: (config.characteristicType as string) ?? '',
           above: config.above as number | undefined,
           below: config.below as number | undefined,
+          ...(forDuration ? { for: forDuration } : {}),
         } satisfies NumericStateTrigger;
       }
       return {
@@ -185,6 +206,7 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
         characteristicType: (config.characteristicType as string) ?? '',
         to: config.to ?? undefined,
         from: config.from ?? undefined,
+        ...(forDuration ? { for: forDuration } : {}),
       } satisfies StateTrigger;
     }
 

@@ -178,6 +178,16 @@ function triggerToNode(trigger: Trigger, x: number, y: number): Node<FlowNodeDat
   };
 }
 
+/** Spread a trigger's "for" duration back into flat config fields for the form. */
+function forConfig(duration?: { hours?: number; minutes?: number; seconds?: number }) {
+  if (!duration) return {};
+  return {
+    forHours: duration.hours,
+    forMinutes: duration.minutes,
+    forSeconds: duration.seconds,
+  };
+}
+
 function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
   switch (trigger.type) {
     case 'state': return {
@@ -189,6 +199,7 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
       from: trigger.from,
       // Derive filterMode from saved trigger data
       filterMode: trigger.to != null ? 'value' : 'any',
+      ...forConfig(trigger.for),
     };
     case 'numeric_state': return {
       accessoryId: trigger.accessoryId,
@@ -199,6 +210,7 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
       below: trigger.below,
       // Derive filterMode from saved trigger data
       filterMode: (trigger.above != null && trigger.below != null) ? 'range' : trigger.above != null ? 'above' : trigger.below != null ? 'below' : 'any',
+      ...forConfig(trigger.for),
     };
     case 'time': return { at: trigger.at, weekdays: trigger.weekdays };
     case 'time_pattern': return { hours: trigger.hours, minutes: trigger.minutes, seconds: trigger.seconds };

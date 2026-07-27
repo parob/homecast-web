@@ -309,3 +309,84 @@ describe('SunCalculator', () => {
     expect(plain.getTime() - offset.getTime()).toBe(30 * 60_000);
   });
 });
+
+describe('"for" duration on state triggers', () => {
+  it('waits the full duration before firing', () => {
+    store.updateDeviceState('door-1', 'contact_state', false);
+    register({
+      id: 't1', type: 'state', accessoryId: 'door-1',
+      characteristicType: 'contact_state', to: true, for: { minutes: 5 },
+    });
+
+    store.updateDeviceState('door-1', 'contact_state', true);
+    vi.advanceTimersByTime(4 * 60_000);
+    expect(fired).toHaveLength(0);
+
+    vi.advanceTimersByTime(60_000 + 100);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('cancels if the value reverts before the duration elapses', () => {
+    // "The garage has been open for 5 minutes" must not fire if it was shut
+    // after 2 — this is the semantic HomeKit's "turn off after" cannot express.
+    store.updateDeviceState('door-1', 'contact_state', false);
+    register({
+      id: 't1', type: 'state', accessoryId: 'door-1',
+      characteristicType: 'contact_state', to: true, for: { minutes: 5 },
+    });
+
+    store.updateDeviceState('door-1', 'contact_state', true);
+    vi.advanceTimersByTime(2 * 60_000);
+    store.updateDeviceState('door-1', 'contact_state', false);
+
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(fired).toHaveLength(0);
+  });
+
+  it('restarts the wait when the value re-enters the matching state', () => {
+    store.updateDeviceState('door-1', 'contact_state', false);
+    register({
+      id: 't1', type: 'state', accessoryId: 'door-1',
+      characteristicType: 'contact_state', to: true, for: { minutes: 5 },
+    });
+
+    store.updateDeviceState('door-1', 'contact_state', true);
+    vi.advanceTimersByTime(4 * 60_000);
+    store.updateDeviceState('door-1', 'contact_state', false);
+    store.updateDeviceState('door-1', 'contact_state', true);
+    vi.advanceTimersByTime(4 * 60_000);
+
+    expect(fired).toHaveLength(0);
+    vi.advanceTimersByTime(60_000 + 100);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('applies to numeric_state triggers too', () => {
+    store.updateDeviceState('freezer', 'temperature', -18);
+    register({
+      id: 't1', type: 'numeric_state', accessoryId: 'freezer',
+      characteristicType: 'temperature', above: -10, for: { minutes: 10 },
+    });
+
+    store.updateDeviceState('freezer', 'temperature', -5);
+    vi.advanceTimersByTime(9 * 60_000);
+    expect(fired).toHaveLength(0);
+
+    vi.advanceTimersByTime(60_000 + 100);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('does not fire a duration trigger after unregistering', () => {
+    store.updateDeviceState('door-1', 'contact_state', false);
+    register({
+      id: 't1', type: 'state', accessoryId: 'door-1',
+      characteristicType: 'contact_state', to: true, for: { minutes: 5 },
+    });
+
+    store.updateDeviceState('door-1', 'contact_state', true);
+    manager.unregisterTriggers('auto-1');
+    vi.advanceTimersByTime(10 * 60_000);
+
+    expect(fired).toHaveLength(0);
+  });
+});

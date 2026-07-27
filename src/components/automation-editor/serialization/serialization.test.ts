@@ -354,3 +354,48 @@ describe('serialization: newly exposed node types', () => {
     expect((roundTrip('parallel', { category: 'logic' }).auto.actions[0] as any).type).toBe('parallel');
   });
 });
+
+describe('serialization: trigger "for" duration', () => {
+  function triggerRoundTrip(config: Record<string, unknown>) {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_changed', config }),
+      makeNode('a1', { category: 'action', nodeType: 'set_device',
+        config: { accessoryId: 'acc-2', characteristicType: 'power_state', value: true } }),
+    ];
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'a1')], 'Test', 'home-1');
+    return { auto, graph: automationToGraph(auto) };
+  }
+
+  it('round-trips a duration on a state trigger', () => {
+    const { auto, graph } = triggerRoundTrip({
+      accessoryId: 'door-1', characteristicType: 'contact_state', to: true,
+      forMinutes: 5,
+    });
+
+    expect((auto.triggers[0] as any).for).toEqual({ minutes: 5 });
+    const node = graph.nodes.find(n => n.data.category === 'trigger')!;
+    expect(node.data.config.forMinutes).toBe(5);
+  });
+
+  it('round-trips a duration on a numeric_state trigger', () => {
+    const { auto, graph } = triggerRoundTrip({
+      accessoryId: 'freezer', characteristicType: 'temperature', above: -10,
+      forHours: 1, forMinutes: 30,
+    });
+
+    expect((auto.triggers[0] as any).type).toBe('numeric_state');
+    expect((auto.triggers[0] as any).for).toEqual({ hours: 1, minutes: 30 });
+    const node = graph.nodes.find(n => n.data.category === 'trigger')!;
+    expect(node.data.config.forHours).toBe(1);
+    expect(node.data.config.forMinutes).toBe(30);
+  });
+
+  it('omits the duration entirely when the fields are empty or zero', () => {
+    const { auto } = triggerRoundTrip({
+      accessoryId: 'door-1', characteristicType: 'contact_state', to: true,
+      forHours: 0, forMinutes: 0, forSeconds: 0,
+    });
+
+    expect((auto.triggers[0] as any).for).toBeUndefined();
+  });
+});
