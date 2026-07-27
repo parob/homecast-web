@@ -4,10 +4,9 @@
 
 import { useState } from 'react';
 import {
-  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow, StickyNote, ChevronRight,
-  PanelLeftClose, PanelLeftOpen, Blocks, History, GitCommitVertical,
+  ChevronRight, PanelLeftClose, PanelLeftOpen, Blocks, History, GitCommitVertical,
 } from 'lucide-react';
+import { getNodeIcon } from '../icons';
 import { Button } from '@/components/ui/button';
 import { NodeInfoPopover } from './NodeInfoPopover';
 import { ExecutionHistoryInline } from './ExecutionHistoryPanel';
@@ -20,11 +19,6 @@ import {
   CATEGORY_STYLES,
   type NodeDefinition,
 } from '../constants';
-
-const ICONS: Record<string, React.ElementType> = {
-  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow, StickyNote,
-};
 
 type SidebarTab = 'nodes' | 'executions' | 'versions';
 
@@ -132,7 +126,7 @@ export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onV
                   {!isCollapsed && (
                     <div className="px-1.5 pb-1">
                       {defs.map((def) => {
-                        const Icon = ICONS[def.icon] ?? Zap;
+                        const Icon = getNodeIcon(def.icon);
                         return (
                           <div
                             key={`${def.category}:${def.type}`}
@@ -149,7 +143,7 @@ export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onV
                               onKeyDown={(e) => { if (e.key === 'Enter') onAddNode(def); }}
                             >
                               <div className={cn('w-6 h-6 rounded flex items-center justify-center shrink-0', catStyles.iconBg)}>
-                                <Icon className="w-3.5 h-3.5" />
+                                <Icon className={cn("w-3.5 h-3.5", catStyles.iconColor)} />
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="text-xs font-medium truncate">{def.label}</div>

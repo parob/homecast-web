@@ -18,6 +18,7 @@ import { getAutomationEngine } from '@/automation';
 import type { ExecutionTrace } from '@/automation/types/execution';
 import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { cn } from '@/lib/utils';
+import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { NodeInfoPopover } from './NodeInfoPopover';
@@ -182,7 +183,10 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
       <div className="w-full sm:w-auto flex flex-col min-h-0 h-full shrink-0 bg-background sm:rounded-xl sm:border sm:shadow-lg" data-testid="config-panel">
         {/* Header */}
         <div className="h-12 border-b flex items-center gap-2 px-3 shrink-0">
-          <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center shrink-0', styles.iconBg)} />
+          {/* Was an empty coloured square — the node's icon was never rendered. */}
+          <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center shrink-0', styles.iconBg)}>
+            {(() => { const Icon = getNodeIcon(data.icon); return <Icon className={cn('w-3.5 h-3.5', styles.iconColor)} />; })()}
+          </div>
           <span className="text-sm font-medium flex-1 truncate">{data.label}</span>
           <NodeInfoPopover nodeType={data.nodeType} />
           {onClose && (

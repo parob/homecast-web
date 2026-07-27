@@ -336,3 +336,9 @@ html.ios-app .selectable {
 }
 
 
+
+/* Referenced by the automation editor's animated edges (ControlFlowEdge).
+   Previously missing, so "running" connections rendered as static dashes. */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -10; }
+}

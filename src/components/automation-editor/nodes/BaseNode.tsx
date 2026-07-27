@@ -3,18 +3,10 @@
 
 import { memo } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps, type Node } from '@xyflow/react';
-import {
-  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow,
-  AlertTriangle, Check, X, Loader2, Trash2,
-} from 'lucide-react';
+import { AlertTriangle, Check, X, Loader2, Trash2 } from 'lucide-react';
+import { getNodeIcon } from '../icons';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
-
-const ICONS: Record<string, React.ElementType> = {
-  Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
-  GitBranch, GitMerge, Pause, Code, Workflow,
-};
 
 function getInputs(data: FlowNodeData): { id: string; label?: string }[] {
   if (data.nodeType === 'merge') {
@@ -36,7 +28,7 @@ function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
 export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const nodeData = data as FlowNodeData;
   const styles = CATEGORY_STYLES[nodeData.category] ?? CATEGORY_STYLES.action;
-  const Icon = ICONS[nodeData.icon] ?? Zap;
+  const Icon = getNodeIcon(nodeData.icon);
   const isTrigger = nodeData.category === 'trigger';
   const inputs = getInputs(nodeData);
   const outputs = getOutputs(nodeData);

@@ -21,6 +21,7 @@ import {
   type Edge,
   type Connection,
   type OnConnect,
+  MarkerType,
   type NodeTypes,
 } from '@xyflow/react';
 
@@ -62,6 +63,15 @@ const edgeTypes = {
 const defaultEdgeOptions = {
   type: 'controlFlow',
   animated: false,
+  // React Flow injects the marker def for us. Without this the edge component's
+  // markerEnd is undefined and the graph draws no arrowheads, leaving flow
+  // direction ambiguous on anything but a straight top-to-bottom chain.
+  markerEnd: {
+    type: MarkerType.ArrowClosed,
+    width: 18,
+    height: 18,
+    color: 'hsl(var(--muted-foreground) / 0.45)',
+  },
 };
 
 interface AutomationEditorDialogProps {

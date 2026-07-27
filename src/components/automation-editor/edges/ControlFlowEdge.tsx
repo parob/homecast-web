@@ -18,6 +18,7 @@ export const ControlFlowEdge = memo(function ControlFlowEdge({
   targetPosition,
   selected,
   data,
+  markerEnd,
 }: EdgeProps) {
   const [edgePath] = getSmoothStepPath({
     sourceX,
@@ -41,12 +42,18 @@ export const ControlFlowEdge = memo(function ControlFlowEdge({
           ? 'hsl(var(--destructive))'
           : selected
             ? 'hsl(var(--primary))'
-            : 'hsl(var(--border))',
+            // --border is near-white in light mode and near-black in dark, so
+            // connections were all but invisible against the canvas either way.
+            : 'hsl(var(--muted-foreground) / 0.45)',
         strokeWidth: selected ? 2.5 : 2,
         strokeDasharray: isAnimated ? '5' : undefined,
+        // Keyframes live in index.css; previously referenced but never defined,
+        // so animated edges rendered as static dashes.
         animation: isAnimated ? 'flow-dash 0.5s linear infinite' : undefined,
       }}
-      markerEnd="url(#arrow)"
+      // Was url(#arrow), a marker that exists nowhere in the app — so the graph
+      // rendered with no arrowheads at all and flow direction was unreadable.
+      markerEnd={markerEnd}
     />
   );
 });
