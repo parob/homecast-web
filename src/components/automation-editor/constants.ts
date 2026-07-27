@@ -88,6 +88,13 @@ export const TRIGGER_NODES: NodeDefinition[] = [
     category: 'trigger',
     description: 'When another automation fails',
   },
+  {
+    type: 'device_offline',
+    label: 'Device Offline',
+    icon: 'WifiOff',
+    category: 'trigger',
+    description: 'When a device stops responding — Apple Home cannot detect this at all',
+  },
 ];
 
 // ============================================================

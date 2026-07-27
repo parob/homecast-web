@@ -42,6 +42,7 @@ import type {
   HelperAction,
   ChooseAction,
   Duration,
+  DeviceAvailabilityTrigger,
   CallScriptAction,
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
@@ -209,6 +210,15 @@ function nodeToTrigger(node: Node<FlowNodeData>): Trigger {
         ...(forDuration ? { for: forDuration } : {}),
       } satisfies StateTrigger;
     }
+
+    case 'device_offline':
+      return {
+        type: 'device_availability',
+        id: node.id,
+        accessoryId: (config.accessoryId as string) ?? '',
+        to: (config.availability as 'unavailable' | 'available') ?? 'unavailable',
+        ...(buildForDuration(config) ? { for: buildForDuration(config)! } : {}),
+      } satisfies DeviceAvailabilityTrigger;
 
     // Simplified: schedule → time, time_pattern, or sun
     case 'schedule': {

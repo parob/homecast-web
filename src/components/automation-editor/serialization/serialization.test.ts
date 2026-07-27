@@ -399,3 +399,37 @@ describe('serialization: trigger "for" duration', () => {
     expect((auto.triggers[0] as any).for).toBeUndefined();
   });
 });
+
+describe('serialization: device_offline trigger', () => {
+  it('round-trips through the engine type', () => {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_offline',
+        config: { accessoryId: 'freezer-1', availability: 'unavailable', forMinutes: 10 } }),
+      makeNode('a1', { category: 'action', nodeType: 'notify', config: { message: 'Freezer offline' } }),
+    ];
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'a1')], 'Test', 'home-1');
+
+    const t = auto.triggers[0] as any;
+    expect(t.type).toBe('device_availability');
+    expect(t.accessoryId).toBe('freezer-1');
+    expect(t.to).toBe('unavailable');
+    expect(t.for).toEqual({ minutes: 10 });
+
+    const graph = automationToGraph(auto);
+    const node = graph.nodes.find(n => n.data.category === 'trigger')!;
+    expect(node.data.nodeType).toBe('device_offline');
+    expect(node.data.config.accessoryId).toBe('freezer-1');
+    expect(node.data.config.availability).toBe('unavailable');
+    expect(node.data.config.forMinutes).toBe(10);
+  });
+
+  it('defaults to the unavailable edge', () => {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_offline', config: { accessoryId: 'x' } }),
+      makeNode('a1', { category: 'action', nodeType: 'notify', config: { message: 'hi' } }),
+    ];
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'a1')], 'Test', 'home-1');
+
+    expect((auto.triggers[0] as any).to).toBe('unavailable');
+  });
+});

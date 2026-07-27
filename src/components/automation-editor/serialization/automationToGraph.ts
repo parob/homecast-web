@@ -35,6 +35,8 @@ function simplifyTriggerType(engineType: string): { nodeType: string; extraConfi
       return { nodeType: 'schedule', extraConfig: { scheduleMode: 'sun' } };
     case 'webhook':
       return { nodeType: 'webhook', extraConfig: {} };
+    case 'device_availability':
+      return { nodeType: 'device_offline', extraConfig: {} };
     default:
       // Unknown engine types pass through as-is
       return { nodeType: engineType, extraConfig: {} };
@@ -210,6 +212,11 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
       below: trigger.below,
       // Derive filterMode from saved trigger data
       filterMode: (trigger.above != null && trigger.below != null) ? 'range' : trigger.above != null ? 'above' : trigger.below != null ? 'below' : 'any',
+      ...forConfig(trigger.for),
+    };
+    case 'device_availability': return {
+      accessoryId: trigger.accessoryId,
+      availability: trigger.to,
       ...forConfig(trigger.for),
     };
     case 'time': return { at: trigger.at, weekdays: trigger.weekdays };

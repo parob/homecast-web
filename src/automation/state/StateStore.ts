@@ -20,6 +20,9 @@ export class StateStore {
 
   // helperId -> value
   private helperStates = new Map<string, unknown>();
+  // accessoryId -> last reported reachability
+  private reachability = new Map<string, boolean>();
+  private reachabilityListeners = new Set<(accessoryId: string, isReachable: boolean) => void>();
 
   // Listeners keyed by "accessoryId:characteristicType"
   private specificListeners = new Map<string, Set<StateChangeListener>>();
@@ -125,6 +128,39 @@ export class StateStore {
   }
 
   // ============================================================
+  // Reachability
+  // ============================================================
+
+  /** Last known reachability, or undefined if HomeKit hasn't reported yet. */
+  isReachable(accessoryId: string): boolean | undefined {
+    return this.reachability.get(accessoryId);
+  }
+
+  /**
+   * Record an accessory's reachability and notify listeners on a real change.
+   * Repeat reports of the same value are ignored so a flapping bridge doesn't
+   * restart every pending availability trigger.
+   */
+  updateReachability(accessoryId: string, isReachable: boolean): void {
+    if (this.reachability.get(accessoryId) === isReachable) return;
+    this.reachability.set(accessoryId, isReachable);
+
+    for (const listener of this.reachabilityListeners) {
+      try {
+        listener(accessoryId, isReachable);
+      } catch (e) {
+        console.error('[StateStore] Reachability listener error:', e);
+      }
+    }
+  }
+
+  /** Subscribe to reachability changes. Returns an unsubscribe function. */
+  onReachabilityChange(listener: (accessoryId: string, isReachable: boolean) => void): () => void {
+    this.reachabilityListeners.add(listener);
+    return () => this.reachabilityListeners.delete(listener);
+  }
+
+  // ============================================================
   // Helper state read/write
   // ============================================================
 
@@ -188,6 +224,12 @@ export class StateStore {
         event.characteristicType,
         event.value,
       );
+      return;
+    }
+
+    // Previously dropped, so nothing could react to a device going offline.
+    if (event.type === 'accessory.reachability' && typeof event.isReachable === 'boolean') {
+      this.updateReachability(event.accessoryId, event.isReachable);
     }
   }
 
@@ -216,7 +258,9 @@ export class StateStore {
     this.deviceStates.clear();
     this.lastChanged.clear();
     this.helperStates.clear();
+    this.reachability.clear();
     this.specificListeners.clear();
     this.globalListeners.clear();
+    this.reachabilityListeners.clear();
   }
 }

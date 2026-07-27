@@ -559,6 +559,56 @@ function renderConfigForm(
         );
       }
 
+      case 'device_offline': {
+        const acc = accessories?.find((a) => a.id === config.accessoryId);
+        return (
+          <>
+            <ConfigField label="Device">
+              <button
+                type="button"
+                onClick={() => openDevicePicker?.()}
+                className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted"
+              >
+                {acc?.name ?? <span className="text-muted-foreground">Choose a device…</span>}
+              </button>
+            </ConfigField>
+            <ConfigField label="Fire when it becomes">
+              <Select
+                value={(config.availability as string) ?? 'unavailable'}
+                onValueChange={(v) => updateConfig('availability', v)}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unavailable">Unresponsive</SelectItem>
+                  <SelectItem value="available">Back online</SelectItem>
+                </SelectContent>
+              </Select>
+            </ConfigField>
+            <ConfigField label="After it stays that way for">
+              <div className="flex items-center gap-1.5">
+                {([['forMinutes', 'm'], ['forSeconds', 's']] as const).map(([key, suffix]) => (
+                  <div key={key} className="flex flex-1 items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={(config[key] as number) ?? ''}
+                      onChange={(e) => updateConfig(key, e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                      placeholder="0"
+                      className="h-8 text-xs"
+                    />
+                    <span className="text-[10px] text-muted-foreground">{suffix}</span>
+                  </div>
+                ))}
+              </div>
+            </ConfigField>
+            <p className="text-[10px] text-muted-foreground">
+              Defaults to 5 minutes. HomeKit's reachability flag flaps, so a short delay stops a
+              momentary blip raising a false alarm.
+            </p>
+          </>
+        );
+      }
+
       case 'schedule': {
         const mode = (config.scheduleMode as string) ?? 'time';
         return (
@@ -1646,6 +1696,12 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
       case 'webhook':
         if (config.webhookId) return `ID: ${(config.webhookId as string).slice(0, 12)}`;
         break;
+      case 'device_offline':
+        if (config.accessoryId) {
+          const state = (config.availability as string) === 'available' ? 'back online' : 'unresponsive';
+          return `${getDeviceName()} ${state}`;
+        }
+        break;
     }
   }
 
@@ -1742,6 +1798,7 @@ function isNodeConfigured(nodeType: string, category: string, config: Record<str
         return false;
       }
       case 'webhook': return !!config.webhookId;
+      case 'device_offline': return !!config.accessoryId;
     }
   }
   if (category === 'action') {

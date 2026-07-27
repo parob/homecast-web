@@ -390,3 +390,96 @@ describe('"for" duration on state triggers', () => {
     expect(fired).toHaveLength(0);
   });
 });
+
+describe('device_availability triggers', () => {
+  const offline = (id = 'freezer') => store.handleHomeKitEvent(
+    { type: 'accessory.reachability', accessoryId: id, isReachable: false } as never);
+  const online = (id = 'freezer') => store.handleHomeKitEvent(
+    { type: 'accessory.reachability', accessoryId: id, isReachable: true } as never);
+
+  it('fires after the device has been unreachable for the debounce window', () => {
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable', for: { minutes: 5 } });
+
+    offline();
+    vi.advanceTimersByTime(4 * 60_000);
+    expect(fired).toHaveLength(0);
+
+    vi.advanceTimersByTime(60_000 + 100);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].triggerType).toBe('device_availability');
+    expect(fired[0].accessoryId).toBe('freezer');
+  });
+
+  it('does not fire if the device comes back before the window elapses', () => {
+    // HMAccessory.isReachable is documented as going stale and flapping, so a
+    // brief blip must not raise "your freezer is offline".
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable', for: { minutes: 5 } });
+
+    offline();
+    vi.advanceTimersByTime(2 * 60_000);
+    online();
+    vi.advanceTimersByTime(30 * 60_000);
+
+    expect(fired).toHaveLength(0);
+  });
+
+  it('applies a default debounce when none is configured', () => {
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable' });
+
+    offline();
+    vi.advanceTimersByTime(60_000);
+    expect(fired).toHaveLength(0);
+
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('can fire on recovery instead', () => {
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'available', for: { seconds: 30 } });
+
+    offline();
+    vi.advanceTimersByTime(60_000);
+    expect(fired).toHaveLength(0);
+
+    online();
+    vi.advanceTimersByTime(31_000);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('ignores repeat reports of the same reachability', () => {
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable', for: { minutes: 5 } });
+
+    offline();
+    vi.advanceTimersByTime(4 * 60_000);
+    offline(); // duplicate report must not restart the countdown
+    vi.advanceTimersByTime(60_000 + 100);
+
+    expect(fired).toHaveLength(1);
+  });
+
+  it('only watches the accessory it was registered for', () => {
+    online('freezer');
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable', for: { seconds: 10 } });
+
+    store.handleHomeKitEvent({ type: 'accessory.reachability', accessoryId: 'lamp', isReachable: false } as never);
+    vi.advanceTimersByTime(60_000);
+
+    expect(fired).toHaveLength(0);
+  });
+
+  it('stops after unregistering', () => {
+    online();
+    register({ id: 't1', type: 'device_availability', accessoryId: 'freezer', to: 'unavailable', for: { minutes: 5 } });
+
+    offline();
+    manager.unregisterTriggers('auto-1');
+    vi.advanceTimersByTime(30 * 60_000);
+
+    expect(fired).toHaveLength(0);
+  });
+});

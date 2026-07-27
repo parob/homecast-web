@@ -12,8 +12,9 @@ import type {
   SunTrigger,
   TemplateTrigger,
   Duration,
+  DeviceAvailabilityTrigger,
 } from '../types/automation';
-import { durationToMs } from '../types/automation';
+import { durationToMs, DEFAULT_UNAVAILABLE_FOR } from '../types/automation';
 import type { StateChangeEvent } from '../types/execution';
 import { getNextSunEvent } from '../state/SunCalculator';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
@@ -69,6 +70,13 @@ interface TemplateTriggerEntry {
   forTimer?: ReturnType<typeof setTimeout>;
 }
 
+interface AvailabilityEntry {
+  automationId: string;
+  trigger: DeviceAvailabilityTrigger;
+  callback: TriggerCallback;
+  forTimer?: ReturnType<typeof setTimeout>;
+}
+
 /** Resolves which service groups an accessory belongs to (for group triggers) */
 export interface ServiceGroupResolver {
   getGroupsForAccessory(accessoryId: string): string[];
@@ -96,6 +104,9 @@ export class TriggerManager {
 
   // Sun triggers
   private sunSchedules = new Map<string, SunSchedule[]>();
+  // accessoryId -> availability triggers watching it
+  private availabilityTriggers = new Map<string, AvailabilityEntry[]>();
+  private reachabilityUnsubscribe?: () => void;
 
   // Template triggers (re-evaluate on any state change)
   private templateTriggers: TemplateTriggerEntry[] = [];
@@ -164,6 +175,9 @@ export class TriggerManager {
       case 'webhook':
         // Webhook triggers are forwarded from server as events
         this.registerEventTrigger(automationId, { ...trigger, type: 'event', eventType: `webhook.${trigger.webhookId}` } as Trigger & { type: 'event'; eventType: string }, callback);
+        break;
+      case 'device_availability':
+        this.registerAvailabilityTrigger(automationId, trigger, callback);
         break;
       default:
         console.warn(`[TriggerManager] Unsupported trigger type: ${(trigger as Trigger).type}`);
@@ -469,6 +483,19 @@ export class TriggerManager {
       else this.serviceGroupNumericTriggers.set(key, filtered);
     }
 
+    // Availability triggers
+    for (const [accessoryId, entries] of this.availabilityTriggers) {
+      const kept = entries.filter((e) => {
+        if (e.automationId === automationId) {
+          if (e.forTimer) clearTimeout(e.forTimer);
+          return false;
+        }
+        return true;
+      });
+      if (kept.length === 0) this.availabilityTriggers.delete(accessoryId);
+      else this.availabilityTriggers.set(accessoryId, kept);
+    }
+
     // Template triggers
     this.templateTriggers = this.templateTriggers.filter((e) => {
       if (e.automationId === automationId) {
@@ -484,11 +511,65 @@ export class TriggerManager {
   // ============================================================
 
   /**
+   * Register a device availability trigger.
+   *
+   * Always debounced: HMAccessory.isReachable is known to go stale and flap, so
+   * firing on the raw edge would produce false "your freezer is offline" alarms.
+   */
+  private registerAvailabilityTrigger(
+    automationId: string,
+    trigger: DeviceAvailabilityTrigger,
+    callback: TriggerCallback,
+  ): void {
+    const entry: AvailabilityEntry = { automationId, trigger, callback };
+    let entries = this.availabilityTriggers.get(trigger.accessoryId);
+    if (!entries) {
+      entries = [];
+      this.availabilityTriggers.set(trigger.accessoryId, entries);
+    }
+    entries.push(entry);
+  }
+
+  private handleReachabilityChange(accessoryId: string, isReachable: boolean): void {
+    const entries = this.availabilityTriggers.get(accessoryId);
+    if (!entries) return;
+
+    for (const entry of entries) {
+      if (entry.trigger.enabled === false) continue;
+      const wanted = entry.trigger.to === 'available';
+
+      if (entry.forTimer) {
+        clearTimeout(entry.forTimer);
+        entry.forTimer = undefined;
+      }
+      if (isReachable !== wanted) continue;
+
+      const delay = durationToMs(entry.trigger.for ?? DEFAULT_UNAVAILABLE_FOR);
+      const fire = () => {
+        entry.forTimer = undefined;
+        entry.callback({
+          triggerId: entry.trigger.id,
+          triggerType: 'device_availability',
+          accessoryId,
+          toValue: entry.trigger.to,
+          timestamp: Date.now(),
+        });
+      };
+
+      if (delay > 0) entry.forTimer = setTimeout(fire, delay);
+      else fire();
+    }
+  }
+
+  /**
    * Initialize: subscribe to state store for all state changes.
    */
   initialize(): void {
     this.stateStoreUnsubscribe = this.stateStore.onAnyStateChange((event) => {
       this.handleStateChange(event);
+    });
+    this.reachabilityUnsubscribe = this.stateStore.onReachabilityChange((accessoryId, isReachable) => {
+      this.handleReachabilityChange(accessoryId, isReachable);
     });
   }
 
@@ -913,6 +994,16 @@ export class TriggerManager {
       }
     }
     this.sunSchedules.clear();
+
+    // Clear availability triggers
+    for (const entries of this.availabilityTriggers.values()) {
+      for (const e of entries) {
+        if (e.forTimer) clearTimeout(e.forTimer);
+      }
+    }
+    this.availabilityTriggers.clear();
+    this.reachabilityUnsubscribe?.();
+    this.reachabilityUnsubscribe = undefined;
 
     // Clear template triggers
     for (const e of this.templateTriggers) {

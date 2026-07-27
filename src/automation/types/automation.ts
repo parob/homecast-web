@@ -76,7 +76,8 @@ export type Trigger =
   | WebhookTrigger
   | EventTrigger
   | SystemTrigger
-  | TemplateTrigger;
+  | TemplateTrigger
+  | DeviceAvailabilityTrigger;
 
 export type TriggerType = Trigger['type'];
 
@@ -146,6 +147,28 @@ export interface TemplateTrigger extends BaseTrigger {
   expression: string;
   for?: Duration;
 }
+
+/**
+ * Fires when an accessory stops (or starts) responding.
+ *
+ * Apple Home cannot express this at all — an automation that reads an offline
+ * accessory fails silently rather than reporting "No Response", which is why
+ * the community workaround is a two-switch oscillator heartbeat built from four
+ * virtual accessories and six automations.
+ *
+ * `for` matters here: HMAccessory.isReachable is known to go stale and flap, so
+ * firing on the raw edge produces false alarms. Defaults to DEFAULT_UNAVAILABLE_FOR.
+ */
+export interface DeviceAvailabilityTrigger extends BaseTrigger {
+  type: 'device_availability';
+  accessoryId: string;
+  /** Which edge to fire on. */
+  to: 'unavailable' | 'available';
+  for?: Duration;
+}
+
+/** Debounce applied when a device_availability trigger doesn't specify one. */
+export const DEFAULT_UNAVAILABLE_FOR: Duration = { minutes: 5 };
 
 // Data passed to the execution context when a trigger fires
 export interface TriggerData {
