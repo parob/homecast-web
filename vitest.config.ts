@@ -32,10 +32,10 @@ export default defineConfig({
       // 90% target is the floor. Failing the build on a drop is the point —
       // every editor bug found so far lived in a file at 0%.
       thresholds: {
-        statements: 52,
-        branches: 70,
-        functions: 76,
-        lines: 52,
+        statements: 54,
+        branches: 73,
+        functions: 78,
+        lines: 54,
       },
     },
   },
