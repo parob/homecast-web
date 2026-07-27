@@ -16,7 +16,7 @@ vi.mock('@/lib/config', () => ({
 }));
 
 import { CharacteristicPicker } from '../panels/EntityPicker';
-import { characteristicLabel } from '../entity-labels';
+import { characteristicLabel, characteristicValueLabel } from '../entity-labels';
 
 class ResizeObserverStub {
   observe() {}
@@ -37,6 +37,26 @@ describe('characteristicLabel', () => {
   it('is safe on empty input', () => {
     expect(characteristicLabel(undefined)).toBe('');
     expect(characteristicLabel('')).toBe('');
+  });
+});
+
+describe('characteristicValueLabel', () => {
+  it('reads switch values as On/Off rather than 1/0', () => {
+    // "Power State → 1" made the reader do the translation.
+    expect(characteristicValueLabel('power_state', 1)).toBe('On');
+    expect(characteristicValueLabel('power_state', 0)).toBe('Off');
+    expect(characteristicValueLabel('power_state', true)).toBe('On');
+    expect(characteristicValueLabel('active', false)).toBe('Off');
+  });
+
+  it('keeps units for non-switch characteristics', () => {
+    expect(characteristicValueLabel('brightness', 50)).toBe('50%');
+    expect(characteristicValueLabel('current_temperature', 21)).toBe('21.0°C');
+  });
+
+  it('returns empty for an unset value so summaries omit the arrow', () => {
+    expect(characteristicValueLabel('power_state', undefined)).toBe('');
+    expect(characteristicValueLabel('power_state', null)).toBe('');
   });
 });
 

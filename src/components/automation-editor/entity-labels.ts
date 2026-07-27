@@ -13,7 +13,7 @@
 // Imported from the module rather than the widgets barrel: the barrel re-exports
 // components that reach src/lib/config.ts, which touches `window` at import
 // time and breaks any non-DOM consumer (the serialization tests run in node).
-import { formatCharacteristicType } from '@/components/widgets/types';
+import { formatCharacteristicType, formatCharacteristicValue } from '@/components/widgets/types';
 
 export interface EntityNameSource {
   accessories?: { id: string; name: string }[];
@@ -57,4 +57,29 @@ export function resolveEntityName(
 /** "power_state" -> "Power State", using the same formatter as the dashboard. */
 export function characteristicLabel(type: string | undefined | null): string {
   return type ? formatCharacteristicType(type) : '';
+}
+
+// Characteristics whose value is really a switch. HomeKit reports these as
+// 0/1 on some accessories and false/true on others, and an automation editor
+// showing "Power State → 1" makes the reader do the translation.
+const ON_OFF_TYPES = new Set(['power_state', 'on', 'active', 'switch', 'outlet_in_use']);
+
+/**
+ * Readable value for a characteristic, e.g. 1 -> "On", 0.5 -> "50%".
+ *
+ * Falls through to the dashboard's formatter for everything else so units and
+ * enum names stay consistent with the rest of the app.
+ */
+export function characteristicValueLabel(
+  type: string | undefined | null,
+  value: unknown,
+): string {
+  if (value === undefined || value === null || value === '') return '';
+
+  if (type && ON_OFF_TYPES.has(type)) {
+    if (value === 1 || value === true || value === '1' || value === 'true') return 'On';
+    if (value === 0 || value === false || value === '0' || value === 'false') return 'Off';
+  }
+
+  return formatCharacteristicValue(type ?? '', value);
 }

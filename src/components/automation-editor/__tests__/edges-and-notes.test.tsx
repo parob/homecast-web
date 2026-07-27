@@ -23,7 +23,7 @@ vi.mock('@xyflow/react', async (orig) => {
   };
 });
 
-import { ControlFlowEdge } from '../edges/ControlFlowEdge';
+import { ControlFlowEdge, EdgeMarkerDefs } from '../edges/ControlFlowEdge';
 import { StickyNoteNode } from '../nodes/StickyNoteNode';
 
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
@@ -93,6 +93,29 @@ describe('ControlFlowEdge', () => {
     const { container } = renderEdge({ selected: true });
     const icon = container.querySelector('button[aria-label="Delete connection"] svg');
     expect(String(icon?.getAttribute('class'))).toMatch(/trash/i);
+  });
+
+  it('gives the edge a hit band far wider than its 2px line', () => {
+    // The interaction path is the whole target for selecting an edge and for
+    // revealing its delete control; 24 was still easy to miss.
+    const { container } = renderEdge();
+    const widths = Array.from(container.querySelectorAll('path'))
+      .map((p) => Number(p.getAttribute('stroke-width') ?? p.style.strokeWidth ?? 0));
+    expect(Math.max(...widths)).toBeGreaterThanOrEqual(40);
+  });
+
+  it('fills every arrowhead opaquely so the line cannot show through it', () => {
+    // Render the defs themselves — the edge only references them by id, so
+    // asserting through renderEdge() would query nothing and pass vacuously.
+    const { container } = render(<EdgeMarkerDefs />);
+    const heads = Array.from(container.querySelectorAll('marker path'));
+    expect(heads.length).toBe(3);
+    for (const head of heads) {
+      const fill = String(head.getAttribute('fill'));
+      // An "/ 0.45" alpha in the hsl() is what let the line show through and
+      // made the head read as sitting behind it.
+      expect(fill).not.toMatch(/\/\s*0?\.\d/);
+    }
   });
 
   it('points at an arrowhead that matches the edge state', () => {

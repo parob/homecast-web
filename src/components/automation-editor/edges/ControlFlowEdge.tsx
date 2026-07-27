@@ -23,6 +23,18 @@ const STROKE_DEFAULT = 'hsl(var(--muted-foreground) / 0.45)';
 const STROKE_SELECTED = 'hsl(var(--primary))';
 const STROKE_ERROR = 'hsl(var(--destructive))';
 
+// Arrowheads are filled OPAQUE, unlike the 45%-alpha default line. A
+// translucent head lets the line's own stroke show through the triangle, which
+// reads as the arrow sitting behind the line rather than terminating it. A
+// solid head against a lighter line is the normal convention and looks
+// deliberate.
+const ARROW_FILL_DEFAULT = 'hsl(var(--muted-foreground))';
+const ARROW_FILL_SELECTED = 'hsl(var(--primary))';
+const ARROW_FILL_ERROR = 'hsl(var(--destructive))';
+
+/** Hit band around the line — see the note where it's applied. */
+const INTERACTION_WIDTH = 44;
+
 /**
  * Arrowhead definitions, rendered once inside the canvas.
  *
@@ -35,15 +47,17 @@ export function EdgeMarkerDefs() {
     <svg className="absolute h-0 w-0" aria-hidden="true">
       <defs>
         {[
-          [ARROW_DEFAULT, STROKE_DEFAULT],
-          [ARROW_SELECTED, STROKE_SELECTED],
-          [ARROW_ERROR, STROKE_ERROR],
+          [ARROW_DEFAULT, ARROW_FILL_DEFAULT],
+          [ARROW_SELECTED, ARROW_FILL_SELECTED],
+          [ARROW_ERROR, ARROW_FILL_ERROR],
         ].map(([id, color]) => (
           <marker
             key={id}
             id={id}
             viewBox="0 0 10 10"
-            refX="8.5"
+            // Tip at the very end of the path, so the head terminates the line
+            // instead of the line running on through it.
+            refX="9"
             refY="5"
             markerWidth="5"
             markerHeight="5"
@@ -111,9 +125,12 @@ export const ControlFlowEdge = memo(function ControlFlowEdge({
         // Our own marker (see EdgeMarkerDefs) rather than React Flow's injected
         // one, so the arrowhead tracks the stroke colour per state.
         markerEnd={`url(#${arrow})`}
-        // Widen the invisible hit area: a 2px line is a very small mouse target,
-        // and the delete control below only appears once the edge is hoverable.
-        interactionWidth={24}
+        // Invisible hit area around the 2px line. This is the whole target for
+        // both selecting an edge and revealing its delete control, so it wants
+        // to be generous — 24 (12px a side) still had people missing it. Nodes
+        // sit ~200px apart vertically, so a 44px band doesn't create ambiguity
+        // between neighbouring edges.
+        interactionWidth={INTERACTION_WIDTH}
       />
 
       {/*

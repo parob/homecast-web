@@ -17,7 +17,7 @@ import { getAutomationEngine } from '@/automation';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import type { ExecutionTrace } from '@/automation/types/execution';
 import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
-import { resolveEntityName, characteristicLabel } from '../entity-labels';
+import { resolveEntityName, characteristicLabel, characteristicValueLabel } from '../entity-labels';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
@@ -1533,7 +1533,7 @@ function buildSummary(
           : '';
         const filterMode = (config.filterMode as string) ?? 'any';
         let filter = '';
-        if (filterMode === 'value' && config.to !== undefined) filter = ` → ${config.to}`;
+        if (filterMode === 'value' && config.to !== undefined) filter = ` → ${characteristicValueLabel(config.characteristicType as string, config.to)}`;
         else if (filterMode === 'above' && config.above !== undefined) filter = ` > ${config.above}`;
         else if (filterMode === 'below' && config.below !== undefined) filter = ` < ${config.below}`;
         else if (filterMode === 'range' && config.above !== undefined && config.below !== undefined) filter = ` ${config.above}–${config.below}`;
@@ -1569,7 +1569,7 @@ function buildSummary(
         const target = config.serviceGroupId
           ? getGroupName()
           : config.accessoryId ? getDeviceName() : '';
-        if (target) return `Set ${target} to ${config.value ?? '?'}`;
+        if (target) return `Set ${target} to ${characteristicValueLabel(config.characteristicType as string, config.value) || '?'}`;
         break;
       }
       case 'run_scene':

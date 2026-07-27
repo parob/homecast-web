@@ -4,7 +4,7 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData, NodeCategory } from '../constants';
-import { resolveEntityName, characteristicLabel, type EntityNameSource } from '../entity-labels';
+import { resolveEntityName, characteristicLabel, characteristicValueLabel, type EntityNameSource } from '../entity-labels';
 import type {
   Automation,
   Trigger,
@@ -242,7 +242,12 @@ function buildTriggerSummary(trigger: Trigger, _nodeType: string, names?: Entity
         serviceGroupId: trigger.serviceGroupId,
       });
       const char = characteristicLabel(trigger.characteristicType);
-      return char ? `${entity} / ${char}` : entity;
+      // Include the target value, and read it the way a person would ("On",
+      // not 1). The edit-time summary already showed a value; omitting it here
+      // meant the same node relabelled itself the moment you opened it.
+      const to = characteristicValueLabel(trigger.characteristicType, trigger.to);
+      const head = char ? `${entity} / ${char}` : entity;
+      return to ? `${head} → ${to}` : head;
     }
     case 'numeric_state': {
       const parts: string[] = [resolveEntityName(names, {
@@ -384,9 +389,9 @@ function extractActionConfig(action: Action): Record<string, unknown> {
 function buildActionSummary(action: Action, names?: EntityNameSource): string {
   switch (action.type) {
     case 'set_characteristic':
-      return `Set ${resolveEntityName(names, { accessoryId: action.accessoryId })} to ${action.value}`;
+      return `Set ${resolveEntityName(names, { accessoryId: action.accessoryId })} to ${characteristicValueLabel(action.characteristicType, action.value)}`;
     case 'set_service_group':
-      return `Set ${resolveEntityName(names, { serviceGroupId: action.groupId })} to ${action.value}`;
+      return `Set ${resolveEntityName(names, { serviceGroupId: action.groupId })} to ${characteristicValueLabel(action.characteristicType, action.value)}`;
     case 'execute_scene': return `Run scene`;
     case 'delay': {
       const parts: string[] = [];

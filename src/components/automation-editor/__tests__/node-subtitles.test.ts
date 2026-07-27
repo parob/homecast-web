@@ -46,7 +46,15 @@ const subtitleOf = (auto: Automation, names?: typeof NAMES, category = 'trigger'
 
 describe('automation node subtitles', () => {
   it('names the service group instead of printing its UUID', () => {
-    expect(subtitleOf(automation(), NAMES)).toBe('Kitchen Lights / Power State');
+    expect(subtitleOf(automation(), NAMES)).toBe('Kitchen Lights / Power State → On');
+  });
+
+  it('shows the target value the way a person reads it', () => {
+    // Was "→ 1". Also: the load-time summary used to omit the value entirely,
+    // so a node silently relabelled itself as soon as you opened its config.
+    const subtitle = subtitleOf(automation(), NAMES) ?? '';
+    expect(subtitle).toContain('→ On');
+    expect(subtitle).not.toMatch(/→ 1\b/);
   });
 
   it('names the accessory for a device trigger', () => {
@@ -91,6 +99,6 @@ describe('automation node subtitles', () => {
       ...NAMES,
       serviceGroups: [{ id: GROUP_ID, name: 'Kitchen Downlights' }],
     };
-    expect(subtitleOf(automation(), renamed)).toBe('Kitchen Downlights / Power State');
+    expect(subtitleOf(automation(), renamed)).toBe('Kitchen Downlights / Power State → On');
   });
 });
