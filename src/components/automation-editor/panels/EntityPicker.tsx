@@ -86,22 +86,20 @@ export function DevicePicker({
         testId="select-device-button"
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
+        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] flex flex-col overflow-hidden" hideCloseButton>
           <DialogTitle className="sr-only">Select Device</DialogTitle>
-          <div className="max-h-[65vh] overflow-y-auto">
-            <AccessoryPicker
-              accessories={accessories}
-              homes={homes ?? []}
-              selectedIds={value ? new Set([value]) : new Set()}
-              onToggle={(id) => {
-                const acc = accessories.find((a) => a.id === id);
-                if (acc) {
-                  onChange(acc.id, acc.name);
-                  closeAfterClick(setOpen);
-                }
-              }}
-            />
-          </div>
+          <AccessoryPicker
+            accessories={accessories}
+            homes={homes ?? []}
+            selectedIds={value ? new Set([value]) : new Set()}
+            onToggle={(id) => {
+              const acc = accessories.find((a) => a.id === id);
+              if (acc) {
+                onChange(acc.id, acc.name);
+                closeAfterClick(setOpen);
+              }
+            }}
+          />
         </DialogContent>
       </Dialog>
     </>
@@ -147,34 +145,32 @@ export function DeviceOrGroupPicker({
         testId="select-device-button"
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] overflow-hidden" hideCloseButton>
+        <DialogContent data-picker-surface className="!max-w-md p-0 gap-0 !z-[10060] !max-h-[70vh] flex flex-col overflow-hidden" hideCloseButton>
           <DialogTitle className="sr-only">Select Device or Group</DialogTitle>
-          <div className="max-h-[65vh] overflow-y-auto">
-            <AccessoryPicker
-              accessories={accessories}
-              homes={homes ?? []}
-              selectedIds={accessoryId ? new Set([accessoryId]) : new Set()}
-              onToggle={(id) => {
-                const acc = accessories.find((a) => a.id === id);
-                if (acc) {
-                  onSelectAccessory(acc.id, acc.name);
-                  closeAfterClick(setOpen);
-                }
-              }}
-              serviceGroups={serviceGroups}
-              // A trigger or action targets one thing: the group, or a device
-              // inside it. Hiding grouped members made those unreachable.
-              showGroupedAccessories
-              selectedServiceGroupIds={serviceGroupId ? new Set([serviceGroupId]) : new Set()}
-              onToggleServiceGroup={(id) => {
-                const group = serviceGroups.find((g) => g.id === id);
-                if (group) {
-                  onSelectGroup(group.id, group.name);
-                  closeAfterClick(setOpen);
-                }
-              }}
-            />
-          </div>
+          <AccessoryPicker
+            accessories={accessories}
+            homes={homes ?? []}
+            selectedIds={accessoryId ? new Set([accessoryId]) : new Set()}
+            onToggle={(id) => {
+              const acc = accessories.find((a) => a.id === id);
+              if (acc) {
+                onSelectAccessory(acc.id, acc.name);
+                closeAfterClick(setOpen);
+              }
+            }}
+            serviceGroups={serviceGroups}
+            // A trigger or action targets one thing: the group, or a device
+            // inside it. Hiding grouped members made those unreachable.
+            showGroupedAccessories
+            selectedServiceGroupIds={serviceGroupId ? new Set([serviceGroupId]) : new Set()}
+            onToggleServiceGroup={(id) => {
+              const group = serviceGroups.find((g) => g.id === id);
+              if (group) {
+                onSelectGroup(group.id, group.name);
+                closeAfterClick(setOpen);
+              }
+            }}
+          />
         </DialogContent>
       </Dialog>
     </>

@@ -31,11 +31,18 @@ export default defineConfig({
       // can only go up; raise these as each wave of tests lands, until the
       // 90% target is the floor. Failing the build on a drop is the point —
       // every editor bug found so far lived in a file at 0%.
+      //
+      // `functions` moved DOWN from 78 to 67 once, deliberately. It is a ratio,
+      // and pulling the editor panels into the test graph made v8 count their
+      // functions for the first time — NodeConfigPanel alone sits at ~9% of
+      // roughly a hundred. Nothing regressed: statements, branches and lines
+      // all rose in the same change. NodeConfigPanel is the remaining mountain
+      // and is best climbed alongside the editor redesign that will rewrite it.
       thresholds: {
-        statements: 54,
+        statements: 58,
         branches: 73,
-        functions: 78,
-        lines: 54,
+        functions: 67,
+        lines: 58,
       },
     },
   },
