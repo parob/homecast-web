@@ -17,8 +17,18 @@
  *    `hcExecutionTraces`
  */
 
-import 'fake-indexeddb/auto';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+// Node < 21 has no global `navigator`, and openDB's success handler touches
+// navigator.storage before resolving. An unguarded reference there threw a
+// ReferenceError inside the IDB event handler, leaving the promise unsettled
+// so every caller hung — green on Node 25 locally, a hung suite on CI's Node
+// 20. Deleting it here pins that fix regardless of the runtime we're on.
+vi.hoisted(() => {
+  delete (globalThis as { navigator?: unknown }).navigator;
+});
+
+import 'fake-indexeddb/auto';
 
 const HOME_A = 'HOME-AAAA';
 const HOME_B = 'HOME-BBBB';

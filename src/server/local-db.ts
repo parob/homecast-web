@@ -119,8 +119,13 @@ function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-      // Request persistent storage to prevent eviction
-      navigator.storage?.persist?.();
+      // Request persistent storage to prevent eviction. Best-effort: this must
+      // never stop the database opening. A bare `navigator` reference throws a
+      // ReferenceError under Node < 21 (no global navigator), which left the
+      // promise unsettled and hung every caller forever.
+      try {
+        if (typeof navigator !== 'undefined') navigator.storage?.persist?.();
+      } catch { /* persistence is optional */ }
       resolve(request.result);
     };
 
