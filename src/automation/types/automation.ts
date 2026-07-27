@@ -254,7 +254,8 @@ export type Action =
   | CallScriptAction
   | NotifyAction
   | CodeAction
-  | MergeAction;
+  | MergeAction
+  | HelperAction;
 
 export type ActionType = Action['type'];
 
@@ -401,6 +402,34 @@ export interface MergeAction extends BaseAction {
   mode: 'append' | 'combine' | 'wait_all';
   combineKey?: string; // For 'combine' mode: key field to merge on
   inputIds: string[]; // Node IDs whose outputs to merge
+}
+
+/**
+ * Mutate a helper (virtual switch, timer, counter, mode…).
+ *
+ * One action with an operation rather than a dozen action types — the editor
+ * renders it as a single node whose operations narrow to the helper's type.
+ */
+export type HelperOperation =
+  // input_boolean
+  | 'turn_on' | 'turn_off' | 'toggle'
+  // input_number / input_text / input_select / input_datetime / counter
+  | 'set'
+  // counter / input_number
+  | 'increment' | 'decrement' | 'reset'
+  // timer
+  | 'start' | 'pause' | 'resume' | 'cancel' | 'finish';
+
+export interface HelperAction extends BaseAction {
+  type: 'helper';
+  helperId: string;
+  operation: HelperOperation;
+  /** For `set` — may contain a {{ template }}. */
+  value?: unknown;
+  /** For timer `start` — overrides the helper's configured duration. */
+  duration?: Duration;
+  /** For `increment`/`decrement` — overrides the helper's configured step. */
+  step?: number;
 }
 
 // ============================================================

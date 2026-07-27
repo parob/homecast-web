@@ -25,12 +25,14 @@ import type {
   NotifyAction,
   CodeAction,
   MergeAction,
+  HelperAction,
   TriggerData,
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
+import type { HelperManager } from '../state/HelperManager';
 import { assertSafeOutboundUrl } from './ssrfGuard';
 
 /** Bridge interface for calling HomeKit operations */
@@ -89,6 +91,8 @@ export class ActionExecutor {
     private bridge: HomeKitBridge,
     private callbacks: EngineCallbacks,
     private codeSandbox: CodeSandbox = new WorkerCodeSandbox(),
+    /** Absent in tests that don't exercise helper actions. */
+    private helperManager?: HelperManager,
   ) {}
 
   /**
@@ -201,6 +205,8 @@ export class ActionExecutor {
         return this.executeCode(action, ctx);
       case 'merge':
         return this.executeMerge(action, ctx);
+      case 'helper':
+        return this.executeHelper(action, ctx);
       default:
         console.warn(`[ActionExecutor] Unsupported action type: ${(action as Action).type}`);
     }
@@ -264,6 +270,57 @@ export class ActionExecutor {
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
       ctx.setNodeOutput(action.id, { sceneId: action.sceneId, success: false, error: String(e) });
+      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      throw e;
+    }
+  }
+
+  // ============================================================
+  // Helpers (virtual switches, timers, counters, modes)
+  // ============================================================
+
+  private async executeHelper(action: HelperAction, ctx: ExecutionContext): Promise<void> {
+    const stepIdx = ctx.beginStep('action', action.id, 'helper',
+      `Helper ${action.operation} ${action.helperId}`,
+      { helperId: action.helperId, operation: action.operation });
+
+    if (!this.helperManager) {
+      const error = 'Helpers are not available in this engine instance';
+      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error });
+      ctx.endStep(stepIdx, 'error', undefined, error);
+      throw new Error(error);
+    }
+
+    try {
+      const h = this.helperManager;
+      const id = action.helperId;
+      const value = action.value !== undefined ? this.resolveTemplateValue(action.value, ctx) : undefined;
+
+      switch (action.operation) {
+        case 'turn_on': h.turnOn(id); break;
+        case 'turn_off': h.turnOff(id); break;
+        case 'toggle': h.toggle(id); break;
+        case 'set': h.setHelperValue(id, value); break;
+        case 'increment': h.incrementHelper(id, action.step); break;
+        case 'decrement': h.decrementHelper(id, action.step); break;
+        case 'reset': h.resetCounter(id); break;
+        case 'start': h.startTimer(id, action.duration); break;
+        case 'pause': h.pauseTimer(id); break;
+        case 'resume': h.resumeTimer(id); break;
+        case 'cancel': h.cancelTimer(id); break;
+        case 'finish': h.finishTimer(id); break;
+      }
+
+      const output = {
+        helperId: id,
+        operation: action.operation,
+        state: this.stateStore.getHelperState(id),
+        success: true,
+      };
+      ctx.setNodeOutput(action.id, output);
+      ctx.endStep(stepIdx, 'executed', output);
+    } catch (e) {
+      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error: String(e) });
       ctx.endStep(stepIdx, 'error', undefined, String(e));
       throw e;
     }

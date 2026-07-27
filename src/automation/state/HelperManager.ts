@@ -178,6 +178,66 @@ export class HelperManager {
   }
 
   // ============================================================
+  // Type-dispatching entry points (used by the `helper` action)
+  // ============================================================
+
+  /** Set a helper's value, routing to the right setter for its type. */
+  setHelperValue(helperId: string, value: unknown): void {
+    const def = this.helpers.get(helperId);
+    switch (def?.type) {
+      case 'input_number':
+        this.setNumber(helperId, Number(value));
+        break;
+      case 'input_select':
+        this.selectOption(helperId, String(value));
+        break;
+      case 'input_text':
+      case 'input_datetime':
+        this.setText(helperId, String(value));
+        break;
+      case 'input_boolean':
+        if (value) this.turnOn(helperId); else this.turnOff(helperId);
+        break;
+      case 'counter': {
+        const n = Number(value);
+        this.stateStore.updateHelperState(helperId, n);
+        this.pushState(helperId, n);
+        break;
+      }
+      default:
+        throw new Error(`Cannot set a value on helper ${helperId}`);
+    }
+  }
+
+  /** Increment a counter or input_number. */
+  incrementHelper(helperId: string, step?: number): void {
+    const def = this.helpers.get(helperId);
+    if (def?.type === 'counter') this.incrementCounter(helperId);
+    else this.increment(helperId, step);
+  }
+
+  /** Decrement a counter or input_number. */
+  decrementHelper(helperId: string, step?: number): void {
+    const def = this.helpers.get(helperId);
+    if (def?.type === 'counter') this.decrementCounter(helperId);
+    else this.decrement(helperId, step);
+  }
+
+  /**
+   * Reapply persisted values after a restart, so counters and modes survive a
+   * relay restart rather than resetting to their initial value.
+   */
+  restoreStates(states: Record<string, unknown>): void {
+    for (const [helperId, value] of Object.entries(states)) {
+      if (!this.helpers.has(helperId)) continue;
+      // Timers are not resumed — a half-elapsed countdown can't be trusted
+      // across a restart, and `restoreOnRestart` is not implemented.
+      if (this.helpers.get(helperId)?.type === 'timer') continue;
+      this.stateStore.updateHelperState(helperId, value);
+    }
+  }
+
+  // ============================================================
   // Timer
   // ============================================================
 
