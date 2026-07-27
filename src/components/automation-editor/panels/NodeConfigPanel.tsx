@@ -15,6 +15,7 @@ import { Trash2, Copy, Play, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { getAutomationEngine } from '@/automation';
+import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import type { ExecutionTrace } from '@/automation/types/execution';
 import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { cn } from '@/lib/utils';
@@ -129,11 +130,18 @@ interface NodeConfigPanelProps {
   availableAutomations?: { id: string; name: string }[];
   /** Automation ID for test mode (only for saved automations) */
   automationId?: string;
+  /**
+   * Home the automation belongs to. Required to route a test run: without it
+   * the server falls back to a user-level relay lookup, which finds nothing
+   * for a cloud-managed relay (the relay belongs to the operator, not the
+   * customer) and answers NO_DEVICE.
+   */
+  homeId?: string;
   /** Call to save before testing (undefined if no unsaved changes) */
   onSaveBeforeTest?: () => Promise<void>;
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, onSaveBeforeTest }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, homeId, onSaveBeforeTest }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -300,10 +308,26 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
                   let trace: ExecutionTrace | null;
                   if (engine) {
                     trace = await engine.manualTrigger(automationId, { triggerData });
+                  } else if (isRelayCapable() && !isRelayEnabled()) {
+                    // We're running ON the relay Mac, but relay mode is switched
+                    // off — so this app registers as a plain web client and no
+                    // relay session exists. The server would answer "No relay
+                    // device connected", which is baffling when you're sitting
+                    // in front of the Mac that is supposed to be the relay.
+                    // Worth being blunt: with the relay off, no automation runs.
+                    toast.error('Relay is turned off on this Mac', {
+                      description: 'Turn it back on in Settings — while it is off, none of your Homecast automations run.',
+                    });
+                    setIsTesting(false);
+                    return;
                   } else {
                     const result = await serverConnection.request<{ trace: ExecutionTrace }>(
                       'automation.test',
-                      { automationId, triggerData },
+                      // homeId lets the server resolve the relay by home
+                      // (get_device_id_for_home) rather than by user, which is
+                      // the only lookup that works for shared and cloud-managed
+                      // relays.
+                      { automationId, homeId, triggerData },
                     );
                     trace = result.trace;
                   }

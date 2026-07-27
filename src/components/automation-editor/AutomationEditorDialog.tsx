@@ -663,6 +663,7 @@ function AutomationEditorInner({
             serviceGroups={serviceGroups}
             availableAutomations={availableAutomations}
             automationId={existingIdRef.current ?? undefined}
+            homeId={homeId}
             onSaveBeforeTest={isDirty ? saveOnly : undefined}
           />
           </div>

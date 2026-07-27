@@ -8,7 +8,7 @@
  */
 
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './websocket';
-import { isRelayCapable } from '../native/homekit-bridge';
+import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { markRecentBroadcast } from './local-broadcast';
@@ -293,8 +293,12 @@ function getDeviceName(): string {
   };
 
   if (win.isHomecastMacApp) {
-    // Mac app - use a generic name since we can't easily get hostname from JS
-    return 'Mac (Relay)';
+    // Only claim to be a relay if we're actually going to register as one.
+    // This used to say "Mac (Relay)" for every Mac build, so a Mac with the
+    // relay switched off still appeared as a relay in the sessions list while
+    // connecting as a plain web client — which made "No relay device
+    // connected" impossible to square with what the UI was showing.
+    return isRelayEnabled() ? 'Mac (Relay)' : 'Mac';
   }
 
   // Fallback for browser
