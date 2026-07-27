@@ -17,7 +17,7 @@ import { getAutomationEngine } from '@/automation';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import type { ExecutionTrace } from '@/automation/types/execution';
 import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
-import { formatCharacteristicType } from '@/components/widgets';
+import { resolveEntityName, characteristicLabel } from '../entity-labels';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
@@ -1514,18 +1514,12 @@ function buildSummary(
     return config.accessoryId ? String(config.accessoryId).slice(0, 12) + '…' : '';
   };
 
-  // Resolve group names the same way devices are resolved. `serviceGroupName`
-  // is only written when the user picks a group in this session — it isn't part
-  // of the saved automation — so on reload every group node read "Group".
-  // Looking it up by id also keeps the label correct after a rename.
-  const getGroupName = () => {
-    if (config.serviceGroupId && serviceGroups) {
-      const group = serviceGroups.find((g) => g.id === config.serviceGroupId);
-      if (group?.name) return group.name;
-    }
-    if (config.serviceGroupName) return config.serviceGroupName as string;
-    return config.serviceGroupId ? String(config.serviceGroupId).slice(0, 12) + '…' : 'Group';
-  };
+  // Shared with the load-time builder in automationToGraph — see entity-labels.
+  const names = { accessories, serviceGroups };
+  const getGroupName = () => resolveEntityName(names, {
+    serviceGroupId: config.serviceGroupId as string | undefined,
+    fallbackName: config.serviceGroupName as string | undefined,
+  });
 
   if (category === 'trigger') {
     switch (nodeType) {
@@ -1535,7 +1529,7 @@ function buildSummary(
           : config.accessoryId ? getDeviceName() : '';
         if (!entityName) break;
         const char = config.characteristicType
-          ? ` / ${formatCharacteristicType(config.characteristicType as string)}`
+          ? ` / ${characteristicLabel(config.characteristicType as string)}`
           : '';
         const filterMode = (config.filterMode as string) ?? 'any';
         let filter = '';

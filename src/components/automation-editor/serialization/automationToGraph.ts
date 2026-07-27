@@ -4,6 +4,7 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData, NodeCategory } from '../constants';
+import { resolveEntityName, characteristicLabel, type EntityNameSource } from '../entity-labels';
 import type {
   Automation,
   Trigger,
@@ -60,7 +61,10 @@ function simplifyActionType(engineType: string): string {
 // Main conversion
 // ============================================================
 
-export function automationToGraph(automation: Automation): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+export function automationToGraph(
+  automation: Automation,
+  names?: EntityNameSource,
+): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
   const nodes: Node<FlowNodeData>[] = [];
   const autoEdges: Edge[] = [];
   let y = 50;
@@ -70,7 +74,7 @@ export function automationToGraph(automation: Automation): { nodes: Node<FlowNod
   for (let i = 0; i < automation.triggers.length; i++) {
     const trigger = automation.triggers[i];
     const x = HORIZONTAL_OFFSET + i * 220;
-    const node = triggerToNode(trigger, x, y);
+    const node = triggerToNode(trigger, x, y, names);
     nodes.push(node);
     triggerNodeIds.push(node.id);
   }
@@ -92,7 +96,7 @@ export function automationToGraph(automation: Automation): { nodes: Node<FlowNod
 
   // Add action nodes
   for (const action of automation.actions) {
-    const node = actionToNode(action, HORIZONTAL_OFFSET, y);
+    const node = actionToNode(action, HORIZONTAL_OFFSET, y, names);
     nodes.push(node);
 
     for (const prevId of lastNodeIds) {
@@ -157,11 +161,11 @@ function stickyNoteToNode(note: {
 // Trigger → Node (engine → simplified)
 // ============================================================
 
-function triggerToNode(trigger: Trigger, x: number, y: number): Node<FlowNodeData> {
+function triggerToNode(trigger: Trigger, x: number, y: number, names?: EntityNameSource): Node<FlowNodeData> {
   const { nodeType, extraConfig } = simplifyTriggerType(trigger.type);
   const def = TRIGGER_NODES.find((d) => d.type === nodeType) ?? ALL_NODE_DEFINITIONS.find((d) => d.type === nodeType);
   const config = { ...extractTriggerConfig(trigger), ...extraConfig };
-  const summary = buildTriggerSummary(trigger, nodeType);
+  const summary = buildTriggerSummary(trigger, nodeType, names);
 
   return {
     id: trigger.id,
@@ -230,17 +234,23 @@ function extractTriggerConfig(trigger: Trigger): Record<string, unknown> {
   }
 }
 
-function buildTriggerSummary(trigger: Trigger, _nodeType: string): string {
+function buildTriggerSummary(trigger: Trigger, _nodeType: string, names?: EntityNameSource): string {
   switch (trigger.type) {
     case 'state': {
-      const id = trigger.serviceGroupId ?? trigger.accessoryId ?? '';
-      const prefix = trigger.serviceGroupId ? 'Group ' : '';
-      return `${prefix}${id.slice(0, 12)}… ${trigger.characteristicType}`;
+      const entity = resolveEntityName(names, {
+        accessoryId: trigger.accessoryId,
+        serviceGroupId: trigger.serviceGroupId,
+      });
+      const char = characteristicLabel(trigger.characteristicType);
+      return char ? `${entity} / ${char}` : entity;
     }
     case 'numeric_state': {
-      const id = trigger.serviceGroupId ?? trigger.accessoryId ?? '';
-      const prefix = trigger.serviceGroupId ? 'Group ' : '';
-      const parts: string[] = [prefix + id.slice(0, 12) + '…'];
+      const parts: string[] = [resolveEntityName(names, {
+        accessoryId: trigger.accessoryId,
+        serviceGroupId: trigger.serviceGroupId,
+      })];
+      const char = characteristicLabel(trigger.characteristicType);
+      if (char) parts.push(`/ ${char}`);
       if (trigger.above !== undefined) parts.push(`>${trigger.above}`);
       if (trigger.below !== undefined) parts.push(`<${trigger.below}`);
       return parts.join(' ');
@@ -318,7 +328,7 @@ function buildConditionSummary(condition: Condition): string {
 // Action → Node (engine → simplified)
 // ============================================================
 
-function actionToNode(action: Action, x: number, y: number): Node<FlowNodeData> {
+function actionToNode(action: Action, x: number, y: number, names?: EntityNameSource): Node<FlowNodeData> {
   const nodeType = simplifyActionType(action.type);
   const isLogic = ['if', 'wait', 'if_then_else', 'choose', 'repeat', 'parallel', 'stop', 'wait_for_trigger'].includes(action.type);
   const category: NodeCategory = isLogic ? 'logic' : 'action';
@@ -336,7 +346,7 @@ function actionToNode(action: Action, x: number, y: number): Node<FlowNodeData> 
       label: def?.label ?? nodeType,
       icon: def?.icon ?? 'Lightbulb',
       config: { ...config, summary: buildActionSummary(action) },
-      subtitle: buildActionSummary(action) || undefined,
+      subtitle: buildActionSummary(action, names) || undefined,
       isConfigured: true,
       enabled: action.enabled !== false,
     },
@@ -371,9 +381,12 @@ function extractActionConfig(action: Action): Record<string, unknown> {
   }
 }
 
-function buildActionSummary(action: Action): string {
+function buildActionSummary(action: Action, names?: EntityNameSource): string {
   switch (action.type) {
-    case 'set_characteristic': return `Set ${action.accessoryId.slice(0, 12)}… to ${action.value}`;
+    case 'set_characteristic':
+      return `Set ${resolveEntityName(names, { accessoryId: action.accessoryId })} to ${action.value}`;
+    case 'set_service_group':
+      return `Set ${resolveEntityName(names, { serviceGroupId: action.groupId })} to ${action.value}`;
     case 'execute_scene': return `Run scene`;
     case 'delay': {
       const parts: string[] = [];

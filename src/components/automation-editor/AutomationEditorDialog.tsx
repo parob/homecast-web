@@ -192,7 +192,10 @@ function AutomationEditorInner({
   // Load existing automation into graph
   useEffect(() => {
     if (existingAutomation) {
-      const { nodes: loaded, edges: loadedEdges } = automationToGraph(existingAutomation);
+      const { nodes: loaded, edges: loadedEdges } = automationToGraph(
+        existingAutomation,
+        { accessories, serviceGroups },
+      );
       setNodes(loaded);
       setEdges(loadedEdges);
       // Seed initial history entry once state is applied
@@ -205,6 +208,28 @@ function AutomationEditorInner({
       setTimeout(() => commitHistory(), 0);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Node subtitles name the accessory/group a node targets, but that name is
+  // resolved from HomeKit data which loads asynchronously — on a cold cache the
+  // graph mounts first and every node reads as a truncated id. Relabel once the
+  // names land, touching ONLY the subtitle so positions and in-progress edits
+  // survive, and only the first time so it can never stomp a later edit.
+  const relabeledRef = useRef(false);
+  useEffect(() => {
+    if (relabeledRef.current || !existingAutomation) return;
+    if (accessories.length === 0 && serviceGroups.length === 0) return;
+    relabeledRef.current = true;
+
+    const { nodes: relabeled } = automationToGraph(existingAutomation, { accessories, serviceGroups });
+    const subtitles = new Map(relabeled.map((n) => [n.id, n.data.subtitle]));
+    setNodes((current) =>
+      current.map((n) =>
+        subtitles.has(n.id) && subtitles.get(n.id) !== n.data.subtitle
+          ? { ...n, data: { ...n.data, subtitle: subtitles.get(n.id) } }
+          : n,
+      ),
+    );
+  }, [accessories, serviceGroups, existingAutomation, setNodes]);
 
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId),
