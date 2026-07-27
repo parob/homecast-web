@@ -965,6 +965,28 @@ export class ServerWebSocket {
       this.connectionOpenedAt = null;
     }
 
+    // Ship the close code to the server. The server can only observe THAT a
+    // socket ended, never why — its own logs show it force-closes almost
+    // nothing, so the reason exists solely on this side. Clients have been
+    // dropping on a hard ~40s boundary (p25=40s across browsers AND the Home
+    // Assistant client) with no matching server-side close, and without the
+    // code there is no way to tell a proxy idle-timeout (1006) from a clean
+    // server close (1000/1001) or a policy close (1008/1011). INFO, not warn:
+    // a close is normal, we want the distribution rather than an alert.
+    try {
+      browserLogger.logInfo(`ws_close code=${event.code}`, {
+        close_code: event.code,
+        close_reason: (event.reason || '').slice(0, 120),
+        was_clean: event.wasClean,
+        session_ms: this.lastConnectionDuration ?? null,
+        visibility: typeof document !== 'undefined' ? document.visibilityState : 'n/a',
+        online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+        manual: this.isManualDisconnect,
+      });
+    } catch {
+      // telemetry must never break reconnect
+    }
+
     // Reject all pending requests
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
