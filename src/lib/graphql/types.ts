@@ -1673,6 +1673,8 @@ export interface AdminRelayActivity {
   days: number;
   commands: number;
   updates: number;
+  /** When a command last went through this relay (hour-granular), or null. */
+  lastCommandAt: string | null;
   daily: AdminRelayActivityDay[];
 }
 

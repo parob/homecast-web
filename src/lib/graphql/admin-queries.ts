@@ -1035,6 +1035,7 @@ export const ADMIN_RELAY_DETAIL = gql`
         days
         commands
         updates
+        lastCommandAt
         daily { date commands updates }
       }
       enrollments {
