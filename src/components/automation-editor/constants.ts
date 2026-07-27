@@ -271,7 +271,6 @@ export const PALETTE_CATEGORIES: NodeCategory[] = ['trigger', 'action', 'logic',
 
 export const NODE_WIDTH = 220;
 export const NODE_HEIGHT = 40; // Minimum height — expands with subtitle
-export const GRID_SIZE = 16;
 
 // ============================================================
 // Flow node data shape (stored in React Flow node.data)

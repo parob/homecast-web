@@ -1,37 +1,35 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
+!.vscode/extensions.json
+.DS_Store
+.firebase
+.idea
+.vscode/*
+*.local
+*.log
+*.njsproj
+*.ntvs*
+*.sln
+*.suo
+*.sw?
+# Cloud-specific components (private, pulled from homecast-cloud for full builds)
+# Cloud-specific pages (belong in homecast-cloud/app-web/)
+# Editor directories and files
+# Logs
+coverage
 dist
 dist-ssr
-*.local
-.firebase
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Cloud-specific components (private, pulled from homecast-cloud for full builds)
-src/cloud/
-
-# Cloud-specific pages (belong in homecast-cloud/app-web/)
-src/pages/ForgotPassword.tsx
-src/pages/ResetPassword.tsx
-src/pages/VerifyEmail.tsx
-src/pages/Subscribe.tsx
-src/pages/ManagedRelayDashboard.tsx
-src/pages/managed-relay/
+lerna-debug.log*
+logs
+node_modules
+npm-debug.log*
+pnpm-debug.log*
 screenshots/test-results/.last-run 2.json
+src/cloud/
+src/pages/ForgotPassword.tsx
+src/pages/managed-relay/
+src/pages/ManagedRelayDashboard.tsx
+src/pages/ResetPassword.tsx
+src/pages/Subscribe.tsx
+src/pages/VerifyEmail.tsx
+yarn-debug.log*
+yarn-error.log*
