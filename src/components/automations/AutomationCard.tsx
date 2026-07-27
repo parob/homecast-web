@@ -85,8 +85,10 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
       {/* Content */}
       <div className={`relative z-[1] ${compact ? 'p-2.5' : 'p-4'}`}>
-        <div className={`flex items-center justify-between ${compact ? 'gap-1.5' : 'gap-2'}`}>
-          <div className={`flex items-center min-w-0 ${compact ? 'gap-1.5' : 'gap-2.5'}`}>
+        {/* items-start, not items-center: the name wraps to as many lines as it
+            needs, and centring the icon/controls against a 3-line name looks off. */}
+        <div className={`flex items-start justify-between ${compact ? 'gap-1.5' : 'gap-2'}`}>
+          <div className={`flex items-start min-w-0 ${compact ? 'gap-1.5' : 'gap-2.5'}`}>
             {/* Logo icon — only differentiator */}
             <img
               src={isHomeKit ? '/homekit_logo.png' : '/icon-192.png'}
@@ -94,7 +96,13 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               className={`${compact ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 rounded-md`}
             />
             <div className="min-w-0 flex-1">
-              <div className={`${compact ? 'text-xs' : 'text-sm'} font-medium truncate ${textClass}`}>
+              {/* Wraps rather than truncating — automation names are frequently
+                  descriptive ("Turn off the heating when a window opens") and a
+                  single ellipsed line made them unreadable. */}
+              <div
+                title={name}
+                className={`${compact ? 'text-xs' : 'text-sm'} font-medium break-words ${textClass}`}
+              >
                 {name}
               </div>
               <div className={`${compact ? 'text-[10px]' : 'text-xs'} truncate ${subtextClass}`}>
