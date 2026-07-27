@@ -163,12 +163,16 @@ const ServiceGroupRow = memo(function ServiceGroupRow({
   isSelected,
   isDisabled,
   homeName,
+  roomLabel,
+  memberCount,
   onToggle,
 }: {
   group: HomeKitServiceGroup;
   isSelected: boolean;
   isDisabled: boolean;
   homeName?: string;
+  roomLabel?: string;
+  memberCount: number;
   onToggle: (id: string) => void;
 }) {
   return (
@@ -185,7 +189,8 @@ const ServiceGroupRow = memo(function ServiceGroupRow({
         <div className="truncate">{group.name}</div>
         <div className="text-xs text-muted-foreground truncate">
           {homeName && `${homeName} · `}
-          {group.accessoryIds.length} accessories · Group
+          {roomLabel && `${roomLabel} · `}
+          Group of {memberCount}
         </div>
       </div>
     </button>
@@ -206,6 +211,13 @@ export interface AccessoryPickerProps {
   selectedServiceGroupIds?: Set<string>;
   onToggleServiceGroup?: (groupId: string) => void;
   serviceGroupHomeMap?: Map<string, string>;
+  /**
+   * Also list accessories that belong to a service group. Off by default: where
+   * a group tile stands in for its members (dashboard, collections) showing
+   * both would double them up. Pickers that target one device — automation
+   * triggers and actions — need the members, or a grouped device is unreachable.
+   */
+  showGroupedAccessories?: boolean;
 }
 
 export function AccessoryPicker({
@@ -220,12 +232,10 @@ export function AccessoryPicker({
   selectedServiceGroupIds,
   onToggleServiceGroup,
   serviceGroupHomeMap,
+  showGroupedAccessories = false,
 }: AccessoryPickerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterHome, setFilterHome] = useState<string>('all');
-  // With nothing to choose between, the Home filter is noise — drop it and let
-  // Room filter directly (it's otherwise gated on picking a home first).
-  const singleHome = (homes?.length ?? 0) <= 1;
   const [filterRoom, setFilterRoom] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
 
@@ -238,6 +248,20 @@ export function AccessoryPicker({
     return map;
   }, [homes]);
   const getHomeName = useCallback((homeId?: string) => homeId ? homeNameMap.get(homeId) : undefined, [homeNameMap]);
+
+  /**
+   * Only offer homes the list can actually show. Callers often pass every home
+   * the user owns alongside a single home's accessories (the automation editor
+   * does), which left a filter whose only useful setting was the one already in
+   * effect and whose other settings emptied the list.
+   */
+  const availableHomes = useMemo(() => {
+    const present = new Set(accessories.map(a => a.homeId).filter(Boolean));
+    return (homes ?? []).filter(h => present.has(h.id));
+  }, [homes, accessories]);
+  // With nothing to choose between, the Home filter is noise — drop it and let
+  // Room filter directly (it's otherwise gated on picking a home first).
+  const singleHome = availableHomes.length <= 1;
 
   // Reset room filter when home changes
   const handleHomeChange = (value: string) => {
@@ -299,14 +323,58 @@ export function AccessoryPicker({
     return fuseSearch(accessoryFuse, searchQuery);
   }, [accessoryFuse, searchQuery, dropdownFiltered]);
 
+  /**
+   * A HomeKit service group carries no home, room or type of its own — only
+   * member ids. Resolve them so a group can be filtered and labelled like the
+   * accessories it stands in for; without this the three filters silently
+   * skipped every group row.
+   */
+  const groupMeta = useMemo(() => {
+    const byId = new Map(accessories.map(a => [a.id, a]));
+    const serviceOwner = new Map<string, HomeKitAccessory>();
+    for (const acc of accessories) {
+      for (const svc of acc.services ?? []) serviceOwner.set(svc.id, acc);
+    }
+    const map = new Map<string, {
+      members: HomeKitAccessory[];
+      homeId?: string;
+      roomIds: Set<string>;
+      roomLabel?: string;
+      category?: string;
+    }>();
+    for (const group of serviceGroups) {
+      const members = new Map<string, HomeKitAccessory>();
+      for (const id of group.accessoryIds ?? []) {
+        const acc = byId.get(id);
+        if (acc) members.set(acc.id, acc);
+      }
+      for (const sid of group.serviceIds ?? []) {
+        const acc = serviceOwner.get(sid);
+        if (acc) members.set(acc.id, acc);
+      }
+      const list = [...members.values()];
+      const roomNames = new Set(list.map(m => m.roomName).filter(Boolean) as string[]);
+      const categories = new Set(list.map(getAccessoryCategory));
+      map.set(group.id, {
+        members: list,
+        homeId: serviceGroupHomeMap?.get(group.id) ?? group.homeId ?? list[0]?.homeId,
+        roomIds: new Set(list.map(m => m.roomId).filter(Boolean) as string[]),
+        roomLabel: roomNames.size === 1 ? [...roomNames][0] : roomNames.size > 1 ? `${roomNames.size} rooms` : undefined,
+        // Only a uniform group has a type; a mixed one shouldn't vanish under a filter
+        category: categories.size === 1 ? [...categories][0] : undefined,
+      });
+    }
+    return map;
+  }, [serviceGroups, accessories, serviceGroupHomeMap]);
+
   // Filter service groups (fuzzy text search)
   const searchableGroups = useMemo(() =>
     serviceGroups.map(group => {
-      const groupHomeId = serviceGroupHomeMap?.get(group.id) || '';
-      const homeName = getHomeName(groupHomeId) || '';
-      return { ...group, _searchText: `${group.name} ${homeName}` };
+      const meta = groupMeta.get(group.id);
+      const homeName = getHomeName(meta?.homeId) || '';
+      return { ...group, _searchText: `${group.name} ${meta?.roomLabel ?? ''} ${homeName}` };
     }),
-    [serviceGroups, serviceGroupHomeMap, getHomeName]
+    [serviceGroups, groupMeta, getHomeName]
   );
 
   const groupFuse = useMemo(
@@ -314,53 +382,42 @@ export function AccessoryPicker({
     [searchableGroups]
   );
 
-  // Build a set of accessory IDs in the selected room (for room-filtering service groups)
-  const accessoryIdsInRoom = useMemo(() => {
-    if (filterRoom === 'all') return null;
-    const ids = new Set<string>();
-    for (const acc of accessories) {
-      if (acc.roomId === filterRoom) ids.add(acc.id);
-    }
-    return ids;
-  }, [accessories, filterRoom]);
-
   const filteredServiceGroups = useMemo(() => {
     let groups = searchQuery ? fuseSearch(groupFuse, searchQuery) : serviceGroups;
     // Hide empty service groups
     groups = groups.filter(g => g.accessoryIds.length > 0);
-    // Apply home filter
-    if (filterHome !== 'all' && serviceGroupHomeMap) {
-      groups = groups.filter(g => serviceGroupHomeMap.get(g.id) === filterHome);
+    if (filterHome !== 'all') {
+      groups = groups.filter(g => groupMeta.get(g.id)?.homeId === filterHome);
     }
-    // Apply room filter — only show groups with at least one member in the selected room
-    if (accessoryIdsInRoom) {
-      groups = groups.filter(g => g.accessoryIds.some(id => accessoryIdsInRoom.has(id)));
+    // A group belongs to a room if any member does
+    if (filterRoom !== 'all') {
+      groups = groups.filter(g => groupMeta.get(g.id)?.roomIds.has(filterRoom));
+    }
+    // Mixed groups have no single type — leave them in rather than hide them
+    if (filterType !== 'all') {
+      groups = groups.filter(g => {
+        const category = groupMeta.get(g.id)?.category;
+        return category === undefined || category === filterType;
+      });
     }
     return groups;
-  }, [groupFuse, searchQuery, serviceGroups, filterHome, serviceGroupHomeMap, accessoryIdsInRoom]);
+  }, [groupFuse, searchQuery, serviceGroups, filterHome, filterRoom, filterType, groupMeta]);
 
-  // Exclude accessories that belong to any service group (they're selectable only via the group row).
-  // Groups may reference members via `accessoryIds` or `serviceIds` — resolve
-  // service IDs back to their owning accessory so either form excludes it.
+  // Exclude accessories that belong to any service group — they're selectable
+  // only via the group row.
   const groupedAccessoryIds = useMemo(() => {
     const ids = new Set<string>();
-    const serviceOwner = new Map<string, string>();
-    for (const acc of accessories) {
-      for (const svc of acc.services ?? []) serviceOwner.set(svc.id, acc.id);
-    }
     for (const group of serviceGroups) {
       for (const id of group.accessoryIds ?? []) ids.add(id);
-      for (const sid of group.serviceIds ?? []) {
-        const ownerId = serviceOwner.get(sid);
-        if (ownerId) ids.add(ownerId);
-      }
+      for (const member of groupMeta.get(group.id)?.members ?? []) ids.add(member.id);
     }
     return ids;
-  }, [serviceGroups, accessories]);
+  }, [serviceGroups, groupMeta]);
 
   const dedupedAccessories = useMemo(() => {
+    if (showGroupedAccessories) return filteredAccessories;
     return filteredAccessories.filter(acc => !groupedAccessoryIds.has(acc.id));
-  }, [filteredAccessories, groupedAccessoryIds]);
+  }, [filteredAccessories, groupedAccessoryIds, showGroupedAccessories]);
 
   const limitReached = limit !== undefined && (usedSlots ?? selectedIds.size) >= limit;
 
@@ -422,7 +479,7 @@ export function AccessoryPicker({
               </SelectTrigger>
               <SelectContent style={{ zIndex: 10100 }}>
                 <SelectItem value="all">All Homes</SelectItem>
-                {homes.map(home => (
+                {availableHomes.map(home => (
                   <SelectItem key={home.id} value={home.id}>{home.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -468,8 +525,8 @@ export function AccessoryPicker({
               if (item.type === 'group') {
                 const group = item.data;
                 const isSelected = selectedServiceGroupIds?.has(group.id) ?? false;
-                const groupHomeId = serviceGroupHomeMap?.get(group.id) || '';
-                const homeName = homeNameMap.get(groupHomeId);
+                const meta = groupMeta.get(group.id);
+                const homeName = meta?.homeId ? homeNameMap.get(meta.homeId) : undefined;
                 return (
                   <div
                     key={`group-${group.id}`}
@@ -479,7 +536,9 @@ export function AccessoryPicker({
                       group={group}
                       isSelected={isSelected}
                       isDisabled={!isSelected && limitReached}
-                      homeName={homeName}
+                      homeName={singleHome ? undefined : homeName}
+                      roomLabel={meta?.roomLabel}
+                      memberCount={meta?.members.length ?? group.accessoryIds.length}
                       onToggle={handleGroupToggle}
                     />
                   </div>
@@ -500,7 +559,7 @@ export function AccessoryPicker({
                     isDisabled={isDisabled}
                     icon={meta?.icon ?? CircleDot}
                     displayName={meta?.displayName ?? accessory.name}
-                    homeName={homeNameMap.get(accessory.homeId || '')}
+                    homeName={singleHome ? undefined : homeNameMap.get(accessory.homeId || '')}
                     onToggle={onToggle}
                   />
                 </div>

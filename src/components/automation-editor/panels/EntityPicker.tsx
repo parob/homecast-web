@@ -162,6 +162,9 @@ export function DeviceOrGroupPicker({
                 }
               }}
               serviceGroups={serviceGroups}
+              // A trigger or action targets one thing: the group, or a device
+              // inside it. Hiding grouped members made those unreachable.
+              showGroupedAccessories
               selectedServiceGroupIds={serviceGroupId ? new Set([serviceGroupId]) : new Set()}
               onToggleServiceGroup={(id) => {
                 const group = serviceGroups.find((g) => g.id === id);

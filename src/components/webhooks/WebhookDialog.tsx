@@ -19,7 +19,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, Loader2, Check, X, AlertTriangle, Home, DoorClosed, Lightbulb } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Check, X, AlertTriangle, Home, DoorClosed, Lightbulb, Plus } from 'lucide-react';
+import { AccessoryPicker, getAccessoryIcon } from '@/components/AccessoryPicker';
 import { WebhookSecretDisplay } from './WebhookSecretDisplay';
 import { GET_HOMES, GET_ROOMS, GET_ACCESSORIES } from '@/lib/graphql/queries';
 import { CREATE_WEBHOOK, UPDATE_WEBHOOK, TEST_WEBHOOK } from '@/lib/graphql/mutations';
@@ -61,6 +62,7 @@ export function WebhookDialog({
   const [selectedHomeIds, setSelectedHomeIds] = useState<Set<string>>(new Set());
   const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
   const [selectedAccessoryIds, setSelectedAccessoryIds] = useState<Set<string>>(new Set());
+  const [pickingAccessories, setPickingAccessories] = useState(false);
 
   // New secret after creation
   const [newRawSecret, setNewRawSecret] = useState<string | null>(null);
@@ -110,6 +112,9 @@ export function WebhookDialog({
   const filteredAccessories = selectedRoomIds.size > 0
     ? accessories.filter(a => a.roomId && selectedRoomIds.has(a.roomId))
     : accessories;
+  const selectedAccessories = filteredAccessories.filter(a => selectedAccessoryIds.has(a.id));
+  // The picker filters within a home, so only the scoped one is worth offering.
+  const scopedHomes = homes.filter(h => selectedHomeIds.has(h.id));
 
   // Mutations
   const [createWebhook, { loading: creating }] = useMutation<CreateWebhookResponse>(CREATE_WEBHOOK);
@@ -148,6 +153,7 @@ export function WebhookDialog({
       setTestResult(null);
       setErrors({});
       setAdvancedOpen(false);
+      setPickingAccessories(false);
     }
   }, [open, webhook]);
 
@@ -298,7 +304,7 @@ export function WebhookDialog({
   // Scope description
   const getScopeDescription = () => {
     if (selectedAccessoryIds.size > 0) {
-      return `${selectedAccessoryIds.size} accessory${selectedAccessoryIds.size > 1 ? 'ies' : ''}`;
+      return `${selectedAccessoryIds.size} ${selectedAccessoryIds.size === 1 ? 'accessory' : 'accessories'}`;
     }
     if (selectedRoomIds.size > 0) {
       return `${selectedRoomIds.size} room${selectedRoomIds.size > 1 ? 's' : ''}`;
@@ -346,6 +352,7 @@ export function WebhookDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0">
         <DialogHeader className="shrink-0 px-6 pt-6">
@@ -498,27 +505,36 @@ export function WebhookDialog({
                       {selectedRoomIds.size > 0 ? 'No accessories in selected rooms' : 'No accessories in this home'}
                     </p>
                   ) : (
-                    <ScrollArea className="h-[120px] rounded-md border p-2">
-                      <div className="space-y-1">
-                        {filteredAccessories.map(accessory => (
-                          <div key={accessory.id} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`accessory-${accessory.id}`}
-                              checked={selectedAccessoryIds.has(accessory.id)}
-                              onCheckedChange={() => toggleAccessory(accessory.id)}
-                            />
-                            <label htmlFor={`accessory-${accessory.id}`} className="text-sm cursor-pointer truncate">
-                              {accessory.name}
-                              {accessory.roomName && (
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  ({accessory.roomName})
-                                </span>
-                              )}
-                            </label>
+                    <div className="space-y-1">
+                      {selectedAccessories.map(accessory => {
+                        const Icon = getAccessoryIcon(accessory);
+                        return (
+                          <div key={accessory.id} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
+                            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="flex-1 truncate text-sm">{accessory.name}</span>
+                            {accessory.roomName && (
+                              <span className="shrink-0 text-xs text-muted-foreground">{accessory.roomName}</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => toggleAccessory(accessory.id)}
+                              aria-label={`Remove ${accessory.name}`}
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setPickingAccessories(true)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-2 text-xs text-muted-foreground transition-colors hover:border-muted-foreground/40 hover:text-foreground"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {selectedAccessories.length > 0 ? 'Add more accessories' : 'Choose accessories'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -658,5 +674,25 @@ export function WebhookDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={pickingAccessories} onOpenChange={setPickingAccessories}>
+      <DialogContent
+        className="max-w-[95%] sm:max-w-[500px] max-h-[85vh] flex flex-col p-0 gap-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogTitle className="sr-only">Choose Accessories</DialogTitle>
+        <AccessoryPicker
+          accessories={filteredAccessories}
+          homes={scopedHomes}
+          selectedIds={selectedAccessoryIds}
+          onToggle={toggleAccessory}
+          loading={accessoriesLoading}
+        />
+        <div className="shrink-0 px-4 py-3 border-t flex justify-end">
+          <Button size="sm" onClick={() => setPickingAccessories(false)}>Done</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

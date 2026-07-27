@@ -3,7 +3,6 @@
 
 import { useCallback, useMemo, useState, useRef } from 'react';
 import { type Node, type Edge } from '@xyflow/react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,7 +20,6 @@ import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
-import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { NodeInfoPopover } from './NodeInfoPopover';
 import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
@@ -144,9 +142,6 @@ interface NodeConfigPanelProps {
 export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, homeId, onSaveBeforeTest }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerCallback, setPickerCallback] = useState<((a: HomeKitAccessory) => void) | null>(null);
-
   // Test mode state (trigger nodes only)
   const [testFromValue, setTestFromValue] = useState('');
   const [testToValue, setTestToValue] = useState('');
@@ -181,11 +176,6 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
     [data, onUpdateData, accessories],
   );
 
-  const openDevicePicker = useCallback((onSelect: (a: HomeKitAccessory) => void) => {
-    setPickerCallback(() => onSelect);
-    setPickerOpen(true);
-  }, []);
-
   return (
     <>
       <div className="w-full sm:w-auto flex flex-col min-h-0 h-full shrink-0 bg-background sm:rounded-xl sm:border sm:shadow-lg" data-testid="config-panel">
@@ -216,7 +206,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
         {/* Config form — scrollable */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 space-y-4">
-            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, openDevicePicker, node.id, allNodes, allEdges, serviceGroups, availableAutomations)}
+            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, node.id, allNodes, allEdges, serviceGroups, availableAutomations)}
 
             {/* Error handling section — action nodes only, collapsed by default */}
             {data.category === 'action' && (
@@ -379,23 +369,6 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
           </Button>
         </div>
       </div>
-
-      {/* Device Picker Dialog — single-select mode */}
-      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="max-w-[95%] sm:max-w-[500px] max-h-[85vh] flex flex-col p-0 gap-0 [&_.h-4.w-4.rounded.border]:hidden" onOpenAutoFocus={(e) => e.preventDefault()}>
-          <DialogTitle className="sr-only">Select Device</DialogTitle>
-          <AccessoryPicker
-            accessories={accessories}
-            homes={homes}
-            selectedIds={new Set(data.config.accessoryId ? [data.config.accessoryId as string] : [])}
-            onToggle={(id) => {
-              const acc = accessories.find((a) => a.id === id);
-              if (acc && pickerCallback) pickerCallback(acc);
-              setPickerOpen(false);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
@@ -413,7 +386,6 @@ function renderConfigForm(
   accessories: HomeKitAccessory[],
   homes: HomeKitHome[],
   scenes: HomeKitScene[],
-  openDevicePicker: (onSelect: (accessory: HomeKitAccessory) => void) => void,
   nodeId?: string,
   allNodes?: Node<FlowNodeData>[],
   allEdges?: Edge[],
@@ -589,17 +561,18 @@ function renderConfigForm(
       }
 
       case 'device_offline': {
-        const acc = accessories?.find((a) => a.id === config.accessoryId);
         return (
           <>
             <ConfigField label="Device">
-              <button
-                type="button"
-                onClick={() => openDevicePicker?.()}
-                className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted"
-              >
-                {acc?.name ?? <span className="text-muted-foreground">Choose a device…</span>}
-              </button>
+              <DevicePicker
+                value={config.accessoryId as string | undefined}
+                accessories={accessories}
+                homes={homes}
+                onChange={(id, name) => {
+                  if (updateConfigBatch) updateConfigBatch({ accessoryId: id, accessoryName: name });
+                  else updateConfig('accessoryId', id);
+                }}
+              />
             </ConfigField>
             <ConfigField label="Fire when it becomes">
               <Select

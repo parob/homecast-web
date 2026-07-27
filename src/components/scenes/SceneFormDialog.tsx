@@ -111,52 +111,50 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
         }
 
         return (
-          <div key={index} className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              {chars.length > 1 ? (
-                <Select
-                  value={action.characteristicType}
-                  onValueChange={(type) => {
-                    const next = chars.find(c => c.type === type);
-                    updateAction(index, { characteristicType: type, targetValue: defaultValueFor(next) });
-                  }}
-                >
-                  <SelectTrigger className="h-7 w-auto min-w-[130px] text-xs" data-testid="characteristic-select">
-                    <SelectValue placeholder="Property" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {chars.map(c => (
-                      <SelectItem
-                        key={c.type}
-                        value={c.type}
-                        className="text-xs"
-                        disabled={c.type !== action.characteristicType && usedTypes.has(c.type)}
-                      >
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <span className="text-xs text-muted-foreground">{char?.label ?? charLabel(action.characteristicType)}</span>
-              )}
-              <div className="ml-auto min-w-[140px] flex-1">
-                <CharacteristicValueInput
-                  char={char}
-                  value={action.targetValue}
-                  onChange={(v) => updateAction(index, { targetValue: v })}
-                />
-              </div>
-              {actions.length > 1 && (
-                <button
-                  onClick={() => onChange(actions.filter((_, i) => i !== index))}
-                  aria-label={`Remove ${char?.label ?? 'property'}`}
-                  className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+          <div key={index} className="flex items-center gap-2">
+            {chars.length > 1 ? (
+              <Select
+                value={action.characteristicType}
+                onValueChange={(type) => {
+                  const next = chars.find(c => c.type === type);
+                  updateAction(index, { characteristicType: type, targetValue: defaultValueFor(next) });
+                }}
+              >
+                <SelectTrigger className="h-7 w-auto min-w-[130px] text-xs" data-testid="characteristic-select">
+                  <SelectValue placeholder="Property" />
+                </SelectTrigger>
+                <SelectContent>
+                  {chars.map(c => (
+                    <SelectItem
+                      key={c.type}
+                      value={c.type}
+                      className="text-xs"
+                      disabled={c.type !== action.characteristicType && usedTypes.has(c.type)}
+                    >
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-xs text-muted-foreground">{char?.label ?? charLabel(action.characteristicType)}</span>
+            )}
+            <div className="ml-auto min-w-[140px] flex-1">
+              <CharacteristicValueInput
+                char={char}
+                value={action.targetValue}
+                onChange={(v) => updateAction(index, { targetValue: v })}
+              />
             </div>
+            {actions.length > 1 && (
+              <button
+                onClick={() => onChange(actions.filter((_, i) => i !== index))}
+                aria-label={`Remove ${char?.label ?? 'property'}`}
+                className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
         );
       })}

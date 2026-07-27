@@ -1,12 +1,14 @@
 /**
  * End-to-end coverage for the Cloud sync path.
  *
- * `AutomationSyncManager` and `relay-adapter` had no tests at all, yet they are
- * the only way automations reach the engine in cloud mode. This drives the full
- * loop with a fake transport:
+ * `AutomationSyncManager` and `relay-adapter` had no tests at all. The manager
+ * now carries only the one-way notifications (webhook triggers, notification
+ * responses) plus the outbound trace channel — config sync moved to the relay's
+ * request handler, covered in relay-config-sync.test.ts.
  *
- *   automation.sync_all -> loadAutomations -> HomeKit event -> trigger ->
- *   action -> bridge call -> trace -> sendMessage('automation.trace')
+ * This drives the loop that remains:
+ *   engine loaded -> HomeKit event -> trigger -> action -> bridge call ->
+ *   trace -> sendMessage('automation.trace')
  *
  * Also covers the relay-adapter's module-level handler registry, which persists
  * across engine teardown/re-init and would otherwise leak between sessions.
@@ -89,7 +91,7 @@ afterEach(() => {
 
 describe('server -> relay sync', () => {
   it('loads automations pushed as sync_all and runs them on a HomeKit event', async () => {
-    harness.push('automation.sync_all', { automations: [makeAutomation()] });
+    engine.loadAutomations([makeAutomation()]);
 
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalled());
@@ -98,7 +100,7 @@ describe('server -> relay sync', () => {
   });
 
   it('sends the resulting trace back to the server', async () => {
-    harness.push('automation.sync_all', { automations: [makeAutomation()] });
+    engine.loadAutomations([makeAutomation()]);
 
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await vi.waitFor(() => expect(harness.sent.some(m => m.type === 'automation.trace')).toBe(true));
@@ -108,8 +110,8 @@ describe('server -> relay sync', () => {
   });
 
   it('replaces the whole set on a second sync_all', async () => {
-    harness.push('automation.sync_all', { automations: [makeAutomation()] });
-    harness.push('automation.sync_all', { automations: [] });
+    engine.loadAutomations([makeAutomation()]);
+    engine.loadAutomations([]);
 
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await new Promise(r => setTimeout(r, 50));
@@ -118,8 +120,8 @@ describe('server -> relay sync', () => {
   });
 
   it('applies a single-automation sync update', async () => {
-    harness.push('automation.sync_all', { automations: [makeAutomation()] });
-    harness.push('automation.sync', { automation: makeAutomation({ enabled: false }) });
+    engine.loadAutomations([makeAutomation()]);
+    engine.updateAutomation(makeAutomation({ enabled: false }));
 
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await new Promise(r => setTimeout(r, 50));
@@ -128,8 +130,8 @@ describe('server -> relay sync', () => {
   });
 
   it('removes an automation on delete', async () => {
-    harness.push('automation.sync_all', { automations: [makeAutomation()] });
-    harness.push('automation.delete', { automationId: 'auto-1' });
+    engine.loadAutomations([makeAutomation()]);
+    engine.removeAutomation('auto-1');
 
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await new Promise(r => setTimeout(r, 50));
@@ -138,32 +140,32 @@ describe('server -> relay sync', () => {
   });
 
   it('routes a webhook trigger through to the engine', async () => {
-    harness.push('automation.sync_all', {
-      automations: [makeAutomation({
-        triggers: [{ id: 't1', type: 'webhook', webhookId: 'hook-1' }],
-      })],
-    });
+    engine.loadAutomations([makeAutomation({
+      triggers: [{ id: 't1', type: 'webhook', webhookId: 'hook-1' }],
+    })]);
 
     harness.push('automation.webhook_trigger', { webhookId: 'hook-1', body: { ok: true } });
     await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalled());
   });
 
-  it('registers every documented inbound message type', () => {
-    for (const type of [
-      'automation.sync_all',
-      'automation.sync',
-      'automation.delete',
-      'automation.webhook_trigger',
-      'automation.notification_response',
-    ]) {
+  it('registers the one-way notification types', () => {
+    for (const type of ['automation.webhook_trigger', 'automation.notification_response']) {
       expect(harness.has(type)).toBe(true);
+    }
+  });
+
+  it('no longer listens for config sync as events', () => {
+    // These arrive as requests through the relay action handler now, so that
+    // the server can route them cross-pod and get an acknowledgement.
+    for (const type of ['automation.sync_all', 'automation.sync', 'automation.delete']) {
+      expect(harness.has(type)).toBe(false);
     }
   });
 
   it('stops handling messages after teardown', () => {
     sync.teardown();
 
-    expect(harness.has('automation.sync_all')).toBe(false);
+    expect(harness.has('automation.webhook_trigger')).toBe(false);
   });
 });
 

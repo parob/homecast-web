@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Temporary: dumps rendered HTML for a visual check.
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing/react';
 import { writeFileSync } from 'node:fs';
 
@@ -86,5 +86,16 @@ describe.skipIf(!OUT)('preview', () => {
     );
     await waitFor(() => screen.getByText('Reading Lamp'));
     writeFileSync(OUT!, document.body.innerHTML);
+  });
+
+  it('dumps the device picker', async () => {
+    render(
+      <MockedProvider mocks={mocks} addTypename={false}>
+        <SceneFormDialog open onOpenChange={() => {}} homeId={HOME_ID} scene={null} />
+      </MockedProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /add devices/i }));
+    await waitFor(() => screen.getByText('Reading Lamp'));
+    writeFileSync(OUT!.replace('.html', '-picker.html'), document.body.innerHTML);
   });
 });

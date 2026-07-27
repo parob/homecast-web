@@ -2,7 +2,6 @@
 // Bidirectional sync: server ↔ relay via WebSocket
 
 import type { AutomationEngine } from '../engine/AutomationEngine';
-import type { Automation } from '../types/automation';
 import type { ExecutionTrace } from '../types/execution';
 
 /** Interface for the WebSocket connection used by the sync manager */
@@ -18,12 +17,13 @@ export interface SyncTransport {
 /**
  * Manages bidirectional sync between the server and the relay's automation engine.
  *
- * Server → Relay:
- * - automation.sync_all: Full config load on connect
- * - automation.sync: Single automation update
- * - automation.delete: Automation removed
+ * Server → Relay (one-way notifications only):
  * - automation.webhook_trigger: Forward webhook to engine
  * - automation.notification_response: Forward notification action to engine
+ *
+ * Config sync (sync_all / sync / delete) does NOT come through here. The server
+ * sends it as a request over the same DirectRouter path as HomeKit actions, so
+ * it lands in the relay's action handler and gets acknowledged.
  *
  * Relay → Server:
  * - automation.trace: Execution trace completed
@@ -43,25 +43,10 @@ export class AutomationSyncManager {
    * Start listening for sync messages and load initial configs.
    */
   async initialize(): Promise<void> {
-    // Register message handlers
-    this.unsubscribers.push(
-      this.transport.onMessage('automation.sync_all', (payload) => {
-        this.handleSyncAll(payload);
-      }),
-    );
-
-    this.unsubscribers.push(
-      this.transport.onMessage('automation.sync', (payload) => {
-        this.handleSync(payload);
-      }),
-    );
-
-    this.unsubscribers.push(
-      this.transport.onMessage('automation.delete', (payload) => {
-        this.handleDelete(payload);
-      }),
-    );
-
+    // Config sync (sync_all / sync / delete) is NOT handled here any more. The
+    // server delivers it as a request through the same DirectRouter path as
+    // HomeKit actions, so it lands in the relay's action handler and can be
+    // acknowledged. What remains below are genuine one-way notifications.
     this.unsubscribers.push(
       this.transport.onMessage('automation.webhook_trigger', (payload) => {
         this.handleWebhookTrigger(payload);
@@ -100,26 +85,8 @@ export class AutomationSyncManager {
   // Inbound message handlers
   // ============================================================
 
-  private handleSyncAll(payload: Record<string, unknown>): void {
-    const automations = payload.automations as Automation[] | undefined;
-    if (automations) {
-      this.engine.loadAutomations(automations);
-    }
-  }
 
-  private handleSync(payload: Record<string, unknown>): void {
-    const automation = payload.automation as Automation | undefined;
-    if (automation) {
-      this.engine.updateAutomation(automation);
-    }
-  }
 
-  private handleDelete(payload: Record<string, unknown>): void {
-    const automationId = payload.automationId as string | undefined;
-    if (automationId) {
-      this.engine.removeAutomation(automationId);
-    }
-  }
 
   private handleWebhookTrigger(payload: Record<string, unknown>): void {
     const webhookId = payload.webhookId as string | undefined;
