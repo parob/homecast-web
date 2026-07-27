@@ -54,8 +54,11 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demo
   const relayNeedsUpdate = raw.some(a => a.id === '__relay_update_required__');
   const hkCount = relayNeedsUpdate ? 0 : raw.length;
   const hcCount = (hcData?.hcAutomations || []).length;
+  // Always render for a real home — hiding at zero made the section (and the
+  // "New" button inside it) unreachable, so a home with no automations had no
+  // way to create its first one.
   const count = hkCount + hcCount;
-  if (count === 0 && !relayNeedsUpdate) return null;
+  if (!homeId && !demoAutomations) return null;
 
   return (
     <button
@@ -69,7 +72,7 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demo
       }`}
     >
       <Workflow className="h-3 w-3" />
-      <span>Automations {count > 0 ? count : ''}</span>
+      <span>Automations{count > 0 ? ` ${count}` : ''}</span>
       <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
     </button>
   );
@@ -134,10 +137,9 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
 
   const isLoading = loading || hcLoading;
   const totalCount = automations.length + hcAutomations.length;
-  const hasContent = totalCount > 0 || relayNeedsUpdate;
-  // Hide (but don't unmount) if query completed with nothing to show.
-  // Unmounting (return null) would kill any open dialog state.
-  const hidden = !isLoading && !hasContent;
+  // Note: deliberately NOT hidden when empty. The section holds the only "New"
+  // button, so collapsing it at zero left no way to create a first automation.
+  const isEmpty = !isLoading && totalCount === 0 && !relayNeedsUpdate;
 
   const handleCardClick = (automation: HomeKitAutomation) => {
     setSelectedAutomation(automation);
@@ -180,7 +182,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
 
   return (
     <>
-      <AnimatedCollapse open={expanded && !hidden}>
+      <AnimatedCollapse open={expanded}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
           {relayNeedsUpdate && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
@@ -193,10 +195,19 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
               {HOMEKIT_EDIT_PERMISSION_FIX} Homecast automations are unaffected.
             </p>
           )}
+          {isEmpty && (
+            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+              No automations yet. Automations run your home for you — on a schedule, when a device
+              changes, or on logic Apple Home can't express.
+            </p>
+          )}
+          {/* Wider minimum track than the scenes grid: automation names are
+              descriptive sentences, and the card also carries a trigger summary,
+              a toggle and a delete button on the same row. */}
           <div className={
             compact
-              ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
-              : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]'
+              ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(210px,1fr))]'
+              : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(360px,1fr))]'
           }>
             {/* HomeKit native automations */}
             {automations.map(automation => (

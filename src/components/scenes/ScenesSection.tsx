@@ -39,8 +39,11 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
+  // Always render for a real home — hiding at zero made the section (and the
+  // "New scene" button inside it) unreachable, so a home with no scenes had no
+  // way to create its first one.
   const count = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s)).length;
-  if (count === 0) return null;
+  if (!homeId) return null;
 
   return (
     <button
@@ -54,7 +57,7 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
       )}
     >
       <Zap className="h-3 w-3" />
-      <span>Scenes {count}</span>
+      <span>Scenes{count > 0 ? ` ${count}` : ''}</span>
       <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
     </button>
   );
@@ -120,6 +123,11 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
     <>
       <AnimatedCollapse open={open}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
+          {scenes.length === 0 && (
+            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+              No scenes yet. A scene sets several accessories at once — create one to get started.
+            </p>
+          )}
           <div className={
             compact
               ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
