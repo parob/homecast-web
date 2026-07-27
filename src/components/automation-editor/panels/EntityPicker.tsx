@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Lightbulb, Play, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccessoryPicker } from '@/components/AccessoryPicker';
+import { characteristicLabel } from '../entity-labels';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 // ============================================================
@@ -231,8 +232,10 @@ export function CharacteristicPicker({
         </SelectTrigger>
         <SelectContent>
           {characteristics.map((c) => (
+            // The value stays the raw HomeKit type — that's what gets saved and
+            // sent to the relay. Only the label is humanised.
             <SelectItem key={c.type} value={c.type}>
-              <span>{c.type}</span>
+              <span>{characteristicLabel(c.type)}</span>
               {c.meta && <span className="ml-1.5 text-muted-foreground text-[10px]">{c.meta}</span>}
             </SelectItem>
           ))}

@@ -66,10 +66,44 @@ describe('ControlFlowEdge', () => {
     expect(deleteElements).toHaveBeenCalledWith({ edges: [{ id: 'e1' }] });
   });
 
-  it('keeps the control visible rather than fully hidden', () => {
-    renderEdge();
-    // opacity-0 would make it impossible to hover into existence.
-    expect(String(screen.getByLabelText(/delete connection/i).className)).not.toMatch(/\bopacity-0\b/);
+  it('hides the delete control until the edge is hovered', () => {
+    // Previously a permanently visible faded button sat on every edge, which
+    // was noisy on a dense graph. Nodes reveal their delete on hover; edges
+    // now match.
+    // Read `class` via getAttribute, not `.className`: getByLabelText resolves
+    // to the inner <svg>, and this harness renders the label inside an <svg>
+    // too (EdgeLabelRenderer is mocked inline), so `.className` is an
+    // SVGAnimatedString — a className assertion through it silently passes
+    // whatever the markup actually does.
+    const { container } = renderEdge();
+    const btn = () => container.querySelector('button[aria-label="Delete connection"]')!;
+    expect(btn().getAttribute('class')).toMatch(/\bhidden\b/);
+
+    fireEvent.mouseEnter(container.querySelector('g')!);
+    expect(btn().getAttribute('class')).toMatch(/\bflex\b/);
+  });
+
+  it('shows the delete control while the edge is selected', () => {
+    const { container } = renderEdge({ selected: true });
+    const btn = container.querySelector('button[aria-label="Delete connection"]')!;
+    expect(btn.getAttribute('class')).toMatch(/\bflex\b/);
+  });
+
+  it('uses the same bin icon as a node, not an X', () => {
+    const { container } = renderEdge({ selected: true });
+    const icon = container.querySelector('button[aria-label="Delete connection"] svg');
+    expect(String(icon?.getAttribute('class'))).toMatch(/trash/i);
+  });
+
+  it('points at an arrowhead that matches the edge state', () => {
+    const { container: plain } = renderEdge();
+    const normalMarker = plain.querySelector('path')!.getAttribute('marker-end');
+    expect(normalMarker).toMatch(/url\(#hc-edge-arrow\)/);
+    cleanup();
+
+    const { container: sel } = renderEdge({ selected: true });
+    // A grey head on a highlighted line is what read as "weird".
+    expect(sel.querySelector('path')!.getAttribute('marker-end')).not.toBe(normalMarker);
   });
 
   it('styles an error edge differently from a normal one', () => {

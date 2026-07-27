@@ -21,7 +21,6 @@ import {
   type Edge,
   type Connection,
   type OnConnect,
-  MarkerType,
   type NodeTypes,
 } from '@xyflow/react';
 
@@ -41,7 +40,7 @@ import { cn } from '@/lib/utils';
 
 import { BaseNode } from './nodes/BaseNode';
 import { StickyNoteNode } from './nodes/StickyNoteNode';
-import { ControlFlowEdge } from './edges/ControlFlowEdge';
+import { ControlFlowEdge, EdgeMarkerDefs } from './edges/ControlFlowEdge';
 import { NodePalette } from './panels/NodePalette';
 import { NodeConfigPanel } from './panels/NodeConfigPanel';
 import type { FlowNodeData } from './constants';
@@ -63,15 +62,10 @@ const edgeTypes = {
 const defaultEdgeOptions = {
   type: 'controlFlow',
   animated: false,
-  // React Flow injects the marker def for us. Without this the edge component's
-  // markerEnd is undefined and the graph draws no arrowheads, leaving flow
-  // direction ambiguous on anything but a straight top-to-bottom chain.
-  markerEnd: {
-    type: MarkerType.ArrowClosed,
-    width: 18,
-    height: 18,
-    color: 'hsl(var(--muted-foreground) / 0.45)',
-  },
+  // No markerEnd here: ControlFlowEdge points at its own markers (EdgeMarkerDefs)
+  // so the arrowhead can follow the stroke colour per state. React Flow's
+  // injected ArrowClosed takes one static colour, which left a grey head on a
+  // blue selected edge.
 };
 
 interface AutomationEditorDialogProps {
@@ -622,6 +616,7 @@ function AutomationEditorInner({
             className="bg-muted/20"
             proOptions={{ hideAttribution: true }}
           >
+            <EdgeMarkerDefs />
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="opacity-30" />
             {nodes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center z-10">
