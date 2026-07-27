@@ -102,11 +102,15 @@ export class TriggerManager {
 
   // Group-trigger fire gating — see shouldFireGroupTrigger. Keyed by
   // "automationId:triggerId:groupId:characteristicType".
-  private groupTriggerSatisfied = new Map<string, boolean>();
   private groupTriggerLastFire = new Map<string, { at: number; value: string }>();
 
-  /** Window for collapsing a group's per-member event burst into one run. */
-  private static readonly GROUP_COALESCE_MS = 1500;
+  /**
+   * Window for collapsing a group's per-member event burst into one run.
+   * Production measured an 11-light group reporting over 1.3s, so 1.5s left no
+   * margin. Only repeats of the SAME value are suppressed, so a longer window
+   * can't swallow a real change.
+   */
+  private static readonly GROUP_COALESCE_MS = 3000;
 
   // Service group triggers indexed by "groupId:characteristicType"
   private serviceGroupStateTriggers = new Map<string, StateTriggerEntry[]>();
@@ -413,9 +417,6 @@ export class TriggerManager {
     // Group fire-gate state is keyed by automationId — drop it so a re-saved
     // automation starts unarmed rather than inheriting the old edge.
     const prefix = `${automationId}:`;
-    for (const key of this.groupTriggerSatisfied.keys()) {
-      if (key.startsWith(prefix)) this.groupTriggerSatisfied.delete(key);
-    }
     for (const key of this.groupTriggerLastFire.keys()) {
       if (key.startsWith(prefix)) this.groupTriggerLastFire.delete(key);
     }
@@ -724,33 +725,24 @@ export class TriggerManager {
    */
   private shouldFireGroupTrigger(
     gateKey: string,
-    groupId: string,
-    characteristicType: string,
-    to: unknown,
+    _groupId: string,
+    _characteristicType: string,
+    _to: unknown,
     event: StateChangeEvent,
   ): boolean {
-    const members = this.serviceGroupResolver?.getMembers?.(groupId) ?? [];
-
-    if (members.length > 0 && to !== undefined) {
-      // The store may not have applied this event yet, so prefer its value for
-      // the reporting accessory.
-      const satisfied = members.some((id) =>
-        this.valueMatches(
-          id === event.accessoryId
-            ? event.newValue
-            : this.stateStore.getState(id, characteristicType),
-          to,
-        ),
-      );
-      const wasSatisfied = this.groupTriggerSatisfied.get(gateKey) ?? false;
-      this.groupTriggerSatisfied.set(gateKey, satisfied);
-      return satisfied && !wasSatisfied;
-    }
-
-    // Coalesce only a repeat of the SAME value. A burst is every member
-    // reporting the same new value, so that alone is what we suppress —
-    // gating on time regardless of value would swallow a genuine off-then-on
-    // (or a numeric threshold crossing) that happens inside the window.
+    // Coalesce only a repeat of the SAME value within a short window. A burst
+    // is every member reporting the same new value, so that alone is what we
+    // suppress — gating on time regardless of value would swallow a genuine
+    // off-then-on (or a numeric threshold crossing) inside the window.
+    //
+    // This deliberately holds no latched per-group state. An earlier version
+    // tracked whether the GROUP satisfied the trigger and fired on the
+    // false->true edge, which is more precise but fails closed: any way that
+    // flag gets stuck true — a member whose state the store never learns, a
+    // periodic refresh landing mid-sequence — and the automation goes silent
+    // forever, with nothing to show why. Silence is the worst failure mode
+    // for an automation, so this errs toward firing: the window can only ever
+    // delay a duplicate, never cancel a real change.
     const now = Date.now();
     const value = JSON.stringify(event.newValue ?? null);
     const last = this.groupTriggerLastFire.get(gateKey);

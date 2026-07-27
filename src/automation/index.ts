@@ -136,8 +136,7 @@ export function notifyRelayWrite(
   // HomeKit did fire its observer for this accessory and got here first.
   // StateStore notifies listeners on every call, so without this a device that
   // reports its own changes would trigger the automation twice.
-  const current = engine.stateStore.getState(accessoryId, characteristicType);
-  if (current === value) return;
+  if (engine.stateStore.getState(accessoryId, characteristicType) === value) return;
 
   engine.stateStore.handleHomeKitEvent({
     type: 'characteristic.updated',
