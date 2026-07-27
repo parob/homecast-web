@@ -88,6 +88,12 @@ export function initLocalServer(): void {
   // Load auth-enabled flag from IndexedDB
   refreshAuthEnabled();
 
+  // Community mode has no ServerWebSocket, so nothing else starts the automation
+  // engine here. Without this, Homecast automations are stored but never run.
+  // Imported lazily to keep the engine out of the main bundle for the browser
+  // clients that never run it (same reason local-handler defers it).
+  void import('./community-automation').then(m => m.initCommunityAutomationEngine());
+
   w.__localserver_handler = (clientId: string, msg: ProtocolMessage) => {
     handleRequest(clientId, msg);
   };

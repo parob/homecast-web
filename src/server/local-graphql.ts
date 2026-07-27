@@ -32,6 +32,71 @@ const GRAPHQL_PUBLIC_OPS = new Set([
 ]);
 
 /**
+ * Map a locally-stored HC automation row onto the cloud's StoredEntityInfo
+ * shape, which is what the client documents select. Rows written before
+ * `updatedAt` existed fall back to `createdAt`.
+ */
+/**
+ * Push automation changes into the locally-running engine. Lazily imported so
+ * the engine stays out of the main bundle for browser clients that never run it
+ * (same reason local-handler defers it). No-op when the engine isn't running.
+ */
+async function reloadCommunityAutomations(): Promise<void> {
+  try {
+    const m = await import('./community-automation');
+    await m.reloadCommunityAutomations();
+  } catch { /* engine not running in this context */ }
+}
+
+/** Trigger/actions cross GraphQL as JSON strings; the relay actions want objects. */
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Stamp __typename through a native HomeKit automation so Apollo can normalize
+ * the nested trigger/events/conditions the client documents select.
+ */
+function toHomeKitAutomation(a: any) {
+  if (!a) return null;
+  const event = (e: any) => ({ ...e, __typename: 'AutomationEvent' });
+  return {
+    ...a,
+    trigger: a.trigger
+      ? {
+          ...a.trigger,
+          events: (a.trigger.events || []).map(event),
+          endEvents: (a.trigger.endEvents || []).map(event),
+          conditions: (a.trigger.conditions || []).map((c: any) => ({
+            ...c,
+            __typename: 'AutomationTriggerCondition',
+          })),
+          __typename: 'AutomationTrigger',
+        }
+      : null,
+    actions: (a.actions || []).map((ac: any) => ({ ...ac, __typename: 'AutomationAction' })),
+    __typename: 'HomeKitAutomation',
+  };
+}
+
+function toStoredAutomation(a: { id: string; homeId: string; data: string; createdAt: string; updatedAt?: string }) {
+  return {
+    id: a.id,
+    entityType: 'automation',
+    entityId: a.id,
+    parentId: a.homeId,
+    dataJson: a.data,
+    updatedAt: a.updatedAt ?? a.createdAt,
+    __typename: 'StoredEntityInfo',
+  };
+}
+
+/**
  * Handle a GraphQL request and return the response body.
  *
  * When `auth-enabled` is on, every operation outside `GRAPHQL_PUBLIC_OPS`
@@ -291,8 +356,14 @@ async function resolveOperation(
       return { deleteRoomGroup: { success: true, __typename: 'DeleteResult' } };
 
     // --- HC Automations ---
-    case 'GetHcAutomations':
-      return { hcAutomations: (await db.getHcAutomations()).map(a => ({ ...a, __typename: 'HcAutomation' })) };
+    // The client documents (HC_AUTOMATIONS / SAVE_HC_AUTOMATION) select the
+    // cloud's StoredEntityInfo shape, so map the local row onto it rather than
+    // returning raw IndexedDB columns.
+    case 'HcAutomations':
+      return {
+        hcAutomations: (await db.getHcAutomations(variables.homeId as string))
+          .map(toStoredAutomation),
+      };
 
     case 'SaveHcAutomation': {
       const automation = await db.saveHcAutomation(
@@ -300,20 +371,36 @@ async function resolveOperation(
         (variables.automationId as string) || null,
         variables.data as string
       );
-      return { saveHcAutomation: { ...automation, __typename: 'HcAutomation' } };
+      // Cloud mode gets an `automation.sync` push; locally we have to tell the
+      // running engine ourselves or the change won't take effect until restart.
+      void reloadCommunityAutomations();
+      return { saveHcAutomation: toStoredAutomation(automation) };
     }
 
     case 'DeleteHcAutomation':
       await db.deleteHcAutomation(variables.automationId as string);
+      void reloadCommunityAutomations();
       return { deleteHcAutomation: { success: true, __typename: 'DeleteResult' } };
 
     // --- Execution History ---
+    // GET_EXECUTION_HISTORY selects `hcExecutionTraces` with the StoredEntityInfo
+    // shape; the stored row keeps the trace in `traceJson`.
     case 'GetExecutionHistory': {
       const traces = await db.getExecutionTraces(
         variables.automationId as string,
         (variables.limit as number) ?? 50,
       );
-      return { executionHistory: traces.map(t => ({ ...t, __typename: 'ExecutionTrace' })) };
+      return {
+        hcExecutionTraces: traces.map(t => ({
+          id: t.id,
+          entityType: 'execution_trace',
+          entityId: t.id,
+          parentId: t.automationId,
+          dataJson: t.traceJson,
+          updatedAt: t.finishedAt ?? t.startedAt,
+          __typename: 'StoredEntityInfo',
+        })),
+      };
     }
 
     case 'GetExecutionTrace': {
@@ -331,6 +418,7 @@ async function resolveOperation(
       const version = await db.getAutomationVersion(variables.versionId as string);
       if (version) {
         await db.saveHcAutomation(variables.homeId as string, version.automationId, version.dataJson);
+        void reloadCommunityAutomations();
       }
       return { restoreAutomationVersion: { success: !!version, __typename: 'RestoreResult' } };
     }
@@ -427,6 +515,66 @@ async function resolveOperation(
         },
       };
     }
+    // --- HomeKit-native automations ---
+    // These route to the same relay actions the cloud calls. Without them every
+    // HomeKit automation operation fell through to the `default` case and
+    // returned {}, so the list was silently empty and the create/edit wizard
+    // was a no-op in Community mode.
+    case 'GetAutomations': {
+      const result = await executeHomeKitAction('automations.list', { homeId: variables.homeId }) as any;
+      return { automations: (result?.automations || []).map(toHomeKitAutomation) };
+    }
+
+    case 'CreateAutomation': {
+      const result = await executeHomeKitAction('automation.create', {
+        homeId: variables.homeId,
+        name: variables.name,
+        trigger: parseMaybeJson(variables.trigger),
+        actions: parseMaybeJson(variables.actions) ?? [],
+      }) as any;
+      return { createAutomation: toHomeKitAutomation(result) };
+    }
+
+    case 'UpdateAutomation': {
+      const payload: Record<string, unknown> = { automationId: variables.automationId };
+      if (variables.name != null) payload.name = variables.name;
+      if (variables.trigger != null) payload.trigger = parseMaybeJson(variables.trigger);
+      if (variables.actions != null) payload.actions = parseMaybeJson(variables.actions);
+      if (variables.enabled != null) payload.enabled = variables.enabled;
+      const result = await executeHomeKitAction('automation.update', payload) as any;
+      return { updateAutomation: toHomeKitAutomation(result) };
+    }
+
+    case 'DeleteAutomation': {
+      const result = await executeHomeKitAction('automation.delete', {
+        automationId: variables.automationId,
+      }) as any;
+      return {
+        deleteAutomation: {
+          success: result?.success ?? true,
+          automationId: variables.automationId,
+          error: null,
+          __typename: 'AutomationDeleteResult',
+        },
+      };
+    }
+
+    case 'SetAutomationEnabled': {
+      const enabled = variables.enabled as boolean;
+      const result = await executeHomeKitAction(
+        enabled ? 'automation.enable' : 'automation.disable',
+        { automationId: variables.automationId },
+      ) as any;
+      return {
+        setAutomationEnabled: {
+          id: (result?.id as string) ?? (variables.automationId as string),
+          name: result?.name ?? null,
+          isEnabled: result?.isEnabled ?? enabled,
+          __typename: 'HomeKitAutomation',
+        },
+      };
+    }
+
     case 'GetCachedHomes': {
       try {
         const homesResult = await executeHomeKitAction('homes.list', {}) as any;

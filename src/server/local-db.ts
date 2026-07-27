@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'homecast-local';
-const DB_VERSION = 7; // v7: added execution_traces, automation_versions, credentials
+const DB_VERSION = 8; // v8: added hc_helpers, hc_helper_states
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -106,6 +106,15 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('credentials')) {
         db.createObjectStore('credentials', { keyPath: 'id' });
+      }
+      // v8: Helpers (virtual switches, timers, counters, modes). Definitions
+      // and values are stored separately — values change constantly, and a
+      // counter that resets on every relay restart is useless.
+      if (!db.objectStoreNames.contains('hc_helpers')) {
+        db.createObjectStore('hc_helpers', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('hc_helper_states')) {
+        db.createObjectStore('hc_helper_states', { keyPath: 'id' });
       }
     };
 
@@ -321,10 +330,14 @@ interface HcAutomation {
   homeId: string;
   data: string;
   createdAt: string;
+  /** Absent on rows written before this field existed — fall back to createdAt. */
+  updatedAt?: string;
 }
 
-export async function getHcAutomations(): Promise<HcAutomation[]> {
-  return getAll<HcAutomation>('hc_automations');
+/** Pass a homeId to scope results; omitting it returns every home's automations. */
+export async function getHcAutomations(homeId?: string): Promise<HcAutomation[]> {
+  const all = await getAll<HcAutomation>('hc_automations');
+  return homeId ? all.filter(a => a.homeId === homeId) : all;
 }
 
 export async function saveHcAutomation(homeId: string, automationId: string | null, data: string): Promise<HcAutomation> {
@@ -346,11 +359,13 @@ export async function saveHcAutomation(homeId: string, automationId: string | nu
     } catch { /* versioning is best-effort */ }
   }
 
+  const now = new Date().toISOString();
   const automation: HcAutomation = {
     id,
     homeId,
     data,
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
   };
   await put('hc_automations', automation);
   return automation;
@@ -359,6 +374,63 @@ export async function saveHcAutomation(homeId: string, automationId: string | nu
 export async function deleteHcAutomation(automationId: string): Promise<boolean> {
   await remove('hc_automations', automationId);
   return true;
+}
+
+// --- Helpers (virtual switches, timers, counters, modes) ---
+
+interface HcHelper {
+  id: string;
+  homeId: string;
+  /** Serialized HelperDefinition. */
+  data: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface HcHelperState {
+  id: string;
+  value: string; // JSON-encoded so booleans/numbers/strings round-trip
+  updatedAt: string;
+}
+
+export async function getHcHelpers(homeId?: string): Promise<HcHelper[]> {
+  const all = await getAll<HcHelper>('hc_helpers');
+  return homeId ? all.filter(h => h.homeId === homeId) : all;
+}
+
+export async function saveHcHelper(homeId: string, helperId: string | null, data: string): Promise<HcHelper> {
+  const id = helperId ?? crypto.randomUUID();
+  const existing = await getById<HcHelper>('hc_helpers', id);
+  const now = new Date().toISOString();
+  const helper: HcHelper = { id, homeId, data, createdAt: existing?.createdAt ?? now, updatedAt: now };
+  await put('hc_helpers', helper);
+  return helper;
+}
+
+export async function deleteHcHelper(helperId: string): Promise<boolean> {
+  await remove('hc_helpers', helperId);
+  await remove('hc_helper_states', helperId);
+  return true;
+}
+
+export async function saveHcHelperState(helperId: string, value: unknown): Promise<void> {
+  await put('hc_helper_states', {
+    id: helperId,
+    value: JSON.stringify(value ?? null),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/** All persisted helper values, keyed by helper id. */
+export async function getHcHelperStates(): Promise<Record<string, unknown>> {
+  const rows = await getAll<HcHelperState>('hc_helper_states');
+  const out: Record<string, unknown> = {};
+  for (const row of rows) {
+    try {
+      out[row.id] = JSON.parse(row.value);
+    } catch { /* skip a corrupt row rather than failing the whole load */ }
+  }
+  return out;
 }
 
 // --- Users ---
