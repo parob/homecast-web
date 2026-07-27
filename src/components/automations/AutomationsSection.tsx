@@ -12,7 +12,6 @@ import { AutomationFormDialog } from './AutomationFormDialog';
 const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
 import { GET_AUTOMATIONS, GET_HOMES, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
-import { HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitHome, GetAutomationsResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 

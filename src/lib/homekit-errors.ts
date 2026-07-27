@@ -62,10 +62,14 @@ export function homeAccessLabel(isAdmin: boolean | null | undefined): string | n
   return null;
 }
 
-/** One line on what the access level means in practice. */
+/**
+ * What the access level means, in as few words as it can be said. Used inline
+ * next to the label and as the `title` on the compact badges, so it has to
+ * stay short enough to read at a glance.
+ */
 export function homeAccessHint(isAdmin: boolean | null | undefined): string | null {
-  if (isAdmin === true) return 'Homecast can control devices and manage HomeKit automations.';
-  if (isAdmin === false) return 'Homecast can control devices, but not create or edit HomeKit automations.';
+  if (isAdmin === true) return 'Can control devices and manage HomeKit automations.';
+  if (isAdmin === false) return 'Can control devices. HomeKit automations are read-only.';
   return null;
 }
 
