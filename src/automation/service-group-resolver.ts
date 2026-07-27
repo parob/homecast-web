@@ -17,11 +17,19 @@ const DEFAULT_REFRESH_MS = 5 * 60_000;
 
 export class HomeKitServiceGroupResolver implements ServiceGroupResolver {
   private index = new Map<string, string[]>();
+  // Forward index: groupId -> accessoryIds. TriggerManager needs it to decide
+  // whether the *group* satisfies a trigger, rather than firing once for each
+  // member that reports in.
+  private members = new Map<string, string[]>();
   private timer?: ReturnType<typeof setInterval>;
   private refreshing = false;
 
   getGroupsForAccessory(accessoryId: string): string[] {
     return this.index.get(accessoryId) ?? [];
+  }
+
+  getMembers(groupId: string): string[] {
+    return this.members.get(groupId) ?? [];
   }
 
   /** Rebuild the index from the current HomeKit service groups. */
@@ -31,6 +39,7 @@ export class HomeKitServiceGroupResolver implements ServiceGroupResolver {
     try {
       const homes = await HomeKit.listHomes();
       const next = new Map<string, string[]>();
+      const nextMembers = new Map<string, string[]>();
 
       for (const home of homes) {
         let groups;
@@ -41,6 +50,7 @@ export class HomeKitServiceGroupResolver implements ServiceGroupResolver {
           continue;
         }
         for (const group of groups) {
+          nextMembers.set(group.id, [...(group.accessoryIds ?? [])]);
           for (const accessoryId of group.accessoryIds ?? []) {
             const existing = next.get(accessoryId);
             if (existing) existing.push(group.id);
@@ -50,6 +60,7 @@ export class HomeKitServiceGroupResolver implements ServiceGroupResolver {
       }
 
       this.index = next;
+      this.members = nextMembers;
     } catch (e) {
       console.warn('[ServiceGroupResolver] refresh failed', e);
     } finally {
@@ -70,5 +81,6 @@ export class HomeKitServiceGroupResolver implements ServiceGroupResolver {
       this.timer = undefined;
     }
     this.index.clear();
+    this.members.clear();
   }
 }

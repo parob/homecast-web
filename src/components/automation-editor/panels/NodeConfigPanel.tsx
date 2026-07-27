@@ -17,6 +17,7 @@ import { getAutomationEngine } from '@/automation';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import type { ExecutionTrace } from '@/automation/types/execution';
 import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
+import { formatCharacteristicType } from '@/components/widgets';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
@@ -153,27 +154,27 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
   const updateConfig = useCallback(
     (key: string, value: unknown) => {
       const newConfig = { ...data.config, [key]: value };
-      const summary = buildSummary(data.nodeType, data.category, newConfig, accessories);
+      const summary = buildSummary(data.nodeType, data.category, newConfig, accessories, serviceGroups);
       onUpdateData({
         config: { ...newConfig, summary },
         subtitle: summary || undefined,
         isConfigured: isNodeConfigured(data.nodeType, data.category, newConfig),
       });
     },
-    [data, onUpdateData, accessories],
+    [data, onUpdateData, accessories, serviceGroups],
   );
 
   const updateConfigBatch = useCallback(
     (updates: Record<string, unknown>) => {
       const newConfig = { ...data.config, ...updates };
-      const summary = buildSummary(data.nodeType, data.category, newConfig, accessories);
+      const summary = buildSummary(data.nodeType, data.category, newConfig, accessories, serviceGroups);
       onUpdateData({
         config: { ...newConfig, summary },
         subtitle: summary || undefined,
         isConfigured: isNodeConfigured(data.nodeType, data.category, newConfig),
       });
     },
-    [data, onUpdateData, accessories],
+    [data, onUpdateData, accessories, serviceGroups],
   );
 
   return (
@@ -1497,7 +1498,13 @@ function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (v: num
 // Summary builders (simplified types)
 // ============================================================
 
-function buildSummary(nodeType: string, category: string, config: Record<string, unknown>, accessories?: HomeKitAccessory[]): string {
+function buildSummary(
+  nodeType: string,
+  category: string,
+  config: Record<string, unknown>,
+  accessories?: HomeKitAccessory[],
+  serviceGroups?: HomeKitServiceGroup[],
+): string {
   const getDeviceName = () => {
     if (config.accessoryName) return config.accessoryName as string;
     if (config.accessoryId && accessories) {
@@ -1507,14 +1514,29 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
     return config.accessoryId ? String(config.accessoryId).slice(0, 12) + '…' : '';
   };
 
+  // Resolve group names the same way devices are resolved. `serviceGroupName`
+  // is only written when the user picks a group in this session — it isn't part
+  // of the saved automation — so on reload every group node read "Group".
+  // Looking it up by id also keeps the label correct after a rename.
+  const getGroupName = () => {
+    if (config.serviceGroupId && serviceGroups) {
+      const group = serviceGroups.find((g) => g.id === config.serviceGroupId);
+      if (group?.name) return group.name;
+    }
+    if (config.serviceGroupName) return config.serviceGroupName as string;
+    return config.serviceGroupId ? String(config.serviceGroupId).slice(0, 12) + '…' : 'Group';
+  };
+
   if (category === 'trigger') {
     switch (nodeType) {
       case 'device_changed': {
         const entityName = config.serviceGroupId
-          ? ((config.serviceGroupName as string) ?? 'Group')
+          ? getGroupName()
           : config.accessoryId ? getDeviceName() : '';
         if (!entityName) break;
-        const char = config.characteristicType ? ` / ${config.characteristicType}` : '';
+        const char = config.characteristicType
+          ? ` / ${formatCharacteristicType(config.characteristicType as string)}`
+          : '';
         const filterMode = (config.filterMode as string) ?? 'any';
         let filter = '';
         if (filterMode === 'value' && config.to !== undefined) filter = ` → ${config.to}`;
@@ -1551,7 +1573,7 @@ function buildSummary(nodeType: string, category: string, config: Record<string,
     switch (nodeType) {
       case 'set_device': {
         const target = config.serviceGroupId
-          ? ((config.serviceGroupName as string) ?? 'Group')
+          ? getGroupName()
           : config.accessoryId ? getDeviceName() : '';
         if (target) return `Set ${target} to ${config.value ?? '?'}`;
         break;

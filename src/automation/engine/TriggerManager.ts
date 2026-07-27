@@ -80,6 +80,12 @@ interface AvailabilityEntry {
 /** Resolves which service groups an accessory belongs to (for group triggers) */
 export interface ServiceGroupResolver {
   getGroupsForAccessory(accessoryId: string): string[];
+  /**
+   * Members of a group. Optional so existing resolvers/test doubles still
+   * satisfy the interface; without it, group triggers fall back to
+   * time-coalescing a burst instead of tracking the group's real state.
+   */
+  getMembers?(groupId: string): string[];
 }
 
 /**
@@ -93,6 +99,14 @@ export class TriggerManager {
 
   // Numeric state triggers indexed by "accessoryId:characteristicType"
   private numericTriggers = new Map<string, NumericTriggerEntry[]>();
+
+  // Group-trigger fire gating — see shouldFireGroupTrigger. Keyed by
+  // "automationId:triggerId:groupId:characteristicType".
+  private groupTriggerSatisfied = new Map<string, boolean>();
+  private groupTriggerLastFire = new Map<string, { at: number; value: string }>();
+
+  /** Window for collapsing a group's per-member event burst into one run. */
+  private static readonly GROUP_COALESCE_MS = 1500;
 
   // Service group triggers indexed by "groupId:characteristicType"
   private serviceGroupStateTriggers = new Map<string, StateTriggerEntry[]>();
@@ -396,6 +410,16 @@ export class TriggerManager {
    * Unregister all triggers for an automation.
    */
   unregisterTriggers(automationId: string): void {
+    // Group fire-gate state is keyed by automationId — drop it so a re-saved
+    // automation starts unarmed rather than inheriting the old edge.
+    const prefix = `${automationId}:`;
+    for (const key of this.groupTriggerSatisfied.keys()) {
+      if (key.startsWith(prefix)) this.groupTriggerSatisfied.delete(key);
+    }
+    for (const key of this.groupTriggerLastFire.keys()) {
+      if (key.startsWith(prefix)) this.groupTriggerLastFire.delete(key);
+    }
+
     // State triggers
     for (const [key, entries] of this.stateTriggers) {
       const filtered = entries.filter((e) => {
@@ -602,6 +626,10 @@ export class TriggerManager {
         const groupStateEntries = this.serviceGroupStateTriggers.get(groupKey);
         if (groupStateEntries) {
           for (const entry of groupStateEntries) {
+            const gateKey = `${entry.automationId}:${entry.trigger.id}:${groupId}:${event.characteristicType}`;
+            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, entry.trigger.to, event)) {
+              continue;
+            }
             this.evaluateStateTrigger(entry, event, groupId);
           }
         }
@@ -609,6 +637,13 @@ export class TriggerManager {
         const groupNumericEntries = this.serviceGroupNumericTriggers.get(groupKey);
         if (groupNumericEntries) {
           for (const entry of groupNumericEntries) {
+            // Numeric group triggers have no single target value to aggregate
+            // over (above/below across N members is ambiguous), so these always
+            // take the time-coalescing path.
+            const gateKey = `${entry.automationId}:${entry.trigger.id}:${groupId}:${event.characteristicType}`;
+            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, undefined, event)) {
+              continue;
+            }
             this.evaluateNumericStateTrigger(entry, event, groupId);
           }
         }
@@ -667,6 +702,63 @@ export class TriggerManager {
       { triggerId: '', triggerType: 'state', timestamp: Date.now() },
       {},
     );
+  }
+
+  /**
+   * Should a *group* trigger run for this member's event?
+   *
+   * HomeKit reports a group change as one event per member, so "when Kitchen
+   * Lights turn on" used to run the automation once per bulb — an 11-light
+   * group produced 10 runs (and 10 notifications) in 1.3s for a single logical
+   * change. This collapses that burst to one run per group transition.
+   *
+   * Only group-registered triggers pass through here. A trigger bound to an
+   * individual accessory is dispatched from `stateTriggers` and is untouched,
+   * so an automation on one bulb inside the group still fires for that bulb.
+   *
+   * Where membership is known we track whether the GROUP satisfies the
+   * trigger's target value and fire only on the false -> true edge, so trailing
+   * members are absorbed and a later off -> on cycle re-arms it. Without
+   * membership, or without a target value to test against, we coalesce by time
+   * instead — a burst is one run, and genuinely separate changes still fire.
+   */
+  private shouldFireGroupTrigger(
+    gateKey: string,
+    groupId: string,
+    characteristicType: string,
+    to: unknown,
+    event: StateChangeEvent,
+  ): boolean {
+    const members = this.serviceGroupResolver?.getMembers?.(groupId) ?? [];
+
+    if (members.length > 0 && to !== undefined) {
+      // The store may not have applied this event yet, so prefer its value for
+      // the reporting accessory.
+      const satisfied = members.some((id) =>
+        this.valueMatches(
+          id === event.accessoryId
+            ? event.newValue
+            : this.stateStore.getState(id, characteristicType),
+          to,
+        ),
+      );
+      const wasSatisfied = this.groupTriggerSatisfied.get(gateKey) ?? false;
+      this.groupTriggerSatisfied.set(gateKey, satisfied);
+      return satisfied && !wasSatisfied;
+    }
+
+    // Coalesce only a repeat of the SAME value. A burst is every member
+    // reporting the same new value, so that alone is what we suppress —
+    // gating on time regardless of value would swallow a genuine off-then-on
+    // (or a numeric threshold crossing) that happens inside the window.
+    const now = Date.now();
+    const value = JSON.stringify(event.newValue ?? null);
+    const last = this.groupTriggerLastFire.get(gateKey);
+    if (last && last.value === value && now - last.at < TriggerManager.GROUP_COALESCE_MS) {
+      return false;
+    }
+    this.groupTriggerLastFire.set(gateKey, { at: now, value });
+    return true;
   }
 
   private evaluateStateTrigger(entry: StateTriggerEntry, event: StateChangeEvent, serviceGroupId?: string): void {

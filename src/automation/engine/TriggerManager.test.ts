@@ -173,7 +173,11 @@ describe('TriggerManager', () => {
       expect(data.triggerType).toBe('state');
     });
 
-    it('fires for each group member independently', () => {
+    it('coalesces a group burst into ONE fire, not one per member', () => {
+      // Previously asserted 3 fires — one per member. That is the bug: HomeKit
+      // reports a group change as an event per accessory, so "when the lights
+      // go on" ran the automation once per bulb (10x for an 11-light group in
+      // production). One logical group change is one run.
       const callback = vi.fn();
       const trigger: StateTrigger = {
         type: 'state',
@@ -188,10 +192,29 @@ describe('TriggerManager', () => {
       stateStore.updateDeviceState('acc-2', 'power_state', 1);
       stateStore.updateDeviceState('acc-3', 'power_state', 1);
 
-      expect(callback).toHaveBeenCalledTimes(3);
+      expect(callback).toHaveBeenCalledTimes(1);
       expect(callback.mock.calls[0][0].accessoryId).toBe('acc-1');
-      expect(callback.mock.calls[1][0].accessoryId).toBe('acc-2');
-      expect(callback.mock.calls[2][0].accessoryId).toBe('acc-3');
+      expect(callback.mock.calls[0][0].serviceGroupId).toBe('all-lights');
+    });
+
+    it('a different value within the window is not coalesced away', () => {
+      // Guards the fallback path: suppressing on time alone would swallow a
+      // real off-then-on cycle that lands inside the coalescing window.
+      const callback = vi.fn();
+      const trigger: StateTrigger = {
+        type: 'state',
+        id: 'group-trigger-1',
+        serviceGroupId: 'all-lights',
+        characteristicType: 'power_state',
+      };
+
+      triggerManager.registerTriggers('auto-1', [trigger], callback);
+
+      stateStore.updateDeviceState('acc-1', 'power_state', 1);
+      stateStore.updateDeviceState('acc-2', 'power_state', 0);
+      stateStore.updateDeviceState('acc-3', 'power_state', 1);
+
+      expect(callback).toHaveBeenCalledTimes(3);
     });
 
     it('does not fire for accessories not in the group', () => {
@@ -353,10 +376,17 @@ describe('TriggerManager', () => {
       expect(groupCallback).toHaveBeenCalledTimes(1);
       expect(deviceCallback).toHaveBeenCalledTimes(1);
 
-      // acc-2 change should fire ONLY group trigger
+      // acc-2 turning on is the same group change continuing, so the group
+      // trigger stays at one run. The per-accessory trigger is unaffected by
+      // group coalescing — it is dispatched from stateTriggers, not the group
+      // index — so an automation on a single bulb inside a group still works.
       stateStore.updateDeviceState('acc-2', 'power_state', 1);
-      expect(groupCallback).toHaveBeenCalledTimes(2);
-      expect(deviceCallback).toHaveBeenCalledTimes(1); // Still 1
+      expect(groupCallback).toHaveBeenCalledTimes(1);
+      expect(deviceCallback).toHaveBeenCalledTimes(1);
+
+      // ...and it fires on its own bulb's next change.
+      stateStore.updateDeviceState('acc-1', 'power_state', 0);
+      expect(deviceCallback).toHaveBeenCalledTimes(2);
     });
 
     it('teardown clears service group triggers', () => {
