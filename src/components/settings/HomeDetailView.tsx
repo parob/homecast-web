@@ -288,7 +288,7 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
             <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0 space-y-1">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Enable Read/Write Access</p>
+                <p className="text-sm font-medium">Give the relay Full access</p>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground shrink-0">Optional</Badge>
               </div>
               {/* Kept to two short sentences: what you gain, then how. The old

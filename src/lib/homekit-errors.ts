@@ -28,18 +28,18 @@ export const HOMEKIT_EDIT_PERMISSION_FIX =
 /**
  * How much the relay's Apple ID can do in a home, as one phrase.
  *
- * This used to be said four different ways — "Full access" / "View-only" in
- * home settings, a bare "View-only" chip in the homes list, and a shield icon
- * in the admin panel — none of which told you what was actually read-only.
- * Everything says the same thing now.
+ * "Full access" / "View-only" deliberately mirrors Apple Home's own wording,
+ * so what the admin panel says matches what the user sees when they go and
+ * change it. Previously this was spelled four different ways — including a
+ * bare shield icon in the admin panel, which didn't even indicate direction.
  *
  * `isAdmin` is null/undefined on relays older than 1.1.2, which never reported
  * it; that's genuinely unknown rather than restricted, so callers should hide
  * the label entirely rather than guess.
  */
 export function homeAccessLabel(isAdmin: boolean | null | undefined): string | null {
-  if (isAdmin === true) return 'Read/Write Access';
-  if (isAdmin === false) return 'Read Only Access';
+  if (isAdmin === true) return 'Full access';
+  if (isAdmin === false) return 'View-only';
   return null;
 }
 
