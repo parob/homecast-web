@@ -228,6 +228,9 @@ export class ActionExecutor {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
       const resolvedAccessoryId = this.resolveTemplateString(action.accessoryId, ctx);
 
+      // Record before writing so the resulting state change can be attributed
+      // to us rather than to a human reaching for the switch.
+      this.stateStore.recordWrite(resolvedAccessoryId, action.characteristicType, resolvedValue);
       await this.bridge.setCharacteristic(resolvedAccessoryId, action.characteristicType, resolvedValue);
       const output = { accessoryId: resolvedAccessoryId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
       ctx.setNodeOutput(action.id, output);

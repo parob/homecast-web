@@ -6,6 +6,15 @@ import type { StateChangeEvent } from '../types/execution';
 
 export type StateChangeListener = (event: StateChangeEvent) => void;
 
+/** How long after our own write an incoming change still counts as ours. */
+const WRITE_ATTRIBUTION_WINDOW_MS = 10_000;
+
+/** Split an "accessoryId:characteristicType" key, tolerating ids with colons. */
+function splitKey(key: string): [string, string] {
+  const i = key.lastIndexOf(':');
+  return [key.slice(0, i), key.slice(i + 1)];
+}
+
 /**
  * Central reactive state store for the automation engine.
  * Holds device characteristic values and helper states.
@@ -23,6 +32,11 @@ export class StateStore {
   // accessoryId -> last reported reachability
   private reachability = new Map<string, boolean>();
   private reachabilityListeners = new Set<(accessoryId: string, isReachable: boolean) => void>();
+  // Writes we made, awaiting the resulting state change so we can attribute it
+  private lastWrites = new Map<string, { value: unknown; at: number }>();
+  // key -> was the last change human-made?
+  private manualChanges = new Map<string, boolean>();
+  private manualChangeAt = new Map<string, number>();
 
   // Listeners keyed by "accessoryId:characteristicType"
   private specificListeners = new Map<string, Set<StateChangeListener>>();
@@ -104,6 +118,8 @@ export class StateStore {
       timestamp: ts,
     };
 
+    this.classifyChange(accessoryId, characteristicType, newValue);
+
     // Specific listeners
     const key = `${accessoryId}:${characteristicType}`;
     const specific = this.specificListeners.get(key);
@@ -125,6 +141,65 @@ export class StateStore {
         console.error('[StateStore] Global listener error:', e);
       }
     }
+  }
+
+  // ============================================================
+  // Manual-override detection
+  // ============================================================
+
+  /**
+   * Record that *we* wrote a value, so the resulting state change can be told
+   * apart from a human reaching for a switch.
+   *
+   * Apple Home has no concept of this — automations "don't care what you do
+   * manually", which is why people resort to encoding override state in a
+   * light's brightness value. The engine can do better because it knows what
+   * it wrote: any change that doesn't match a recent write was somebody else.
+   */
+  recordWrite(accessoryId: string, characteristicType: string, value: unknown): void {
+    this.lastWrites.set(`${accessoryId}:${characteristicType}`, { value, at: Date.now() });
+  }
+
+  /**
+   * Was the last change to this characteristic made by a human rather than by
+   * us? Undefined until the characteristic has actually changed.
+   */
+  wasManuallyChanged(accessoryId: string, characteristicType: string): boolean | undefined {
+    return this.manualChanges.get(`${accessoryId}:${characteristicType}`);
+  }
+
+  /**
+   * True if a human touched this accessory within `withinMs`. Intended as the
+   * "don't fight the human" guard: hold off automating a device someone just
+   * adjusted by hand.
+   */
+  hasRecentManualChange(accessoryId: string, withinMs: number, characteristicType?: string): boolean {
+    const cutoff = Date.now() - withinMs;
+    for (const [key, at] of this.manualChangeAt) {
+      if (at < cutoff) continue;
+      const [acc, char] = splitKey(key);
+      if (acc !== accessoryId) continue;
+      if (characteristicType && char !== characteristicType) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Decide whether an incoming change matches a write we just made. A write is
+   * only credited once, and only briefly — a device that echoes our value back
+   * an hour later is not the same event.
+   */
+  private classifyChange(accessoryId: string, characteristicType: string, value: unknown): void {
+    const key = `${accessoryId}:${characteristicType}`;
+    const pending = this.lastWrites.get(key);
+    const ours = pending !== undefined
+      && Date.now() - pending.at <= WRITE_ATTRIBUTION_WINDOW_MS
+      && String(pending.value) === String(value);
+
+    if (ours) this.lastWrites.delete(key);
+    this.manualChanges.set(key, !ours);
+    if (!ours) this.manualChangeAt.set(key, Date.now());
   }
 
   // ============================================================
@@ -262,5 +337,8 @@ export class StateStore {
     this.specificListeners.clear();
     this.globalListeners.clear();
     this.reachabilityListeners.clear();
+    this.lastWrites.clear();
+    this.manualChanges.clear();
+    this.manualChangeAt.clear();
   }
 }

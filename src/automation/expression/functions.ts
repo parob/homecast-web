@@ -78,6 +78,16 @@ export function createFunctionRegistry(): Map<string, BuiltinFunction> {
     return count;
   });
 
+  // manual_override('accessoryId', withinSeconds?, 'characteristicType'?)
+  // -> true if a human changed this device recently.
+  // Apple Home cannot express "respect what I just did by hand" at all.
+  fns.set('manual_override', (args, ctx) => {
+    const [accessoryId, withinSeconds, characteristicType] = args as [string, number?, string?];
+    if (!accessoryId) return false;
+    const within = (typeof withinSeconds === 'number' ? withinSeconds : 3600) * 1000;
+    return ctx.stateStore.hasRecentManualChange(accessoryId, within, characteristicType);
+  });
+
   // helper('helperId') -> current helper value
   fns.set('helper', (args, ctx) => {
     const [helperId] = args as [string];
