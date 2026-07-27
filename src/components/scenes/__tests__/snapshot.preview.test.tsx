@@ -58,9 +58,12 @@ beforeEach(() => {
   });
 });
 
-const OUT = process.env.PREVIEW_OUT!;
+// Developer scratch tool: dumps rendered markup to a file for eyeballing.
+// PREVIEW_OUT is only set when running it deliberately, so skip in CI rather
+// than calling writeFileSync(undefined) and failing the build.
+const OUT = process.env.PREVIEW_OUT;
 
-describe('preview', () => {
+describe.skipIf(!OUT)('preview', () => {
   it('dumps the editor', async () => {
     render(
       <MockedProvider mocks={mocks} addTypename={false}>
@@ -82,6 +85,6 @@ describe('preview', () => {
       </MockedProvider>,
     );
     await waitFor(() => screen.getByText('Reading Lamp'));
-    writeFileSync(OUT, document.body.innerHTML);
+    writeFileSync(OUT!, document.body.innerHTML);
   });
 });
