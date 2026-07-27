@@ -308,18 +308,6 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
                   let trace: ExecutionTrace | null;
                   if (engine) {
                     trace = await engine.manualTrigger(automationId, { triggerData });
-                  } else if (isRelayCapable() && !isRelayEnabled()) {
-                    // We're running ON the relay Mac, but relay mode is switched
-                    // off — so this app registers as a plain web client and no
-                    // relay session exists. The server would answer "No relay
-                    // device connected", which is baffling when you're sitting
-                    // in front of the Mac that is supposed to be the relay.
-                    // Worth being blunt: with the relay off, no automation runs.
-                    toast.error('Relay is turned off on this Mac', {
-                      description: 'Turn it back on in Settings — while it is off, none of your Homecast automations run.',
-                    });
-                    setIsTesting(false);
-                    return;
                   } else {
                     const result = await serverConnection.request<{ trace: ExecutionTrace }>(
                       'automation.test',
@@ -337,7 +325,20 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
                     toast.error('Automation not found on relay');
                   }
                 } catch (e) {
-                  toast.error(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
+                  const message = e instanceof Error ? e.message : String(e);
+                  // A relay-capable Mac with relay mode switched off is a
+                  // perfectly normal setup for a cloud-managed customer — their
+                  // relay is a different machine entirely. So only mention the
+                  // local toggle once the request has actually failed to find
+                  // any relay, never as a pre-emptive short-circuit: doing that
+                  // blocked the very request that would have routed correctly.
+                  if (/no relay device/i.test(message) && isRelayCapable() && !isRelayEnabled()) {
+                    toast.error('No relay available', {
+                      description: 'Relay mode is off on this Mac and no other relay is serving this home. Turn it on in Settings, or check your managed relay is online.',
+                    });
+                  } else {
+                    toast.error(`Test failed: ${message}`);
+                  }
                 } finally {
                   setIsTesting(false);
                 }

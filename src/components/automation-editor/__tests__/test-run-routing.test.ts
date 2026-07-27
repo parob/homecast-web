@@ -47,3 +47,43 @@ describe('automation.test routing payload', () => {
     expect(props).toContain('homeId={homeId}');
   });
 });
+
+describe('relay-mode messaging must not pre-empt the request', () => {
+  /**
+   * A relay-capable Mac with relay mode switched off is the NORMAL setup for a
+   * cloud-managed customer — their relay is a different machine. Short-circuiting
+   * on that condition blocked the very request that would have routed correctly
+   * to the managed relay, turning a working path into "Relay is turned off on
+   * this Mac".
+   *
+   * The local-toggle hint belongs on the failure path only.
+   */
+  function testHandlerSource(): string {
+    const src = readFileSync(PANEL, 'utf8');
+    const start = src.indexOf('const engine = getAutomationEngine();');
+    return src.slice(start, src.indexOf('finally', start));
+  }
+
+  it('does not branch on relay mode before attempting the request', () => {
+    const body = testHandlerSource();
+    const beforeRequest = body.slice(0, body.indexOf("'automation.test'"));
+
+    expect(beforeRequest).not.toMatch(/isRelayEnabled\(\)/);
+  });
+
+  it('still reaches the server request when relay mode is off locally', () => {
+    const body = testHandlerSource();
+    const beforeRequest = body.slice(0, body.indexOf("'automation.test'"));
+
+    // No early return between resolving the engine and issuing the request.
+    expect(beforeRequest).not.toMatch(/\breturn;/);
+  });
+
+  it('explains the local toggle only after a no-relay failure', () => {
+    const src = readFileSync(PANEL, 'utf8');
+    const catchBlock = src.slice(src.indexOf('} catch (e) {'), src.indexOf('} finally {'));
+
+    expect(catchBlock).toMatch(/no relay device/i);
+    expect(catchBlock).toMatch(/isRelayEnabled\(\)/);
+  });
+});

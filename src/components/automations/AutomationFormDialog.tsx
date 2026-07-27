@@ -15,6 +15,8 @@ import { AccessoryPicker } from '@/components/AccessoryPicker';
 import { GET_ACCESSORIES, GET_HOMES } from '@/lib/graphql/queries';
 import { CREATE_AUTOMATION, UPDATE_AUTOMATION } from '@/lib/graphql/mutations';
 import { charLabel, formatValue } from './format';
+import { CharacteristicValueInput } from './CharacteristicValueInput';
+import { defaultValueFor, getWritableCharacteristics, isHiddenChar } from './characteristics';
 import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
@@ -63,35 +65,6 @@ function extractTriggerHint(name: string): string {
   const colonMatch = name.match(/^([^:]+):/);
   if (colonMatch) return colonMatch[1].trim();
   return 'Device condition';
-}
-
-// Internal/metadata characteristics that shouldn't appear in trigger/condition/action pickers
-const HIDDEN_CHAR_TYPES = new Set([
-  'name', 'configured_name', 'manufacturer', 'model', 'serial_number', 'firmware_revision',
-  'hardware_revision', 'identify', 'label_index', 'label_namespace',
-  'thread_status', 'current_transport', 'wifi_capabilities',
-  'eve_set_time', 'eve_history_status', 'eve_history_request', 'eve_history_entries',
-]);
-
-function isHiddenChar(type: string): boolean {
-  return HIDDEN_CHAR_TYPES.has(type) || type.includes('-0000-1000-8000-0026BB765291');
-}
-
-function getWritableChars(accessory: HomeKitAccessory | undefined) {
-  if (!accessory) return [];
-  const chars: Array<{ type: string; label: string; isBool: boolean; min?: number; max?: number; step?: number }> = [];
-  const seen = new Set<string>();
-  for (const service of accessory.services) {
-    for (const char of service.characteristics) {
-      if (!char.isWritable || isHiddenChar(char.characteristicType) || seen.has(char.characteristicType)) continue;
-      seen.add(char.characteristicType);
-      const isBool = char.characteristicType === 'power_state' || char.characteristicType === 'on' ||
-        char.characteristicType === 'lock_target_state' || char.characteristicType === 'active';
-      chars.push({ type: char.characteristicType, label: charLabel(char.characteristicType), isBool,
-        min: char.minValue ?? undefined, max: char.maxValue ?? undefined, step: char.stepValue ?? undefined });
-    }
-  }
-  return chars;
 }
 
 function getReadableChars(accessory: HomeKitAccessory | undefined) {
@@ -335,7 +308,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   const relayCannotEdit = homes.find(h => h.id === homeId)?.isAdmin === false;
 
   const triggerAccessory = accessories.find(a => a.id === triggerAccessoryId);
-  const triggerChars = triggerCategory === 'sensor' ? getReadableChars(triggerAccessory) : getWritableChars(triggerAccessory);
+  const triggerChars = triggerCategory === 'sensor' ? getReadableChars(triggerAccessory) : getWritableCharacteristics(triggerAccessory);
   const selectedActionIds = useMemo(() => new Set(actions.map(a => a.accessoryId).filter(Boolean)), [actions]);
   const selectedConditionIds = useMemo(() => new Set(conditions.map(c => c.accessoryId).filter(Boolean)), [conditions]);
 
@@ -662,7 +635,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                 {deviceIds.map(deviceId => {
                   const deviceActions = actions.filter(a => a.accessoryId === deviceId);
                   const acc = accessories.find(a => a.id === deviceId);
-                  const chars = getWritableChars(acc);
+                  const chars = getWritableCharacteristics(acc);
                   const usedCharTypes = new Set(deviceActions.map(a => a.characteristicType).filter(Boolean));
                   const availableChars = chars.filter(c => !usedCharTypes.has(c.type));
 
@@ -680,20 +653,13 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
 
                         return (
                           <div key={j} className="flex items-center gap-2 flex-wrap">
-                            <Select value={action.characteristicType} onValueChange={(type) => { const c = chars.find(x => x.type === type); updateAction({ characteristicType: type, targetValue: c?.isBool ? true : (c?.min ?? 0) }); }}>
+                            <Select value={action.characteristicType} onValueChange={(type) => { const c = chars.find(x => x.type === type); updateAction({ characteristicType: type, targetValue: defaultValueFor(c) }); }}>
                               <SelectTrigger className="h-7 text-xs w-auto min-w-[120px]"><SelectValue placeholder="Property" /></SelectTrigger>
                               <SelectContent>{chars.map(c => (<SelectItem key={c.type} value={c.type} className="text-xs">{c.label}</SelectItem>))}</SelectContent>
                             </Select>
-                            {selectedChar?.isBool && (
-                              <div className="flex gap-1 ml-auto">
-                                <Button variant={action.targetValue === true || action.targetValue === 1 ? 'default' : 'outline'} size="sm" className="h-7 text-xs px-3" onClick={() => updateAction({ targetValue: true })}>On</Button>
-                                <Button variant={action.targetValue === false || action.targetValue === 0 ? 'default' : 'outline'} size="sm" className="h-7 text-xs px-3" onClick={() => updateAction({ targetValue: false })}>Off</Button>
-                              </div>
-                            )}
-                            {selectedChar && !selectedChar.isBool && selectedChar.max !== undefined && (
-                              <div className="flex items-center gap-2 flex-1 min-w-[120px]">
-                                <Slider value={[Number(action.targetValue ?? selectedChar.min ?? 0)]} min={selectedChar.min ?? 0} max={selectedChar.max} step={selectedChar.step ?? 1} onValueChange={([v]) => updateAction({ targetValue: v })} className="flex-1" />
-                                <span className="text-xs text-muted-foreground w-8 text-right">{String(action.targetValue ?? 0)}</span>
+                            {selectedChar && (
+                              <div className="ml-auto min-w-[140px] flex-1">
+                                <CharacteristicValueInput char={selectedChar} value={action.targetValue} onChange={(v) => updateAction({ targetValue: v })} />
                               </div>
                             )}
                             {deviceActions.length > 1 && (
@@ -704,7 +670,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                       })}
 
                       {availableChars.length > 0 && (
-                        <button onClick={() => setActions([...actions, { accessoryId: deviceId, accessoryName: deviceActions[0]?.accessoryName || '', characteristicType: '', targetValue: null }])}
+                        <button onClick={() => setActions([...actions, { accessoryId: deviceId, accessoryName: deviceActions[0]?.accessoryName || '', characteristicType: availableChars[0].type, targetValue: defaultValueFor(availableChars[0]) }])}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors">+ Add property</button>
                       )}
                     </div>

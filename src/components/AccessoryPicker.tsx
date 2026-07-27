@@ -223,6 +223,9 @@ export function AccessoryPicker({
 }: AccessoryPickerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterHome, setFilterHome] = useState<string>('all');
+  // With nothing to choose between, the Home filter is noise — drop it and let
+  // Room filter directly (it's otherwise gated on picking a home first).
+  const singleHome = (homes?.length ?? 0) <= 1;
   const [filterRoom, setFilterRoom] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
 
@@ -412,18 +415,20 @@ export function AccessoryPicker({
           />
         </div>
         <div className="flex gap-2 px-3 pb-3">
-          <Select value={filterHome} onValueChange={handleHomeChange}>
-            <SelectTrigger className="h-8 text-xs flex-1">
-              <SelectValue placeholder="All Homes" />
-            </SelectTrigger>
-            <SelectContent style={{ zIndex: 10100 }}>
-              <SelectItem value="all">All Homes</SelectItem>
-              {homes.map(home => (
-                <SelectItem key={home.id} value={home.id}>{home.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterRoom} onValueChange={setFilterRoom} disabled={filterHome === 'all'}>
+          {!singleHome && (
+            <Select value={filterHome} onValueChange={handleHomeChange}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue placeholder="All Homes" />
+              </SelectTrigger>
+              <SelectContent style={{ zIndex: 10100 }}>
+                <SelectItem value="all">All Homes</SelectItem>
+                {homes.map(home => (
+                  <SelectItem key={home.id} value={home.id}>{home.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={filterRoom} onValueChange={setFilterRoom} disabled={!singleHome && filterHome === 'all'}>
             <SelectTrigger className="h-8 text-xs flex-1">
               <SelectValue placeholder="All Rooms" />
             </SelectTrigger>
