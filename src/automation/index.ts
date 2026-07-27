@@ -109,3 +109,52 @@ export function teardownAutomationEngine(): void {
 export function getAutomationEngine(): AutomationEngine | null {
   return engineInstance;
 }
+
+/**
+ * Feed a write this relay just performed into the automation engine.
+ *
+ * HomeKit does not fire its accessory observer for writes the relay itself
+ * initiated. The engine only ever hears about state via that observer, so
+ * turning a light on *from Homecast* produced no state change for it and
+ * automations ran only for changes made in the Apple Home app — the same gap
+ * the cloud works around by optimistically echoing writes to its WS and MQTT
+ * subscribers, which never reached the engine running beside it.
+ *
+ * This cannot feed an automation its own output: engine actions go straight to
+ * the native bridge (see relay-adapter) and never pass through the relay action
+ * handler that calls this.
+ */
+export function notifyRelayWrite(
+  accessoryId: string,
+  characteristicType: string,
+  value: unknown,
+): void {
+  const engine = engineInstance;
+  if (!engine || !accessoryId || !characteristicType) return;
+
+  // Skip when the store already holds this value: the write was a no-op, or
+  // HomeKit did fire its observer for this accessory and got here first.
+  // StateStore notifies listeners on every call, so without this a device that
+  // reports its own changes would trigger the automation twice.
+  const current = engine.stateStore.getState(accessoryId, characteristicType);
+  if (current === value) return;
+
+  engine.stateStore.handleHomeKitEvent({
+    type: 'characteristic.updated',
+    accessoryId,
+    characteristicType,
+    value,
+  });
+}
+
+/** As above, expanded across a service group's members. */
+export function notifyRelayGroupWrite(
+  groupId: string,
+  characteristicType: string,
+  value: unknown,
+): void {
+  const members = engineInstance?.serviceGroupResolver?.getMembers?.(groupId) ?? [];
+  for (const accessoryId of members) {
+    notifyRelayWrite(accessoryId, characteristicType, value);
+  }
+}

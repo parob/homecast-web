@@ -39,6 +39,8 @@ export interface AutomationEngineConfig {
 export class AutomationEngine {
   readonly stateStore: StateStore;
   readonly helperManager: HelperManager;
+  /** Exposed so relay-initiated writes can be expanded to a group's members. */
+  readonly serviceGroupResolver?: ServiceGroupResolver;
   private triggerManager: TriggerManager;
   private conditionEvaluator: ConditionEvaluator;
   private actionExecutor: ActionExecutor;
@@ -56,6 +58,7 @@ export class AutomationEngine {
   constructor(config: AutomationEngineConfig) {
     this.config = config;
     this.stateStore = new StateStore();
+    this.serviceGroupResolver = config.serviceGroupResolver;
     this.triggerManager = new TriggerManager(this.stateStore, config.serviceGroupResolver);
     this.conditionEvaluator = new ConditionEvaluator(this.stateStore);
 

@@ -8,6 +8,7 @@
 
 import { HomeKit } from '../native/homekit-bridge';
 import { isHiddenBuiltInScene } from '@/lib/scenes';
+import { notifyRelayWrite, notifyRelayGroupWrite } from '@/automation';
 
 /** Standard error codes matching the Cloud Edition */
 export const ErrorCode = {
@@ -267,7 +268,12 @@ export async function executeHomeKitAction(
         value: unknown;
         homeId?: string;
       };
-      return await HomeKit.setServiceGroupCharacteristic(groupId, characteristicType, value, homeId);
+      const groupResult = await HomeKit.setServiceGroupCharacteristic(groupId, characteristicType, value, homeId);
+      // HomeKit stays silent about writes we made ourselves, so tell the local
+      // automation engine — otherwise automations only fire for changes made in
+      // the Apple Home app, never from Homecast.
+      notifyRelayGroupWrite(groupId, characteristicType, value);
+      return groupResult;
     }
 
     case 'accessories.list': {
@@ -317,7 +323,9 @@ export async function executeHomeKitAction(
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
-      return await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
+      const setResult = await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
+      notifyRelayWrite(accessoryId, characteristicType, value);
+      return setResult;
     }
 
     case 'scenes.list': {
