@@ -351,10 +351,27 @@ export class TriggerManager {
     });
   }
 
-  /** Set location for sun calculations */
+  /**
+   * Set location for sun calculations.
+   *
+   * Reschedules any already-registered sun triggers — the location often
+   * resolves after the engine has started, and a sun trigger scheduled against
+   * the previous coordinates would otherwise keep its stale fire time.
+   */
   setLocation(latitude: number, longitude: number): void {
+    if (this.latitude === latitude && this.longitude === longitude) return;
     this.latitude = latitude;
     this.longitude = longitude;
+    this.rescheduleSunTriggers();
+  }
+
+  private rescheduleSunTriggers(): void {
+    for (const schedules of this.sunSchedules.values()) {
+      for (const schedule of schedules) {
+        if (schedule.timer) clearTimeout(schedule.timer);
+        this.scheduleSunTrigger(schedule);
+      }
+    }
   }
 
   // ============================================================
@@ -811,6 +828,10 @@ export class TriggerManager {
         this.startTimePattern(schedule);
       }
     }
+
+    // Sun triggers drift for the same reasons (sleep/wake, clock changes) and
+    // their fire times move daily, so they need recomputing too.
+    this.rescheduleSunTriggers();
   }
 
   // ============================================================

@@ -2,6 +2,7 @@
 // Lifecycle: initialize → load → register → execute → teardown
 
 import { StateStore } from '../state/StateStore';
+import { HelperManager } from '../state/HelperManager';
 import { TriggerManager, type ServiceGroupResolver } from './TriggerManager';
 import { ConditionEvaluator } from './ConditionEvaluator';
 import { ActionExecutor, StopExecutionError } from './ActionExecutor';
@@ -9,7 +10,7 @@ import type { HomeKitBridge, EngineCallbacks } from './ActionExecutor';
 import type { CodeSandbox } from './CodeSandbox';
 import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
-import type { Automation, Trigger, TriggerData, AutomationMode } from '../types/automation';
+import type { Automation, Trigger, TriggerData, AutomationMode, HelperDefinition } from '../types/automation';
 import type { ExecutionTrace, ExecutionStatus } from '../types/execution';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
 
@@ -24,6 +25,11 @@ export interface AutomationEngineConfig {
   onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
   /** Optional sandbox for Code action nodes. Defaults to the Worker-based sandbox in production. */
   codeSandbox?: CodeSandbox;
+  /**
+   * Called whenever a helper's value changes, so it can be persisted. Counters
+   * and modes are worthless if they reset on every relay restart.
+   */
+  onHelperStateChange?: (helperId: string, state: unknown) => void;
 }
 
 /**
@@ -32,6 +38,7 @@ export interface AutomationEngineConfig {
  */
 export class AutomationEngine {
   readonly stateStore: StateStore;
+  readonly helperManager: HelperManager;
   private triggerManager: TriggerManager;
   private conditionEvaluator: ConditionEvaluator;
   private actionExecutor: ActionExecutor;
@@ -61,12 +68,19 @@ export class AutomationEngine {
       registerTemporaryTrigger: (triggers, callback) => this.registerTemporaryTrigger(triggers, callback),
     };
 
+    this.helperManager = new HelperManager(
+      this.stateStore,
+      (type, data) => this.fireEvent(type, data),
+      (helperId, state) => this.config.onHelperStateChange?.(helperId, state),
+    );
+
     this.actionExecutor = new ActionExecutor(
       this.stateStore,
       this.conditionEvaluator,
       config.bridge,
       callbacks,
       config.codeSandbox,
+      this.helperManager,
     );
 
     this.scriptRunner = new ScriptRunner(this.actionExecutor, (trace) => {
@@ -108,6 +122,29 @@ export class AutomationEngine {
 
     // Fire system trigger
     this.fireEvent('system.relay_connected');
+  }
+
+  /**
+   * Set the home's coordinates for sun trigger/condition maths.
+   *
+   * Without this, sunrise/sunset resolve against lat 0 / lon 0, so every
+   * sun-based automation fires at the wrong time.
+   */
+  setLocation(latitude: number, longitude: number): void {
+    this.triggerManager.setLocation(latitude, longitude);
+    this.conditionEvaluator.setLocation(latitude, longitude);
+  }
+
+  /**
+   * Register helper definitions and reapply any persisted values.
+   *
+   * Call before `loadAutomations` so automations referencing a helper find it
+   * already in the state store.
+   */
+  loadHelpers(helpers: HelperDefinition[], persistedStates?: Record<string, unknown>): void {
+    this.helperManager.loadAll(helpers);
+    if (persistedStates) this.helperManager.restoreStates(persistedStates);
+    console.log(`[AutomationEngine] Loaded ${helpers.length} helpers`);
   }
 
   /**
@@ -173,9 +210,10 @@ export class AutomationEngine {
     }
     this.runningExecutions.clear();
 
-    // Teardown trigger manager and script runner
+    // Teardown trigger manager, script runner and helper timers
     this.triggerManager.teardown();
     this.scriptRunner.teardown();
+    this.helperManager.teardown();
 
     // Unsubscribe from HomeKit
     if (this.homeKitUnsubscribe) {

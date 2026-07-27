@@ -11,7 +11,8 @@ import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
-import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine } from '../automation';
+import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver } from '../automation';
+import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws';
 
@@ -204,6 +205,7 @@ export class ServerWebSocket {
   // Buffer for automation.* messages received before engine is initialized
   private automationEngineReady = false;
   private automationMessageBuffer: { type: string; payload: Record<string, unknown> }[] = [];
+  private serviceGroupResolver: HomeKitServiceGroupResolver | null = null;
 
   // Wake/visibility handler for recalculating time triggers after sleep
   private automationWakeHandler: (() => void) | null = null;
@@ -645,8 +647,14 @@ export class ServerWebSocket {
 
     this.subscribeToHomeKitEvents();
 
+    // Service-group triggers are skipped entirely unless a resolver is injected.
+    const serviceGroupResolver = new HomeKitServiceGroupResolver();
+    serviceGroupResolver.start();
+    this.serviceGroupResolver = serviceGroupResolver;
+
     // Initialize automation engine
     initAutomationEngine({
+      serviceGroupResolver,
       bridge: createHomeKitBridgeAdapter(),
       transport: createSyncTransport(
         // sendFn: sends automation messages to server
@@ -671,13 +679,19 @@ export class ServerWebSocket {
           payload: { message, title, data, automationId },
         });
       },
-    }).then(() => {
+    }).then((engine) => {
       // Engine is ready — flush any buffered automation messages
       this.automationEngineReady = true;
       for (const msg of this.automationMessageBuffer) {
         dispatchAutomationMessage(msg.type, msg.payload);
       }
       this.automationMessageBuffer = [];
+
+      // Resolved after startup so a slow/denied geolocation prompt can't hold up
+      // relay duties. setLocation reschedules sun triggers already registered.
+      void resolveHomeLocation().then((location) => {
+        if (location) engine.setLocation(location.latitude, location.longitude);
+      });
     }).catch((err) => {
       console.error('[ServerWS] Failed to init automation engine:', err);
     });
@@ -781,6 +795,8 @@ export class ServerWebSocket {
     // Teardown automation engine
     this.automationEngineReady = false;
     this.automationMessageBuffer = [];
+    this.serviceGroupResolver?.stop();
+    this.serviceGroupResolver = null;
     teardownAutomationEngine();
     clearAutomationHandlers();
 

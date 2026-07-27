@@ -172,7 +172,12 @@ function calcSunriseSet(isRise: boolean, jc: number, latitude: number, longitude
   const solarDec = sunDeclination(jc);
   const ha = hourAngleSunrise(latitude, solarDec);
 
-  const haMinutes = isRise ? -ha : ha;
+  // NOAA: solarNoonUTC = 720 - 4*longitude - eqTime, then
+  //   sunrise = solarNoon - 4*HA  ->  720 - 4*(longitude + HA) - eqTime
+  //   sunset  = solarNoon + 4*HA  ->  720 - 4*(longitude - HA) - eqTime
+  // These signs were previously inverted, which swapped sunrise and sunset:
+  // every 'sunrise' trigger fired at sunset and vice versa.
+  const haMinutes = isRise ? ha : -ha;
   // Time in minutes from midnight UTC
   const timeUTC = 720 - 4 * (longitude + haMinutes) - eqTime;
 
