@@ -19,6 +19,7 @@ import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-rea
 import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
 import { usePricing, getPricing } from '@/lib/pricing';
+import { homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { isNativePurchaseAvailable } from '@/lib/platform';
 import { isCommunity } from '@/lib/config';
 import { regionLabel, guessRegion, REGION_OPTIONS } from '@/lib/regions';
@@ -337,8 +338,12 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
             </Badge>
           )}
           {home.isAdmin === false && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground" title="The relay's Apple ID has view-only access in Apple Home — HomeKit automations are read-only from Homecast">
-              View-only
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 text-amber-700 dark:text-amber-400 border-amber-500/40"
+              title={homeAccessHint(home.isAdmin) ?? undefined}
+            >
+              {homeAccessLabel(home.isAdmin)}
             </Badge>
           )}
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${isCloud ? 'border-blue-500/50 text-blue-600 dark:text-blue-400' : ''}`}>

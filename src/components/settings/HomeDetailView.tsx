@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
-import { HOMEKIT_EDIT_PERMISSION_FIX } from '@/lib/homekit-errors';
+import { HOMEKIT_EDIT_PERMISSION_FIX, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
@@ -288,15 +288,14 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
             <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0 space-y-1">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Let Homecast manage HomeKit automations</p>
+                <p className="text-sm font-medium">Enable Read/Write Access</p>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground shrink-0">Optional</Badge>
               </div>
+              {/* Kept to two short sentences: what you gain, then how. The old
+                  copy spent four lines restating what still works, which buried
+                  the one instruction that matters. */}
               <p className="text-xs text-muted-foreground leading-snug">
-                Homecast currently has <strong>view-only</strong> access — enough to control
-                devices and run Homecast automations. To also let Homecast and AI assistants
-                create and edit <strong>HomeKit</strong> automations, give the relay editing
-                rights: {HOMEKIT_EDIT_PERMISSION_FIX} You can skip this and everything else
-                still works.
+                Lets Homecast manage HomeKit automations. {HOMEKIT_EDIT_PERMISSION_FIX}
               </p>
             </div>
             <button
@@ -368,13 +367,11 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
             <div className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Apple Home access</span>
-                <span className="font-medium">{home.isAdmin ? 'Full access' : 'View-only'}</span>
+                <span className="font-medium">{homeAccessLabel(home.isAdmin)}</span>
               </div>
-              {!home.isAdmin && (
-                <p className="text-[11px] text-muted-foreground/70 leading-snug">
-                  HomeKit automations are read-only from Homecast. To let Homecast manage them, {HOMEKIT_EDIT_PERMISSION_FIX}
-                </p>
-              )}
+              <p className="text-[11px] text-muted-foreground/70 leading-snug">
+                {homeAccessHint(home.isAdmin)}
+              </p>
             </div>
           )}
 

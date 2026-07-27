@@ -26,6 +26,31 @@ export const HOMEKIT_EDIT_PERMISSION_FIX =
   '"Add & Edit Accessories" (called "Allow Editing" on older iOS and macOS versions).';
 
 /**
+ * How much the relay's Apple ID can do in a home, as one phrase.
+ *
+ * This used to be said four different ways — "Full access" / "View-only" in
+ * home settings, a bare "View-only" chip in the homes list, and a shield icon
+ * in the admin panel — none of which told you what was actually read-only.
+ * Everything says the same thing now.
+ *
+ * `isAdmin` is null/undefined on relays older than 1.1.2, which never reported
+ * it; that's genuinely unknown rather than restricted, so callers should hide
+ * the label entirely rather than guess.
+ */
+export function homeAccessLabel(isAdmin: boolean | null | undefined): string | null {
+  if (isAdmin === true) return 'Read/Write Access';
+  if (isAdmin === false) return 'Read Only Access';
+  return null;
+}
+
+/** One line on what the access level means in practice. */
+export function homeAccessHint(isAdmin: boolean | null | undefined): string | null {
+  if (isAdmin === true) return 'Homecast can control devices and manage HomeKit automations.';
+  if (isAdmin === false) return 'Homecast can control devices, but not create or edit HomeKit automations.';
+  return null;
+}
+
+/**
  * Detect the HomeKit edit-permission failure on any error shape we see:
  * HomecastError / native-bridge errors (carry a `code`), ApolloError /
  * plain Errors (message text only).
