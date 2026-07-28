@@ -15,6 +15,7 @@ import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, Ho
 import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
+import { setRelayWritePublisher } from '../relay/relay-write';
 import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws';
 
 // Protocol message types
@@ -348,50 +349,10 @@ export class ServerWebSocket {
         const result = await executeHomeKitAction(action, payload);
         if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, result);
 
-        // After successful write operations, send event to server and update local UI
-        // Same logic as handleIncomingRequest for consistency
-        if (action === 'characteristic.set') {
-          await this.publishCharacteristicWrite(
-            payload.accessoryId as string,
-            payload.characteristicType as string,
-            payload.value,
-            payload.homeId as string | undefined,
-          );
-        } else if (action === 'serviceGroup.set') {
-          const resultObj = result as { affectedCount?: number } | undefined;
-          this.publishServiceGroupWrite(
-            payload.groupId as string,
-            payload.characteristicType as string,
-            payload.value,
-            payload.homeId as string | undefined,
-            resultObj?.affectedCount ?? 0,
-          );
-        } else if (action === 'state.set') {
-          // Broadcast each successful change using resolved UUIDs from the result
-          const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
-          if (changes) {
-            for (const change of changes) {
-              this.sendEvent({
-                id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                type: 'event',
-                action: 'characteristic.updated',
-                payload: {
-                  accessoryId: change.accessoryId,
-                  characteristicType: change.characteristicType,
-                  value: change.value,
-                  ...(homeId && { homeId }),
-                },
-              });
-              this.callbacks.onBroadcast?.({
-                type: 'characteristic_update',
-                accessoryId: change.accessoryId,
-                homeId: homeId ?? null,
-                characteristicType: change.characteristicType,
-                value: change.value,
-              });
-            }
-          }
-        }
+        // Nothing to publish here: every write path announces itself from
+        // relay-write.ts, which is the whole point of that module. This used to
+        // be a second, hand-maintained list of write actions, and it is how
+        // state.set came to update no client at all.
 
         return result as T;
       } catch (error) {
@@ -612,18 +573,22 @@ export class ServerWebSocket {
     this.serviceGroupResolver = serviceGroupResolver;
 
     // Initialize automation engine
+    // Register how this relay reaches everyone that isn't the engine, before
+    // anything can write. Every write path fans out through relay-write.ts.
+    setRelayWritePublisher({
+      characteristic: (change) => {
+        void this.publishCharacteristicWrite(
+          change.accessoryId, change.characteristicType, change.value, change.homeId,
+        );
+      },
+      serviceGroup: (groupId, characteristicType, value, homeId, affectedCount) => {
+        this.publishServiceGroupWrite(groupId, characteristicType, value, homeId, affectedCount);
+      },
+    });
+
     initAutomationEngine({
       serviceGroupResolver,
-      // Announce the engine's own writes. Without this an automation-driven
-      // change reached no client until something else noticed it.
-      bridge: createHomeKitBridgeAdapter({
-        characteristic: (accessoryId, characteristicType, value) => {
-          void this.publishCharacteristicWrite(accessoryId, characteristicType, value);
-        },
-        serviceGroup: (groupId, characteristicType, value, homeId) => {
-          this.publishServiceGroupWrite(groupId, characteristicType, value, homeId);
-        },
-      }),
+      bridge: createHomeKitBridgeAdapter(),
       transport: createSyncTransport(
         // sendFn: sends automation messages to server
         (type, payload) => {
@@ -766,6 +731,7 @@ export class ServerWebSocket {
     }
 
     // Teardown automation engine
+    setRelayWritePublisher(null);
     this.automationEngineReady = false;
     this.automationMessageBuffer = [];
     // Release anything still waiting on a delivery report — the result can no

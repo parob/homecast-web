@@ -8,7 +8,7 @@
 
 import { HomeKit } from '../native/homekit-bridge';
 import { isHiddenBuiltInScene } from '@/lib/scenes';
-import { notifyRelayWrite, notifyRelayGroupWrite } from '@/automation';
+import { announceRelayWrite, announceRelayGroupWrite } from './relay-write';
 
 /** Standard error codes matching the Cloud Edition */
 export const ErrorCode = {
@@ -269,10 +269,10 @@ export async function executeHomeKitAction(
         homeId?: string;
       };
       const groupResult = await HomeKit.setServiceGroupCharacteristic(groupId, characteristicType, value, homeId);
-      // HomeKit stays silent about writes we made ourselves, so tell the local
-      // automation engine — otherwise automations only fire for changes made in
-      // the Apple Home app, never from Homecast.
-      notifyRelayGroupWrite(groupId, characteristicType, value);
+      announceRelayGroupWrite(
+        groupId, characteristicType, value, 'client', homeId,
+        (groupResult as { affectedCount?: number } | undefined)?.affectedCount ?? 0,
+      );
       return groupResult;
     }
 
@@ -324,7 +324,7 @@ export async function executeHomeKitAction(
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
       const setResult = await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
-      notifyRelayWrite(accessoryId, characteristicType, value);
+      announceRelayWrite([{ accessoryId, characteristicType, value }], 'client');
       return setResult;
     }
 
@@ -337,6 +337,12 @@ export async function executeHomeKitAction(
 
     case 'scene.execute': {
       const { sceneId } = payload as { sceneId: string };
+      // ANNOUNCE-EXEMPT: native executeScene returns only {success, sceneId} —
+      // it does not report which accessories the scene changed, and this side
+      // cannot know. Announcing would mean guessing. Closing this needs the
+      // Swift bridge to return the applied changes the way setState already
+      // does, which needs an App Store release. Listed in relay-write.test.ts
+      // so the gap stays deliberate rather than becoming another silent one.
       return await HomeKit.executeScene(sceneId);
     }
 
@@ -482,9 +488,10 @@ export async function executeHomeKitAction(
       // without it a device changed by an assistant or a script never triggered
       // a Homecast automation. Native resolves the slug keys and expands
       // service groups to their members, so these are ready to feed straight in.
-      for (const change of result.changes ?? []) {
-        notifyRelayWrite(change.accessoryId, change.characteristicType, change.value);
-      }
+      announceRelayWrite(
+        (result.changes ?? []).map((c) => ({ ...c, homeId })),
+        'client',
+      );
       return result;
     }
 
