@@ -492,6 +492,33 @@ export async function executeHomeKitAction(
     case 'ping':
       return { pong: true, timestamp: Date.now() };
 
+    /**
+     * Reload the relay's web bundle.
+     *
+     * In cloud mode the relay runs JavaScript fetched from homecast.cloud at
+     * startup and never refetches it, so a deployed relay-side fix stays
+     * inert until someone physically restarts the Mac app. For a managed
+     * relay the operator doesn't have hands on, that makes "deployed" and
+     * "live" different states with no way to reconcile them remotely.
+     *
+     * Deliberately JS-only: no Swift change, so it needs no App Store
+     * release. The reload is deferred a moment so this response reaches the
+     * server before the WebSocket goes down with the page — otherwise every
+     * reload looks like a failed request.
+     */
+    case 'app.reload': {
+      const { delayMs } = payload as { delayMs?: number };
+      const wait = Math.min(Math.max(delayMs ?? 500, 100), 10_000);
+      setTimeout(() => {
+        try {
+          window.location.reload();
+        } catch (e) {
+          console.error('[Relay] Reload failed', e);
+        }
+      }, wait);
+      return { reloading: true, inMs: wait };
+    }
+
     case 'relay.probe': {
       const { homeId } = payload as { homeId: string };
       return await runRelayProbe(homeId);

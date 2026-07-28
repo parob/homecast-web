@@ -129,3 +129,52 @@ describe('without a running engine', () => {
       .rejects.toThrow(/engine not running/i);
   });
 });
+
+describe('app.reload', () => {
+  /**
+   * The relay fetches its JavaScript once at startup and never refetches it, so
+   * a deployed relay-side fix stays inert until the Mac app is restarted by
+   * hand. That is unworkable for a managed relay nobody is standing next to —
+   * every fix this session needed a physical restart to take effect.
+   */
+  it('acknowledges before reloading, so the response outlives the page', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    vi.stubGlobal('window', { location: { reload } });
+
+    const res = await executeHomeKitAction('app.reload', {});
+
+    // Answer first — reloading synchronously would drop the socket mid-reply
+    // and make every successful reload look like a failed request.
+    expect(res).toEqual({ reloading: true, inMs: 500 });
+    expect(reload).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(600);
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('honours a custom delay', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { location: { reload: vi.fn() } });
+
+    expect(await executeHomeKitAction('app.reload', { delayMs: 2000 }))
+      .toEqual({ reloading: true, inMs: 2000 });
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('clamps absurd delays rather than trusting the caller', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { location: { reload: vi.fn() } });
+
+    expect((await executeHomeKitAction('app.reload', { delayMs: 0 }) as any).inMs).toBe(100);
+    expect((await executeHomeKitAction('app.reload', { delayMs: 999_999 }) as any).inMs).toBe(10_000);
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+});
