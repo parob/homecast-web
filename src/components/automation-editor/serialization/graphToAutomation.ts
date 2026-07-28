@@ -127,6 +127,14 @@ function buildUIState(nodes: Node<FlowNodeData>[], edges: Edge[]): AutomationUIS
   return { nodePositions, edges: savedEdges, stickyNotes };
 }
 
+/**
+ * Marks the `choose` that combineBranches synthesises, so deserialization can
+ * tell it apart from one the user dragged in and undo it exactly. The two
+ * directions must agree: a wrapper that only serializes is not a round trip,
+ * and it surfaces on the canvas as a node nobody added.
+ */
+export const CHOOSE_BY_TRIGGER_PREFIX = 'choose-by-trigger-';
+
 interface TriggerBranch {
   triggerId: string;
   conditions: ConditionBlock;
@@ -168,7 +176,7 @@ function combineBranches(branches: TriggerBranch[]): { conditions: ConditionBloc
 
   const choose: ChooseAction = {
     type: 'choose',
-    id: `choose-by-trigger-${withWork[0].triggerId}`,
+    id: `${CHOOSE_BY_TRIGGER_PREFIX}${withWork[0].triggerId}`,
     choices: withWork.map((branch) => ({
       alias: `Trigger ${branch.triggerId}`,
       conditions: {

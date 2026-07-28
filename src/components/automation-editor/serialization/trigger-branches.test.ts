@@ -114,15 +114,57 @@ describe('per-trigger branches', () => {
     expect(choose.choices[1].conditions.conditions).toHaveLength(1); // trigger gate only
   });
 
-  it('survives a round-trip back to the canvas', () => {
+  // The `choose` is a transport detail and must not survive onto the canvas.
+  // Shipped without this check — an earlier version of this test only counted
+  // the triggers, so it passed while the editor drew a "Choose (2 branches)"
+  // node nobody added, on top of the triggers, with every real action node
+  // swallowed inside it.
+  describe('round trip back to the canvas', () => {
     const { nodes, edges } = twoBranchGraph();
-
     const auto = graphToAutomation(nodes, edges, 'Notify Annex Lights', 'home-1');
     const graph = automationToGraph(auto);
 
-    // Both triggers come back, and the user's own node layout is preserved via
-    // uiState rather than being rebuilt from the flattened list.
-    expect(graph.nodes.filter((n) => (n.data as FlowNodeData).category === 'trigger')).toHaveLength(2);
+    it('returns exactly the nodes the user drew — no more, no fewer', () => {
+      expect(new Set(graph.nodes.map((n) => n.id)))
+        .toEqual(new Set(nodes.map((n) => n.id)));
+    });
+
+    it('does not put the synthesised choose on the canvas', () => {
+      expect(graph.nodes.some((n) => n.id.startsWith('choose-by-trigger-'))).toBe(false);
+      expect(graph.nodes.some((n) => (n.data as FlowNodeData).nodeType === 'choose')).toBe(false);
+    });
+
+    it('brings both action nodes back rather than nesting them out of sight', () => {
+      const actions = graph.nodes.filter((n) => (n.data as FlowNodeData).category === 'action');
+      expect(actions.map((n) => n.id).sort()).toEqual(['n-off', 'n-on']);
+    });
+
+    it('keeps the wiring', () => {
+      expect(graph.edges.map((e) => `${e.source}->${e.target}`).sort())
+        .toEqual(['t-off->n-off', 't-on->n-on']);
+    });
+
+    it('re-saves to the same automation, so reopening is not destructive', () => {
+      const again = graphToAutomation(graph.nodes, graph.edges, 'Notify Annex Lights', 'home-1', auto.id);
+
+      expect(again.actions).toEqual(auto.actions);
+      expect(again.triggers).toEqual(auto.triggers);
+    });
+  });
+
+  it('leaves a choose the user added themselves alone', () => {
+    // Only the synthesised wrapper is unwrapped; a palette Choose has a uuid.
+    const auto = {
+      id: 'a1', name: 'Manual choose', homeId: 'home-1', enabled: true, mode: 'single' as const,
+      triggers: [{ type: 'state' as const, id: 't1', accessoryId: 'acc-1', characteristicType: 'power_state', to: 1 }],
+      conditions: { operator: 'and' as const, conditions: [] },
+      actions: [{ type: 'choose' as const, id: '7f3c1b2e-0000-4000-8000-000000000000', choices: [] }],
+      metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+    };
+
+    const graph = automationToGraph(auto);
+
+    expect(graph.nodes.some((n) => (n.data as FlowNodeData).nodeType === 'choose')).toBe(true);
   });
 
   it('ignores a trigger wired to nothing', () => {

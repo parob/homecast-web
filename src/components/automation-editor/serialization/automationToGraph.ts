@@ -13,6 +13,7 @@ import type {
   Action,
 } from '@/automation/types/automation';
 import { isConditionBlock } from '@/automation/types/automation';
+import { CHOOSE_BY_TRIGGER_PREFIX } from './graphToAutomation';
 import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS, isNodeConfigured } from '../constants';
 
 const VERTICAL_GAP = 80;
@@ -95,7 +96,15 @@ export function automationToGraph(
   }
 
   // Add action nodes
-  for (const action of automation.actions) {
+  const { actions: topLevelActions, conditions: branchConditions } = expandTriggerBranches(automation.actions);
+  if (branchConditions.length > 0) {
+    const extra = conditionBlockToNodes(
+      { operator: 'and', conditions: branchConditions }, HORIZONTAL_OFFSET, y,
+    );
+    nodes.push(...extra);
+    y += extra.length * VERTICAL_GAP;
+  }
+  for (const action of topLevelActions) {
     const node = actionToNode(action, HORIZONTAL_OFFSET, y, names);
     nodes.push(node);
 
@@ -276,6 +285,41 @@ function buildTriggerSummary(trigger: Trigger, _nodeType: string, names?: Entity
 // ============================================================
 // ConditionBlock → Nodes (conditions use engine types directly)
 // ============================================================
+
+/**
+ * Undo the per-trigger `choose` that graphToAutomation adds.
+ *
+ * That wrapper is a transport detail: an automation has one action list, so
+ * separate per-trigger chains have to be folded into one, and `choose` gated on
+ * a `trigger` condition is how. It must not survive back onto the canvas.
+ * Without this the editor drew a "Choose (2 branches)" node nobody added, on top
+ * of the triggers, and every real action node vanished — they were nested
+ * inside it. The user's own layout and wiring come back from `uiState`, so all
+ * that is needed here is that each action node exists under its original id.
+ *
+ * Only unwraps the synthesised one, identified by its id prefix. A `choose` the
+ * user dragged in from the palette has a random uuid and is left alone.
+ */
+function expandTriggerBranches(actions: Action[]): { actions: Action[]; conditions: Condition[] } {
+  const only = actions.length === 1 ? actions[0] : undefined;
+  if (!only || only.type !== 'choose' || !only.id.startsWith(CHOOSE_BY_TRIGGER_PREFIX)) {
+    return { actions, conditions: [] };
+  }
+
+  const expanded: Action[] = [];
+  const conditions: Condition[] = [];
+  for (const choice of only.choices) {
+    expanded.push(...choice.actions);
+    for (const c of choice.conditions.conditions) {
+      // Drop the synthetic gate; keep conditions the user actually drew. Their
+      // per-branch wiring is restored from uiState's edges, and re-saving
+      // re-derives the branches from the graph.
+      if (!isConditionBlock(c) && c.type === 'trigger' && c.id.startsWith('trigger-is-')) continue;
+      conditions.push(c as Condition);
+    }
+  }
+  return { actions: expanded, conditions };
+}
 
 function conditionBlockToNodes(block: ConditionBlock, x: number, startY: number): Node<FlowNodeData>[] {
   const nodes: Node<FlowNodeData>[] = [];
