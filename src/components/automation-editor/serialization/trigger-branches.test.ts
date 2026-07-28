@@ -15,6 +15,7 @@ import { automationToGraph } from './automationToGraph';
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
 import type { ChooseAction } from '@/automation/types/automation';
+import { countEffectiveActions } from '@/automation/trigger-branches';
 
 function makeNode(id: string, data: Partial<FlowNodeData> & { nodeType: string; category: FlowNodeData['category'] }): Node<FlowNodeData> {
   return {
@@ -182,5 +183,37 @@ describe('per-trigger branches', () => {
     expect(auto.triggers).toHaveLength(2);
     expect(auto.actions).toHaveLength(1);
     expect(auto.actions[0].type).toBe('notify');
+  });
+});
+
+// The wrapper leaks anywhere that reads an automation back, not just the
+// canvas. The dashboard card described the reported automation — two triggers,
+// four actions — as "2 triggers, 1 action", because it counted the wrapper.
+describe('counting the actions an automation really performs', () => {
+  it('counts past the wrapper', () => {
+    const { nodes, edges } = twoBranchGraph();
+    const auto = graphToAutomation(nodes, edges, 'Notify Annex Lights', 'home-1');
+
+    expect(auto.actions).toHaveLength(1);            // one choose, as stored
+    expect(countEffectiveActions(auto.actions)).toBe(2); // two notifies, as run
+  });
+
+  it('leaves an ordinary action list alone', () => {
+    expect(countEffectiveActions([
+      { type: 'notify', id: 'n1', message: 'a' },
+      { type: 'notify', id: 'n2', message: 'b' },
+    ])).toBe(2);
+  });
+
+  it('counts a Choose the user built as the single action it is', () => {
+    // Their branches are their own business; only the synthesised one unfolds.
+    expect(countEffectiveActions([
+      { type: 'choose', id: '7f3c1b2e-0000-4000-8000-000000000000', choices: [] },
+    ])).toBe(1);
+  });
+
+  it('handles an automation with no actions at all', () => {
+    expect(countEffectiveActions(undefined)).toBe(0);
+    expect(countEffectiveActions([])).toBe(0);
   });
 });

@@ -46,6 +46,7 @@ import type {
   CallScriptAction,
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
+import { CHOOSE_BY_TRIGGER_PREFIX, TRIGGER_GATE_PREFIX } from '@/automation/trigger-branches';
 
 /**
  * Convert a React Flow graph into an Automation definition.
@@ -127,14 +128,6 @@ function buildUIState(nodes: Node<FlowNodeData>[], edges: Edge[]): AutomationUIS
   return { nodePositions, edges: savedEdges, stickyNotes };
 }
 
-/**
- * Marks the `choose` that combineBranches synthesises, so deserialization can
- * tell it apart from one the user dragged in and undo it exactly. The two
- * directions must agree: a wrapper that only serializes is not a round trip,
- * and it surfaces on the canvas as a node nobody added.
- */
-export const CHOOSE_BY_TRIGGER_PREFIX = 'choose-by-trigger-';
-
 interface TriggerBranch {
   triggerId: string;
   conditions: ConditionBlock;
@@ -182,7 +175,7 @@ function combineBranches(branches: TriggerBranch[]): { conditions: ConditionBloc
       conditions: {
         operator: 'and',
         conditions: [
-          { type: 'trigger', id: `trigger-is-${branch.triggerId}`, triggerId: branch.triggerId },
+          { type: 'trigger', id: `${TRIGGER_GATE_PREFIX}${branch.triggerId}`, triggerId: branch.triggerId },
           ...branch.conditions.conditions,
         ],
       },

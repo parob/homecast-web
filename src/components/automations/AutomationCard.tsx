@@ -9,6 +9,7 @@ import { AutomationTriggerSummary } from './AutomationTriggerSummary';
 import { SET_AUTOMATION_ENABLED } from '@/lib/graphql/mutations';
 import type { HomeKitAutomation, SetAutomationEnabledResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
+import { countEffectiveActions } from '@/automation/trigger-branches';
 
 interface AutomationCardProps {
   // Pass one or the other
@@ -32,9 +33,14 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   const rawEnabled = isHomeKit ? automation.isEnabled : (hcAutomation?.enabled ?? true);
   const isEnabled = optimisticEnabled ?? rawEnabled;
 
+  // Counted past the per-trigger `choose` the serializer folds branches into.
+  // Reading the top-level list straight described a two-branch automation as
+  // "2 triggers, 1 action" — the wrapper, not the work.
+  const triggerCount = hcAutomation?.triggers?.length ?? 0;
+  const actionCount = countEffectiveActions(hcAutomation?.actions);
   const subtitle = isHomeKit
     ? undefined // rendered by AutomationTriggerSummary
-    : `${hcAutomation?.triggers?.length ?? 0} trigger${(hcAutomation?.triggers?.length ?? 0) !== 1 ? 's' : ''}, ${hcAutomation?.actions?.length ?? 0} action${(hcAutomation?.actions?.length ?? 0) !== 1 ? 's' : ''}`;
+    : `${triggerCount} trigger${triggerCount !== 1 ? 's' : ''}, ${actionCount} action${actionCount !== 1 ? 's' : ''}`;
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
