@@ -393,7 +393,9 @@ export class AutomationEngine {
       }
 
       // Build and emit trace
-      const trace = ctx.buildTrace(status, error);
+      await ctx.settleStepDetails();
+      await ctx.settleStepDetails();
+    const trace = ctx.buildTrace(status, error);
       this.config.onTraceComplete(trace);
     }
   }
@@ -444,7 +446,9 @@ export class AutomationEngine {
         ctx.endStep(conditionStepIdx, conditionsPassed ? 'passed' : 'failed');
         if (!conditionsPassed) {
           status = 'stopped';
-          const trace = ctx.buildTrace(status, error);
+          await ctx.settleStepDetails();
+      await ctx.settleStepDetails();
+    const trace = ctx.buildTrace(status, error);
           this.config.onTraceComplete(trace);
           return trace;
         }
@@ -461,6 +465,7 @@ export class AutomationEngine {
       }
     }
 
+    await ctx.settleStepDetails();
     const trace = ctx.buildTrace(status, error);
     this.config.onTraceComplete(trace);
     return trace;

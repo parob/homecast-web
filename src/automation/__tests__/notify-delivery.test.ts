@@ -99,10 +99,112 @@ describe('notify delivery reporting', () => {
     expect(step.output.reason).toBe('unknown');
   });
 
-  it('still surfaces a thrown notify as an error', async () => {
+  it('still surfaces a thrown notify as an error, without halting the run', async () => {
+    // Deliberate: the notification is handed off and the actions after it run,
+    // so a transport failure can no longer stop the automation. The devices
+    // matter more than the message about them — but the trace still says so.
     const step = await runAndGetNotifyStep(async () => { throw new Error('transport down'); });
 
     expect(step.result).toBe('error');
-    expect(step.output).toBeUndefined();
+    expect(step.error).toContain('transport down');
+  });
+
+  it('runs the actions after a failing notify', async () => {
+    const bridge = makeBridge();
+    const traces: ExecutionTrace[] = [];
+    const engine = new AutomationEngine({
+      bridge,
+      onNotify: async () => { throw new Error('transport down'); },
+      onTraceComplete: (t) => { traces.push(t); },
+    });
+
+    let emit: ((e: any) => void) | undefined;
+    engine.initialize((h) => { emit = h; return () => {}; });
+    engine.loadAutomations([{
+      ...AUTOMATION,
+      actions: [
+        { type: 'notify', id: 'notify-1', message: 'Lights on' },
+        { type: 'set_characteristic', id: 'set-1', accessoryId: 'bulb-2', characteristicType: 'power_state', value: 1 },
+      ],
+    }]);
+    emit!({ type: 'characteristic.updated', accessoryId: 'bulb-1', characteristicType: 'power_state', value: 1 });
+    for (let i = 0; i < 30 && traces.length === 0; i++) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    engine.teardown();
+
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1);
+  });
+});
+
+// Honest reporting must not cost latency.
+//
+// Awaiting the server's delivery report inline put a network round trip between
+// the notify action and whatever followed it. Measured in production: the
+// device write took 287ms, the notify blocked for 1233ms, and an automation
+// that notified and *then* turned a light on took over a second to turn the
+// light on — up to the 8s report timeout if the server never answered.
+describe('a notify does not hold up the actions after it', () => {
+  it('runs the next action without waiting for the delivery report', async () => {
+    const bridge = makeBridge();
+    let releaseReport: (d: NotifyDelivery) => void = () => {};
+    const reportArrived = new Promise<NotifyDelivery>((r) => { releaseReport = r; });
+
+    const traces: ExecutionTrace[] = [];
+    const engine = new AutomationEngine({
+      bridge,
+      onNotify: () => reportArrived,
+      onTraceComplete: (t) => { traces.push(t); },
+    });
+
+    let emit: ((e: any) => void) | undefined;
+    engine.initialize((h) => { emit = h; return () => {}; });
+    engine.loadAutomations([{
+      ...AUTOMATION,
+      actions: [
+        { type: 'notify', id: 'notify-1', message: 'Lights on' },
+        { type: 'set_characteristic', id: 'set-1', accessoryId: 'bulb-2', characteristicType: 'power_state', value: 1 },
+      ],
+    }]);
+    emit!({ type: 'characteristic.updated', accessoryId: 'bulb-1', characteristicType: 'power_state', value: 1 });
+
+    // The report has NOT arrived, yet the light is already switched.
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1);
+    expect(traces).toHaveLength(0);
+
+    // ...and once it does arrive, the trace still records the truth.
+    releaseReport({ delivered: true, channels: ['push'] });
+    for (let i = 0; i < 30 && traces.length === 0; i++) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    engine.teardown();
+
+    const step = traces[0].steps.find((s: any) => s.nodeType === 'notify') as any;
+    expect(step.output.delivered).toBe(true);
+    expect(step.output.channels).toEqual(['push']);
+  });
+
+  it('does not wait forever for a report that never comes', async () => {
+    vi.useFakeTimers();
+    const traces: ExecutionTrace[] = [];
+    const engine = new AutomationEngine({
+      bridge: makeBridge(),
+      onNotify: () => new Promise<never>(() => {}), // never resolves
+      onTraceComplete: (t) => { traces.push(t); },
+    });
+
+    let emit: ((e: any) => void) | undefined;
+    engine.initialize((h) => { emit = h; return () => {}; });
+    engine.loadAutomations([AUTOMATION]);
+    emit!({ type: 'characteristic.updated', accessoryId: 'bulb-1', characteristicType: 'power_state', value: 1 });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    engine.teardown();
+    vi.useRealTimers();
+
+    expect(traces).toHaveLength(1);
+    const step = traces[0].steps.find((s: any) => s.nodeType === 'notify') as any;
+    // Recorded as unknown, never as sent.
+    expect(step.output.delivered).toBe(false);
+    expect(step.output.reason).toBe('unknown');
   });
 });

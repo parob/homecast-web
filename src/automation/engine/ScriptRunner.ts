@@ -146,6 +146,7 @@ export class ScriptRunner {
       if (running.length === 0) this.runningContexts.delete(script.id);
 
       // Emit trace
+      await ctx.settleStepDetails();
       this.onTraceComplete(ctx.buildTrace(status, error));
 
       // Process queue

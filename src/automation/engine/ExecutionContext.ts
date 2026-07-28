@@ -2,6 +2,7 @@
 // Per-run state: variables, trigger data, abort controller, trace recording
 
 import type { TriggerData } from '../types/automation';
+import { describeError } from '../../lib/describe-error';
 import type {
   ExecutionTrace,
   ExecutionStatus,
@@ -39,6 +40,7 @@ export class ExecutionContext {
 
   // Trace recording
   private steps: TraceStep[] = [];
+  private pendingStepDetails: Promise<void>[] = [];
   private stepIndex = 0;
   private startedAt: string;
 
@@ -120,6 +122,56 @@ export class ExecutionContext {
       if (error) step.error = error;
       if (children) step.children = children;
     }
+  }
+
+  /**
+   * Attach a fact about a step that is only known later, without holding the
+   * automation up for it.
+   *
+   * Notification delivery is the case this exists for. Whether a push was
+   * actually sent is decided by the server, a round trip away, and awaiting it
+   * inline put ~1.2s (worst case 8s) between a notify action and whatever came
+   * after it — an automation that notified and *then* turned a light on took
+   * over a second to turn the light on. The action chain now carries on
+   * immediately and the answer is folded into the trace at the end, so the
+   * history stays honest and costs nothing.
+   */
+  awaitStepDetail(index: number, detail: Promise<Record<string, unknown> | undefined>): void {
+    this.pendingStepDetails.push(
+      detail
+        .then((extra) => {
+          const step = this.steps[index];
+          if (step && extra) {
+            step.output = { ...(step.output ?? {}), ...extra };
+            if (step.nodeId) this.setNodeOutput(step.nodeId, step.output);
+          }
+        })
+        .catch((e) => {
+          // The step already reported as executed and the actions after it have
+          // run, so this cannot halt anything — but it must still be visible.
+          // A notification transport failure is deliberately not fatal: the
+          // devices matter more than the message about them.
+          const step = this.steps[index];
+          if (step) {
+            step.result = 'error';
+            step.error = describeError(e);
+          }
+        }),
+    );
+  }
+
+  /**
+   * Fold in any late details before the trace is built. Bounded: a detail that
+   * never arrives must not hold up the trace, and its step already says
+   * "unknown" rather than claiming success.
+   */
+  async settleStepDetails(timeoutMs = 5000): Promise<void> {
+    if (this.pendingStepDetails.length === 0) return;
+    const pending = this.pendingStepDetails.splice(0);
+    await Promise.race([
+      Promise.all(pending),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 
   /**

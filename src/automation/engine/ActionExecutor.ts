@@ -30,7 +30,7 @@ import type {
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
 import type { NotifyDelivery } from '../types/notify';
-import { NOTIFY_DELIVERY_UNKNOWN } from '../types/notify';
+import { NOTIFY_DELIVERY_UNKNOWN, NOTIFY_DELIVERY_PENDING } from '../types/notify';
 import { describeError } from '../../lib/describe-error';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
@@ -573,24 +573,30 @@ export class ActionExecutor {
       `Notify: ${message.slice(0, 50)}`, { message, title });
 
     try {
-      const delivery = await this.callbacks.sendNotification(
-        message, title, action.data, ctx.automationId,
-      ) || NOTIFY_DELIVERY_UNKNOWN;
+      // Deliberately not awaited. Delivery is decided by the server, a round
+      // trip away; awaiting it here put that round trip between this action and
+      // the next, so an automation that notified and then turned a light on
+      // took over a second to turn the light on. Hand the notification off,
+      // carry on, and fold the outcome into the trace at the end of the run.
+      const delivery = Promise.resolve(
+        this.callbacks.sendNotification(message, title, action.data, ctx.automationId),
+      ).then((d) => {
+        const result = d || NOTIFY_DELIVERY_UNKNOWN;
+        return {
+          delivered: result.delivered,
+          channels: result.channels,
+          ...(result.rateLimited ? { rateLimited: true } : {}),
+          ...(result.reason ? { reason: result.reason } : {}),
+        };
+      });
 
       // `success` stays true: the action ran and did not fail. Whether anything
       // reached a device is a separate fact, and conflating the two is what hid
       // rate-limited notifications in the first place.
-      const output = {
-        message,
-        title,
-        success: true,
-        delivered: delivery.delivered,
-        channels: delivery.channels,
-        ...(delivery.rateLimited ? { rateLimited: true } : {}),
-        ...(delivery.reason ? { reason: delivery.reason } : {}),
-      };
+      const output = { message, title, success: true, ...NOTIFY_DELIVERY_PENDING };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
+      ctx.awaitStepDetail(stepIdx, delivery);
     } catch (e) {
       ctx.setNodeOutput(action.id, { message, title, success: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));

@@ -29,3 +29,16 @@ export const NOTIFY_DELIVERY_UNKNOWN: NotifyDelivery = {
   channels: [],
   reason: 'unknown',
 };
+
+/**
+ * What a notify step records until the deliverer answers.
+ *
+ * The action does not wait for that answer — see ActionExecutor.executeNotify —
+ * so a trace read mid-flight, or one whose report never arrived, says "not yet
+ * known" rather than claiming a delivery it cannot vouch for.
+ */
+export const NOTIFY_DELIVERY_PENDING = {
+  delivered: false,
+  channels: [] as string[],
+  reason: 'unknown' as const,
+};
