@@ -9,6 +9,7 @@ import type { ServiceGroupResolver } from './engine/TriggerManager';
 import type { ExecutionTrace } from './types/execution';
 import type { NotifyDelivery } from './types/notify';
 import type { HomeKitEvent } from '../native/homekit-bridge';
+import { valuesMatch } from './state/valueMatch';
 
 export type { HomeKitBridge } from './engine/ActionExecutor';
 export type { SyncTransport } from './sync/AutomationSyncManager';
@@ -139,7 +140,12 @@ export function notifyRelayWrite(
   // HomeKit did fire its observer for this accessory and got here first.
   // StateStore notifies listeners on every call, so without this a device that
   // reports its own changes would trigger the automation twice.
-  if (engine.stateStore.getState(accessoryId, characteristicType) === value) return;
+  //
+  // Compared with valuesMatch, not ===, for the same reason every other
+  // comparison in the engine is: HomeKit reports booleans where the write used
+  // 1/0, so `true === 1` was false and a no-op write looked like a change,
+  // firing the automation a second time.
+  if (valuesMatch(engine.stateStore.getState(accessoryId, characteristicType), value)) return;
 
   engine.stateStore.handleHomeKitEvent({
     type: 'characteristic.updated',

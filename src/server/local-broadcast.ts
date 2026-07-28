@@ -105,6 +105,51 @@ export function initLocalBroadcast(): void {
 }
 
 /**
+ * Announce a write the relay itself made, to LAN clients.
+ *
+ * HomeKit fires no observer for our own writes, so a change made by the
+ * automation engine reached no client until something else noticed it. The
+ * dedupe marker stops a device that *does* report back producing a second
+ * broadcast for the same change.
+ */
+export function broadcastRelayWrite(
+  accessoryId: string,
+  characteristicType: string,
+  value: unknown,
+  homeId?: string,
+): void {
+  const broadcast = (window as Window & { __localserver_broadcast?: (m: unknown) => void }).__localserver_broadcast;
+  if (!broadcast) return;
+  markRecentBroadcast(accessoryId, characteristicType);
+  broadcast({
+    type: 'characteristic_update',
+    accessoryId,
+    homeId: homeId ?? null,
+    characteristicType,
+    value,
+  });
+}
+
+/** As above, for a whole service group. */
+export function broadcastRelayGroupWrite(
+  groupId: string,
+  characteristicType: string,
+  value: unknown,
+  homeId?: string,
+): void {
+  const broadcast = (window as Window & { __localserver_broadcast?: (m: unknown) => void }).__localserver_broadcast;
+  if (!broadcast) return;
+  broadcast({
+    type: 'service_group_update',
+    groupId,
+    homeId: homeId ?? null,
+    characteristicType,
+    value,
+    affectedCount: 0,
+  });
+}
+
+/**
  * Stop broadcasting events.
  */
 export function teardownLocalBroadcast(): void {

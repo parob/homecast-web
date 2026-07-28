@@ -92,7 +92,20 @@ export async function initCommunityAutomationEngine(): Promise<void> {
     resolver.start();
 
     const engine = await initAutomationEngine({
-      bridge: createHomeKitBridgeAdapter(),
+      // Announce the engine's own writes to LAN clients; HomeKit will not.
+      // Imported at write time rather than at module load: local-broadcast
+      // reaches through lib/config to `window`, which does not exist when this
+      // module is pulled into a node-environment test.
+      bridge: createHomeKitBridgeAdapter({
+        characteristic: (accessoryId, characteristicType, value) => {
+          void import('./local-broadcast').then((m) =>
+            m.broadcastRelayWrite(accessoryId, characteristicType, value));
+        },
+        serviceGroup: (groupId, characteristicType, value, homeId) => {
+          void import('./local-broadcast').then((m) =>
+            m.broadcastRelayGroupWrite(groupId, characteristicType, value, homeId));
+        },
+      }),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
       onNotify: async (message, title, data) => {
         // Community has one channel and no rate limit: the local alert on this

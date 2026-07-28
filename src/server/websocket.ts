@@ -351,71 +351,21 @@ export class ServerWebSocket {
         // After successful write operations, send event to server and update local UI
         // Same logic as handleIncomingRequest for consistency
         if (action === 'characteristic.set') {
-          // Look up accessory context for subscription filtering (cached to avoid extra round-trip)
-          let homeId = payload.homeId as string | undefined;
-          let roomId: string | undefined;
-          const accessoryId = payload.accessoryId as string;
-          const cached = accessoryId ? this.accessoryHomeCache.get(accessoryId) : undefined;
-          if (cached) {
-            homeId = homeId || cached.homeId;
-            roomId = cached.roomId;
-          } else {
-            try {
-              const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
-              homeId = homeId || accessory?.homeId;
-              roomId = accessory?.roomId;
-              if (accessoryId && accessory?.homeId) {
-                this.accessoryHomeCache.set(accessoryId, { homeId: accessory.homeId, roomId: accessory.roomId });
-              }
-            } catch { /* use whatever context we have */ }
-          }
-          // Send event to server for broadcasting to web clients
-          this.sendEvent({
-            id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            type: 'event',
-            action: 'characteristic.updated',
-            payload: {
-              accessoryId: payload.accessoryId,
-              characteristicType: payload.characteristicType,
-              value: payload.value,
-              ...(homeId && { homeId }),
-              ...(roomId && { roomId }),
-            },
-          });
-          // Also update local UI
-          this.callbacks.onBroadcast?.({
-            type: 'characteristic_update',
-            accessoryId: payload.accessoryId as string,
-            homeId: homeId ?? null,
-            characteristicType: payload.characteristicType as string,
-            value: payload.value,
-          });
+          await this.publishCharacteristicWrite(
+            payload.accessoryId as string,
+            payload.characteristicType as string,
+            payload.value,
+            payload.homeId as string | undefined,
+          );
         } else if (action === 'serviceGroup.set') {
           const resultObj = result as { affectedCount?: number } | undefined;
-          const affectedCount = resultObj?.affectedCount ?? 0;
-          // Send event to server for broadcasting to web clients
-          // Include homeId for proper subscription filtering
-          this.sendEvent({
-            id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            type: 'event',
-            action: 'serviceGroup.updated',
-            payload: {
-              groupId: payload.groupId,
-              characteristicType: payload.characteristicType,
-              value: payload.value,
-              affectedCount,
-              ...(payload.homeId && { homeId: payload.homeId }),
-            },
-          });
-          // Also update local UI
-          this.callbacks.onBroadcast?.({
-            type: 'service_group_update',
-            groupId: payload.groupId as string,
-            homeId: (payload.homeId as string) ?? null,
-            characteristicType: payload.characteristicType as string,
-            value: payload.value,
-            affectedCount,
-          });
+          this.publishServiceGroupWrite(
+            payload.groupId as string,
+            payload.characteristicType as string,
+            payload.value,
+            payload.homeId as string | undefined,
+            resultObj?.affectedCount ?? 0,
+          );
         } else if (action === 'state.set') {
           // Broadcast each successful change using resolved UUIDs from the result
           const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
@@ -664,7 +614,16 @@ export class ServerWebSocket {
     // Initialize automation engine
     initAutomationEngine({
       serviceGroupResolver,
-      bridge: createHomeKitBridgeAdapter(),
+      // Announce the engine's own writes. Without this an automation-driven
+      // change reached no client until something else noticed it.
+      bridge: createHomeKitBridgeAdapter({
+        characteristic: (accessoryId, characteristicType, value) => {
+          void this.publishCharacteristicWrite(accessoryId, characteristicType, value);
+        },
+        serviceGroup: (groupId, characteristicType, value, homeId) => {
+          this.publishServiceGroupWrite(groupId, characteristicType, value, homeId);
+        },
+      }),
       transport: createSyncTransport(
         // sendFn: sends automation messages to server
         (type, payload) => {
@@ -968,6 +927,88 @@ export class ServerWebSocket {
     } catch (error) {
       console.error('[ServerWS] Failed to parse message:', error);
     }
+  }
+
+  /**
+   * Announce a characteristic change this relay made, to the cloud and to the
+   * local UI.
+   *
+   * Shared by client-initiated writes and by the automation engine. HomeKit
+   * fires no observer for either — they are our own writes — so if this is not
+   * called the change reaches no app at all until something else notices.
+   */
+  private async publishCharacteristicWrite(
+    accessoryId: string,
+    characteristicType: string,
+    value: unknown,
+    knownHomeId?: string,
+  ): Promise<void> {
+    let homeId = knownHomeId;
+    let roomId: string | undefined;
+    const cached = accessoryId ? this.accessoryHomeCache.get(accessoryId) : undefined;
+    if (cached) {
+      homeId = homeId || cached.homeId;
+      roomId = cached.roomId;
+    } else {
+      try {
+        const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
+        homeId = homeId || accessory?.homeId;
+        roomId = accessory?.roomId;
+        if (accessoryId && accessory?.homeId) {
+          this.accessoryHomeCache.set(accessoryId, { homeId: accessory.homeId, roomId: accessory.roomId });
+        }
+      } catch { /* use whatever context we have */ }
+    }
+
+    this.sendEvent({
+      id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      type: 'event',
+      action: 'characteristic.updated',
+      payload: {
+        accessoryId,
+        characteristicType,
+        value,
+        ...(homeId && { homeId }),
+        ...(roomId && { roomId }),
+      },
+    });
+    this.callbacks.onBroadcast?.({
+      type: 'characteristic_update',
+      accessoryId,
+      homeId: homeId ?? null,
+      characteristicType,
+      value,
+    });
+  }
+
+  /** As above, for a whole service group. */
+  private publishServiceGroupWrite(
+    groupId: string,
+    characteristicType: string,
+    value: unknown,
+    homeId?: string,
+    affectedCount = 0,
+  ): void {
+    this.sendEvent({
+      id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      type: 'event',
+      action: 'serviceGroup.updated',
+      payload: {
+        groupId,
+        characteristicType,
+        value,
+        affectedCount,
+        ...(homeId && { homeId }),
+      },
+    });
+    this.callbacks.onBroadcast?.({
+      type: 'service_group_update',
+      groupId,
+      homeId: homeId ?? null,
+      characteristicType,
+      value,
+      affectedCount,
+    });
   }
 
   /**
