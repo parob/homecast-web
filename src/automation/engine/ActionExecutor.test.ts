@@ -405,10 +405,15 @@ describe('ActionExecutor', () => {
 
       await executor.executeSequence([action], ctx);
 
+      // This callback resolves with nothing, so there is no delivery report:
+      // "unknown", not "sent". See __tests__/notify-delivery.test.ts.
       expect(ctx.getNodeOutput('notify-1')).toEqual({
         message: 'Light is on',
         title: 'Alert',
         success: true,
+        delivered: false,
+        channels: [],
+        reason: 'unknown',
       });
     });
   });

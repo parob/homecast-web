@@ -11,7 +11,8 @@ import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
-import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver } from '../automation';
+import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
+import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws';
@@ -130,6 +131,9 @@ const MAX_RECONNECT_DELAY = 30000;
 const RECONNECT_MULTIPLIER = 1.5;
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
+// Short by design: a notify action must not stall the rest of the automation
+// waiting on a report that is only ever used to annotate the trace.
+const NOTIFY_RESULT_TIMEOUT_MS = 8000;
 
 /**
  * Self-reported relay metadata, sent as query params on connect.
@@ -206,6 +210,11 @@ export class ServerWebSocket {
   private automationEngineReady = false;
   private automationMessageBuffer: { type: string; payload: Record<string, unknown> }[] = [];
   private serviceGroupResolver: HomeKitServiceGroupResolver | null = null;
+
+  // In-flight notify actions awaiting the server's delivery report, keyed by
+  // the notifyId we sent. Only the server knows whether a push was rate
+  // limited, suppressed by preference, or had no device to go to.
+  private pendingNotifies = new Map<string, (delivery: NotifyDelivery) => void>();
 
   // Wake/visibility handler for recalculating time triggers after sleep
   private automationWakeHandler: (() => void) | null = null;
@@ -670,14 +679,19 @@ export class ServerWebSocket {
         (action, payload) => this.request(action, payload),
       ),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
-      onNotify: async (message, title, data, automationId) => {
-        // Send to cloud server for push/email/APNs delivery to all devices
+      onNotify: (message, title, data, automationId) => {
+        // Send to cloud server for push/email/APNs delivery to all devices.
+        // The server reports back what it managed to deliver so the execution
+        // trace can say so; a server too old to answer, or one that never gets
+        // round to it, leaves the step recorded as unknown rather than as sent.
+        const notifyId = `ntf_${Date.now()}_${this.requestIdCounter++}`;
         this.sendEvent({
           id: `evt_${Date.now()}_notify`,
           type: 'automation',
           action: 'automation.notify',
-          payload: { message, title, data, automationId },
+          payload: { message, title, data, automationId, notifyId },
         });
+        return this.awaitNotifyResult(notifyId);
       },
     }).then((engine) => {
       // Engine is ready — flush any buffered automation messages
@@ -795,6 +809,10 @@ export class ServerWebSocket {
     // Teardown automation engine
     this.automationEngineReady = false;
     this.automationMessageBuffer = [];
+    // Release anything still waiting on a delivery report — the result can no
+    // longer arrive, and leaving these to time out holds the map past teardown.
+    for (const resolve of this.pendingNotifies.values()) resolve(NOTIFY_DELIVERY_UNKNOWN);
+    this.pendingNotifies.clear();
     this.serviceGroupResolver?.stop();
     this.serviceGroupResolver = null;
     teardownAutomationEngine();
@@ -923,6 +941,18 @@ export class ServerWebSocket {
 
           this.callbacks.onRelayStatusChange?.(this.isActiveRelay);
         }
+      } else if (message.type === 'automation.notify_result') {
+        // Never buffered: a notify is only in flight while the engine is running,
+        // and the action waiting on it must not be held up behind the buffer.
+        const payload = message.payload as (NotifyDelivery & { notifyId?: string }) | undefined;
+        if (payload?.notifyId) {
+          this.pendingNotifies.get(payload.notifyId)?.({
+            delivered: !!payload.delivered,
+            channels: Array.isArray(payload.channels) ? payload.channels : [],
+            rateLimited: payload.rateLimited,
+            reason: payload.reason,
+          });
+        }
       } else if (message.type?.startsWith('automation.')) {
         // Automation engine sync messages from server
         const payload = message.payload as Record<string, unknown> | undefined;
@@ -938,6 +968,25 @@ export class ServerWebSocket {
     } catch (error) {
       console.error('[ServerWS] Failed to parse message:', error);
     }
+  }
+
+  /**
+   * Wait for the server's report on one notification.
+   *
+   * Bounded, and never rejects: a notification that was probably delivered is
+   * not worth failing an automation over, so a silent server downgrades the
+   * trace to "unknown" and the remaining actions still run.
+   */
+  private awaitNotifyResult(notifyId: string): Promise<NotifyDelivery> {
+    return new Promise((resolve) => {
+      const done = (delivery: NotifyDelivery) => {
+        clearTimeout(timer);
+        this.pendingNotifies.delete(notifyId);
+        resolve(delivery);
+      };
+      const timer = setTimeout(() => done(NOTIFY_DELIVERY_UNKNOWN), NOTIFY_RESULT_TIMEOUT_MS);
+      this.pendingNotifies.set(notifyId, done);
+    });
   }
 
   private handleResponse(message: ProtocolMessage): void {

@@ -6,7 +6,7 @@ import { useQuery } from '@apollo/client/react';
 import { GET_EXECUTION_HISTORY } from '@/lib/graphql/queries';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Check, X, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Check, X, Clock, ChevronDown, ChevronRight, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ExecutionHistoryPanelProps {
@@ -41,10 +41,32 @@ function parseTraceEntity(entity: any): { id: string; status: string; startedAt:
   } catch { return null; }
 }
 
+const UNDELIVERED_LABELS: Record<string, string> = {
+  rate_limited: 'Rate limited',
+  no_devices: 'No devices',
+  preference: 'Turned off',
+  error: 'Send failed',
+  unknown: 'Unconfirmed',
+};
+
+/**
+ * A notify step that ran but delivered nothing. The step itself did not fail,
+ * so it renders as a success — which is exactly how a user with a working
+ * automation and a silent phone ends up believing the notification was sent.
+ * Say so on the collapsed row; the reason is otherwise buried in the JSON.
+ */
+function undeliveredLabel(step: any): string | null {
+  if (step.nodeType !== 'notify' || step.result !== 'executed') return null;
+  const out = step.output;
+  if (!out || out.delivered !== false) return null;
+  return UNDELIVERED_LABELS[out.reason as string] ?? 'Not delivered';
+}
+
 export function StepRow({ step }: { step: any }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS_STYLES[step.result === 'executed' ? 'success' : step.result === 'error' ? 'error' : 'stopped'];
-  const StatusIcon = status?.icon ?? Clock;
+  const undelivered = undeliveredLabel(step);
+  const StatusIcon = undelivered ? BellOff : (status?.icon ?? Clock);
 
   return (
     <div className="border rounded mb-1">
@@ -53,8 +75,11 @@ export function StepRow({ step }: { step: any }) {
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
-        <StatusIcon className={cn('w-3 h-3 shrink-0', status?.color ?? 'text-gray-400')} />
+        <StatusIcon className={cn('w-3 h-3 shrink-0', undelivered ? 'text-amber-500' : status?.color ?? 'text-gray-400')} />
         <span className="text-[10px] font-medium flex-1 truncate">{step.nodeSummary || step.nodeType}</span>
+        {undelivered && (
+          <span className="text-[9px] text-amber-500 shrink-0">{undelivered}</span>
+        )}
         <span className="text-[9px] text-muted-foreground">{step.nodeType}</span>
       </button>
 

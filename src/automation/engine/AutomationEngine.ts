@@ -12,6 +12,7 @@ import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
 import type { Automation, Trigger, TriggerData, AutomationMode, HelperDefinition } from '../types/automation';
 import type { ExecutionTrace, ExecutionStatus } from '../types/execution';
+import type { NotifyDelivery } from '../types/notify';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
 
 // Rate limiting
@@ -22,7 +23,7 @@ export interface AutomationEngineConfig {
   bridge: HomeKitBridge;
   serviceGroupResolver?: ServiceGroupResolver;
   onTraceComplete: (trace: ExecutionTrace) => void;
-  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
+  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<NotifyDelivery | void>;
   /** Optional sandbox for Code action nodes. Defaults to the Worker-based sandbox in production. */
   codeSandbox?: CodeSandbox;
   /**

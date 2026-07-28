@@ -7,6 +7,7 @@ import type { HomeKitBridge } from './engine/ActionExecutor';
 import type { SyncTransport } from './sync/AutomationSyncManager';
 import type { ServiceGroupResolver } from './engine/TriggerManager';
 import type { ExecutionTrace } from './types/execution';
+import type { NotifyDelivery } from './types/notify';
 import type { HomeKitEvent } from '../native/homekit-bridge';
 
 export type { HomeKitBridge } from './engine/ActionExecutor';
@@ -22,6 +23,8 @@ export { ScriptRunner } from './engine/ScriptRunner';
 // Re-export types
 export type { Automation, Trigger, Condition, Action, Script, HelperDefinition, Blueprint } from './types/automation';
 export type { ExecutionTrace, TraceStep, ExecutionStatus } from './types/execution';
+export type { NotifyDelivery } from './types/notify';
+export { NOTIFY_DELIVERY_UNKNOWN } from './types/notify';
 export type { ExpressionContext } from './expression/ExpressionEngine';
 
 let engineInstance: AutomationEngine | null = null;
@@ -35,7 +38,7 @@ export interface InitOptions {
    */
   transport?: SyncTransport;
   subscribeToHomeKit: (handler: (event: HomeKitEvent) => void) => () => void;
-  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<void>;
+  onNotify: (message: string, title?: string, data?: Record<string, unknown>, automationId?: string) => Promise<NotifyDelivery | void>;
   /** Required for service-group triggers to fire at all. */
   serviceGroupResolver?: ServiceGroupResolver;
   /** Required for sun triggers/conditions to resolve against the real location. */

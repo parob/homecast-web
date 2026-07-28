@@ -29,6 +29,8 @@ import type {
   TriggerData,
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
+import type { NotifyDelivery } from '../types/notify';
+import { NOTIFY_DELIVERY_UNKNOWN } from '../types/notify';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
@@ -45,7 +47,12 @@ export interface HomeKitBridge {
 /** Interface for the engine to fire events, notifications, and automation control */
 export interface EngineCallbacks {
   fireEvent(eventType: string, eventData?: Record<string, unknown>): void;
-  sendNotification(message: string, title?: string, data?: Record<string, unknown>, automationId?: string): Promise<void>;
+  /**
+   * Deliver a notification. Resolves with what was actually delivered where
+   * the deliverer can say; resolving with void means "no report", which the
+   * trace records as unknown rather than as success.
+   */
+  sendNotification(message: string, title?: string, data?: Record<string, unknown>, automationId?: string): Promise<NotifyDelivery | void>;
   setAutomationEnabled(automationId: string, enabled: boolean): void;
   /**
    * Trigger another automation. `ancestorIds` lists the IDs of automations
@@ -545,8 +552,22 @@ export class ActionExecutor {
       `Notify: ${message.slice(0, 50)}`, { message, title });
 
     try {
-      await this.callbacks.sendNotification(message, title, action.data, ctx.automationId);
-      const output = { message, title, success: true };
+      const delivery = await this.callbacks.sendNotification(
+        message, title, action.data, ctx.automationId,
+      ) || NOTIFY_DELIVERY_UNKNOWN;
+
+      // `success` stays true: the action ran and did not fail. Whether anything
+      // reached a device is a separate fact, and conflating the two is what hid
+      // rate-limited notifications in the first place.
+      const output = {
+        message,
+        title,
+        success: true,
+        delivered: delivery.delivered,
+        channels: delivery.channels,
+        ...(delivery.rateLimited ? { rateLimited: true } : {}),
+        ...(delivery.reason ? { reason: delivery.reason } : {}),
+      };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {

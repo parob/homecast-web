@@ -95,7 +95,10 @@ export async function initCommunityAutomationEngine(): Promise<void> {
       bridge: createHomeKitBridgeAdapter(),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
       onNotify: async (message, title, data) => {
+        // Community has one channel and no rate limit: the local alert on this
+        // Mac. Reaching here means it was shown.
         await HomeKit.showNotification(title, message, data);
+        return { delivered: true, channels: ['local'] };
       },
       serviceGroupResolver: resolver,
       onTraceComplete: (trace) => { void persistTrace(trace); },
