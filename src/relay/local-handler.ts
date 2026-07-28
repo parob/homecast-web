@@ -477,6 +477,14 @@ export async function executeHomeKitAction(
       console.log('[state.set] state:', JSON.stringify(state), 'homeId:', homeId);
       const result = await HomeKit.setState(state, homeId);
       console.log('[state.set] result:', JSON.stringify(result));
+      // As for characteristic.set: HomeKit stays silent about writes we made
+      // ourselves. This is the path REST, MCP and Home Assistant all take, so
+      // without it a device changed by an assistant or a script never triggered
+      // a Homecast automation. Native resolves the slug keys and expands
+      // service groups to their members, so these are ready to feed straight in.
+      for (const change of result.changes ?? []) {
+        notifyRelayWrite(change.accessoryId, change.characteristicType, change.value);
+      }
       return result;
     }
 

@@ -426,7 +426,18 @@ export const HomeKit = {
   async setState(
     state: Record<string, Record<string, Record<string, unknown>>>,
     homeId?: string
-  ): Promise<{ success: boolean; ok: number; failed: string[] }> {
+  ): Promise<{
+    success: boolean;
+    ok: number;
+    failed: string[];
+    /**
+     * Every write that succeeded, with slugs resolved to UUIDs and service
+     * groups expanded to the group plus each member. Native has always
+     * returned this; it is what lets the automation engine hear about a bulk
+     * write, which HomeKit itself will not report back.
+     */
+    changes?: { accessoryId: string; characteristicType: string; value: unknown }[];
+  }> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call('state.set', { state, ...(homeId && { homeId }) });
