@@ -61,22 +61,26 @@ export function graphToAutomation(
   const triggerNodes = nodes.filter((n) => (n.data as FlowNodeData).category === 'trigger');
   const triggers: Trigger[] = triggerNodes.map((n) => nodeToTrigger(n));
 
-  const conditions: ConditionBlock = createEmptyConditionBlock();
-  const actions: Action[] = [];
+  // What each trigger actually leads to, kept apart per trigger.
+  const branches = triggerNodes.map((triggerNode) => {
+    const branchConditions: ConditionBlock = createEmptyConditionBlock();
+    const branchActions: Action[] = [];
 
-  for (const triggerNode of triggerNodes) {
-    const downstream = getDownstreamNodes(triggerNode.id, nodes, edges);
-    for (const node of downstream) {
+    for (const node of getDownstreamNodes(triggerNode.id, nodes, edges)) {
       const data = node.data as FlowNodeData;
       if (data.category === 'condition') {
         const condition = nodeToCondition(node);
-        if (condition) conditions.conditions.push(condition);
+        if (condition) branchConditions.conditions.push(condition);
       } else if (data.category === 'action' || data.category === 'logic') {
         const action = nodeToAction(node, nodes, edges);
-        if (action) actions.push(action);
+        if (action) branchActions.push(action);
       }
     }
-  }
+
+    return { triggerId: triggerNode.id, conditions: branchConditions, actions: branchActions };
+  });
+
+  const { conditions, actions } = combineBranches(branches);
 
   return {
     id: existingId ?? crypto.randomUUID(),
@@ -121,6 +125,66 @@ function buildUIState(nodes: Node<FlowNodeData>[], edges: Edge[]): AutomationUIS
     }));
 
   return { nodePositions, edges: savedEdges, stickyNotes };
+}
+
+interface TriggerBranch {
+  triggerId: string;
+  conditions: ConditionBlock;
+  actions: Action[];
+}
+
+/** Stable key for "these two branches do the same thing". */
+function branchShape(branch: TriggerBranch): string {
+  return JSON.stringify([branch.conditions, branch.actions]);
+}
+
+/**
+ * Fold each trigger's branch into the automation's single action list.
+ *
+ * An automation has one action list, but the canvas lets you draw a separate
+ * chain from each trigger — "lights on → notify 'on'", "lights off → notify
+ * 'off'". Those used to be concatenated, losing which trigger owned which
+ * chain, so *every* trigger ran *every* action: switching the lights on sent
+ * both notifications and ran both branches' device writes. Conditions were
+ * merged into one AND block the same way, so a condition drawn on one branch
+ * silently gated the others.
+ *
+ * When the branches differ they become a `choose`, one arm per trigger, gated
+ * on a `trigger` condition — which is exactly what the engine's TriggerCondition
+ * is for. Arms are mutually exclusive, and `choose` runs the first match, so
+ * exactly one arm runs. A single trigger, or several triggers that all lead to
+ * the same chain, still serialize flat: no need to wrap the common case.
+ */
+function combineBranches(branches: TriggerBranch[]): { conditions: ConditionBlock; actions: Action[] } {
+  const withWork = branches.filter((b) => b.actions.length > 0 || b.conditions.conditions.length > 0);
+
+  if (withWork.length === 0) return { conditions: createEmptyConditionBlock(), actions: [] };
+  if (withWork.length === 1) return { conditions: withWork[0].conditions, actions: withWork[0].actions };
+
+  // Every trigger leads to the same chain — the ordinary "any of these events"
+  // automation. Keep it flat so the saved shape stays readable and unchanged.
+  const shapes = new Set(withWork.map(branchShape));
+  if (shapes.size === 1) return { conditions: withWork[0].conditions, actions: withWork[0].actions };
+
+  const choose: ChooseAction = {
+    type: 'choose',
+    id: `choose-by-trigger-${withWork[0].triggerId}`,
+    choices: withWork.map((branch) => ({
+      alias: `Trigger ${branch.triggerId}`,
+      conditions: {
+        operator: 'and',
+        conditions: [
+          { type: 'trigger', id: `trigger-is-${branch.triggerId}`, triggerId: branch.triggerId },
+          ...branch.conditions.conditions,
+        ],
+      },
+      actions: branch.actions,
+    })),
+  };
+
+  // Top-level conditions stay empty: each branch carries its own, and hoisting
+  // them here is what made one branch's condition gate all the others.
+  return { conditions: createEmptyConditionBlock(), actions: [choose] };
 }
 
 function getDownstreamNodes(

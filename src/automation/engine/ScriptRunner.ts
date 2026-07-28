@@ -6,6 +6,7 @@ import type { ExecutionTrace, ExecutionStatus } from '../types/execution';
 import { ExecutionContext } from './ExecutionContext';
 import type { ActionExecutor } from './ActionExecutor';
 import { StopExecutionError } from './ActionExecutor';
+import { describeError } from '../../lib/describe-error';
 
 /**
  * Manages script execution with concurrency modes.
@@ -136,7 +137,7 @@ export class ScriptRunner {
         }
       } else {
         status = 'error';
-        error = String(e);
+        error = describeError(e);
       }
     } finally {
       // Remove from running

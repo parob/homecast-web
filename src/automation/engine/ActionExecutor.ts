@@ -31,6 +31,7 @@ import type {
 import { durationToMs } from '../types/automation';
 import type { NotifyDelivery } from '../types/notify';
 import { NOTIFY_DELIVERY_UNKNOWN } from '../types/notify';
+import { describeError } from '../../lib/describe-error';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
@@ -88,6 +89,24 @@ export class StopExecutionError extends Error {
  * Executes action chains with support for control flow:
  * delay, choose/if-then-else, repeat, parallel, variables, stop.
  */
+/**
+ * Refuse to write a value the automation never specified.
+ *
+ * A "Set Device" node saves with `value: undefined` if its Value field was
+ * never filled in — JSON.stringify then drops the key entirely, so the stored
+ * automation has an action with no value at all. Passing that to the bridge
+ * produced a native failure whose message said nothing about the real problem.
+ * Fail here instead, naming the field the user has to go and fill in.
+ */
+function requireValue(value: unknown, characteristicType: string): void {
+  if (value === undefined || value === null) {
+    throw Object.assign(
+      new Error(`No value set for "${characteristicType}" — open the action and choose one`),
+      { code: 'VALUE_NOT_SET' },
+    );
+  }
+}
+
 export class ActionExecutor {
   private executionStart = 0;
   private expressionEngine = new ExpressionEngine();
@@ -167,7 +186,7 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, {
         ...(ctx.getNodeOutput(action.id) ?? {}),
         error: true,
-        errorMessage: String(e),
+        errorMessage: describeError(e),
       });
     }
   }
@@ -233,6 +252,7 @@ export class ActionExecutor {
 
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
+      requireValue(resolvedValue, action.characteristicType);
       const resolvedAccessoryId = this.resolveTemplateString(action.accessoryId, ctx);
 
       // Record before writing so the resulting state change can be attributed
@@ -243,8 +263,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, characteristicType: action.characteristicType, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, characteristicType: action.characteristicType, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -258,13 +278,14 @@ export class ActionExecutor {
 
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
+      requireValue(resolvedValue, action.characteristicType);
       await this.bridge.setServiceGroup(action.groupId, action.characteristicType, resolvedValue, action.homeId);
       const output = { groupId: action.groupId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { groupId: action.groupId, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { groupId: action.groupId, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -279,8 +300,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { sceneId: action.sceneId, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { sceneId: action.sceneId, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -330,8 +351,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -571,8 +592,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { message, title, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { message, title, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -740,8 +761,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { status: 0, ok: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { status: 0, ok: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       // Don't throw — webhook failures shouldn't stop the automation
     }
   }
@@ -782,8 +803,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { automationId: action.automationId, action: action.action, success: false, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { automationId: action.automationId, action: action.action, success: false, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -814,8 +835,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { scriptId: action.scriptId, error: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { scriptId: action.scriptId, error: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -867,8 +888,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { error: true, errorMessage: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { error: true, errorMessage: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }
@@ -899,8 +920,8 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { error: true, errorMessage: String(e) });
-      ctx.endStep(stepIdx, 'error', undefined, String(e));
+      ctx.setNodeOutput(action.id, { error: true, errorMessage: describeError(e) });
+      ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
   }

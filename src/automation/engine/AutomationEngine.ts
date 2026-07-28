@@ -14,6 +14,7 @@ import type { Automation, Trigger, TriggerData, AutomationMode, HelperDefinition
 import type { ExecutionTrace, ExecutionStatus } from '../types/execution';
 import type { NotifyDelivery } from '../types/notify';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
+import { describeError } from '../../lib/describe-error';
 
 // Rate limiting
 const MAX_EXECUTIONS_PER_MINUTE = 10;
@@ -369,7 +370,7 @@ export class AutomationEngine {
         error = e.reason;
       } else {
         status = 'error';
-        error = String(e);
+        error = describeError(e);
         console.error(`[AutomationEngine] Error in ${automation.name}:`, e);
       }
     } finally {
@@ -456,7 +457,7 @@ export class AutomationEngine {
         error = e.reason;
       } else {
         status = 'error';
-        error = String(e);
+        error = describeError(e);
       }
     }
 
