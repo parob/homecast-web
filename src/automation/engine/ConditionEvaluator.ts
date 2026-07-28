@@ -2,6 +2,7 @@
 // Recursively evaluates AND/OR/NOT condition trees
 
 import type { StateStore } from '../state/StateStore';
+import { valuesMatch } from '../state/valueMatch';
 import type {
   Condition,
   ConditionBlock,
@@ -225,8 +226,6 @@ export class ConditionEvaluator {
   // ============================================================
 
   private valueMatches(actual: unknown, expected: unknown): boolean {
-    if (actual === expected) return true;
-    if (String(actual) === String(expected)) return true;
-    return false;
+    return valuesMatch(actual, expected);
   }
 }

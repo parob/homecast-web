@@ -428,3 +428,66 @@ describe('traces', () => {
     expect(bridge.setCharacteristic).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('boolean characteristics reaching a numeric trigger', () => {
+  /**
+   * Reproduces "Notify Annex Lights" from production: a service-group trigger
+   * stored as `to: 1` by the editor, against lights whose power_state HomeKit
+   * reports as a boolean. It never fired.
+   */
+  const groupTrigger: Trigger = {
+    id: 't1', type: 'state', serviceGroupId: 'group-1',
+    characteristicType: 'power_state', to: 1,
+  };
+
+  function powerEvent(value: unknown): HomeKitEvent {
+    return { type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'power_state', value };
+  }
+
+  it('fires when HomeKit reports boolean true against a trigger stored as 1', async () => {
+    engine.loadAutomations([makeAutomation({ triggers: [groupTrigger], actions: [setLight()] })]);
+
+    emit(powerEvent(true));
+    await waitForTrace();
+
+    expect(bridge.setCharacteristic).toHaveBeenCalled();
+  });
+
+  it('does not fire when the light goes off', async () => {
+    engine.loadAutomations([makeAutomation({ triggers: [groupTrigger], actions: [setLight()] })]);
+
+    emit(powerEvent(false));
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(bridge.setCharacteristic).not.toHaveBeenCalled();
+  });
+
+  it('also fires for an individual accessory trigger', async () => {
+    engine.loadAutomations([makeAutomation({
+      triggers: [{ id: 't1', type: 'state', accessoryId: 'sensor-1', characteristicType: 'power_state', to: 1 }],
+      actions: [setLight()],
+    })]);
+
+    emit(powerEvent(true));
+    await waitForTrace();
+
+    expect(bridge.setCharacteristic).toHaveBeenCalled();
+  });
+
+  it('honours a boolean condition against a numerically-stored value', async () => {
+    engine.stateStore.updateDeviceState('light-2', 'power_state', true);
+    engine.loadAutomations([makeAutomation({
+      triggers: [{ id: 't1', type: 'state', accessoryId: 'sensor-1', characteristicType: 'motion_detected', to: true }],
+      conditions: {
+        operator: 'and',
+        conditions: [{ id: 'c1', type: 'state', accessoryId: 'light-2', characteristicType: 'power_state', value: 1 }],
+      },
+      actions: [setLight()],
+    })]);
+
+    emit(motionEvent(true));
+    await waitForTrace();
+
+    expect(bridge.setCharacteristic).toHaveBeenCalled();
+  });
+});

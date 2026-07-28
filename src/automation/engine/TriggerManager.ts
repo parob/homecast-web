@@ -17,6 +17,7 @@ import type {
 import { durationToMs, DEFAULT_UNAVAILABLE_FOR } from '../types/automation';
 import type { StateChangeEvent } from '../types/execution';
 import { getNextSunEvent } from '../state/SunCalculator';
+import { valuesMatch } from '../state/valueMatch';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 
@@ -1004,10 +1005,7 @@ export class TriggerManager {
   // ============================================================
 
   private valueMatches(actual: unknown, expected: unknown): boolean {
-    // Loose comparison: handle string/number coercion (HomeKit values are sometimes strings)
-    if (actual === expected) return true;
-    if (String(actual) === String(expected)) return true;
-    return false;
+    return valuesMatch(actual, expected);
   }
 
   // ============================================================
