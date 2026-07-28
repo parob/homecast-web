@@ -2,6 +2,7 @@
 // Walks the AST and evaluates against a context
 
 import type { ASTNode } from './ExpressionParser';
+import { valuesMatch } from '../state/valueMatch';
 import type { ExpressionContext, BuiltinFunction } from './functions';
 
 /** Max AST recursion depth — prevents stack overflow from deeply nested expressions. */
@@ -256,8 +257,8 @@ export class ExpressionEvaluator {
     if (a === b) return true;
     if (a === null && b === undefined) return true;
     if (a === undefined && b === null) return true;
-    // String comparison fallback (handles HomeKit number-as-string)
-    if (String(a) === String(b)) return true;
-    return false;
+    // Shared with triggers and conditions so `{{ states(..) == 1 }}` behaves the
+    // same as a trigger's `to: 1` against a boolean characteristic.
+    return valuesMatch(a, b);
   }
 }

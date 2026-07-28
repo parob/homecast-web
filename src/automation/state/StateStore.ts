@@ -2,6 +2,7 @@
 // Tracks all device characteristic values and helper states in real-time
 
 import type { HomeKitEvent } from '../../native/homekit-bridge';
+import { valuesMatch } from './valueMatch';
 import type { StateChangeEvent } from '../types/execution';
 
 export type StateChangeListener = (event: StateChangeEvent) => void;
@@ -195,7 +196,7 @@ export class StateStore {
     const pending = this.lastWrites.get(key);
     const ours = pending !== undefined
       && Date.now() - pending.at <= WRITE_ATTRIBUTION_WINDOW_MS
-      && String(pending.value) === String(value);
+      && valuesMatch(pending.value, value);
 
     if (ours) this.lastWrites.delete(key);
     this.manualChanges.set(key, !ours);

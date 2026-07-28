@@ -2,6 +2,7 @@
 // All functions available in expressions: states(), is_state(), now(), min(), max(), etc.
 
 import type { StateStore } from '../state/StateStore';
+import { valuesMatch } from '../state/valueMatch';
 import type { TriggerData } from '../types/automation';
 
 export interface ExpressionContext {
@@ -46,8 +47,7 @@ export function createFunctionRegistry(): Map<string, BuiltinFunction> {
     const [accId, charType, expected] = args as [string, string, unknown];
     if (!accId || !charType) return false;
     const current = ctx.stateStore.getState(accId, charType);
-    if (current === expected) return true;
-    return String(current) === String(expected);
+    return valuesMatch(current, expected);
   });
 
   // state_attr('accessoryId', 'characteristicType') -> alias for states()

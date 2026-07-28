@@ -68,3 +68,76 @@ describe('valuesMatch — everything else still behaves', () => {
     expect(valuesMatch(0, 1)).toBe(false);
   });
 });
+
+describe('every comparison of a characteristic value goes through valuesMatch', () => {
+  /**
+   * The bug existed in five places at once, because each layer had rolled its
+   * own `String(a) === String(b)`. That idiom looks harmless and is wrong for
+   * every boolean characteristic, so the only durable fix is that nobody
+   * writes it again.
+   */
+  const FILES = [
+    'src/automation/engine/TriggerManager.ts',
+    'src/automation/engine/ConditionEvaluator.ts',
+    'src/automation/expression/ExpressionEval.ts',
+    'src/automation/expression/functions.ts',
+    'src/automation/state/StateStore.ts',
+  ];
+
+  it.each(FILES)('%s does not hand-roll String() equality', async (file) => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(file, 'utf8');
+
+    expect(src).not.toMatch(/String\([^)]*\)\s*===\s*String\(/);
+  });
+
+  it.each(FILES)('%s imports the shared comparison', async (file) => {
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync(file, 'utf8')).toMatch(/valuesMatch/);
+  });
+});
+
+describe('the layers that used to disagree now agree', () => {
+  /**
+   * Same automation expressed three ways — trigger, condition, template — must
+   * reach the same verdict against a boolean characteristic. They didn't
+   * before: each had its own comparison.
+   */
+  it('trigger, condition and expression all match boolean true against 1', async () => {
+    const { StateStore } = await import('../state/StateStore');
+    const { ConditionEvaluator } = await import('../engine/ConditionEvaluator');
+    const { ExpressionEngine } = await import('../expression/ExpressionEngine');
+
+    const store = new StateStore();
+    store.updateDeviceState('light-1', 'power_state', true);   // HomeKit: boolean
+
+    // Condition stored numerically by the editor
+    const conditions = new ConditionEvaluator(store);
+    const conditionPasses = conditions.evaluate(
+      { operator: 'and', conditions: [{ id: 'c1', type: 'state', accessoryId: 'light-1', characteristicType: 'power_state', value: 1 }] },
+      { triggerId: 't', triggerType: 'state', timestamp: Date.now() },
+    );
+
+    // Same comparison via a template expression
+    const expr = new ExpressionEngine();
+    const ctx = ExpressionEngine.buildContext(store, { triggerId: 't', triggerType: 'state', timestamp: Date.now() }, {});
+    const templatePasses = expr.evaluateBoolean("is_state('light-1', 'power_state', 1)", ctx);
+    const operatorPasses = expr.evaluateBoolean("states('light-1', 'power_state') == 1", ctx);
+
+    expect({ conditionPasses, templatePasses, operatorPasses })
+      .toEqual({ conditionPasses: true, templatePasses: true, operatorPasses: true });
+  });
+
+  it('manual-override attribution is not fooled by the same mismatch', async () => {
+    const { StateStore } = await import('../state/StateStore');
+    const store = new StateStore();
+
+    // The engine writes 1; HomeKit echoes back boolean true.
+    store.recordWrite('light-1', 'power_state', 1);
+    store.updateDeviceState('light-1', 'power_state', true);
+
+    // Must be credited to us, not read as a human reaching for the switch —
+    // otherwise "don't fight the human" suppresses our own automations.
+    expect(store.wasManuallyChanged('light-1', 'power_state')).toBe(false);
+  });
+});
