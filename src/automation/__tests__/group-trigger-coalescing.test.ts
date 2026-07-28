@@ -172,3 +172,61 @@ describe('service-group trigger coalescing', () => {
     expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1);
   });
 });
+
+// Sizing, not just behaviour.
+//
+// A 12-light group toggled once produced five runs at a 3s window: the relay's
+// own write feeds every member at once and coalesces to one, then HomeKit
+// reports the real device changes over ~20s and each report landing outside the
+// window fired again. Five runs meant five notifications, which is also how the
+// per-automation push rate limit was being exhausted.
+describe('the coalescing window is sized for how slowly a group reports', () => {
+  const on = (id: string) => ({
+    type: 'characteristic.updated' as const, accessoryId: id,
+    characteristicType: 'power_state', value: true,
+  });
+
+  it('absorbs members trickling in over ten seconds as one run', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupAutomation()]);
+
+    // One logical change; members report across the following ten seconds.
+    // Real time would make this test take 10s, so move the clock instead.
+    const realNow = Date.now;
+    let clock = realNow();
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+
+    emit(on(MEMBERS[0]));
+    await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1));
+
+    for (const id of MEMBERS.slice(1)) {
+      clock += 3_500;
+      emit(on(id));
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    Date.now = realNow;
+    expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1);
+  });
+
+  it('still fires twice for a real off-then-on inside the window', async () => {
+    // Widening only suppresses repeats of the SAME value, so a genuine
+    // transition is never swallowed however long the window gets.
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupAutomation()]);
+
+    await turnGroupOn(emit);
+    await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1));
+    await turnGroupOff(emit);
+    await turnGroupOn(emit);
+
+    // Well inside 12s, and it still fires again.
+    await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(2));
+  });
+});

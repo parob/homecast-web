@@ -111,7 +111,23 @@ export class TriggerManager {
    * margin. Only repeats of the SAME value are suppressed, so a longer window
    * can't swallow a real change.
    */
-  private static readonly GROUP_COALESCE_MS = 3000;
+  /**
+   * How long a group trigger ignores a repeat of the same value.
+   *
+   * Sized to how slowly a group actually reports, not to how fast a burst
+   * arrives. A 12-light group toggled once produced five runs at 3s — the
+   * relay's own write feeds every member at once and coalesces to one, then
+   * HomeKit's observers report the real device changes over the following ~20s,
+   * and each report landing more than a window after the last fired again.
+   * Five runs meant five notifications, which is also how the per-automation
+   * push rate limit was being exhausted.
+   *
+   * Widening this cannot swallow a real change: only a repeat of the *same*
+   * value is suppressed, so an off-then-on inside the window still fires twice.
+   * The worst it can cost is a genuine "group went off, then off again", which
+   * is not a transition anyone automates on.
+   */
+  private static readonly GROUP_COALESCE_MS = 12_000;
 
   // Service group triggers indexed by "groupId:characteristicType"
   private serviceGroupStateTriggers = new Map<string, StateTriggerEntry[]>();
