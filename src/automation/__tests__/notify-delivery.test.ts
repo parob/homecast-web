@@ -208,3 +208,40 @@ describe('a notify does not hold up the actions after it', () => {
     expect(step.output.reason).toBe('unknown');
   });
 });
+
+describe('a run is timed by its work, not by the reporting that follows it', () => {
+  it('does not charge the automation for the delivery-report wait', async () => {
+    // Measured in production: 273ms of actions reported as 1407ms, because the
+    // finish time was stamped after settling the late delivery report. Duration
+    // is how people judge whether automations are fast, so it must measure the
+    // work.
+    let releaseReport: () => void = () => {};
+    const report = new Promise<NotifyDelivery>((r) => {
+      releaseReport = () => r({ delivered: true, channels: ['push'] });
+    });
+
+    const traces: ExecutionTrace[] = [];
+    const engine = new AutomationEngine({
+      bridge: makeBridge(),
+      onNotify: () => report,
+      onTraceComplete: (t) => { traces.push(t); },
+    });
+
+    let emit: ((e: any) => void) | undefined;
+    engine.initialize((h) => { emit = h; return () => {}; });
+    engine.loadAutomations([AUTOMATION]);
+    emit!({ type: 'characteristic.updated', accessoryId: 'bulb-1', characteristicType: 'power_state', value: 1 });
+
+    // Let the actions finish, then hold the report back a while.
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 120));
+    releaseReport();
+    for (let i = 0; i < 30 && traces.length === 0; i++) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    engine.teardown();
+
+    const { startedAt, finishedAt } = traces[0];
+    const duration = new Date(finishedAt!).getTime() - new Date(startedAt).getTime();
+    expect(duration).toBeLessThan(100);
+  });
+});

@@ -41,6 +41,16 @@ export class ExecutionContext {
   // Trace recording
   private steps: TraceStep[] = [];
   private pendingStepDetails: Promise<void>[] = [];
+  /**
+   * When the actions finished, as opposed to when the trace got built.
+   *
+   * `settleStepDetails` runs in between, waiting on facts that arrive late, so
+   * stamping the finish time in `buildTrace` charged the automation for a wait
+   * its devices never experienced: a run whose work took 273ms was reported as
+   * 1407ms. Duration is how people judge whether automations are fast, so it
+   * has to measure the work.
+   */
+  private finishedAt?: string;
   private stepIndex = 0;
   private startedAt: string;
 
@@ -165,7 +175,13 @@ export class ExecutionContext {
    * never arrives must not hold up the trace, and its step already says
    * "unknown" rather than claiming success.
    */
+  /** Stamp the moment the actions completed. Call before settling. */
+  markFinished(): void {
+    this.finishedAt ??= new Date().toISOString();
+  }
+
   async settleStepDetails(timeoutMs = 5000): Promise<void> {
+    this.markFinished();
     if (this.pendingStepDetails.length === 0) return;
     const pending = this.pendingStepDetails.splice(0);
     await Promise.race([
@@ -183,7 +199,7 @@ export class ExecutionContext {
       automationId: this.automationId,
       automationName: this.automationName,
       startedAt: this.startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt: this.finishedAt ?? new Date().toISOString(),
       status,
       triggerData: this.triggerData,
       steps: this.steps,
