@@ -387,3 +387,62 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
     { field: 'response', type: 'object', label: 'Sub-workflow Result' },
   ],
 };
+
+/**
+ * Has this node been given everything it needs to run?
+ *
+ * Drives the dashed outline on the canvas and the save-time warning, and is
+ * shared with deserialization so an automation saved incomplete still shows as
+ * incomplete when it is reopened — rather than being marked configured on the
+ * way back in and hiding the very problem that broke it.
+ */
+export function isNodeConfigured(nodeType: string, category: string, config: Record<string, unknown>): boolean {
+  if (category === 'trigger') {
+    switch (nodeType) {
+      case 'device_changed': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType);
+      case 'schedule': {
+        const mode = (config.scheduleMode as string) ?? 'time';
+        if (mode === 'time') return !!config.at;
+        if (mode === 'interval') return !!(config.hours || config.minutes);
+        if (mode === 'sun') return !!config.event;
+        return false;
+      }
+      case 'webhook': return !!config.webhookId;
+      case 'device_offline': return !!config.accessoryId;
+    }
+  }
+  if (category === 'action') {
+    switch (nodeType) {
+      // The value counts. Without it this node saved as "configured", drew
+      // solid on the canvas and raised no save warning, yet stored no value at
+      // all and failed the moment it ran. `0` is a real value, so test for
+      // presence rather than truthiness.
+      case 'set_device': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType)
+        && config.value !== undefined && config.value !== null && config.value !== '';
+      case 'run_scene': return !!config.sceneId;
+      case 'delay': return !!((config.hours as number) || (config.minutes as number) || (config.seconds as number));
+      case 'notify': return !!config.message;
+      case 'http_request': return !!config.url;
+      case 'code': return !!config.code;
+    }
+  }
+  if (category === 'condition') {
+    switch (nodeType) {
+      case 'state': return !!(config.accessoryId && config.characteristicType);
+      case 'time': return !!(config.after || config.before);
+      case 'template': return !!config.expression;
+    }
+  }
+  if (category === 'logic') {
+    if (nodeType === 'sub_workflow') return !!config.automationId;
+    if (nodeType === 'repeat') {
+      return ((config.mode as string) ?? 'count') !== 'count' || !!(config.count as number);
+    }
+    if (nodeType === 'variables') {
+      const vars = config.variables;
+      return !!vars && typeof vars === 'object' && Object.keys(vars as Record<string, unknown>).length > 0;
+    }
+    return true;
+  }
+  return false;
+}

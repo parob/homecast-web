@@ -20,7 +20,7 @@ import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { resolveEntityName, characteristicLabel, characteristicValueLabel } from '../entity-labels';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
-import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, type FlowNodeData } from '../constants';
+import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, isNodeConfigured, type FlowNodeData } from '../constants';
 import { NodeInfoPopover } from './NodeInfoPopover';
 import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
@@ -758,10 +758,10 @@ function renderConfigForm(
                 homes={homes}
                 serviceGroups={serviceGroups ?? []}
                 onSelectAccessory={(id, name) => {
-                  if (updateConfigBatch) updateConfigBatch({ accessoryId: id, accessoryName: name, serviceGroupId: undefined, serviceGroupName: undefined, characteristicType: '' });
+                  if (updateConfigBatch) updateConfigBatch({ accessoryId: id, accessoryName: name, serviceGroupId: undefined, serviceGroupName: undefined, characteristicType: '', value: undefined });
                 }}
                 onSelectGroup={(id, name) => {
-                  if (updateConfigBatch) updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, accessoryId: undefined, accessoryName: undefined, characteristicType: '' });
+                  if (updateConfigBatch) updateConfigBatch({ serviceGroupId: id, serviceGroupName: name, accessoryId: undefined, accessoryName: undefined, characteristicType: '', value: undefined });
                 }}
               />
             </ConfigField>
@@ -770,7 +770,15 @@ function renderConfigForm(
                 <CharacteristicPicker
                   value={config.characteristicType as string | undefined}
                   characteristics={setDeviceChars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
-                  onChange={(v) => updateConfig('characteristicType', v)}
+                  onChange={(v) => {
+                    // Seed the value from the device as the characteristic is
+                    // picked, so the control never shows a position that isn't
+                    // actually stored.
+                    const chosen = setDeviceChars.find((c) => c.characteristicType === v);
+                    const seeded = defaultValueForCharacteristic(chosen, v);
+                    if (updateConfigBatch) updateConfigBatch({ characteristicType: v, value: seeded });
+                    else updateConfig('characteristicType', v);
+                  }}
                 />
               </ConfigField>
             )}
@@ -1410,30 +1418,103 @@ function getCharMeta(c: { characteristicType?: string; validValues?: number[]; m
 const BOOLEAN_CHARACTERISTICS = new Set(['power_state', 'on', 'obstruction_detected', 'status_active', 'in_use', 'mute', 'night_vision', 'motion_detected', 'contact_sensor_state', 'occupancy_detected', 'leak_detected', 'smoke_detected', 'carbon_monoxide_detected', 'status_fault', 'status_tampered', 'status_low_battery']);
 
 /** Smart value input — adapts to characteristic type (boolean toggle, slider, enum select, or text) */
+/**
+ * The value to start from when a characteristic is chosen: what the device is
+ * set to right now.
+ *
+ * Every control here has a resting position — a switch reads Off, a slider sits
+ * at its minimum — so leaving the value unset looked exactly like a deliberate
+ * choice, and saved with no value at all. Rather than flagging that after the
+ * fact, there is simply always a real value: the device's own, which is both a
+ * true statement and the most likely thing the user wants to nudge.
+ *
+ * Falls back only when the characteristic can't be read (unreachable device, a
+ * group whose members disagree).
+ */
+export function defaultValueForCharacteristic(
+  char: { value?: unknown; validValues?: number[]; minValue?: number | null } | undefined,
+  characteristicType: string,
+): unknown {
+  const current = char?.value;
+  if (current !== undefined && current !== null && current !== '') {
+    // Booleans come off the bridge as true/false but are stored as 1/0.
+    if (typeof current === 'boolean') return current ? 1 : 0;
+    return current;
+  }
+
+  if (char?.validValues?.length) return char.validValues[0];
+  if (char?.minValue != null) return char.minValue;
+  if (BOOLEAN_CHARACTERISTICS.has(characteristicType)) return 1;
+  return undefined;
+}
+
 function SmartValueInput({ char, value, onChange, characteristicType }: {
   char: { validValues?: number[]; minValue?: number | null; maxValue?: number | null; stepValue?: number } | undefined;
   value: unknown;
   onChange: (v: unknown) => void;
   characteristicType?: string;
 }) {
+  const unset = value === undefined || value === null || value === '';
+
   // Boolean (on/off) — from validValues metadata or known boolean characteristic names
   const isBooleanFromMeta = char?.validValues && char.validValues.length === 2 && char.validValues.includes(0) && char.validValues.includes(1);
   const isBooleanFromName = characteristicType && BOOLEAN_CHARACTERISTICS.has(characteristicType);
   if (isBooleanFromMeta || (!char?.validValues && !char?.minValue && isBooleanFromName)) {
+    // Deliberately not a Switch. A switch has no "not set" position, so an
+    // action nobody had configured rendered identically to one deliberately set
+    // to Off — and saved with no value at all, failing at run time. Two buttons
+    // show "neither chosen", and reach Off in one click rather than two.
+    const isOn = value === true || value === 1 || value === '1';
+    const choice = 'flex-1 px-3 py-1 text-xs rounded transition-colors';
     return (
-      <div className="flex items-center gap-2">
-        <Switch checked={value === true || value === 1 || value === '1'} onCheckedChange={(v) => onChange(v ? 1 : 0)} />
-        <span className="text-xs text-muted-foreground">{value ? 'On' : 'Off'}</span>
+      <div className="space-y-1">
+        <div className="flex gap-0.5 rounded-md border p-0.5 max-w-[160px]">
+          <button
+            type="button"
+            aria-pressed={!unset && !isOn}
+            onClick={() => onChange(0)}
+            className={cn(choice, !unset && !isOn ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+          >
+            Off
+          </button>
+          <button
+            type="button"
+            aria-pressed={!unset && isOn}
+            onClick={() => onChange(1)}
+            className={cn(choice, !unset && isOn ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+          >
+            On
+          </button>
+        </div>
       </div>
     );
   }
   // Numeric range (slider)
   if (char?.minValue != null && char?.maxValue != null) {
-    const numVal = typeof value === 'number' ? value : Number(value) || char.minValue;
+    // A slider always has a thumb somewhere, so an unset value used to sit at
+    // the minimum and read as a deliberate choice. Show the readout empty.
+    const parsed = typeof value === 'number' ? value : Number(value);
+    const numVal = Number.isFinite(parsed) ? parsed : char.minValue;
     return (
       <div className="space-y-1">
-        <Slider value={[numVal]} min={char.minValue} max={char.maxValue} step={char.stepValue ?? 1} onValueChange={([v]) => onChange(v)} className="my-2" />
-        <Input type="number" value={numVal} min={char.minValue} max={char.maxValue} step={char.stepValue ?? 1} onChange={(e) => onChange(parseFloat(e.target.value) || 0)} className="h-8 text-xs" />
+        <Slider
+          value={[numVal]}
+          min={char.minValue}
+          max={char.maxValue}
+          step={char.stepValue ?? 1}
+          onValueChange={([v]) => onChange(v)}
+          className={cn('my-2', unset && 'opacity-40')}
+        />
+        <Input
+          type="number"
+          value={unset ? '' : numVal}
+          placeholder="Not set"
+          min={char.minValue}
+          max={char.maxValue}
+          step={char.stepValue ?? 1}
+          onChange={(e) => onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+          className="h-8 text-xs"
+        />
       </div>
     );
   }
@@ -1644,48 +1725,3 @@ function buildSummary(
   return '';
 }
 
-function isNodeConfigured(nodeType: string, category: string, config: Record<string, unknown>): boolean {
-  if (category === 'trigger') {
-    switch (nodeType) {
-      case 'device_changed': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType);
-      case 'schedule': {
-        const mode = (config.scheduleMode as string) ?? 'time';
-        if (mode === 'time') return !!config.at;
-        if (mode === 'interval') return !!(config.hours || config.minutes);
-        if (mode === 'sun') return !!config.event;
-        return false;
-      }
-      case 'webhook': return !!config.webhookId;
-      case 'device_offline': return !!config.accessoryId;
-    }
-  }
-  if (category === 'action') {
-    switch (nodeType) {
-      case 'set_device': return !!((config.accessoryId || config.serviceGroupId) && config.characteristicType);
-      case 'run_scene': return !!config.sceneId;
-      case 'delay': return !!((config.hours as number) || (config.minutes as number) || (config.seconds as number));
-      case 'notify': return !!config.message;
-      case 'http_request': return !!config.url;
-      case 'code': return !!config.code;
-    }
-  }
-  if (category === 'condition') {
-    switch (nodeType) {
-      case 'state': return !!(config.accessoryId && config.characteristicType);
-      case 'time': return !!(config.after || config.before);
-      case 'template': return !!config.expression;
-    }
-  }
-  if (category === 'logic') {
-    if (nodeType === 'sub_workflow') return !!config.automationId;
-    if (nodeType === 'repeat') {
-      return ((config.mode as string) ?? 'count') !== 'count' || !!(config.count as number);
-    }
-    if (nodeType === 'variables') {
-      const vars = config.variables;
-      return !!vars && typeof vars === 'object' && Object.keys(vars as Record<string, unknown>).length > 0;
-    }
-    return true;
-  }
-  return false;
-}

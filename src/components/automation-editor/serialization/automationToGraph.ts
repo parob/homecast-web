@@ -13,7 +13,7 @@ import type {
   Action,
 } from '@/automation/types/automation';
 import { isConditionBlock } from '@/automation/types/automation';
-import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS } from '../constants';
+import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS, isNodeConfigured } from '../constants';
 
 const VERTICAL_GAP = 80;
 const HORIZONTAL_OFFSET = 300;
@@ -178,7 +178,7 @@ function triggerToNode(trigger: Trigger, x: number, y: number, names?: EntityNam
       icon: def?.icon ?? 'Zap',
       config: { ...config, summary },
       subtitle: summary || undefined,
-      isConfigured: true,
+      isConfigured: isNodeConfigured(nodeType, 'trigger', config),
       enabled: trigger.enabled !== false,
     },
   };
@@ -352,7 +352,10 @@ function actionToNode(action: Action, x: number, y: number, names?: EntityNameSo
       icon: def?.icon ?? 'Lightbulb',
       config: { ...config, summary: buildActionSummary(action) },
       subtitle: buildActionSummary(action, names) || undefined,
-      isConfigured: true,
+      // Recomputed, not assumed. Marking everything configured on the way back
+      // in hid incomplete actions — a Set Device saved with no value reopened
+      // looking fine and kept failing.
+      isConfigured: isNodeConfigured(nodeType, category, config),
       enabled: action.enabled !== false,
     },
   };
