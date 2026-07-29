@@ -181,6 +181,17 @@ export function notifyRelayWrite(
 }
 
 /**
+ * The accessories in a service group, as the relay currently understands it.
+ *
+ * Exported because a group write has two audiences with different needs: the
+ * group tile wants one group-shaped event, and every individual accessory tile
+ * wants its own. Both have to be told, and only the engine holds the index.
+ */
+export function getServiceGroupMembers(groupId: string): string[] {
+  return engineInstance?.serviceGroupResolver?.getMembers?.(groupId) ?? [];
+}
+
+/**
  * As above, expanded across a service group's members.
  *
  * Triggers are evaluated per accessory, so a group write has to be fanned out

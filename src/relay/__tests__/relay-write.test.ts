@@ -21,7 +21,7 @@ import { join } from 'node:path';
 
 // vi.mock is hoisted above the file, so anything its factory closes over has
 // to be hoisted with it.
-const { native, notifyRelayWrite, notifyRelayGroupWrite } = vi.hoisted(() => ({
+const { native, notifyRelayWrite, notifyRelayGroupWrite, getServiceGroupMembers } = vi.hoisted(() => ({
   native: {
     setCharacteristic: vi.fn(),
     setServiceGroupCharacteristic: vi.fn(),
@@ -30,6 +30,7 @@ const { native, notifyRelayWrite, notifyRelayGroupWrite } = vi.hoisted(() => ({
     onEvent: vi.fn(() => () => {}),
   },
   notifyRelayWrite: vi.fn(),
+  getServiceGroupMembers: vi.fn(() => [] as string[]),
   notifyRelayGroupWrite: vi.fn(),
 }));
 
@@ -38,7 +39,7 @@ vi.mock('@/native/homekit-bridge', () => ({
   getNativeBridge: () => null, isRelayCapable: () => true, isRelayEnabled: () => true,
 }));
 
-vi.mock('@/automation', () => ({ notifyRelayWrite, notifyRelayGroupWrite }));
+vi.mock('@/automation', () => ({ notifyRelayWrite, notifyRelayGroupWrite, getServiceGroupMembers }));
 
 import { executeHomeKitAction } from '../local-handler';
 import { setRelayWritePublisher, announceRelayWrite, announceRelayGroupWrite } from '../relay-write';
@@ -214,5 +215,44 @@ describe('no write path can skip the fan-out', () => {
     // Direct notifyRelayWrite calls are how the two halves drifted apart.
     expect(source).not.toContain('notifyRelayWrite(');
     expect(source).not.toContain('notifyRelayGroupWrite(');
+  });
+});
+
+describe('a group write reaches the individual tiles too', () => {
+  // The group tile takes the group-shaped event; every member tile needs its
+  // own. Without this a group write updated the group and left each member
+  // showing its old value until the device happened to report in — the lights
+  // had already changed, the app just had not heard, which reads as a slow or
+  // failed automation.
+  beforeEach(() => {
+    getServiceGroupMembers.mockReturnValue(['ACC-A', 'ACC-B']);
+  });
+
+  it('publishes one event per member, as well as the group event', () => {
+    announceRelayGroupWrite('GRP-1', 'power_state', true, 'client', 'HOME-1', 2);
+
+    expect(publisher.serviceGroup).toHaveBeenCalledTimes(1);
+    expect(publisher.characteristic).toHaveBeenCalledTimes(2);
+    expect(publisher.characteristic).toHaveBeenCalledWith(
+      { accessoryId: 'ACC-A', characteristicType: 'power_state', value: true, homeId: 'HOME-1' },
+    );
+  });
+
+  it('does the same for an automation-driven group write', () => {
+    // Announcing outward is safe from either origin — a broadcast is a
+    // statement about state, not a command, so nothing writes back.
+    announceRelayGroupWrite('GRP-1', 'power_state', false, 'automation', 'HOME-1', 2);
+
+    expect(publisher.serviceGroup).toHaveBeenCalledTimes(1);
+    expect(publisher.characteristic).toHaveBeenCalledTimes(2);
+  });
+
+  it('still sends the group event when membership is unknown', () => {
+    // A stale index must not cost the group tile its update as well.
+    getServiceGroupMembers.mockReturnValue([]);
+    announceRelayGroupWrite('GRP-1', 'power_state', true, 'client');
+
+    expect(publisher.serviceGroup).toHaveBeenCalledTimes(1);
+    expect(publisher.characteristic).not.toHaveBeenCalled();
   });
 });

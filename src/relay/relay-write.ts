@@ -20,7 +20,7 @@
 // write path without calling it is caught by relay-write.test.ts, which walks
 // the handler's own source.
 
-import { notifyRelayWrite, notifyRelayGroupWrite } from '@/automation';
+import { notifyRelayWrite, notifyRelayGroupWrite, getServiceGroupMembers } from '@/automation';
 
 /**
  * Who performed the write.
@@ -118,5 +118,21 @@ export function announceRelayGroupWrite(
     publisher?.serviceGroup(groupId, characteristicType, value, homeId, affectedCount);
   } catch (e) {
     console.warn('[RelayWrite] group publish failed', e);
+  }
+
+  // The group tile takes the event above; every individual accessory tile
+  // needs its own. Without this a group write updated the group and left each
+  // member showing its old value until the device happened to report in — the
+  // lights had already changed, the app just had not heard, which reads as a
+  // slow or failed automation.
+  //
+  // Deliberately after the group event, and never instead of it: the group
+  // tile ignores per-member updates, so this cannot replace it.
+  for (const accessoryId of getServiceGroupMembers(groupId)) {
+    try {
+      publisher?.characteristic({ accessoryId, characteristicType, value, homeId });
+    } catch (e) {
+      console.warn('[RelayWrite] member publish failed', e);
+    }
   }
 }
