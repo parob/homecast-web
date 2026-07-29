@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, isNodeConfigured, type FlowNodeData } from '../constants';
 import { NodeInfoPopover } from './NodeInfoPopover';
+import { NotificationIconField } from './NotificationIconField';
 import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 
@@ -841,6 +842,12 @@ function renderConfigForm(
             <ConfigField label="Message">
               <Textarea value={(config.message as string) ?? ''} onChange={(e) => updateConfig('message', e.target.value)} placeholder="Notification message..." className="text-xs min-h-[60px]" />
             </ConfigField>
+            <ConfigField label="Icon" hint="Shown on the notification, so you can tell at a glance which automation spoke.">
+              <NotificationIconField
+                value={config.icon as string | undefined}
+                onChange={(v) => updateConfig('icon', v)}
+              />
+            </ConfigField>
             <ConfigField label="Action Buttons" hint="Optional buttons shown on the notification (max 3)">
               <div className="space-y-2">
                 {actions.map((act, i) => (
@@ -1537,11 +1544,12 @@ function SmartValueInput({ char, value, onChange, characteristicType }: {
   );
 }
 
-function ConfigField({ label, children }: { label: string; children: React.ReactNode }) {
+function ConfigField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs font-medium">{label}</Label>
       {children}
+      {hint && <p className="text-[11px] text-muted-foreground leading-snug">{hint}</p>}
     </div>
   );
 }

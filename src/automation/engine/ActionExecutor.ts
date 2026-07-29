@@ -565,12 +565,58 @@ export class ActionExecutor {
   // Notify
   // ============================================================
 
+  /**
+   * Resolve the notify icon, refusing one that points somewhere it shouldn't.
+   *
+   * A custom icon is a templatable URL that something downstream *fetches*: the
+   * relay Mac for its local banner, and the user's phone for a push. The relay
+   * has line-of-sight to localhost and the LAN, which is the same exposure the
+   * HTTP Request node is guarded against — so the icon goes through the same
+   * `assertSafeOutboundUrl`, and https-only on top, since neither APNs nor
+   * Android will load plaintext anyway.
+   *
+   * Rejection drops the icon rather than failing the action. An icon is
+   * decoration; a suppressed notification is a missed alert. The trace records
+   * why so it isn't merely silent.
+   */
+  private resolveNotifyIcon(
+    action: NotifyAction,
+    ctx: ExecutionContext,
+  ): { icon?: string; iconRejected?: string } {
+    if (!action.icon) return {};
+
+    const resolved = this.resolveTemplateString(action.icon, ctx);
+    if (!resolved) return {};
+
+    // A built-in slug is a name, not a URL — nothing fetches it cross-network.
+    if (!resolved.includes('://')) return { icon: resolved };
+
+    if (!/^https:\/\//i.test(resolved)) {
+      return { iconRejected: `icon URL must be https (got ${resolved.slice(0, 40)})` };
+    }
+
+    try {
+      assertSafeOutboundUrl(resolved);
+      return { icon: resolved };
+    } catch (e) {
+      return { iconRejected: describeError(e) };
+    }
+  }
+
   private async executeNotify(action: NotifyAction, ctx: ExecutionContext): Promise<void> {
     const message = this.resolveTemplateString(action.message, ctx);
     const title = action.title ? this.resolveTemplateString(action.title, ctx) : undefined;
+    const { icon, iconRejected } = this.resolveNotifyIcon(action, ctx);
+
+    // Carried inside `data` rather than as a fourth argument. `data` is already
+    // the platform-specific bag and already reaches both onNotify implementations
+    // — and from there the cloud server and the Swift bridge — untouched, so an
+    // icon rides to every channel without widening a callback declared in five
+    // places.
+    const data = icon ? { ...action.data, icon } : action.data;
 
     const stepIdx = ctx.beginStep('action', action.id, 'notify',
-      `Notify: ${message.slice(0, 50)}`, { message, title });
+      `Notify: ${message.slice(0, 50)}`, { message, title, icon, iconRejected });
 
     try {
       // Deliberately not awaited. Delivery is decided by the server, a round
@@ -579,7 +625,7 @@ export class ActionExecutor {
       // took over a second to turn the light on. Hand the notification off,
       // carry on, and fold the outcome into the trace at the end of the run.
       const delivery = Promise.resolve(
-        this.callbacks.sendNotification(message, title, action.data, ctx.automationId),
+        this.callbacks.sendNotification(message, title, data, ctx.automationId),
       ).then((d) => {
         const result = d || NOTIFY_DELIVERY_UNKNOWN;
         return {
@@ -598,12 +644,12 @@ export class ActionExecutor {
       // `success` stays true: the action ran and did not fail. Whether anything
       // reached a device is a separate fact, and conflating the two is what hid
       // rate-limited notifications in the first place.
-      const output = { message, title, success: true, ...NOTIFY_DELIVERY_PENDING };
+      const output = { message, title, icon, iconRejected, success: true, ...NOTIFY_DELIVERY_PENDING };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
       ctx.awaitStepDetail(stepIdx, delivery);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { message, title, success: false, error: describeError(e) });
+      ctx.setNodeOutput(action.id, { message, title, icon, success: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }

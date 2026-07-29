@@ -411,6 +411,12 @@ export interface NotifyAction extends BaseAction {
   type: 'notify';
   message: string; // Can contain {{ template }}
   title?: string;
+  /**
+   * The picture on the notification: either a built-in slug from
+   * `components/automation-editor/notificationIcons.ts`, or an https URL.
+   * Can contain {{ template }}, so an upstream node can supply a snapshot.
+   */
+  icon?: string;
   data?: Record<string, unknown>; // Platform-specific (e.g., action buttons)
 }
 

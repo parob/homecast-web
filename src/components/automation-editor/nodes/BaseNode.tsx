@@ -5,8 +5,22 @@ import { memo } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps, type Node } from '@xyflow/react';
 import { AlertTriangle, Check, X, Loader2, Trash2 } from 'lucide-react';
 import { getNodeIcon } from '../icons';
+import { getNotificationIcon } from '../notificationIcons';
 import { cn } from '@/lib/utils';
 import { CATEGORY_STYLES, NODE_WIDTH, NODE_HEIGHT, type FlowNodeData } from '../constants';
+
+/**
+ * A Notify node wears the icon it will send, so a canvas full of them reads as
+ * "leak", "door", "battery" rather than as five identical bells. Falls back to
+ * the palette glyph when no icon is chosen or it's a custom URL.
+ */
+function getDisplayIcon(data: FlowNodeData): React.ElementType {
+  if (data.nodeType === 'notify') {
+    const chosen = getNotificationIcon(data.config?.icon as string | undefined);
+    if (chosen) return chosen.Icon;
+  }
+  return getNodeIcon(data.icon);
+}
 
 function getInputs(data: FlowNodeData): { id: string; label?: string }[] {
   if (data.nodeType === 'merge') {
@@ -28,7 +42,7 @@ function getOutputs(data: FlowNodeData): { id: string; label?: string }[] {
 export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const nodeData = data as FlowNodeData;
   const styles = CATEGORY_STYLES[nodeData.category] ?? CATEGORY_STYLES.action;
-  const Icon = getNodeIcon(nodeData.icon);
+  const Icon = getDisplayIcon(nodeData);
   const isTrigger = nodeData.category === 'trigger';
   const inputs = getInputs(nodeData);
   const outputs = getOutputs(nodeData);

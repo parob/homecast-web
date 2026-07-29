@@ -4,6 +4,7 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
+import { isValidNotificationIcon } from '../notificationIcons';
 import type {
   Automation,
   AutomationUIState,
@@ -491,11 +492,16 @@ function nodeToActionInner(
       const actions = config.actions as Array<{ action: string; title: string }> | undefined;
       const data: Record<string, unknown> | undefined =
         actions && actions.length > 0 ? { actions } : undefined;
+      // Re-checked here and not only in the config panel: a blueprint or an
+      // imported automation reaches this function without ever passing through
+      // the form, and an icon is a string that ends up in a URL.
+      const icon = config.icon as string | undefined;
       return {
         type: 'notify',
         id: node.id,
         message: (config.message as string) ?? '',
         title: config.title as string | undefined,
+        icon: icon && isValidNotificationIcon(icon) ? icon : undefined,
         data,
       } satisfies NotifyAction;
     }

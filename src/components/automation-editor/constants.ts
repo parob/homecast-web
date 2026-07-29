@@ -358,7 +358,18 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
   ],
   notify: [
     { field: 'message', type: 'string', label: 'Message' },
+    { field: 'title', type: 'string', label: 'Title' },
+    { field: 'icon', type: 'string', label: 'Icon' },
+    { field: 'iconRejected', type: 'string', label: 'Icon Rejected' },
+    // `success` says the action ran; `delivered` says something reached a device.
+    // They differ — a rate-limited notification is a successful action that was
+    // delivered nowhere — and the engine has emitted both for a while without
+    // declaring them here, so the data picker couldn't offer them.
     { field: 'success', type: 'boolean', label: 'Success' },
+    { field: 'delivered', type: 'boolean', label: 'Delivered' },
+    { field: 'channels', type: 'object', label: 'Channels' },
+    { field: 'rateLimited', type: 'boolean', label: 'Rate Limited' },
+    { field: 'reason', type: 'string', label: 'Reason' },
   ],
   http_request: [
     { field: 'status', type: 'number', label: 'HTTP Status' },
