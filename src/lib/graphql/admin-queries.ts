@@ -1223,3 +1223,37 @@ export const ADMIN_HOME_UPTIME = gql`
     }
   }
 `;
+
+/**
+ * A page of a relay's own activity buffer.
+ *
+ * The relay records what it does in-process, so this is a pull rather than a
+ * subscription — and a relay that cannot answer returns `error` rather than
+ * failing, because "it did not respond" is the most useful thing this can say.
+ */
+export const ADMIN_RELAY_ACTIVITY = gql`
+  query AdminRelayActivity($deviceId: String!, $limit: Int, $before: Float, $lane: String) {
+    adminRelayActivity(deviceId: $deviceId, limit: $limit, before: $before, lane: $lane) {
+      entries {
+        lane
+        at
+        action
+        phase
+        ms
+        origin
+        error
+        accessoryId
+        characteristicType
+        value
+        name
+        status
+        request
+        response
+      }
+      buffered
+      nextBefore
+      oldestAt
+      error
+    }
+  }
+`;

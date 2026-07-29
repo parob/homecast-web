@@ -129,6 +129,36 @@ export function getBufferedActivity(): RelayActivityEntry[] {
   return [...buffer].reverse();
 }
 
+export interface ActivityStats {
+  /** Entries held. Non-zero is proof that recording ran while nobody watched. */
+  buffered: number;
+  /** Requests sent and still unanswered past `stuckAfterMs`. */
+  stuck: number;
+  /** When the newest entry landed, or 0 if nothing has been recorded yet. */
+  lastAt: number;
+}
+
+/**
+ * A summary cheap enough to poll from somewhere the stream itself isn't shown.
+ *
+ * The buffer fills whether or not the activity view is open, but from another
+ * screen there is no way to know that — so this is what a tab badge reads to
+ * show a relay is recording, and to surface a stuck request without anyone
+ * having to go looking for it.
+ */
+export function getActivityStats(stuckAfterMs = 10_000): ActivityStats {
+  const cutoff = activityNow() - stuckAfterMs / 1000;
+  let stuck = 0;
+  for (const entry of buffer) {
+    if (entry.phase === 'sent' && entry.at <= cutoff) stuck++;
+  }
+  return {
+    buffered: buffer.length,
+    stuck,
+    lastAt: buffer.length > 0 ? buffer[buffer.length - 1].at : 0,
+  };
+}
+
 /** Seconds since the epoch, matching every other timestamp in the stream. */
 export function activityNow(): number {
   return Date.now() / 1000;

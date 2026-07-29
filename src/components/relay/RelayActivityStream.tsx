@@ -17,11 +17,14 @@ import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check, Cloud, Cpu
 
 type Lane = 'all' | 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
 
+// Named by direction, because two of these involve HomeKit and mean opposite
+// things: "HomeKit calls" are calls this relay makes *into* HomeKit, "HomeKit
+// updates" are HomeKit telling the relay something changed.
 const LANES: { key: Lane; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'socket', label: 'Requests' },
   { key: 'bridge', label: 'HomeKit calls' },
-  { key: 'homekit', label: 'HomeKit' },
+  { key: 'homekit', label: 'HomeKit updates' },
   { key: 'automation', label: 'Automations' },
   { key: 'cloud', label: 'Cloud' },
 ];
