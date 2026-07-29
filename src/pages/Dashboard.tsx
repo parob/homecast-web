@@ -1036,7 +1036,7 @@ const DEMO_ACCESSORIES: HomeKitAccessory[] = [
       name: 'Living Room Lamp',
       serviceType: 'lightbulb',
       characteristics: [
-        { id: '__demo_char_lamp_on__', characteristicType: 'on', value: true, isReadable: true, isWritable: true },
+        { id: '__demo_char_lamp_on__', characteristicType: 'power_state', value: true, isReadable: true, isWritable: true },
         { id: '__demo_char_lamp_brightness__', characteristicType: 'brightness', value: 80, isReadable: true, isWritable: true, minValue: 0, maxValue: 100, stepValue: 1 },
       ],
     }],
@@ -1076,7 +1076,7 @@ const DEMO_ACCESSORIES: HomeKitAccessory[] = [
       name: 'Ceiling Fan',
       serviceType: 'fan',
       characteristics: [
-        { id: '__demo_char_fan_on__', characteristicType: 'on', value: false, isReadable: true, isWritable: true },
+        { id: '__demo_char_fan_on__', characteristicType: 'power_state', value: false, isReadable: true, isWritable: true },
       ],
     }],
   },
@@ -1096,7 +1096,7 @@ const DEMO_AUTOMATIONS: HomeKitAutomation[] = [
     isEnabled: true,
     homeId: DEMO_HOME_ID,
     trigger: { type: 'event', events: [{ type: 'significant_event', significantEvent: 'sunset' }] },
-    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'on', targetValue: 'true' }],
+    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'power_state', targetValue: 'true' }],
   },
   {
     id: '__demo_auto_bedtime__',
@@ -1104,7 +1104,7 @@ const DEMO_AUTOMATIONS: HomeKitAutomation[] = [
     isEnabled: true,
     homeId: DEMO_HOME_ID,
     trigger: { type: 'event', events: [{ type: 'time' }] },
-    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'on', targetValue: 'false' }],
+    actions: [{ accessoryId: '__demo_acc_lamp__', accessoryName: 'Living Room Lamp', characteristicType: 'power_state', targetValue: 'false' }],
   },
 ];
 
@@ -3962,7 +3962,6 @@ const Dashboard = () => {
     if (group) {
       for (const accessoryId of group.accessoryIds) {
         // Try both 'on' and 'power_state' characteristic types
-        updateCharacteristicInCache(accessoryId, 'on', JSON.stringify(newValue));
         updateCharacteristicInCache(accessoryId, 'power_state', JSON.stringify(newValue));
       }
     }
@@ -3972,7 +3971,7 @@ const Dashboard = () => {
       await serverConnection.request('serviceGroup.set', {
         homeId: effectiveHomeId,
         groupId,
-        characteristicType: 'on',
+        characteristicType: 'power_state',
         value: newValue
       });
       // Real-time updates via WebSocket will sync the values

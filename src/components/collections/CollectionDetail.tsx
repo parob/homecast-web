@@ -896,7 +896,7 @@ export function CollectionDetail({
 
     // Optimistic update - update all accessories in the group
     for (const accessoryId of group.accessoryIds) {
-      updateAccessoryCharacteristicInCache(homeId, accessoryId, 'on', newValue);
+      updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', newValue);
     }
 
     try {
@@ -904,14 +904,14 @@ export function CollectionDetail({
       await serverConnection.request('serviceGroup.set', {
         homeId,
         groupId: group.id,
-        characteristicType: 'on',
+        characteristicType: 'power_state',
         value: newValue,
       });
     } catch (err) {
       toast.error('Failed to control group');
       // Revert optimistic update on error
       for (const accessoryId of group.accessoryIds) {
-        updateAccessoryCharacteristicInCache(homeId, accessoryId, 'on', isOn);
+        updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', isOn);
       }
     }
   }, [isServiceGroupOn]);
