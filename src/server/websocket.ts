@@ -274,10 +274,23 @@ export class ServerWebSocket {
    * measured live on all three homes of the managed relay.
    *
    * The cloud can resolve those ids and we cannot, so once HomeKit has
-   * disowned one we stop claiming it and let the request route out. Bounded by
-   * the number of homes, and cleared on reconnect in case the mapping moves.
+   * disowned one we stop claiming it and let the request route out.
+   *
+   * Deliberately survives reconnects. It used to clear on disconnect "in case
+   * the mapping moved", which sounded prudent and was wrong: the relay
+   * reconnects every few minutes, so every reconnect paid for three fresh
+   * failures and the flood never stopped. A moved mapping shows up in
+   * `liveHomeIds` instead, which is refreshed from HomeKit directly.
    */
   private unservableHomeIds = new Set<string>();
+
+  /**
+   * The homes HomeKit reports on this Mac. Asked, not inferred — it is the
+   * component that has to resolve the id, so it is the only authority on
+   * whether the fast path can serve it.
+   */
+  private liveHomeIds = new Set<string>();
+  private liveHomesRefreshedAt = 0;
   private relayAssignmentTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Buffer for automation.* messages received before engine is initialized
@@ -321,6 +334,30 @@ export class ServerWebSocket {
    */
   isCurrentlyActiveRelay(): boolean {
     return this.isActiveRelay;
+  }
+
+  /**
+   * Ask HomeKit which homes this Mac actually has.
+   *
+   * Cheap — it is a local bridge call with no network — and it is what lets the
+   * fast path decline an id it could never resolve instead of discovering that
+   * by failing. Never throws: if HomeKit will not answer we simply keep the
+   * previous set and fall back to ownership, which is the old behaviour.
+   */
+  private async refreshLiveHomes(): Promise<void> {
+    try {
+      const result = await executeHomeKitAction('homes.list', {}) as { homes?: Array<{ id: string }> };
+      const ids = (result?.homes ?? []).map((h) => h.id?.toUpperCase()).filter(Boolean) as string[];
+      if (ids.length === 0) return;
+
+      this.liveHomeIds = new Set(ids);
+      this.liveHomesRefreshedAt = Date.now();
+      // An id HomeKit now reports is servable again, whatever happened before —
+      // this is how a genuinely moved mapping recovers without a restart.
+      for (const id of ids) this.unservableHomeIds.delete(id);
+    } catch (e) {
+      console.warn('[ServerWS] Could not read live homes from HomeKit', e);
+    }
   }
 
   /**
@@ -419,6 +456,7 @@ export class ServerWebSocket {
     if (canServeLocally(action, homeId, {
       isActiveRelay: this.isActiveRelay,
       ownedHomeIds: this.ownedHomeIds,
+      liveHomeIds: this.liveHomeIds,
       unservableHomeIds: this.unservableHomeIds,
     })) {
       if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, payload);
@@ -439,6 +477,9 @@ export class ServerWebSocket {
         // than failing something that is perfectly serviceable one hop away.
         if (homeKey && errorCode(error) === 'HOME_NOT_FOUND') {
           this.unservableHomeIds.add(homeKey);
+          // Re-ask rather than assume: if this id failed because the mapping
+          // moved, the fresh list restores it. Fire-and-forget.
+          void this.refreshLiveHomes();
           console.warn(
             `[ServerWS] HomeKit does not know home ${homeKey} — routing ${action} ` +
             `via the server from now on (stable id vs live HomeKit UUID)`,
@@ -657,6 +698,7 @@ export class ServerWebSocket {
   private startRelayDuties(): void {
     if (!isRelayEnabled()) return;
 
+    void this.refreshLiveHomes();
     this.subscribeToHomeKitEvents();
 
     // Service-group triggers are skipped entirely unless a resolver is injected.
@@ -1687,10 +1729,9 @@ export class ServerWebSocket {
 
     // Clear per-session caches
     this.accessoryHomeCache.clear();
-    // Cleared here rather than on every homes.list: within a session the id
-    // mapping does not move, and re-arming it each poll would just repeat the
-    // failed HomeKit call. A reconnect is the point where it might have.
-    this.unservableHomeIds.clear();
+    // NOT cleared: the relay reconnects every few minutes, and clearing here
+    // meant every reconnect re-paid for the same failures. `liveHomeIds`,
+    // refreshed from HomeKit on relay start, is what recovers a moved mapping.
 
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;

@@ -18,6 +18,7 @@ function state(over: Partial<RelayRoutingState> = {}): RelayRoutingState {
   return {
     isActiveRelay: true,
     ownedHomeIds: new Set([LIVE]),
+    liveHomeIds: new Set(),
     unservableHomeIds: new Set(),
     ...over,
   };
@@ -62,6 +63,15 @@ describe('canServeLocally', () => {
     expect(canServeLocally('homes.list', undefined, state())).toBe(false);
   });
 
+  it('never answers subscription actions itself', () => {
+    // These manage server-side push scopes and carry no homeId, so they fell
+    // into the "nothing to resolve" branch and failed as unknown actions,
+    // twice on every reconnect. The relay has no such handler by design.
+    expect(canServeLocally('subscribe', undefined, state())).toBe(false);
+    expect(canServeLocally('unsubscribe', undefined, state())).toBe(false);
+    expect(canServeLocally('subscriptions.list', undefined, state())).toBe(false);
+  });
+
   it('serves requests that name no home', () => {
     expect(canServeLocally('ping', undefined, state())).toBe(true);
   });
@@ -69,5 +79,47 @@ describe('canServeLocally', () => {
   it('serves nothing when this device is not the active relay', () => {
     expect(canServeLocally('accessories.list', LIVE, state({ isActiveRelay: false }))).toBe(false);
     expect(canServeLocally('ping', undefined, state({ isActiveRelay: false }))).toBe(false);
+  });
+});
+
+describe('when HomeKit has said which homes it has', () => {
+  // Ownership was always a proxy for "can HomeKit resolve this". Asking HomeKit
+  // directly removes the guess — and removes the failed call that discovering
+  // it by failure costs, once per home per reconnect.
+  const live = () => state({ liveHomeIds: new Set([LIVE]) });
+
+  it('serves a home HomeKit reports', () => {
+    expect(canServeLocally('accessories.list', LIVE, live())).toBe(true);
+  });
+
+  it('declines an hc_id up front, without a failed call to learn it', () => {
+    const owned = state({
+      ownedHomeIds: new Set([LIVE, HC.toUpperCase()]),
+      liveHomeIds: new Set([LIVE]),
+    });
+    expect(canServeLocally('accessories.list', HC, owned)).toBe(false);
+  });
+
+  it('overrides ownership, because HomeKit is the one that has to resolve it', () => {
+    // Owned but absent from HomeKit — exactly the managed-relay hc_id case.
+    const owned = state({
+      ownedHomeIds: new Set([HC.toUpperCase()]),
+      liveHomeIds: new Set([LIVE]),
+    });
+    expect(canServeLocally('accessories.list', HC, owned)).toBe(false);
+  });
+
+  it('falls back to ownership before HomeKit has answered', () => {
+    // Empty means unknown, not "no homes" — refusing everything on startup
+    // would take the relay off the air until the first list returned.
+    expect(canServeLocally('accessories.list', LIVE, state({ liveHomeIds: new Set() }))).toBe(true);
+  });
+
+  it('still declines an id HomeKit has rejected, even if it lists it', () => {
+    const conflicted = state({
+      liveHomeIds: new Set([LIVE]),
+      unservableHomeIds: new Set([LIVE]),
+    });
+    expect(canServeLocally('accessories.list', LIVE, conflicted)).toBe(false);
   });
 });
