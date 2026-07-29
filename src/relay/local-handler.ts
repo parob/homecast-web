@@ -593,11 +593,12 @@ async function executeHomeKitActionInner(
       // in-process by design, which makes it invisible from the outside — this
       // is the seam that lets it be inspected without the relay having to push
       // anything, and without the panel being open.
-      const { limit, before, lane } = payload as {
-        limit?: number; before?: number; lane?: 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
+      const { limit, before, lane, faultsOnly } = payload as {
+        limit?: number; before?: number; faultsOnly?: boolean;
+        lane?: 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
       };
       const { getActivityDump } = await import('../server/local-activity');
-      return getActivityDump({ limit, before, lane });
+      return getActivityDump({ limit, before, lane, faultsOnly });
     }
 
     case 'relay.probe': {

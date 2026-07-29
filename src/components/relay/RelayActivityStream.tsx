@@ -15,13 +15,16 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check, Cloud, Cpu } from 'lucide-react';
 
-type Lane = 'all' | 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
+type Lane = 'all' | 'faults' | 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
 
 // Named by direction, because two of these involve HomeKit and mean opposite
 // things: "HomeKit calls" are calls this relay makes *into* HomeKit, "HomeKit
 // updates" are HomeKit telling the relay something changed.
 const LANES: { key: Lane; label: string }[] = [
   { key: 'all', label: 'All' },
+  // Not a lane but a filter across all of them, and first after All because
+  // it is what you are looking for when something is wrong.
+  { key: 'faults', label: 'Faults' },
   { key: 'socket', label: 'Requests' },
   { key: 'bridge', label: 'HomeKit calls' },
   { key: 'homekit', label: 'HomeKit updates' },
@@ -250,7 +253,11 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
   }, [hasPending]);
 
   const visible = useMemo(() => {
-    const byLane = lane === 'all' ? entries : entries.filter((e) => e.lane === lane);
+    const byLane =
+      lane === 'all' ? entries
+      : lane === 'faults'
+        ? entries.filter((e) => e.error || e.phase === 'failed' || e.status === 'error')
+        : entries.filter((e) => e.lane === lane);
     // Almost every request finishes in milliseconds and its outcome replaces the
     // pending row, so showing that flicker is noise. A request appears only once
     // it has been waiting long enough to be worth knowing about.
@@ -314,7 +321,9 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
       <div className="max-h-[26rem] overflow-y-auto font-mono text-[11px]">
         {visible.length === 0 && (
           <p className="px-3 py-6 text-center text-muted-foreground">
-            {deviceId ? 'Waiting for activity…' : 'No relay connected'}
+            {!deviceId ? 'No relay connected'
+              : lane === 'faults' ? 'Nothing has failed.'
+              : 'Waiting for activity…'}
           </p>
         )}
 

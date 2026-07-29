@@ -139,7 +139,7 @@ describe('getActivityStats', () => {
   });
 
   it('reports an empty buffer without inventing a timestamp', () => {
-    expect(mod.getActivityStats()).toEqual({ buffered: 0, stuck: 0, lastAt: 0 });
+    expect(mod.getActivityStats()).toEqual({ buffered: 0, stuck: 0, faults: 0, lastAt: 0 });
   });
 
   it('counts only requests outstanding past the threshold', () => {
@@ -245,5 +245,51 @@ describe('getActivityDump', () => {
     }
     expect(big.getActivityDump({ limit: 10_000 }).entries).toHaveLength(500);
     expect(big.getActivityDump({ limit: 0 }).entries).toHaveLength(1);
+  });
+});
+
+describe('fault retention', () => {
+  // Every attempt to catch the HOME_NOT_FOUND on the local fast path failed
+  // because the buffer covers minutes and the fault is intermittent. Faults
+  // therefore outlive the traffic that buried them.
+  it('keeps a fault after the rolling buffer has moved past it', () => {
+    mod.emitLocalRelayActivity(socketEntry(1, { id: 'bad', phase: 'failed', error: 'HOME_NOT_FOUND' }));
+    for (let i = 0; i < 2500; i++) {
+      mod.emitLocalRelayActivity(socketEntry(100 + i, { id: `ok-${i}`, phase: 'ok', ms: 3 }));
+    }
+
+    expect(mod.getBufferedActivity().some((e) => e.error === 'HOME_NOT_FOUND')).toBe(false);
+    const dump = mod.getActivityDump({ faultsOnly: true, limit: 50 });
+    expect(dump.entries.some((e) => e.error === 'HOME_NOT_FOUND')).toBe(true);
+    expect(mod.getActivityStats().faults).toBeGreaterThan(0);
+  });
+
+  it('treats a request evicted while still unanswered as a fault', () => {
+    // Its outcome would have replaced it in place, so one that ages out still
+    // reading `sent` was never answered — the silent-relay signature.
+    mod.emitLocalRelayActivity(socketEntry(1, { id: 'never-answered' }));
+    for (let i = 0; i < 2500; i++) {
+      mod.emitLocalRelayActivity(socketEntry(100 + i, { id: `ok-${i}`, phase: 'ok', ms: 3 }));
+    }
+
+    const dump = mod.getActivityDump({ faultsOnly: true, limit: 50 });
+    expect(dump.entries.some((e) => e.id === 'never-answered')).toBe(true);
+  });
+
+  it('does not record an answered request as a fault', () => {
+    mod.emitLocalRelayActivity(socketEntry(1, { id: 'fine' }));
+    mod.emitLocalRelayActivity(socketEntry(1, { id: 'fine', phase: 'ok', ms: 4 }));
+    for (let i = 0; i < 2500; i++) {
+      mod.emitLocalRelayActivity(socketEntry(100 + i, { id: `ok-${i}`, phase: 'ok', ms: 3 }));
+    }
+    expect(mod.getActivityDump({ faultsOnly: true, limit: 50 }).entries
+      .some((e) => e.id === 'fine')).toBe(false);
+  });
+
+  it('reports faults separately from the buffer, so neither count hides the other', () => {
+    mod.emitLocalRelayActivity(socketEntry(1, { id: 'x', phase: 'failed', error: 'boom' }));
+    const dump = mod.getActivityDump({});
+    expect(dump.buffered).toBe(1);
+    expect(dump.faults).toBe(1);
   });
 });

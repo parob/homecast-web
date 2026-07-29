@@ -1232,8 +1232,8 @@ export const ADMIN_HOME_UPTIME = gql`
  * failing, because "it did not respond" is the most useful thing this can say.
  */
 export const ADMIN_RELAY_ACTIVITY = gql`
-  query AdminRelayActivity($deviceId: String!, $limit: Int, $before: Float, $lane: String) {
-    adminRelayActivity(deviceId: $deviceId, limit: $limit, before: $before, lane: $lane) {
+  query AdminRelayActivity($deviceId: String!, $limit: Int, $before: Float, $lane: String, $faultsOnly: Boolean) {
+    adminRelayActivity(deviceId: $deviceId, limit: $limit, before: $before, lane: $lane, faultsOnly: $faultsOnly) {
       entries {
         lane
         at
@@ -1251,6 +1251,7 @@ export const ADMIN_RELAY_ACTIVITY = gql`
         response
       }
       buffered
+      faults
       nextBefore
       oldestAt
       error

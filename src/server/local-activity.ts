@@ -117,6 +117,30 @@ const buffer: RelayActivityEntry[] = [];
 const sizes: number[] = [];
 let bufferBytes = 0;
 
+/**
+ * Faults, kept far longer than the rolling buffer.
+ *
+ * The main buffer covers about ten minutes on a busy relay, and the faults
+ * worth reading about are intermittent and user-triggered — so by the time
+ * anyone looks, the evidence has rolled out. Every attempt to catch the
+ * `HOME_NOT_FOUND` on the local fast path has failed this way.
+ *
+ * So anything that went wrong is copied here and survives normal volume. Small
+ * enough to be free: faults are rare, and their payloads are already capped.
+ */
+const MAX_FAULTS = 300;
+const faults: RelayActivityEntry[] = [];
+
+/** Did this entry record something going wrong? */
+function isFault(entry: RelayActivityEntry): boolean {
+  return Boolean(entry.error) || entry.phase === 'failed' || entry.status === 'error';
+}
+
+function rememberFault(entry: RelayActivityEntry): void {
+  faults.push(entry);
+  if (faults.length > MAX_FAULTS) faults.splice(0, faults.length - MAX_FAULTS);
+}
+
 /** Listen to this relay's own activity. Returns an unsubscribe. */
 export function onLocalRelayActivity(listener: Listener): () => void {
   listeners.add(listener);
@@ -141,6 +165,8 @@ export function hasLocalActivityListeners(): boolean {
 export function emitLocalRelayActivity(entry: RelayActivityEntry): void {
   const bounded = boundPayloads(entry);
   const size = measure(bounded);
+
+  if (isFault(bounded)) rememberFault(bounded);
 
   // An outcome replaces its pending entry rather than adding a second one, so
   // one request is one row here as well as on screen — otherwise a remote dump
@@ -170,6 +196,11 @@ export function emitLocalRelayActivity(entry: RelayActivityEntry): void {
     (buffer.length - drop > MAX_BUFFERED || bufferBytes > MAX_BUFFER_BYTES) &&
     drop < buffer.length - 1
   ) {
+    // An outcome replaces its pending row in place, so a request still reading
+    // `sent` when it falls off the end was never answered at all. That is the
+    // silent-relay signature, and it is the one thing here that must not be
+    // allowed to quietly age out.
+    if (buffer[drop].phase === 'sent') rememberFault(buffer[drop]);
     bufferBytes -= sizes[drop];
     drop++;
   }
@@ -195,12 +226,20 @@ export interface ActivityDumpOptions {
   before?: number;
   /** Restrict to one lane. */
   lane?: RelayActivityEntry['lane'];
+  /**
+   * Read the fault ring instead of the rolling buffer. These are retained far
+   * longer, so this answers "what has gone wrong recently" for a relay nobody
+   * was watching at the time.
+   */
+  faultsOnly?: boolean;
 }
 
 export interface ActivityDump {
   entries: RelayActivityEntry[];
   /** Total held, so a caller knows whether it is seeing everything. */
   buffered: number;
+  /** Faults retained, independent of `buffered`. */
+  faults: number;
   /** Pass as `before` to fetch the next page; absent when there is no more. */
   nextBefore?: number;
   /** Oldest entry retained, so a caller can tell history was dropped. */
@@ -222,7 +261,8 @@ const MAX_DUMP_BYTES = 512_000;
 export function getActivityDump(options: ActivityDumpOptions = {}): ActivityDump {
   const limit = Math.min(Math.max(options.limit ?? 100, 1), MAX_DUMP_LIMIT);
 
-  let candidates = options.lane ? buffer.filter((e) => e.lane === options.lane) : buffer;
+  const source = options.faultsOnly ? faults : buffer;
+  let candidates = options.lane ? source.filter((e) => e.lane === options.lane) : source;
   if (options.before !== undefined) {
     candidates = candidates.filter((e) => e.at < options.before!);
   }
@@ -249,8 +289,9 @@ export function getActivityDump(options: ActivityDumpOptions = {}): ActivityDump
   return {
     entries,
     buffered: buffer.length,
+    faults: faults.length,
     ...(more && entries.length > 0 ? { nextBefore: entries[entries.length - 1].at } : {}),
-    ...(buffer.length > 0 ? { oldestAt: buffer[0].at } : {}),
+    ...(source.length > 0 ? { oldestAt: source[0].at } : {}),
   };
 }
 
@@ -264,6 +305,8 @@ export interface ActivityStats {
   buffered: number;
   /** Requests sent and still unanswered past `stuckAfterMs`. */
   stuck: number;
+  /** Faults retained since startup, including ones the buffer has since lost. */
+  faults: number;
   /** When the newest entry landed, or 0 if nothing has been recorded yet. */
   lastAt: number;
 }
@@ -285,6 +328,7 @@ export function getActivityStats(stuckAfterMs = 10_000): ActivityStats {
   return {
     buffered: buffer.length,
     stuck,
+    faults: faults.length,
     lastAt: buffer.length > 0 ? buffer[buffer.length - 1].at : 0,
   };
 }
