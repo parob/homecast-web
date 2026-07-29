@@ -8,7 +8,7 @@
 // server because the relay had already claimed the request.
 
 import { describe, it, expect } from 'vitest';
-import { canServeLocally, type RelayRoutingState } from '../relay-routing';
+import { canServeLocally, resolveLocalHomeId, type RelayRoutingState } from '../relay-routing';
 
 /** County Hall on the managed relay, in both id spaces. */
 const LIVE = '3C4399F4-B7E7-5697-9866-D15A8C7CCFE5';
@@ -121,5 +121,54 @@ describe('when HomeKit has said which homes it has', () => {
       unservableHomeIds: new Set([LIVE]),
     });
     expect(canServeLocally('accessories.list', LIVE, conflicted)).toBe(false);
+  });
+});
+
+describe('resolveLocalHomeId', () => {
+  // The live UUID is precisely the thing that changes — that is why hc_ids
+  // exist. So a translation table is only safe if being stale cannot make it
+  // wrong. It cannot here: a translation is used only when HomeKit is
+  // currently reporting the result. Stale resolves to null and the request
+  // goes to the server, which re-resolves from the database.
+  const live = new Set([LIVE]);
+  const pair = new Map([[HC.toUpperCase(), LIVE]]);
+
+  it('translates an hc_id HomeKit is currently confirming', () => {
+    expect(resolveLocalHomeId(HC, { liveHomeIds: live, hcToLive: pair })).toBe(LIVE);
+  });
+
+  it('passes a live id through untouched', () => {
+    expect(resolveLocalHomeId(LIVE, { liveHomeIds: live, hcToLive: pair })).toBe(LIVE);
+  });
+
+  it('refuses a translation HomeKit no longer confirms', () => {
+    // The renumbering case: the mapping still says LIVE, HomeKit has moved on.
+    // Answering locally here would hand HomeKit an id it just dropped — the
+    // original bug, in a form that works until it silently does not.
+    const moved = new Set(['9F7051E7-7C70-53A6-BCC6-A2878761DC3E']);
+    expect(resolveLocalHomeId(HC, { liveHomeIds: moved, hcToLive: pair })).toBeNull();
+  });
+
+  it('refuses an id it has never heard of', () => {
+    expect(resolveLocalHomeId('11111111-2222-4333-8444-555555555555',
+      { liveHomeIds: live, hcToLive: pair })).toBeNull();
+  });
+
+  it('passes through before HomeKit has answered', () => {
+    // Empty means "not asked yet". Refusing everything would take the relay
+    // off the fast path entirely for the first few seconds of every session.
+    expect(resolveLocalHomeId(HC, { liveHomeIds: new Set(), hcToLive: new Map() }))
+      .toBe(HC.toUpperCase());
+  });
+
+  it('is case-insensitive on both sides, per RFC 4122', () => {
+    expect(resolveLocalHomeId(HC.toLowerCase(), { liveHomeIds: live, hcToLive: pair })).toBe(LIVE);
+    expect(resolveLocalHomeId(LIVE.toLowerCase(), { liveHomeIds: live, hcToLive: pair })).toBe(LIVE);
+  });
+
+  it('cannot be used without the live set — an empty map is not a licence', () => {
+    // Guards the failure mode that matters: a populated map plus a HomeKit that
+    // reports nothing must not resolve to anything.
+    expect(resolveLocalHomeId(HC, { liveHomeIds: new Set([LIVE]), hcToLive: new Map() })).toBeNull();
   });
 });

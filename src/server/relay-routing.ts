@@ -67,3 +67,36 @@ export function canServeLocally(
 
   return state.ownedHomeIds.has(key);
 }
+
+/**
+ * Which live HomeKit id, if any, this relay should use for a request.
+ *
+ * The cloud addresses homes by stable hc_id; HomeKit only knows live UUIDs, and
+ * the live one is *precisely the thing that changes* — that is why hc_ids exist.
+ * So a translation table is only safe if being stale cannot make it wrong.
+ *
+ * It cannot here, because a translated id is used only when HomeKit is
+ * currently reporting it. A mapping that has gone stale resolves to null and
+ * the request routes to the server, which re-resolves from the database. The
+ * cache is therefore an optimisation that is either right or absent; it has no
+ * state in which it is confidently wrong.
+ *
+ * Returns the id to use, or null if this relay cannot serve the home at all.
+ */
+export function resolveLocalHomeId(
+  homeId: string,
+  state: { liveHomeIds: ReadonlySet<string>; hcToLive: ReadonlyMap<string, string> },
+): string | null {
+  const key = homeId.toUpperCase();
+
+  // HomeKit has not answered yet. Behave exactly as before rather than refusing
+  // everything: ownership still decides, and this window is seconds long.
+  if (state.liveHomeIds.size === 0) return key;
+
+  if (state.liveHomeIds.has(key)) return key;
+
+  const live = state.hcToLive.get(key);
+  // The check that makes staleness harmless: translate only to something
+  // HomeKit is reporting right now.
+  return live && state.liveHomeIds.has(live) ? live : null;
+}

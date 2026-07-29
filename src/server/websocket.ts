@@ -17,7 +17,7 @@ import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
 import { errorCode } from '../lib/describe-error';
-import { canServeLocally } from './relay-routing';
+import { canServeLocally, resolveLocalHomeId } from './relay-routing';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from './local-activity';
@@ -298,6 +298,16 @@ export class ServerWebSocket {
    */
   private liveHomeIds = new Set<string>();
   private liveHomesRefreshedAt = 0;
+
+  /**
+   * Stable hc_id -> live HomeKit UUID, as the server last reported it.
+   *
+   * Rebuilt wholesale from every homes.list rather than merged, so a pair the
+   * server has stopped reporting disappears instead of lingering. Never trusted
+   * on its own — see resolveLocalHomeId, which only uses a translation HomeKit
+   * is currently confirming.
+   */
+  private hcToLiveHomeId = new Map<string, string>();
   private relayAssignmentTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Buffer for automation.* messages received before engine is initialized
@@ -460,7 +470,17 @@ export class ServerWebSocket {
     }
 
     const homeKey = homeId?.toUpperCase();
-    if (canServeLocally(action, homeId, {
+    // An hc_id names a home this relay serves but HomeKit cannot look up. If we
+    // hold a translation HomeKit is currently confirming, use it and stay on the
+    // fast path; otherwise this is not ours to answer and it goes to the server.
+    const localHomeId = homeKey
+      ? resolveLocalHomeId(homeKey, {
+          liveHomeIds: this.liveHomeIds,
+          hcToLive: this.hcToLiveHomeId,
+        })
+      : undefined;
+
+    if (localHomeId !== null && canServeLocally(action, localHomeId ?? undefined, {
       isActiveRelay: this.isActiveRelay,
       ownedHomeIds: this.ownedHomeIds,
       liveHomeIds: this.liveHomeIds,
@@ -468,7 +488,10 @@ export class ServerWebSocket {
     })) {
       if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, payload);
       try {
-        const result = await executeHomeKitAction(action, payload);
+        const localPayload = localHomeId && localHomeId !== homeKey
+          ? { ...payload, homeId: localHomeId }
+          : payload;
+        const result = await executeHomeKitAction(action, localPayload);
         if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, result);
 
         // Nothing to publish here: every write path announces itself from
@@ -484,6 +507,9 @@ export class ServerWebSocket {
         // than failing something that is perfectly serviceable one hop away.
         if (homeKey && errorCode(error) === 'HOME_NOT_FOUND') {
           this.unservableHomeIds.add(homeKey);
+          // The translation we used is disproven, so forget it — keeping it
+          // would mean translating to an id HomeKit has just disowned.
+          this.hcToLiveHomeId.delete(homeKey);
           // Re-ask rather than assume: if this id failed because the mapping
           // moved, the fresh list restores it. Fire-and-forget.
           void this.refreshLiveHomes();
@@ -537,11 +563,25 @@ export class ServerWebSocket {
     // Cache owned home IDs from homes.list response for relay routing decisions
     if (action === 'homes.list') {
       return promise.then((result) => {
-        const homes = (result as { homes?: Array<{ id: string; role?: string }> })?.homes;
+        const homes = (result as {
+          homes?: Array<{ id: string; role?: string; liveId?: string | null; hcId?: string | null }>;
+        })?.homes;
         if (homes) {
           this.ownedHomeIds = new Set(
             homes.filter(h => h.role === 'owner').map(h => h.id.toUpperCase())
           );
+
+          // Rebuilt, not merged: a pair the server has stopped reporting must
+          // disappear rather than linger. Only the relay is sent these — every
+          // other client stays in stable-id space by design.
+          const pairs = new Map<string, string>();
+          for (const home of homes) {
+            if (!home.hcId || !home.liveId) continue;
+            pairs.set(home.hcId.toUpperCase(), home.liveId.toUpperCase());
+          }
+          if (pairs.size > 0 || this.hcToLiveHomeId.size > 0) {
+            this.hcToLiveHomeId = pairs;
+          }
         }
         return result;
       });
