@@ -245,3 +245,26 @@ describe('a run is timed by its work, not by the reporting that follows it', () 
     expect(duration).toBeLessThan(100);
   });
 });
+
+describe('the delivery report replaces the placeholder completely', () => {
+  // The pending placeholder carries reason:'unknown'. When the real report
+  // arrived it overwrote `delivered` and `channels` but left `reason` behind,
+  // producing "delivered: true, reason: unknown" — a contradiction, in the one
+  // record built specifically to be trusted about delivery.
+  it('clears the placeholder reason on a clean delivery', async () => {
+    const step = await runAndGetNotifyStep(async () => ({
+      delivered: true, channels: ['push'],
+    }));
+    expect(step.output.delivered).toBe(true);
+    expect(step.output.channels).toEqual(['push']);
+    expect(step.output.reason).toBeUndefined();
+  });
+
+  it('still reports a reason when the deliverer gives one', async () => {
+    const step = await runAndGetNotifyStep(async () => ({
+      delivered: false, channels: [], rateLimited: true, reason: 'rate_limited' as const,
+    }));
+    expect(step.output.reason).toBe('rate_limited');
+    expect(step.output.rateLimited).toBe(true);
+  });
+});

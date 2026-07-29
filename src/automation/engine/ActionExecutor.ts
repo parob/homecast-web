@@ -585,8 +585,13 @@ export class ActionExecutor {
         return {
           delivered: result.delivered,
           channels: result.channels,
-          ...(result.rateLimited ? { rateLimited: true } : {}),
-          ...(result.reason ? { reason: result.reason } : {}),
+          rateLimited: result.rateLimited ?? undefined,
+          // Always carried, never conditional. Omitting it left the pending
+          // placeholder's `reason: 'unknown'` sitting next to a delivered:true
+          // that had just overwritten the fields around it — a trace reading
+          // "delivered, reason unknown", which is a contradiction, in the one
+          // record built specifically to be trusted about delivery.
+          reason: result.reason ?? undefined,
         };
       });
 
