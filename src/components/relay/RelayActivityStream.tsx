@@ -13,13 +13,14 @@ import { useRelayActivity } from '@/hooks/useRelayActivity';
 import type { RelayActivityEntry } from '@/server/websocket';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check, Cloud } from 'lucide-react';
+import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check, Cloud, Cpu } from 'lucide-react';
 
-type Lane = 'all' | 'socket' | 'homekit' | 'automation' | 'cloud';
+type Lane = 'all' | 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
 
 const LANES: { key: Lane; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'socket', label: 'Socket' },
+  { key: 'socket', label: 'Requests' },
+  { key: 'bridge', label: 'HomeKit calls' },
   { key: 'homekit', label: 'HomeKit' },
   { key: 'automation', label: 'Automations' },
   { key: 'cloud', label: 'Cloud' },
@@ -73,7 +74,7 @@ function formatForSharing(entries: RelayActivityEntry[]): string {
     const gapMs = previous ? (entry.at - previous.at) * 1000 : 0;
 
     let detail: string;
-    if (entry.lane === 'socket') {
+    if (entry.lane === 'socket' || entry.lane === 'bridge') {
       const outcome =
         entry.phase === 'sent' ? `NO RESPONSE (still waiting)`
         : entry.phase === 'failed' ? `FAILED ${entry.error ?? ''} ${entry.ms ? describeDuration(entry.ms) : ''}`.trim()
@@ -107,6 +108,7 @@ function LaneIcon({ lane }: { lane: RelayActivityEntry['lane'] }) {
   if (lane === 'socket') return <ArrowLeftRight className={cn(cls, 'text-sky-500')} />;
   if (lane === 'homekit') return <Home className={cn(cls, 'text-emerald-500')} />;
   if (lane === 'cloud') return <Cloud className={cn(cls, 'text-slate-400')} />;
+  if (lane === 'bridge') return <Cpu className={cn(cls, 'text-orange-500')} />;
   return <Zap className={cn(cls, 'text-violet-500')} />;
 }
 
@@ -200,7 +202,9 @@ function ActivityRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: num
       >
         <span className="shrink-0 tabular-nums text-muted-foreground">{clockTime(entry.at)}</span>
         <LaneIcon lane={entry.lane} />
-        {entry.lane === 'socket' && <SocketRow entry={entry} nowSec={nowSec} />}
+        {(entry.lane === 'socket' || entry.lane === 'bridge') && (
+          <SocketRow entry={entry} nowSec={nowSec} />
+        )}
         {entry.lane === 'homekit' && <HomeKitRow entry={entry} />}
         {entry.lane === 'automation' && <AutomationRow entry={entry} />}
         {entry.lane === 'cloud' && <CloudRow entry={entry} />}
@@ -233,7 +237,9 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
 
   // Only tick while something is actually outstanding — an idle relay should
   // not re-render this list once a second forever.
-  const hasPending = entries.some((e) => e.lane === 'socket' && e.phase === 'sent');
+  const hasPending = entries.some(
+    (e) => (e.lane === 'socket' || e.lane === 'bridge') && e.phase === 'sent',
+  );
   useEffect(() => {
     if (!hasPending) return;
     const t = setInterval(() => setNowSec(Date.now() / 1000), 500);
@@ -246,7 +252,7 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
     // pending row, so showing that flicker is noise. A request appears only once
     // it has been waiting long enough to be worth knowing about.
     return byLane.filter((e) => {
-      if (e.lane !== 'socket' || e.phase !== 'sent') return true;
+      if ((e.lane !== 'socket' && e.lane !== 'bridge') || e.phase !== 'sent') return true;
       return (nowSec - e.at) * 1000 >= PENDING_VISIBLE_AFTER_MS;
     });
   }, [entries, lane, nowSec]);

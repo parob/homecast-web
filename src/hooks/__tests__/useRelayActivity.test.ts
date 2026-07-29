@@ -15,12 +15,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-const { onLocalRelayActivity, unwatch } = vi.hoisted(() => ({
+const { onLocalRelayActivity, getBufferedActivity, unwatch } = vi.hoisted(() => ({
   onLocalRelayActivity: vi.fn(),
+  getBufferedActivity: vi.fn(() => []),
   unwatch: vi.fn(),
 }));
 
-vi.mock('@/server/local-activity', () => ({ onLocalRelayActivity }));
+vi.mock('@/server/local-activity', () => ({ onLocalRelayActivity, getBufferedActivity }));
 
 import { useRelayActivity } from '../useRelayActivity';
 
@@ -30,6 +31,7 @@ let emit: (entry: any) => void = () => {};
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
+  getBufferedActivity.mockReturnValue([]);
   onLocalRelayActivity.mockImplementation((handler: (e: any) => void) => {
     emit = handler;
     return unwatch;
@@ -85,11 +87,11 @@ describe('buffering', () => {
   it('keeps the buffer bounded so a busy relay cannot grow it without limit', () => {
     const { result } = renderHook(() => useRelayActivity('mac_abc'));
 
-    act(() => { for (let i = 0; i < 700; i++) emit(socket(`a${i}`, i)); vi.advanceTimersByTime(200); });
+    act(() => { for (let i = 0; i < 1400; i++) emit(socket(`a${i}`, i)); vi.advanceTimersByTime(200); });
 
-    expect(result.current.entries).toHaveLength(500);
+    expect(result.current.entries).toHaveLength(1000);
     // The newest survive; the oldest are dropped.
-    expect(result.current.entries[0].action).toBe('a699');
+    expect(result.current.entries[0].action).toBe('a1399');
   });
 });
 
@@ -130,3 +132,25 @@ describe('clearing', () => {
   });
 });
 
+
+// Recording runs whether or not the panel is open, so opening it should show
+// what already happened. The fault worth reading about is usually over by the
+// time anyone looks.
+describe('seeding from history', () => {
+  it('shows what was recorded before the panel opened', () => {
+    getBufferedActivity.mockReturnValue([socket('earlier', 5), socket('earliest', 1)]);
+
+    const { result } = renderHook(() => useRelayActivity('mac_abc'));
+
+    expect(result.current.entries.map((e) => e.action)).toEqual(['earlier', 'earliest']);
+  });
+
+  it('puts new entries above the seeded history', () => {
+    getBufferedActivity.mockReturnValue([socket('old', 1)]);
+    const { result } = renderHook(() => useRelayActivity('mac_abc'));
+
+    act(() => { emit(socket('new', 9)); vi.advanceTimersByTime(200); });
+
+    expect(result.current.entries.map((e) => e.action)).toEqual(['new', 'old']);
+  });
+});

@@ -621,6 +621,18 @@ async function executeHomeKitActionInner(
       return { reloading: true, inMs: wait };
     }
 
+    case 'debug.getActivity': {
+      // Remote read of the relay's own activity buffer. The stream is
+      // in-process by design, which makes it invisible from the outside — this
+      // is the seam that lets it be inspected without the relay having to push
+      // anything, and without the panel being open.
+      const { limit, before, lane } = payload as {
+        limit?: number; before?: number; lane?: 'socket' | 'bridge' | 'homekit' | 'automation' | 'cloud';
+      };
+      const { getActivityDump } = await import('../server/local-activity');
+      return getActivityDump({ limit, before, lane });
+    }
+
     case 'relay.probe': {
       const { homeId } = payload as { homeId: string };
       return await runRelayProbe(homeId);

@@ -129,7 +129,7 @@ export interface EnrollmentCancelled {
 
 /** One line of a relay's live activity stream. See relay-write / handler.py. */
 export interface RelayActivityEntry {
-  lane: 'socket' | 'homekit' | 'automation' | 'cloud';
+  lane: 'socket' | 'homekit' | 'automation' | 'cloud' | 'bridge';
   at: number;
   /** Correlates a socket entry's `sent` with its outcome, so one request is one row. */
   id?: string;

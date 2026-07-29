@@ -166,6 +166,11 @@ export interface HomeKitEvent {
 }
 
 // Type for the native bridge injected by the Mac app
+import {
+  emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
+} from '../server/local-activity';
+import { describeError } from '../lib/describe-error';
+
 interface NativeBridge {
   call<T>(method: string, payload?: Record<string, unknown>): Promise<T>;
   onEvent(handler: (event: HomeKitEvent) => void): () => void;
@@ -181,11 +186,62 @@ export function isRelayEnabled(): boolean {
   return isRelayCapable() && localStorage.getItem('homecast-relay-disabled') !== 'true';
 }
 
+/** Distinguishes native calls started in the same millisecond. */
+let nativeCallSeq = 0;
+
+/**
+ * Wrap the native bridge so every call into HomeKit is timed and reported.
+ *
+ * A relay action and the HomeKit work it causes are different things, and
+ * conflating them hid the question that mattered: when `characteristic.set`
+ * took 30 seconds, was HomeKit slow, or was the time spent elsewhere? One row
+ * covering both could not say. Now the action and the native call it makes are
+ * separate entries, each with its own duration, and the difference between them
+ * is time the relay spent on its own account.
+ *
+ * Wrapped once here rather than at each call site so reads are covered too, and
+ * so a new HomeKit method cannot be added without its timing.
+ */
+function instrument(bridge: NativeBridge): NativeBridge {
+  return {
+    onEvent: (handler) => bridge.onEvent(handler),
+    call<T>(method: string, payload?: Record<string, unknown>): Promise<T> {
+      if (!hasLocalActivityListeners()) return bridge.call<T>(method, payload);
+
+      const startedAt = activityNow();
+      const id = `native-${startedAt}-${++nativeCallSeq}`;
+      emitLocalRelayActivity({
+        lane: 'bridge', phase: 'sent', action: method, at: startedAt, id,
+        request: payload,
+      });
+
+      return bridge.call<T>(method, payload).then(
+        (result) => {
+          emitLocalRelayActivity({
+            lane: 'bridge', phase: 'ok', action: method, id, at: startedAt,
+            ms: Math.round((activityNow() - startedAt) * 1000),
+            request: payload, response: result,
+          });
+          return result;
+        },
+        (error) => {
+          emitLocalRelayActivity({
+            lane: 'bridge', phase: 'failed', action: method, id, at: startedAt,
+            ms: Math.round((activityNow() - startedAt) * 1000),
+            request: payload, error: describeError(error),
+          });
+          throw error;
+        },
+      );
+    },
+  };
+}
+
 // Get the native bridge instance
 function getNativeBridge(): NativeBridge | null {
   const win = window as Window & { homekit?: NativeBridge };
   if (win.homekit) {
-    return win.homekit;
+    return instrument(win.homekit);
   }
   return null;
 }

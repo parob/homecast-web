@@ -9,11 +9,14 @@
 // reading rather than a gap. That is the whole reason to pause a live log.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { onLocalRelayActivity } from '@/server/local-activity';
+import { onLocalRelayActivity, getBufferedActivity } from '@/server/local-activity';
 import type { RelayActivityEntry } from '@/server/websocket';
 
-/** Entries kept. Roughly a few minutes of a busy relay. */
-const MAX_ENTRIES = 500;
+/**
+ * Entries held for display. The recorder keeps more than this; the panel shows
+ * a window of it and the rest is reachable through the debug dump.
+ */
+const MAX_ENTRIES = 1000;
 /** Render at most this often; a burst should not schedule a render per entry. */
 const FLUSH_MS = 120;
 
@@ -47,6 +50,12 @@ export function useRelayActivity(deviceId: string | undefined): RelayActivity {
 
   useEffect(() => {
     if (!deviceId) return;
+
+    // Recording runs whether or not this panel is open, so start from what has
+    // already happened. A fault worth reading about is usually over by the time
+    // anyone opens the screen.
+    buffer.current = getBufferedActivity().slice(0, MAX_ENTRIES);
+    setEntries([...buffer.current]);
 
     const unwatch = onLocalRelayActivity((entry) => {
       // A request's outcome replaces its pending row rather than adding a
