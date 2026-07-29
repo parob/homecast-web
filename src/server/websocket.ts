@@ -102,6 +102,31 @@ export interface EnrollmentCancelled {
   homeName: string;
 }
 
+/** One line of a relay's live activity stream. See relay-write / handler.py. */
+export interface RelayActivityEntry {
+  lane: 'socket' | 'homekit' | 'automation';
+  at: number;
+  /** socket */
+  phase?: 'sent' | 'ok' | 'failed';
+  action?: string;
+  ms?: number;
+  error?: string;
+  traceId?: string;
+  /** homekit */
+  accessoryId?: string;
+  characteristicType?: string;
+  value?: unknown;
+  homeId?: string;
+  /** automation — the stored trace, verbatim */
+  automationId?: string;
+  name?: string;
+  status?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  triggerData?: Record<string, unknown>;
+  steps?: Record<string, unknown>[];
+}
+
 export type BroadcastMessage =
   | CharacteristicUpdate
   | ReachabilityUpdate
@@ -866,6 +891,18 @@ export class ServerWebSocket {
 
           this.callbacks.onRelayStatusChange?.(this.isActiveRelay);
         }
+      } else if (message.type === 'relay_activity') {
+        const entry = message.payload as unknown as RelayActivityEntry | undefined;
+        if (entry) {
+          for (const handler of this.activityHandlers) {
+            try {
+              handler(entry);
+            } catch (e) {
+              // One bad renderer must not stop the stream for the others.
+              console.error('[ServerWS] relay_activity handler failed', e);
+            }
+          }
+        }
       } else if (message.type === 'automation.notify_result') {
         // Never buffered: a notify is only in flight while the engine is running,
         // and the action waiting on it must not be held up behind the buffer.
@@ -1343,6 +1380,39 @@ export class ServerWebSocket {
       response._trace = trace;
     }
     this.send(response);
+  }
+
+  // ------------------------------------------------------------------
+  // Live relay activity stream
+  // ------------------------------------------------------------------
+
+  private activityHandlers = new Set<(entry: RelayActivityEntry) => void>();
+
+  /**
+   * Watch one relay's live activity: socket traffic, HomeKit updates and
+   * automation runs.
+   *
+   * The server only builds and sends entries while someone is watching, so the
+   * unsubscribe returned here is not optional bookkeeping — dropping it leaves
+   * the relay's request path doing work for a screen nobody is looking at.
+   */
+  watchRelayActivity(deviceId: string, handler: (entry: RelayActivityEntry) => void): () => void {
+    this.activityHandlers.add(handler);
+    this.sendRaw({ type: 'relay_activity.watch', payload: { deviceId } });
+
+    return () => {
+      this.activityHandlers.delete(handler);
+      if (this.activityHandlers.size === 0) {
+        this.sendRaw({ type: 'relay_activity.unwatch', payload: { deviceId } });
+      }
+    };
+  }
+
+  /** Send a message that is not a PROTOCOL.md request/response/event. */
+  private sendRaw(message: { type: string; payload?: Record<string, unknown> }): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+    }
   }
 
   private send(message: ProtocolMessage): void {
