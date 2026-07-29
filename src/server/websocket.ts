@@ -11,7 +11,7 @@ import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
-import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, seedAutomationState, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
+import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
 import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
@@ -368,23 +368,26 @@ export class ServerWebSocket {
    *
    * Never throws: failing to seed costs a noisy restart, not a broken relay.
    */
-  private async seedAutomationStateFromHomeKit(): Promise<void> {
+  private async collectCurrentValues(): Promise<Array<{ accessoryId: string; characteristicType: string; value: unknown }>> {
+    const collected: Array<{ accessoryId: string; characteristicType: string; value: unknown }> = [];
     try {
-      const homeIds = [...this.liveHomeIds];
-      if (homeIds.length === 0) return;
+      // Ask HomeKit directly rather than relying on liveHomeIds, which is
+      // populated by a refresh that may not have finished yet — the ordering
+      // bug this whole change exists to remove.
+      const homesResult = await executeHomeKitAction('homes.list', {}) as { homes?: Array<{ id: string }> };
+      const homeIds = (homesResult?.homes ?? []).map((h) => h.id).filter(Boolean);
+      if (homeIds.length === 0) return collected;
 
-      let seeded = 0;
       for (const homeId of homeIds) {
         const result = await executeHomeKitAction('accessories.list', {
           homeId, includeValues: true, includeAll: true,
         }) as { accessories?: Array<{ id: string; services?: Array<{ characteristics?: Array<{ characteristicType: string; value: unknown }> }> }> };
 
-        const entries: Array<{ accessoryId: string; characteristicType: string; value: unknown }> = [];
         for (const accessory of result?.accessories ?? []) {
           for (const service of accessory.services ?? []) {
             for (const characteristic of service.characteristics ?? []) {
               if (characteristic?.value === undefined) continue;
-              entries.push({
+              collected.push({
                 accessoryId: accessory.id,
                 characteristicType: characteristic.characteristicType,
                 value: characteristic.value,
@@ -392,12 +395,11 @@ export class ServerWebSocket {
             }
           }
         }
-        seeded += seedAutomationState(entries);
       }
-      console.log(`[ServerWS] Seeded automation state with ${seeded} known values`);
     } catch (e) {
-      console.warn('[ServerWS] Could not seed automation state — a restart may re-fire triggers', e);
+      console.warn('[ServerWS] Could not read current values — this start may re-fire triggers', e);
     }
+    return collected;
   }
 
   /**
@@ -414,12 +416,8 @@ export class ServerWebSocket {
       const ids = (result?.homes ?? []).map((h) => h.id?.toUpperCase()).filter(Boolean) as string[];
       if (ids.length === 0) return;
 
-      const firstLoad = this.liveHomeIds.size === 0;
       this.liveHomeIds = new Set(ids);
       this.liveHomesRefreshedAt = Date.now();
-      // Only on the first load: seeding is about the startup burst, and
-      // re-seeding later would be a no-op anyway since seed() only fills gaps.
-      if (firstLoad) void this.seedAutomationStateFromHomeKit();
       // An id HomeKit now reports is servable again, whatever happened before —
       // this is how a genuinely moved mapping recovers without a restart.
       for (const id of ids) this.unservableHomeIds.delete(id);
@@ -827,6 +825,8 @@ export class ServerWebSocket {
 
     initAutomationEngine({
       serviceGroupResolver,
+      // Applied before the engine subscribes — see InitOptions.seedState.
+      seedState: () => this.collectCurrentValues(),
       bridge: createHomeKitBridgeAdapter(),
       transport: createSyncTransport(
         // sendFn: sends automation messages to server

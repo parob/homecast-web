@@ -220,4 +220,38 @@ describe('seeding what the relay already knows', () => {
       { accessoryId: 'A', characteristicType: 'power_state', value: true },
     ])).not.toThrow();
   });
+
+  it('applies seedState before the engine subscribes', async () => {
+    // The ordering is the fix. Seeding alongside the subscription was a race:
+    // quiet on one restart, notifying the house on the next, depending on which
+    // finished first. Asserted by recording the order the engine did things in.
+    mod.teardownAutomationEngine();
+    const order: string[] = [];
+
+    await mod.initAutomationEngine({
+      bridge: bridge(),
+      seedState: async () => {
+        order.push('seed');
+        return [{ accessoryId: 'ACC-9', characteristicType: 'power_state', value: true }];
+      },
+      subscribeToHomeKit: () => { order.push('subscribe'); return () => {}; },
+      onNotify: async () => {},
+    });
+
+    expect(order).toEqual(['seed', 'subscribe']);
+    // And the value is in the store by the time anything can report it.
+    expect(mod.getAutomationEngine()!.stateStore.getState('ACC-9', 'power_state')).toBe(true);
+  });
+
+  it('still comes up if reading current values fails', async () => {
+    // A noisy start is bad; a relay that will not start is worse.
+    mod.teardownAutomationEngine();
+    const engine = await mod.initAutomationEngine({
+      bridge: bridge(),
+      seedState: async () => { throw new Error('HomeKit said no'); },
+      subscribeToHomeKit: () => () => {},
+      onNotify: async () => {},
+    });
+    expect(engine).toBeTruthy();
+  });
 });

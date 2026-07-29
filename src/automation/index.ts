@@ -52,6 +52,16 @@ export interface InitOptions {
   onTraceComplete?: (trace: ExecutionTrace) => void;
   /** Called whenever a helper value changes, so it can be persisted. */
   onHelperStateChange?: (helperId: string, state: unknown) => void;
+  /**
+   * Current values, fetched and applied *before* the engine subscribes.
+   *
+   * Ordering is the whole point. HomeKit starts reporting the moment you
+   * subscribe, and those reports are exactly what we need to recognise as
+   * already-known. Seeding alongside the subscription is a race: it was quiet
+   * once and notified the house the next time, depending on which finished
+   * first. Awaiting it here makes the order a fact rather than a hope.
+   */
+  seedState?: () => Promise<Iterable<{ accessoryId: string; characteristicType: string; value: unknown }>>;
 }
 
 /**
@@ -96,6 +106,17 @@ export async function initAutomationEngine(options: InitOptions): Promise<Automa
 
   if (options.transport) {
     syncInstance = new AutomationSyncManager(engineInstance, options.transport);
+  }
+
+  // Seed before subscribing, never alongside. Failing to seed costs a noisy
+  // start, so it must not stop the engine coming up.
+  if (options.seedState) {
+    try {
+      const seeded = engineInstance.stateStore.seed(await options.seedState());
+      console.log(`[Automation] Seeded ${seeded} known values before subscribing`);
+    } catch (e) {
+      console.warn('[Automation] Could not seed state — this start may re-fire triggers', e);
+    }
   }
 
   // Initialize engine (subscribe to HomeKit events)
