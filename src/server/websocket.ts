@@ -186,9 +186,9 @@ interface PendingRequest {
 }
 
 // Reconnection settings
-const INITIAL_RECONNECT_DELAY = 1000;
-const MAX_RECONNECT_DELAY = 30000;
-const RECONNECT_MULTIPLIER = 1.5;
+import {
+  INITIAL_RECONNECT_DELAY, nextReconnectDelay, resetsBackoff, jitter,
+} from './reconnect-policy';
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
 // Short by design: a notify action must not stall the rest of the automation
@@ -1236,6 +1236,13 @@ export class ServerWebSocket {
       }
       this.setState('disconnected');
     } else {
+      // A pod going away closes with 1012/1001. That is the unsolicited twin
+      // of the server's `reconnect` message, which already resets backoff —
+      // so treat it the same way instead of serving a 30s penalty for the
+      // server's own routine restart.
+      if (resetsBackoff(event.code)) {
+        this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+      }
       this.setState('reconnecting');
       this.scheduleReconnect();
     }
@@ -1652,17 +1659,13 @@ export class ServerWebSocket {
   private scheduleReconnect(): void {
     if (this.isManualDisconnect) return;
 
-    // Add jitter (±20%) to prevent thundering herd on server restart
-    const jitter = this.reconnectDelay * 0.2 * (Math.random() * 2 - 1);
-    const delay = Math.max(0, this.reconnectDelay + jitter);
+    const delay = jitter(this.reconnectDelay);
     console.log(`[ServerWS] Reconnecting in ${Math.round(delay)}ms...`);
     this.reconnectTimeout = setTimeout(() => {
       this.establishConnection();
-      // Increase delay for next attempt (exponential backoff)
-      this.reconnectDelay = Math.min(
-        this.reconnectDelay * RECONNECT_MULTIPLIER,
-        MAX_RECONNECT_DELAY
-      );
+      // The relay's ceiling is far lower than a browser's: every second asleep
+      // is a second the home does not answer.
+      this.reconnectDelay = nextReconnectDelay(this.reconnectDelay, isRelayEnabled());
     }, delay);
   }
 
