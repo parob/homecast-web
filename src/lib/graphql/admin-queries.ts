@@ -1257,3 +1257,17 @@ export const ADMIN_RELAY_ACTIVITY = gql`
     }
   }
 `;
+
+/**
+ * Remote ⌘R for a relay.
+ *
+ * The relay fetches its JavaScript once at startup and never refetches, so a
+ * deployed relay-side fix stays inert until the Mac app is restarted by hand —
+ * which for a cloud-managed relay nobody is standing next to means "deployed"
+ * and "live" drift apart indefinitely.
+ */
+export const RELOAD_RELAY = gql`
+  mutation ReloadRelay($deviceId: String!) {
+    reloadRelay(deviceId: $deviceId)
+  }
+`;
