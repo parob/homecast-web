@@ -143,3 +143,81 @@ describe('notifyRelayGroupWrite when expansion produces nothing', () => {
     expect(activity.getActivityDump({ faultsOnly: true, limit: 10 }).entries).toHaveLength(0);
   });
 });
+
+describe('seeding what the relay already knows', () => {
+  // HomeKit delivers every accessory's current value right after the relay
+  // subscribes, each as `undefined -> value`. A trigger naming only `to:` has
+  // nothing to reject that with, so every automation whose target matched the
+  // current state fired at once — a restart notified for the lot.
+  let mod: typeof import('../index');
+  const bridge = () => ({
+    setCharacteristic: vi.fn(async () => {}),
+    setServiceGroup: vi.fn(async () => {}),
+    executeScene: vi.fn(async () => {}),
+  }) as never;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mod = await import('../index');
+    await mod.initAutomationEngine({
+      bridge: bridge(), subscribeToHomeKit: () => () => {}, onNotify: async () => {},
+    });
+  });
+  afterEach(() => { mod.teardownAutomationEngine(); });
+
+  it('records values without publishing them as changes', () => {
+    const seen: unknown[] = [];
+    mod.getAutomationEngine()!.stateStore.onAnyStateChange((e) => seen.push(e));
+
+    mod.seedAutomationState([
+      { accessoryId: 'ACC-1', characteristicType: 'power_state', value: true },
+    ]);
+
+    expect(mod.getAutomationEngine()!.stateStore.getState('ACC-1', 'power_state')).toBe(true);
+    // The whole point: no trigger can fire off a seed.
+    expect(seen).toHaveLength(0);
+  });
+
+  it('turns HomeKit\'s startup burst into a no-op', () => {
+    mod.seedAutomationState([
+      { accessoryId: 'ACC-1', characteristicType: 'power_state', value: true },
+    ]);
+    const seen: unknown[] = [];
+    mod.getAutomationEngine()!.stateStore.onAnyStateChange((e) => seen.push(e));
+
+    // HomeKit now reports what it already had.
+    mod.getAutomationEngine()!.stateStore.updateDeviceState('ACC-1', 'power_state', true);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('still reports a genuine change after seeding', () => {
+    mod.seedAutomationState([
+      { accessoryId: 'ACC-1', characteristicType: 'power_state', value: true },
+    ]);
+    const seen: Array<{ oldValue: unknown; newValue: unknown }> = [];
+    mod.getAutomationEngine()!.stateStore.onAnyStateChange((e) => seen.push(e));
+
+    mod.getAutomationEngine()!.stateStore.updateDeviceState('ACC-1', 'power_state', false);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ oldValue: true, newValue: false });
+  });
+
+  it('never overwrites something already learned', () => {
+    // A real event that arrived while the seed was being fetched is newer than
+    // the seed, and must win.
+    mod.getAutomationEngine()!.stateStore.updateDeviceState('ACC-1', 'power_state', false);
+    const seeded = mod.seedAutomationState([
+      { accessoryId: 'ACC-1', characteristicType: 'power_state', value: true },
+    ]);
+
+    expect(seeded).toBe(0);
+    expect(mod.getAutomationEngine()!.stateStore.getState('ACC-1', 'power_state')).toBe(false);
+  });
+
+  it('is a no-op with no engine, rather than throwing into startup', () => {
+    mod.teardownAutomationEngine();
+    expect(() => mod.seedAutomationState([
+      { accessoryId: 'A', characteristicType: 'power_state', value: true },
+    ])).not.toThrow();
+  });
+});

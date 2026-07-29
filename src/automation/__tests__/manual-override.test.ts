@@ -43,12 +43,22 @@ describe('write attribution', () => {
     expect(store.wasManuallyChanged('light-1', 'brightness')).toBe(true);
   });
 
-  it('credits a write only once — a later echo is somebody else', () => {
+  it('does not read a repeated report as somebody else', () => {
+    // This used to expect the opposite: the second identical report was
+    // credited to a human, because the first had consumed the pending write.
+    // But HomeKit re-reports the same value freely — a device confirming
+    // itself, a group reporting member by member — and none of that is a
+    // person touching anything. Attributing it to one made automations back
+    // off from a device nobody had touched.
+    //
+    // The store no longer publishes a non-change at all, so there is nothing
+    // to misattribute. A human flipping the light to a *different* value is
+    // still caught — see 'marks a human flipping the same light as manual'.
     store.recordWrite('light-1', 'power_state', true);
     store.updateDeviceState('light-1', 'power_state', true);
     store.updateDeviceState('light-1', 'power_state', true);
 
-    expect(store.wasManuallyChanged('light-1', 'power_state')).toBe(true);
+    expect(store.wasManuallyChanged('light-1', 'power_state')).toBe(false);
   });
 
   it('stops crediting a write once the attribution window passes', () => {

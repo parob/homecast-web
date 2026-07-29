@@ -98,9 +98,22 @@ export class StateStore {
       this.deviceStates.set(accessoryId, charMap);
     }
     const oldValue = charMap.get(characteristicType);
+    const isFirstReport = !charMap.has(characteristicType);
 
     // Update state
     charMap.set(characteristicType, newValue);
+
+    // A store of state should announce changes to it. HomeKit re-reports the
+    // same value freely — a device confirming itself, a group reporting member
+    // by member — and every one of those was published as a change, so a
+    // trigger watching `to: 1` fired again on 1 -> 1. Compared with
+    // valuesMatch, not ===, because HomeKit reports booleans where a write used
+    // 1/0 and `true === 1` is false.
+    //
+    // A first report is always announced: not knowing a value and learning it
+    // is a change of knowledge, and suppressing it would hide a device that
+    // only ever reports once.
+    if (!isFirstReport && valuesMatch(oldValue, newValue)) return;
 
     // Update lastChanged timestamp
     let changedMap = this.lastChanged.get(accessoryId);
@@ -325,6 +338,41 @@ export class StateStore {
    */
   getAllDeviceStates(): Map<string, Map<string, unknown>> {
     return this.deviceStates;
+  }
+
+  /**
+   * Record values the relay already knows, without treating them as changes.
+   *
+   * Nothing pre-loads this store; it learns purely from HomeKit events. But
+   * HomeKit delivers every accessory's current value right after the relay
+   * subscribes, and each of those arrives as `undefined -> value`. A trigger
+   * naming only `to:` has nothing to reject that with, so every automation
+   * whose target matched the *current* state fired at once — a relay restart
+   * notified for the lot.
+   *
+   * Seeding first makes that burst a no-op: the values already match, and
+   * `updateDeviceState` no longer publishes a non-change. A genuine change
+   * still differs from the seed and still fires.
+   *
+   * Only fills gaps. A value that arrived while the seed was being fetched is
+   * newer than the seed and must not be overwritten by it.
+   */
+  seed(entries: Iterable<{ accessoryId: string; characteristicType: string; value: unknown }>): number {
+    let seeded = 0;
+    for (const { accessoryId, characteristicType, value } of entries) {
+      if (value === undefined || !accessoryId || !characteristicType) continue;
+
+      let charMap = this.deviceStates.get(accessoryId);
+      if (!charMap) {
+        charMap = new Map();
+        this.deviceStates.set(accessoryId, charMap);
+      }
+      if (charMap.has(characteristicType)) continue;
+
+      charMap.set(characteristicType, value);
+      seeded++;
+    }
+    return seeded;
   }
 
   /**

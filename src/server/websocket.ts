@@ -11,7 +11,7 @@ import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
-import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
+import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, seedAutomationState, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
 import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
@@ -354,6 +354,53 @@ export class ServerWebSocket {
   }
 
   /**
+   * Tell the engine what everything is currently set to, before HomeKit does.
+   *
+   * HomeKit delivers every accessory's value right after the relay subscribes,
+   * and each arrives as `undefined -> value`. A trigger naming only `to:` has
+   * nothing to reject that with, so every automation whose target matched the
+   * current state fired at once: a restart notified for all of them.
+   *
+   * Seeding first turns that burst into a no-op — the values already match, and
+   * the store no longer publishes a non-change. Uses `accessories.list`, which
+   * this relay already calls constantly, so it costs one more of a request we
+   * were making anyway rather than a new kind of traffic.
+   *
+   * Never throws: failing to seed costs a noisy restart, not a broken relay.
+   */
+  private async seedAutomationStateFromHomeKit(): Promise<void> {
+    try {
+      const homeIds = [...this.liveHomeIds];
+      if (homeIds.length === 0) return;
+
+      let seeded = 0;
+      for (const homeId of homeIds) {
+        const result = await executeHomeKitAction('accessories.list', {
+          homeId, includeValues: true, includeAll: true,
+        }) as { accessories?: Array<{ id: string; services?: Array<{ characteristics?: Array<{ characteristicType: string; value: unknown }> }> }> };
+
+        const entries: Array<{ accessoryId: string; characteristicType: string; value: unknown }> = [];
+        for (const accessory of result?.accessories ?? []) {
+          for (const service of accessory.services ?? []) {
+            for (const characteristic of service.characteristics ?? []) {
+              if (characteristic?.value === undefined) continue;
+              entries.push({
+                accessoryId: accessory.id,
+                characteristicType: characteristic.characteristicType,
+                value: characteristic.value,
+              });
+            }
+          }
+        }
+        seeded += seedAutomationState(entries);
+      }
+      console.log(`[ServerWS] Seeded automation state with ${seeded} known values`);
+    } catch (e) {
+      console.warn('[ServerWS] Could not seed automation state — a restart may re-fire triggers', e);
+    }
+  }
+
+  /**
    * Ask HomeKit which homes this Mac actually has.
    *
    * Cheap — it is a local bridge call with no network — and it is what lets the
@@ -367,8 +414,12 @@ export class ServerWebSocket {
       const ids = (result?.homes ?? []).map((h) => h.id?.toUpperCase()).filter(Boolean) as string[];
       if (ids.length === 0) return;
 
+      const firstLoad = this.liveHomeIds.size === 0;
       this.liveHomeIds = new Set(ids);
       this.liveHomesRefreshedAt = Date.now();
+      // Only on the first load: seeding is about the startup burst, and
+      // re-seeding later would be a no-op anyway since seed() only fills gaps.
+      if (firstLoad) void this.seedAutomationStateFromHomeKit();
       // An id HomeKit now reports is servable again, whatever happened before —
       // this is how a genuinely moved mapping recovers without a restart.
       for (const id of ids) this.unservableHomeIds.delete(id);

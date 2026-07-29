@@ -181,6 +181,18 @@ export function notifyRelayWrite(
 }
 
 /**
+ * Record what the relay already knows, before HomeKit tells it again.
+ *
+ * Returns how many values were new, so the caller can log something meaningful
+ * rather than a bare "done".
+ */
+export function seedAutomationState(
+  entries: Iterable<{ accessoryId: string; characteristicType: string; value: unknown }>,
+): number {
+  return engineInstance?.stateStore.seed(entries) ?? 0;
+}
+
+/**
  * The accessories in a service group, as the relay currently understands it.
  *
  * Exported because a group write has two audiences with different needs: the
