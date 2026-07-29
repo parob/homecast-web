@@ -16,6 +16,8 @@ import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
+import { errorCode } from '../lib/describe-error';
+import { canServeLocally } from './relay-routing';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from './local-activity';
@@ -262,6 +264,20 @@ export class ServerWebSocket {
   private isActiveRelay = false;
   // Owned home IDs — cached from homes.list response for routing decisions
   private ownedHomeIds = new Set<string>();
+  /**
+   * Home ids this relay's own HomeKit has rejected.
+   *
+   * Ownership and addressability are different questions, and the fast path
+   * conflated them. The cloud addresses homes by stable hc_id; HomeKit only
+   * knows its live UUIDs. An hc_id for a home this relay genuinely owns passes
+   * the ownership check, reaches HomeKit, and fails with HOME_NOT_FOUND —
+   * measured live on all three homes of the managed relay.
+   *
+   * The cloud can resolve those ids and we cannot, so once HomeKit has
+   * disowned one we stop claiming it and let the request route out. Bounded by
+   * the number of homes, and cleared on reconnect in case the mapping moves.
+   */
+  private unservableHomeIds = new Set<string>();
   private relayAssignmentTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Buffer for automation.* messages received before engine is initialized
@@ -399,8 +415,12 @@ export class ServerWebSocket {
       await this.waitForRelayAssignment(5000);
     }
 
-    const isOwnedHome = !homeId || this.ownedHomeIds.has(homeId.toUpperCase());
-    if (this.isActiveRelay && action !== 'homes.list' && isOwnedHome) {
+    const homeKey = homeId?.toUpperCase();
+    if (canServeLocally(action, homeId, {
+      isActiveRelay: this.isActiveRelay,
+      ownedHomeIds: this.ownedHomeIds,
+      unservableHomeIds: this.unservableHomeIds,
+    })) {
       if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, payload);
       try {
         const result = await executeHomeKitAction(action, payload);
@@ -413,8 +433,23 @@ export class ServerWebSocket {
 
         return result as T;
       } catch (error) {
-        console.error(`[ServerWS] Local request failed: ${action}`, error);
-        throw error;
+        // HomeKit not recognising the home means we were addressed in an id
+        // space this relay does not speak — not that the request is bad. The
+        // cloud resolves those, so retire the id here and route it out rather
+        // than failing something that is perfectly serviceable one hop away.
+        if (homeKey && errorCode(error) === 'HOME_NOT_FOUND') {
+          this.unservableHomeIds.add(homeKey);
+          console.warn(
+            `[ServerWS] HomeKit does not know home ${homeKey} — routing ${action} ` +
+            `via the server from now on (stable id vs live HomeKit UUID)`,
+          );
+          // Deliberately neither returns nor rethrows: falling out of the block
+          // hands the request to the outbound path below, which is the one that
+          // owns timeouts, correlation and the homes.list cache.
+        } else {
+          console.error(`[ServerWS] Local request failed: ${action}`, error);
+          throw error;
+        }
       }
     }
 
@@ -1652,6 +1687,10 @@ export class ServerWebSocket {
 
     // Clear per-session caches
     this.accessoryHomeCache.clear();
+    // Cleared here rather than on every homes.list: within a session the id
+    // mapping does not move, and re-arming it each poll would just repeat the
+    // failed HomeKit call. A reconnect is the point where it might have.
+    this.unservableHomeIds.clear();
 
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;
