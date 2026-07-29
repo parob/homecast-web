@@ -13,7 +13,7 @@ import { useRelayActivity } from '@/hooks/useRelayActivity';
 import type { RelayActivityEntry } from '@/server/websocket';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap } from 'lucide-react';
+import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check } from 'lucide-react';
 
 type Lane = 'all' | 'socket' | 'homekit' | 'automation';
 
@@ -41,6 +41,49 @@ function readValue(value: unknown): string {
   if (value === false || value === 0) return 'Off';
   if (value === null || value === undefined) return '—';
   return String(value);
+}
+
+/**
+ * The stream as text, for pasting somewhere else.
+ *
+ * Deliberately the same shape as the screen — including the silence markers,
+ * which are usually the point of sharing it at all. Oldest last, as displayed,
+ * so a pasted excerpt reads the same way as the panel it came from.
+ */
+function formatForSharing(entries: RelayActivityEntry[]): string {
+  const lines: string[] = [
+    `Homecast relay activity — ${new Date().toISOString()} — ${entries.length} entries`,
+    '',
+  ];
+
+  entries.forEach((entry, i) => {
+    const previous = entries[i + 1];
+    const gapMs = previous ? (entry.at - previous.at) * 1000 : 0;
+
+    let detail: string;
+    if (entry.lane === 'socket') {
+      const outcome =
+        entry.phase === 'sent' ? 'waiting…'
+        : entry.phase === 'failed' ? `FAILED ${entry.error ?? ''} ${entry.ms ? describeDuration(entry.ms) : ''}`.trim()
+        : `ok ${entry.ms !== undefined ? describeDuration(entry.ms) : ''}`.trim();
+      detail = `${entry.action}  ${outcome}`;
+    } else if (entry.lane === 'homekit') {
+      detail = `${entry.accessoryId ?? '?'}  ${entry.characteristicType ?? '?'} = ${readValue(entry.value)}`;
+    } else {
+      const ms =
+        entry.startedAt && entry.finishedAt
+          ? new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime()
+          : undefined;
+      detail = `${entry.name ?? 'Automation'}  ${entry.steps?.length ?? 0} steps  ${entry.status}${ms !== undefined ? ` ${describeDuration(ms)}` : ''}`;
+    }
+
+    lines.push(`${clockTime(entry.at)}  ${entry.lane.padEnd(10)} ${detail}`);
+    if (gapMs >= SILENCE_THRESHOLD_MS) {
+      lines.push(`${' '.repeat(10)}──── silent ${describeDuration(gapMs)} ────`);
+    }
+  });
+
+  return lines.join('\n');
 }
 
 function LaneIcon({ lane }: { lane: RelayActivityEntry['lane'] }) {
@@ -113,11 +156,24 @@ function AutomationRow({ entry }: { entry: RelayActivityEntry }) {
 export function RelayActivityStream({ deviceId }: { deviceId: string | undefined }) {
   const { entries, paused, setPaused, clear, pendingWhilePaused } = useRelayActivity(deviceId);
   const [lane, setLane] = useState<Lane>('all');
+  const [copied, setCopied] = useState(false);
 
   const visible = useMemo(
     () => (lane === 'all' ? entries : entries.filter((e) => e.lane === lane)),
     [entries, lane],
   );
+
+  // Copies what is on screen, filter and all: a shared excerpt should match
+  // what the person sharing it was looking at.
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(formatForSharing(visible));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard can be refused; say nothing rather than throw at the user.
+    }
+  };
 
   return (
     <div className="rounded-xl border bg-card">
@@ -146,6 +202,9 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
               {pendingWhilePaused} while paused
             </span>
           )}
+          <Button variant="ghost" size="sm" onClick={copy} disabled={visible.length === 0} title="Copy as text">
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setPaused(!paused)}>
             {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
           </Button>
