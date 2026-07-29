@@ -8,7 +8,7 @@
  * This runs inside the Mac app's WKWebView — NOT in external browsers.
  */
 
-import { HomeKit } from '../native/homekit-bridge';
+import { withCallReason, HomeKit } from '../native/homekit-bridge';
 import { isCommunity, isClientMode } from '../lib/config';
 
 let unsubscribe: (() => void) | null = null;
@@ -64,7 +64,8 @@ export function initLocalBroadcast(): void {
   // In cloud mode, the heartbeat ping resets it (websocket.ts:1106).
   // In Community mode, we run our own keep-alive interval.
   observationKeepAlive = setInterval(() => {
-    HomeKit.resetObservationTimeout().catch((err) => {
+    withCallReason('keepalive: native observation self-stops after 90s', () =>
+      HomeKit.resetObservationTimeout()).catch((err) => {
       console.warn('[LocalBroadcast] Observation keepalive failed — external changes may not propagate:', err);
     });
   }, 30_000);

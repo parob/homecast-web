@@ -132,6 +132,10 @@ function SocketRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: numbe
       {entry.origin === 'cloud' && (
         <span className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground">cloud</span>
       )}
+      {/* A repeating call raises "why", and the row could not answer it. */}
+      {entry.reason && (
+        <span className="truncate text-[10px] italic text-muted-foreground">{entry.reason}</span>
+      )}
       <span
         className={cn(
           'ml-auto shrink-0 tabular-nums',

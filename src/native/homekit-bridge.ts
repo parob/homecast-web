@@ -202,6 +202,32 @@ let nativeCallSeq = 0;
  * Wrapped once here rather than at each call site so reads are covered too, and
  * so a new HomeKit method cannot be added without its timing.
  */
+/**
+ * Why the call happening right now is happening.
+ *
+ * The stream shows *what* the relay asked HomeKit and how long it took, and
+ * that was enough to answer "is it slow". It cannot answer "why is this being
+ * asked ninety times an hour", which is the question a repeating call actually
+ * raises — an `accessories.list` looks identical whether a user opened the
+ * dashboard or something is re-reading the world on a timer.
+ *
+ * Set synchronously around the call and read when the entry is emitted, which
+ * also happens synchronously. Deliberately not restored to a previous value:
+ * nesting would mean a reason outliving its call, and a wrong reason is worse
+ * than none.
+ */
+let callReason: string | undefined;
+
+/** Tag every bridge call made inside `fn` with a reason. */
+export function withCallReason<T>(reason: string, fn: () => T): T {
+  callReason = reason;
+  try {
+    return fn();
+  } finally {
+    callReason = undefined;
+  }
+}
+
 function instrument(bridge: NativeBridge): NativeBridge {
   return {
     onEvent: (handler) => bridge.onEvent(handler),
@@ -210,9 +236,12 @@ function instrument(bridge: NativeBridge): NativeBridge {
 
       const startedAt = activityNow();
       const id = `native-${startedAt}-${++nativeCallSeq}`;
+      // Captured now: the call is about to go async, and by the time it settles
+      // some other call will have set its own reason.
+      const reason = callReason;
       emitLocalRelayActivity({
         lane: 'bridge', phase: 'sent', action: method, at: startedAt, id,
-        request: payload,
+        request: payload, reason,
       });
 
       return bridge.call<T>(method, payload).then(
@@ -220,7 +249,7 @@ function instrument(bridge: NativeBridge): NativeBridge {
           emitLocalRelayActivity({
             lane: 'bridge', phase: 'ok', action: method, id, at: startedAt,
             ms: Math.round((activityNow() - startedAt) * 1000),
-            request: payload, response: result,
+            request: payload, response: result, reason,
           });
           return result;
         },
@@ -228,7 +257,7 @@ function instrument(bridge: NativeBridge): NativeBridge {
           emitLocalRelayActivity({
             lane: 'bridge', phase: 'failed', action: method, id, at: startedAt,
             ms: Math.round((activityNow() - startedAt) * 1000),
-            request: payload, error: describeError(error),
+            request: payload, error: describeError(error), reason,
           });
           throw error;
         },

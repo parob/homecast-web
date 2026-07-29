@@ -5,7 +5,7 @@
  * In browser mode: Connects to server, sends requests (routed to remote relay), receives broadcasts
  */
 
-import { HomeKit, HomeKitEvent, isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
+import { HomeKit, HomeKitEvent, isRelayCapable, isRelayEnabled, withCallReason } from '../native/homekit-bridge';
 import { executeHomeKitAction, setAccessoryLimit as setLocalHandlerAccessoryLimit, isAccessoryAllowed } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
@@ -133,6 +133,8 @@ export interface EnrollmentCancelled {
 export interface RelayActivityEntry {
   lane: 'socket' | 'homekit' | 'automation' | 'cloud' | 'bridge';
   at: number;
+  /** Why this happened, for calls nobody asked for directly. */
+  reason?: string;
   /** Correlates a socket entry's `sent` with its outcome, so one request is one row. */
   id?: string;
   /** Where the request came from: this Mac's own UI, or the cloud. */
@@ -374,14 +376,16 @@ export class ServerWebSocket {
       // Ask HomeKit directly rather than relying on liveHomeIds, which is
       // populated by a refresh that may not have finished yet — the ordering
       // bug this whole change exists to remove.
-      const homesResult = await executeHomeKitAction('homes.list', {}) as { homes?: Array<{ id: string }> };
+      const homesResult = await withCallReason('startup seed: list homes',
+        () => executeHomeKitAction('homes.list', {})) as { homes?: Array<{ id: string }> };
       const homeIds = (homesResult?.homes ?? []).map((h) => h.id).filter(Boolean);
       if (homeIds.length === 0) return collected;
 
       for (const homeId of homeIds) {
-        const result = await executeHomeKitAction('accessories.list', {
-          homeId, includeValues: true, includeAll: true,
-        }) as { accessories?: Array<{ id: string; services?: Array<{ characteristics?: Array<{ characteristicType: string; value: unknown }> }> }> };
+        const result = await withCallReason('startup seed: current values, so HomeKit\'s burst is not a change',
+          () => executeHomeKitAction('accessories.list', {
+            homeId, includeValues: true, includeAll: true,
+          })) as { accessories?: Array<{ id: string; services?: Array<{ characteristics?: Array<{ characteristicType: string; value: unknown }> }> }> };
 
         for (const accessory of result?.accessories ?? []) {
           for (const service of accessory.services ?? []) {
@@ -412,7 +416,8 @@ export class ServerWebSocket {
    */
   private async refreshLiveHomes(): Promise<void> {
     try {
-      const result = await executeHomeKitAction('homes.list', {}) as { homes?: Array<{ id: string }> };
+      const result = await withCallReason('relay start: which homes does HomeKit have',
+        () => executeHomeKitAction('homes.list', {})) as { homes?: Array<{ id: string }> };
       const ids = (result?.homes ?? []).map((h) => h.id?.toUpperCase()).filter(Boolean) as string[];
       if (ids.length === 0) return;
 
@@ -1765,7 +1770,10 @@ export class ServerWebSocket {
         }
         this.ws.send(JSON.stringify({ type: 'ping' }));
         if (isRelayCapable()) {
-          HomeKit.resetObservationTimeout().catch(() => {});
+          // Native observation self-stops after 90s without this, so it rides
+          // the 30s heartbeat: two chances to miss before HomeKit goes quiet.
+          withCallReason('heartbeat: keep HomeKit observation alive',
+            () => HomeKit.resetObservationTimeout().catch(() => {}));
         }
       }
     };

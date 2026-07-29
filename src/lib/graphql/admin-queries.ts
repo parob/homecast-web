@@ -1249,6 +1249,7 @@ export const ADMIN_RELAY_ACTIVITY = gql`
         status
         request
         response
+        reason
       }
       buffered
       faults
