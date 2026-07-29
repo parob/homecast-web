@@ -256,3 +256,28 @@ describe('a group write reaches the individual tiles too', () => {
     expect(publisher.characteristic).not.toHaveBeenCalled();
   });
 });
+
+describe('a group write does not cost a HomeKit read per member', () => {
+  // The fan-out that fixed stale member tiles caused a worse bug: the publisher
+  // looks the accessory's home up via HomeKit on a cache miss, and the cache is
+  // cleared on every disconnect. Twelve lights meant twelve HomeKit reads
+  // competing with the serviceGroup.set that triggered them, and the write
+  // timed out in the client.
+  it('passes the home through on every member event', () => {
+    getServiceGroupMembers.mockReturnValue(['A', 'B', 'C']);
+    announceRelayGroupWrite('GRP', 'power_state', true, 'client', 'HOME-1', 3);
+
+    // Every member carries the homeId, so the publisher never needs to ask.
+    for (const call of publisher.characteristic.mock.calls) {
+      expect(call[0].homeId).toBe('HOME-1');
+    }
+    expect(publisher.characteristic).toHaveBeenCalledTimes(3);
+  });
+
+  it('still fans out when the caller has no homeId to give', () => {
+    // Degrades to the old behaviour rather than dropping the updates.
+    getServiceGroupMembers.mockReturnValue(['A']);
+    announceRelayGroupWrite('GRP', 'power_state', true, 'client');
+    expect(publisher.characteristic).toHaveBeenCalledTimes(1);
+  });
+});

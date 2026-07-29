@@ -1169,7 +1169,12 @@ export class ServerWebSocket {
     if (cached) {
       homeId = homeId || cached.homeId;
       roomId = cached.roomId;
-    } else {
+    } else if (!homeId) {
+      // Only when the home is genuinely unknown. This branch is a HomeKit read,
+      // and a group write fans out to every member — twelve lights meant twelve
+      // reads competing with the write that triggered them, and the write timed
+      // out. The caller already knows the home in that case; roomId is
+      // presentation detail and not worth a round trip to HomeKit for.
       try {
         const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
         homeId = homeId || accessory?.homeId;
