@@ -81,6 +81,53 @@ export const NOTIFICATION_ICONS: NotificationIconDef[] = [
   { slug: 'night', label: 'Night', group: 'home', lucide: 'moon', Icon: Moon },
 ];
 
+// The tile colour is baked into the rasterised PNG, so a colour is part of the
+// URL — `/notification-icons/{color}/{slug}.png` — and therefore as much of a
+// public contract as the slug. A fixed palette rather than free hex: it keeps
+// every notification legible against a white glyph, lets colour carry meaning
+// (red for alerts, amber for warnings) instead of becoming decoration, and needs
+// no server-side image rendering.
+//
+// `from`/`to` are the gradient stops, matching the brand header's treatment.
+export interface NotificationIconColor {
+  slug: string;
+  label: string;
+  from: string;
+  to: string;
+}
+
+export const NOTIFICATION_ICON_COLORS: NotificationIconColor[] = [
+  { slug: 'blue', label: 'Blue', from: '#3B82F6', to: '#2563EB' },
+  { slug: 'red', label: 'Red', from: '#EF4444', to: '#DC2626' },
+  { slug: 'amber', label: 'Amber', from: '#F59E0B', to: '#D97706' },
+  { slug: 'green', label: 'Green', from: '#22C55E', to: '#16A34A' },
+  { slug: 'teal', label: 'Teal', from: '#14B8A6', to: '#0D9488' },
+  { slug: 'purple', label: 'Purple', from: '#A855F7', to: '#9333EA' },
+  { slug: 'pink', label: 'Pink', from: '#EC4899', to: '#DB2777' },
+  { slug: 'slate', label: 'Slate', from: '#64748B', to: '#475569' },
+];
+
+/**
+ * The colour a Notify node gets when it doesn't choose one.
+ *
+ * Also the colour served from the *root* path, `/notification-icons/{slug}.png`,
+ * which is what every automation created before colours existed points at. That
+ * path must keep working and keep looking the same.
+ */
+export const DEFAULT_NOTIFICATION_ICON_COLOR = 'blue';
+
+const BY_COLOR: Record<string, NotificationIconColor> = Object.fromEntries(
+  NOTIFICATION_ICON_COLORS.map((c) => [c.slug, c]),
+);
+
+export function getNotificationIconColor(slug: string | undefined): NotificationIconColor {
+  return (slug && BY_COLOR[slug]) || BY_COLOR[DEFAULT_NOTIFICATION_ICON_COLOR];
+}
+
+export function isNotificationIconColor(value: string): boolean {
+  return value in BY_COLOR;
+}
+
 const BY_SLUG: Record<string, NotificationIconDef> = Object.fromEntries(
   NOTIFICATION_ICONS.map((i) => [i.slug, i]),
 );

@@ -36,5 +36,16 @@
     "switch",
     "thermostat",
     "unlock"
-  ]
+  ],
+  "colors": [
+    "blue",
+    "red",
+    "amber",
+    "green",
+    "teal",
+    "purple",
+    "pink",
+    "slate"
+  ],
+  "defaultColor": "blue"
 }

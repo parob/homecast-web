@@ -845,7 +845,9 @@ function renderConfigForm(
             <ConfigField label="Icon" hint="Shown on the notification, so you can tell at a glance which automation spoke.">
               <NotificationIconField
                 value={config.icon as string | undefined}
+                color={config.iconColor as string | undefined}
                 onChange={(v) => updateConfig('icon', v)}
+                onColorChange={(v) => updateConfig('iconColor', v)}
               />
             </ConfigField>
             <ConfigField label="Action Buttons" hint="Optional buttons shown on the notification (max 3)">

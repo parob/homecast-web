@@ -1,16 +1,19 @@
 // Icon picker for the Notify node's config tray.
 //
-// Two ways to answer the same question, because they serve different needs: most
-// notifications want a recognisable glyph and should be one click away, while a
-// few want whatever an upstream node produced — a camera snapshot at the moment
-// the door opened. A grid covers the first; a URL box covers the second.
+// Three modes, because they are genuinely three different intentions rather than
+// variations on one: no icon at all, one of ours, or an image the automation
+// produces. None hides everything below it — a grid and a colour row are noise
+// when the answer is "no icon", and leaving them visible invited the reading that
+// something was still selected.
 
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Ban } from 'lucide-react';
 import {
   NOTIFICATION_ICONS,
+  NOTIFICATION_ICON_COLORS,
+  DEFAULT_NOTIFICATION_ICON_COLOR,
+  getNotificationIconColor,
   isNotificationIconSlug,
   isValidNotificationIcon,
   type NotificationIconGroup,
@@ -24,37 +27,63 @@ const GROUP_LABELS: Record<NotificationIconGroup, string> = {
 
 const GROUP_ORDER: NotificationIconGroup[] = ['status', 'device', 'home'];
 
+type Mode = 'none' | 'predefined' | 'custom';
+
+const MODE_LABELS: Record<Mode, string> = {
+  none: 'None',
+  predefined: 'Predefined',
+  custom: 'Custom',
+};
+
+/** What the saved value implies, so reopening a node lands on the right mode. */
+function modeFor(value: string | undefined): Mode {
+  if (!value) return 'none';
+  return isNotificationIconSlug(value) ? 'predefined' : 'custom';
+}
+
 export function NotificationIconField({
   value,
+  color,
   onChange,
+  onColorChange,
 }: {
   value: string | undefined;
+  color: string | undefined;
   onChange: (value: string | undefined) => void;
+  onColorChange: (color: string | undefined) => void;
 }) {
-  // A value that isn't one of ours is a URL or a template, so open on the tab
-  // that can actually show it rather than on an empty grid.
-  const [mode, setMode] = useState<'builtin' | 'custom'>(
-    value && !isNotificationIconSlug(value) ? 'custom' : 'builtin',
-  );
+  const [mode, setMode] = useState<Mode>(() => modeFor(value));
 
   const customValue = value && !isNotificationIconSlug(value) ? value : '';
   const customInvalid = !!customValue && !isValidNotificationIcon(customValue);
+  const tile = getNotificationIconColor(color);
+
+  function switchTo(next: Mode) {
+    setMode(next);
+    // Clear whatever the new mode cannot represent, so the visible controls and
+    // the value that actually gets sent never disagree.
+    if (next === 'none') {
+      onChange(undefined);
+      onColorChange(undefined);
+    } else if (next === 'predefined' && customValue) {
+      onChange(undefined);
+    } else if (next === 'custom') {
+      if (value && isNotificationIconSlug(value)) onChange(undefined);
+      // A custom image is the author's own and isn't recoloured, so a colour
+      // left over from Predefined would be a setting with no effect.
+      onColorChange(undefined);
+    }
+  }
 
   return (
     <div className="space-y-2">
       <div className="flex gap-1">
-        {(['builtin', 'custom'] as const).map((m) => (
+        {(['none', 'predefined', 'custom'] as const).map((m) => (
           <button
             key={m}
             type="button"
-            onClick={() => {
-              setMode(m);
-              // Switching tabs shouldn't quietly keep a value the visible tab
-              // can't represent — the grid would look unselected while a URL
-              // was still being sent.
-              if (m === 'builtin' && customValue) onChange(undefined);
-              if (m === 'custom' && value && isNotificationIconSlug(value)) onChange(undefined);
-            }}
+            onClick={() => switchTo(m)}
+            aria-pressed={mode === m}
             className={cn(
               'px-2 py-1 text-[11px] rounded-md border transition-colors',
               mode === m
@@ -62,61 +91,89 @@ export function NotificationIconField({
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {m === 'builtin' ? 'Built-in' : 'Custom URL'}
+            {MODE_LABELS[m]}
           </button>
         ))}
       </div>
 
-      {mode === 'builtin' ? (
-        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            title="No icon"
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] transition-colors',
-              !value
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Ban className="h-3.5 w-3.5" />
-            None
-          </button>
+      {mode === 'predefined' && (
+        <div className="space-y-2">
+          {/* Colour first: it previews on the selected glyph below, so choosing
+              it up front means the grid already shows the real thing. */}
+          <div className="flex items-center gap-1.5">
+            {NOTIFICATION_ICON_COLORS.map((c) => {
+              const active = (color ?? DEFAULT_NOTIFICATION_ICON_COLOR) === c.slug;
+              return (
+                <button
+                  key={c.slug}
+                  type="button"
+                  title={c.label}
+                  aria-label={c.label}
+                  aria-pressed={active}
+                  onClick={() =>
+                    onColorChange(c.slug === DEFAULT_NOTIFICATION_ICON_COLOR ? undefined : c.slug)
+                  }
+                  className={cn(
+                    'h-5 w-5 rounded-full transition-transform',
+                    active
+                      ? 'ring-2 ring-offset-2 ring-offset-background ring-foreground/40 scale-110'
+                      : 'hover:scale-110',
+                  )}
+                  style={{ background: `linear-gradient(135deg, ${c.from}, ${c.to})` }}
+                />
+              );
+            })}
+          </div>
 
-          {GROUP_ORDER.map((group) => {
-            const icons = NOTIFICATION_ICONS.filter((i) => i.group === group);
-            if (icons.length === 0) return null;
-            return (
-              <div key={group} className="space-y-1">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {GROUP_LABELS[group]}
-                </p>
-                <div className="grid grid-cols-6 gap-1">
-                  {icons.map(({ slug, label, Icon }) => (
-                    <button
-                      key={slug}
-                      type="button"
-                      title={label}
-                      aria-label={label}
-                      aria-pressed={value === slug}
-                      onClick={() => onChange(slug)}
-                      className={cn(
-                        'aspect-square flex items-center justify-center rounded-md border transition-colors',
-                        value === slug
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  ))}
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {GROUP_ORDER.map((group) => {
+              const icons = NOTIFICATION_ICONS.filter((i) => i.group === group);
+              if (icons.length === 0) return null;
+              return (
+                <div key={group} className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {GROUP_LABELS[group]}
+                  </p>
+                  <div className="grid grid-cols-6 gap-1">
+                    {icons.map(({ slug, label, Icon }) => {
+                      const selected = value === slug;
+                      return (
+                        <button
+                          key={slug}
+                          type="button"
+                          title={label}
+                          aria-label={label}
+                          aria-pressed={selected}
+                          onClick={() => onChange(slug)}
+                          // The selected one renders as the tile that actually
+                          // gets delivered — white glyph on the chosen gradient
+                          // — so the picker previews the notification rather
+                          // than describing it.
+                          style={
+                            selected
+                              ? { background: `linear-gradient(135deg, ${tile.from}, ${tile.to})` }
+                              : undefined
+                          }
+                          className={cn(
+                            'aspect-square flex items-center justify-center rounded-md border transition-colors',
+                            selected
+                              ? 'border-transparent text-white shadow-sm'
+                              : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      ) : (
+      )}
+
+      {mode === 'custom' && (
         <div className="space-y-1">
           <Input
             value={customValue}

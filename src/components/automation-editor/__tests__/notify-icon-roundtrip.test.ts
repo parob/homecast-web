@@ -86,6 +86,18 @@ describe('notify icon round trip', () => {
     expect(roundTrip(saved).icon).toBe('leak');
   });
 
+  it('keeps the icon colour', () => {
+    expect(roundTrip(automationWithNotify({ icon: 'alert', iconColor: 'red' })).iconColor).toBe('red');
+  });
+
+  it('drops a colour outside the palette', () => {
+    // The palette is a closed set on both sides; an unknown colour would point
+    // at a path that cannot exist.
+    for (const bad of ['fuchsia', '../red', 'RED']) {
+      expect(roundTrip(automationWithNotify({ icon: 'alert', iconColor: bad })).iconColor, bad).toBeUndefined();
+    }
+  });
+
   it('drops an icon that could escape the icon URL path', () => {
     // A blueprint or an imported automation reaches the serializer without ever
     // passing through the config panel's validation.

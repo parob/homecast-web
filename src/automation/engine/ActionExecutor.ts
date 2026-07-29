@@ -582,14 +582,16 @@ export class ActionExecutor {
   private resolveNotifyIcon(
     action: NotifyAction,
     ctx: ExecutionContext,
-  ): { icon?: string; iconRejected?: string } {
+  ): { icon?: string; iconColor?: string; iconRejected?: string } {
     if (!action.icon) return {};
 
     const resolved = this.resolveTemplateString(action.icon, ctx);
     if (!resolved) return {};
 
     // A built-in slug is a name, not a URL — nothing fetches it cross-network.
-    if (!resolved.includes('://')) return { icon: resolved };
+    // Colour rides along only here: a custom URL is the author's own image, and
+    // recolouring someone's camera snapshot would be nonsense.
+    if (!resolved.includes('://')) return { icon: resolved, iconColor: action.iconColor };
 
     if (!/^https:\/\//i.test(resolved)) {
       return { iconRejected: `icon URL must be https (got ${resolved.slice(0, 40)})` };
@@ -606,17 +608,19 @@ export class ActionExecutor {
   private async executeNotify(action: NotifyAction, ctx: ExecutionContext): Promise<void> {
     const message = this.resolveTemplateString(action.message, ctx);
     const title = action.title ? this.resolveTemplateString(action.title, ctx) : undefined;
-    const { icon, iconRejected } = this.resolveNotifyIcon(action, ctx);
+    const { icon, iconColor, iconRejected } = this.resolveNotifyIcon(action, ctx);
 
     // Carried inside `data` rather than as a fourth argument. `data` is already
     // the platform-specific bag and already reaches both onNotify implementations
     // — and from there the cloud server and the Swift bridge — untouched, so an
     // icon rides to every channel without widening a callback declared in five
     // places.
-    const data = icon ? { ...action.data, icon } : action.data;
+    const data = icon
+      ? { ...action.data, icon, ...(iconColor ? { iconColor } : {}) }
+      : action.data;
 
     const stepIdx = ctx.beginStep('action', action.id, 'notify',
-      `Notify: ${message.slice(0, 50)}`, { message, title, icon, iconRejected });
+      `Notify: ${message.slice(0, 50)}`, { message, title, icon, iconColor, iconRejected });
 
     try {
       // Deliberately not awaited. Delivery is decided by the server, a round
@@ -644,12 +648,12 @@ export class ActionExecutor {
       // `success` stays true: the action ran and did not fail. Whether anything
       // reached a device is a separate fact, and conflating the two is what hid
       // rate-limited notifications in the first place.
-      const output = { message, title, icon, iconRejected, success: true, ...NOTIFY_DELIVERY_PENDING };
+      const output = { message, title, icon, iconColor, iconRejected, success: true, ...NOTIFY_DELIVERY_PENDING };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
       ctx.awaitStepDetail(stepIdx, delivery);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { message, title, icon, success: false, error: describeError(e) });
+      ctx.setNodeOutput(action.id, { message, title, icon, iconColor, success: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }

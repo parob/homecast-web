@@ -417,6 +417,12 @@ export interface NotifyAction extends BaseAction {
    * Can contain {{ template }}, so an upstream node can supply a snapshot.
    */
   icon?: string;
+  /**
+   * Palette colour slug for the icon's tile. Only applies to a built-in icon —
+   * a custom URL is the author's own image and isn't recoloured. Absent means
+   * the default, which is also what the pre-colour icon URLs serve.
+   */
+  iconColor?: string;
   data?: Record<string, unknown>; // Platform-specific (e.g., action buttons)
 }
 

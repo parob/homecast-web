@@ -17,6 +17,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   NOTIFICATION_ICONS,
+  NOTIFICATION_ICON_COLORS,
+  DEFAULT_NOTIFICATION_ICON_COLOR,
+  getNotificationIconColor,
+  isNotificationIconColor,
   DEFAULT_NOTIFICATION_ICON,
   getNotificationIcon,
   isNotificationIconSlug,
@@ -124,5 +128,53 @@ describe('notification icon validation', () => {
 
   it('treats an empty icon as valid, meaning none', () => {
     expect(isValidNotificationIcon('')).toBe(true);
+  });
+});
+
+describe('notification icon colours', () => {
+  it('has a PNG for every colour x slug', () => {
+    const missing: string[] = [];
+    for (const c of NOTIFICATION_ICON_COLORS) {
+      for (const { slug } of NOTIFICATION_ICONS) {
+        if (!existsSync(join(ICON_DIR, c.slug, `${slug}.png`))) missing.push(`${c.slug}/${slug}`);
+      }
+    }
+    expect(missing, 'run `npm run icons:notifications`').toEqual([]);
+  });
+
+  it('keeps the default colour at the root path too', () => {
+    // The root path is what automations written before colours existed point
+    // at. It must exist AND look like the default, or every one of them changes
+    // appearance the day colours ship.
+    for (const { slug } of NOTIFICATION_ICONS.slice(0, 5)) {
+      const root = readFileSync(join(ICON_DIR, `${slug}.png`));
+      const dflt = readFileSync(join(ICON_DIR, DEFAULT_NOTIFICATION_ICON_COLOR, `${slug}.png`));
+      expect(root.equals(dflt), slug).toBe(true);
+    }
+  });
+
+  it('names the default colour in the palette', () => {
+    expect(NOTIFICATION_ICON_COLORS.map((c) => c.slug)).toContain(DEFAULT_NOTIFICATION_ICON_COLOR);
+  });
+
+  it('keeps colour slugs URL-safe and unique', () => {
+    const slugs = NOTIFICATION_ICON_COLORS.map((c) => c.slug);
+    expect(slugs).toEqual([...new Set(slugs)]);
+    expect(slugs.filter((s) => !/^[a-z0-9-]{1,20}$/.test(s))).toEqual([]);
+  });
+
+  it('matches the colours the server will accept', () => {
+    // The server keeps its own closed set (a slug is only shape-checked, but an
+    // unknown colour silently falls back), so the two lists have to agree.
+    expect(NOTIFICATION_ICON_COLORS.map((c) => c.slug).sort()).toEqual(
+      ['amber', 'blue', 'green', 'pink', 'purple', 'red', 'slate', 'teal'],
+    );
+  });
+
+  it('resolves an unknown colour to the default rather than throwing', () => {
+    expect(getNotificationIconColor('fuchsia').slug).toBe(DEFAULT_NOTIFICATION_ICON_COLOR);
+    expect(getNotificationIconColor(undefined).slug).toBe(DEFAULT_NOTIFICATION_ICON_COLOR);
+    expect(isNotificationIconColor('fuchsia')).toBe(false);
+    expect(isNotificationIconColor('red')).toBe(true);
   });
 });

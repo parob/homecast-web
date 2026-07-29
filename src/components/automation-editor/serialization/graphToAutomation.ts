@@ -4,7 +4,7 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
-import { isValidNotificationIcon } from '../notificationIcons';
+import { isValidNotificationIcon, isNotificationIconColor } from '../notificationIcons';
 import type {
   Automation,
   AutomationUIState,
@@ -496,12 +496,14 @@ function nodeToActionInner(
       // imported automation reaches this function without ever passing through
       // the form, and an icon is a string that ends up in a URL.
       const icon = config.icon as string | undefined;
+      const iconColor = config.iconColor as string | undefined;
       return {
         type: 'notify',
         id: node.id,
         message: (config.message as string) ?? '',
         title: config.title as string | undefined,
         icon: icon && isValidNotificationIcon(icon) ? icon : undefined,
+        iconColor: iconColor && isNotificationIconColor(iconColor) ? iconColor : undefined,
         data,
       } satisfies NotifyAction;
     }
