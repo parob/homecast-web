@@ -109,12 +109,17 @@ export interface EnrollmentCancelled {
 export interface RelayActivityEntry {
   lane: 'socket' | 'homekit' | 'automation';
   at: number;
+  /** Correlates a socket entry's `sent` with its outcome, so one request is one row. */
+  id?: string;
   /** socket */
   phase?: 'sent' | 'ok' | 'failed';
   action?: string;
   ms?: number;
   error?: string;
   traceId?: string;
+  /** What was asked for, and what came back. Truncated — see local-handler. */
+  request?: unknown;
+  response?: unknown;
   /** homekit */
   accessoryId?: string;
   characteristicType?: string;
@@ -954,16 +959,6 @@ export class ServerWebSocket {
       } catch { /* use whatever context we have */ }
     }
 
-    // Local stream first: this is the relay's own observer firing, and the
-    // dashboard on this Mac should see it whether or not the cloud socket is
-    // healthy — the case where it is not is the one worth watching.
-    if (hasLocalActivityListeners()) {
-      emitLocalRelayActivity({
-        lane: 'homekit', at: activityNow(),
-        accessoryId, characteristicType, value, homeId,
-      });
-    }
-
     this.sendEvent({
       id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       type: 'event',
@@ -1401,6 +1396,19 @@ export class ServerWebSocket {
     this.eventUnsubscribe?.();
 
     this.eventUnsubscribe = HomeKit.onEvent((event: HomeKitEvent) => {
+      // The HomeKit lane, at the observer itself — before any filtering,
+      // debouncing or forwarding, so the stream shows what HomeKit actually
+      // told this relay rather than what survived the handling of it.
+      if (hasLocalActivityListeners()) {
+        emitLocalRelayActivity({
+          lane: 'homekit', at: activityNow(),
+          accessoryId: event.accessoryId,
+          characteristicType: event.characteristicType ?? event.type,
+          value: event.type === 'characteristic.updated' ? event.value : event.type,
+          homeId: event.homeId,
+        });
+      }
+
       // homes.updated: HomeKit added/removed a home. Re-declare homes to server.
       if (event.type === 'homes.updated') {
         if (this.homesUpdatedDebounce) clearTimeout(this.homesUpdatedDebounce);

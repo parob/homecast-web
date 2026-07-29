@@ -49,6 +49,21 @@ export function useRelayActivity(deviceId: string | undefined): RelayActivity {
     if (!deviceId) return;
 
     const unwatch = onLocalRelayActivity((entry) => {
+      // A request's outcome replaces its pending row rather than adding a
+      // second one. Without this every completed request left a permanent
+      // "waiting" line, and a genuinely stuck request was indistinguishable
+      // from the residue of one that finished immediately.
+      if (entry.id && entry.phase && entry.phase !== 'sent') {
+        const pending = buffer.current.findIndex((e) => e.id === entry.id);
+        if (pending !== -1) {
+          buffer.current[pending] = entry;
+          if (flushTimer.current === null && !pausedRef.current) {
+            flushTimer.current = setTimeout(publish, FLUSH_MS);
+          }
+          return;
+        }
+      }
+
       // Newest first: a live log is read from the top.
       buffer.current.unshift(entry);
       if (buffer.current.length > MAX_ENTRIES) {

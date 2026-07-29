@@ -8,7 +8,7 @@
 // a HomeKit update triggers an automation which causes socket traffic. Splitting
 // them hides the chain, which is exactly what you are trying to read.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRelayActivity } from '@/hooks/useRelayActivity';
 import type { RelayActivityEntry } from '@/server/websocket';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,17 @@ const LANES: { key: Lane; label: string }[] = [
 
 /** Gap worth calling out. Below this it is ordinary quiet. */
 const SILENCE_THRESHOLD_MS = 60_000;
+
+/**
+ * How long a request may be outstanding before it is worth showing.
+ *
+ * Almost every request completes in tens of milliseconds, and its outcome
+ * replaces the pending row. Showing that flicker is pure noise — so a request
+ * is invisible until it has been waiting long enough to be interesting.
+ */
+const PENDING_VISIBLE_AFTER_MS = 2_000;
+/** Past this, it is not slow, it is stuck — and it is said plainly. */
+const PENDING_STUCK_AFTER_MS = 10_000;
 
 function clockTime(at: number): string {
   return new Date(at * 1000).toLocaleTimeString('en-GB', { hour12: false });
@@ -63,7 +74,7 @@ function formatForSharing(entries: RelayActivityEntry[]): string {
     let detail: string;
     if (entry.lane === 'socket') {
       const outcome =
-        entry.phase === 'sent' ? 'waiting…'
+        entry.phase === 'sent' ? `NO RESPONSE (still waiting)`
         : entry.phase === 'failed' ? `FAILED ${entry.error ?? ''} ${entry.ms ? describeDuration(entry.ms) : ''}`.trim()
         : `ok ${entry.ms !== undefined ? describeDuration(entry.ms) : ''}`.trim();
       detail = `${entry.action}  ${outcome}`;
@@ -78,6 +89,8 @@ function formatForSharing(entries: RelayActivityEntry[]): string {
     }
 
     lines.push(`${clockTime(entry.at)}  ${entry.lane.padEnd(10)} ${detail}`);
+    if (entry.request !== undefined) lines.push(`${' '.repeat(12)}request  ${JSON.stringify(entry.request)}`);
+    if (entry.response !== undefined) lines.push(`${' '.repeat(12)}response ${JSON.stringify(entry.response)}`);
     if (gapMs >= SILENCE_THRESHOLD_MS) {
       lines.push(`${' '.repeat(10)}──── silent ${describeDuration(gapMs)} ────`);
     }
@@ -93,11 +106,13 @@ function LaneIcon({ lane }: { lane: RelayActivityEntry['lane'] }) {
   return <Zap className={cn(cls, 'text-violet-500')} />;
 }
 
-function SocketRow({ entry }: { entry: RelayActivityEntry }) {
-  // A request still outstanding is the most important thing this screen shows,
-  // so it gets the strongest treatment rather than being one row among many.
+function SocketRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: number }) {
   const pending = entry.phase === 'sent';
   const failed = entry.phase === 'failed';
+  // Counts up while outstanding, so a stuck request visibly gets worse rather
+  // than sitting at a fixed, reassuring "waiting".
+  const waitingMs = pending ? Math.max(0, (nowSec - entry.at) * 1000) : 0;
+  const stuck = pending && waitingMs >= PENDING_STUCK_AFTER_MS;
 
   return (
     <>
@@ -105,12 +120,14 @@ function SocketRow({ entry }: { entry: RelayActivityEntry }) {
       <span
         className={cn(
           'ml-auto shrink-0 tabular-nums',
-          pending && 'text-amber-600 dark:text-amber-500',
+          stuck && 'font-semibold text-red-600 dark:text-red-400',
+          pending && !stuck && 'text-amber-600 dark:text-amber-500',
           failed && 'text-red-600 dark:text-red-400',
           !pending && !failed && 'text-muted-foreground',
         )}
       >
-        {pending && 'waiting…'}
+        {stuck && `⚠ NO RESPONSE ${describeDuration(waitingMs)}`}
+        {pending && !stuck && `waiting ${describeDuration(waitingMs)}`}
         {failed && `✕ ${entry.error ?? 'failed'}${entry.ms ? ` ${describeDuration(entry.ms)}` : ''}`}
         {!pending && !failed && entry.ms !== undefined && `✓ ${describeDuration(entry.ms)}`}
       </span>
@@ -153,15 +170,69 @@ function AutomationRow({ entry }: { entry: RelayActivityEntry }) {
   );
 }
 
+/** One row, expandable where there is a payload worth reading. */
+function ActivityRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: number }) {
+  const [open, setOpen] = useState(false);
+  const hasDetail =
+    entry.request !== undefined || entry.response !== undefined || entry.steps !== undefined;
+
+  return (
+    <div className="border-b border-border/40 last:border-0">
+      <div
+        className={cn('flex items-center gap-2 px-3 py-1', hasDetail && 'cursor-pointer hover:bg-muted/40')}
+        onClick={hasDetail ? () => setOpen(!open) : undefined}
+      >
+        <span className="shrink-0 tabular-nums text-muted-foreground">{clockTime(entry.at)}</span>
+        <LaneIcon lane={entry.lane} />
+        {entry.lane === 'socket' && <SocketRow entry={entry} nowSec={nowSec} />}
+        {entry.lane === 'homekit' && <HomeKitRow entry={entry} />}
+        {entry.lane === 'automation' && <AutomationRow entry={entry} />}
+      </div>
+
+      {open && (
+        // Collapsed by default: payloads are large and drown the timeline,
+        // which is the thing you are scanning.
+        <div className="space-y-1 bg-muted/30 px-3 pb-2">
+          {entry.request !== undefined && (
+            <pre className="overflow-x-auto text-[10px]">request  {JSON.stringify(entry.request, null, 2)}</pre>
+          )}
+          {entry.response !== undefined && (
+            <pre className="overflow-x-auto text-[10px]">response {JSON.stringify(entry.response, null, 2)}</pre>
+          )}
+          {entry.steps !== undefined && (
+            <pre className="overflow-x-auto text-[10px]">{JSON.stringify(entry.steps, null, 2)}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RelayActivityStream({ deviceId }: { deviceId: string | undefined }) {
   const { entries, paused, setPaused, clear, pendingWhilePaused } = useRelayActivity(deviceId);
   const [lane, setLane] = useState<Lane>('all');
   const [copied, setCopied] = useState(false);
+  const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
 
-  const visible = useMemo(
-    () => (lane === 'all' ? entries : entries.filter((e) => e.lane === lane)),
-    [entries, lane],
-  );
+  // Only tick while something is actually outstanding — an idle relay should
+  // not re-render this list once a second forever.
+  const hasPending = entries.some((e) => e.lane === 'socket' && e.phase === 'sent');
+  useEffect(() => {
+    if (!hasPending) return;
+    const t = setInterval(() => setNowSec(Date.now() / 1000), 500);
+    return () => clearInterval(t);
+  }, [hasPending]);
+
+  const visible = useMemo(() => {
+    const byLane = lane === 'all' ? entries : entries.filter((e) => e.lane === lane);
+    // Almost every request finishes in milliseconds and its outcome replaces the
+    // pending row, so showing that flicker is noise. A request appears only once
+    // it has been waiting long enough to be worth knowing about.
+    return byLane.filter((e) => {
+      if (e.lane !== 'socket' || e.phase !== 'sent') return true;
+      return (nowSec - e.at) * 1000 >= PENDING_VISIBLE_AFTER_MS;
+    });
+  }, [entries, lane, nowSec]);
 
   // Copies what is on screen, filter and all: a shared excerpt should match
   // what the person sharing it was looking at.
@@ -238,13 +309,7 @@ export function RelayActivityStream({ deviceId }: { deviceId: string | undefined
                 </div>
               )}
 
-              <div className="flex items-center gap-2 border-b border-border/40 px-3 py-1 last:border-0">
-                <span className="shrink-0 tabular-nums text-muted-foreground">{clockTime(entry.at)}</span>
-                <LaneIcon lane={entry.lane} />
-                {entry.lane === 'socket' && <SocketRow entry={entry} />}
-                {entry.lane === 'homekit' && <HomeKitRow entry={entry} />}
-                {entry.lane === 'automation' && <AutomationRow entry={entry} />}
-              </div>
+              <ActivityRow entry={entry} nowSec={nowSec} />
             </div>
           );
         })}
