@@ -89,6 +89,7 @@ import {
   executeHomeKitAction,
 } from '@/relay/local-handler';
 
+import { HomeKit } from '@/native/homekit-bridge';
 import { handleMCP } from '@/server/local-mcp';
 import { handleREST } from '@/server/local-rest';
 
@@ -743,5 +744,35 @@ describe('POST /rest/state response format', () => {
     expect(Array.isArray(result.changes)).toBe(true);
     expect(Array.isArray(result.errors)).toBe(true);
     expect(typeof result.message).toBe('string');
+  });
+});
+
+describe('characteristic naming at the relay boundary', () => {
+  // The bridge accepts `on` and `power_state` but only ever reports
+  // `power_state`. Canonicalising at the door means one name exists past it —
+  // in the HomeKit call, the engine, the WS broadcast and MQTT. Before this,
+  // a group toggle from the dashboard sent `on`, and the automation watching
+  // `power_state` never fired.
+  it('rewrites `on` to `power_state` before it reaches HomeKit', async () => {
+    await executeHomeKitAction('characteristic.set', {
+      accessoryId: 'ACC-1', characteristicType: 'on', value: true,
+    });
+    expect(HomeKit.setCharacteristic).toHaveBeenCalledWith('ACC-1', 'power_state', true);
+  });
+
+  it('rewrites `on` for group writes too', async () => {
+    await executeHomeKitAction('serviceGroup.set', {
+      groupId: 'GRP-1', characteristicType: 'on', value: true, homeId: 'HOME-1',
+    });
+    expect(HomeKit.setServiceGroupCharacteristic).toHaveBeenCalledWith(
+      'GRP-1', 'power_state', true, 'HOME-1',
+    );
+  });
+
+  it('leaves a characteristic with no alias untouched', async () => {
+    await executeHomeKitAction('characteristic.set', {
+      accessoryId: 'ACC-1', characteristicType: 'brightness', value: 42,
+    });
+    expect(HomeKit.setCharacteristic).toHaveBeenCalledWith('ACC-1', 'brightness', 42);
   });
 });

@@ -13,6 +13,7 @@ import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
 import { describeError } from '../lib/describe-error';
+import { canonicalCharacteristic } from '../lib/characteristic-aliases';
 
 /** Distinguishes requests started within the same millisecond. */
 let activitySeq = 0;
@@ -316,12 +317,14 @@ async function executeHomeKitActionInner(
     }
 
     case 'serviceGroup.set': {
-      const { groupId, characteristicType, value, homeId } = payload as {
+      const { groupId, characteristicType: requestedGroupChar, value, homeId } = payload as {
         groupId: string;
         characteristicType: string;
         value: unknown;
         homeId?: string;
       };
+      // Same reason as characteristic.set: one name past this point.
+      const characteristicType = canonicalCharacteristic(requestedGroupChar);
       const groupResult = await HomeKit.setServiceGroupCharacteristic(groupId, characteristicType, value, homeId);
       announceRelayGroupWrite(
         groupId, characteristicType, value, 'client', homeId,
@@ -369,7 +372,7 @@ async function executeHomeKitActionInner(
     }
 
     case 'characteristic.set': {
-      const { accessoryId, characteristicType, value } = payload as {
+      const { accessoryId, characteristicType: requested, value } = payload as {
         accessoryId: string;
         characteristicType: string;
         value: unknown;
@@ -377,6 +380,10 @@ async function executeHomeKitActionInner(
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
+      // Canonicalised at the door. The bridge accepts `on` and `power_state`
+      // but only ever reports `power_state`, so a write named `on` would be
+      // echoed to clients, MQTT and the engine under a name nothing else uses.
+      const characteristicType = canonicalCharacteristic(requested);
       const setResult = await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
       announceRelayWrite([{ accessoryId, characteristicType, value }], 'client');
       return setResult;
