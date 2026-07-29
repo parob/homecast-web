@@ -10,7 +10,6 @@
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './websocket';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
-import type { RelayActivityEntry } from './websocket';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { markRecentBroadcast } from './local-broadcast';
 import { browserLogger } from '../lib/browser-logger';
@@ -383,25 +382,6 @@ class ServerConnection {
       return null;
     }
     return this.websocket.getSubscriberStatus();
-  }
-
-  /**
-   * Watch one relay's live activity stream.
-   *
-   * Returns a no-op unsubscribe when there is no socket, so callers can always
-   * clean up — but note the stream genuinely does nothing in that case. It
-   * needs the cloud WebSocket; there is no Community equivalent, because in
-   * Community mode the relay and the screen are the same process.
-   */
-  watchRelayActivity(
-    deviceId: string,
-    handler: (entry: RelayActivityEntry) => void,
-  ): () => void {
-    if (!this.websocket) {
-      console.warn('[ServerConnection] relay activity requested with no socket');
-      return () => {};
-    }
-    return this.websocket.watchRelayActivity(deviceId, handler);
   }
 
   /**

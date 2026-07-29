@@ -1,24 +1,26 @@
 // @vitest-environment jsdom
 //
-// The stream's two non-obvious behaviours.
+// The stream is sourced in-process, from the relay itself.
 //
-// Unwatching on unmount is not tidiness: the server only builds and sends
-// entries while someone is watching, and that check sits on the relay's request
-// path. A leaked watcher makes every routed request do work for a closed tab.
+// The dashboard runs on the relay, so it already has this information: it
+// handles every request, receives every HomeKit event and runs the automation
+// engine. Routing that through the cloud and back would also go quiet exactly
+// when it matters — a stream riding the relay's socket cannot report that the
+// socket has stopped answering.
 //
-// And pausing stops the *display*, not the subscription — entries keep filling
-// the buffer so resuming shows what happened while you were reading. A pause
-// that dropped entries would make the log lie about a quiet period.
+// Pausing stops the *display*, not the subscription: entries keep filling the
+// buffer so resuming shows what happened while you were reading. A pause that
+// dropped entries would make the log lie about a quiet period.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-const { watchRelayActivity, unwatch } = vi.hoisted(() => ({
-  watchRelayActivity: vi.fn(),
+const { onLocalRelayActivity, unwatch } = vi.hoisted(() => ({
+  onLocalRelayActivity: vi.fn(),
   unwatch: vi.fn(),
 }));
 
-vi.mock('@/server/connection', () => ({ serverConnection: { watchRelayActivity } }));
+vi.mock('@/server/local-activity', () => ({ onLocalRelayActivity }));
 
 import { useRelayActivity } from '../useRelayActivity';
 
@@ -28,7 +30,7 @@ let emit: (entry: any) => void = () => {};
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
-  watchRelayActivity.mockImplementation((_id: string, handler: (e: any) => void) => {
+  onLocalRelayActivity.mockImplementation((handler: (e: any) => void) => {
     emit = handler;
     return unwatch;
   });
@@ -39,13 +41,13 @@ afterEach(() => vi.useRealTimers());
 const socket = (action: string, at = 1) => ({ lane: 'socket', at, action, phase: 'ok', ms: 12 });
 
 describe('subscription lifecycle', () => {
-  it('watches the relay it was given', () => {
+  it('subscribes in-process, with no cloud round trip', () => {
     renderHook(() => useRelayActivity('mac_abc'));
 
-    expect(watchRelayActivity).toHaveBeenCalledWith('mac_abc', expect.any(Function));
+    expect(onLocalRelayActivity).toHaveBeenCalledWith(expect.any(Function));
   });
 
-  it('unwatches on unmount, so the relay stops doing work for a closed tab', () => {
+  it('unsubscribes on unmount', () => {
     const { unmount } = renderHook(() => useRelayActivity('mac_abc'));
 
     unmount();
@@ -56,7 +58,7 @@ describe('subscription lifecycle', () => {
   it('does not subscribe without a relay', () => {
     renderHook(() => useRelayActivity(undefined));
 
-    expect(watchRelayActivity).not.toHaveBeenCalled();
+    expect(onLocalRelayActivity).not.toHaveBeenCalled();
   });
 });
 
@@ -127,3 +129,4 @@ describe('clearing', () => {
     expect(result.current.entries.map((e) => e.action)).toEqual(['new']);
   });
 });
+

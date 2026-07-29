@@ -9,7 +9,7 @@
 // reading rather than a gap. That is the whole reason to pause a live log.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { serverConnection } from '@/server/connection';
+import { onLocalRelayActivity } from '@/server/local-activity';
 import type { RelayActivityEntry } from '@/server/websocket';
 
 /** Entries kept. Roughly a few minutes of a busy relay. */
@@ -48,7 +48,7 @@ export function useRelayActivity(deviceId: string | undefined): RelayActivity {
   useEffect(() => {
     if (!deviceId) return;
 
-    const unwatch = serverConnection.watchRelayActivity(deviceId, (entry) => {
+    const unwatch = onLocalRelayActivity((entry) => {
       // Newest first: a live log is read from the top.
       buffer.current.unshift(entry);
       if (buffer.current.length > MAX_ENTRIES) {
@@ -65,8 +65,6 @@ export function useRelayActivity(deviceId: string | undefined): RelayActivity {
     });
 
     return () => {
-      // Unwatching matters: the server only builds entries while watched, and
-      // that check sits on the relay's request path.
       unwatch();
       if (flushTimer.current !== null) {
         clearTimeout(flushTimer.current);

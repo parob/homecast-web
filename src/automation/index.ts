@@ -10,6 +10,9 @@ import type { ExecutionTrace } from './types/execution';
 import type { NotifyDelivery } from './types/notify';
 import type { HomeKitEvent } from '../native/homekit-bridge';
 import { valuesMatch } from './state/valueMatch';
+import {
+  emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
+} from '../server/local-activity';
 
 export type { HomeKitBridge } from './engine/ActionExecutor';
 export type { SyncTransport } from './sync/AutomationSyncManager';
@@ -64,6 +67,18 @@ export async function initAutomationEngine(options: InitOptions): Promise<Automa
     bridge: options.bridge,
     serviceGroupResolver: options.serviceGroupResolver,
     onTraceComplete: (trace) => {
+      // Single tap for both editions: cloud pushes the trace, Community
+      // persists it, and both want it on the local activity stream.
+      if (hasLocalActivityListeners()) {
+        emitLocalRelayActivity({
+          lane: 'automation', at: activityNow(),
+          automationId: trace.automationId, name: trace.automationName,
+          status: trace.status, startedAt: trace.startedAt,
+          finishedAt: trace.finishedAt,
+          triggerData: trace.triggerData as unknown as Record<string, unknown>,
+          steps: trace.steps as unknown as Record<string, unknown>[],
+        });
+      }
       options.onTraceComplete?.(trace);
       syncInstance?.pushTrace(trace);
     },

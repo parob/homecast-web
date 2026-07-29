@@ -9,6 +9,10 @@
 import { HomeKit } from '../native/homekit-bridge';
 import { isHiddenBuiltInScene } from '@/lib/scenes';
 import { announceRelayWrite, announceRelayGroupWrite } from './relay-write';
+import {
+  emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
+} from '../server/local-activity';
+import { describeError } from '../lib/describe-error';
 
 /** Standard error codes matching the Cloud Edition */
 export const ErrorCode = {
@@ -229,6 +233,36 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
 }
 
 export async function executeHomeKitAction(
+  action: string,
+  payload: Record<string, unknown> = {}
+): Promise<unknown> {
+  // Every relay action funnels through here, so this is the one place the
+  // socket lane needs tapping. Wrapped rather than sprinkled through the switch:
+  // a new action gets its timing for free, and cannot be added without it.
+  if (!hasLocalActivityListeners()) {
+    return executeHomeKitActionInner(action, payload);
+  }
+
+  const startedAt = activityNow();
+  emitLocalRelayActivity({ lane: 'socket', phase: 'sent', action, at: startedAt });
+  try {
+    const result = await executeHomeKitActionInner(action, payload);
+    emitLocalRelayActivity({
+      lane: 'socket', phase: 'ok', action,
+      at: activityNow(), ms: Math.round((activityNow() - startedAt) * 1000),
+    });
+    return result;
+  } catch (e) {
+    emitLocalRelayActivity({
+      lane: 'socket', phase: 'failed', action,
+      at: activityNow(), ms: Math.round((activityNow() - startedAt) * 1000),
+      error: describeError(e),
+    });
+    throw e;
+  }
+}
+
+async function executeHomeKitActionInner(
   action: string,
   payload: Record<string, unknown> = {}
 ): Promise<unknown> {
