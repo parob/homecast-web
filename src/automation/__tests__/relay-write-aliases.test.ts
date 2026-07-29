@@ -85,3 +85,61 @@ describe('notifyRelayWrite, through the real engine', () => {
     expect(() => mod.notifyRelayWrite('ACC', 'on', true)).not.toThrow();
   });
 });
+
+describe('notifyRelayGroupWrite when expansion produces nothing', () => {
+  // Triggers are evaluated per accessory, so a group write that expands to no
+  // members reaches no trigger. This used to happen behind `?? []` — the same
+  // shape as every other bug on this path: a lookup failing to an empty result
+  // and looking like a quiet day.
+  let mod: typeof import('../index');
+  let activity: typeof import('../../server/local-activity');
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mod = await import('../index');
+    activity = await import('../../server/local-activity');
+  });
+
+  afterEach(() => { mod.teardownAutomationEngine(); });
+
+  async function start(resolver?: { getMembers?: (id: string) => string[] }) {
+    await mod.initAutomationEngine({
+      bridge: {
+        setCharacteristic: vi.fn(async () => {}),
+        setServiceGroupCharacteristic: vi.fn(async () => {}),
+        executeScene: vi.fn(async () => {}),
+      } as never,
+      subscribeToHomeKit: () => () => {},
+      onNotify: async () => {},
+      ...(resolver ? { serviceGroupResolver: resolver as never } : {}),
+    });
+  }
+
+  it('records a fault when no resolver is wired, instead of doing nothing', async () => {
+    await start();
+    mod.notifyRelayGroupWrite('GRP-1', 'on', true);
+
+    const faults = activity.getActivityDump({ faultsOnly: true, limit: 10 }).entries;
+    expect(faults.some((e) => String(e.error).includes('no service-group resolver'))).toBe(true);
+  });
+
+  it('distinguishes an unknown group from a missing resolver', async () => {
+    await start({ getMembers: () => [] });
+    mod.notifyRelayGroupWrite('GRP-UNKNOWN', 'on', true);
+
+    const faults = activity.getActivityDump({ faultsOnly: true, limit: 10 }).entries;
+    // The two need different responses: one is a wiring bug, one recovers on
+    // the next index refresh.
+    expect(faults.some((e) => String(e.error).includes('membership index'))).toBe(true);
+  });
+
+  it('stays silent and fans out when the group resolves', async () => {
+    await start({ getMembers: () => ['ACC-A', 'ACC-B'] });
+    mod.notifyRelayGroupWrite('GRP-1', 'on', true);
+
+    const store = mod.getAutomationEngine()!.stateStore;
+    expect(store.getState('ACC-A', 'power_state')).toBe(true);
+    expect(store.getState('ACC-B', 'power_state')).toBe(true);
+    expect(activity.getActivityDump({ faultsOnly: true, limit: 10 }).entries).toHaveLength(0);
+  });
+});

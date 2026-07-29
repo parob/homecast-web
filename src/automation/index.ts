@@ -180,13 +180,45 @@ export function notifyRelayWrite(
   });
 }
 
-/** As above, expanded across a service group's members. */
+/**
+ * As above, expanded across a service group's members.
+ *
+ * Triggers are evaluated per accessory, so a group write has to be fanned out
+ * to the members before the engine can match it. If that expansion produces
+ * nothing the write reaches no trigger at all — and it used to do so in
+ * silence, behind `?? []`, which is the same shape as every other bug on this
+ * path: a lookup that fails to an empty result and looks like a quiet day.
+ */
 export function notifyRelayGroupWrite(
   groupId: string,
   characteristicType: string,
   value: unknown,
 ): void {
-  const members = engineInstance?.serviceGroupResolver?.getMembers?.(groupId) ?? [];
+  const engine = engineInstance;
+  if (!engine) return;
+
+  const resolver = engine.serviceGroupResolver;
+  const members = resolver?.getMembers?.(groupId) ?? [];
+
+  if (members.length === 0) {
+    // Say which of the two it is. A missing resolver is a wiring fault and
+    // disables every service-group trigger; an unknown group is a stale index,
+    // which recovers on the next refresh. Recorded on the activity stream, not
+    // just the console, so it survives in the fault ring long enough to read.
+    const reason = !resolver
+      ? 'no service-group resolver — service-group triggers are disabled'
+      : 'group not in the membership index (stale or unknown group)';
+    console.warn(`[Automation] Group write for ${groupId} reached no triggers: ${reason}`);
+    if (hasLocalActivityListeners()) {
+      emitLocalRelayActivity({
+        lane: 'automation', at: activityNow(),
+        name: `Group write not delivered: ${groupId}`,
+        status: 'error', error: reason,
+      });
+    }
+    return;
+  }
+
   for (const accessoryId of members) {
     notifyRelayWrite(accessoryId, characteristicType, value);
   }
