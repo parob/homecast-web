@@ -10,6 +10,7 @@ import type { ExecutionTrace } from './types/execution';
 import type { NotifyDelivery } from './types/notify';
 import type { HomeKitEvent } from '../native/homekit-bridge';
 import { valuesMatch } from './state/valueMatch';
+import { canonicalCharacteristic } from '../lib/characteristic-aliases';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
@@ -151,6 +152,15 @@ export function notifyRelayWrite(
   const engine = engineInstance;
   if (!engine || !accessoryId || !characteristicType) return;
 
+  // The bridge answers to several names per characteristic but reports only
+  // one, so a write and the observer event for that same write arrive under
+  // different names: a client turning a light on announces `on`, HomeKit's
+  // observer says `power_state`. Everything downstream — the store, the
+  // triggers — is keyed on what the observer says, so a write has to be
+  // renamed to match or it lands in a slot nothing is watching. That is why
+  // automations fired from Apple Home and did nothing from Homecast.
+  const canonical = canonicalCharacteristic(characteristicType);
+
   // Skip when the store already holds this value: the write was a no-op, or
   // HomeKit did fire its observer for this accessory and got here first.
   // StateStore notifies listeners on every call, so without this a device that
@@ -160,12 +170,12 @@ export function notifyRelayWrite(
   // comparison in the engine is: HomeKit reports booleans where the write used
   // 1/0, so `true === 1` was false and a no-op write looked like a change,
   // firing the automation a second time.
-  if (valuesMatch(engine.stateStore.getState(accessoryId, characteristicType), value)) return;
+  if (valuesMatch(engine.stateStore.getState(accessoryId, canonical), value)) return;
 
   engine.stateStore.handleHomeKitEvent({
     type: 'characteristic.updated',
     accessoryId,
-    characteristicType,
+    characteristicType: canonical,
     value,
   });
 }

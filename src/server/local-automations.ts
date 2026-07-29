@@ -10,6 +10,7 @@
  */
 
 import { executeHomeKitAction } from '../relay/local-handler';
+import { SIMPLE_TO_CHAR } from '@/lib/characteristic-aliases';
 import { uniqueKey, getSimpleName, formatValue } from './local-rest';
 import { isInsufficientHomeKitPrivileges, HOMEKIT_EDIT_PERMISSION_MESSAGE } from '../lib/homekit-errors';
 
@@ -29,37 +30,6 @@ async function executeAutomationWrite(action: string, payload: Record<string, un
     throw error;
   }
 }
-
-// Simple property name → characteristic name accepted by the native
-// automation path (CharacteristicMapper.characteristicMap). Matches the
-// cloud server's automation SIMPLE_TO_CHAR — keep in sync.
-const SIMPLE_TO_CHAR: Record<string, string> = {
-  on: 'power_state',
-  active: 'active',
-  status_active: 'status_active',
-  brightness: 'brightness',
-  hue: 'hue',
-  saturation: 'saturation',
-  color_temp: 'color_temperature',
-  current_temp: 'current_temperature',
-  heat_target: 'heating_threshold',
-  cool_target: 'cooling_threshold',
-  target_temp: 'target_temperature',
-  locked: 'lock_current_state',
-  lock_target: 'lock_target_state',
-  alarm_state: 'security_system_current_state',
-  alarm_target: 'security_system_target_state',
-  motion: 'motion_detected',
-  contact: 'contact_state',
-  battery: 'battery_level',
-  low_battery: 'status_low_battery',
-  volume: 'volume',
-  mute: 'mute',
-  speed: 'rotation_speed',
-  target: 'target_position',
-  hvac_mode: 'target_heater_cooler_state',
-  hvac_state: 'current_heater_cooler_state',
-};
 
 // Reverse map for read-side normalization (covers names CHAR_TO_SIMPLE
 // doesn't, e.g. rotation_speed → speed). First entry wins on collisions.
