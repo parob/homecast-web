@@ -80,6 +80,58 @@ describe('recording', () => {
   });
 });
 
+describe('payload bounding', () => {
+  // Measured on the live relay before this existed: a single bridge-lane
+  // `accessories.list` response was 1.6 MB, the buffer held 12 MB across 320
+  // entries, and asking for a 300-entry page disconnected the relay outright.
+  const huge = { accessories: Array.from({ length: 400 }, (_, i) => ({ id: `a${i}`, blob: 'x'.repeat(200) })) };
+
+  it('collapses an oversized response to a shape summary', () => {
+    mod.emitLocalRelayActivity({ lane: 'bridge', at: 1, action: 'accessories.list', phase: 'ok', response: huge });
+
+    const [held] = mod.getBufferedActivity();
+    expect(JSON.stringify(held).length).toBeLessThan(2500);
+    // The size is the diagnostic, so it survives even though the contents don't.
+    expect(JSON.stringify(held.response)).toContain('truncated');
+    expect(JSON.stringify(held.response)).toContain('400 items');
+  });
+
+  it('bounds every payload-bearing field, not just the ones a call site remembered', () => {
+    mod.emitLocalRelayActivity({
+      lane: 'automation', at: 1, name: 'Big',
+      steps: huge.accessories as unknown as Record<string, unknown>[],
+      triggerData: huge as unknown as Record<string, unknown>,
+      request: huge, response: huge, value: huge,
+    });
+    expect(JSON.stringify(mod.getBufferedActivity()[0]).length).toBeLessThan(4000);
+  });
+
+  it('leaves small payloads exactly as they were', () => {
+    const small = { homeId: 'ABC', on: true };
+    mod.emitLocalRelayActivity({ lane: 'socket', at: 1, action: 'characteristic.set', phase: 'ok', request: small });
+    expect(mod.getBufferedActivity()[0].request).toEqual(small);
+  });
+
+  it('does not mutate the caller’s entry', () => {
+    const entry = { lane: 'bridge' as const, at: 1, action: 'x', phase: 'ok' as const, response: huge };
+    mod.emitLocalRelayActivity(entry);
+    // The caller still owns its object — this is called from the request path.
+    expect(entry.response).toBe(huge);
+  });
+
+  it('evicts on total bytes, not only on entry count', () => {
+    // Each of these is capped to ~2KB, so 4MB of them is far fewer than the
+    // 2000-entry ceiling — byte pressure has to be what evicts.
+    for (let i = 0; i < 2000; i++) {
+      mod.emitLocalRelayActivity({ lane: 'bridge', at: i, action: 'accessories.list', phase: 'ok', response: huge });
+    }
+    const held = mod.getBufferedActivity();
+    const bytes = JSON.stringify(held).length;
+    expect(bytes).toBeLessThanOrEqual(4_100_000);
+    expect(held.length).toBeGreaterThan(0);
+  });
+});
+
 describe('getActivityStats', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -157,6 +209,33 @@ describe('getActivityDump', () => {
     expect(dump.entries).toHaveLength(5);
     // `buffered` stays the whole buffer, so a caller can tell it is filtered.
     expect(dump.buffered).toBe(10);
+  });
+
+  it('caps a page by bytes, so a dump cannot be what breaks the relay', async () => {
+    const big = await freshModule();
+    // Just under the per-field cap, so each row is retained whole — that is the
+    // case the page cap exists for. Rows large enough to be summarised on the
+    // way in are already small by the time they get here.
+    const chunky = { blob: 'y'.repeat(1900) };
+    for (let i = 0; i < 400; i++) {
+      big.emitLocalRelayActivity({ lane: 'bridge', at: i, action: 'accessories.list', phase: 'ok', response: chunky });
+    }
+    const dump = big.getActivityDump({ limit: 400 });
+    expect(JSON.stringify(dump.entries).length).toBeLessThanOrEqual(520_000);
+    // Truncated by bytes, so there is more to fetch and it says so.
+    expect(dump.entries.length).toBeLessThan(400);
+    expect(dump.nextBefore).toBeDefined();
+  });
+
+  it('always returns one entry, so paging cannot stall on an oversized row', async () => {
+    const big = await freshModule();
+    for (let i = 0; i < 3; i++) {
+      big.emitLocalRelayActivity({
+        lane: 'bridge', at: i, action: 'x', phase: 'ok',
+        response: { rows: Array.from({ length: 5000 }, (_, n) => `r${n}`) },
+      });
+    }
+    expect(big.getActivityDump({ limit: 3 }).entries.length).toBeGreaterThanOrEqual(1);
   });
 
   it('caps the page size, because this is fetched over the relay socket', async () => {

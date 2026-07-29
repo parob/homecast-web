@@ -12,43 +12,10 @@ import { announceRelayWrite, announceRelayGroupWrite } from './relay-write';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
+import { describeError } from '../lib/describe-error';
 
 /** Distinguishes requests started within the same millisecond. */
 let activitySeq = 0;
-
-/** Longest JSON we will carry for one payload. */
-const ACTIVITY_PAYLOAD_LIMIT = 2000;
-
-/**
- * A payload small enough to keep in a live buffer.
- *
- * `accessories.list` for three homes is hundreds of kilobytes, and 500 of those
- * would be a memory leak with a viewer attached. Large values are replaced by a
- * shape summary — which is what you want when reading anyway: the *size* of a
- * response is usually the diagnostic, not its contents.
- */
-function summariseForActivity(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  try {
-    const json = JSON.stringify(value);
-    if (json === undefined) return '[unserialisable]';
-    if (json.length <= ACTIVITY_PAYLOAD_LIMIT) return value;
-
-    if (Array.isArray(value)) return `[${value.length} items, ${json.length} bytes]`;
-    if (typeof value === 'object') {
-      const shape: Record<string, string> = {};
-      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        shape[k] = Array.isArray(v) ? `[${v.length} items]` : typeof v;
-      }
-      return { '…truncated': `${json.length} bytes`, ...shape };
-    }
-    return `${json.slice(0, ACTIVITY_PAYLOAD_LIMIT)}…`;
-  } catch {
-    // Circular, or a getter that throws.
-    return '[unserialisable]';
-  }
-}
-import { describeError } from '../lib/describe-error';
 
 /** Standard error codes matching the Cloud Edition */
 export const ErrorCode = {
@@ -294,15 +261,15 @@ export async function executeHomeKitAction(
   const id = `${startedAt}-${++activitySeq}`;
   emitLocalRelayActivity({
     lane: 'socket', phase: 'sent', action, at: startedAt, id, origin,
-    request: summariseForActivity(payload),
+    request: payload,
   });
   try {
     const result = await executeHomeKitActionInner(action, payload);
     emitLocalRelayActivity({
       lane: 'socket', phase: 'ok', action, id, at: startedAt, origin,
       ms: Math.round((activityNow() - startedAt) * 1000),
-      request: summariseForActivity(payload),
-      response: summariseForActivity(result),
+      request: payload,
+      response: result,
     });
     return result;
   } catch (e) {

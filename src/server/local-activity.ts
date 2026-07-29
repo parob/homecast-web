@@ -23,13 +23,99 @@ type Listener = (entry: RelayActivityEntry) => void;
 /**
  * Entries retained. Sized for the gap between something going wrong and someone
  * looking: a busy relay produces a few entries a second, so this is roughly ten
- * minutes of history, and about a megabyte with payloads.
+ * minutes of history.
  */
 const MAX_BUFFERED = 2000;
+
+/**
+ * Bytes retained, whichever limit is reached first.
+ *
+ * A count alone does not bound memory, because entry sizes differ by four
+ * orders of magnitude — one `accessories.list` response measured 1.6 MB, and
+ * two thousand of those is not a diagnostic buffer, it is an outage. Payloads
+ * are capped individually below; this is the backstop for their sum.
+ */
+const MAX_BUFFER_BYTES = 4_000_000;
+
+/** Longest JSON carried for a single payload field. */
+const PAYLOAD_LIMIT = 2000;
+
+/**
+ * Fields that carry caller-supplied data of unbounded size. Everything else on
+ * an entry is a scalar the recorder controls.
+ */
+const PAYLOAD_KEYS = ['request', 'response', 'value', 'triggerData', 'steps'] as const;
+
+/**
+ * A payload small enough to keep in a live buffer.
+ *
+ * `accessories.list` for three homes is over a megabyte, and a buffer of those
+ * is a memory leak on the relay Mac — which is the machine this is supposed to
+ * be diagnosing, not degrading. Large values collapse to a shape summary, which
+ * is what you want when reading anyway: the *size* of a response is usually the
+ * diagnostic, not its contents.
+ */
+export function summariseForActivity(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  // Scalars can't be large enough to matter, and skipping them keeps the
+  // stringify off the hot path for the majority of fields.
+  if (typeof value !== 'object' && typeof value !== 'string') return value;
+  try {
+    const json = JSON.stringify(value);
+    if (json === undefined) return '[unserialisable]';
+    if (json.length <= PAYLOAD_LIMIT) return value;
+
+    if (Array.isArray(value)) return `[${value.length} items, ${json.length} bytes]`;
+    if (typeof value === 'object') {
+      const shape: Record<string, string> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        shape[k] = Array.isArray(v) ? `[${v.length} items]` : typeof v;
+      }
+      return { '…truncated': `${json.length} bytes`, ...shape };
+    }
+    return `${json.slice(0, PAYLOAD_LIMIT)}…`;
+  } catch {
+    // Circular, or a getter that throws.
+    return '[unserialisable]';
+  }
+}
+
+/**
+ * Bound every payload on an entry.
+ *
+ * Done here rather than at the call sites because a call site can forget, and
+ * one did: the native-bridge instrumentation stored `accessories.list`
+ * responses verbatim while the identical helper sat unused two modules away.
+ * Capping on the way into the buffer means a new lane cannot reintroduce it.
+ */
+function boundPayloads(entry: RelayActivityEntry): RelayActivityEntry {
+  let bounded: RelayActivityEntry | null = null;
+  for (const key of PAYLOAD_KEYS) {
+    const value = (entry as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    const small = summariseForActivity(value);
+    if (small !== value) {
+      bounded = bounded ?? { ...entry };
+      (bounded as Record<string, unknown>)[key] = small;
+    }
+  }
+  return bounded ?? entry;
+}
+
+function measure(entry: RelayActivityEntry): number {
+  try {
+    return JSON.stringify(entry)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 const listeners = new Set<Listener>();
 /** Newest last, so the array reads in the order things happened. */
 const buffer: RelayActivityEntry[] = [];
+/** Serialised size of `buffer[i]`, kept in step so eviction can bound memory. */
+const sizes: number[] = [];
+let bufferBytes = 0;
 
 /** Listen to this relay's own activity. Returns an unsubscribe. */
 export function onLocalRelayActivity(listener: Listener): () => void {
@@ -53,21 +139,49 @@ export function hasLocalActivityListeners(): boolean {
  * diagnostic must not be able to break the thing it describes.
  */
 export function emitLocalRelayActivity(entry: RelayActivityEntry): void {
+  const bounded = boundPayloads(entry);
+  const size = measure(bounded);
+
   // An outcome replaces its pending entry rather than adding a second one, so
   // one request is one row here as well as on screen — otherwise a remote dump
   // would show every completed request twice, once as "still waiting".
-  if (entry.id && entry.phase && entry.phase !== 'sent') {
-    const pending = buffer.findIndex((e) => e.id === entry.id);
-    if (pending !== -1) buffer[pending] = entry;
-    else buffer.push(entry);
+  if (bounded.id && bounded.phase && bounded.phase !== 'sent') {
+    const pending = buffer.findIndex((e) => e.id === bounded.id);
+    if (pending !== -1) {
+      bufferBytes += size - sizes[pending];
+      buffer[pending] = bounded;
+      sizes[pending] = size;
+    } else {
+      buffer.push(bounded);
+      sizes.push(size);
+      bufferBytes += size;
+    }
   } else {
-    buffer.push(entry);
+    buffer.push(bounded);
+    sizes.push(size);
+    bufferBytes += size;
   }
-  if (buffer.length > MAX_BUFFERED) buffer.splice(0, buffer.length - MAX_BUFFERED);
+
+  // Evict oldest-first until under both limits — whichever binds first wins.
+  // Never evicts the newest entry: a single oversized one should cost history,
+  // not the record of the thing that just happened.
+  let drop = 0;
+  while (
+    (buffer.length - drop > MAX_BUFFERED || bufferBytes > MAX_BUFFER_BYTES) &&
+    drop < buffer.length - 1
+  ) {
+    bufferBytes -= sizes[drop];
+    drop++;
+  }
+  if (drop > 0) {
+    buffer.splice(0, drop);
+    sizes.splice(0, drop);
+  }
+  if (bufferBytes < 0) bufferBytes = 0;
 
   for (const listener of listeners) {
     try {
-      listener(entry);
+      listener(bounded);
     } catch (e) {
       console.error('[LocalActivity] listener failed', e);
     }
@@ -94,6 +208,8 @@ export interface ActivityDump {
 }
 
 const MAX_DUMP_LIMIT = 500;
+/** Ceiling on one page, so a dump can never be the thing that breaks a relay. */
+const MAX_DUMP_BYTES = 512_000;
 
 /**
  * A page of history, newest first.
@@ -113,8 +229,22 @@ export function getActivityDump(options: ActivityDumpOptions = {}): ActivityDump
 
   // Newest first, matching the panel, so a dump reads the same way.
   const newestFirst = [...candidates].reverse();
-  const entries = newestFirst.slice(0, limit);
-  const more = newestFirst.length > limit;
+
+  // Bound the response by bytes as well as by count. Entries are capped
+  // individually on the way in, but a page of the large ones still adds up, and
+  // this travels over the relay's own socket — a 300-entry page disconnected a
+  // live relay before the per-entry cap existed. Always returns at least one
+  // entry, so paging can never stall on an oversized row.
+  const entries: RelayActivityEntry[] = [];
+  let bytes = 0;
+  for (const entry of newestFirst) {
+    if (entries.length >= limit) break;
+    const size = measure(entry);
+    if (entries.length > 0 && bytes + size > MAX_DUMP_BYTES) break;
+    entries.push(entry);
+    bytes += size;
+  }
+  const more = newestFirst.length > entries.length;
 
   return {
     entries,
