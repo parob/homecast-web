@@ -13,6 +13,7 @@ import {
   nextReconnectDelay,
   resetsBackoff,
   jitter,
+  isSocketStale,
 } from '../reconnect-policy';
 
 /** Total time asleep across `attempts` retries, ignoring jitter. */
@@ -84,5 +85,40 @@ describe('jitter', () => {
   it('spreads a fleet rather than returning one value', () => {
     // Without this a whole fleet reconnects in lockstep after one restart.
     expect(jitter(1000, () => 0)).not.toBe(jitter(1000, () => 1));
+  });
+});
+
+describe('isSocketStale', () => {
+  // `readyState` reports a half-open socket as OPEN indefinitely — TCP up,
+  // peer gone, no FIN, which is what a hard node kill or an LB dropping state
+  // produces. `onclose` never fires, so nothing else notices. The client sent
+  // a ping every 30s and threw the answer away in an empty branch whose
+  // comment said "connection is alive".
+  const NOW = 1_000_000;
+
+  it('leaves a quiet but healthy socket alone', () => {
+    // Both sides ping, so ~30s of quiet is normal.
+    expect(isSocketStale(NOW - 30_000, NOW)).toBe(false);
+    expect(isSocketStale(NOW - 60_000, NOW)).toBe(false);
+  });
+
+  it('tolerates one lost round trip', () => {
+    expect(isSocketStale(NOW - 70_000, NOW)).toBe(false);
+  });
+
+  it('calls a socket dead once silence cannot be explained', () => {
+    expect(isSocketStale(NOW - 80_000, NOW)).toBe(true);
+    expect(isSocketStale(NOW - 20 * 60_000, NOW)).toBe(true);
+  });
+
+  it('is never stale before the first message arrives', () => {
+    // A socket that just opened has legitimately heard nothing; treating 0 as
+    // "silent since the epoch" would reconnect every new connection instantly.
+    expect(isSocketStale(0, NOW)).toBe(false);
+  });
+
+  it('honours an explicit threshold', () => {
+    expect(isSocketStale(NOW - 10_000, NOW, 5_000)).toBe(true);
+    expect(isSocketStale(NOW - 10_000, NOW, 30_000)).toBe(false);
   });
 });

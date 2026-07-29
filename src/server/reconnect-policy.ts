@@ -54,3 +54,32 @@ export function nextReconnectDelay(current: number, isRelay: boolean): number {
 export function jitter(delay: number, random: () => number = Math.random): number {
   return Math.max(0, delay + delay * 0.2 * (random() * 2 - 1));
 }
+
+/** How often the client pings. */
+export const HEARTBEAT_INTERVAL = 30_000;
+
+/**
+ * Silence that means the socket is dead rather than quiet.
+ *
+ * Both sides ping, so on a healthy connection something arrives roughly every
+ * 30s. Two and a half intervals tolerates one lost round trip without calling
+ * a working socket dead.
+ *
+ * This exists because a half-open socket — TCP still up, peer gone, no FIN,
+ * which is what a hard node kill or an LB dropping state produces — never
+ * fires `onclose`. Without this the relay believes it is connected forever,
+ * and the only symptom is a house that quietly stops answering.
+ */
+export const SILENCE_BEFORE_DEAD = 75_000;
+
+/** Has nothing arrived for long enough that the socket cannot be alive? */
+export function isSocketStale(
+  lastInboundAt: number,
+  now: number,
+  threshold: number = SILENCE_BEFORE_DEAD,
+): boolean {
+  // Never stale before the first message: a socket that has just opened has
+  // legitimately heard nothing yet.
+  if (!lastInboundAt) return false;
+  return now - lastInboundAt > threshold;
+}

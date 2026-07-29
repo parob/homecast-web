@@ -188,6 +188,7 @@ interface PendingRequest {
 // Reconnection settings
 import {
   INITIAL_RECONNECT_DELAY, nextReconnectDelay, resetsBackoff, jitter,
+  isSocketStale,
 } from './reconnect-policy';
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
@@ -233,6 +234,12 @@ export class ServerWebSocket {
   private ws: WebSocket | NativeRelayWebSocket | null = null;
   private state: ConnectionState = 'disconnected';
   private reconnectDelay = INITIAL_RECONNECT_DELAY;
+  /**
+   * When anything last arrived on the socket. The only evidence that the
+   * connection is still real — `readyState` reports a half-open socket as OPEN
+   * indefinitely.
+   */
+  private lastInboundAt = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatVisibilityHandler: (() => void) | null = null;
@@ -567,6 +574,10 @@ export class ServerWebSocket {
    * Record one unit of WebSocket activity in the current minute bucket.
    */
   private recordActivity(): void {
+    // Liveness, separate from the per-minute counters below: any inbound frame
+    // is proof the peer is still there, which readyState cannot give us.
+    this.lastInboundAt = Date.now();
+
     const now = Math.floor(Date.now() / 60000); // current Unix minute
     if (this.activityBucketMinute === -1) {
       // First activity ever — initialise
@@ -669,6 +680,9 @@ export class ServerWebSocket {
     console.log('[ServerWS] Connected');
     this.setState('connected');
     this.connectionOpenedAt = Date.now();
+    // Start the liveness clock now: a socket that has just opened is alive,
+    // and would otherwise inherit the previous connection's last timestamp.
+    this.lastInboundAt = Date.now();
     // Only reset backoff if previous connection was stable (lasted > 5s)
     // This prevents rapid reconnect loops when the server crashes immediately after connecting
     if (this.lastConnectionDuration === null || this.lastConnectionDuration > 5000) {
@@ -952,7 +966,9 @@ export class ServerWebSocket {
           this.webClientCount = pingPayload.webClientCount;
         }
       } else if (message.type === 'pong') {
-        // Response to our ping - connection is alive
+        // Nothing to do beyond the timestamp recorded for every inbound
+        // message — which is the point: this used to be an empty branch
+        // asserting the connection was alive without recording that it was.
       } else if (message.type === 'redirect') {
         // Server requesting redirect to a specific pod (GKE consistent hashing)
         const target = message.target as string;
@@ -1617,6 +1633,20 @@ export class ServerWebSocket {
 
     const tick = () => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // A half-open socket still reports OPEN, so readyState proves nothing.
+        // If our pings have gone unanswered for long enough that the peer
+        // cannot be there, stop believing the socket and rebuild it.
+        if (isSocketStale(this.lastInboundAt, Date.now())) {
+          console.warn(
+            `[ServerWS] No traffic for ${Math.round((Date.now() - this.lastInboundAt) / 1000)}s ` +
+            '— treating socket as dead and reconnecting',
+          );
+          browserLogger.logInfo('ws_stale_reconnect', {
+            silent_ms: Date.now() - this.lastInboundAt,
+          });
+          this.gracefulReconnect();
+          return;
+        }
         this.ws.send(JSON.stringify({ type: 'ping' }));
         if (isRelayCapable()) {
           HomeKit.resetObservationTimeout().catch(() => {});
