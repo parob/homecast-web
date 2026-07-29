@@ -122,3 +122,37 @@ describe('isSocketStale', () => {
     expect(isSocketStale(NOW - 10_000, NOW, 30_000)).toBe(false);
   });
 });
+
+describe('a request timeout as evidence about the socket', () => {
+  // A half-open socket accepts sends and delivers nothing. Every request then
+  // timed out, forever, and the only cure was the user reloading the app —
+  // which is exactly how this surfaced: "Request timed out: serviceGroup.set",
+  // fixed by refreshing the client.
+  //
+  // The rule the request path uses: nothing inbound since the request was sent.
+  // Both sides ping every 30s, so a healthy connection cannot be silent for a
+  // whole request timeout, while a merely slow request still sees heartbeats.
+  const REQUEST_TIMEOUT = 30_000;
+  const sentAt = 1_000_000;
+  const timedOutAt = sentAt + REQUEST_TIMEOUT;
+
+  /** The predicate as the request path applies it. */
+  const socketSuspect = (lastInboundAt: number) => lastInboundAt <= sentAt;
+
+  it('suspects the socket when nothing arrived at all', () => {
+    expect(socketSuspect(sentAt - 5_000)).toBe(true);
+    expect(socketSuspect(sentAt)).toBe(true);
+  });
+
+  it('leaves a healthy socket alone when the request was merely slow', () => {
+    // A pong landed 10s in: the peer is there, the request is just slow. Tearing
+    // the socket down here would turn one slow write into a reconnect.
+    expect(socketSuspect(sentAt + 10_000)).toBe(false);
+  });
+
+  it('agrees with the heartbeat check on a socket silent far longer', () => {
+    // Belt and braces: the heartbeat would also catch this, just later.
+    expect(socketSuspect(sentAt - 120_000)).toBe(true);
+    expect(isSocketStale(sentAt - 120_000, timedOutAt)).toBe(true);
+  });
+});

@@ -585,10 +585,30 @@ export class ServerWebSocket {
 
     const id = `req_${Date.now()}_${++this.requestIdCounter}`;
 
+    const sentAt = Date.now();
     const promise = new Promise<T>((resolve, reject) => {
       // Set up timeout
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
+
+        // A request that times out while *nothing at all* has arrived since it
+        // was sent is the dead-socket signature. Both sides ping every 30s, so
+        // a healthy connection cannot go a whole request timeout in silence —
+        // and a merely slow request still sees heartbeats, which is what keeps
+        // this from tearing down a working socket.
+        //
+        // Without it, a half-open socket made every request time out forever:
+        // the only cure was the user reloading the app, which is exactly what
+        // happened before this existed.
+        if (this.lastInboundAt <= sentAt) {
+          console.warn(
+            `[ServerWS] ${action} timed out with no traffic since it was sent — ` +
+            'rebuilding the socket rather than failing every request after it',
+          );
+          browserLogger.logInfo('ws_timeout_reconnect', { action, silent_ms: Date.now() - sentAt });
+          this.gracefulReconnect();
+        }
+
         reject(new HomecastError('TIMEOUT', `Request timed out: ${action}`));
       }, REQUEST_TIMEOUT);
 
