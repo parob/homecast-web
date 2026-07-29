@@ -270,7 +270,15 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
 
 export async function executeHomeKitAction(
   action: string,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
+  /**
+   * Who asked. Defaults to local because most callers are this Mac's own UI;
+   * the cloud path says so explicitly. Without it a command pushed from the
+   * server and one from the dashboard next to you look identical, and "is
+   * anything reaching me from the cloud?" is exactly the question worth asking
+   * of a relay that has gone quiet.
+   */
+  origin: 'local' | 'cloud' = 'local',
 ): Promise<unknown> {
   // Every relay action funnels through here, so this is the one place the
   // socket lane needs tapping. Wrapped rather than sprinkled through the switch:
@@ -285,13 +293,13 @@ export async function executeHomeKitAction(
   // rather than the residue of a request that finished long ago.
   const id = `${startedAt}-${++activitySeq}`;
   emitLocalRelayActivity({
-    lane: 'socket', phase: 'sent', action, at: startedAt, id,
+    lane: 'socket', phase: 'sent', action, at: startedAt, id, origin,
     request: summariseForActivity(payload),
   });
   try {
     const result = await executeHomeKitActionInner(action, payload);
     emitLocalRelayActivity({
-      lane: 'socket', phase: 'ok', action, id, at: startedAt,
+      lane: 'socket', phase: 'ok', action, id, at: startedAt, origin,
       ms: Math.round((activityNow() - startedAt) * 1000),
       request: summariseForActivity(payload),
       response: summariseForActivity(result),
@@ -299,7 +307,7 @@ export async function executeHomeKitAction(
     return result;
   } catch (e) {
     emitLocalRelayActivity({
-      lane: 'socket', phase: 'failed', action, id, at: startedAt,
+      lane: 'socket', phase: 'failed', action, id, at: startedAt, origin,
       ms: Math.round((activityNow() - startedAt) * 1000),
       error: describeError(e),
     });

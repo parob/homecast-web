@@ -19,6 +19,28 @@ import { setRelayWritePublisher } from '../relay/relay-write';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from './local-activity';
+
+/** Bounded like the socket lane's payloads — a sync_all carries every automation. */
+function summariseCloudMessage(message: { payload?: unknown }): unknown {
+  const payload = message.payload;
+  if (payload === null || payload === undefined) return undefined;
+  try {
+    const json = JSON.stringify(payload);
+    if (json === undefined) return '[unserialisable]';
+    if (json.length <= 2000) return payload;
+    if (Array.isArray(payload)) return `[${payload.length} items, ${json.length} bytes]`;
+    if (typeof payload === 'object') {
+      const shape: Record<string, string> = {};
+      for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+        shape[k] = Array.isArray(v) ? `[${v.length} items]` : typeof v;
+      }
+      return { '…truncated': `${json.length} bytes`, ...shape };
+    }
+    return `${json.slice(0, 2000)}…`;
+  } catch {
+    return '[unserialisable]';
+  }
+}
 import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws';
 
 // Protocol message types
@@ -107,10 +129,12 @@ export interface EnrollmentCancelled {
 
 /** One line of a relay's live activity stream. See relay-write / handler.py. */
 export interface RelayActivityEntry {
-  lane: 'socket' | 'homekit' | 'automation';
+  lane: 'socket' | 'homekit' | 'automation' | 'cloud';
   at: number;
   /** Correlates a socket entry's `sent` with its outcome, so one request is one row. */
   id?: string;
+  /** Where the request came from: this Mac's own UI, or the cloud. */
+  origin?: 'local' | 'cloud';
   /** socket */
   phase?: 'sent' | 'ok' | 'failed';
   action?: string;
@@ -793,6 +817,19 @@ export class ServerWebSocket {
     this.recordActivity();
     try {
       const message = JSON.parse(event.data);
+
+      // Everything the cloud sends, including what is not a request:
+      // relay_status, subscriber counts, automation pushes, broadcasts. None of
+      // it is visible anywhere today, and "is the cloud still talking to me?"
+      // is the first question about a relay that has gone quiet — its own
+      // requests stopping and the cloud never speaking are different faults.
+      if (hasLocalActivityListeners() && message.type !== 'ping' && message.type !== 'pong') {
+        emitLocalRelayActivity({
+          lane: 'cloud', at: activityNow(),
+          action: message.action ? `${message.type}:${message.action}` : message.type,
+          request: summariseCloudMessage(message),
+        });
+      }
       browserLogger.logWsReceive(
         `${message.type}${message.action ? ':' + message.action : ''}`,
         // Broadcasts have no id — for relay status show the payload instead so
@@ -1210,7 +1247,7 @@ export class ServerWebSocket {
         });
       }
 
-      const result = await executeHomeKitAction(message.action, message.payload || {});
+      const result = await executeHomeKitAction(message.action, message.payload || {}, 'cloud');
 
       // Update trace with completed homekit_call timing
       if (trace) {

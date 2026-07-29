@@ -13,15 +13,16 @@ import { useRelayActivity } from '@/hooks/useRelayActivity';
 import type { RelayActivityEntry } from '@/server/websocket';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check } from 'lucide-react';
+import { Pause, Play, Trash2, ArrowLeftRight, Home, Zap, Copy, Check, Cloud } from 'lucide-react';
 
-type Lane = 'all' | 'socket' | 'homekit' | 'automation';
+type Lane = 'all' | 'socket' | 'homekit' | 'automation' | 'cloud';
 
 const LANES: { key: Lane; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'socket', label: 'Socket' },
   { key: 'homekit', label: 'HomeKit' },
   { key: 'automation', label: 'Automations' },
+  { key: 'cloud', label: 'Cloud' },
 ];
 
 /** Gap worth calling out. Below this it is ordinary quiet. */
@@ -77,7 +78,9 @@ function formatForSharing(entries: RelayActivityEntry[]): string {
         entry.phase === 'sent' ? `NO RESPONSE (still waiting)`
         : entry.phase === 'failed' ? `FAILED ${entry.error ?? ''} ${entry.ms ? describeDuration(entry.ms) : ''}`.trim()
         : `ok ${entry.ms !== undefined ? describeDuration(entry.ms) : ''}`.trim();
-      detail = `${entry.action}  ${outcome}`;
+      detail = `${entry.action}${entry.origin === 'cloud' ? ' [cloud]' : ''}  ${outcome}`;
+    } else if (entry.lane === 'cloud') {
+      detail = `${entry.action}  (received from cloud)`;
     } else if (entry.lane === 'homekit') {
       detail = `${entry.accessoryId ?? '?'}  ${entry.characteristicType ?? '?'} = ${readValue(entry.value)}`;
     } else {
@@ -103,6 +106,7 @@ function LaneIcon({ lane }: { lane: RelayActivityEntry['lane'] }) {
   const cls = 'h-3 w-3 shrink-0';
   if (lane === 'socket') return <ArrowLeftRight className={cn(cls, 'text-sky-500')} />;
   if (lane === 'homekit') return <Home className={cn(cls, 'text-emerald-500')} />;
+  if (lane === 'cloud') return <Cloud className={cn(cls, 'text-slate-400')} />;
   return <Zap className={cn(cls, 'text-violet-500')} />;
 }
 
@@ -117,6 +121,9 @@ function SocketRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: numbe
   return (
     <>
       <span className="font-medium truncate">{entry.action}</span>
+      {entry.origin === 'cloud' && (
+        <span className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground">cloud</span>
+      )}
       <span
         className={cn(
           'ml-auto shrink-0 tabular-nums',
@@ -141,6 +148,15 @@ function HomeKitRow({ entry }: { entry: RelayActivityEntry }) {
       <span className="font-medium truncate">{entry.accessoryId?.slice(0, 8) ?? 'accessory'}</span>
       <span className="text-muted-foreground truncate">{entry.characteristicType}</span>
       <span className="ml-auto shrink-0">{readValue(entry.value)}</span>
+    </>
+  );
+}
+
+function CloudRow({ entry }: { entry: RelayActivityEntry }) {
+  return (
+    <>
+      <span className="font-medium truncate">{entry.action}</span>
+      <span className="ml-auto shrink-0 text-muted-foreground">from cloud</span>
     </>
   );
 }
@@ -187,6 +203,7 @@ function ActivityRow({ entry, nowSec }: { entry: RelayActivityEntry; nowSec: num
         {entry.lane === 'socket' && <SocketRow entry={entry} nowSec={nowSec} />}
         {entry.lane === 'homekit' && <HomeKitRow entry={entry} />}
         {entry.lane === 'automation' && <AutomationRow entry={entry} />}
+        {entry.lane === 'cloud' && <CloudRow entry={entry} />}
       </div>
 
       {open && (
