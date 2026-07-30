@@ -35,12 +35,19 @@ try {
 }
 
 const errorRe = /^(.+?)\(\d+,\d+\): (error TS\d+): (.*)$/;
+
+// tsc embeds ABSOLUTE paths inside some messages (e.g. import("/home/runner/
+// work/.../src/x") in cross-file type mismatches). Keys must match across
+// machines and CI, so strip the repo root wherever it appears in the message.
+const normalizeMessage = (msg) =>
+  msg.split(`${root}/`).join('').split(root).join('');
+
 const current = new Map();
 const rawLines = new Map();
 for (const line of output.split('\n')) {
   const m = line.match(errorRe);
   if (!m) continue;
-  const key = `${m[1]}|${m[2]}|${m[3]}`;
+  const key = `${m[1]}|${m[2]}|${normalizeMessage(m[3])}`;
   current.set(key, (current.get(key) ?? 0) + 1);
   rawLines.set(key, line.trim());
 }
