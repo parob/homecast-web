@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { HomeKit, isRelayCapable } from '../native/homekit-bridge';
 import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
-import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { invalidateHomeKitCache, invalidateHomeCaches } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
 import { toast } from 'sonner';
 
@@ -164,16 +164,22 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       localStorage.removeItem('homecast-token');
       window.location.href = '/login';
     } else if (message.type === 'relay_status_update') {
-      // Relay came online/offline for a shared home — re-fetch homes list.
-      // Record the broadcast first so relay-offline diagnostics can show
-      // what status pushes the client actually received.
+      // Relay came online/offline for ONE home — refresh that home's data and
+      // the homes list (which carries the relay-status field). Scoped: the old
+      // no-arg nuke made a single flapping relay refetch every home for every
+      // client. Record the broadcast first so relay-offline diagnostics can
+      // show what status pushes the client actually received.
       recordRelayStatusUpdate(message);
-      invalidateHomeKitCache();
+      if (message.homeId) {
+        invalidateHomeCaches(message.homeId);
+      } else {
+        invalidateHomeKitCache('all');
+      }
     } else if (message.type === 'enrollment_cancelled') {
       toast.info(`"${message.homeName}" was removed from cloud relay`, {
         description: 'The relay user was removed from your Apple Home.',
       });
-      invalidateHomeKitCache();
+      invalidateHomeKitCache('all');
     }
   }, [scheduleFlush, notifyServiceGroupUpdate]);
 

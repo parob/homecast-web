@@ -14,10 +14,14 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - name: Type check
-        # The build is esbuild-only and does not type-check, so without this
-        # step type errors never surface in CI or in a local build.
-        run: npx tsc --noEmit
+      - name: Type check (ratchet)
+        # The build is esbuild-only and does not type-check. NOTE: a bare
+        # `npx tsc --noEmit` here checked NOTHING for years — the root
+        # tsconfig.json is solution-style ("files": []), so tsc had zero
+        # inputs and exited green. The ratchet script runs the REAL check
+        # (-p tsconfig.app.json) against a committed baseline: new type
+        # errors fail the build, and the baseline can only shrink.
+        run: npm run typecheck
       - name: Unit and integration tests
         # --coverage enforces the thresholds in vitest.config.ts, so coverage
         # can only ratchet upward.

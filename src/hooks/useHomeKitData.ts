@@ -783,20 +783,38 @@ export function useAllServiceGroups(
 /**
  * Invalidate cached data (useful after mutations).
  * Pass a key for exact match, or use prefix: true for prefix-based invalidation.
+ *
+ * Dropping EVERY cache requires the explicit key 'all' — the old no-arg form
+ * was a footgun: it ran on every relay_status_update, so a single home's relay
+ * flapping made every client refetch every home's data.
  */
-export function invalidateHomeKitCache(key?: string, options?: { prefix?: boolean }): void {
-  if (key) {
+export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { prefix?: boolean }): void {
+  // Runtime tolerance for untyped callers: no key means the old "nuke all".
+  if (key && key !== 'all') {
     if (options?.prefix) {
       cache.invalidateByPrefix(key);
     } else {
       cache.invalidate(key);
     }
   } else {
-    // Invalidate all
     cache.invalidateByPrefix('homes');
     cache.invalidateByPrefix('rooms');
     cache.invalidateByPrefix('accessories');
     cache.invalidateByPrefix('serviceGroups');
+  }
+}
+
+/**
+ * Invalidate one home's cached data (rooms, accessories, service groups) plus
+ * the homes list itself. Tolerates UUID case differences between the id in a
+ * server message and the id the cache was keyed under.
+ */
+export function invalidateHomeCaches(homeId: string): void {
+  cache.invalidateByPrefix('homes');
+  for (const id of new Set([homeId, homeId.toUpperCase(), homeId.toLowerCase()])) {
+    cache.invalidate(`rooms:${id}`);
+    cache.invalidate(`accessories:${id}`);
+    cache.invalidate(`serviceGroups:${id}`);
   }
 }
 

@@ -372,10 +372,11 @@ async function executeHomeKitActionInner(
     }
 
     case 'characteristic.set': {
-      const { accessoryId, characteristicType: requested, value } = payload as {
+      const { accessoryId, characteristicType: requested, value, homeId } = payload as {
         accessoryId: string;
         characteristicType: string;
         value: unknown;
+        homeId?: string;
       };
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
@@ -385,7 +386,11 @@ async function executeHomeKitActionInner(
       // echoed to clients, MQTT and the engine under a name nothing else uses.
       const characteristicType = canonicalCharacteristic(requested);
       const setResult = await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
-      announceRelayWrite([{ accessoryId, characteristicType, value }], 'client');
+      // Announce the CONFIRMED value when the bridge reports one — HomeKit may
+      // cap a requested value (brightness clamps etc.), and every client would
+      // otherwise display the value we asked for, not the one that stuck.
+      const confirmed = (setResult as { value?: unknown } | undefined)?.value ?? value;
+      announceRelayWrite([{ accessoryId, characteristicType, value: confirmed, homeId }], 'client');
       return setResult;
     }
 
@@ -432,11 +437,20 @@ async function executeHomeKitActionInner(
     }
 
     case 'automation.get': {
-      const { automationId } = payload as { automationId: string };
-      // getAutomation not available via bridge, use listAutomations and filter
-      const bridge = (await import('@/native/homekit-bridge')).getNativeBridge();
-      if (!bridge) throw new Error('HomeKit bridge not available');
-      return bridge.call('automation.get', { automationId });
+      const { automationId, homeId } = payload as { automationId: string; homeId?: string };
+      // The bridge has no automation.get — list and filter, scoped to the
+      // caller's home when given, otherwise across all homes. (The previous
+      // code called a getNativeBridge() that never existed, so this action
+      // threw at runtime since the day it shipped.)
+      const homeIds = homeId
+        ? [homeId]
+        : ((await HomeKit.listHomes()) as Array<{ id: string }>).map((h) => h.id);
+      for (const hid of homeIds) {
+        const automations = await HomeKit.listAutomations(hid);
+        const found = automations.find((a) => (a as { id?: string })?.id === automationId);
+        if (found) return { automation: found };
+      }
+      throw Object.assign(new Error('Automation not found'), { code: ErrorCode.INVALID_REQUEST });
     }
 
     case 'automation.create': {
@@ -508,7 +522,7 @@ async function executeHomeKitActionInner(
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
       if (!automation?.id) {
-        throw Object.assign(new Error('automation.id required'), { code: ErrorCode.INVALID_PARAMS });
+        throw Object.assign(new Error('automation.id required'), { code: ErrorCode.INVALID_REQUEST });
       }
       engine.updateAutomation(automation as Parameters<typeof engine.updateAutomation>[0]);
       return { synced: automation.id };
@@ -526,7 +540,7 @@ async function executeHomeKitActionInner(
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
       if (!automationId) {
-        throw Object.assign(new Error('automationId required'), { code: ErrorCode.INVALID_PARAMS });
+        throw Object.assign(new Error('automationId required'), { code: ErrorCode.INVALID_REQUEST });
       }
       engine.removeAutomation(automationId);
       return { deleted: automationId };

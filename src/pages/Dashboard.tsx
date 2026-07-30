@@ -5697,7 +5697,7 @@ const Dashboard = () => {
                                     onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
                                       try {
                                         await dismissHomeMutation({ variables: { homeId: home.id } });
-                                        invalidateHomeKitCache();
+                                        invalidateHomeKitCache('all');
                                         toast.success('Home removed');
                                       } catch { toast.error('Failed to remove home'); }
                                     } : undefined}
@@ -6176,7 +6176,7 @@ const Dashboard = () => {
                               onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
                                 try {
                                   await dismissHomeMutation({ variables: { homeId: home.id } });
-                                  invalidateHomeKitCache();
+                                  invalidateHomeKitCache('all');
                                   toast.success('Home removed');
                                 } catch { toast.error('Failed to remove home'); }
                               } : undefined}
@@ -6470,7 +6470,7 @@ const Dashboard = () => {
                             onClick={async () => {
                               await acceptInvitationMutation({ variables: { homeId: invite.homeId } });
                               refetchPendingInvitations();
-                              invalidateHomeKitCache();
+                              invalidateHomeKitCache('all');
                             }}
                           >
                             Accept
@@ -7827,7 +7827,7 @@ const Dashboard = () => {
           onComplete={handleOnboardingComplete}
           onUpgradeStandard={handleUpgrade}
           userEmail={user?.email || ''}
-          onInvalidateHomes={invalidateHomeKitCache}
+          onInvalidateHomes={() => invalidateHomeKitCache('all')}
           cloudSignupsAvailable={cloudSignupsAvailable}
           accountType={accountType}
           initialStep={onboardingInitialStep}

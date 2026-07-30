@@ -92,16 +92,11 @@ export function initLocalBroadcast(): void {
         accessoryId: event.accessoryId,
         isReachable: event.isReachable ?? true,
       });
-    } else if (event.type === 'serviceGroup.updated') {
-      broadcast({
-        type: 'service_group_update',
-        groupId: event.groupId,
-        homeId: event.homeId ?? null,
-        characteristicType: event.characteristicType,
-        value: event.value,
-        affectedCount: event.affectedCount ?? 0,
-      });
     }
+    // No serviceGroup branch: the native bridge never emits a
+    // 'serviceGroup.updated' observation event (groups are a Homecast concept,
+    // not a HomeKit one). Group changes reach LAN clients through
+    // broadcastRelayGroupWrite via the relay-write publisher instead.
   });
 }
 
@@ -137,6 +132,7 @@ export function broadcastRelayGroupWrite(
   characteristicType: string,
   value: unknown,
   homeId?: string,
+  affectedCount = 0,
 ): void {
   const broadcast = (window as Window & { __localserver_broadcast?: (m: unknown) => void }).__localserver_broadcast;
   if (!broadcast) return;
@@ -146,7 +142,7 @@ export function broadcastRelayGroupWrite(
     homeId: homeId ?? null,
     characteristicType,
     value,
-    affectedCount: 0,
+    affectedCount,
   });
 }
 

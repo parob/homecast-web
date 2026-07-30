@@ -776,3 +776,25 @@ describe('characteristic naming at the relay boundary', () => {
     expect(HomeKit.setCharacteristic).toHaveBeenCalledWith('ACC-1', 'brightness', 42);
   });
 });
+
+describe('slug (uniqueKey) parity across CE surfaces', () => {
+  // local-mcp once carried a private uniqueKey copy that sanitized punctuation
+  // differently from local-rest ("rob's house" -> rob_s_house_ab12 vs
+  // rob's_house_ab12), so the slugs get_state emitted did not resolve in
+  // run_scene/delete_scene for any home or room named with punctuation.
+  // The cloud's canonical _unique_key (homecast-cloud api/home.py) matches
+  // local-rest: whitespace-only sanitization.
+  it('local-mcp has no private uniqueKey copy', async () => {
+    const src = await import('fs').then((fs) =>
+      fs.readFileSync(new URL('../local-mcp.ts', import.meta.url), 'utf8'));
+    expect(src).not.toMatch(/function uniqueKey/);
+    expect(src).toMatch(/import \{[^}]*uniqueKey[^}]*\} from '\.\/local-rest'/);
+  });
+
+  it('punctuated names slug the way the cloud does', async () => {
+    const { uniqueKey } = await import('../local-rest');
+    // Mirrors homecast-cloud _unique_key: lowercase, whitespace -> _, keep punctuation
+    expect(uniqueKey("Rob's House", 'ABCD-1234-EF56-AB12')).toBe("rob's_house_ab12");
+    expect(uniqueKey('Living  Room', 'ABCD-1234-EF56-CDEF')).toBe('living_room_cdef');
+  });
+});

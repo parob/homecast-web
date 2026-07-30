@@ -12,7 +12,10 @@
  *   - create_automation / update_automation / delete_automation: Manage HomeKit automations
  */
 
-import { handleGetState, handleSetState } from './local-rest';
+// uniqueKey MUST be the shared one: a private copy here sanitized punctuation
+// differently ("rob's house" -> rob_s_house vs local-rest's rob's_house), so
+// the slugs get_state emitted didn't resolve in run_scene/delete_scene.
+import { handleGetState, handleSetState, uniqueKey } from './local-rest';
 import {
   handleGetAutomations,
   handleCreateAutomation,
@@ -346,11 +349,6 @@ const TOOLS = [
   },
 ];
 
-// Import uniqueKey for home key resolution
-function uniqueKey(name: string, uuid: string): string {
-  const sanitized = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  return `${sanitized}_${uuid.slice(-4).toLowerCase()}`;
-}
 
 // --- Personalized tool descriptions ---
 // tools/list appends the account's actual home keys and room names to the

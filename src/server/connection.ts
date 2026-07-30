@@ -11,7 +11,6 @@ import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './we
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
-import { markRecentBroadcast } from './local-broadcast';
 import { browserLogger } from '../lib/browser-logger';
 import { toastConnection } from '../lib/toast-bus';
 
@@ -116,70 +115,17 @@ function communityCacheKey(action: string, payload: Record<string, unknown>): st
   return parts.join('|');
 }
 
-/**
- * Broadcast an update to external WebSocket clients via the Swift bridge.
- */
-function broadcastToExternalClients(message: Record<string, unknown>): void {
-  const broadcast = (window as Window & { __localserver_broadcast?: (msg: unknown) => void }).__localserver_broadcast;
-  if (broadcast) broadcast(message);
-}
-
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
   recordCommunityActivity();
 
-  // Value-only writes: execute + broadcast, but preserve the cache.
-  // These change characteristic values without altering the accessories list structure.
+  // Value-only writes: execute, preserving the cache. No broadcast here —
+  // local-handler announces every successful write through relay-write.ts,
+  // and the CE publisher registered by community-automation fans it out to
+  // LAN clients AND this Mac's own dashboard (with the confirmed value and
+  // the observation-event dedupe marker). A hand-maintained copy of that
+  // fan-out lived here and double-announced every UI write.
   if (VALUE_WRITE_ACTIONS.has(action)) {
-    const result = await executeHomeKitAction(action, payload);
-
-    // Broadcast write results to all clients (mirrors websocket.ts:280-336 in cloud mode)
-    // HomeKit doesn't fire events back to the app that made the change, so we do it manually.
-    // Use confirmed value from result when available (B2 fix — avoids mismatch if HomeKit caps values).
-    if (action === 'characteristic.set') {
-      const confirmedValue = (result as any)?.value ?? payload.value;
-      const msg: BroadcastMessage = {
-        type: 'characteristic_update',
-        accessoryId: payload.accessoryId as string,
-        homeId: (payload.homeId as string) ?? null,
-        characteristicType: payload.characteristicType as string,
-        value: confirmedValue,
-      };
-      // Mark as recently broadcast so local-broadcast.ts deduplicates the observation event (B3 fix)
-      markRecentBroadcast(payload.accessoryId as string, payload.characteristicType as string);
-      broadcastToExternalClients(msg);
-      serverConnection.emitBroadcast(msg);
-    } else if (action === 'serviceGroup.set') {
-      const resultObj = result as { affectedCount?: number; successCount?: number } | undefined;
-      const affectedCount = resultObj?.affectedCount ?? resultObj?.successCount ?? 0;
-      const msg: BroadcastMessage = {
-        type: 'service_group_update',
-        groupId: payload.groupId as string,
-        homeId: (payload.homeId as string) ?? null,
-        characteristicType: payload.characteristicType as string,
-        value: payload.value,
-        affectedCount,
-      };
-      broadcastToExternalClients(msg);
-      serverConnection.emitBroadcast(msg);
-    } else if (action === 'state.set') {
-      // Use resolved UUIDs from the Swift result (not slug keys from payload)
-      const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
-      if (changes) {
-        for (const change of changes) {
-          const msg: BroadcastMessage = {
-            type: 'characteristic_update',
-            accessoryId: change.accessoryId,
-            homeId: (payload.homeId as string) ?? null,
-            characteristicType: change.characteristicType,
-            value: change.value,
-          };
-          broadcastToExternalClients(msg);
-          serverConnection.emitBroadcast(msg);
-        }
-      }
-    }
-
-    return result as T;
+    return await executeHomeKitAction(action, payload) as T;
   }
 
   // Structure-changing writes: execute and clear affected cache entries so next read re-fetches.

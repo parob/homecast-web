@@ -19,6 +19,7 @@ import {
   HomeKitServiceGroupResolver,
 } from '../automation';
 import { createHomeKitBridgeAdapter } from '../automation/relay-adapter';
+import { setRelayWritePublisher } from '../relay/relay-write';
 import { resolveHomeLocation } from '../automation/location';
 import type { Automation, HelperDefinition } from '../automation/types/automation';
 import type { ExecutionTrace } from '../automation/types/execution';
@@ -87,25 +88,52 @@ async function persistTrace(trace: ExecutionTrace): Promise<void> {
 export async function initCommunityAutomationEngine(): Promise<void> {
   if (starting) return starting;
 
+  // Community mode's relay-write publisher — the CE counterpart of the one
+  // startRelayDuties registers in cloud mode. Every write path (UI, LAN WS
+  // clients, REST/MCP, the engine itself) fans out through relay-write.ts,
+  // and without a registered publisher those announcements reached nobody:
+  // an automation turning on a light updated no connected UI. Registered
+  // synchronously, before anything can write.
+  //
+  // Both targets are imported at write time rather than at module load:
+  // local-broadcast and connection reach through lib/config to `window`,
+  // which does not exist when this module is pulled into a node test.
+  setRelayWritePublisher({
+    characteristic: (change) => {
+      // LAN WS clients (+ the dedupe marker for the observation event)
+      void import('./local-broadcast').then((m) =>
+        m.broadcastRelayWrite(change.accessoryId, change.characteristicType, change.value, change.homeId));
+      // This Mac's own dashboard (DataCache subscribers)
+      void import('./connection').then((m) =>
+        m.serverConnection.emitBroadcast({
+          type: 'characteristic_update',
+          accessoryId: change.accessoryId,
+          homeId: change.homeId ?? null,
+          characteristicType: change.characteristicType,
+          value: change.value,
+        }));
+    },
+    serviceGroup: (groupId, characteristicType, value, homeId, affectedCount = 0) => {
+      void import('./local-broadcast').then((m) =>
+        m.broadcastRelayGroupWrite(groupId, characteristicType, value, homeId, affectedCount));
+      void import('./connection').then((m) =>
+        m.serverConnection.emitBroadcast({
+          type: 'service_group_update',
+          groupId,
+          homeId: homeId ?? null,
+          characteristicType,
+          value,
+          affectedCount,
+        }));
+    },
+  });
+
   starting = (async () => {
     resolver = new HomeKitServiceGroupResolver();
     resolver.start();
 
     const engine = await initAutomationEngine({
-      // Announce the engine's own writes to LAN clients; HomeKit will not.
-      // Imported at write time rather than at module load: local-broadcast
-      // reaches through lib/config to `window`, which does not exist when this
-      // module is pulled into a node-environment test.
-      bridge: createHomeKitBridgeAdapter({
-        characteristic: (accessoryId, characteristicType, value) => {
-          void import('./local-broadcast').then((m) =>
-            m.broadcastRelayWrite(accessoryId, characteristicType, value));
-        },
-        serviceGroup: (groupId, characteristicType, value, homeId) => {
-          void import('./local-broadcast').then((m) =>
-            m.broadcastRelayGroupWrite(groupId, characteristicType, value, homeId));
-        },
-      }),
+      bridge: createHomeKitBridgeAdapter(),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
       onNotify: async (message, title, data) => {
         // Community has one channel and no rate limit: the local alert on this
@@ -155,6 +183,7 @@ export async function reloadCommunityAutomations(): Promise<void> {
 }
 
 export function teardownCommunityAutomationEngine(): void {
+  setRelayWritePublisher(null);
   resolver?.stop();
   resolver = null;
   starting = null;

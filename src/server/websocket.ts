@@ -1480,105 +1480,14 @@ export class ServerWebSocket {
 
       this.sendResponse(message.id, message.action, result, trace);
 
-      // After successful write operations, send an event so the server broadcasts to web clients
-      // HomeKit doesn't fire events back to the app that made the change, so we do it manually
-      // Also trigger local onBroadcast so the Mac relay's own UI updates
-      if (message.action === 'characteristic.set') {
-        const payload = message.payload || {};
-        // Look up accessory context for subscription filtering (cached to avoid extra round-trip)
-        let homeId = payload.homeId as string | undefined;
-        let roomId: string | undefined;
-        const accessoryId = payload.accessoryId as string;
-        const cached = accessoryId ? this.accessoryHomeCache.get(accessoryId) : undefined;
-        if (cached) {
-          homeId = homeId || cached.homeId;
-          roomId = cached.roomId;
-        } else {
-          try {
-            const { accessory } = await executeHomeKitAction('accessory.get', { accessoryId }) as any;
-            homeId = homeId || accessory?.homeId;
-            roomId = accessory?.roomId;
-            if (accessoryId && accessory?.homeId) {
-              this.accessoryHomeCache.set(accessoryId, { homeId: accessory.homeId, roomId: accessory.roomId });
-            }
-          } catch { /* use whatever context we have */ }
-        }
-        // Send event to server for broadcasting to web clients
-        this.sendEvent({
-          id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-          type: 'event',
-          action: 'characteristic.updated',
-          payload: {
-            accessoryId: payload.accessoryId,
-            characteristicType: payload.characteristicType,
-            value: payload.value,
-            ...(homeId && { homeId }),
-            ...(roomId && { roomId }),
-          },
-        });
-        // Also update local UI (Mac relay)
-        this.callbacks.onBroadcast?.({
-          type: 'characteristic_update',
-          accessoryId: payload.accessoryId as string,
-          homeId: homeId ?? null,
-          characteristicType: payload.characteristicType as string,
-          value: payload.value,
-        });
-      } else if (message.action === 'serviceGroup.set') {
-        const payload = message.payload || {};
-        const resultObj = result as { affectedCount?: number } | undefined;
-        const affectedCount = resultObj?.affectedCount ?? 0;
-        // Send event to server for broadcasting to web clients
-        // Include homeId for proper subscription filtering
-        this.sendEvent({
-          id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-          type: 'event',
-          action: 'serviceGroup.updated',
-          payload: {
-            groupId: payload.groupId,
-            characteristicType: payload.characteristicType,
-            value: payload.value,
-            affectedCount,
-            ...(payload.homeId && { homeId: payload.homeId }),
-          },
-        });
-        // Also update local UI (Mac relay)
-        this.callbacks.onBroadcast?.({
-          type: 'service_group_update',
-          groupId: payload.groupId as string,
-          homeId: (payload.homeId as string) ?? null,
-          characteristicType: payload.characteristicType as string,
-          value: payload.value,
-          affectedCount,
-        });
-      } else if (message.action === 'state.set') {
-        // Broadcast each successful change using resolved UUIDs from the result
-        const payload = message.payload || {};
-        const homeId = payload.homeId as string | undefined;
-        const changes = (result as any)?.changes as Array<{ accessoryId: string; characteristicType: string; value: unknown }> | undefined;
-        if (changes) {
-          for (const change of changes) {
-            this.sendEvent({
-              id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-              type: 'event',
-              action: 'characteristic.updated',
-              payload: {
-                accessoryId: change.accessoryId,
-                characteristicType: change.characteristicType,
-                value: change.value,
-                ...(homeId && { homeId }),
-              },
-            });
-            this.callbacks.onBroadcast?.({
-              type: 'characteristic_update',
-              accessoryId: change.accessoryId,
-              homeId: homeId ?? null,
-              characteristicType: change.characteristicType,
-              value: change.value,
-            });
-          }
-        }
-      }
+      // No per-action broadcast here: executeHomeKitAction announces every
+      // successful write through relay-write.ts, whose registered publisher
+      // (publishCharacteristicWrite / publishServiceGroupWrite) sends the
+      // characteristic.updated / serviceGroup.updated events and the local
+      // onBroadcast. A hand-maintained copy of that fan-out lived here and
+      // double-announced every cloud-routed write — the same duplicate list
+      // was already removed from the local request path when relay-write.ts
+      // was introduced (see the comment on routeLocalActions).
     } catch (error) {
       // Swift bridge rejects with plain {code, message} objects, not Error instances.
       // Handle both cases to avoid "[object Object]" in error messages.
