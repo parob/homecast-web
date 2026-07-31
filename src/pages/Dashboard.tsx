@@ -4477,8 +4477,9 @@ const Dashboard = () => {
   }, [displayedBackground, bgImageTopColor, isDarkBackground]);
 
   useEffect(() => {
-    if (isInMobileApp) return;
-    if (isInMacApp) {
+    if (isInMacApp || isInMobileApp) {
+      // Both native apps: tell the WKWebView the exact backdrop color so
+      // anything the page doesn't paint (safe areas, overscroll) matches.
       const w = window as any;
       w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor', color: tintColor });
       return () => {
@@ -5599,7 +5600,13 @@ const Dashboard = () => {
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        <div className={`${isInMobileApp || isInMacApp ? 'fixed inset-0' : 'relative'} bg-background`} style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}>
+        <div className={isInMobileApp || isInMacApp ? 'fixed inset-0' : 'relative bg-background'} style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}>
+          {/* In the native apps the backdrop color paints past the safe areas
+              (fixed inset-0 stops at them, leaving bars in landscape); the
+              container itself stays at inset-0 so content clears the notch. */}
+          {(isInMobileApp || isInMacApp) && (
+            <div aria-hidden className="fixed-full-screen pointer-events-none -z-10 bg-background" />
+          )}
           <BackgroundImage
             settings={activeBackground}
             entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}

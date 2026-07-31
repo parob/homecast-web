@@ -60,7 +60,7 @@ export function MobileTabBar({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom">
+    <div className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
       <div className="flex justify-center px-4 pb-2">
         <div
           className={cn(

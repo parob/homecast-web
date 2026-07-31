@@ -5,10 +5,12 @@ import type { TriggerData } from '../types/automation';
 import { describeError } from '../../lib/describe-error';
 import type {
   ExecutionTrace,
+  ExecutionEvent,
   ExecutionStatus,
   TraceStep,
   TraceStepResult,
   RepeatState,
+  StepTags,
   WaitResult,
 } from '../types/execution';
 
@@ -54,6 +56,12 @@ export class ExecutionContext {
   private stepIndex = 0;
   private startedAt: string;
 
+  // Live-view event sink (set by the engine when a consumer is wired).
+  // Emission is a synchronous callback — it must never add an await to the
+  // action chain.
+  private onEvent?: (e: ExecutionEvent) => void;
+  private variablesEmitTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     automationId: string,
     automationName: string,
@@ -87,11 +95,42 @@ export class ExecutionContext {
   }
 
   // ============================================================
+  // Live execution events
+  // ============================================================
+
+  setEventSink(fn: ((e: ExecutionEvent) => void) | undefined): void {
+    this.onEvent = fn;
+  }
+
+  /** Snapshot-emit a step. Shallow copy: later mutations replace the step's
+      output object rather than editing it, so the emitted object stays stable. */
+  private emitStep(step: TraceStep): void {
+    this.onEvent?.({ type: 'step', traceId: this.traceId, automationId: this.automationId, step: { ...step } });
+  }
+
+  private emitVariablesThrottled(): void {
+    if (!this.onEvent || this.variablesEmitTimer) return;
+    this.variablesEmitTimer = setTimeout(() => {
+      this.variablesEmitTimer = null;
+      this.onEvent?.({
+        type: 'variables_changed',
+        traceId: this.traceId,
+        automationId: this.automationId,
+        variables: { ...this.variables },
+      });
+    }, 250);
+  }
+
+  // ============================================================
   // Trace recording
   // ============================================================
 
   /**
    * Record the start of a step. Returns the step index.
+   *
+   * `tags` carries container parentage (choose branch, repeat iteration,
+   * retry attempt) threaded down the executeSequence call chain — see
+   * StepTags for why it is an argument and not context state.
    */
   beginStep(
     type: 'trigger' | 'condition' | 'action',
@@ -99,6 +138,7 @@ export class ExecutionContext {
     nodeType: string,
     nodeSummary: string,
     input?: Record<string, unknown>,
+    tags?: StepTags,
   ): number {
     const idx = this.stepIndex++;
     this.steps.push({
@@ -110,7 +150,12 @@ export class ExecutionContext {
       startedAt: new Date().toISOString(),
       result: 'running',
       input,
+      ...(tags?.parentNodeId !== undefined && { parentNodeId: tags.parentNodeId }),
+      ...(tags?.branch !== undefined && { branch: tags.branch }),
+      ...(tags?.iteration !== undefined && { iteration: tags.iteration }),
+      ...(tags?.attempt !== undefined && { attempt: tags.attempt }),
     });
+    this.emitStep(this.steps[idx]);
     return idx;
   }
 
@@ -127,11 +172,36 @@ export class ExecutionContext {
     const step = this.steps[index];
     if (step) {
       step.finishedAt = new Date().toISOString();
+      step.durationMs = Math.max(0, Date.parse(step.finishedAt) - Date.parse(step.startedAt));
       step.result = result;
       if (output) step.output = output;
       if (error) step.error = error;
       if (children) step.children = children;
+      this.emitStep(step);
     }
+  }
+
+  /**
+   * Merge extra facts into a finished step's output, synchronously.
+   *
+   * For outcomes known only after the step ended but within the same run —
+   * a retry loop that exhausted its attempts, an onError:'continue' that
+   * swallowed the failure. Late *async* facts go through awaitStepDetail.
+   */
+  annotateStep(index: number, extra: Record<string, unknown>): void {
+    const step = this.steps[index];
+    if (step) {
+      step.output = { ...(step.output ?? {}), ...extra };
+      this.emitStep(step);
+    }
+  }
+
+  /** Index of the most recent step recorded for a node, or -1. */
+  lastStepIndexForNode(nodeId: string): number {
+    for (let i = this.steps.length - 1; i >= 0; i--) {
+      if (this.steps[i].nodeId === nodeId) return this.steps[i].index;
+    }
+    return -1;
   }
 
   /**
@@ -154,6 +224,7 @@ export class ExecutionContext {
           if (step && extra) {
             step.output = { ...(step.output ?? {}), ...extra };
             if (step.nodeId) this.setNodeOutput(step.nodeId, step.output);
+            this.emitStep(step);
           }
         })
         .catch((e) => {
@@ -165,6 +236,7 @@ export class ExecutionContext {
           if (step) {
             step.result = 'error';
             step.error = describeError(e);
+            this.emitStep(step);
           }
         }),
     );
@@ -241,6 +313,7 @@ export class ExecutionContext {
 
   setVariable(name: string, value: unknown): void {
     this.variables[name] = value;
+    this.emitVariablesThrottled();
   }
 
   getVariable(name: string): unknown {

@@ -114,7 +114,10 @@ export function MainLayout({
 
   return (
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground: shouldUseDarkText }}>
-    <div className={cn("fixed inset-0", hasBackground && isDarkBackground ? "bg-black" : "bg-background")}>
+    <div className="fixed inset-0">
+      {/* Backdrop color painted past the safe areas — the layout container
+          itself must stay at inset-0 so content keeps clear of the notch. */}
+      <div aria-hidden className={cn("fixed-full-screen pointer-events-none -z-10", hasBackground && isDarkBackground ? "bg-black" : "bg-background")} />
       {/* Background image layer */}
       <BackgroundImage settings={background} onReady={handleBackgroundReady} onLuminanceChange={setBgImageLuminance} />
 

@@ -62,7 +62,10 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
   const filename = nodeType.replace(/_/g, '-');
 
   return (
-    <Popover>
+    // modal: registers the popover with the scroll-lock of the parent editor
+    // Dialog — without it, touch scrolling inside the portalled content is
+    // preventDefault()ed on mobile (wheel had an escape hatch below; touch didn't).
+    <Popover modal>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -76,7 +79,7 @@ export function NodeInfoPopover({ nodeType }: NodeInfoPopoverProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[340px] sm:w-[440px] p-0 !z-[10060] max-h-[min(70vh,600px)] overflow-hidden flex flex-col"
+        className="w-[min(340px,calc(100vw-2rem))] sm:w-[440px] p-0 !z-[10060] max-h-[min(70dvh,600px)] overflow-hidden flex flex-col"
         side="right"
         align="start"
         onClick={(e) => e.stopPropagation()}

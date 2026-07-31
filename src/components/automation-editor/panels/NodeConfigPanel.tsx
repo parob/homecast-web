@@ -16,7 +16,7 @@ import { serverConnection } from '@/server/connection';
 import { getAutomationEngine } from '@/automation';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import type { ExecutionTrace } from '@/automation/types/execution';
-import { StepRow, STATUS_STYLES } from './ExecutionHistoryPanel';
+import { StepList, STATUS_STYLES } from './ExecutionHistoryPanel';
 import { resolveEntityName, characteristicLabel, characteristicValueLabel } from '../entity-labels';
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
@@ -354,9 +354,14 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
                 </div>
                 {testTrace.error && <div className="px-3 py-1.5 text-[10px] text-red-400 border-b">{testTrace.error}</div>}
                 <div className="p-2 max-h-48 overflow-y-auto">
-                  {testTrace.steps?.map((step: any, i: number) => (
-                    <StepRow key={i} step={step} />
-                  ))}
+                  <StepList
+                    steps={testTrace.steps ?? []}
+                    entitySource={{
+                      accessories: accessories.map((a) => ({ id: a.id, name: a.name })),
+                      serviceGroups: serviceGroups.map((g) => ({ id: g.id, name: g.name })),
+                      scenes: scenes.map((s) => ({ id: s.id, name: s.name })),
+                    }}
+                  />
                 </div>
               </div>
             )}

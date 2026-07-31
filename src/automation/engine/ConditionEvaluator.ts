@@ -15,8 +15,16 @@ import type {
   TriggerData,
 } from '../types/automation';
 import { isConditionBlock, durationToMs } from '../types/automation';
+import type { ConditionEvalDetail } from '../types/execution';
 import { calculateSunTimes } from '../state/SunCalculator';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
+import { fmtWeekdays } from './trace-summaries';
+
+const BLOCK_DESCRIPTIONS: Record<ConditionBlock['operator'], (n: number) => string> = {
+  and: (n) => `All of ${n} condition${n === 1 ? '' : 's'}`,
+  or: (n) => `Any of ${n} condition${n === 1 ? '' : 's'}`,
+  not: (n) => `None of ${n} condition${n === 1 ? '' : 's'}`,
+};
 
 /**
  * Evaluates condition trees against current device/helper state.
@@ -38,42 +46,89 @@ export class ConditionEvaluator {
    * Evaluate a condition block. Returns true if the automation should proceed.
    */
   evaluate(block: ConditionBlock, triggerData: TriggerData, variables?: Record<string, unknown>): boolean {
-    if (block.conditions.length === 0) return true;
-
-    switch (block.operator) {
-      case 'and':
-        return block.conditions.every((c) => this.evaluateNode(c, triggerData, variables));
-      case 'or':
-        return block.conditions.some((c) => this.evaluateNode(c, triggerData, variables));
-      case 'not':
-        // NOT inverts: true if ALL sub-conditions are false
-        return !block.conditions.some((c) => this.evaluateNode(c, triggerData, variables));
-      default:
-        console.warn(`[ConditionEvaluator] Unknown operator: ${block.operator}`);
-        return true;
-    }
+    return this.evaluateDetailed(block, triggerData, variables).passed;
   }
 
-  private evaluateNode(
+  /**
+   * Evaluate a condition block, recording each node's actual value against
+   * what it wanted. This is what the trace stores, so "conditions failed"
+   * finally says which one and why.
+   *
+   * Semantics are identical to the boolean path this replaced — including
+   * the pre-existing quirk that a disabled child counts as passing, which
+   * inside a NOT block makes the block fail. The one deliberate difference:
+   * children are all evaluated (no short-circuit), so every leaf's actual
+   * value gets recorded. All leaves are in-memory reads, so this is cheap.
+   */
+  evaluateDetailed(
+    block: ConditionBlock,
+    triggerData: TriggerData,
+    variables?: Record<string, unknown>,
+  ): ConditionEvalDetail {
+    const count = block.conditions.length;
+    if (count === 0) {
+      return { passed: true, kind: 'block', operator: block.operator, description: 'No conditions' };
+    }
+
+    const children = block.conditions.map((c) => this.evaluateNodeDetailed(c, triggerData, variables));
+
+    let passed: boolean;
+    switch (block.operator) {
+      case 'and':
+        passed = children.every((c) => c.passed);
+        break;
+      case 'or':
+        passed = children.some((c) => c.passed);
+        break;
+      case 'not':
+        // NOT inverts: true if ALL sub-conditions are false
+        passed = !children.some((c) => c.passed);
+        break;
+      default:
+        console.warn(`[ConditionEvaluator] Unknown operator: ${block.operator}`);
+        return {
+          passed: true, kind: 'block', operator: block.operator, children,
+          description: `Unknown operator: ${block.operator}`, error: `Unknown operator: ${block.operator}`,
+        };
+    }
+
+    return {
+      passed,
+      kind: 'block',
+      operator: block.operator,
+      description: BLOCK_DESCRIPTIONS[block.operator](count),
+      children,
+    };
+  }
+
+  private evaluateNodeDetailed(
     node: Condition | ConditionBlock,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
-  ): boolean {
+  ): ConditionEvalDetail {
     // If the node has enabled === false, treat as always passing
-    if ('enabled' in node && node.enabled === false) return true;
-
-    if (isConditionBlock(node)) {
-      return this.evaluate(node, triggerData, variables);
+    if ('enabled' in node && node.enabled === false) {
+      return {
+        passed: true,
+        kind: isConditionBlock(node) ? 'block' : 'leaf',
+        type: isConditionBlock(node) ? undefined : node.type,
+        description: 'Disabled — skipped',
+        disabled: true,
+      };
     }
 
-    return this.evaluateLeaf(node, triggerData, variables);
+    if (isConditionBlock(node)) {
+      return this.evaluateDetailed(node, triggerData, variables);
+    }
+
+    return this.evaluateLeafDetailed(node, triggerData, variables);
   }
 
-  private evaluateLeaf(
+  private evaluateLeafDetailed(
     condition: Condition,
     triggerData: TriggerData,
-    _variables?: Record<string, unknown>,
-  ): boolean {
+    variables?: Record<string, unknown>,
+  ): ConditionEvalDetail {
     switch (condition.type) {
       case 'state':
         return this.evaluateState(condition);
@@ -84,12 +139,15 @@ export class ConditionEvaluator {
       case 'sun':
         return this.evaluateSun(condition);
       case 'template':
-        return this.evaluateTemplate(condition, triggerData, _variables);
+        return this.evaluateTemplate(condition, triggerData, variables);
       case 'trigger':
         return this.evaluateTrigger(condition, triggerData);
       default:
         console.warn(`[ConditionEvaluator] Unsupported condition type: ${(condition as Condition).type}`);
-        return true;
+        return {
+          passed: true, kind: 'leaf', type: (condition as Condition).type,
+          description: `Unsupported condition type: ${(condition as Condition).type}`,
+        };
     }
   }
 
@@ -97,65 +155,104 @@ export class ConditionEvaluator {
   // State Condition
   // ============================================================
 
-  private evaluateState(condition: StateCondition): boolean {
+  private evaluateState(condition: StateCondition): ConditionEvalDetail {
     const currentValue = this.stateStore.getState(
       condition.accessoryId,
       condition.characteristicType,
     );
-    return this.valueMatches(currentValue, condition.value);
+    return {
+      passed: this.valueMatches(currentValue, condition.value),
+      kind: 'leaf',
+      type: 'state',
+      description: `${condition.characteristicType} is ${String(condition.value)}`,
+      accessoryId: condition.accessoryId,
+      characteristicType: condition.characteristicType,
+      actual: currentValue,
+      expected: condition.value,
+    };
   }
 
   // ============================================================
   // Numeric State Condition
   // ============================================================
 
-  private evaluateNumericState(condition: NumericStateCondition): boolean {
+  private evaluateNumericState(condition: NumericStateCondition): ConditionEvalDetail {
     const currentValue = this.stateStore.getState(
       condition.accessoryId,
       condition.characteristicType,
     );
     const numVal = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
-    if (isNaN(numVal)) return false;
 
-    if (condition.above !== undefined && numVal <= condition.above) return false;
-    if (condition.below !== undefined && numVal >= condition.below) return false;
-    return true;
+    const bounds: string[] = [];
+    if (condition.above !== undefined) bounds.push(`> ${condition.above}`);
+    if (condition.below !== undefined) bounds.push(`< ${condition.below}`);
+
+    let passed = true;
+    if (isNaN(numVal)) passed = false;
+    else if (condition.above !== undefined && numVal <= condition.above) passed = false;
+    else if (condition.below !== undefined && numVal >= condition.below) passed = false;
+
+    return {
+      passed,
+      kind: 'leaf',
+      type: 'numeric_state',
+      description: `${condition.characteristicType} ${bounds.join(' and ') || 'is numeric'}`,
+      accessoryId: condition.accessoryId,
+      characteristicType: condition.characteristicType,
+      actual: isNaN(numVal) ? currentValue : numVal,
+      expected: { above: condition.above, below: condition.below },
+    };
   }
 
   // ============================================================
   // Time Condition
   // ============================================================
 
-  private evaluateTime(condition: TimeCondition): boolean {
+  private evaluateTime(condition: TimeCondition): ConditionEvalDetail {
     const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const actualTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    let passed = true;
 
     // Check weekday filter
     if (condition.weekdays && condition.weekdays.length > 0) {
-      if (!condition.weekdays.includes(now.getDay())) return false;
+      if (!condition.weekdays.includes(now.getDay())) passed = false;
     }
 
     // Check time window
-    if (condition.after || condition.before) {
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    if (passed && (condition.after || condition.before)) {
       const afterMinutes = condition.after ? this.parseTimeToMinutes(condition.after) : null;
       const beforeMinutes = condition.before ? this.parseTimeToMinutes(condition.before) : null;
 
       if (afterMinutes !== null && beforeMinutes !== null) {
         if (afterMinutes <= beforeMinutes) {
           // Normal range: e.g., 09:00 to 17:00
-          if (currentMinutes < afterMinutes || currentMinutes >= beforeMinutes) return false;
+          if (currentMinutes < afterMinutes || currentMinutes >= beforeMinutes) passed = false;
         } else {
           // Overnight range: e.g., 22:00 to 06:00
-          if (currentMinutes < afterMinutes && currentMinutes >= beforeMinutes) return false;
+          if (currentMinutes < afterMinutes && currentMinutes >= beforeMinutes) passed = false;
         }
       } else if (afterMinutes !== null) {
-        if (currentMinutes < afterMinutes) return false;
+        if (currentMinutes < afterMinutes) passed = false;
       } else if (beforeMinutes !== null) {
-        if (currentMinutes >= beforeMinutes) return false;
+        if (currentMinutes >= beforeMinutes) passed = false;
       }
     }
 
-    return true;
+    const window = [
+      condition.after ? `after ${condition.after}` : null,
+      condition.before ? `before ${condition.before}` : null,
+    ].filter(Boolean).join(', ');
+
+    return {
+      passed,
+      kind: 'leaf',
+      type: 'time',
+      description: `Time ${window || 'any'}${fmtWeekdays(condition.weekdays)}`,
+      actual: `${actualTime} (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()]})`,
+      expected: { after: condition.after, before: condition.before, weekdays: condition.weekdays },
+    };
   }
 
   private parseTimeToMinutes(timeStr: string): number {
@@ -169,26 +266,43 @@ export class ConditionEvaluator {
   // Sun Condition
   // ============================================================
 
-  private evaluateSun(condition: SunCondition): boolean {
+  private evaluateSun(condition: SunCondition): ConditionEvalDetail {
     const now = new Date();
     const times = calculateSunTimes(now, this.latitude, this.longitude);
     const sunrise = times.sunrise.getTime();
     const sunset = times.sunset.getTime();
     const nowMs = now.getTime();
 
+    let passed = true;
+
     if (condition.after) {
       const eventTime = condition.after === 'sunrise' ? sunrise : sunset;
       const offset = condition.afterOffset ? durationToMs(condition.afterOffset) : 0;
-      if (nowMs < eventTime + offset) return false;
+      if (nowMs < eventTime + offset) passed = false;
     }
 
-    if (condition.before) {
+    if (passed && condition.before) {
       const eventTime = condition.before === 'sunrise' ? sunrise : sunset;
       const offset = condition.beforeOffset ? durationToMs(condition.beforeOffset) : 0;
-      if (nowMs >= eventTime + offset) return false;
+      if (nowMs >= eventTime + offset) passed = false;
     }
 
-    return true;
+    const parts = [
+      condition.after ? `after ${condition.after}` : null,
+      condition.before ? `before ${condition.before}` : null,
+    ].filter(Boolean).join(', ');
+
+    return {
+      passed,
+      kind: 'leaf',
+      type: 'sun',
+      description: `Sun ${parts || 'any'}`,
+      actual: { now: now.toISOString(), sunrise: times.sunrise.toISOString(), sunset: times.sunset.toISOString() },
+      expected: {
+        after: condition.after, afterOffset: condition.afterOffset,
+        before: condition.before, beforeOffset: condition.beforeOffset,
+      },
+    };
   }
 
   // ============================================================
@@ -199,17 +313,26 @@ export class ConditionEvaluator {
     condition: TemplateCondition,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
-  ): boolean {
+  ): ConditionEvalDetail {
     const ctx = ExpressionEngine.buildContext(
       this.stateStore,
       triggerData,
       variables ?? {},
     );
+    const base = {
+      kind: 'leaf' as const,
+      type: 'template',
+      description: condition.expression.slice(0, 120),
+      expected: true,
+    };
     try {
-      return this.expressionEngine.evaluateBoolean(condition.expression, ctx);
+      const result = this.expressionEngine.evaluateBoolean(condition.expression, ctx);
+      return { ...base, passed: result, actual: result };
     } catch (e) {
+      // Recorded, not swallowed: a broken expression used to be
+      // indistinguishable from one that legitimately evaluated false.
       console.warn(`[ConditionEvaluator] Template evaluation error:`, e);
-      return false;
+      return { ...base, passed: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -217,8 +340,15 @@ export class ConditionEvaluator {
   // Trigger Condition
   // ============================================================
 
-  private evaluateTrigger(condition: TriggerCondition, triggerData: TriggerData): boolean {
-    return triggerData.triggerId === condition.triggerId;
+  private evaluateTrigger(condition: TriggerCondition, triggerData: TriggerData): ConditionEvalDetail {
+    return {
+      passed: triggerData.triggerId === condition.triggerId,
+      kind: 'leaf',
+      type: 'trigger',
+      description: `Fired by trigger ${condition.triggerId.slice(0, 8)}`,
+      actual: triggerData.triggerId,
+      expected: condition.triggerId,
+    };
   }
 
   // ============================================================

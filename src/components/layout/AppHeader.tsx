@@ -34,7 +34,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       className={cn(
         "fixed top-0 left-0 right-0 z-[10001]",
         "overscroll-none pointer-events-none",
-        inMobileApp && "safe-area-top",
+        inMobileApp && "safe-area-top safe-area-x",
         isInMacApp && "window-drag"
       )}
       style={isInMacApp ? { paddingTop: '33px' } : undefined}

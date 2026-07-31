@@ -217,7 +217,10 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
   return (
     <div
       className={cn(
-        'fixed inset-0 overflow-hidden pointer-events-none',
+        // fixed-full-screen (not inset-0): fixed elements stop at the safe
+        // area boundaries on iOS, which left unpainted strips beside the
+        // wallpaper in landscape. Negative insets extend it to the true edges.
+        'fixed-full-screen overflow-hidden pointer-events-none',
         className
       )}
       aria-hidden="true"

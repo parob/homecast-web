@@ -381,8 +381,12 @@ describe('execution modes and limits', () => {
     await new Promise(r => setTimeout(r, 30));
 
     expect(engine.isRunning('auto-1')).toBe(true);
-    // The delay is still pending, so at most one run can have started.
-    expect(traces.length).toBe(0);
+    // The delay is still pending, so at most one run can have started. The
+    // skipped second trigger records a blocked stub — previously it left no
+    // trace at all, indistinguishable from the trigger never firing.
+    expect(traces.length).toBe(1);
+    expect(traces[0].status).toBe('stopped');
+    expect(traces[0].blockedReason).toBe('mode_single');
   });
 
   it('rate-limits runaway triggering', async () => {
@@ -394,8 +398,9 @@ describe('execution modes and limits', () => {
     }
     await new Promise(r => setTimeout(r, 100));
 
-    // MAX_EXECUTIONS_PER_MINUTE is 10.
-    expect(traces.length).toBeLessThanOrEqual(10);
+    // MAX_EXECUTIONS_PER_MINUTE is 10. Blocked-run stubs don't count against
+    // it — they record that runs were skipped, they aren't runs.
+    expect(traces.filter(t => !t.blockedReason).length).toBeLessThanOrEqual(10);
   });
 });
 

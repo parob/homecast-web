@@ -135,6 +135,13 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         )}
       </div>
 
+      {/* Execution duration chip (run view / live view) */}
+      {nodeData.executionTime != null && nodeData.executionState && nodeData.executionState !== 'idle' && nodeData.executionState !== 'skipped' && (
+        <div className="absolute -bottom-1.5 left-2 text-[8px] px-1 rounded-full bg-background border text-muted-foreground tabular-nums leading-[14px]">
+          {nodeData.executionTime < 1000 ? `${Math.round(nodeData.executionTime)}ms` : `${(nodeData.executionTime / 1000).toFixed(1)}s`}
+        </div>
+      )}
+
       {/* Execution status badge */}
       {nodeData.executionState === 'completed' && (
         <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">

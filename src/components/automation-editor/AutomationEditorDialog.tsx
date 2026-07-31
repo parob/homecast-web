@@ -35,7 +35,8 @@ import { useQuery } from '@apollo/client/react';
 import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2 } from 'lucide-react';
+import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 import { BaseNode } from './nodes/BaseNode';
@@ -43,6 +44,10 @@ import { StickyNoteNode } from './nodes/StickyNoteNode';
 import { ControlFlowEdge, EdgeMarkerDefs } from './edges/ControlFlowEdge';
 import { NodePalette } from './panels/NodePalette';
 import { NodeConfigPanel } from './panels/NodeConfigPanel';
+import { RunStepPanel } from './panels/RunStepPanel';
+import { STATUS_STYLES } from './panels/ExecutionHistoryPanel';
+import { mapTraceToNodeStates } from './run-view';
+import { useLiveExecution } from './useLiveExecution';
 import type { FlowNodeData } from './constants';
 import { createDefaultNodeData, ALL_NODE_DEFINITIONS, CATEGORY_STYLES } from './constants';
 import type { NodeDefinition } from './constants';
@@ -129,6 +134,14 @@ function AutomationEditorInner({
     });
   }, [automationsData]);
 
+  // Names for humanizing execution-history rows (resolved at render time, so
+  // traces recorded before the capture upgrades humanize too).
+  const entitySource = useMemo(() => ({
+    accessories: accessories.map((a) => ({ id: a.id, name: a.name })),
+    serviceGroups: serviceGroups.map((g) => ({ id: g.id, name: g.name })),
+    scenes: scenes.map((s) => ({ id: s.id, name: s.name })),
+  }), [accessories, serviceGroups, scenes]);
+
   // GraphQL
   const [saveHcAutomation] = useMutation(SAVE_HC_AUTOMATION);
 
@@ -139,17 +152,32 @@ function AutomationEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [showMobilePalette, setShowMobilePalette] = useState(false);
+  // Which tab the mobile palette overlay opens on (null = closed). The
+  // toolbar's + opens Nodes; the History button opens Executions directly —
+  // history buried behind an "add node" button was undiscoverable.
+  const [mobilePalette, setMobilePalette] = useState<'nodes' | 'executions' | 'versions' | null>(null);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Run view: a selected execution overlaid on the canvas, read-only.
+  const [viewedTrace, setViewedTrace] = useState<any>(null);
+  const [runViewNodeId, setRunViewNodeId] = useState<string | null>(null);
+  const runView = viewedTrace != null;
+
+  // Live view: follow runs as they execute (engine in this context only).
+  const [followLive, setFollowLive] = useState(false);
+  const liveModeRef = useRef(false);
+
   const handleSaveRef = useRef<(() => void) | null>(null);
 
   // Existing automation ID for update
   const existingIdRef = useRef(existingAutomation?.id);
+
+  // Only receives events when the engine runs in this WebView (relay Mac).
+  const liveTrace = useLiveExecution(existingIdRef.current);
 
   // Undo/redo — single state object so commit/undo/redo stay consistent
   type GraphSnapshot = { nodes: Node<FlowNodeData>[]; edges: Edge[] };
@@ -235,15 +263,84 @@ function AutomationEditorInner({
     [nodes, configNodeId],
   );
 
+  // ============================================================
+  // Run view (execution overlaid on the canvas)
+  // ============================================================
+
+  const enterRunView = useCallback((parsed: unknown) => {
+    setViewedTrace(parsed);
+    setRunViewNodeId(null);
+    setConfigNodeId(null);
+    setSelectedNodeId(null);
+    setContextMenu(null);
+    setMobilePalette(null);
+  }, []);
+
+  const exitRunView = useCallback(() => {
+    liveModeRef.current = false;
+    setViewedTrace(null);
+    setRunViewNodeId(null);
+  }, []);
+
+  // Follow a run live: automatic for Run Test (the user just asked for it),
+  // opt-in via the Executions tab's Live toggle for real triggers — an
+  // automation firing in the background must not yank an editing session
+  // into read-only run view uninvited.
+  useEffect(() => {
+    if (!liveTrace) return;
+    if (liveTrace.status === 'running' && !liveModeRef.current && (liveTrace.isTest || followLive)) {
+      liveModeRef.current = true;
+      // A followed background run enters plain run view; a live test keeps
+      // the config panel (and its Run Test button) where the user left it.
+      if (!liveTrace.isTest) {
+        setSelectedNodeId(null);
+        setConfigNodeId(null);
+      }
+      setContextMenu(null);
+    }
+    if (liveModeRef.current) setViewedTrace(liveTrace);
+  }, [liveTrace, followLive]);
+
+  const runStates = useMemo(
+    () => (runView ? mapTraceToNodeStates(viewedTrace?.steps, nodes.map((n) => n.id)) : null),
+    [runView, viewedTrace, nodes],
+  );
+
+  // Decorated at render only — stored node state, undo history and the dirty
+  // flag never see execution data. Outside run view this returns `nodes`
+  // itself, so the normal editing path pays nothing.
+  const displayNodes = useMemo(() => {
+    if (!runStates) return nodes;
+    return nodes.map((n) => {
+      if (n.type === 'stickyNote') return n;
+      const state = runStates.get(n.id);
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          executionState: state?.executionState ?? 'skipped',
+          executionTime: state?.executionTime,
+          executionError: state?.executionError,
+        },
+      };
+    });
+  }, [nodes, runStates]);
+
+  const runViewNode = useMemo(
+    () => (runView && runViewNodeId ? nodes.find((n) => n.id === runViewNodeId) : undefined),
+    [runView, runViewNodeId, nodes],
+  );
+
   // Connection handling
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
+      if (runView) return;
       setEdges((eds) => addEdge({ ...connection, type: 'controlFlow' }, eds));
       setIsDirty(true);
       // Defer so latestRef picks up the new edges
       setTimeout(() => commitHistory(), 0);
     },
-    [setEdges, commitHistory],
+    [setEdges, commitHistory, runView],
   );
 
   // Commit history after a node drag completes (captures the move)
@@ -270,17 +367,26 @@ function AutomationEditorInner({
     setTimeout(() => commitHistory(), 0);
   }, [commitHistory]);
 
-  // Single-click: select + open config panel
+  // Single-click: select + open config panel (in run view: the step inspector)
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    if (runView) {
+      if (node.type !== 'stickyNote') {
+        setRunViewNodeId(node.id);
+        setConfigNodeId(null);
+        setSelectedNodeId(null);
+      }
+      return;
+    }
     setSelectedNodeId(node.id);
     setConfigNodeId(node.id);
-  }, []);
+  }, [runView]);
 
   // Double-click: open config tray
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    if (runView) return;
     setSelectedNodeId(node.id);
     setConfigNodeId(node.id);
-  }, []);
+  }, [runView]);
 
   const onPaneClick = useCallback((event: React.MouseEvent) => {
     // A nested picker (device / service group / characteristic / scene) closes
@@ -302,8 +408,9 @@ function AutomationEditorInner({
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
+    if (runView) return;
     setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
-  }, []);
+  }, [runView]);
 
   const duplicateNode = useCallback((nodeId: string) => {
     const original = nodes.find((n) => n.id === nodeId);
@@ -359,6 +466,7 @@ function AutomationEditorInner({
   // Click-to-add from palette
   const addNewNode = useCallback(
     (def: NodeDefinition, position?: { x: number; y: number }) => {
+      if (runView) return;
       const id = crypto.randomUUID();
       const pos = position ?? { x: 300, y: (nodes.length + 1) * 80 + 50 };
 
@@ -374,7 +482,7 @@ function AutomationEditorInner({
       setIsDirty(true);
       setTimeout(() => commitHistory(), 0);
     },
-    [nodes, setNodes, commitHistory],
+    [nodes, setNodes, commitHistory, runView],
   );
 
   // Update node config — debounced history commit so typing collapses into one entry
@@ -428,6 +536,11 @@ function AutomationEditorInner({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Run view: Escape leaves it; editing shortcuts are inert.
+      if (runView) {
+        if (e.key === 'Escape') exitRunView();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
@@ -451,7 +564,7 @@ function AutomationEditorInner({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo, selectedNodeId, deleteNode]);
+  }, [undo, redo, selectedNodeId, deleteNode, runView, exitRunView]);
 
   // Save
   const handleSave = useCallback(async () => {
@@ -509,9 +622,15 @@ function AutomationEditorInner({
       {/* Toolbar */}
       <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
         {/* Mobile palette toggle */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setShowMobilePalette(!showMobilePalette)}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setMobilePalette(mobilePalette ? null : 'nodes')} data-testid="mobile-palette-button">
           <Plus className="h-4 w-4" />
         </Button>
+        {/* Mobile executions/versions entry — saved automations only */}
+        {existingIdRef.current && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setMobilePalette(mobilePalette === 'executions' ? null : 'executions')} data-testid="mobile-history-button">
+            <History className="h-4 w-4" />
+          </Button>
+        )}
         <img src="/icon-192.png" alt="Homecast" className="h-5 w-5 shrink-0 rounded-sm opacity-50 hidden sm:block" />
         <Input
           value={automationName}
@@ -574,27 +693,36 @@ function AutomationEditorInner({
           onVersionRestored={() => onClose()}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+          entitySource={entitySource}
+          onSelectTrace={enterRunView}
+          followLive={followLive}
+          onToggleFollowLive={() => setFollowLive((v) => !v)}
         />
 
         {/* Mobile palette overlay */}
-        {showMobilePalette && (
+        {mobilePalette && (
           <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm sm:hidden flex flex-col">
-            <div className="p-3 border-b flex items-center justify-between">
-              <span className="text-sm font-medium">Add Node</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMobilePalette(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <NodePalette forceVisible onAddNode={(def) => { addNewNode(def); setShowMobilePalette(false); }} />
-            </div>
+            <NodePalette
+              key={mobilePalette}
+              forceVisible
+              initialTab={mobilePalette}
+              onAddNode={(def) => { addNewNode(def); setMobilePalette(null); }}
+              automationId={existingIdRef.current}
+              homeId={homeId}
+              onVersionRestored={() => onClose()}
+              onClose={() => setMobilePalette(null)}
+              entitySource={entitySource}
+              onSelectTrace={enterRunView}
+              followLive={followLive}
+              onToggleFollowLive={() => setFollowLive((v) => !v)}
+            />
           </div>
         )}
 
         {/* Center: React Flow canvas */}
         <div className="flex-1 relative min-h-0" onDragOver={onDragOver} onDrop={onDrop}>
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -612,7 +740,9 @@ function AutomationEditorInner({
             fitView
             snapToGrid
             snapGrid={[16, 16]}
-            deleteKeyCode={['Backspace', 'Delete']}
+            nodesDraggable={!runView}
+            nodesConnectable={!runView}
+            deleteKeyCode={runView ? null : ['Backspace', 'Delete']}
             className="bg-muted/20"
             proOptions={{ hideAttribution: true }}
           >
@@ -638,6 +768,33 @@ function AutomationEditorInner({
               }}
             />
           </ReactFlow>
+
+          {/* Run view banner */}
+          {runView && (() => {
+            const isLive = viewedTrace.status === 'running';
+            const status = isLive
+              ? { color: 'text-blue-500', icon: Loader2, label: 'Running' }
+              : (STATUS_STYLES[viewedTrace.status] ?? STATUS_STYLES.error);
+            const StatusIcon = status.icon;
+            const started = viewedTrace.startedAt ? new Date(viewedTrace.startedAt) : null;
+            const durationS = viewedTrace.startedAt && viewedTrace.finishedAt
+              ? ((Date.parse(viewedTrace.finishedAt) - Date.parse(viewedTrace.startedAt)) / 1000).toFixed(2)
+              : null;
+            return (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-background border shadow-sm rounded-full pl-3 pr-1.5 py-1 max-w-[calc(100%-16px)]">
+                <History className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <StatusIcon className={cn('w-3.5 h-3.5 shrink-0', status.color, isLive && 'animate-spin')} />
+                <span className="text-xs whitespace-nowrap truncate">
+                  {status.label}
+                  {!isLive && started && ` · ${formatDistanceToNow(started, { addSuffix: true }).replace('about ', '')}`}
+                  {durationS && ` · ${durationS}s`}
+                </span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs shrink-0" onClick={exitRunView} data-testid="exit-run-view">
+                  Exit run view
+                </Button>
+              </div>
+            );
+          })()}
 
           {/* Context menu */}
           {contextMenu && (
@@ -666,6 +823,20 @@ function AutomationEditorInner({
             </div>
           )}
         </div>
+
+        {/* Run view: step inspector in the config-panel slot. The config panel
+            wins the slot when open (a live Run Test keeps it up). */}
+        {runView && runViewNode && !configNode && (
+          <div className="absolute inset-0 z-10 sm:absolute sm:inset-auto sm:right-3 sm:top-3 sm:bottom-3 sm:w-80">
+            <RunStepPanel
+              nodeId={runViewNode.id}
+              nodeLabel={(runViewNode.data as FlowNodeData).label}
+              trace={viewedTrace}
+              entitySource={entitySource}
+              onClose={() => setRunViewNodeId(null)}
+            />
+          </div>
+        )}
 
         {/* Right: Config panel (floating card on desktop, full overlay on mobile) */}
         {configNode && (

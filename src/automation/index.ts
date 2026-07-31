@@ -14,6 +14,7 @@ import { canonicalCharacteristic } from '../lib/characteristic-aliases';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
+import { emitExecutionEvent } from './live-execution';
 
 export type { HomeKitBridge } from './engine/ActionExecutor';
 export type { SyncTransport } from './sync/AutomationSyncManager';
@@ -98,6 +99,10 @@ export async function initAutomationEngine(options: InitOptions): Promise<Automa
       syncInstance?.pushHelperState(helperId, state);
     },
     onNotify: options.onNotify,
+    // Live run view in the local editor. Same-context only — remote fanout
+    // (community local-broadcast / cloud sync push) is documented in
+    // live-execution.ts and deliberately not wired yet.
+    onExecutionEvent: emitExecutionEvent,
   });
 
   if (options.location) {

@@ -11,7 +11,8 @@ import type { CodeSandbox } from './CodeSandbox';
 import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
 import type { Automation, Trigger, TriggerData, AutomationMode, HelperDefinition } from '../types/automation';
-import type { ExecutionTrace, ExecutionStatus } from '../types/execution';
+import type { ExecutionTrace, ExecutionEvent, ExecutionStatus, BlockedReason } from '../types/execution';
+import { describeTriggerData, capLarge } from './trace-summaries';
 import type { NotifyDelivery } from '../types/notify';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
 import { describeError } from '../../lib/describe-error';
@@ -19,6 +20,20 @@ import { describeError } from '../../lib/describe-error';
 // Rate limiting
 const MAX_EXECUTIONS_PER_MINUTE = 10;
 const RATE_WINDOW_MS = 60_000;
+
+/**
+ * Minimum gap between blocked-run stub traces per automation. A trigger storm
+ * that trips the rate limit must not itself flood the trace store — one stub
+ * says "runs are being skipped"; a hundred would bury the real history.
+ */
+const BLOCKED_TRACE_MIN_INTERVAL_MS = 10_000;
+
+const BLOCKED_REASON_TEXT: Record<BlockedReason, string> = {
+  rate_limit: `Rate limit exceeded (${MAX_EXECUTIONS_PER_MINUTE}/min) — run skipped`,
+  mode_single: 'Already running (mode: single) — run skipped',
+  mode_queued: 'Too many runs in flight — run skipped',
+  disabled: 'Automation disabled — run skipped',
+};
 
 export interface AutomationEngineConfig {
   bridge: HomeKitBridge;
@@ -32,6 +47,14 @@ export interface AutomationEngineConfig {
    * and modes are worthless if they reset on every relay restart.
    */
   onHelperStateChange?: (helperId: string, state: unknown) => void;
+  /**
+   * Live-view stream: started / step / variables_changed / finished, emitted
+   * synchronously as the run progresses (never adding an await to the action
+   * chain). Same-context consumers only — remote transports would fan this out
+   * via local-broadcast (community) or AutomationSyncManager (cloud), neither
+   * of which is wired yet.
+   */
+  onExecutionEvent?: (e: ExecutionEvent) => void;
 }
 
 /**
@@ -51,6 +74,7 @@ export class AutomationEngine {
   private automations = new Map<string, Automation>();
   private runningExecutions = new Map<string, ExecutionContext[]>();
   private executionRates = new Map<string, number[]>(); // automationId -> timestamps
+  private lastBlockedTraceAt = new Map<string, number>(); // automationId -> timestamp
   private temporaryTriggerCounter = 0;
 
   private config: AutomationEngineConfig;
@@ -274,6 +298,7 @@ export class AutomationEngine {
     // Rate limiting
     if (!this.checkRateLimit(automationId)) {
       console.warn(`[AutomationEngine] Rate limit exceeded for ${automation.name}`);
+      this.emitBlockedTrace(automation, triggerData, 'rate_limit');
       return;
     }
 
@@ -282,7 +307,10 @@ export class AutomationEngine {
 
     switch (automation.mode) {
       case 'single':
-        if (running.length > 0) return; // Silently ignore
+        if (running.length > 0) {
+          this.emitBlockedTrace(automation, triggerData, 'mode_single');
+          return;
+        }
         break;
       case 'restart':
         // Cancel all running instances
@@ -291,14 +319,60 @@ export class AutomationEngine {
         break;
       case 'queued':
         // Wait for all running to finish (simplified: just check max)
-        if (running.length >= (automation.maxRunning ?? 10)) return;
+        if (running.length >= (automation.maxRunning ?? 10)) {
+          this.emitBlockedTrace(automation, triggerData, 'mode_queued');
+          return;
+        }
         break;
       case 'parallel':
-        if (running.length >= (automation.maxRunning ?? 10)) return;
+        if (running.length >= (automation.maxRunning ?? 10)) {
+          this.emitBlockedTrace(automation, triggerData, 'mode_queued');
+          return;
+        }
         break;
     }
 
     await this.executeAutomation(automation, triggerData);
+  }
+
+  /**
+   * Record a minimal stub trace for a run that was blocked before it could
+   * start. Without this, a rate-limited or mode-blocked trigger is
+   * indistinguishable from the trigger never having fired at all.
+   */
+  private emitBlockedTrace(automation: Automation, triggerData: TriggerData, reason: BlockedReason): void {
+    const now = Date.now();
+    const last = this.lastBlockedTraceAt.get(automation.id) ?? 0;
+    if (now - last < BLOCKED_TRACE_MIN_INTERVAL_MS) return;
+    this.lastBlockedTraceAt.set(automation.id, now);
+
+    const nowIso = new Date(now).toISOString();
+    const trigger = automation.triggers?.find((t) => t.id === triggerData.triggerId);
+    const reasonText = BLOCKED_REASON_TEXT[reason];
+
+    this.config.onTraceComplete({
+      id: crypto.randomUUID(),
+      automationId: automation.id,
+      automationName: automation.name,
+      startedAt: nowIso,
+      finishedAt: nowIso,
+      status: 'stopped',
+      blockedReason: reason,
+      triggerData,
+      steps: [
+        {
+          index: 0, type: 'trigger', nodeId: triggerData.triggerId, nodeType: triggerData.triggerType,
+          nodeSummary: describeTriggerData(triggerData, trigger),
+          startedAt: nowIso, finishedAt: nowIso, durationMs: 0, result: 'passed',
+        },
+        {
+          index: 1, type: 'condition', nodeId: '__blocked__', nodeType: 'blocked',
+          nodeSummary: reasonText,
+          startedAt: nowIso, finishedAt: nowIso, durationMs: 0, result: 'skipped',
+        },
+      ],
+      variables: {},
+    });
   }
 
   /**
@@ -311,6 +385,7 @@ export class AutomationEngine {
       triggerData,
       automation.variables,
     );
+    this.beginLiveStream(ctx, triggerData);
 
     // Store trigger data as node output so downstream nodes can reference it
     // via {{ nodes.<triggerId>.data.to_value }}
@@ -341,18 +416,10 @@ export class AutomationEngine {
     let error: string | undefined;
 
     try {
+      this.recordTriggerStep(ctx, automation, triggerData);
+
       // Evaluate conditions
-      const conditionStepIdx = ctx.beginStep('condition', 'conditions', 'condition_block',
-        'Evaluate conditions');
-
-      const conditionsPassed = this.conditionEvaluator.evaluate(
-        automation.conditions,
-        triggerData,
-        ctx.variables,
-      );
-
-      ctx.endStep(conditionStepIdx, conditionsPassed ? 'passed' : 'failed');
-
+      const conditionsPassed = this.recordConditionStep(ctx, automation, triggerData);
       if (!conditionsPassed) {
         status = 'stopped';
         return;
@@ -394,10 +461,82 @@ export class AutomationEngine {
 
       // Build and emit trace
       await ctx.settleStepDetails();
-      await ctx.settleStepDetails();
-    const trace = ctx.buildTrace(status, error);
+      this.endLiveStream(ctx, status, error);
+      const trace = ctx.buildTrace(status, error);
       this.config.onTraceComplete(trace);
     }
+  }
+
+  /**
+   * Wire the run's live event stream, when anyone is listening. Every step
+   * has already streamed by the time `finished` goes out — the closing status
+   * waits on settleStepDetails (≤5s for a late notify report), which is the
+   * same tradeoff the persisted trace makes.
+   */
+  private beginLiveStream(ctx: ExecutionContext, triggerData: TriggerData): void {
+    const sink = this.config.onExecutionEvent;
+    if (!sink) return;
+    ctx.setEventSink(sink);
+    sink({
+      type: 'started',
+      traceId: ctx.traceId,
+      automationId: ctx.automationId,
+      timestamp: new Date().toISOString(),
+      triggerData,
+    });
+  }
+
+  private endLiveStream(ctx: ExecutionContext, status: ExecutionStatus, error?: string): void {
+    this.config.onExecutionEvent?.({
+      type: 'finished',
+      traceId: ctx.traceId,
+      automationId: ctx.automationId,
+      status,
+      error,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Record what fired the run as the trace's first step. The trigger data was
+   * always captured on the trace; recording it as a step puts the from→to
+   * values where the history actually shows them.
+   */
+  private recordTriggerStep(ctx: ExecutionContext, automation: Automation, triggerData: TriggerData): void {
+    const trigger = automation.triggers?.find((t) => t.id === triggerData.triggerId);
+    const idx = ctx.beginStep('trigger', triggerData.triggerId, triggerData.triggerType,
+      describeTriggerData(triggerData, trigger), {
+        fromValue: triggerData.fromValue,
+        toValue: triggerData.toValue,
+        accessoryId: triggerData.accessoryId,
+        serviceGroupId: triggerData.serviceGroupId,
+        characteristicType: triggerData.characteristicType,
+        eventType: triggerData.eventType,
+        webhookPayload: capLarge(triggerData.webhookPayload, 2048),
+      });
+    ctx.endStep(idx, 'passed');
+  }
+
+  /**
+   * Evaluate the automation's conditions, recording the full per-leaf detail
+   * tree (actual vs expected) so a blocked run explains itself. Shared by both
+   * execution paths — they previously recorded different step shapes.
+   */
+  private recordConditionStep(ctx: ExecutionContext, automation: Automation, triggerData: TriggerData): boolean {
+    const count = automation.conditions?.conditions?.length ?? 0;
+    const idx = ctx.beginStep('condition', 'conditions', 'condition_block',
+      count > 0 ? `${count} condition${count === 1 ? '' : 's'}` : 'No conditions',
+      { operator: automation.conditions?.operator, count });
+
+    const detail = this.conditionEvaluator.evaluateDetailed(
+      automation.conditions,
+      triggerData,
+      ctx.variables,
+    );
+
+    ctx.endStep(idx, detail.passed ? 'passed' : 'failed',
+      { detail: capLarge(detail) as Record<string, unknown> });
+    return detail.passed;
   }
 
   /**
@@ -429,26 +568,23 @@ export class AutomationEngine {
       automation.variables,
       ancestorIds,
     );
+    this.beginLiveStream(ctx, triggerData);
 
     let status: ExecutionStatus = 'success';
     let error: string | undefined;
 
     try {
+      this.recordTriggerStep(ctx, automation, triggerData);
+
       // Evaluate conditions if trigger data was provided (unless explicitly skipped)
       const shouldEvalConditions = options?.triggerData && !options?.skipConditions;
       if (shouldEvalConditions && automation.conditions?.conditions?.length > 0) {
-        const conditionStepIdx = ctx.beginStep('condition', 'condition_block', 'Conditions');
-        const conditionsPassed = this.conditionEvaluator.evaluate(
-          automation.conditions,
-          triggerData,
-          ctx.variables,
-        );
-        ctx.endStep(conditionStepIdx, conditionsPassed ? 'passed' : 'failed');
+        const conditionsPassed = this.recordConditionStep(ctx, automation, triggerData);
         if (!conditionsPassed) {
           status = 'stopped';
           await ctx.settleStepDetails();
-      await ctx.settleStepDetails();
-    const trace = ctx.buildTrace(status, error);
+          this.endLiveStream(ctx, status, error);
+          const trace = ctx.buildTrace(status, error);
           this.config.onTraceComplete(trace);
           return trace;
         }
@@ -466,6 +602,7 @@ export class AutomationEngine {
     }
 
     await ctx.settleStepDetails();
+    this.endLiveStream(ctx, status, error);
     const trace = ctx.buildTrace(status, error);
     this.config.onTraceComplete(trace);
     return trace;

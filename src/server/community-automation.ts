@@ -73,7 +73,12 @@ async function persistTrace(trace: ExecutionTrace): Promise<void> {
       startedAt: trace.startedAt,
       finishedAt: trace.finishedAt,
       durationMs: Number.isNaN(finished) || Number.isNaN(started) ? undefined : finished - started,
-      triggerSummary: trace.triggerData?.triggerType ?? 'manual',
+      // The trigger step's summary already says what fired ("Device changed:
+      // power_state 0 → 1"); the bare triggerType is the fallback for traces
+      // recorded before trigger steps existed.
+      triggerSummary: trace.steps?.[0]?.type === 'trigger'
+        ? trace.steps[0].nodeSummary
+        : (trace.triggerData?.triggerType ?? 'manual'),
       traceJson: JSON.stringify(trace),
     });
   } catch (e) {

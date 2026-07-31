@@ -29,6 +29,8 @@ import type {
   TriggerData,
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
+import type { StepTags } from '../types/execution';
+import { capLarge } from './trace-summaries';
 import type { NotifyDelivery } from '../types/notify';
 import { NOTIFY_DELIVERY_UNKNOWN, NOTIFY_DELIVERY_PENDING } from '../types/notify';
 import { describeError } from '../../lib/describe-error';
@@ -123,8 +125,13 @@ export class ActionExecutor {
 
   /**
    * Execute a sequence of actions in order.
+   *
+   * `tags` labels every step begun in this sequence with the container/branch/
+   * iteration it ran under. Threaded explicitly through the call chain rather
+   * than stored on the context: parallel branches share one ExecutionContext,
+   * so ambient state would mislabel interleaved steps.
    */
-  async executeSequence(actions: Action[], ctx: ExecutionContext): Promise<void> {
+  async executeSequence(actions: Action[], ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     this.executionStart = Date.now();
 
     for (const action of actions) {
@@ -133,16 +140,16 @@ export class ActionExecutor {
 
       if (action.enabled === false) continue;
 
-      await this.executeActionWithErrorHandling(action, ctx);
+      await this.executeActionWithErrorHandling(action, ctx, tags);
     }
   }
 
-  private async executeActionWithErrorHandling(action: Action, ctx: ExecutionContext): Promise<void> {
+  private async executeActionWithErrorHandling(action: Action, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const errorStrategy = action.onError ?? 'stop';
 
     if (errorStrategy === 'stop') {
       // Default behavior — errors propagate up
-      return this.executeAction(action, ctx);
+      return this.executeAction(action, ctx, tags);
     }
 
     if (errorStrategy === 'retry') {
@@ -152,7 +159,9 @@ export class ActionExecutor {
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          await this.executeAction(action, ctx);
+          // Re-runs tag their step with the (1-based) attempt number; the
+          // first try stays untagged so the common case adds no noise.
+          await this.executeAction(action, ctx, attempt > 0 ? { ...tags, attempt: attempt + 1 } : tags);
           return; // Success — exit retry loop
         } catch (e) {
           lastError = e;
@@ -175,12 +184,16 @@ export class ActionExecutor {
         errorMessage: String(lastError),
         retryCount: maxRetries,
       });
+      const exhaustedIdx = ctx.lastStepIndexForNode(action.id);
+      if (exhaustedIdx >= 0) {
+        ctx.annotateStep(exhaustedIdx, { onError: 'retry', retriesExhausted: true, maxRetries });
+      }
       return;
     }
 
     // 'continue' — catch errors, log them, and proceed
     try {
-      await this.executeAction(action, ctx);
+      await this.executeAction(action, ctx, tags);
     } catch (e) {
       if (e instanceof StopExecutionError) throw e;
       ctx.setNodeOutput(action.id, {
@@ -188,51 +201,55 @@ export class ActionExecutor {
         error: true,
         errorMessage: describeError(e),
       });
+      const continuedIdx = ctx.lastStepIndexForNode(action.id);
+      if (continuedIdx >= 0) {
+        ctx.annotateStep(continuedIdx, { onError: 'continue', continued: true });
+      }
     }
   }
 
-  private async executeAction(action: Action, ctx: ExecutionContext): Promise<void> {
+  private async executeAction(action: Action, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     switch (action.type) {
       case 'set_characteristic':
-        return this.executeSetCharacteristic(action, ctx);
+        return this.executeSetCharacteristic(action, ctx, tags);
       case 'set_service_group':
-        return this.executeSetServiceGroup(action, ctx);
+        return this.executeSetServiceGroup(action, ctx, tags);
       case 'execute_scene':
-        return this.executeScene(action, ctx);
+        return this.executeScene(action, ctx, tags);
       case 'delay':
-        return this.executeDelay(action, ctx);
+        return this.executeDelay(action, ctx, tags);
       case 'choose':
-        return this.executeChoose(action, ctx);
+        return this.executeChoose(action, ctx, tags);
       case 'if_then_else':
-        return this.executeIfThenElse(action, ctx);
+        return this.executeIfThenElse(action, ctx, tags);
       case 'repeat':
-        return this.executeRepeat(action, ctx);
+        return this.executeRepeat(action, ctx, tags);
       case 'parallel':
-        return this.executeParallel(action, ctx);
+        return this.executeParallel(action, ctx, tags);
       case 'variables':
-        return this.executeVariables(action, ctx);
+        return this.executeVariables(action, ctx, tags);
       case 'stop':
-        return this.executeStop(action);
+        return this.executeStop(action, ctx, tags);
       case 'fire_event':
-        return this.executeFireEvent(action, ctx);
+        return this.executeFireEvent(action, ctx, tags);
       case 'fire_webhook':
-        return this.executeFireWebhook(action, ctx);
+        return this.executeFireWebhook(action, ctx, tags);
       case 'toggle_automation':
-        return this.executeToggleAutomation(action, ctx);
+        return this.executeToggleAutomation(action, ctx, tags);
       case 'call_script':
-        return this.executeCallScript(action, ctx);
+        return this.executeCallScript(action, ctx, tags);
       case 'notify':
-        return this.executeNotify(action, ctx);
+        return this.executeNotify(action, ctx, tags);
       case 'wait_for_trigger':
-        return this.executeWaitForTrigger(action, ctx);
+        return this.executeWaitForTrigger(action, ctx, tags);
       case 'wait_for_template':
-        return this.executeWaitForTemplate(action, ctx);
+        return this.executeWaitForTemplate(action, ctx, tags);
       case 'code':
-        return this.executeCode(action, ctx);
+        return this.executeCode(action, ctx, tags);
       case 'merge':
-        return this.executeMerge(action, ctx);
+        return this.executeMerge(action, ctx, tags);
       case 'helper':
-        return this.executeHelper(action, ctx);
+        return this.executeHelper(action, ctx, tags);
       default:
         console.warn(`[ActionExecutor] Unsupported action type: ${(action as Action).type}`);
     }
@@ -245,10 +262,11 @@ export class ActionExecutor {
   private async executeSetCharacteristic(
     action: SetCharacteristicAction,
     ctx: ExecutionContext,
+    tags?: StepTags,
   ): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'set_characteristic',
       `Set ${action.accessoryId} ${action.characteristicType}`,
-      { accessoryId: action.accessoryId, characteristicType: action.characteristicType, value: action.value });
+      { accessoryId: action.accessoryId, characteristicType: action.characteristicType, value: action.value }, tags);
 
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
@@ -272,9 +290,11 @@ export class ActionExecutor {
   private async executeSetServiceGroup(
     action: SetServiceGroupAction,
     ctx: ExecutionContext,
+    tags?: StepTags,
   ): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'set_service_group',
-      `Set group ${action.groupId}`, { groupId: action.groupId });
+      `Set group ${action.groupId}`,
+      { groupId: action.groupId, characteristicType: action.characteristicType, value: action.value }, tags);
 
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
@@ -290,9 +310,9 @@ export class ActionExecutor {
     }
   }
 
-  private async executeScene(action: ExecuteSceneAction, ctx: ExecutionContext): Promise<void> {
+  private async executeScene(action: ExecuteSceneAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'execute_scene',
-      `Execute scene ${action.sceneId}`, { sceneId: action.sceneId });
+      `Execute scene ${action.sceneId}`, { sceneId: action.sceneId }, tags);
 
     try {
       await this.bridge.executeScene(action.sceneId, action.homeId);
@@ -310,10 +330,10 @@ export class ActionExecutor {
   // Helpers (virtual switches, timers, counters, modes)
   // ============================================================
 
-  private async executeHelper(action: HelperAction, ctx: ExecutionContext): Promise<void> {
+  private async executeHelper(action: HelperAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'helper',
       `Helper ${action.operation} ${action.helperId}`,
-      { helperId: action.helperId, operation: action.operation });
+      { helperId: action.helperId, operation: action.operation }, tags);
 
     if (!this.helperManager) {
       const error = 'Helpers are not available in this engine instance';
@@ -361,11 +381,11 @@ export class ActionExecutor {
   // Delay
   // ============================================================
 
-  private async executeDelay(action: DelayAction, ctx: ExecutionContext): Promise<void> {
+  private async executeDelay(action: DelayAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const raw = durationToMs(action.duration);
     const ms = Math.max(0, Math.min(raw, MAX_DELAY_MS));
     const stepIdx = ctx.beginStep('action', action.id, 'delay',
-      `Wait ${this.formatDuration(action.duration)}`, { durationMs: ms, requestedMs: raw });
+      `Wait ${this.formatDuration(action.duration)}`, { durationMs: ms, requestedMs: raw }, tags);
 
     if (raw > MAX_DELAY_MS) {
       console.warn(`[ActionExecutor] Delay clamped from ${raw}ms to ${MAX_DELAY_MS}ms (24h cap)`);
@@ -391,49 +411,58 @@ export class ActionExecutor {
   // Choose / If-Then-Else
   // ============================================================
 
-  private async executeChoose(action: ChooseAction, ctx: ExecutionContext): Promise<void> {
+  private async executeChoose(action: ChooseAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'choose',
-      `Choose (${action.choices.length} branches)`, {});
+      `Choose (${action.choices.length} branches)`, {}, tags);
+
+    // Which branches were tested and how each verdict fell — previously the
+    // trace only named the winner, so "why did it take THIS branch" was
+    // unanswerable. Branches after the match stay untested (and unlisted).
+    const tested: { index: number; alias?: string; passed: boolean }[] = [];
 
     let matched = false;
     for (let i = 0; i < action.choices.length; i++) {
       const choice = action.choices[i];
-      if (this.conditionEvaluator.evaluate(choice.conditions, ctx.triggerData, ctx.variables)) {
+      const detail = this.conditionEvaluator.evaluateDetailed(choice.conditions, ctx.triggerData, ctx.variables);
+      tested.push({ index: i, alias: choice.alias, passed: detail.passed });
+      if (detail.passed) {
         matched = true;
-        const output = { branch: choice.alias ?? String(i), index: i };
+        const branch = choice.alias ?? String(i);
+        const output = { branch, index: i, tested, condition: capLarge(detail) };
         ctx.setNodeOutput(action.id, output);
         ctx.endStep(stepIdx, 'executed', output);
-        await this.executeSequence(choice.actions, ctx);
+        await this.executeSequence(choice.actions, ctx, { parentNodeId: action.id, branch });
         break;
       }
     }
 
     if (!matched) {
       if (action.default && action.default.length > 0) {
-        const output = { branch: 'default', index: -1 };
+        const output = { branch: 'default', index: -1, tested };
         ctx.setNodeOutput(action.id, output);
         ctx.endStep(stepIdx, 'executed', output);
-        await this.executeSequence(action.default, ctx);
+        await this.executeSequence(action.default, ctx, { parentNodeId: action.id, branch: 'default' });
       } else {
-        ctx.setNodeOutput(action.id, { branch: 'none', index: -1 });
-        ctx.endStep(stepIdx, 'skipped', { reason: 'no matching branch' });
+        ctx.setNodeOutput(action.id, { branch: 'none', index: -1, tested });
+        ctx.endStep(stepIdx, 'skipped', { reason: 'no matching branch', tested });
       }
     }
   }
 
-  private async executeIfThenElse(action: IfThenElseAction, ctx: ExecutionContext): Promise<void> {
-    const result = this.conditionEvaluator.evaluate(action.condition, ctx.triggerData, ctx.variables);
+  private async executeIfThenElse(action: IfThenElseAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+    const detail = this.conditionEvaluator.evaluateDetailed(action.condition, ctx.triggerData, ctx.variables);
+    const result = detail.passed;
     const stepIdx = ctx.beginStep('action', action.id, 'if_then_else',
-      result ? 'If → Then' : 'If → Else', { conditionResult: result });
+      result ? 'If → Then' : 'If → Else', { conditionResult: result, condition: capLarge(detail) }, tags);
 
     const output = { branch: result ? 'then' : 'else', result };
     ctx.setNodeOutput(action.id, output);
     ctx.endStep(stepIdx, 'executed', output);
 
     if (result) {
-      await this.executeSequence(action.then, ctx);
+      await this.executeSequence(action.then, ctx, { parentNodeId: action.id, branch: 'then' });
     } else if (action.else) {
-      await this.executeSequence(action.else, ctx);
+      await this.executeSequence(action.else, ctx, { parentNodeId: action.id, branch: 'else' });
     }
   }
 
@@ -441,11 +470,15 @@ export class ActionExecutor {
   // Repeat
   // ============================================================
 
-  private async executeRepeat(action: RepeatAction, ctx: ExecutionContext): Promise<void> {
+  private async executeRepeat(action: RepeatAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'repeat',
-      `Repeat (${action.mode})`, { mode: action.mode });
+      `Repeat (${action.mode})`, { mode: action.mode }, tags);
 
     let iterations = 0;
+    // The while/until verdict that ended the loop — the answer to "why did it
+    // stop (or never start)" that the bare iteration count can't give.
+    let lastCondition: ReturnType<ConditionEvaluator['evaluateDetailed']> | undefined;
+    const iterTags = (i: number): StepTags => ({ parentNodeId: action.id, iteration: i });
 
     switch (action.mode) {
       case 'count': {
@@ -453,20 +486,18 @@ export class ActionExecutor {
         for (let i = 0; i < count && !ctx.isAborted; i++) {
           if (++iterations > MAX_LOOP_ITERATIONS) break;
           ctx.repeat = { index: i, first: i === 0, last: i === count - 1 };
-          await this.executeSequence(action.sequence, ctx);
+          await this.executeSequence(action.sequence, ctx, iterTags(i));
         }
         break;
       }
 
       case 'while': {
-        while (
-          !ctx.isAborted &&
-          action.whileCondition &&
-          this.conditionEvaluator.evaluate(action.whileCondition, ctx.triggerData, ctx.variables)
-        ) {
+        while (!ctx.isAborted && action.whileCondition) {
+          lastCondition = this.conditionEvaluator.evaluateDetailed(action.whileCondition, ctx.triggerData, ctx.variables);
+          if (!lastCondition.passed) break;
           if (++iterations > MAX_LOOP_ITERATIONS) break;
           ctx.repeat = { index: iterations - 1, first: iterations === 1, last: false };
-          await this.executeSequence(action.sequence, ctx);
+          await this.executeSequence(action.sequence, ctx, iterTags(iterations - 1));
         }
         break;
       }
@@ -475,12 +506,10 @@ export class ActionExecutor {
         do {
           if (++iterations > MAX_LOOP_ITERATIONS) break;
           ctx.repeat = { index: iterations - 1, first: iterations === 1, last: false };
-          await this.executeSequence(action.sequence, ctx);
-        } while (
-          !ctx.isAborted &&
-          action.untilCondition &&
-          !this.conditionEvaluator.evaluate(action.untilCondition, ctx.triggerData, ctx.variables)
-        );
+          await this.executeSequence(action.sequence, ctx, iterTags(iterations - 1));
+          if (ctx.isAborted || !action.untilCondition) break;
+          lastCondition = this.conditionEvaluator.evaluateDetailed(action.untilCondition, ctx.triggerData, ctx.variables);
+        } while (lastCondition && !lastCondition.passed);
         break;
       }
 
@@ -489,13 +518,16 @@ export class ActionExecutor {
         for (let i = 0; i < items.length && !ctx.isAborted; i++) {
           if (++iterations > MAX_LOOP_ITERATIONS) break;
           ctx.repeat = { index: i, first: i === 0, last: i === items.length - 1, item: items[i] };
-          await this.executeSequence(action.sequence, ctx);
+          await this.executeSequence(action.sequence, ctx, iterTags(i));
         }
         break;
       }
     }
 
-    const output = { iterations };
+    const output = {
+      iterations,
+      ...(lastCondition ? { lastCondition: capLarge(lastCondition) } : {}),
+    };
     ctx.setNodeOutput(action.id, output);
     ctx.endStep(stepIdx, 'executed', output);
   }
@@ -504,25 +536,25 @@ export class ActionExecutor {
   // Parallel
   // ============================================================
 
-  private async executeParallel(action: ParallelAction, ctx: ExecutionContext): Promise<void> {
+  private async executeParallel(action: ParallelAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'parallel',
-      `Parallel (${action.branches.length} branches)`, {});
+      `Parallel (${action.branches.length} branches)`, {}, tags);
 
-    const promises = action.branches.map((branch) =>
-      this.executeSequence(branch, ctx),
+    const promises = action.branches.map((branch, i) =>
+      this.executeSequence(branch, ctx, { parentNodeId: action.id, branch: String(i) }),
     );
 
     await Promise.all(promises);
-    ctx.endStep(stepIdx, 'executed');
+    ctx.endStep(stepIdx, 'executed', { branches: action.branches.length });
   }
 
   // ============================================================
   // Variables
   // ============================================================
 
-  private async executeVariables(action: VariablesAction, ctx: ExecutionContext): Promise<void> {
+  private async executeVariables(action: VariablesAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'variables',
-      `Set ${Object.keys(action.variables).length} variable(s)`, {});
+      `Set ${Object.keys(action.variables).length} variable(s)`, {}, tags);
 
     const setVars: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(action.variables)) {
@@ -539,7 +571,13 @@ export class ActionExecutor {
   // Stop
   // ============================================================
 
-  private executeStop(action: StopAction): never {
+  private executeStop(action: StopAction, ctx: ExecutionContext, tags?: StepTags): never {
+    // Recorded before throwing — a stop used to leave no step at all, so the
+    // history showed a run that just ended with nothing saying which node
+    // ended it.
+    const stepIdx = ctx.beginStep('action', action.id, 'stop',
+      action.reason ?? 'Stop', { reason: action.reason, isError: action.error ?? false }, tags);
+    ctx.endStep(stepIdx, 'executed', { reason: action.reason ?? 'Automation stopped', isError: action.error ?? false });
     throw new StopExecutionError(
       action.reason ?? 'Automation stopped',
       action.error ?? false,
@@ -551,9 +589,9 @@ export class ActionExecutor {
   // Fire Event
   // ============================================================
 
-  private async executeFireEvent(action: FireEventAction, ctx: ExecutionContext): Promise<void> {
+  private async executeFireEvent(action: FireEventAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'fire_event',
-      `Fire event: ${action.eventType}`, { eventType: action.eventType });
+      `Fire event: ${action.eventType}`, { eventType: action.eventType }, tags);
 
     this.callbacks.fireEvent(action.eventType, action.eventData);
     const output = { eventType: action.eventType, eventData: action.eventData };
@@ -605,24 +643,27 @@ export class ActionExecutor {
     }
   }
 
-  private async executeNotify(action: NotifyAction, ctx: ExecutionContext): Promise<void> {
-    const message = this.resolveTemplateString(action.message, ctx);
-    const title = action.title ? this.resolveTemplateString(action.title, ctx) : undefined;
-    const { icon, iconColor, iconRejected } = this.resolveNotifyIcon(action, ctx);
-
-    // Carried inside `data` rather than as a fourth argument. `data` is already
-    // the platform-specific bag and already reaches both onNotify implementations
-    // — and from there the cloud server and the Swift bridge — untouched, so an
-    // icon rides to every channel without widening a callback declared in five
-    // places.
-    const data = icon
-      ? { ...action.data, icon, ...(iconColor ? { iconColor } : {}) }
-      : action.data;
-
+  private async executeNotify(action: NotifyAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+    // beginStep comes before template resolution: the input keeps the raw
+    // templates (so a bad expression is diagnosable from the trace), and a
+    // resolution failure now lands on a recorded step instead of vanishing.
     const stepIdx = ctx.beginStep('action', action.id, 'notify',
-      `Notify: ${message.slice(0, 50)}`, { message, title, icon, iconColor, iconRejected });
+      `Notify: ${action.message.slice(0, 50)}`, { message: action.message, title: action.title }, tags);
 
     try {
+      const message = this.resolveTemplateString(action.message, ctx);
+      const title = action.title ? this.resolveTemplateString(action.title, ctx) : undefined;
+      const { icon, iconColor, iconRejected } = this.resolveNotifyIcon(action, ctx);
+
+      // Carried inside `data` rather than as a fourth argument. `data` is already
+      // the platform-specific bag and already reaches both onNotify implementations
+      // — and from there the cloud server and the Swift bridge — untouched, so an
+      // icon rides to every channel without widening a callback declared in five
+      // places.
+      const data = icon
+        ? { ...action.data, icon, ...(iconColor ? { iconColor } : {}) }
+        : action.data;
+
       // Deliberately not awaited. Delivery is decided by the server, a round
       // trip away; awaiting it here put that round trip between this action and
       // the next, so an automation that notified and then turned a light on
@@ -653,7 +694,7 @@ export class ActionExecutor {
       ctx.endStep(stepIdx, 'executed', output);
       ctx.awaitStepDetail(stepIdx, delivery);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { message, title, icon, iconColor, success: false, error: describeError(e) });
+      ctx.setNodeOutput(action.id, { message: action.message, title: action.title, success: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }
@@ -663,10 +704,11 @@ export class ActionExecutor {
   // Wait for Trigger
   // ============================================================
 
-  private async executeWaitForTrigger(action: WaitForTriggerAction, ctx: ExecutionContext): Promise<void> {
+  private async executeWaitForTrigger(action: WaitForTriggerAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const timeoutMs = action.timeout ? durationToMs(action.timeout) : undefined;
     const stepIdx = ctx.beginStep('action', action.id, 'wait_for_trigger',
-      `Wait for trigger${timeoutMs ? ` (timeout: ${timeoutMs / 1000}s)` : ''}`, {});
+      `Wait for trigger${timeoutMs ? ` (timeout: ${timeoutMs / 1000}s)` : ''}`,
+      { timeoutMs, triggerCount: action.triggers.length }, tags);
 
     ctx.wait = { completed: false };
 
@@ -720,10 +762,11 @@ export class ActionExecutor {
   // Wait for Template
   // ============================================================
 
-  private async executeWaitForTemplate(action: WaitForTemplateAction, ctx: ExecutionContext): Promise<void> {
+  private async executeWaitForTemplate(action: WaitForTemplateAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const timeoutMs = action.timeout ? durationToMs(action.timeout) : undefined;
     const stepIdx = ctx.beginStep('action', action.id, 'wait_for_template',
-      `Wait for expression to be true`, {});
+      `Wait for expression to be true`,
+      { expression: action.expression, timeoutMs }, tags);
 
     ctx.wait = { completed: false };
 
@@ -780,12 +823,14 @@ export class ActionExecutor {
   // Fire Webhook
   // ============================================================
 
-  private async executeFireWebhook(action: FireWebhookAction, ctx: ExecutionContext): Promise<void> {
-    const url = this.resolveTemplateString(action.url, ctx);
+  private async executeFireWebhook(action: FireWebhookAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+    // Raw url recorded first; a template that resolves wrong is only
+    // diagnosable if the trace still shows what it resolved FROM.
     const stepIdx = ctx.beginStep('action', action.id, 'fire_webhook',
-      `${action.method ?? 'POST'} ${url.slice(0, 50)}`, { url, method: action.method });
+      `${action.method ?? 'POST'} ${action.url.slice(0, 50)}`, { rawUrl: action.url, method: action.method }, tags);
 
     try {
+      const url = this.resolveTemplateString(action.url, ctx);
       assertSafeOutboundUrl(url);
       const body = action.body ? JSON.stringify(this.resolveTemplateValue(action.body, ctx)) : undefined;
       const headers: Record<string, string> = { ...action.headers };
@@ -813,6 +858,7 @@ export class ActionExecutor {
       } catch { /* ignore body parse errors */ }
 
       const output = {
+        url,
         status: response.status,
         statusText: response.statusText,
         body: responseBody,
@@ -820,7 +866,9 @@ export class ActionExecutor {
         ok: response.ok,
       };
       ctx.setNodeOutput(action.id, output);
-      ctx.endStep(stepIdx, 'executed', output);
+      // Node output keeps the full body for downstream expressions; the trace
+      // step gets a size-capped copy so one chatty response can't balloon it.
+      ctx.endStep(stepIdx, 'executed', { ...output, body: capLarge(responseBody) });
     } catch (e) {
       ctx.setNodeOutput(action.id, { status: 0, ok: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
@@ -832,9 +880,10 @@ export class ActionExecutor {
   // Toggle Automation
   // ============================================================
 
-  private async executeToggleAutomation(action: ToggleAutomationAction, ctx: ExecutionContext): Promise<void> {
+  private async executeToggleAutomation(action: ToggleAutomationAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'toggle_automation',
-      `${action.action} automation ${action.automationId.slice(0, 8)}`, {});
+      `${action.action} automation ${action.automationId.slice(0, 8)}`,
+      { automationId: action.automationId, action: action.action }, tags);
 
     try {
       switch (action.action) {
@@ -874,9 +923,9 @@ export class ActionExecutor {
   // Call Script
   // ============================================================
 
-  private async executeCallScript(action: CallScriptAction, ctx: ExecutionContext): Promise<void> {
+  private async executeCallScript(action: CallScriptAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'call_script',
-      `Run script ${action.scriptId.slice(0, 8)}`, {});
+      `Run script ${action.scriptId.slice(0, 8)}`, { scriptId: action.scriptId }, tags);
 
     try {
       const vars = action.variables
@@ -892,7 +941,11 @@ export class ActionExecutor {
         ctx.setVariable(action.responseVariable, response);
       }
 
-      const output = { response: response ?? null, scriptId: action.scriptId };
+      const output = {
+        response: response ?? null,
+        scriptId: action.scriptId,
+        ...(vars ? { variables: capLarge(vars, 2048) } : {}),
+      };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
@@ -906,9 +959,9 @@ export class ActionExecutor {
   // Merge (combine data from multiple upstream nodes)
   // ============================================================
 
-  private async executeMerge(action: MergeAction, ctx: ExecutionContext): Promise<void> {
+  private async executeMerge(action: MergeAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'merge',
-      `Merge (${action.mode}, ${action.inputIds.length} inputs)`, { mode: action.mode, inputIds: action.inputIds });
+      `Merge (${action.mode}, ${action.inputIds.length} inputs)`, { mode: action.mode, inputIds: action.inputIds }, tags);
 
     try {
       // Gather outputs from input nodes
@@ -959,9 +1012,14 @@ export class ActionExecutor {
   // Code execution (sandboxed)
   // ============================================================
 
-  private async executeCode(action: CodeAction, ctx: ExecutionContext): Promise<void> {
+  private async executeCode(action: CodeAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+    // The step input records the source and (capped) variables — a failing
+    // code node was previously undiagnosable from the trace, which kept
+    // neither the code nor what it received. stateSnapshot stays out: it is
+    // the whole home's state and would dwarf everything else in the trace.
     const stepIdx = ctx.beginStep('action', action.id, 'code',
-      `Code (${action.code.length} chars)`, {});
+      `Code (${action.code.length} chars)`,
+      { code: capLarge(action.code, 2000), variables: capLarge({ ...ctx.variables }, 2048) }, tags);
 
     try {
       const input = {
@@ -979,7 +1037,7 @@ export class ActionExecutor {
         : { result };
 
       ctx.setNodeOutput(action.id, output);
-      ctx.endStep(stepIdx, 'executed', output);
+      ctx.endStep(stepIdx, 'executed', capLarge(output) as Record<string, unknown>);
     } catch (e) {
       ctx.setNodeOutput(action.id, { error: true, errorMessage: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
