@@ -16,7 +16,6 @@ import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
-import { getDeviceFingerprint } from '../lib/device-identity';
 import { errorCode } from '../lib/describe-error';
 import { canServeLocally, resolveLocalHomeId } from './relay-routing';
 import {
@@ -250,7 +249,6 @@ export class ServerWebSocket {
   private isManualDisconnect = false;
   private pendingRequests = new Map<string, PendingRequest>();
   private requestIdCounter = 0;
-  private apnsRegistered = false;
   private connectionOpenedAt: number | null = null;
   private lastConnectionDuration: number | null = null;
 
@@ -870,25 +868,7 @@ export class ServerWebSocket {
       ),
       subscribeToHomeKit: (handler) => HomeKit.onEvent(handler),
       onNotify: (message, title, data, automationId) => {
-        // The automation's home scopes both the member fan-out and per-device
-        // home mutes on the server. Without it the server guesses from
-        // relay_homes, which picks an arbitrary home on a multi-home relay.
-        const homeId = automationId
-          ? getAutomationEngine()?.getAutomation(automationId)?.homeId
-          : undefined;
-
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-          // sendEvent silently drops on a closed socket, which used to mean
-          // the notification vanished entirely. The household fan-out really
-          // is unreachable with the cloud link down, but the Mac running the
-          // automation can still banner locally.
-          void HomeKit.showNotification(title, message, data).catch((err) => {
-            console.warn('[ServerWS] Local notification fallback failed:', err);
-          });
-          return Promise.resolve({ delivered: true, channels: ['local'] });
-        }
-
-        // Send to cloud server for APNs/FCM delivery to all devices.
+        // Send to cloud server for push/email/APNs delivery to all devices.
         // The server reports back what it managed to deliver so the execution
         // trace can say so; a server too old to answer, or one that never gets
         // round to it, leaves the step recorded as unknown rather than as sent.
@@ -897,7 +877,7 @@ export class ServerWebSocket {
           id: `evt_${Date.now()}_notify`,
           type: 'automation',
           action: 'automation.notify',
-          payload: { message, title, data, automationId, notifyId, homeId },
+          payload: { message, title, data, automationId, notifyId },
         });
         return this.awaitNotifyResult(notifyId);
       },
@@ -971,36 +951,15 @@ export class ServerWebSocket {
 
   private async registerAPNsToken(): Promise<void> {
     if (!HomeKit.isAvailable()) return;
-    // Called on every (re)connect promotion; once a registration has
-    // succeeded this session there is nothing new to say. A failed attempt
-    // leaves the flag unset so the next connect retries.
-    if (this.apnsRegistered) return;
     try {
       // Request notification permission (may already be granted)
       const permResult = await HomeKit.requestNotificationPermission();
       if (!permResult?.granted) return;
 
-      // The OS registration that produces the token is asynchronous: right
-      // after a permission grant getAPNsToken() legitimately returns null.
-      // Giving up on the first null meant a first launch never registered
-      // until the app was restarted — poll with backoff instead.
-      let apnsToken: string | null = null;
-      for (const delayMs of [0, 1000, 2000, 4000, 8000, 16000, 30000]) {
-        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
-        const tokenResult = await HomeKit.getAPNsToken();
-        apnsToken = tokenResult?.token ?? null;
-        if (apnsToken) break;
-      }
-      if (!apnsToken) {
-        console.warn('[ServerWS] APNs token still unavailable after retries — will retry on next connect');
-        return;
-      }
-
-      // Stable per-device fingerprint. The old token-derived one minted a
-      // "new device" on every APNs token rotation, leaving stale rows that
-      // received duplicate pushes (the server now also purges those on
-      // re-registration by matching the token value).
-      const fingerprint = getDeviceFingerprint() ?? `macos-${apnsToken.slice(0, 16)}`;
+      // Get the APNs device token
+      const tokenResult = await HomeKit.getAPNsToken();
+      const apnsToken = tokenResult?.token;
+      if (!apnsToken) return;
 
       // Register with server via GraphQL
       const { apolloClient } = await import('@/lib/apollo');
@@ -1010,11 +969,10 @@ export class ServerWebSocket {
         variables: {
           token: apnsToken,
           platform: 'macos',
-          deviceFingerprint: fingerprint,
+          deviceFingerprint: `macos-${apnsToken.slice(0, 16)}`,
           deviceName: 'Homecast Relay (Mac)',
         },
       });
-      this.apnsRegistered = true;
       console.log('[ServerWS] Registered APNs token with server');
     } catch (err) {
       // Non-fatal — push notifications are optional

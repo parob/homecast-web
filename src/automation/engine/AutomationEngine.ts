@@ -470,7 +470,7 @@ export class AutomationEngine {
   /**
    * Wire the run's live event stream, when anyone is listening. Every step
    * has already streamed by the time `finished` goes out — the closing status
-   * waits on settleStepDetails (≤10s for a late notify report), which is the
+   * waits on settleStepDetails (≤5s for a late notify report), which is the
    * same tradeoff the persisted trace makes.
    */
   private beginLiveStream(ctx: ExecutionContext, triggerData: TriggerData): void {
