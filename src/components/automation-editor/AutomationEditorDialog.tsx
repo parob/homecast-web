@@ -44,6 +44,7 @@ import { StickyNoteNode } from './nodes/StickyNoteNode';
 import { ControlFlowEdge, EdgeMarkerDefs } from './edges/ControlFlowEdge';
 import { NodePalette } from './panels/NodePalette';
 import { NodeConfigPanel } from './panels/NodeConfigPanel';
+import { MobileHistoryOverlay } from './panels/MobileHistoryOverlay';
 import { RunStepPanel } from './panels/RunStepPanel';
 import { STATUS_STYLES } from './panels/ExecutionHistoryPanel';
 import { mapTraceToNodeStates } from './run-view';
@@ -152,10 +153,10 @@ function AutomationEditorInner({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  // Which tab the mobile palette overlay opens on (null = closed). The
-  // toolbar's + opens Nodes; the History button opens Executions directly —
-  // history buried behind an "add node" button was undiscoverable.
-  const [mobilePalette, setMobilePalette] = useState<'nodes' | 'executions' | 'versions' | null>(null);
+  // Two separate mobile overlays for two separate jobs: + opens the node
+  // palette, the History button opens executions/versions. Mutually exclusive.
+  const [showMobilePalette, setShowMobilePalette] = useState(false);
+  const [showMobileHistory, setShowMobileHistory] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
@@ -273,7 +274,8 @@ function AutomationEditorInner({
     setConfigNodeId(null);
     setSelectedNodeId(null);
     setContextMenu(null);
-    setMobilePalette(null);
+    setShowMobilePalette(false);
+    setShowMobileHistory(false);
   }, []);
 
   const exitRunView = useCallback(() => {
@@ -622,12 +624,12 @@ function AutomationEditorInner({
       {/* Toolbar */}
       <div className="h-12 border-b flex items-center gap-1 sm:gap-2 px-2 sm:px-3 shrink-0">
         {/* Mobile palette toggle */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setMobilePalette(mobilePalette ? null : 'nodes')} data-testid="mobile-palette-button">
+        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => { setShowMobileHistory(false); setShowMobilePalette((v) => !v); }} data-testid="mobile-palette-button">
           <Plus className="h-4 w-4" />
         </Button>
-        {/* Mobile executions/versions entry — saved automations only */}
+        {/* Mobile history entry (executions + versions) — saved automations only */}
         {existingIdRef.current && (
-          <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setMobilePalette(mobilePalette === 'executions' ? null : 'executions')} data-testid="mobile-history-button">
+          <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={() => { setShowMobilePalette(false); setShowMobileHistory((v) => !v); }} data-testid="mobile-history-button">
             <History className="h-4 w-4" />
           </Button>
         )}
@@ -700,23 +702,32 @@ function AutomationEditorInner({
         />
 
         {/* Mobile palette overlay */}
-        {mobilePalette && (
+        {showMobilePalette && (
           <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm sm:hidden flex flex-col">
-            <NodePalette
-              key={mobilePalette}
-              forceVisible
-              initialTab={mobilePalette}
-              onAddNode={(def) => { addNewNode(def); setMobilePalette(null); }}
-              automationId={existingIdRef.current}
-              homeId={homeId}
-              onVersionRestored={() => onClose()}
-              onClose={() => setMobilePalette(null)}
-              entitySource={entitySource}
-              onSelectTrace={enterRunView}
-              followLive={followLive}
-              onToggleFollowLive={() => setFollowLive((v) => !v)}
-            />
+            <div className="p-3 border-b flex items-center justify-between shrink-0">
+              <span className="text-sm font-medium">Add Node</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMobilePalette(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <NodePalette forceVisible onAddNode={(def) => { addNewNode(def); setShowMobilePalette(false); }} />
+            </div>
           </div>
+        )}
+
+        {/* Mobile history overlay (executions + versions) */}
+        {showMobileHistory && existingIdRef.current && (
+          <MobileHistoryOverlay
+            automationId={existingIdRef.current}
+            homeId={homeId}
+            entitySource={entitySource}
+            onSelectTrace={enterRunView}
+            followLive={followLive}
+            onToggleFollowLive={() => setFollowLive((v) => !v)}
+            onVersionRestored={() => onClose()}
+            onClose={() => setShowMobileHistory(false)}
+          />
         )}
 
         {/* Center: React Flow canvas */}

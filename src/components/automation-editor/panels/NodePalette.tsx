@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import {
-  ChevronRight, PanelLeftClose, PanelLeftOpen, Blocks, History, GitCommitVertical, X,
+  ChevronRight, PanelLeftClose, PanelLeftOpen, Blocks, History, GitCommitVertical,
 } from 'lucide-react';
 import { getNodeIcon } from '../icons';
 import { Button } from '@/components/ui/button';
@@ -33,8 +33,6 @@ interface NodePaletteProps {
   /** Sidebar collapsed state */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
-  /** Close button in the tab row (mobile overlay mode) */
-  onClose?: () => void;
   /** Entity names for humanizing execution history rows */
   entitySource?: TraceEntitySource;
   /** Row tap in the Executions tab opens the run on the canvas */
@@ -42,12 +40,10 @@ interface NodePaletteProps {
   /** Live-follow toggle for the Executions tab */
   followLive?: boolean;
   onToggleFollowLive?: () => void;
-  /** Tab to open on (mobile toolbar deep-links straight to Executions) */
-  initialTab?: SidebarTab;
 }
 
-export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onVersionRestored, collapsed, onToggleCollapse, onClose, entitySource, onSelectTrace, followLive, onToggleFollowLive, initialTab }: NodePaletteProps) {
-  const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab ?? 'nodes');
+export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onVersionRestored, collapsed, onToggleCollapse, entitySource, onSelectTrace, followLive, onToggleFollowLive }: NodePaletteProps) {
+  const [activeTab, setActiveTab] = useState<SidebarTab>('nodes');
   const [categoryCollapsed, setCategoryCollapsed] = useState<Record<string, boolean>>({});
 
   const handleDragStart = (e: React.DragEvent, def: NodeDefinition) => {
@@ -75,43 +71,42 @@ export function NodePalette({ onAddNode, forceVisible, automationId, homeId, onV
   const visibleTabs = tabs.filter((t) => t.show);
 
   return (
-    <div className={cn('w-72 border-r flex-col min-h-0 shrink-0 bg-background', forceVisible ? 'flex w-full flex-1 border-r-0' : 'hidden sm:flex')} data-testid="node-palette">
-      {/* Header: collapse button + tabs (+ close button in mobile overlay mode) */}
-      <div className="border-b shrink-0">
-        <div className="flex items-center h-10">
-          {!forceVisible && onToggleCollapse && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 ml-1.5 shrink-0" onClick={onToggleCollapse}>
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          )}
-          <div className="flex-1 flex items-center justify-center gap-1 px-1">
-            {visibleTabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={cn(
-                    'flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors',
-                    activeTab === tab.id
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                  )}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <Icon className="w-3 h-3" />
-                  {tab.label}
-                </button>
-              );
-            })}
+    <div className={cn('w-72 border-r flex-col min-h-0 shrink-0 bg-background', forceVisible ? 'flex w-full border-r-0' : 'hidden sm:flex')} data-testid="node-palette">
+      {/* Header: collapse button + tabs. Hidden in mobile overlay mode — the
+          mobile overlay is a pure "Add Node" surface; executions and versions
+          live in their own History overlay (MobileHistoryOverlay). */}
+      {!forceVisible && (
+        <div className="border-b shrink-0">
+          <div className="flex items-center h-10">
+            {onToggleCollapse && (
+              <Button variant="ghost" size="icon" className="h-7 w-7 ml-1.5 shrink-0" onClick={onToggleCollapse}>
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            )}
+            <div className="flex-1 flex items-center justify-center gap-1 px-1">
+              {visibleTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors',
+                      activeTab === tab.id
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                    )}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    <Icon className="w-3 h-3" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 mr-1.5 shrink-0" onClick={onClose} data-testid="palette-close-button">
-              <X className="h-4 w-4" />
-            </Button>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-y-auto">

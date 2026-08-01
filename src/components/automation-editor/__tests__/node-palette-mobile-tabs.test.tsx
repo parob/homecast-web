@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 //
-// The mobile palette overlay renders NodePalette with `forceVisible`, which
-// used to suppress the tab strip entirely — and the call site didn't pass
-// automationId/homeId — so the Executions and Versions tabs were unreachable
-// on phones. These tests pin the fixed structure: the tab strip renders in
-// forceVisible mode, the tabs appear when the ids are provided, and the
-// overlay close button lives in the tab row.
+// Mobile access to executions and version history. These live in a dedicated
+// History overlay (MobileHistoryOverlay) opened from the toolbar — the node
+// palette overlay is a pure "Add Node" surface and must NOT grow tabs, and
+// vice versa. Desktop keeps the three-tab sidebar (NodePalette).
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
@@ -16,74 +14,62 @@ vi.mock('../panels/ExecutionHistoryPanel', () => ({
   STATUS_STYLES: {},
 }));
 vi.mock('../panels/VersionHistoryPanel', () => ({
-  VersionHistoryInline: () => <div data-testid="version-history" />,
+  VersionHistoryInline: ({ automationId }: { automationId: string }) => (
+    <div data-testid="version-history" data-automation-id={automationId} />
+  ),
 }));
 
+import { MobileHistoryOverlay } from '../panels/MobileHistoryOverlay';
 import { NodePalette } from '../panels/NodePalette';
 
 afterEach(() => cleanup());
 
-describe('NodePalette in mobile overlay (forceVisible) mode', () => {
-  it('renders the Executions and Versions tabs when ids are provided', () => {
-    render(
-      <NodePalette
-        forceVisible
-        onAddNode={() => {}}
-        automationId="auto-1"
-        homeId="home-1"
-        onVersionRestored={() => {}}
-        onClose={() => {}}
-      />,
-    );
+describe('MobileHistoryOverlay', () => {
+  const baseProps = {
+    automationId: 'auto-1',
+    homeId: 'home-1',
+    onVersionRestored: () => {},
+    onClose: () => {},
+  };
 
-    expect(screen.getByText('Executions')).toBeTruthy();
-    expect(screen.getByText('Versions')).toBeTruthy();
-  });
-
-  it('opens the execution history when the Executions tab is tapped', () => {
-    render(
-      <NodePalette
-        forceVisible
-        onAddNode={() => {}}
-        automationId="auto-1"
-        homeId="home-1"
-        onVersionRestored={() => {}}
-      />,
-    );
-
-    fireEvent.click(screen.getByText('Executions'));
+  it('opens on executions', () => {
+    render(<MobileHistoryOverlay {...baseProps} />);
     expect(screen.getByTestId('execution-history').getAttribute('data-automation-id')).toBe('auto-1');
+    expect(screen.queryByTestId('version-history')).toBeNull();
   });
 
-  it('shows a close button in the tab row when onClose is provided', () => {
-    const onClose = vi.fn();
-    render(<NodePalette forceVisible onAddNode={() => {}} onClose={onClose} />);
+  it('switches to version history via the segmented control', () => {
+    render(<MobileHistoryOverlay {...baseProps} />);
+    fireEvent.click(screen.getByTestId('history-segment-versions'));
+    expect(screen.getByTestId('version-history').getAttribute('data-automation-id')).toBe('auto-1');
+    expect(screen.queryByTestId('execution-history')).toBeNull();
+  });
 
-    fireEvent.click(screen.getByTestId('palette-close-button'));
+  it('hides the Versions segment without a home id', () => {
+    render(<MobileHistoryOverlay automationId="auto-1" onClose={() => {}} />);
+    expect(screen.queryByTestId('history-segment-versions')).toBeNull();
+    expect(screen.getByTestId('execution-history')).toBeTruthy();
+  });
+
+  it('closes via the X button', () => {
+    const onClose = vi.fn();
+    render(<MobileHistoryOverlay {...baseProps} onClose={onClose} />);
+    fireEvent.click(screen.getByTestId('history-close-button'));
     expect(onClose).toHaveBeenCalled();
   });
+});
 
-  it('opens directly on the requested tab (toolbar History deep-link)', () => {
-    render(
-      <NodePalette
-        forceVisible
-        initialTab="executions"
-        onAddNode={() => {}}
-        automationId="auto-1"
-        homeId="home-1"
-        onVersionRestored={() => {}}
-        onClose={() => {}}
-      />,
-    );
-
-    expect(screen.getByTestId('execution-history').getAttribute('data-automation-id')).toBe('auto-1');
-  });
-
-  it('keeps only the Nodes tab for unsaved automations', () => {
-    render(<NodePalette forceVisible onAddNode={() => {}} onClose={() => {}} />);
-
-    expect(screen.getByText('Nodes')).toBeTruthy();
+describe('NodePalette surfaces', () => {
+  it('mobile overlay mode is a pure Add Node surface — no history tabs', () => {
+    render(<NodePalette forceVisible onAddNode={() => {}} automationId="auto-1" homeId="home-1" onVersionRestored={() => {}} />);
     expect(screen.queryByText('Executions')).toBeNull();
     expect(screen.queryByText('Versions')).toBeNull();
+  });
+
+  it('desktop sidebar keeps the three tabs for saved automations', () => {
+    render(<NodePalette onAddNode={() => {}} automationId="auto-1" homeId="home-1" onVersionRestored={() => {}} />);
+    expect(screen.getByText('Nodes')).toBeTruthy();
+    expect(screen.getByText('Executions')).toBeTruthy();
+    expect(screen.getByText('Versions')).toBeTruthy();
   });
 });
