@@ -99,6 +99,13 @@ function AutomationEditorInner({
   const isInMacApp = typeof window !== 'undefined' && !!(window as any).isHomecastMacApp;
   const isNew = !existingAutomation;
 
+  // Finger jitter on touch screens exceeds React Flow's default 1px drag
+  // threshold, so a tap registered as a micro-drag: the node got selected but
+  // the click that opens it never fired, and opening a node took two taps
+  // with nothing visibly happening on the first. A generous threshold makes a
+  // tap a tap (opens on first tap) and a real drag a drag.
+  const isCoarsePointer = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+
   // Fetch device data for the config panel's device picker
   const { data: accessoriesData } = useQuery<{ accessories: HomeKitAccessory[] }>(
     GET_ACCESSORIES,
@@ -753,6 +760,7 @@ function AutomationEditorInner({
             snapGrid={[16, 16]}
             nodesDraggable={!runView}
             nodesConnectable={!runView}
+            nodeDragThreshold={isCoarsePointer ? 18 : 1}
             deleteKeyCode={runView ? null : ['Backspace', 'Delete']}
             className="bg-muted/20"
             proOptions={{ hideAttribution: true }}

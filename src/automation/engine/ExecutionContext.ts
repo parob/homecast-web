@@ -252,7 +252,11 @@ export class ExecutionContext {
     this.finishedAt ??= new Date().toISOString();
   }
 
-  async settleStepDetails(timeoutMs = 5000): Promise<void> {
+  // Default must exceed the notify delivery-report wait (8s in websocket.ts):
+  // at 5s a report landing between 5 and 8 seconds was folded in after
+  // buildTrace, so the persisted trace said "unknown" even though the server
+  // had answered. Only runs with a pending detail wait at all.
+  async settleStepDetails(timeoutMs = 10000): Promise<void> {
     this.markFinished();
     if (this.pendingStepDetails.length === 0) return;
     const pending = this.pendingStepDetails.splice(0);
