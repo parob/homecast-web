@@ -837,8 +837,7 @@ function renderConfigForm(
           </>
         );
 
-      case 'notify': {
-        const actions = (config.actions as Array<{ action: string; title: string }>) ?? [];
+      case 'notify':
         return (
           <>
             <ConfigField label="Title">
@@ -855,58 +854,8 @@ function renderConfigForm(
                 onColorChange={(v) => updateConfig('iconColor', v)}
               />
             </ConfigField>
-            <ConfigField label="Action Buttons" hint="Optional buttons shown on the notification (max 3)">
-              <div className="space-y-2">
-                {actions.map((act, i) => (
-                  <div key={i} className="flex gap-1.5 items-center">
-                    <Input
-                      value={act.title}
-                      onChange={(e) => {
-                        const updated = [...actions];
-                        updated[i] = { ...updated[i], title: e.target.value };
-                        updateConfig('actions', updated);
-                      }}
-                      placeholder="Button label"
-                      className="h-7 text-xs flex-1"
-                    />
-                    <Input
-                      value={act.action}
-                      onChange={(e) => {
-                        const updated = [...actions];
-                        updated[i] = { ...updated[i], action: e.target.value };
-                        updateConfig('actions', updated);
-                      }}
-                      placeholder="Action ID"
-                      className="h-7 text-xs w-24"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => {
-                        const updated = actions.filter((_, j) => j !== i);
-                        updateConfig('actions', updated);
-                      }}
-                    >
-                      ×
-                    </Button>
-                  </div>
-                ))}
-                {actions.length < 3 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs w-full"
-                    onClick={() => updateConfig('actions', [...actions, { action: '', title: '' }])}
-                  >
-                    + Add Button
-                  </Button>
-                )}
-              </div>
-            </ConfigField>
           </>
         );
-      }
 
       case 'http_request':
         return (

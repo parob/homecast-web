@@ -2230,22 +2230,11 @@ export interface CostRevenueResponse {
 
 // ---- Push Notifications ----
 
-export interface PushTokenInfo {
+export interface NotificationMuteInfo {
   id: string;
-  platform: string;
-  deviceName: string | null;
   deviceFingerprint: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-}
-
-export interface NotificationPreferenceInfo {
-  id: string;
-  scope: string;
+  scope: 'device' | 'home' | 'automation' | string;
   scopeId: string | null;
-  pushEnabled: boolean;
-  emailEnabled: boolean;
-  localEnabled: boolean;
 }
 
 export interface NotificationLogInfo {
@@ -2260,12 +2249,8 @@ export interface NotificationLogInfo {
   createdAt: string;
 }
 
-export interface GetPushTokensResponse {
-  pushTokens: PushTokenInfo[];
-}
-
-export interface GetNotificationPreferencesResponse {
-  notificationPreferences: NotificationPreferenceInfo[];
+export interface GetNotificationMutesResponse {
+  notificationMutes: NotificationMuteInfo[];
 }
 
 export interface GetNotificationHistoryResponse {
@@ -2276,8 +2261,8 @@ export interface RegisterPushTokenResponse {
   registerPushToken: { success: boolean; error: string | null };
 }
 
-export interface SetNotificationPreferenceResponse {
-  setNotificationPreference: { success: boolean; error: string | null };
+export interface SetNotificationMuteResponse {
+  setNotificationMute: { success: boolean; error: string | null };
 }
 
 export interface SendTestNotificationResponse {

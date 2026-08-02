@@ -13,14 +13,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Pencil, Trash2, Bell, Mail, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_NOTIFICATION_PREFERENCES, GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_PREFERENCE, DELETE_NOTIFICATION_PREFERENCE, SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
-import type { GetNotificationPreferencesResponse, SetNotificationPreferenceResponse } from '@/lib/graphql/types';
+import { GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
+import { SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from './AddBrokerDialog';
@@ -496,9 +495,6 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
         )}
       </div>}
 
-      {/* Notification Preferences (cloud only) */}
-      {!isCommunity && <HomeNotificationPreferences homeId={home.id} />}
-
       {/* Remove from cloud relay — only for the enrollment owner of a cloud-managed home */}
       {isCloudManaged && cloudEnrollment && (
         <div className="flex justify-end pt-2">
@@ -553,82 +549,3 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
   );
 }
 
-function HomeNotificationPreferences({ homeId }: { homeId: string }) {
-  const { data, refetch } = useQuery<GetNotificationPreferencesResponse>(GET_NOTIFICATION_PREFERENCES);
-  const [setPrefMutation] = useMutation<SetNotificationPreferenceResponse>(SET_NOTIFICATION_PREFERENCE);
-  const [deletePrefMutation] = useMutation(DELETE_NOTIFICATION_PREFERENCE);
-  const [saving, setSaving] = useState(false);
-
-  const homePref = data?.notificationPreferences?.find(p => p.scope === 'home' && p.scopeId === homeId);
-  const hasOverride = !!homePref;
-
-  const handleToggle = async (field: 'pushEnabled' | 'emailEnabled', value: boolean) => {
-    setSaving(true);
-    try {
-      await setPrefMutation({
-        variables: {
-          scope: 'home',
-          scopeId: homeId,
-          pushEnabled: field === 'pushEnabled' ? value : (homePref?.pushEnabled ?? true),
-          emailEnabled: field === 'emailEnabled' ? value : (homePref?.emailEnabled ?? false),
-          localEnabled: true,
-        },
-      });
-      refetch();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = async () => {
-    setSaving(true);
-    try {
-      await deletePrefMutation({ variables: { scope: 'home', scopeId: homeId } });
-      refetch();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notifications</p>
-        {hasOverride && (
-          <button
-            onClick={handleReset}
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-            disabled={saving}
-          >
-            Reset to global
-          </button>
-        )}
-      </div>
-      {hasOverride && <p className="text-xs text-muted-foreground">Custom settings for this home.</p>}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bell className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm">Push</span>
-          </div>
-          <Switch
-            checked={homePref?.pushEnabled ?? true}
-            onCheckedChange={(v) => handleToggle('pushEnabled', v)}
-            disabled={saving}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm">Email</span>
-          </div>
-          <Switch
-            checked={homePref?.emailEnabled ?? false}
-            onCheckedChange={(v) => handleToggle('emailEnabled', v)}
-            disabled={saving}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}

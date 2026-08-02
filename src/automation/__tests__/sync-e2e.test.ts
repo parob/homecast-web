@@ -149,9 +149,9 @@ describe('server -> relay sync', () => {
   });
 
   it('registers the one-way notification types', () => {
-    for (const type of ['automation.webhook_trigger', 'automation.notification_response']) {
-      expect(harness.has(type)).toBe(true);
-    }
+    expect(harness.has('automation.webhook_trigger')).toBe(true);
+    // The notification-action loop was removed with the action-buttons feature.
+    expect(harness.has('automation.notification_response')).toBe(false);
   });
 
   it('no longer listens for config sync as events', () => {

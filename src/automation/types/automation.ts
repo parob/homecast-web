@@ -423,7 +423,7 @@ export interface NotifyAction extends BaseAction {
    * the default, which is also what the pre-colour icon URLs serve.
    */
   iconColor?: string;
-  data?: Record<string, unknown>; // Platform-specific (e.g., action buttons)
+  data?: Record<string, unknown>; // Platform-specific extras carried on the wire (icon/iconColor are folded in here)
 }
 
 export interface CodeAction extends BaseAction {

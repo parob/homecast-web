@@ -66,14 +66,14 @@ describe('notify icon round trip', () => {
     expect(roundTrip(automationWithNotify({})).icon).toBeUndefined();
   });
 
-  it('keeps the icon alongside action buttons', () => {
+  it('drops leftover action buttons from before the feature was removed', () => {
     const action = roundTrip(automationWithNotify({
       icon: 'alert',
       data: { actions: [{ action: 'ack', title: 'Acknowledge' }] },
     }));
 
     expect(action.icon).toBe('alert');
-    expect(action.data?.actions).toEqual([{ action: 'ack', title: 'Acknowledge' }]);
+    expect(action.data?.actions).toBeUndefined();
   });
 
   it('survives being opened and saved twice', () => {

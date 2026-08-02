@@ -489,9 +489,6 @@ function nodeToActionInner(
       } satisfies DelayAction;
 
     case 'notify': {
-      const actions = config.actions as Array<{ action: string; title: string }> | undefined;
-      const data: Record<string, unknown> | undefined =
-        actions && actions.length > 0 ? { actions } : undefined;
       // Re-checked here and not only in the config panel: a blueprint or an
       // imported automation reaches this function without ever passing through
       // the form, and an icon is a string that ends up in a URL.
@@ -504,7 +501,6 @@ function nodeToActionInner(
         title: config.title as string | undefined,
         icon: icon && isValidNotificationIcon(icon) ? icon : undefined,
         iconColor: iconColor && isNotificationIconColor(iconColor) ? iconColor : undefined,
-        data,
       } satisfies NotifyAction;
     }
 

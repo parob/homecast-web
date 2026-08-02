@@ -139,8 +139,6 @@ export interface SettingsDialogProps {
   handleReorderTabs: (reordered: PinnedTab[]) => void;
   maxPinnedTabs: number;
   onReplayTutorial?: () => void;
-  // Notifications (cloud-only)
-  notificationProps?: React.ComponentProps<typeof NotificationsSection>;
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
@@ -485,9 +483,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <div className="text-sm text-muted-foreground p-4">Relay settings are not available in Community mode.</div>
         );
       case 'notifications':
-        return props.notificationProps ? (
-          <NotificationsSection {...props.notificationProps} />
-        ) : null;
+        return <NotificationsSection />;
       case 'tab-bar':
         return (
           <TabBarSection

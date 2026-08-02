@@ -168,7 +168,8 @@ function triggerSummaryFor(parsed: any, source?: TraceEntitySource): string {
 const UNDELIVERED_LABELS: Record<string, string> = {
   rate_limited: 'Rate limited',
   no_devices: 'No devices',
-  preference: 'Turned off',
+  muted: 'Muted on all devices',
+  preference: 'Turned off', // pre-mutes servers said this; old traces still render
   error: 'Send failed',
   unknown: 'Unconfirmed',
 };

@@ -19,7 +19,6 @@ export interface SyncTransport {
  *
  * Server → Relay (one-way notifications only):
  * - automation.webhook_trigger: Forward webhook to engine
- * - automation.notification_response: Forward notification action to engine
  *
  * Config sync (sync_all / sync / delete) does NOT come through here. The server
  * sends it as a request over the same DirectRouter path as HomeKit actions, so
@@ -50,12 +49,6 @@ export class AutomationSyncManager {
     this.unsubscribers.push(
       this.transport.onMessage('automation.webhook_trigger', (payload) => {
         this.handleWebhookTrigger(payload);
-      }),
-    );
-
-    this.unsubscribers.push(
-      this.transport.onMessage('automation.notification_response', (payload) => {
-        this.handleNotificationResponse(payload);
       }),
     );
 
@@ -92,13 +85,6 @@ export class AutomationSyncManager {
     const webhookId = payload.webhookId as string | undefined;
     if (webhookId) {
       this.engine.fireEvent(`webhook.${webhookId}`, payload);
-    }
-  }
-
-  private handleNotificationResponse(payload: Record<string, unknown>): void {
-    const action = payload.action as string | undefined;
-    if (action) {
-      this.engine.fireEvent('notification_action', payload);
     }
   }
 

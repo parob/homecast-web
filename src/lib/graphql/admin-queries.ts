@@ -910,7 +910,6 @@ export const ADMIN_SEND_NOTIFICATION = gql`
     adminSendNotification(userId: $userId, title: $title, message: $message) {
       success
       sentPush
-      sentEmail
       failed
       error
     }

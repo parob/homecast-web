@@ -977,30 +977,18 @@ export const REGISTER_PUSH_TOKEN = gql`
   }
 `;
 
-export const UNREGISTER_PUSH_TOKEN = gql`
-  mutation UnregisterPushToken($deviceFingerprint: String!) {
-    unregisterPushToken(deviceFingerprint: $deviceFingerprint)
-  }
-`;
-
-export const SET_NOTIFICATION_PREFERENCE = gql`
-  mutation SetNotificationPreference($scope: String!, $pushEnabled: Boolean!, $emailEnabled: Boolean!, $localEnabled: Boolean!, $scopeId: String) {
-    setNotificationPreference(scope: $scope, pushEnabled: $pushEnabled, emailEnabled: $emailEnabled, localEnabled: $localEnabled, scopeId: $scopeId) {
+export const SET_NOTIFICATION_MUTE = gql`
+  mutation SetNotificationMute($deviceFingerprint: String!, $scope: String!, $muted: Boolean!, $scopeId: String) {
+    setNotificationMute(deviceFingerprint: $deviceFingerprint, scope: $scope, muted: $muted, scopeId: $scopeId) {
       success
       error
     }
   }
 `;
 
-export const DELETE_NOTIFICATION_PREFERENCE = gql`
-  mutation DeleteNotificationPreference($scope: String!, $scopeId: String) {
-    deleteNotificationPreference(scope: $scope, scopeId: $scopeId)
-  }
-`;
-
 export const SEND_TEST_NOTIFICATION = gql`
-  mutation SendTestNotification {
-    sendTestNotification
+  mutation SendTestNotification($message: String, $deviceFingerprint: String) {
+    sendTestNotification(message: $message, deviceFingerprint: $deviceFingerprint)
   }
 `;
 

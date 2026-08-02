@@ -891,28 +891,13 @@ export const GET_CREDENTIALS = gql`
 
 // ---- Push Notifications ----
 
-export const GET_PUSH_TOKENS = gql`
-  query GetPushTokens {
-    pushTokens {
+export const GET_NOTIFICATION_MUTES = gql`
+  query GetNotificationMutes {
+    notificationMutes {
       id
-      platform
-      deviceName
       deviceFingerprint
-      createdAt
-      lastUsedAt
-    }
-  }
-`;
-
-export const GET_NOTIFICATION_PREFERENCES = gql`
-  query GetNotificationPreferences {
-    notificationPreferences {
-      id
       scope
       scopeId
-      pushEnabled
-      emailEnabled
-      localEnabled
     }
   }
 `;

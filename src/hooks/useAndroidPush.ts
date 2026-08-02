@@ -9,11 +9,10 @@
  *   1. Request POST_NOTIFICATIONS permission (no-op on Android <13).
  *   2. Ask the Kotlin bridge to fetch an FCM token.
  *   3. Register the token with the cloud server via GraphQL.
- *   4. Forward foreground push messages to the same custom event the
- *      automation engine already listens for (`homecast-notification-action`).
  */
 import { useEffect, useRef } from 'react';
 import { isCommunity } from '@/lib/config';
+import { getDeviceFingerprint } from '@/lib/device-identity';
 
 interface AndroidPushBridge {
   getCachedFcmToken: () => string | null;
@@ -23,31 +22,13 @@ interface AndroidPushBridge {
   deviceModel: () => string;
 }
 
-interface ForegroundPushPayload {
-  title?: string | null;
-  body?: string | null;
-  data?: Record<string, string>;
-}
-
 declare global {
   interface Window {
     HomecastAndroidPush?: AndroidPushBridge;
     isHomecastAndroidApp?: boolean;
     __homecastOnFcmToken?: (token: string | null) => void;
     __homecastOnPushPermission?: (granted: boolean) => void;
-    __homecastOnPush?: (payload: ForegroundPushPayload) => void;
   }
-}
-
-const FINGERPRINT_KEY = 'homecast-android-fingerprint';
-
-function getOrCreateFingerprint(): string {
-  let fp = localStorage.getItem(FINGERPRINT_KEY);
-  if (!fp) {
-    fp = `android-${crypto.randomUUID()}`;
-    localStorage.setItem(FINGERPRINT_KEY, fp);
-  }
-  return fp;
 }
 
 export function useAndroidPush(): void {
@@ -62,6 +43,8 @@ export function useAndroidPush(): void {
 
     const registerToken = async (token: string) => {
       if (cancelled || registeredRef.current) return;
+      const fingerprint = getDeviceFingerprint();
+      if (!fingerprint) return;
       try {
         const { apolloClient } = await import('@/lib/apollo');
         const { REGISTER_PUSH_TOKEN } = await import('@/lib/graphql/mutations');
@@ -70,7 +53,7 @@ export function useAndroidPush(): void {
           variables: {
             token,
             platform: 'android',
-            deviceFingerprint: getOrCreateFingerprint(),
+            deviceFingerprint: fingerprint,
             deviceName: bridge.deviceModel?.() || 'Android device',
           },
         });
@@ -89,17 +72,6 @@ export function useAndroidPush(): void {
       if (granted) bridge.fetchFcmToken();
     };
 
-    window.__homecastOnPush = (payload) => {
-      window.dispatchEvent(
-        new CustomEvent('homecast-notification-action', {
-          detail: {
-            action: payload?.data?.action ?? null,
-            data: payload?.data ?? {},
-          },
-        }),
-      );
-    };
-
     if (bridge.hasNotificationPermission()) {
       const cached = bridge.getCachedFcmToken();
       if (cached) {
@@ -115,7 +87,6 @@ export function useAndroidPush(): void {
       cancelled = true;
       delete window.__homecastOnFcmToken;
       delete window.__homecastOnPushPermission;
-      delete window.__homecastOnPush;
     };
   }, []);
 }
