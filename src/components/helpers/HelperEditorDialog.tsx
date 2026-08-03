@@ -16,6 +16,10 @@ interface HelperEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   homeId: string;
+  /** Rooms this helper accessory can be placed in. */
+  rooms?: { id: string; name: string }[];
+  /** Pre-selected room when created from a room's menu. */
+  defaultRoomId?: string;
   /** Undefined when creating. */
   existing?: HelperDefinition;
   onSave: (helper: HelperDefinition) => Promise<void>;
@@ -36,7 +40,7 @@ interface HelperEditorDialogProps {
  * referencing the helper, so the honest move is to make a new one.
  */
 export function HelperEditorDialog({
-  open, onOpenChange, homeId, existing, onSave, onDelete,
+  open, onOpenChange, homeId, rooms = [], defaultRoomId, existing, onSave, onDelete,
 }: HelperEditorDialogProps) {
   const [draft, setDraft] = useState<HelperDefinition | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,7 +59,7 @@ export function HelperEditorDialog({
   const pickType = (type: CreatableHelperType) => {
     // id is empty until saved: Community's IndexedDB layer and the cloud both
     // mint it, and inventing one here would create a second source of identity.
-    setDraft(defaultHelper(type, '', homeId, ''));
+    setDraft({ ...defaultHelper(type, '', homeId, ''), roomId: defaultRoomId });
   };
 
   const handleSave = async () => {
@@ -76,7 +80,7 @@ export function HelperEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogTitle className="text-base font-semibold">
-          {existing ? `Edit ${existing.name}` : draft ? 'New helper' : 'What kind of helper?'}
+          {existing ? `Edit ${existing.name}` : draft ? 'New helper accessory' : 'What kind of helper accessory?'}
         </DialogTitle>
 
         {/* Step 1 — type picker (creating only) */}
@@ -117,6 +121,41 @@ export function HelperEditorDialog({
             </div>
 
             <HelperTypeFields draft={draft} patch={patch} />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="helper-room">Where it lives</Label>
+              <select
+                id="helper-room"
+                data-testid="helper-room"
+                className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                value={draft.roomId ?? ''}
+                onChange={e => patch({ roomId: e.target.value || undefined })}
+              >
+                {/* Not a HomeKit room: helper accessories are ours, so they can
+                    sit outside HomeKit's room structure entirely. */}
+                <option value="">Helpers (top of the home)</option>
+                {rooms.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Label htmlFor="helper-controllable">Adjustable here</Label>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {draft.controllable === false
+                    ? 'Shows its value. Only automations can change it.'
+                    : 'Can be changed by hand from the dashboard.'}
+                </p>
+              </div>
+              <Switch
+                id="helper-controllable"
+                data-testid="helper-controllable"
+                checked={draft.controllable !== false}
+                onCheckedChange={v => patch({ controllable: v })}
+              />
+            </div>
 
             {problem && (
               <p className="text-xs text-destructive" role="alert">{problem}</p>

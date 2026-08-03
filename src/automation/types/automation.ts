@@ -532,6 +532,24 @@ interface BaseHelper {
   name: string;
   homeId: string;
   icon?: string;
+  /**
+   * The HomeKit room this helper accessory sits in, or undefined for the
+   * home-level Helpers folder that renders above the rooms.
+   *
+   * Deliberately outside HomeKit: a helper is ours, so it can be moved between
+   * rooms freely, which a real accessory cannot be — HomeKit owns that
+   * assignment and rejects our writes to it.
+   */
+  roomId?: string;
+  /**
+   * Whether a person may change the value from the dashboard.
+   *
+   * Undefined means adjustable — the useful default, and the one that keeps
+   * every helper created before this field existed working as it did. A
+   * read-only helper still shows its value and is still fully writable by
+   * automations; it just isn't something to prod by hand.
+   */
+  controllable?: boolean;
 }
 
 export interface InputBooleanHelper extends BaseHelper {

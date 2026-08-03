@@ -285,6 +285,18 @@ function HelperControl({
 }) {
   const disabled = !live;
 
+  // A read-only helper accessory still shows its value and is still fully
+  // writable by automations — it just isn't something to prod by hand. Rendered
+  // as plain text rather than a disabled control, because a greyed-out switch
+  // reads as "broken" or "offline" rather than as "deliberately not yours".
+  if (helper.controllable === false) {
+    return (
+      <span className="text-xs text-muted-foreground max-w-[10rem] truncate block" title="Read-only">
+        {formatHelperValue(helper, value)}
+      </span>
+    );
+  }
+
   switch (helper.type) {
     case 'input_boolean':
       return (
