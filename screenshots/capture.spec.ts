@@ -422,6 +422,23 @@ test.describe('Automation editor screenshot', () => {
 
 // ── Features Hero Screenshot ────────────────────────────────────────────────
 
+test.describe('Helper accessory screenshots', () => {
+  test('home-level helpers and one in a room', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
+    overrideSettings({
+      sidebarCollapsed: false,
+      groupByRoom: true,
+      hideAccessoryCounts: false,
+    });
+    await setupMocks(page);
+    await gotoMyHome(page);
+    // The Helpers area renders above the rooms, so the top of the page carries
+    // both it and the first room's tiles — which is the point of the shot.
+    await page.waitForSelector('[data-helper-folder]', { timeout: 15000 });
+    await page.screenshot({ path: img('helper-accessories.png') });
+  });
+});
+
 test.describe('Features hero screenshot', () => {
   test('dashboard with beach background', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');

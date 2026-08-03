@@ -625,6 +625,72 @@ export const MOCK_HOMEKIT_AUTOMATIONS = [
 
 export const HC_AUTOMATION_ID = 'hc-auto-1111-1111-1111-111111111111';
 
+/**
+ * Helper accessories. Two in the home-level folder (a Mode and a Timer) and one
+ * in a room, so a screenshot shows both placements at once.
+ */
+export const HELPER_MODE_ID = 'helper-home-mode';
+export const HELPER_TIMER_ID = 'helper-porch-cooldown';
+export const HELPER_COUNTER_ID = 'helper-door-opens';
+
+export const MOCK_HC_HELPERS = [
+  {
+    id: 'se-helper-1',
+    entityType: 'hc_helper',
+    entityId: HELPER_MODE_ID,
+    parentId: HOME_ID,
+    dataJson: JSON.stringify({
+      id: HELPER_MODE_ID,
+      homeId: HOME_ID,
+      name: 'Home Mode',
+      type: 'input_select',
+      options: ['Home', 'Away', 'Night', 'Vacation'],
+      initialValue: 'Home',
+    }),
+    updatedAt: '2026-08-03T10:00:00.000Z',
+  },
+  {
+    id: 'se-helper-2',
+    entityType: 'hc_helper',
+    entityId: HELPER_TIMER_ID,
+    parentId: HOME_ID,
+    dataJson: JSON.stringify({
+      id: HELPER_TIMER_ID,
+      homeId: HOME_ID,
+      name: 'Porch Cooldown',
+      type: 'timer',
+      duration: { minutes: 5 },
+    }),
+    updatedAt: '2026-08-03T10:00:00.000Z',
+  },
+  {
+    id: 'se-helper-3',
+    entityType: 'hc_helper',
+    entityId: HELPER_COUNTER_ID,
+    parentId: HOME_ID,
+    dataJson: JSON.stringify({
+      id: HELPER_COUNTER_ID,
+      homeId: HOME_ID,
+      name: 'Door Opens Today',
+      type: 'counter',
+      initial: 0,
+      step: 1,
+      min: 0,
+      // Bedroom specifically: it renders near the top, so a screenshot shows a
+      // helper accessory beside real ones without scrolling.
+      roomId: ROOMS.bedroom,
+    }),
+    updatedAt: '2026-08-03T10:00:00.000Z',
+  },
+];
+
+/** What the relay reports for the helpers above. */
+export const MOCK_HELPER_STATES: Record<string, unknown> = {
+  [HELPER_MODE_ID]: 'Away',
+  [HELPER_TIMER_ID]: 'idle',
+  [HELPER_COUNTER_ID]: 4,
+};
+
 export const MOCK_HC_AUTOMATIONS = [
   {
     id: 'se-hc-auto-1',

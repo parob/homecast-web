@@ -6899,7 +6899,9 @@ const Dashboard = () => {
                               className={`text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
                             >
                               {roomName}
-                              {!hideAccessoryCounts && ` (${roomAccessories.length})`}
+                              {/* Helper accessories are tiles in this room too, so a
+                                  count that excluded them read as wrong beside them. */}
+                              {!hideAccessoryCounts && ` (${roomAccessories.length + roomHelpers.length})`}
                             </button>
                           </div>
                         );

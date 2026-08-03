@@ -40,33 +40,36 @@ export function HelperAccessoryWidget({
           : 'border-border bg-card hover:border-muted-foreground/30'
       }`}
     >
-      <div className="flex items-start gap-2 min-w-0">
+      {/* Icon and control share the top row; the name gets a row to itself.
+          Inline-everything squeezed the name into "Ho…" once a Mode's dropdown
+          took its width — real accessory tiles stack for the same reason. */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
         <HelperTypeIcon
           type={type}
-          className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 mt-0.5 ${
+          className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 ${
             isDarkBackground ? 'text-white/50' : 'text-muted-foreground'
           }`}
         />
-        <button
-          type="button"
-          onClick={onEdit}
-          className="min-w-0 flex-1 text-left"
-          title="Edit this helper accessory"
-        >
-          <span className={`block truncate font-medium ${compact ? 'text-xs' : 'text-sm'} ${
-            isDarkBackground ? 'text-white' : ''
-          }`}>
-            {helper.name}
-          </span>
-          <span className={`block text-[11px] ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground'}`}>
-            {info?.label ?? type}
-          </span>
-        </button>
-
-        <div className="shrink-0">
+        <div className="shrink-0 min-w-0">
           <HelperControl helper={helper} value={value} live={live} onOperate={onOperate} />
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={onEdit}
+        className="block w-full min-w-0 text-left"
+        title="Edit this helper accessory"
+      >
+        <span className={`block truncate font-medium ${compact ? 'text-xs' : 'text-sm'} ${
+          isDarkBackground ? 'text-white' : ''
+        }`}>
+          {helper.name}
+        </span>
+        <span className={`block truncate text-[11px] ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground'}`}>
+          {info?.label ?? type}
+        </span>
+      </button>
     </div>
   );
 }
@@ -116,7 +119,7 @@ export function HelperControl({
     case 'input_select':
       return (
         <select
-          className="h-8 rounded-md border bg-background px-2 text-xs max-w-[9rem]"
+          className="h-8 rounded-md border bg-background px-2 text-xs max-w-full"
           disabled={disabled}
           aria-label={`Set ${helper.name}`}
           data-testid={`helper-select-${helper.id}`}
