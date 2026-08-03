@@ -1,3 +1,18 @@
+import { useState, useEffect } from 'react';
+
+/** True at the Tailwind `lg` breakpoint and up — where the split inspector
+ *  pane renders; below it selection opens the bottom drawer instead. */
+export function useIsLgUp(): boolean {
+  const [isLgUp, setIsLgUp] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsLgUp(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isLgUp;
+}
+
 /** True when the page is hosted on `mqtt.*` (cross-subdomain cookie auth). */
 export function isMqttDomain(): boolean {
   return location.hostname.includes('mqtt.');

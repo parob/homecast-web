@@ -1,4 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { CircleDot } from 'lucide-react';
+import { getAccessoryIcon } from '@/components/AccessoryPicker';
+import { inferServiceType } from './widget-adapter';
+import type { MqttRowType } from './topic-tree';
 
 const RANGES: Record<string, { min: number; max: number }> = {
   brightness: { min: 0, max: 100 }, color_temp: { min: 50, max: 500 },
@@ -49,6 +53,38 @@ export function getRange(name: string): { min: number; max: number } | undefined
   return RANGES[name];
 }
 
+// Entity-type tag shown on the left of each MQTT browser row.
+export function TypeBadge({ type }: { type: MqttRowType }) {
+  const meta: Record<MqttRowType, { label: string; cls: string }> = {
+    home: { label: 'Home', cls: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30' },
+    room: { label: 'Room', cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30' },
+    group: { label: 'Group', cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+    accessory: { label: 'Accessory', cls: 'bg-muted text-muted-foreground border-border' },
+  };
+  const m = meta[type];
+  return (
+    <span className={`shrink-0 inline-flex items-center justify-center rounded border px-1 h-4 text-[9px] font-medium uppercase tracking-wide leading-none ${m.cls}`}>
+      {m.label}
+    </span>
+  );
+}
+
+// Lucide icon for the accessory type derived from the MQTT payload.
+// Reuses the same icon map the Dashboard's AccessoryPicker uses, so the
+// MQTT browser visually matches the rest of the app.
+export function AccessoryTypeIcon({ payload, className }: { payload: string; className?: string }) {
+  const Icon = useMemo(() => {
+    try {
+      const p = JSON.parse(payload);
+      if (!p || typeof p !== 'object') return CircleDot;
+      const serviceType = inferServiceType(p as Record<string, unknown>);
+      if (serviceType === 'unknown') return CircleDot;
+      return getAccessoryIcon({ services: [{ serviceType }] });
+    } catch { return CircleDot; }
+  }, [payload]);
+  return <Icon className={className || 'h-3.5 w-3.5 text-muted-foreground shrink-0'} />;
+}
+
 // --- Reusable inline primitives -----------------------------------------
 
 export function InlineToggle({ name, value, onPublish, compact }: { name: string; value: unknown; onPublish: (k: string, v: unknown) => void; compact?: boolean }) {
@@ -66,28 +102,6 @@ export function InlineToggle({ name, value, onPublish, compact }: { name: string
       className={`relative ${size} rounded-full transition-colors shrink-0 ${localVal ? 'bg-green-500' : 'bg-muted-foreground/30'}`}>
       <span className={`absolute top-[2px] ${knob} rounded-full bg-white shadow transition-transform ${localVal ? knobOn : knobOff}`} />
     </button>
-  );
-}
-
-export function InlineSlider({ name, value, onPublish, compact }: { name: string; value: number; onPublish: (k: string, v: unknown) => void; compact?: boolean }) {
-  const [localVal, setLocalVal] = useState<number>(value);
-  useEffect(() => { setLocalVal(value); }, [value]);
-  const range = RANGES[name];
-  if (!range) return null;
-  const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
-  return (
-    <div className="flex items-center gap-1.5 min-w-0 w-full" onClick={stop} onMouseDown={stop} onTouchStart={stop}>
-      <input
-        type="range" min={range.min} max={range.max} value={localVal}
-        onChange={(e) => setLocalVal(Number(e.target.value))}
-        onMouseUp={() => onPublish(name, localVal)}
-        onTouchEnd={() => onPublish(name, localVal)}
-        onKeyUp={(e) => { if (['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) onPublish(name, localVal); }}
-        title={name}
-        className="flex-1 min-w-0 h-1 accent-primary cursor-pointer"
-      />
-      <span className="text-[10px] font-mono text-muted-foreground tabular-nums w-8 text-right shrink-0">{localVal}</span>
-    </div>
   );
 }
 

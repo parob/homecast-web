@@ -1,36 +1,23 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@apollo/client/react';
-import { Radio, Send, Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRight, Clock, Key } from 'lucide-react';
+import { Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRight, Clock, Key } from 'lucide-react';
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
-import { isMqttDomain, getApiBase, getAuthHeaders, getJWT } from './mqtt-browser/util';
-import { formatUptime, PropertyEditor, TopicPath, FmtVal } from './mqtt-browser/helpers';
-import { AccessoryTypeIcon } from './mqtt-browser/InlineRowControls';
-import { mqttToAccessory, mqttPublishFor } from './mqtt-browser/widget-adapter';
-import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
+import { isMqttDomain, getApiBase, getAuthHeaders, getJWT, useIsLgUp } from './mqtt-browser/util';
+import { formatUptime, FmtVal } from './mqtt-browser/helpers';
 import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 import { HomeInfoDialog } from './mqtt-browser/HomeInfoDialog';
+import { TreePane } from './mqtt-browser/TreePane';
+import { InspectorPanel } from './mqtt-browser/InspectorPanel';
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
+import {
+  buildSlugToTopicMap, buildMemberTopicSet, buildTopicTree, findGroupForTopic,
+  getEffectivePayload as getEffectivePayloadPure, rowTypeForTopic,
+} from './mqtt-browser/topic-tree';
+import type { TopicMessage } from './mqtt-browser/topic-tree';
 
-interface TopicMessage { payload: string; timestamp: number; updates: number; }
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
 interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean; ownerEmail?: string | null }
-
-// Entity-type tag shown on the left of each MQTT browser row.
-type MqttRowType = 'home' | 'room' | 'group' | 'accessory';
-function TypeBadge({ type }: { type: MqttRowType }) {
-  const meta: Record<MqttRowType, { label: string; cls: string }> = {
-    home: { label: 'Home', cls: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30' },
-    room: { label: 'Room', cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30' },
-    group: { label: 'Group', cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
-    accessory: { label: 'Accessory', cls: 'bg-muted text-muted-foreground border-border' },
-  };
-  const m = meta[type];
-  return (
-    <span className={`shrink-0 inline-flex items-center justify-center rounded border px-1 h-4 text-[9px] font-medium uppercase tracking-wide leading-none ${m.cls}`}>
-      {m.label}
-    </span>
-  );
-}
 
 export default function MQTTBrowser() {
   // On mqtt.* the only auth signal is the cross-subdomain cookie. If it's
@@ -47,7 +34,9 @@ export default function MQTTBrowser() {
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
   const [filter, setFilter] = useState(() => searchParams.get('filter') || '');
-  const [expandedTopic, setExpandedTopic] = useState<string | null>(() => searchParams.get('topic'));
+  // The tree row whose inspector is showing. Selection never collapses or
+  // expands tree sections — those are the open* sets below.
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(() => searchParams.get('topic'));
   const [rawMode, setRawMode] = useState(() => searchParams.get('view') === 'json');
   const [publishValues, setPublishValues] = useState<Record<string, string>>({});
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
@@ -73,24 +62,20 @@ export default function MQTTBrowser() {
     const p = searchParams.get('groupByRoom');
     return p === '1' ? true : p === '0' ? false : true;
   });
-  const [hideMembers, setHideMembers] = useState(true);
-  // Homes default to collapsed; the user opens the ones they care about.
+  // Sections default to collapsed; the user opens the ones they care about.
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
-  const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
+  const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());  // keyed `${homeSlug}/${roomSlug}`
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());  // keyed by group topic
+  const isLgUp = useIsLgUp();
 
-  // Keep the JSON textarea in sync with the expanded topic's payload, so
-  // publishes that came from the widget show up live. Skip while the user is
-  // actively typing into the textarea.
-  useEffect(() => {
-    if (!expandedTopic) return;
-    if (document.activeElement?.tagName === 'TEXTAREA') return;
-    const raw = messages[expandedTopic]?.payload || '{}';
-    const formatted = (() => {
-      try { return JSON.stringify(JSON.parse(raw), null, 2); }
-      catch { return raw; }
-    })();
-    setPublishValues(prev => ({ ...prev, [expandedTopic]: formatted }));
-  }, [expandedTopic, messages]);
+  // Member slugs resolve to full topics via last-path-segment lookup —
+  // built once per message batch instead of scanning per member per render.
+  const slugToTopic = useMemo(() => buildSlugToTopicMap(messages), [messages]);
+  const memberTopicSet = useMemo(() => buildMemberTopicSet(groupMembers, slugToTopic), [groupMembers, slugToTopic]);
+  const getEffectivePayloadFor = useCallback(
+    (topic: string, payload: string) => getEffectivePayloadPure(topic, payload, groupMembers, slugToTopic, messages),
+    [groupMembers, slugToTopic, messages],
+  );
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams(prev => {
@@ -102,6 +87,66 @@ export default function MQTTBrowser() {
       return next;
     }, { replace: true });
   }, [setSearchParams]);
+
+  // Keep the JSON textarea in sync with the selected topic's payload, so
+  // publishes that came from the widget show up live. Skip while the user is
+  // actively typing into the textarea.
+  useEffect(() => {
+    if (!selectedTopic) return;
+    if (document.activeElement?.tagName === 'TEXTAREA') return;
+    const raw = getEffectivePayloadFor(selectedTopic, messages[selectedTopic]?.payload || '{}');
+    const formatted = (() => {
+      try { return JSON.stringify(JSON.parse(raw), null, 2); }
+      catch { return raw; }
+    })();
+    setPublishValues(prev => ({ ...prev, [selectedTopic]: formatted }));
+  }, [selectedTopic, messages, getEffectivePayloadFor]);
+
+  const selectTopic = useCallback((topic: string) => {
+    setSelectedTopic(topic);
+    setRawMode(false);
+    updateUrlParams({ topic, view: null });
+  }, [updateUrlParams]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedTopic(null);
+    updateUrlParams({ topic: null, view: null });
+  }, [updateUrlParams]);
+
+  // Esc closes the inspector — unless the user is typing, or a dialog/drawer
+  // is open (those own the Esc and close themselves).
+  useEffect(() => {
+    if (!selectedTopic) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      clearSelection();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedTopic, clearSelection]);
+
+  // Deep link (?topic=…): once the topic is known, open its ancestors so the
+  // selected row is actually visible in the tree. Runs once.
+  const revealDoneRef = useRef(false);
+  useEffect(() => {
+    if (revealDoneRef.current || !selectedTopic) return;
+    if (!messages[selectedTopic] && !groupMembers[selectedTopic]) return;
+    revealDoneRef.current = true;
+    const groupTopic = groupMembers[selectedTopic]
+      ? selectedTopic
+      : findGroupForTopic(selectedTopic, groupMembers, slugToTopic);
+    const anchor = groupTopic ?? selectedTopic;
+    const parts = anchor.split('/');
+    if (parts[0] === 'homecast' && parts.length >= 2) {
+      const homeSlug = parts[1];
+      setOpenHomes(prev => new Set(prev).add(homeSlug));
+      if (parts.length >= 4) setOpenRooms(prev => new Set(prev).add(`${homeSlug}/${parts[2]}`));
+    }
+    if (groupTopic && groupTopic !== selectedTopic) setOpenGroups(prev => new Set(prev).add(groupTopic));
+  }, [selectedTopic, messages, groupMembers, slugToTopic]);
 
   const debouncedUpdateFilter = useCallback((value: string) => {
     clearTimeout(filterTimerRef.current);
@@ -415,126 +460,56 @@ export default function MQTTBrowser() {
     return () => clearInterval(interval);
   }, [connected]);
 
-  // Filter topics by search text + group-member hiding. Home/room filtering
-  // was removed — the per-home group headers already scope the view.
+  // Filter topics by search text. Group members are excluded — they render
+  // nested under their group node, never in the plain lists.
   const filteredTopics = useMemo(() => {
     return Object.entries(messages)
       .filter(([topic]) => {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
-        // Hide group members when "Groups" toggle is on
-        if (hideMembers) {
-          const isGM = Object.entries(groupMembers).some(([gt, ms]) =>
-            ms.some(m => topic.endsWith('/' + m.split('/').pop())) && topic !== gt
-          );
-          if (isGM) return false;
-        }
+        if (memberTopicSet.has(topic)) return false;
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, hideMembers, groupMembers]);
+  }, [messages, filter, memberTopicSet]);
 
-  // Build grouped tree. When Homes is on we bucket by home slug first;
-  // when Rooms is also on we nest rooms under each home. When hideMembers
-  // is on we additionally hoist service groups into their own sub-buckets
-  // so they render as section headers with members nested beneath.
-  type GroupBucket = {
-    topic: string;
-    payload: TopicMessage;
-    memberTopics: Array<[string, TopicMessage]>;
-  };
-  type RoomBucket = {
-    slug: string;
-    plain: Array<[string, TopicMessage]>;
-    groups: GroupBucket[];
-  };
-  type HomeBucket = {
-    slug: string;
-    rooms: RoomBucket[];
-    // Topics with no room (homecast/<home>/...) — plain + group variants
-    plain: Array<[string, TopicMessage]>;
-    groups: GroupBucket[];
-    allTopicCount: number;
-  };
-  const topicTree = useMemo<HomeBucket[] | null>(() => {
-    // Build the tree whenever any grouping axis is active. Even with Homes
-    // and Rooms both off, Groups-on still needs the tree so group buckets
-    // can render as section headers.
-    if (!groupByHome && !groupByRoom && !hideMembers) return null;
+  const topicTree = useMemo(
+    () => buildTopicTree(filteredTopics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom }),
+    [filteredTopics, groupMembers, slugToTopic, messages, groupByHome, groupByRoom],
+  );
 
-    // Resolve the set of member-accessory topics in the current messages map
-    // so we can skip them (they'll render inside their group). Only applied
-    // when the Groups toggle is on (hideMembers=true).
-    const memberTopicSet = new Set<string>();
-    if (hideMembers) {
-      for (const [, members] of Object.entries(groupMembers)) {
-        for (const memberSlug of members) {
-          const short = memberSlug.split('/').pop();
-          if (!short) continue;
-          const full = Object.keys(messages).find(t => t.endsWith('/' + short));
-          if (full) memberTopicSet.add(full);
-        }
-      }
-    }
-
-    const buildGroup = (topic: string, payload: TopicMessage): GroupBucket => {
-      const members = groupMembers[topic] || [];
-      const memberTopics: Array<[string, TopicMessage]> = [];
-      for (const memberSlug of members) {
-        const short = memberSlug.split('/').pop();
-        if (!short) continue;
-        const full = Object.keys(messages).find(t => t.endsWith('/' + short));
-        if (full && messages[full]) memberTopics.push([full, messages[full]]);
-      }
-      return { topic, payload, memberTopics };
-    };
-
-    const byHome = new Map<string, HomeBucket>();
-    const ensureHome = (slug: string) => {
-      if (!byHome.has(slug)) byHome.set(slug, { slug, rooms: [], plain: [], groups: [], allTopicCount: 0 });
-      return byHome.get(slug)!;
-    };
-    const ensureRoom = (h: HomeBucket, slug: string) => {
-      let r = h.rooms.find(r => r.slug === slug);
-      if (!r) { r = { slug, plain: [], groups: [] }; h.rooms.push(r); }
-      return r;
-    };
-
-    for (const entry of filteredTopics) {
-      const [topic, msg] = entry;
-      const p = topic.split('/');
-      const isHomecast = p[0] === 'homecast';
-      const homeSlug = groupByHome && isHomecast && p.length >= 2 ? p[1] : '';
-      const roomSlug = groupByRoom && isHomecast && p.length >= 4 ? p[2] : '';
-      const isGroup = hideMembers && !!groupMembers[topic];
-
-      // Hide member-accessories from the plain list — they render inside their group
-      if (hideMembers && !isGroup && memberTopicSet.has(topic)) continue;
-
-      const h = ensureHome(homeSlug);
-      h.allTopicCount += 1;
-
-      if (groupByRoom && roomSlug) {
-        const r = ensureRoom(h, roomSlug);
-        if (isGroup) r.groups.push(buildGroup(topic, msg));
-        else r.plain.push(entry);
-      } else {
-        // No room segment — park at the home level
-        if (isGroup) h.groups.push(buildGroup(topic, msg));
-        else h.plain.push(entry);
-      }
-    }
-
-    const arr = Array.from(byHome.values());
-    arr.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
-    for (const h of arr) {
-      h.rooms.sort((a, b) => (!a.slug ? 1 : !b.slug ? -1 : a.slug.localeCompare(b.slug)));
-      for (const r of h.rooms) r.groups.sort((a, b) => a.topic.localeCompare(b.topic));
-      h.groups.sort((a, b) => a.topic.localeCompare(b.topic));
-    }
-    return arr;
-  }, [filteredTopics, groupByHome, groupByRoom, hideMembers, groupMembers, messages]);
+  const onToggleHome = useCallback((slug: string) => {
+    setOpenHomes(prev => { const n = new Set(prev); if (n.has(slug)) n.delete(slug); else n.add(slug); return n; });
+  }, []);
+  const onToggleRoom = useCallback((key: string) => {
+    setOpenRooms(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  }, []);
+  const onToggleGroup = useCallback((topic: string) => {
+    setOpenGroups(prev => { const n = new Set(prev); if (n.has(topic)) n.delete(topic); else n.add(topic); return n; });
+  }, []);
 
   if (needsMqttSync) return null;
+
+  // Inspector content is identical for the desktop pane and the mobile
+  // drawer — only the variant (stacked vs tabbed) differs.
+  const selectedMessage = selectedTopic ? messages[selectedTopic] : undefined;
+  const selectedEp = selectedTopic ? getEffectivePayloadFor(selectedTopic, selectedMessage?.payload || '{}') : '';
+  const renderInspector = (variant: 'pane' | 'sheet') => selectedTopic && (
+    <InspectorPanel
+      topic={selectedTopic}
+      message={selectedMessage}
+      effectivePayload={selectedEp}
+      rowType={rowTypeForTopic(selectedTopic, groupMembers)}
+      homeOffline={homeForSlug(selectedTopic.split('/')[1] || '')?.relayConnected === false}
+      rawMode={rawMode}
+      onRawModeChange={(v) => { setRawMode(v); updateUrlParams({ view: v ? 'json' : null }); }}
+      publishValue={publishValues[selectedTopic] ?? selectedEp}
+      onPublishValueChange={(v) => setPublishValues(prev => ({ ...prev, [selectedTopic]: v }))}
+      onPublishToSet={publishToSet}
+      onPublishProp={publishProp}
+      onClose={clearSelection}
+      variant={variant}
+    />
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -548,7 +523,7 @@ export default function MQTTBrowser() {
       <>
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 shrink-0">
             <img src="/icon-192.png" alt="Homecast" className="h-6 w-6 rounded" />
             <h1 className="text-lg font-semibold whitespace-nowrap">MQTT Browser</h1>
@@ -579,9 +554,9 @@ export default function MQTTBrowser() {
           </div>
         </div>
       </div>
-      {error && <div className="max-w-4xl mx-auto px-4 pt-3"><div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div></div>}
+      {error && <div className="max-w-7xl mx-auto px-4 pt-3"><div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div></div>}
 
-      <div className="max-w-4xl mx-auto px-4 py-4 space-y-3">
+      <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
         {/* Connection Info */}
         {connected && (
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -596,7 +571,7 @@ export default function MQTTBrowser() {
         {/* Home chips + grouping toggles. Clicking a chip opens an info
             dialog (no filtering — the list already groups by home).
             Layout: chip row scrolls horizontally rather than wrapping;
-            the count + Homes/Rooms/Groups pills wrap to a second line
+            the count + Homes/Rooms pills wrap to a second line
             before the chips do on narrow viewports. */}
         {homes.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
@@ -647,10 +622,6 @@ export default function MQTTBrowser() {
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
-                <button onClick={() => setHideMembers(v => !v)}
-                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
-                  Groups
-                </button>
               </div>
             )}
           </div>
@@ -686,326 +657,50 @@ export default function MQTTBrowser() {
           </div>
         )}
 
-
-        {/* Topics */}
+        {/* Topics: tree pane + (when a topic is selected on lg+) inspector.
+            With nothing selected the inspector is gone entirely and the
+            tree takes the full width. */}
         {filteredTopics.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground text-sm">
             {connected ? 'Waiting for messages...' : 'Connect to see device state from your homes'}
           </div>
-        ) : (() => {
-          // Pluralize and join: [[3, 'device'], [1, 'group']] → "3 devices · 1 group"
-          const fmtCounts = (parts: Array<[number, string]>) =>
-            parts.filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}${n === 1 ? '' : 's'}`).join(' · ');
-          // --- Shared topic row renderer ---
-          const getEffectivePayload = (topic: string, payload: string) => {
-            if (!groupMembers[topic]) return payload;
-            // Prefer the group's own retained payload when it has real content —
-            // the server now aggregates group state (any-member-on semantics).
-            try {
-              const p = JSON.parse(payload);
-              if (p && Object.keys(p).length > 0 && !p.members) return payload;
-            } catch {}
-            // Fallback for placeholder `{}` (only member list arrived, group state
-            // not yet published by an older relay).
-            for (const ms of (groupMembers[topic] || [])) {
-              const mt = Object.keys(messages).find(t => t.endsWith('/' + ms.split('/').pop()));
-              if (mt && messages[mt]?.payload) {
-                try { const p = JSON.parse(messages[mt].payload); if (Object.keys(p).length > 0 && !p.members) return messages[mt].payload; } catch {}
-              }
-            }
-            return payload;
-          };
-
-          const expandTopic = (topic: string) => {
-            const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
-            setExpandedTopic(topic); setRawMode(false); updateUrlParams({ topic, view: null });
-            const formatted = (() => {
-              try { return JSON.stringify(JSON.parse(ep), null, 2); }
-              catch { return ep; }
-            })();
-            setPublishValues(prev => ({ ...prev, [topic]: formatted }));
-          };
-
-          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx = 0) => {
-            const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
-            const topicHome = homeForSlug(topic.split('/')[1] || '');
-            const homeOffline = topicHome?.relayConnected === false;
-            // Render the widget (or PropertyEditor fallback) for the Controls side.
-            const renderControls = () => {
-              const adapted = mqttToAccessory(topic, ep, !homeOffline);
-              if (!adapted) {
-                return <PropertyEditor payload={ep} onPublish={(k, v) => publishProp(topic, k, v)} />;
-              }
-              const { accessory, type } = adapted;
-              return (
-                <AccessoryWidget
-                  accessory={accessory}
-                  onToggle={(_id, characteristicType, currentValue) => {
-                    const out = mqttPublishFor(type, characteristicType, !currentValue);
-                    if (!out) return;
-                    publishProp(topic, out.key, out.value);
-                  }}
-                  onSlider={(_id, characteristicType, value) => {
-                    const out = mqttPublishFor(type, characteristicType, value);
-                    if (!out) return;
-                    publishProp(topic, out.key, out.value);
-                  }}
-                  getEffectiveValue={(_id, _characteristicType, serverValue) => serverValue}
-                />
-              );
-            };
-            const renderJson = () => (
-              <div className="space-y-1.5">
-                <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValues[topic] ?? ep} onChange={(e) => { setPublishValues(prev => ({ ...prev, [topic]: e.target.value })); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
-                <div className="flex items-center justify-between gap-2 min-w-0">
-                  <span className="font-mono text-[10px] text-muted-foreground truncate min-w-0" title={topic + '/set'}>{topic}/set</span>
-                  <button onClick={() => publishToSet(topic, publishValues[topic] ?? ep)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
-                    <Send className="h-3 w-3" /> Publish
-                  </button>
-                </div>
-              </div>
-            );
-            const panelIndent = Math.max(insetPx, 12);
-            return (
-              <div
-                className="relative -mt-px mb-2 mr-3 w-full max-w-sm rounded-b-md border border-l-2 border-primary/40 bg-muted/20 pb-2 pl-3 pt-1 shadow-sm lg:max-w-3xl"
-                style={{ marginLeft: panelIndent, width: `calc(100% - ${panelIndent + 12}px)` }}
-              >
-                {/* Header: status + Controls/JSON toggle (toggle hidden on lg+ where both render side-by-side) */}
-                <div className="flex items-center justify-between px-3 py-1">
-                  <span className="min-w-0 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                    <span className="shrink-0 font-medium uppercase tracking-wide">Expanded</span>
-                    <span className="truncate font-mono" title={topic}>{topic}</span>
-                    {messages[topic]?.updates > 1 && <span>{messages[topic].updates} updates</span>}
-                  </span>
-                  <div className="flex items-center gap-2 text-[10px] lg:hidden">
-                    <button onClick={() => { setRawMode(false); updateUrlParams({ view: null }); }} className={!rawMode ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}>Controls</button>
-                    <span className="text-muted-foreground/40">·</span>
-                    <button onClick={() => { setRawMode(true); updateUrlParams({ view: 'json' }); }} className={rawMode ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}>JSON</button>
-                  </div>
-                </div>
-                {/* Relay-offline hint */}
-                {homeOffline && (
-                  <div className="px-3 py-1 text-[10px] text-amber-700 dark:text-amber-400">
-                    Relay offline — publishes won't reach the device.
-                  </div>
-                )}
-                {/* Content: stacked + tab-toggled on narrow; side-by-side on lg+ */}
-                <div className="px-3 py-1 flex flex-col lg:flex-row gap-3 items-start">
-                  <section className={`w-full rounded-md border border-border/70 bg-background/50 p-2 lg:flex-1 lg:max-w-sm min-w-0 ${rawMode ? 'hidden lg:block' : ''}`}>
-                    <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Widget controls</div>
-                    {renderControls()}
-                  </section>
-                  <section className={`w-full rounded-md border border-border/70 bg-background/50 p-2 lg:flex-1 min-w-0 ${!rawMode ? 'hidden lg:block' : ''}`}>
-                    <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      <span>Publish payload</span>
-                      <span className="normal-case font-mono font-normal truncate" title={topic + '/set'}>{topic}/set</span>
-                    </div>
-                    {renderJson()}
-                  </section>
-                </div>
-              </div>
-            );
-          };
-
-          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { depth?: number; short?: boolean; parentGroupTopic?: string }) => {
-            const avail = availability[topic];
-            const isOffline = avail === 'offline';
-            const isRecent = Date.now() - timestamp < 8000;
-            const ep = getEffectivePayload(topic, payload);
-            const isThisExpanded = expandedTopic === topic;
-            const depth = opts?.depth || 0;
-            const insetPx = depth * 16 + (opts?.short ? 20 : 0);
-
-            const toggleExpand = () => {
-              if (isThisExpanded) {
-                const parentTopic = opts?.parentGroupTopic ?? null;
-                setExpandedTopic(parentTopic);
-                updateUrlParams({ topic: parentTopic, view: null });
-              } else {
-                expandTopic(topic);
-              }
-            };
-            return (
-              <div key={isRecent ? `${topic}-${timestamp}` : topic}>
-                <div role="button" tabIndex={0} onClick={toggleExpand}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(); } }}
-                  className={`w-full flex items-center gap-2 pr-3 py-1.5 text-left hover:bg-muted/50 cursor-pointer ${isOffline ? 'opacity-40' : ''} ${isRecent ? 'animate-mqtt-flash' : ''}`}
-                  style={{ paddingLeft: Math.max(insetPx, 12) }}>
-                  {avail && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-                  <AccessoryTypeIcon payload={ep} />
-                  {(() => {
-                    const parts = topic.split('/');
-                    const rowType: MqttRowType = groupMembers[topic]
-                      ? 'group'
-                      : (parts[0] === 'homecast' && parts.length === 3 && parts[2] === 'status')
-                        ? 'home'
-                        : 'accessory';
-                    return <TypeBadge type={rowType} />;
-                  })()}
-                  <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
-                    {opts?.short ? <TopicPath topic={topic} short /> : <TopicPath topic={topic} />}
-                  </span>
-                  {messages[topic]?.updates > 1 && <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{messages[topic].updates} updates</span>}
-                  <span className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-[11px] text-right"><FmtVal payload={ep} /></span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                  </span>
-                </div>
-                {isThisExpanded && renderDetailPanel(topic, payload, timestamp, insetPx)}
-              </div>
-            );
-          };
-
-          // Group header — one click opens/closes the complete group view:
-          // widget, JSON editor and member accessories together.
-          const renderGroupBucket = (g: { topic: string; payload: TopicMessage; memberTopics: Array<[string, TopicMessage]> }, headerDepth: number) => {
-            const groupSlug = g.topic.split('/').pop() || g.topic;
-            const ep = getEffectivePayload(g.topic, g.payload.payload);
-            const headerPadLeft = 12 + headerDepth * 16;
-            const topicDepth = headerDepth + 1;
-            // Keep the group container open while one of its member rows is
-            // selected, so the member's controls remain reachable.
-            const isEditorOpen = expandedTopic === g.topic ||
-              g.memberTopics.some(([topic]) => topic === expandedTopic);
-            const openEditor = () => {
-              if (isEditorOpen) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }
-              else expandTopic(g.topic);
-            };
-            return (
-              <div key={g.topic}>
-                <div
-                  role="button" tabIndex={0}
-                  onClick={openEditor}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(); } }}
-                  className="w-full flex items-center justify-between pr-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold text-left cursor-pointer"
-                  style={{ paddingLeft: headerPadLeft }}
-                  title={isEditorOpen ? 'Collapse group' : 'Expand group'}
-                >
-                  <span className="flex items-center justify-between gap-2 min-w-0 w-full">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      {isEditorOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                      <span className="flex items-center gap-2 min-w-0">
-                        <AccessoryTypeIcon payload={ep} />
-                        <TypeBadge type="group" />
-                        <span className="font-mono truncate">{groupSlug}</span>
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono text-[11px] font-normal text-right"><FmtVal payload={ep} /></span>
-                      <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{fmtCounts([[g.memberTopics.length, 'device']])}</span>
-                    </span>
-                  </span>
-                </div>
-                {isEditorOpen && renderDetailPanel(g.topic, g.payload.payload, g.payload.timestamp, headerPadLeft)}
-                {isEditorOpen && (
-                  <div className="divide-y">
-                    {g.memberTopics.map(([t, m]) =>
-                      renderCollapsedRow(t, m.payload, m.timestamp, { depth: topicDepth, short: true, parentGroupTopic: g.topic })
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          };
-
-          // Room-section renderer. headerDepth=0 when rooms are the outer
-          // grouping; headerDepth=1 when rooms are nested inside a home.
-          const renderRoomBucket = (r: RoomBucket, headerDepth: number) => {
-            const topicDepth = headerDepth;
-            const bodyLabel = fmtCounts([[r.plain.length, 'device'], [r.groups.length, 'group']]);
-            const renderBody = (innerDepth: number) => (
-              <>
-                {r.groups.map(g => renderGroupBucket(g, innerDepth))}
-                {r.plain.map(([topic, { payload, timestamp }]) =>
-                  renderCollapsedRow(topic, payload, timestamp, { depth: innerDepth, short: true })
-                )}
-              </>
-            );
-            if (!r.slug) {
-              return <div key="_noroom" className="divide-y">{renderBody(topicDepth)}</div>;
-            }
-            const isOpen = openRooms.has(r.slug);
-            const headerPadLeft = 12 + headerDepth * 16;
-            return (
-              <div key={r.slug}>
-                <button onClick={() => setOpenRooms(prev => { const n = new Set(prev); if (n.has(r.slug)) n.delete(r.slug); else n.add(r.slug); return n; })}
-                  className="w-full flex items-center justify-between pr-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold"
-                  style={{ paddingLeft: headerPadLeft }}>
-                  <span className="flex items-center gap-1.5">
-                    {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                    <TypeBadge type="room" />
-                    <span className="font-mono">{r.slug}</span>
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-normal">{bodyLabel}</span>
-                </button>
-                {isOpen && (
-                  <div className="divide-y">{renderBody(topicDepth + 1)}</div>
-                )}
-              </div>
-            );
-          };
-
-          // --- Grouped rendering ---
-          if (topicTree) {
-            // Render a home bucket's body at a given depth
-            const renderHomeBody = (h: HomeBucket, rowDepth: number) => (
-              <>
-                {/* Groups first, then loose accessories, then rooms */}
-                {h.groups.map(g => renderGroupBucket(g, rowDepth))}
-                {h.plain.map(([topic, { payload, timestamp }]) =>
-                  renderCollapsedRow(topic, payload, timestamp, { depth: rowDepth, short: rowDepth > 0 })
-                )}
-                {groupByRoom && h.rooms.map(r => renderRoomBucket(r, rowDepth))}
-              </>
-            );
-            return (
-              <div className="border rounded-lg overflow-hidden divide-y">
-                {topicTree.map(homeBucket => {
-                  // Not grouping by home (single unlabeled bucket) — render body flat at depth 0
-                  if (!groupByHome) {
-                    return <div key="_rooms" className="divide-y">{renderHomeBody(homeBucket, 0)}</div>;
-                  }
-                  const homeSlug = homeBucket.slug;
-                  if (!homeSlug) {
-                    return <div key="_nohome" className="divide-y">{renderHomeBody(homeBucket, 0)}</div>;
-                  }
-                  const isOpen = openHomes.has(homeSlug);
-                  const homeDevices = homeBucket.plain.length + homeBucket.rooms.reduce((s, rr) => s + rr.plain.length, 0);
-                  const homeGroups = homeBucket.groups.length + homeBucket.rooms.reduce((s, rr) => s + rr.groups.length, 0);
-                  const homeLabel = fmtCounts([[homeBucket.rooms.length, 'room'], [homeDevices, 'device'], [homeGroups, 'group']]);
-                  return (
-                    <div key={homeSlug}>
-                      <button onClick={() => setOpenHomes(prev => { const n = new Set(prev); if (n.has(homeSlug)) n.delete(homeSlug); else n.add(homeSlug); return n; })}
-                        className="w-full flex items-center justify-between px-3 py-1.5 bg-muted/20 hover:bg-muted/40 text-xs font-semibold">
-                        <span className="flex items-center gap-1.5">
-                          {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                          <TypeBadge type="home" />
-                          <span className="font-mono">{homeSlug}</span>
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-normal">{homeLabel}</span>
-                      </button>
-                      {isOpen && (
-                        <div className="divide-y">{renderHomeBody(homeBucket, 1)}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          }
-
-          // --- Flat rendering (current behavior) ---
-          return (
-            <div className="border rounded-lg divide-y overflow-hidden">
-              {filteredTopics.map(([topic, { payload, timestamp }]) =>
-                renderCollapsedRow(topic, payload, timestamp)
-              )}
-            </div>
-          );
-        })()}
+        ) : (
+          <div className={selectedTopic ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-4 lg:items-start' : undefined}>
+            <TreePane
+              tree={topicTree}
+              groupByHome={groupByHome}
+              groupByRoom={groupByRoom}
+              openHomes={openHomes}
+              openRooms={openRooms}
+              openGroups={openGroups}
+              onToggleHome={onToggleHome}
+              onToggleRoom={onToggleRoom}
+              onToggleGroup={onToggleGroup}
+              selectedTopic={selectedTopic}
+              onSelect={selectTopic}
+              availability={availability}
+              groupMembers={groupMembers}
+              getEffectivePayload={getEffectivePayloadFor}
+            />
+            {selectedTopic && (
+              <aside className="hidden lg:block lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-92px)] lg:overflow-y-auto animate-in fade-in slide-in-from-right-4 duration-200">
+                {renderInspector('pane')}
+              </aside>
+            )}
+          </div>
+        )}
 
       </div>
+
+      {/* Mobile inspector: bottom drawer below the lg breakpoint */}
+      <Drawer open={!!selectedTopic && !isLgUp} onOpenChange={(o) => { if (!o) clearSelection(); }}>
+        <DrawerContent className="max-h-[85vh]" aria-describedby={undefined}>
+          <DrawerTitle className="sr-only">Topic inspector</DrawerTitle>
+          <div className="overflow-y-auto px-4 pb-6 pt-2">
+            {renderInspector('sheet')}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Connect Dialog */}
       <ConnectDialog
