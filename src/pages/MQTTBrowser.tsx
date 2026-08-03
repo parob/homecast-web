@@ -761,7 +761,7 @@ export default function MQTTBrowser() {
             const panelIndent = Math.max(insetPx, 12);
             return (
               <div
-                className="my-1 mr-3 w-full max-w-sm rounded-r-md border-l-2 border-primary/20 bg-muted/10 pl-2 lg:max-w-3xl"
+                className="relative mb-2 mr-3 w-full max-w-sm rounded-b-md border border-l-2 border-primary/40 bg-muted/20 pb-2 pl-3 pt-1 shadow-sm lg:max-w-3xl"
                 style={{ marginLeft: panelIndent, width: `calc(100% - ${panelIndent + 12}px)` }}
               >
                 {/* Header: status + Controls/JSON toggle (toggle hidden on lg+ where both render side-by-side) */}
