@@ -91,15 +91,13 @@ export function InspectorPanel({
       <div className="space-y-3 p-3">
         {showControls && (
           <section className="w-full min-w-0 rounded-md border border-border/70 bg-background/50 p-2">
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Widget controls</div>
             {renderControls()}
           </section>
         )}
         {showJson && (
           <section className="w-full min-w-0 rounded-md border border-border/70 bg-background/50 p-2">
-            <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Publish payload</span>
-              <span className="truncate font-mono font-normal normal-case" title={topic + '/set'}>{topic}/set</span>
+            <div className="mb-1.5 flex items-center justify-end text-[10px] text-muted-foreground">
+              <span className="truncate font-mono" title={topic + '/set'}>{topic}/set</span>
             </div>
             <div className="space-y-1.5">
               <textarea
