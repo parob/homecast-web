@@ -405,11 +405,12 @@ export const HomeKit = {
   async setCharacteristic(
     accessoryId: string,
     characteristicType: string,
-    value: unknown
+    value: unknown,
+    homeId?: string,
   ): Promise<{ success: boolean; accessoryId: string; characteristicType: string; value: string }> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
-    return bridge.call('characteristic.set', { accessoryId, characteristicType, value });
+    return bridge.call('characteristic.set', { accessoryId, characteristicType, value, ...(homeId && { homeId }) });
   },
 
   /**

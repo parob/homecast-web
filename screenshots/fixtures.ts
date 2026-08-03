@@ -684,6 +684,64 @@ export const MOCK_HC_HELPERS = [
   },
 ];
 
+/**
+ * The same helpers as the relay publishes them: ordinary accessories with an
+ * `isHelper` flag. Appended to accessories.list so the dashboard, sharing,
+ * collections and search all see them without knowing what they are.
+ */
+export const HELPER_ACCESSORIES = [
+  {
+    id: HELPER_MODE_ID,
+    name: 'Home Mode',
+    homeId: HOME_ID,
+    roomId: undefined,
+    category: 'Other',
+    isReachable: true,
+    isHelper: true,
+    helperType: 'input_select',
+    isUserEditable: true,
+    helperOptions: ['Home', 'Away', 'Night', 'Vacation'],
+    services: [{
+      id: `${HELPER_MODE_ID}:service`,
+      name: 'Home Mode',
+      serviceType: 'helper_mode',
+      characteristics: [{
+        id: `${HELPER_MODE_ID}:helper_mode`,
+        characteristicType: 'helper_mode',
+        value: 'Away',
+        isReadable: true,
+        isWritable: true,
+      }],
+    }],
+  },
+  {
+    id: HELPER_COUNTER_ID,
+    name: 'Door Opens Today',
+    homeId: HOME_ID,
+    roomId: ROOMS.bedroom,
+    roomName: 'Bedroom',
+    category: 'Sensor',
+    isReachable: true,
+    isHelper: true,
+    helperType: 'counter',
+    isUserEditable: true,
+    services: [{
+      id: `${HELPER_COUNTER_ID}:service`,
+      name: 'Door Opens Today',
+      serviceType: 'helper_count',
+      characteristics: [{
+        id: `${HELPER_COUNTER_ID}:helper_count`,
+        characteristicType: 'helper_count',
+        value: 4,
+        isReadable: true,
+        isWritable: true,
+        minValue: 0,
+        stepValue: 1,
+      }],
+    }],
+  },
+];
+
 /** What the relay reports for the helpers above. */
 export const MOCK_HELPER_STATES: Record<string, unknown> = {
   [HELPER_MODE_ID]: 'Away',

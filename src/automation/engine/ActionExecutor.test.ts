@@ -492,7 +492,7 @@ describe('ActionExecutor', () => {
       await executor.executeSequence([httpAction, setAction], ctx);
 
       // Verify the bridge was called with the resolved value from HTTP response
-      expect(bridge.setCharacteristic).toHaveBeenCalledWith('acc-1', 'brightness', 75);
+      expect(bridge.setCharacteristic).toHaveBeenCalledWith('acc-1', 'brightness', 75, undefined);
     });
 
     it('multiple nodes accumulate outputs for downstream use', async () => {

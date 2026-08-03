@@ -21,6 +21,7 @@ import {
 
   MOCK_HC_HELPERS,
   MOCK_HELPER_STATES,
+  HELPER_ACCESSORIES,
 } from './fixtures';
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -294,7 +295,8 @@ function handleWsRequest(
 
     case 'accessories.list':
       if (homeId === SHARED_HOME_ID) return { accessories: SHARED_HOME_ACCESSORIES };
-      return { accessories: MY_HOME_ACCESSORIES };
+      // Helper accessories ride this list, exactly as the relay publishes them.
+      return { accessories: [...MY_HOME_ACCESSORIES, ...HELPER_ACCESSORIES] };
 
     case 'scenes.list':
       if (homeId === SHARED_HOME_ID) return { scenes: [] };

@@ -50,9 +50,15 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
-import { HelperAccessoryWidget } from '@/components/helpers/HelperAccessoryWidget';
 import { HelperEditorDialog } from '@/components/helpers/HelperEditorDialog';
 import { useHelperAccessories } from '@/components/helpers/useHelperAccessories';
+
+/**
+ * Bucket name for accessories that belong to the home rather than to a room.
+ * Never shown — the group renders first and unlabelled — but it has to be a
+ * name because rooms are grouped by name.
+ */
+const HOME_LEVEL_ROOM = '\u0000home-level';
 import type { HelperDefinition } from '@/automation/types/automation';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
@@ -4130,7 +4136,12 @@ const Dashboard = () => {
   const accessoriesByRoom = useMemo(() => {
     const grouped: Record<string, HomeKitAccessory[]> = {};
     for (const accessory of accessories) {
-      const roomName = accessory.roomName || 'Unknown Room';
+      // An accessory with no room belongs to the home rather than to any part
+      // of it. HomeKit has no such thing, so this only happens for helper
+      // accessories — but the bucket is about placement, not about what put
+      // something in it, and it renders first and unlabelled.
+      const roomName = accessory.roomName
+        || ((accessory as { isHelper?: boolean }).isHelper ? HOME_LEVEL_ROOM : 'Unknown Room');
       if (!grouped[roomName]) {
         grouped[roomName] = [];
       }
@@ -4189,6 +4200,7 @@ const Dashboard = () => {
           accs.some(a => a.roomId === selectedRoomId)
         )
       : Object.entries(accessoriesByRoom).filter(([roomName]) => {
+          if (roomName === HOME_LEVEL_ROOM) return true;
           // Filter by visible rooms
           const room = rooms.find(r => r.name === roomName);
           return room ? visibleRoomIds.has(room.id) : true;
@@ -4203,6 +4215,9 @@ const Dashboard = () => {
     // Sort rooms and accessories within each room by category, then apply custom device order
     return entries
       .sort(([aName], [bName]) => {
+        // The home-level bucket always leads: it is the home's own shelf.
+        if (aName === HOME_LEVEL_ROOM) return -1;
+        if (bName === HOME_LEVEL_ROOM) return 1;
         const aId = roomNameToId.get(aName);
         const bId = roomNameToId.get(bName);
         const aIdx = aId !== undefined ? orderMap.get(aId) : undefined;
@@ -4324,7 +4339,14 @@ const Dashboard = () => {
     }
   }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
 
-  const handleSlider = useCallback(async (accessoryId: string, characteristicType: string, value: number) => {
+  /**
+   * Write any characteristic value.
+   *
+   * handleSlider was this, restricted to numbers. Accessories also carry string
+   * characteristics — a mode, a text value — and there was no way for a widget
+   * to set one. The path is identical; only the type was ever narrower.
+   */
+  const writeCharacteristic = useCallback(async (accessoryId: string, characteristicType: string, value: unknown) => {
     if (isViewOnly) {
       toast.error('View-only access: you cannot control devices in this home');
       return;
@@ -4354,6 +4376,13 @@ const Dashboard = () => {
       toast.error(msg);
     }
   }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
+
+  /** The numeric-only face of writeCharacteristic, kept for existing callers. */
+  const handleSlider = useCallback(
+    (accessoryId: string, characteristicType: string, value: number) =>
+      writeCharacteristic(accessoryId, characteristicType, value),
+    [writeCharacteristic],
+  );
 
   // Stable callback for toggling hidden items visibility (shared by all widgets)
   const handleToggleShowHidden = useCallback(() => {
@@ -6125,6 +6154,7 @@ const Dashboard = () => {
         serviceGroups={allServiceGroupsData || serviceGroups}
         onToggle={handleToggle}
         onSlider={handleSlider}
+                  onSetValue={writeCharacteristic}
         getEffectiveValue={getEffectiveValue}
         onGroupToggle={handleGroupToggle}
         onGroupSlider={handleGroupSlider}
@@ -6555,6 +6585,7 @@ const Dashboard = () => {
                   selectedGroupId={selectedCollectionGroupId}
                   onToggle={handleToggle}
                   onSlider={handleSlider}
+                  onSetValue={writeCharacteristic}
                   getEffectiveValue={getEffectiveValue}
                   includedAccessoryIds={accountType === 'free' ? includedAccessoryIds : null}
                   isDarkBackground={isDarkBackground}
@@ -6827,42 +6858,6 @@ const Dashboard = () => {
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </>
                 )}
-                {/* Helper accessories with no room. Above the rooms because they
-                    belong to the home rather than to any part of it — a Home
-                    Mode isn't in the kitchen. Outside HomeKit's room structure
-                    entirely, which is only possible because these are ours. */}
-                {selectedHomeId && !selectedRoomId && (helperAccessories.byRoom.get('') ?? [])
-                  .filter(h => !isDeviceHidden(selectedHomeId, selectedHomeId, h.id)).length > 0 && (
-                  <div className={compactMode ? 'mb-3' : 'mb-6'} data-helper-folder>
-                    <div className={
-                      compactMode
-                        ? (fontSize === 'small'
-                          ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
-                          : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
-                        : (fontSize === 'small'
-                          ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
-                          : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')
-                    }>
-                      {(helperAccessories.byRoom.get('') ?? [])
-                        .filter(h => !isDeviceHidden(selectedHomeId, selectedHomeId, h.id))
-                        .map(helper => (
-                        <HelperAccessoryWidget
-                          key={helper.id}
-                          helper={helper}
-                          value={helperAccessories.states[helper.id]}
-                          live={helperAccessories.live}
-                          compact={compactMode}
-                          isDarkBackground={isDarkBackground}
-                          onEdit={() => openHelperEditor({ helper })}
-                          onOperate={helperAccessories.operate}
-                          isHidden={isDeviceActuallyHidden(selectedHomeId, selectedHomeId, helper.id)}
-                          onHide={() => toggleVisibility('device', 'ui', selectedHomeId, helper.id, selectedHomeId)}
-                          onDelete={() => helperAccessories.remove(helper.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
                   (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
@@ -6885,10 +6880,7 @@ const Dashboard = () => {
                     // Helper accessories hide exactly like real ones: the id goes in
                     // the room layout's hiddenAccessories, so Show Hidden reveals them
                     // and the same toggle puts them back.
-                    const allRoomHelpers = room ? (helperAccessories.byRoom.get(room.id) ?? []) : [];
-                    const roomHelpers = allRoomHelpers.filter(
-                      h => !isDeviceHidden(selectedHomeId ?? '', contextId, h.id));
-                    if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0 && roomHelpers.length === 0) return null;
+                    if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;
@@ -6896,7 +6888,7 @@ const Dashboard = () => {
                     return (
                     <div key={roomName} data-room-container data-room-name={roomName} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
-                      {groupByRoom && !selectedRoomId && (() => {
+                      {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
                         return (
                           <div className={`flex items-center gap-2 ${compactMode ? 'mb-1.5 mt-1' : 'mb-3 mt-2'}`}>
                             <button
@@ -6906,7 +6898,7 @@ const Dashboard = () => {
                               {roomName}
                               {/* Helper accessories are tiles in this room too, so a
                                   count that excluded them read as wrong beside them. */}
-                              {!hideAccessoryCounts && ` (${roomAccessories.length + roomHelpers.length})`}
+                              {!hideAccessoryCounts && ` (${roomAccessories.length})`}
                             </button>
                           </div>
                         );
@@ -7004,6 +6996,7 @@ const Dashboard = () => {
                                 accessory={accessory}
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
+                  onSetValue={writeCharacteristic}
                                 getEffectiveValue={getEffectiveValue}
                                 compact={true}
 
@@ -7027,6 +7020,7 @@ const Dashboard = () => {
                                   accessory={accessory}
                                   onToggle={handleToggle}
                                   onSlider={handleSlider}
+                  onSetValue={writeCharacteristic}
                                   getEffectiveValue={getEffectiveValue}
                                   compact={false}
 
@@ -7050,6 +7044,7 @@ const Dashboard = () => {
                                 accessory={accessory}
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
+                  onSetValue={writeCharacteristic}
                                 getEffectiveValue={getEffectiveValue}
                                 compact={false}
 
@@ -7077,26 +7072,6 @@ const Dashboard = () => {
                           );
                           }
                         })}
-                        {/* Helper accessories live in the same grid as real
-                            accessories, after them: HomeKit's devices are what
-                            the room is, and ours are what we added to it. Not
-                            part of orderedItems because that order is persisted
-                            per room against HomeKit ids. */}
-                        {roomHelpers.map(helper => (
-                          <HelperAccessoryWidget
-                            key={helper.id}
-                            helper={helper}
-                            value={helperAccessories.states[helper.id]}
-                            live={helperAccessories.live}
-                            compact={compactMode}
-                            isDarkBackground={isDarkBackground}
-                            onEdit={() => openHelperEditor({ helper })}
-                            onOperate={helperAccessories.operate}
-                            isHidden={isDeviceActuallyHidden(selectedHomeId ?? '', contextId, helper.id)}
-                            onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, helper.id, contextId)}
-                            onDelete={() => helperAccessories.remove(helper.id)}
-                          />
-                        ))}
                       </MasonryGrid>
                       );
 

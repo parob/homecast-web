@@ -43,6 +43,8 @@ interface AccessorySearchProps {
   serviceGroups: HomeKitServiceGroup[];
   onToggle: (accessoryId: string, characteristicType: string, currentValue: boolean) => void;
   onSlider: (accessoryId: string, characteristicType: string, value: number) => void;
+  /** Generic characteristic write — needed by accessories whose value isn't a number. */
+  onSetValue?: (accessoryId: string, characteristicType: string, value: unknown) => void;
   getEffectiveValue: (accessoryId: string, characteristicType: string, serverValue: any) => any;
   onGroupToggle: (groupId: string, checked: boolean, homeId?: string) => void;
   onGroupSlider: (groupId: string, characteristicType: string, value: number, homeId?: string) => void;
@@ -63,6 +65,7 @@ export function AccessorySearch({
   serviceGroups,
   onToggle,
   onSlider,
+  onSetValue,
   getEffectiveValue,
   onGroupToggle,
   onGroupSlider,
@@ -439,6 +442,7 @@ export function AccessorySearch({
                                           onMouseLeave={isExpanded ? handleWidgetMouseLeave : undefined}
                                         >
                                           <AccessoryWidget
+                                          onSetValue={onSetValue}
                                             accessory={acc}
                                             onToggle={onToggle}
                                             onSlider={onSlider}
@@ -449,6 +453,7 @@ export function AccessorySearch({
                                           />
                                           <ExpandedOverlay isExpanded={isExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
                                             <AccessoryWidget
+                                          onSetValue={onSetValue}
                                               accessory={acc}
                                               onToggle={onToggle}
                                               onSlider={onSlider}

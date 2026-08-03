@@ -432,9 +432,9 @@ test.describe('Helper accessory screenshots', () => {
     });
     await setupMocks(page);
     await gotoMyHome(page);
-    // The Helpers area renders above the rooms, so the top of the page carries
-    // both it and the first room's tiles — which is the point of the shot.
-    await page.waitForSelector('[data-helper-folder]', { timeout: 15000 });
+    // Helper accessories arrive through accessories.list like everything else,
+    // so there is no helper-specific container to wait for — wait for the tile.
+    await page.waitForSelector('text=Home Mode', { timeout: 15000 });
     await page.screenshot({ path: img('helper-accessories.png') });
   });
 });

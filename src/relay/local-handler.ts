@@ -341,11 +341,34 @@ async function executeHomeKitActionInner(
         includeAll?: boolean;
       };
       const result = await HomeKit.listAccessories({ homeId, roomId, includeValues });
-      return { accessories: includeAll ? result : filterAccessories(result) };
+      const { listHelperAccessories } = await import('./helper-accessories');
+      // Helper accessories are published here, not alongside here. Everything
+      // downstream — the dashboard, sharing, collections, search, REST, MQTT,
+      // MCP — reads this one list, so this is the only place that has to know
+      // they exist. They are deliberately NOT run through filterAccessories:
+      // that enforces the plan's HomeKit accessory limit, and a value the
+      // engine owns is not a device anyone is being sold.
+      // Room names, so a helper accessory groups by room like everything else.
+      // Only fetched when there is something to name.
+      let roomNames: Map<string, string> | undefined;
+      if (homeId) {
+        try {
+          const rooms = await HomeKit.listRooms(homeId);
+          roomNames = new Map(rooms.map(r => [r.id, r.name]));
+        } catch { /* naming is cosmetic — never fail the list over it */ }
+      }
+      const helpers = listHelperAccessories({ homeId, roomId, roomNames });
+      const accessories = includeAll ? result : filterAccessories(result);
+      return { accessories: [...accessories, ...helpers] };
     }
 
     case 'accessory.get': {
       const { accessoryId } = payload as { accessoryId: string };
+      const { getHelperForAccessory, helperToAccessory, readHelperValue } = await import('./helper-accessories');
+      const helperForGet = getHelperForAccessory(accessoryId);
+      if (helperForGet) {
+        return { accessory: helperToAccessory(helperForGet, readHelperValue(accessoryId)?.value) };
+      }
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
@@ -365,6 +388,9 @@ async function executeHomeKitActionInner(
         accessoryId: string;
         characteristicType: string;
       };
+      const { readHelperValue } = await import('./helper-accessories');
+      const helperRead = readHelperValue(accessoryId);
+      if (helperRead) return { accessoryId, characteristicType, value: helperRead.value };
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
       }
@@ -385,6 +411,19 @@ async function executeHomeKitActionInner(
       // but only ever reports `power_state`, so a write named `on` would be
       // echoed to clients, MQTT and the engine under a name nothing else uses.
       const characteristicType = canonicalCharacteristic(requested);
+
+      // A helper accessory's write is serviced by the engine rather than by
+      // HomeKit — which is the ONLY thing about it that differs from any other
+      // accessory. It arrives here as an ordinary characteristic write, it is
+      // announced like one, and every client, script and integration that can
+      // set a characteristic can set this. Nothing upstream needs to know.
+      const { applyHelperWrite } = await import('./helper-accessories');
+      const helperWrite = applyHelperWrite(accessoryId, value);
+      if (helperWrite) {
+        announceRelayWrite([{ accessoryId, characteristicType, value: helperWrite.value, homeId }], 'client');
+        return { success: true, accessoryId, characteristicType, value: helperWrite.value };
+      }
+
       const setResult = await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
       // Announce the CONFIRMED value when the bridge reports one — HomeKit may
       // cap a requested value (brightness clamps etc.), and every client would

@@ -5,6 +5,12 @@ export interface WidgetProps {
   accessory: HomeKitAccessory;
   onToggle: (accessoryId: string, characteristicType: string, currentValue: boolean) => void;
   onSlider: (accessoryId: string, characteristicType: string, value: number) => void;
+  /**
+   * Write any characteristic value — strings, enums, anything a slider can't
+   * express. Optional so existing call sites need no change; widgets that need
+   * it fall back to doing nothing rather than silently writing the wrong type.
+   */
+  onSetValue?: (accessoryId: string, characteristicType: string, value: unknown) => void;
   getEffectiveValue: (accessoryId: string, characteristicType: string, serverValue: any) => any;
   compact?: boolean;
   onExpandToggle?: () => void;

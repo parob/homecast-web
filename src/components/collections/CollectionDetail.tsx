@@ -136,6 +136,8 @@ interface CollectionDetailProps {
   // Accessory control handlers
   onToggle: (accessoryId: string, characteristicType: string, currentValue: boolean) => void;
   onSlider: (accessoryId: string, characteristicType: string, value: number) => void;
+  /** Generic characteristic write — needed by accessories whose value isn't a number. */
+  onSetValue?: (accessoryId: string, characteristicType: string, value: unknown) => void;
   getEffectiveValue: (accessoryId: string, characteristicType: string, serverValue: any) => any;
   // Free plan filtering — only show these accessories in the picker
   includedAccessoryIds?: string[] | null;
@@ -220,6 +222,7 @@ export function CollectionDetail({
   selectedGroupId,
   onToggle,
   onSlider,
+  onSetValue,
   getEffectiveValue,
   includedAccessoryIds,
   isDarkBackground,
@@ -1267,6 +1270,7 @@ export function CollectionDetail({
                     onMouseLeave={compactMode ? handleWidgetMouseLeave : undefined}
                   >
                     <AccessoryWidget
+                                          onSetValue={onSetValue}
                       homeName={getHomeName(accessory.homeId)}
                       accessory={accessory}
                       compact={compactMode}
@@ -1296,6 +1300,7 @@ export function CollectionDetail({
                          
                         >
                           <AccessoryWidget
+                                          onSetValue={onSetValue}
                             homeName={getHomeName(accessory.homeId)}
                             accessory={accessory}
                             compact={false}
@@ -1595,6 +1600,7 @@ export function CollectionDetail({
                         onMouseLeave={compactMode ? handleWidgetMouseLeave : undefined}
                       >
                         <AccessoryWidget
+                                          onSetValue={onSetValue}
                           homeName={getHomeName(accessory.homeId)}
                           accessory={accessory}
                           compact={compactMode}
@@ -1623,6 +1629,7 @@ export function CollectionDetail({
                              
                             >
                               <AccessoryWidget
+                                          onSetValue={onSetValue}
                                 homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
                                 compact={false}
@@ -1651,6 +1658,7 @@ export function CollectionDetail({
                 {activeAccessory && (
                   <div className="relative cursor-grabbing">
                     <AccessoryWidget
+                                          onSetValue={onSetValue}
                       homeName={getHomeName(activeAccessory.homeId)}
                       accessory={activeAccessory}
                       compact={compactMode}
@@ -1710,6 +1718,7 @@ export function CollectionDetail({
                 {activeAccessory && (
                   <div className="relative cursor-grabbing">
                     <AccessoryWidget
+                                          onSetValue={onSetValue}
                       homeName={getHomeName(activeAccessory.homeId)}
                       accessory={activeAccessory}
                       compact={compactMode}

@@ -22,6 +22,7 @@ export class ExecutionContext {
   readonly traceId: string;
   readonly automationId: string;
   readonly automationName: string;
+  readonly homeId?: string;
   readonly triggerData: TriggerData;
   readonly abortController: AbortController;
   /**
@@ -68,10 +69,12 @@ export class ExecutionContext {
     triggerData: TriggerData,
     initialVariables?: Record<string, unknown>,
     ancestorIds: readonly string[] = [],
+    homeId?: string,
   ) {
     this.traceId = crypto.randomUUID();
     this.automationId = automationId;
     this.automationName = automationName;
+    this.homeId = homeId;
     this.triggerData = triggerData;
     this.abortController = new AbortController();
     this.variables = { ...initialVariables };

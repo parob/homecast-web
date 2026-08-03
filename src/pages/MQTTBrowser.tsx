@@ -77,7 +77,6 @@ export default function MQTTBrowser() {
   // Homes default to collapsed; the user opens the ones they care about.
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());
-  const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set());
 
   // Keep the JSON textarea in sync with the expanded topic's payload, so
   // publishes that came from the widget show up live. Skip while the user is
@@ -832,38 +831,30 @@ export default function MQTTBrowser() {
             );
           };
 
-          // Group header — same shape as the room/home header (chevron + mono slug + right-count).
-          // Right-side state chip opens the PropertyEditor; header body toggles member expansion.
+          // Group header — one click opens/closes the complete group view:
+          // widget, JSON editor and member accessories together.
           const renderGroupBucket = (g: { topic: string; payload: TopicMessage; memberTopics: Array<[string, TopicMessage]> }, headerDepth: number) => {
             const groupSlug = g.topic.split('/').pop() || g.topic;
-            const isOpen = openGroupKeys.has(g.topic);
             const ep = getEffectivePayload(g.topic, g.payload.payload);
             const headerPadLeft = 12 + headerDepth * 16;
             const topicDepth = headerDepth + 1;
             const isEditorOpen = expandedTopic === g.topic;
-            const toggleMembers = () => setOpenGroupKeys(prev => { const n = new Set(prev); if (n.has(g.topic)) n.delete(g.topic); else n.add(g.topic); return n; });
             const openEditor = () => {
               if (isEditorOpen) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }
               else expandTopic(g.topic);
             };
             return (
               <div key={g.topic}>
-                <div className="w-full flex items-stretch bg-muted/30 hover:bg-muted/50 text-xs font-semibold">
-                  <button
-                    onClick={toggleMembers}
-                    className="shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                    style={{ paddingLeft: headerPadLeft, paddingRight: 4 }}
-                    title={isOpen ? 'Collapse members' : 'Expand members'}
-                  >
-                    {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  </button>
-                  <div
-                    role="button" tabIndex={0}
-                    onClick={openEditor}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(); } }}
-                    className="flex-1 flex items-center justify-between pr-3 py-1.5 text-left cursor-pointer"
-                    title="Edit group state"
-                  >
+                <div
+                  role="button" tabIndex={0}
+                  onClick={openEditor}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(); } }}
+                  className="w-full flex items-center justify-between pr-3 py-1.5 bg-muted/30 hover:bg-muted/50 text-xs font-semibold text-left cursor-pointer"
+                  style={{ paddingLeft: headerPadLeft }}
+                  title={isEditorOpen ? 'Collapse group' : 'Expand group'}
+                >
+                  <span className="flex items-center justify-between gap-2 min-w-0 w-full">
+                    {isEditorOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
                     <span className="flex items-center gap-2 min-w-0">
                       <AccessoryTypeIcon payload={ep} />
                       <TypeBadge type="group" />
@@ -873,10 +864,10 @@ export default function MQTTBrowser() {
                       <span className="font-mono text-[11px] font-normal text-right"><FmtVal payload={ep} /></span>
                       <span className="text-[10px] text-muted-foreground font-normal tabular-nums">{fmtCounts([[g.memberTopics.length, 'device']])}</span>
                     </span>
-                  </div>
+                  </span>
                 </div>
                 {isEditorOpen && renderDetailPanel(g.topic, g.payload.payload, g.payload.timestamp, headerPadLeft)}
-                {isOpen && (
+                {isEditorOpen && (
                   <div className="divide-y">
                     {g.memberTopics.map(([t, m]) =>
                       renderCollapsedRow(t, m.payload, m.timestamp, { depth: topicDepth, short: true })
@@ -1003,4 +994,3 @@ export default function MQTTBrowser() {
     </div>
   );
 }
-

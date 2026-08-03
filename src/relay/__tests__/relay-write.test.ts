@@ -39,7 +39,13 @@ vi.mock('@/native/homekit-bridge', () => ({
   getNativeBridge: () => null, isRelayCapable: () => true, isRelayEnabled: () => true,
 }));
 
-vi.mock('@/automation', () => ({ notifyRelayWrite, notifyRelayGroupWrite, getServiceGroupMembers }));
+// getAutomationEngine: helper accessories are serviced by the engine on the
+// same characteristic.set path, so the stub has to answer for it. Null means
+// no engine, which is what these HomeKit-write tests are exercising.
+vi.mock('@/automation', () => ({
+  notifyRelayWrite, notifyRelayGroupWrite, getServiceGroupMembers,
+  getAutomationEngine: () => null,
+}));
 
 import { executeHomeKitAction } from '../local-handler';
 import { setRelayWritePublisher, announceRelayWrite, announceRelayGroupWrite } from '../relay-write';
@@ -93,10 +99,10 @@ describe('a write from a client announces to both consumers', () => {
 
 describe('a write from the automation engine announces outward only', () => {
   it('announces a characteristic write to clients', async () => {
-    await createHomeKitBridgeAdapter().setCharacteristic('bulb-1', 'power_state', 1);
+    await createHomeKitBridgeAdapter().setCharacteristic('bulb-1', 'power_state', 1, 'home-1');
 
     expect(publisher.characteristic).toHaveBeenCalledWith(
-      expect.objectContaining({ accessoryId: 'bulb-1', value: 1 }),
+      expect.objectContaining({ accessoryId: 'bulb-1', value: 1, homeId: 'home-1' }),
     );
   });
 

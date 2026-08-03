@@ -72,7 +72,7 @@ describe('state.set feeds the automation engine', () => {
     await executeHomeKitAction('state.set', { state: { kitchen: { bulb: { on: true } } } });
     await settle();
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-9', 'power_state', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-9', 'power_state', true, 'home-1');
   });
 
   it('fires once per accessory when a group write expands to its members', async () => {

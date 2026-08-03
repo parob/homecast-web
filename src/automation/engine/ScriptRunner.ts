@@ -111,7 +111,7 @@ export class ScriptRunner {
     };
 
     const mergedVars = { ...script.variables, ...variables };
-    const ctx = new ExecutionContext(script.id, script.name, triggerData, mergedVars);
+    const ctx = new ExecutionContext(script.id, script.name, triggerData, mergedVars, [], script.homeId);
 
     // Track running
     let running = this.runningContexts.get(script.id);
