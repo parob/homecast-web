@@ -299,7 +299,15 @@ export class ActionExecutor {
     try {
       const resolvedValue = this.resolveTemplateValue(action.value, ctx);
       requireValue(resolvedValue, action.characteristicType);
-      await this.bridge.setServiceGroup(action.groupId, action.characteristicType, resolvedValue, action.homeId);
+      // The automation is scoped to a home; actions created by older versions
+      // commonly have no per-action homeId. Use the execution context so the
+      // relay announcement carries the home through to cloud MQTT publishing.
+      await this.bridge.setServiceGroup(
+        action.groupId,
+        action.characteristicType,
+        resolvedValue,
+        action.homeId ?? ctx.homeId,
+      );
       const output = { groupId: action.groupId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);

@@ -119,6 +119,21 @@ describe('ActionExecutor', () => {
   });
 
   describe('set_service_group output', () => {
+    it('uses the automation home context when the legacy action has no homeId', async () => {
+      const ctx = new ExecutionContext('auto-1', 'Test', makeTriggerData(), undefined, [], 'home-1');
+      const action: Action = {
+        type: 'set_service_group',
+        id: 'node-2-home',
+        groupId: 'group-1',
+        characteristicType: 'power_state',
+        value: 1,
+      };
+
+      await executor.executeSequence([action], ctx);
+
+      expect(bridge.setServiceGroup).toHaveBeenCalledWith('group-1', 'power_state', 1, 'home-1');
+    });
+
     it('captures output with success', async () => {
       const ctx = makeCtx();
       const action: Action = {
