@@ -59,7 +59,7 @@ function renderIfNode(config: Record<string, unknown>, onUpdateData = vi.fn()) {
   } as FlowNodeData;
 
   render(
-    <MockedProvider mocks={[]} addTypename={false}>
+    <MockedProvider mocks={[]}>
       <ReactFlowProvider>
         <NodeConfigPanel
           node={{ id: 'if1', type: 'base', position: { x: 0, y: 0 }, data } as never}

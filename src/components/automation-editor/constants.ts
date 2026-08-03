@@ -278,7 +278,10 @@ export const NODE_HEIGHT = 40; // Minimum height — expands with subtitle
 // Flow node data shape (stored in React Flow node.data)
 // ============================================================
 
-export interface FlowNodeData {
+// A `type`, not an `interface`: @xyflow/react's Node<T> requires
+// T extends Record<string, unknown>, which interfaces never satisfy
+// (no implicit index signature) while object type aliases do.
+export type FlowNodeData = {
   category: NodeCategory;
   nodeType: string;
   label: string;
@@ -292,7 +295,7 @@ export interface FlowNodeData {
   executionState?: 'idle' | 'running' | 'completed' | 'failed' | 'skipped';
   executionTime?: number;
   executionError?: string;
-}
+};
 
 export function createDefaultNodeData(def: NodeDefinition): FlowNodeData {
   // Default config for specific node types
