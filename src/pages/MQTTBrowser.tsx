@@ -647,7 +647,7 @@ export default function MQTTBrowser() {
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
-                <button onClick={() => { setHideMembers(v => !v); setOpenGroupKeys(new Set()); }}
+                <button onClick={() => setHideMembers(v => !v)}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${hideMembers ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Groups
                 </button>
