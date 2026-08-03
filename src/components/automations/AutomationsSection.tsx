@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AutomationCard } from './AutomationCard';
-import { HelpersPanel } from '@/components/helpers/HelpersSection';
 import { AutomationDetailDialog } from './AutomationDetailDialog';
 import { AutomationFormDialog } from './AutomationFormDialog';
 // Lazy: pulls in the whole flow editor (@xyflow/react) — only load once the user opens it
@@ -191,15 +190,6 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
     <>
       <AnimatedCollapse open={expanded}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
-          {/* Helpers first: they are the state the automations below read and
-              set, and a helper nobody automates does nothing — so they belong
-              inside this section rather than competing with it for a pill. */}
-          <HelpersPanel
-            homeId={homeId}
-            compact={compact}
-            isDarkBackground={isDarkBackground}
-            active={expanded && !demoAutomations}
-          />
           {relayNeedsUpdate && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               HomeKit automations require a relay update. Homecast automations are unaffected.

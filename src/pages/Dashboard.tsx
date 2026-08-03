@@ -50,6 +50,10 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
+import { HelperAccessoryWidget } from '@/components/helpers/HelperAccessoryWidget';
+import { HelperEditorDialog } from '@/components/helpers/HelperEditorDialog';
+import { useHelperAccessories } from '@/components/helpers/useHelperAccessories';
+import type { HelperDefinition } from '@/automation/types/automation';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
@@ -107,8 +111,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud
-} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -291,6 +294,7 @@ const DropIndicatorLine: React.FC<{ isInGroup?: boolean }> = ({ isInGroup }) => 
 
 // Sortable room item for drag-and-drop reordering
 interface SortableRoomItemProps {
+  onCreateHelper?: () => void;
   room: HomeKitRoom;
   isSelected: boolean;
   hideAccessoryCounts: boolean;
@@ -310,7 +314,7 @@ interface SortableRoomItemProps {
   editMode?: boolean;
 }
 
-const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ room, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
   const {
     attributes,
     listeners,
@@ -368,6 +372,14 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ room, isSelected, h
           <ContextMenuItem onClick={onShare}>
             <Share2 className="h-4 w-4 mr-2" />
             Share Room
+          </ContextMenuItem>
+        )}
+        {/* A room can't contain a room group, but it can contain a helper
+            accessory — so this is offered where Create Room Group isn't. */}
+        {onCreateHelper && (
+          <ContextMenuItem onClick={onCreateHelper}>
+            <Blocks className="h-4 w-4 mr-2" />
+            New Helper Accessory
           </ContextMenuItem>
         )}
         {onPin && (
@@ -656,6 +668,7 @@ interface SortableHomeItemProps {
   showHiddenItems?: boolean;
   onToggleShowHidden?: () => void;
   onCreateRoomGroup?: () => void;
+  onCreateHelper?: () => void;
   onBackgroundSettings?: () => void;
   onCloudRelay?: () => void;
   onPin?: () => void;
@@ -669,7 +682,7 @@ interface SortableHomeItemProps {
   tourId?: string;
 }
 
-const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
+const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
   const {
     attributes,
     listeners,
@@ -760,6 +773,12 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
             <ContextMenuItem onClick={onCreateRoomGroup}>
               <Layers className="h-4 w-4 mr-2" />
               Create Room Group
+            </ContextMenuItem>
+          )}
+          {onCreateHelper && (
+            <ContextMenuItem onClick={onCreateHelper}>
+              <Blocks className="h-4 w-4 mr-2" />
+              New Helper Accessory
             </ContextMenuItem>
           )}
           {onPin && (
@@ -1472,6 +1491,17 @@ const Dashboard = () => {
   // Scenes/Automations sections, toggled by the pills in the sensor-summary row
   const [scenesOpen, setScenesOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
+
+  // Helper accessories: ours, not HomeKit's, so they live in the room grid
+  // alongside real accessories and in a home-level folder above the rooms.
+  const [helperEditorOpen, setHelperEditorOpen] = useState(false);
+  const [editingHelper, setEditingHelper] = useState<HelperDefinition | undefined>(undefined);
+  const [helperDefaultRoomId, setHelperDefaultRoomId] = useState<string | undefined>(undefined);
+  const openHelperEditor = useCallback((opts: { helper?: HelperDefinition; roomId?: string } = {}) => {
+    setEditingHelper(opts.helper);
+    setHelperDefaultRoomId(opts.roomId);
+    setHelperEditorOpen(true);
+  }, []);
   // Version counter to force re-renders when visibility changes
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   // Version counter to force re-renders when item order changes (for home view cache reads)
@@ -4144,6 +4174,8 @@ const Dashboard = () => {
   }, []);
 
   // Filter by selected room, apply visibility, and sort by custom order
+  const helperAccessories = useHelperAccessories(selectedHomeId);
+
   const filteredRooms = useMemo(() => {
     // Filter out hidden rooms (unless in edit mode)
     let visibleRooms = sortedRooms;
@@ -5424,6 +5456,10 @@ const Dashboard = () => {
               <Layers className="h-4 w-4 mr-2" />
               Create Room Group
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
+              <Blocks className="h-4 w-4 mr-2" />
+              New Helper Accessory
+            </DropdownMenuItem>
             {isMobile && (
             <DropdownMenuItem
               onClick={() => {
@@ -5695,6 +5731,7 @@ const Dashboard = () => {
                                     onToggleShowHidden={handleToggleShowHidden}
                                     onShare={home.role === 'owner' || home.role === 'admin' || !home.role ? () => { setSidebarShareHome(home); setSidebarOpen(false); } : undefined}
                                     onCreateRoomGroup={() => { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); setSidebarOpen(false); }}
+                                    onCreateHelper={() => { openHelperEditor(); setSidebarOpen(false); }}
                                     onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'home', id: home.id, name: home.name }); setBackgroundSettingsOpen(true); setSidebarOpen(false); }}
                                     onCloudRelay={!isInMacApp && !isInMobileApp ? () => { setCloudRelayPrefilledHome(home.name); openSettingsTo('homes'); setSidebarOpen(false); } : undefined}
                                     onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
@@ -5811,6 +5848,7 @@ const Dashboard = () => {
                                                     style={{ pointerEvents: disablePointer ? 'none' : undefined }}
                                                   >
                                                     <SortableRoomItem
+                                                    onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                       room={room}
                                                       isSelected={selectedRoomId === room.id}
                                                       hideAccessoryCounts={hideAccessoryCounts}
@@ -6158,6 +6196,7 @@ const Dashboard = () => {
                               onToggleShowHidden={handleToggleShowHidden}
                               onShare={home.role === 'owner' || home.role === 'admin' || !home.role ? () => setSidebarShareHome(home) : undefined}
                               onCreateRoomGroup={() => { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }}
+                              onCreateHelper={() => openHelperEditor()}
                               onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'home', id: home.id, name: home.name }); setBackgroundSettingsOpen(true); }}
                               onCloudRelay={!isInMacApp && !isInMobileApp ? () => { setCloudRelayPrefilledHome(home.name); openSettingsTo('homes'); } : undefined}
                               onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
@@ -6268,6 +6307,7 @@ const Dashboard = () => {
                                               style={{ pointerEvents: disablePointer ? 'none' : undefined }}
                                             >
                                               <SortableRoomItem
+                                                    onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                 room={room}
                                                 isSelected={selectedRoomId === room.id}
                                                 hideAccessoryCounts={hideAccessoryCounts}
@@ -6787,6 +6827,42 @@ const Dashboard = () => {
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </>
                 )}
+                {/* Helper accessories with no room. Above the rooms because they
+                    belong to the home rather than to any part of it — a Home
+                    Mode isn't in the kitchen. Outside HomeKit's room structure
+                    entirely, which is only possible because these are ours. */}
+                {selectedHomeId && !selectedRoomId && (helperAccessories.byRoom.get('') ?? []).length > 0 && (
+                  <div className={compactMode ? 'mb-3' : 'mb-6'} data-helper-folder>
+                    <div className={`flex items-center gap-2 ${compactMode ? 'mb-1.5 mt-1' : 'mb-3 mt-2'}`}>
+                      <span className={`text-sm font-semibold ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground/70'}`}>
+                        Helpers
+                        {!hideAccessoryCounts && ` (${(helperAccessories.byRoom.get('') ?? []).length})`}
+                      </span>
+                    </div>
+                    <div className={
+                      compactMode
+                        ? (fontSize === 'small'
+                          ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
+                          : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
+                        : (fontSize === 'small'
+                          ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
+                          : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')
+                    }>
+                      {(helperAccessories.byRoom.get('') ?? []).map(helper => (
+                        <HelperAccessoryWidget
+                          key={helper.id}
+                          helper={helper}
+                          value={helperAccessories.states[helper.id]}
+                          live={helperAccessories.live}
+                          compact={compactMode}
+                          isDarkBackground={isDarkBackground}
+                          onEdit={() => openHelperEditor({ helper })}
+                          onOperate={helperAccessories.operate}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
                   (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
@@ -6806,7 +6882,8 @@ const Dashboard = () => {
                     const displayAccessories = filterAccessories(ungrouped, contextId);
 
                     // Hide room if it has no visible items (unless showHiddenItems is on)
-                    if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0) return null;
+                    const roomHelpers = room ? (helperAccessories.byRoom.get(room.id) ?? []) : [];
+                    if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0 && roomHelpers.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;
@@ -6993,6 +7070,23 @@ const Dashboard = () => {
                           );
                           }
                         })}
+                        {/* Helper accessories live in the same grid as real
+                            accessories, after them: HomeKit's devices are what
+                            the room is, and ours are what we added to it. Not
+                            part of orderedItems because that order is persisted
+                            per room against HomeKit ids. */}
+                        {roomHelpers.map(helper => (
+                          <HelperAccessoryWidget
+                            key={helper.id}
+                            helper={helper}
+                            value={helperAccessories.states[helper.id]}
+                            live={helperAccessories.live}
+                            compact={compactMode}
+                            isDarkBackground={isDarkBackground}
+                            onEdit={() => openHelperEditor({ helper })}
+                            onOperate={helperAccessories.operate}
+                          />
+                        ))}
                       </MasonryGrid>
                       );
 
@@ -7602,6 +7696,22 @@ const Dashboard = () => {
           onViewAllSharedItems={() => openSettingsTo('sharing')}
           availableCharacteristics={sidebarShareServiceGroup.accessories.flatMap(a => a.services?.flatMap(s => s.characteristics?.map(c => c.characteristicType) || []) || [])}
           developerMode={developerMode}
+        />
+      )}
+
+      {/* Helper accessory editor — hoisted here because four different menus
+          and every tile open it, and each owning a copy would mean four
+          different ideas of the same helper. */}
+      {selectedHomeId && (
+        <HelperEditorDialog
+          open={helperEditorOpen}
+          onOpenChange={setHelperEditorOpen}
+          homeId={selectedHomeId}
+          rooms={rooms.map(r => ({ id: r.id, name: r.name }))}
+          defaultRoomId={helperDefaultRoomId}
+          existing={editingHelper}
+          onSave={helperAccessories.save}
+          onDelete={helperAccessories.remove}
         />
       )}
 
