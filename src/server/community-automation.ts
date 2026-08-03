@@ -187,6 +187,24 @@ export async function reloadCommunityAutomations(): Promise<void> {
   }
 }
 
+/**
+ * Re-read helpers from IndexedDB into the running engine. Cloud mode gets an
+ * `automation.helper_sync` push; locally the resolver has to do it itself.
+ *
+ * Uses `syncHelpers`, not `loadHelpers`: this runs after a delete too, and
+ * loading only adds — a deleted helper would keep answering `helper()` and keep
+ * its triggers registered until the next restart.
+ */
+export async function reloadCommunityHelpers(): Promise<void> {
+  const engine = getAutomationEngine();
+  if (!engine) return;
+  try {
+    engine.syncHelpers(await loadStoredHelpers());
+  } catch (e) {
+    console.warn('[CommunityAutomation] Helper reload failed', e);
+  }
+}
+
 export function teardownCommunityAutomationEngine(): void {
   setRelayWritePublisher(null);
   resolver?.stop();

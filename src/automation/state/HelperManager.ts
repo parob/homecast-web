@@ -2,7 +2,7 @@
 // Virtual entity management: input_boolean, input_number, input_select, timer, counter, etc.
 
 import type { StateStore } from './StateStore';
-import type { HelperDefinition, Duration } from '../types/automation';
+import type { HelperDefinition, Duration, HelperOperation } from '../types/automation';
 import { durationToMs } from '../types/automation';
 
 type EventEmitter = (eventType: string, eventData?: Record<string, unknown>) => void;
@@ -72,6 +72,48 @@ export class HelperManager {
 
   loadAll(helpers: HelperDefinition[]): void {
     for (const h of helpers) this.register(h);
+  }
+
+  /**
+   * Replace the whole helper set — the `sync_all` semantic.
+   *
+   * What arrives is the complete set, so anything absent has been deleted and
+   * must stop existing here too; otherwise a deleted helper keeps answering
+   * `helper()` and keeps its triggers alive forever.
+   *
+   * Three cases, kept apart deliberately:
+   *
+   * - **Unchanged** helpers are left completely alone. Re-registering resets a
+   *   helper to its initial value, so a blanket reload would send Home Mode
+   *   back to `Home` every time an unrelated helper was edited, and would
+   *   orphan any running timer's pending timeout while `register` installed a
+   *   fresh idle record over the top of it.
+   * - **Changed** helpers are torn down and rebuilt, keeping their current
+   *   value: editing a counter's step must not reset the count. Timers are the
+   *   exception — a countdown whose definition just changed cannot be resumed
+   *   honestly, so it goes back to idle.
+   * - **Deleted** helpers are removed, which also cancels their timers.
+   */
+  replaceAll(helpers: HelperDefinition[]): void {
+    const next = new Map(helpers.map(h => [h.id, h]));
+
+    for (const id of [...this.helpers.keys()]) {
+      if (!next.has(id)) this.remove(id);
+    }
+
+    for (const helper of helpers) {
+      const existing = this.helpers.get(helper.id);
+      // Cheap structural check. Both sides come through the same serialization,
+      // so key order is stable; a false "changed" only costs a rebuild.
+      if (existing && JSON.stringify(existing) === JSON.stringify(helper)) continue;
+
+      const carried = existing ? this.stateStore.getHelperState(helper.id) : undefined;
+      if (existing) this.remove(helper.id);  // also clears any pending timeout
+      this.register(helper);
+      if (carried !== undefined && helper.type !== 'timer') {
+        this.stateStore.updateHelperState(helper.id, carried);
+      }
+    }
   }
 
   remove(helperId: string): void {
@@ -356,11 +398,60 @@ export class HelperManager {
   }
 
   // ============================================================
+  // Operations
+  // ============================================================
+
+  /**
+   * Apply a named operation to a helper.
+   *
+   * The one place that maps an operation name onto a method. An automation
+   * action and a person pressing a control in the Helpers list are the same
+   * operation arriving by different routes, and when each route owned its own
+   * switch they could drift — a new operation added for one would silently do
+   * nothing via the other.
+   */
+  apply(
+    helperId: string,
+    operation: HelperOperation,
+    opts: { value?: unknown; step?: number; duration?: Duration } = {},
+  ): void {
+    switch (operation) {
+      case 'turn_on': this.turnOn(helperId); break;
+      case 'turn_off': this.turnOff(helperId); break;
+      case 'toggle': this.toggle(helperId); break;
+      case 'set': this.setHelperValue(helperId, opts.value); break;
+      case 'increment': this.incrementHelper(helperId, opts.step); break;
+      case 'decrement': this.decrementHelper(helperId, opts.step); break;
+      case 'reset': this.resetCounter(helperId); break;
+      case 'start': this.startTimer(helperId, opts.duration); break;
+      case 'pause': this.pauseTimer(helperId); break;
+      case 'resume': this.resumeTimer(helperId); break;
+      case 'cancel': this.cancelTimer(helperId); break;
+      case 'finish': this.finishTimer(helperId); break;
+      default: {
+        // Exhaustiveness guard: a new HelperOperation that nobody wired up
+        // should fail loudly here rather than be accepted and ignored.
+        const unhandled: never = operation;
+        throw new Error(`Unknown helper operation: ${String(unhandled)}`);
+      }
+    }
+  }
+
+  // ============================================================
   // Query
   // ============================================================
 
   getHelper(id: string): HelperDefinition | undefined {
     return this.helpers.get(id);
+  }
+
+  /** Current value of every registered helper, keyed by id. */
+  getAllStates(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const id of this.helpers.keys()) {
+      out[id] = this.stateStore.getHelperState(id);
+    }
+    return out;
   }
 
   getAllHelpers(): HelperDefinition[] {

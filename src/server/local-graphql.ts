@@ -48,6 +48,14 @@ async function reloadCommunityAutomations(): Promise<void> {
   } catch { /* engine not running in this context */ }
 }
 
+/** As above, for helper definitions. */
+async function reloadCommunityHelpers(): Promise<void> {
+  try {
+    const m = await import('./community-automation');
+    await m.reloadCommunityHelpers();
+  } catch { /* engine not running in this context */ }
+}
+
 /** Trigger/actions cross GraphQL as JSON strings; the relay actions want objects. */
 function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
@@ -92,6 +100,18 @@ function toStoredAutomation(a: { id: string; homeId: string; data: string; creat
     parentId: a.homeId,
     dataJson: a.data,
     updatedAt: a.updatedAt ?? a.createdAt,
+    __typename: 'StoredEntityInfo',
+  };
+}
+
+function toStoredHelper(h: { id: string; homeId: string; data: string; createdAt: string; updatedAt?: string }) {
+  return {
+    id: h.id,
+    entityType: 'helper',
+    entityId: h.id,
+    parentId: h.homeId,
+    dataJson: h.data,
+    updatedAt: h.updatedAt ?? h.createdAt,
     __typename: 'StoredEntityInfo',
   };
 }
@@ -381,6 +401,32 @@ async function resolveOperation(
       await db.deleteHcAutomation(variables.automationId as string);
       void reloadCommunityAutomations();
       return { deleteHcAutomation: { success: true, __typename: 'DeleteResult' } };
+
+    // --- HC Helpers ---
+    // Virtual entities (modes, switches, counters, timers). Same StoredEntityInfo
+    // shape as automations — `dataJson` carries the serialized HelperDefinition.
+    case 'HcHelpers':
+      return {
+        hcHelpers: (await db.getHcHelpers(variables.homeId as string))
+          .map(toStoredHelper),
+      };
+
+    case 'SaveHcHelper': {
+      const helper = await db.saveHcHelper(
+        variables.homeId as string,
+        (variables.helperId as string) || null,
+        variables.data as string
+      );
+      // Same reason as automations: cloud gets a server push, Community has to
+      // tell its own engine or the helper won't exist until the next restart.
+      void reloadCommunityHelpers();
+      return { saveHcHelper: toStoredHelper(helper) };
+    }
+
+    case 'DeleteHcHelper':
+      await db.deleteHcHelper(variables.helperId as string);
+      void reloadCommunityHelpers();
+      return { deleteHcHelper: { success: true, __typename: 'DeleteResult' } };
 
     // --- Execution History ---
     // GET_EXECUTION_HISTORY selects `hcExecutionTraces` with the StoredEntityInfo

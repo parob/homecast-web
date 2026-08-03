@@ -850,6 +850,26 @@ export const HC_AUTOMATIONS = gql`
   }
 `;
 
+// Helpers — virtual entities (modes, switches, counters, timers) the automation
+// engine owns. Same StoredEntityInfo shape as automations; `dataJson` holds the
+// serialized HelperDefinition.
+//
+// The operation name must stay `HcHelpers`: Community routes on it (the switch
+// in local-graphql.ts), and a rename that misses the resolver falls through to
+// `default: return {}` — which renders as "no helpers" rather than as an error.
+export const HC_HELPERS = gql`
+  query HcHelpers($homeId: String!) {
+    hcHelpers(homeId: $homeId) {
+      id
+      entityType
+      entityId
+      parentId
+      dataJson
+      updatedAt
+    }
+  }
+`;
+
 // Execution History — uses hcExecutionTraces which returns StoredEntityInfo[]
 // Each entity's dataJson contains the full ExecutionTrace JSON
 export const GET_EXECUTION_HISTORY = gql`

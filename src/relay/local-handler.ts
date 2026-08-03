@@ -503,15 +503,104 @@ async function executeHomeKitActionInner(
     // change instead of assuming it. The event-based path is kept on the sync
     // manager for older servers.
     case 'automation.sync_all': {
-      const { automations } = payload as { automations?: unknown[] };
+      const { automations, helpers } = payload as { automations?: unknown[]; helpers?: unknown[] };
       const { getAutomationEngine } = await import('../automation');
       const engine = getAutomationEngine();
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
+      // Helpers first: an automation's trigger or condition may reference one,
+      // and registering the automation against a helper the store doesn't know
+      // yet reads as "no such value" rather than as an error.
+      //
+      // `helpers` is optional so an older server that only sends automations
+      // still works — but absent is NOT the same as empty. Treating a missing
+      // key as "delete every helper" would let one old pod wipe them all.
+      let syncedHelpers: number | undefined;
+      if (Array.isArray(helpers)) {
+        const list = helpers as Parameters<typeof engine.syncHelpers>[0];
+        engine.syncHelpers(list);
+        syncedHelpers = list.length;
+      }
       const list = (automations ?? []) as Parameters<typeof engine.loadAutomations>[0];
       engine.loadAutomations(list);
-      return { loaded: list.length };
+      return { loaded: list.length, helpers: syncedHelpers };
+    }
+
+    case 'automation.helper_sync': {
+      const { helper } = payload as { helper?: { id?: string } };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      if (!helper?.id) {
+        throw Object.assign(new Error('helper.id required'), { code: ErrorCode.INVALID_REQUEST });
+      }
+      engine.upsertHelper(helper as Parameters<typeof engine.upsertHelper>[0]);
+      return { synced: helper.id };
+    }
+
+    // Current value of every helper the engine has registered.
+    //
+    // Read from the engine, not from the database, deliberately: the database
+    // holds definitions and a persisted copy of past values, while the engine
+    // holds what is true right now. A Helpers list fed from storage would show
+    // a mode that an automation changed a second ago as still being the old
+    // one, and the manual control beside it would then act on a stale reading.
+    case 'automation.helper_states': {
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      return { states: engine.getHelperStates() };
+    }
+
+    // A person operating a helper by hand. Same vocabulary as the `helper`
+    // automation action, and the same dispatch underneath.
+    case 'automation.helper_operate': {
+      const { helperId, operation, value, step, duration } = payload as {
+        helperId?: string; operation?: string; value?: unknown; step?: number;
+        duration?: { hours?: number; minutes?: number; seconds?: number };
+      };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      if (!helperId || !operation) {
+        throw Object.assign(new Error('helperId and operation required'), { code: ErrorCode.INVALID_REQUEST });
+      }
+      if (!engine.getHelper(helperId)) {
+        throw Object.assign(new Error(`No such helper: ${helperId}`), { code: ErrorCode.INVALID_REQUEST });
+      }
+      try {
+        engine.operateHelper(
+          helperId,
+          operation as Parameters<typeof engine.operateHelper>[1],
+          { value, step, duration },
+        );
+      } catch (e) {
+        throw Object.assign(new Error(e instanceof Error ? e.message : String(e)), { code: ErrorCode.INVALID_REQUEST });
+      }
+      return { helperId, operation, state: engine.getHelperStates()[helperId] };
+    }
+
+    // Named to match automation.unload: the row is already gone from the
+    // database, this only unloads it from the running engine.
+    case 'automation.helper_unload': {
+      const { helperId } = payload as { helperId?: string };
+      const { getAutomationEngine } = await import('../automation');
+      const engine = getAutomationEngine();
+      if (!engine) {
+        throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
+      }
+      if (!helperId) {
+        throw Object.assign(new Error('helperId required'), { code: ErrorCode.INVALID_REQUEST });
+      }
+      engine.removeHelper(helperId);
+      return { deleted: helperId };
     }
 
     case 'automation.sync': {

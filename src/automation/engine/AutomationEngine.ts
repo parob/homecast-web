@@ -10,7 +10,10 @@ import type { HomeKitBridge, EngineCallbacks } from './ActionExecutor';
 import type { CodeSandbox } from './CodeSandbox';
 import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
-import type { Automation, Trigger, TriggerData, AutomationMode, HelperDefinition } from '../types/automation';
+import type {
+  Automation, Trigger, TriggerData, AutomationMode, HelperDefinition,
+  HelperOperation, Duration,
+} from '../types/automation';
 import type { ExecutionTrace, ExecutionEvent, ExecutionStatus, BlockedReason } from '../types/execution';
 import { describeTriggerData, capLarge } from './trace-summaries';
 import type { NotifyDelivery } from '../types/notify';
@@ -174,6 +177,60 @@ export class AutomationEngine {
     this.helperManager.loadAll(helpers);
     if (persistedStates) this.helperManager.restoreStates(persistedStates);
     console.log(`[AutomationEngine] Loaded ${helpers.length} helpers`);
+  }
+
+  /**
+   * Apply a complete helper set, as `sync_all` does for automations.
+   *
+   * Unlike `loadHelpers` this REPLACES — a helper missing from the set is
+   * deleted rather than left running. Safe to call repeatedly: helpers whose
+   * definition hasn't changed keep their value and their timers.
+   */
+  syncHelpers(helpers: HelperDefinition[]): void {
+    this.helperManager.replaceAll(helpers);
+    console.log(`[AutomationEngine] Synced ${helpers.length} helpers`);
+  }
+
+  /** Create or update a single helper, keeping its current value if it exists. */
+  upsertHelper(helper: HelperDefinition): void {
+    const existing = this.helperManager.getHelper(helper.id);
+    const carried = existing ? this.stateStore.getHelperState(helper.id) : undefined;
+    if (existing) this.helperManager.remove(helper.id);
+    this.helperManager.register(helper);
+    if (carried !== undefined && helper.type !== 'timer') {
+      this.stateStore.updateHelperState(helper.id, carried);
+    }
+  }
+
+  /** Remove a single helper and stop anything it was running. */
+  removeHelper(helperId: string): void {
+    this.helperManager.remove(helperId);
+  }
+
+  /** A helper's definition, or undefined if it isn't registered. */
+  getHelper(helperId: string): HelperDefinition | undefined {
+    return this.helperManager.getHelper(helperId);
+  }
+
+  /** Current value of every registered helper, keyed by id. */
+  getHelperStates(): Record<string, unknown> {
+    return this.helperManager.getAllStates();
+  }
+
+  /**
+   * Operate a helper by hand — the same operations the `helper` action uses.
+   *
+   * Goes through HelperManager.apply, so a manual change notifies listeners and
+   * pushes state exactly as an automation's would. A person setting Home Mode
+   * to Away must be able to trigger the automations that watch it; a separate
+   * quieter path would have made manual changes invisible to the engine.
+   */
+  operateHelper(
+    helperId: string,
+    operation: HelperOperation,
+    opts: { value?: unknown; step?: number; duration?: Duration } = {},
+  ): void {
+    this.helperManager.apply(helperId, operation, opts);
   }
 
   /**

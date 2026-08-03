@@ -942,6 +942,25 @@ export const DELETE_HC_AUTOMATION = gql`
   }
 `;
 
+export const SAVE_HC_HELPER = gql`
+  mutation SaveHcHelper($homeId: String!, $helperId: String, $data: String!) {
+    saveHcHelper(homeId: $homeId, helperId: $helperId, data: $data) {
+      id
+      entityType
+      entityId
+      parentId
+      dataJson
+      updatedAt
+    }
+  }
+`;
+
+export const DELETE_HC_HELPER = gql`
+  mutation DeleteHcHelper($helperId: String!) {
+    deleteHcHelper(helperId: $helperId)
+  }
+`;
+
 export const RESTORE_AUTOMATION_VERSION = gql`
   mutation RestoreAutomationVersion($homeId: String!, $versionId: String!) {
     restoreAutomationVersion(homeId: $homeId, versionId: $versionId) {

@@ -347,20 +347,9 @@ export class ActionExecutor {
       const id = action.helperId;
       const value = action.value !== undefined ? this.resolveTemplateValue(action.value, ctx) : undefined;
 
-      switch (action.operation) {
-        case 'turn_on': h.turnOn(id); break;
-        case 'turn_off': h.turnOff(id); break;
-        case 'toggle': h.toggle(id); break;
-        case 'set': h.setHelperValue(id, value); break;
-        case 'increment': h.incrementHelper(id, action.step); break;
-        case 'decrement': h.decrementHelper(id, action.step); break;
-        case 'reset': h.resetCounter(id); break;
-        case 'start': h.startTimer(id, action.duration); break;
-        case 'pause': h.pauseTimer(id); break;
-        case 'resume': h.resumeTimer(id); break;
-        case 'cancel': h.cancelTimer(id); break;
-        case 'finish': h.finishTimer(id); break;
-      }
+      // Dispatch lives on HelperManager so this action and a person operating
+      // the same helper from the Helpers list cannot diverge.
+      h.apply(id, action.operation, { value, step: action.step, duration: action.duration });
 
       const output = {
         helperId: id,
