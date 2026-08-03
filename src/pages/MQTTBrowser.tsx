@@ -854,11 +854,13 @@ export default function MQTTBrowser() {
                   title={isEditorOpen ? 'Collapse group' : 'Expand group'}
                 >
                   <span className="flex items-center justify-between gap-2 min-w-0 w-full">
-                    {isEditorOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                    <span className="flex items-center gap-2 min-w-0">
-                      <AccessoryTypeIcon payload={ep} />
-                      <TypeBadge type="group" />
-                      <span className="font-mono truncate">{groupSlug}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      {isEditorOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                      <span className="flex items-center gap-2 min-w-0">
+                        <AccessoryTypeIcon payload={ep} />
+                        <TypeBadge type="group" />
+                        <span className="font-mono truncate">{groupSlug}</span>
+                      </span>
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
                       <span className="font-mono text-[11px] font-normal text-right"><FmtVal payload={ep} /></span>
