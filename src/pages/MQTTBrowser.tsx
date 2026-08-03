@@ -49,7 +49,7 @@ export default function MQTTBrowser() {
   const [filter, setFilter] = useState(() => searchParams.get('filter') || '');
   const [expandedTopic, setExpandedTopic] = useState<string | null>(() => searchParams.get('topic'));
   const [rawMode, setRawMode] = useState(() => searchParams.get('view') === 'json');
-  const [publishValue, setPublishValue] = useState('');
+  const [publishValues, setPublishValues] = useState<Record<string, string>>({});
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
   const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
@@ -85,8 +85,11 @@ export default function MQTTBrowser() {
     if (!expandedTopic) return;
     if (document.activeElement?.tagName === 'TEXTAREA') return;
     const raw = messages[expandedTopic]?.payload || '{}';
-    try { setPublishValue(JSON.stringify(JSON.parse(raw), null, 2)); }
-    catch { setPublishValue(raw); }
+    const formatted = (() => {
+      try { return JSON.stringify(JSON.parse(raw), null, 2); }
+      catch { return raw; }
+    })();
+    setPublishValues(prev => ({ ...prev, [expandedTopic]: formatted }));
   }, [expandedTopic, messages]);
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
@@ -716,7 +719,11 @@ export default function MQTTBrowser() {
           const expandTopic = (topic: string) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
             setExpandedTopic(topic); setRawMode(false); updateUrlParams({ topic, view: null });
-            try { setPublishValue(JSON.stringify(JSON.parse(ep), null, 2)); } catch { setPublishValue(ep); }
+            const formatted = (() => {
+              try { return JSON.stringify(JSON.parse(ep), null, 2); }
+              catch { return ep; }
+            })();
+            setPublishValues(prev => ({ ...prev, [topic]: formatted }));
           };
 
           const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx = 0) => {
@@ -749,10 +756,10 @@ export default function MQTTBrowser() {
             };
             const renderJson = () => (
               <div className="space-y-1.5">
-                <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValue} onChange={(e) => { setPublishValue(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
+                <textarea ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }} value={publishValues[topic] ?? ep} onChange={(e) => { setPublishValues(prev => ({ ...prev, [topic]: e.target.value })); const t = e.target; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }} className="w-full font-mono text-[11px] bg-background border rounded p-1.5 outline-none focus:border-primary resize-y min-h-[40px]" />
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <span className="font-mono text-[10px] text-muted-foreground truncate min-w-0" title={topic + '/set'}>{topic}/set</span>
-                  <button onClick={() => publishToSet(topic, publishValue)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
+                  <button onClick={() => publishToSet(topic, publishValues[topic] ?? ep)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
                     <Send className="h-3 w-3" /> Publish
                   </button>
                 </div>
@@ -761,12 +768,14 @@ export default function MQTTBrowser() {
             const panelIndent = Math.max(insetPx, 12);
             return (
               <div
-                className="relative mb-2 mr-3 w-full max-w-sm rounded-b-md border border-l-2 border-primary/40 bg-muted/20 pb-2 pl-3 pt-1 shadow-sm lg:max-w-3xl"
+                className="relative -mt-px mb-2 mr-3 w-full max-w-sm rounded-b-md border border-l-2 border-primary/40 bg-muted/20 pb-2 pl-3 pt-1 shadow-sm lg:max-w-3xl"
                 style={{ marginLeft: panelIndent, width: `calc(100% - ${panelIndent + 12}px)` }}
               >
                 {/* Header: status + Controls/JSON toggle (toggle hidden on lg+ where both render side-by-side) */}
                 <div className="flex items-center justify-between px-3 py-1">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                  <span className="min-w-0 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 font-medium uppercase tracking-wide">Expanded</span>
+                    <span className="truncate font-mono" title={topic}>{topic}</span>
                     {messages[topic]?.updates > 1 && <span>{messages[topic].updates} updates</span>}
                   </span>
                   <div className="flex items-center gap-2 text-[10px] lg:hidden">
@@ -783,18 +792,23 @@ export default function MQTTBrowser() {
                 )}
                 {/* Content: stacked + tab-toggled on narrow; side-by-side on lg+ */}
                 <div className="px-3 py-1 flex flex-col lg:flex-row gap-3 items-start">
-                  <div className={`w-full lg:flex-1 lg:max-w-sm min-w-0 ${rawMode ? 'hidden lg:block' : ''}`}>
+                  <section className={`w-full rounded-md border border-border/70 bg-background/50 p-2 lg:flex-1 lg:max-w-sm min-w-0 ${rawMode ? 'hidden lg:block' : ''}`}>
+                    <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Widget controls</div>
                     {renderControls()}
-                  </div>
-                  <div className={`w-full lg:flex-1 min-w-0 ${!rawMode ? 'hidden lg:block' : ''}`}>
+                  </section>
+                  <section className={`w-full rounded-md border border-border/70 bg-background/50 p-2 lg:flex-1 min-w-0 ${!rawMode ? 'hidden lg:block' : ''}`}>
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <span>Publish payload</span>
+                      <span className="normal-case font-mono font-normal truncate" title={topic + '/set'}>{topic}/set</span>
+                    </div>
                     {renderJson()}
-                  </div>
+                  </section>
                 </div>
               </div>
             );
           };
 
-          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { depth?: number; short?: boolean }) => {
+          const renderCollapsedRow = (topic: string, payload: string, timestamp: number, opts?: { depth?: number; short?: boolean; parentGroupTopic?: string }) => {
             const avail = availability[topic];
             const isOffline = avail === 'offline';
             const isRecent = Date.now() - timestamp < 8000;
@@ -803,7 +817,15 @@ export default function MQTTBrowser() {
             const depth = opts?.depth || 0;
             const insetPx = depth * 16 + (opts?.short ? 20 : 0);
 
-            const toggleExpand = () => { if (isThisExpanded) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); } else expandTopic(topic); };
+            const toggleExpand = () => {
+              if (isThisExpanded) {
+                const parentTopic = opts?.parentGroupTopic ?? null;
+                setExpandedTopic(parentTopic);
+                updateUrlParams({ topic: parentTopic, view: null });
+              } else {
+                expandTopic(topic);
+              }
+            };
             return (
               <div key={isRecent ? `${topic}-${timestamp}` : topic}>
                 <div role="button" tabIndex={0} onClick={toggleExpand}
@@ -879,7 +901,7 @@ export default function MQTTBrowser() {
                 {isEditorOpen && (
                   <div className="divide-y">
                     {g.memberTopics.map(([t, m]) =>
-                      renderCollapsedRow(t, m.payload, m.timestamp, { depth: topicDepth, short: true })
+                      renderCollapsedRow(t, m.payload, m.timestamp, { depth: topicDepth, short: true, parentGroupTopic: g.topic })
                     )}
                   </div>
                 )}
