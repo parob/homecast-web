@@ -32,7 +32,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@apollo/client/react';
-import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
+import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS, HC_HELPERS } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
@@ -54,7 +54,7 @@ import { createDefaultNodeData, ALL_NODE_DEFINITIONS, CATEGORY_STYLES } from './
 import type { NodeDefinition } from './constants';
 import { graphToAutomation } from './serialization/graphToAutomation';
 import { automationToGraph } from './serialization/automationToGraph';
-import type { Automation } from '@/automation/types/automation';
+import type { Automation, HelperDefinition } from '@/automation/types/automation';
 
 const nodeTypes: NodeTypes = {
   automationNode: BaseNode,
@@ -127,10 +127,27 @@ function AutomationEditorInner({
     HC_AUTOMATIONS,
     { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
   );
+  const { data: helpersData } = useQuery<{ hcHelpers: { id: string; entityId: string; dataJson: string }[] }>(
+    HC_HELPERS,
+    { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first', errorPolicy: 'all' },
+  );
   const accessories = accessoriesData?.accessories || [];
   const homes = homesData?.homes || [];
   const scenes = scenesData?.scenes || [];
   const serviceGroups = serviceGroupsData?.serviceGroups || [];
+  // The Set Helper node offers operations that depend on the helper's type, so
+  // it needs the definitions, not just names.
+  const availableHelpers = useMemo(() => {
+    const out: HelperDefinition[] = [];
+    for (const row of helpersData?.hcHelpers ?? []) {
+      try {
+        const parsed = JSON.parse(row.dataJson) as HelperDefinition;
+        if (parsed?.type) out.push({ ...parsed, id: parsed.id || row.entityId });
+      } catch { /* unreadable row — not something to offer as a target */ }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [helpersData]);
+
   const availableAutomations = useMemo(() => {
     return (automationsData?.hcAutomations ?? []).map((a) => {
       try {
@@ -872,6 +889,7 @@ function AutomationEditorInner({
             scenes={scenes}
             serviceGroups={serviceGroups}
             availableAutomations={availableAutomations}
+            availableHelpers={availableHelpers}
             automationId={existingIdRef.current ?? undefined}
             homeId={homeId}
             onSaveBeforeTest={isDirty ? saveOnly : undefined}

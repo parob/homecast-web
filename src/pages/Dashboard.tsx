@@ -50,7 +50,6 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
-import { HelpersSection, HelpersPill } from '@/components/helpers/HelpersSection';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
@@ -1473,7 +1472,6 @@ const Dashboard = () => {
   // Scenes/Automations sections, toggled by the pills in the sensor-summary row
   const [scenesOpen, setScenesOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
-  const [helpersOpen, setHelpersOpen] = useState(false);
   // Version counter to force re-renders when visibility changes
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   // Version counter to force re-renders when item order changes (for home view cache reads)
@@ -6766,21 +6764,15 @@ const Dashboard = () => {
                       <ScenesPill
                         homeId={selectedHomeId}
                         open={scenesOpen}
-                        onToggle={() => { setAutomationsOpen(false); setHelpersOpen(false); setScenesOpen(o => !o); }}
+                        onToggle={() => { setAutomationsOpen(false); setScenesOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                       />
                       <AutomationsPill
                         homeId={selectedHomeId}
                         open={automationsOpen}
-                        onToggle={() => { setScenesOpen(false); setHelpersOpen(false); setAutomationsOpen(o => !o); }}
+                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      />
-                      <HelpersPill
-                        homeId={selectedHomeId}
-                        open={helpersOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setHelpersOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
                       />
                     </>
                   )}
@@ -6793,7 +6785,6 @@ const Dashboard = () => {
                   <>
                     <ScenesSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
-                    <HelpersSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={helpersOpen} />
                   </>
                 )}
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>

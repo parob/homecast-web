@@ -2,6 +2,8 @@
 // Opens on double-click, has Done/Cancel/Delete buttons
 
 import { useCallback, useMemo, useState, useRef } from 'react';
+import { HELPER_OPERATIONS } from '@/automation/helpers/catalogue';
+import type { HelperDefinition } from '@/automation/types/automation';
 import { type Node, type Edge } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -128,6 +130,7 @@ interface NodeConfigPanelProps {
   scenes?: HomeKitScene[];
   serviceGroups?: HomeKitServiceGroup[];
   availableAutomations?: { id: string; name: string }[];
+  availableHelpers?: HelperDefinition[];
   /** Automation ID for test mode (only for saved automations) */
   automationId?: string;
   /**
@@ -141,7 +144,7 @@ interface NodeConfigPanelProps {
   onSaveBeforeTest?: () => Promise<void>;
 }
 
-export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], automationId, homeId, onSaveBeforeTest }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateData, onDelete, onClose, accessories = [], homes = [], scenes = [], serviceGroups = [], availableAutomations = [], availableHelpers = [], automationId, homeId, onSaveBeforeTest }: NodeConfigPanelProps) {
   const data = node.data as FlowNodeData;
   const styles = CATEGORY_STYLES[data.category] ?? CATEGORY_STYLES.action;
   // Test mode state (trigger nodes only)
@@ -208,7 +211,7 @@ export function NodeConfigPanel({ node, allNodes = [], allEdges = [], onUpdateDa
         {/* Config form — scrollable */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 space-y-4">
-            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, node.id, allNodes, allEdges, serviceGroups, availableAutomations)}
+            {renderConfigForm(data.category, data.nodeType, data.config, updateConfig, updateConfigBatch, accessories, homes, scenes, node.id, allNodes, allEdges, serviceGroups, availableAutomations, availableHelpers)}
 
             {/* Error handling section — action nodes only, collapsed by default */}
             {data.category === 'action' && (
@@ -398,6 +401,7 @@ function renderConfigForm(
   allEdges?: Edge[],
   serviceGroups?: HomeKitServiceGroup[],
   availableAutomations?: { id: string; name: string }[],
+  availableHelpers?: HelperDefinition[],
 ) {
   // ---- TRIGGERS ----
   if (category === 'trigger') {
@@ -976,6 +980,110 @@ function renderConfigForm(
             )}
           </>
         );
+
+      case 'helper': {
+        const helpers = availableHelpers ?? [];
+        const selected = helpers.find(h => h.id === (config.helperId as string));
+        const operations = selected ? HELPER_OPERATIONS[selected.type] ?? [] : [];
+        const operation = (config.operation as string) ?? '';
+
+        return (
+          <>
+            <ConfigField
+              label="Helper"
+              hint={helpers.length === 0 ? 'Create a helper from the Helpers section on the dashboard first.' : undefined}
+            >
+              <select
+                className="w-full h-8 rounded-md border bg-background px-2 text-xs"
+                value={(config.helperId as string) ?? ''}
+                onChange={(e) => {
+                  const next = helpers.find(h => h.id === e.target.value);
+                  // Changing the target changes which operations exist, so an
+                  // operation carried over from the previous helper could be one
+                  // this type cannot perform — the engine would throw at run time.
+                  const allowed = next ? HELPER_OPERATIONS[next.type] ?? [] : [];
+                  const keep = allowed.some(o => o.value === operation);
+                  updateConfigBatch({
+                    helperId: e.target.value,
+                    operation: keep ? operation : allowed[0]?.value ?? '',
+                    value: undefined,
+                  });
+                }}
+              >
+                <option value="">Choose a helper…</option>
+                {helpers.map(h => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            </ConfigField>
+
+            {selected && (
+              <ConfigField label="Do what">
+                <select
+                  className="w-full h-8 rounded-md border bg-background px-2 text-xs"
+                  value={operation}
+                  onChange={(e) => updateConfigBatch({ operation: e.target.value, value: undefined })}
+                >
+                  {operations.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </ConfigField>
+            )}
+
+            {/* `set` is the only operation that carries a value, and what that
+                value may be is decided by the helper's type — a mode takes one
+                of its options, everything else takes free text or a template. */}
+            {selected && operation === 'set' && (
+              <ConfigField label="To" hint="Supports {{ templates }}">
+                {selected.type === 'input_select' ? (
+                  <select
+                    className="w-full h-8 rounded-md border bg-background px-2 text-xs"
+                    value={(config.value as string) ?? ''}
+                    onChange={(e) => updateConfig('value', e.target.value)}
+                  >
+                    <option value="">Choose…</option>
+                    {selected.options.filter(Boolean).map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    className="h-8 text-xs"
+                    value={(config.value as string) ?? ''}
+                    placeholder={selected.type === 'input_number' ? '21' : 'Value'}
+                    onChange={(e) => updateConfig('value', e.target.value)}
+                  />
+                )}
+              </ConfigField>
+            )}
+
+            {selected?.type === 'timer' && operation === 'start' && (
+              <ConfigField label="For" hint="Leave blank to use the timer's own duration">
+                <div className="grid grid-cols-3 gap-2">
+                  {(['hours', 'minutes', 'seconds'] as const).map(unit => (
+                    <Input
+                      key={unit}
+                      type="number"
+                      className="h-8 text-xs"
+                      placeholder={unit}
+                      value={(config.duration as Record<string, number> | undefined)?.[unit] ?? ''}
+                      onChange={(e) => {
+                        const current = (config.duration as Record<string, number> | undefined) ?? {};
+                        const raw = e.target.value;
+                        const next = { ...current };
+                        if (raw === '') delete next[unit];
+                        else next[unit] = Number(raw) || 0;
+                        updateConfig('duration', Object.keys(next).length ? next : undefined);
+                      }}
+                    />
+                  ))}
+                </div>
+              </ConfigField>
+            )}
+          </>
+        );
+      }
 
       default:
         return <p className="text-xs text-muted-foreground">Configuration for {nodeType} action</p>;

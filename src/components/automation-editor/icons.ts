@@ -9,13 +9,13 @@
 import {
   Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow, StickyNote,
-  Repeat, ListTree, Split, Variable, CircleStop, ToggleLeft, WifiOff,
+  Repeat, ListTree, Split, Variable, CircleStop, ToggleLeft, WifiOff, Blocks,
 } from 'lucide-react';
 
 export const NODE_ICONS: Record<string, React.ElementType> = {
   Zap, Clock, Globe, AlertCircle, Lightbulb, Play, Timer, Bell, Send,
   GitBranch, GitMerge, Pause, Code, Workflow, StickyNote,
-  Repeat, ListTree, Split, Variable, CircleStop, ToggleLeft, WifiOff,
+  Repeat, ListTree, Split, Variable, CircleStop, ToggleLeft, WifiOff, Blocks,
 };
 
 /** Resolve a node definition's icon name, falling back to a neutral glyph. */

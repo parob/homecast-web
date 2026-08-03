@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AutomationCard } from './AutomationCard';
+import { HelpersPanel } from '@/components/helpers/HelpersSection';
 import { AutomationDetailDialog } from './AutomationDetailDialog';
 import { AutomationFormDialog } from './AutomationFormDialog';
 // Lazy: pulls in the whole flow editor (@xyflow/react) — only load once the user opens it
@@ -14,6 +15,13 @@ import { GET_AUTOMATIONS, GET_HOMES, HC_AUTOMATIONS } from '@/lib/graphql/querie
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
 import type { HomeKitAutomation, HomeKitHome, GetAutomationsResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
+
+/** StoredEntityInfo rows as the HC_AUTOMATIONS document selects them. */
+interface HcEntity {
+  entityId: string;
+  dataJson: string;
+  updatedAt: string;
+}
 
 interface AutomationsSectionProps {
   homeId: string;
@@ -43,7 +51,7 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demo
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
-  const { data: hcData } = useQuery(HC_AUTOMATIONS, {
+  const { data: hcData } = useQuery<{ hcAutomations: HcEntity[] }>(HC_AUTOMATIONS, {
     variables: { homeId },
     skip: !homeId || !!demoAutomations,
     fetchPolicy: 'cache-first',
@@ -104,7 +112,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
   );
 
   // Homecast-managed automations — only fetch when section is expanded
-  const { data: hcData, loading: hcLoading, refetch: hcRefetch } = useQuery(HC_AUTOMATIONS, {
+  const { data: hcData, loading: hcLoading, refetch: hcRefetch } = useQuery<{ hcAutomations: HcEntity[] }>(HC_AUTOMATIONS, {
     variables: { homeId },
     skip: !homeId || !expanded || !!demoAutomations,
     fetchPolicy: 'cache-first',
@@ -125,7 +133,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
 
   const hcAutomations = useMemo(() => {
     const entities = hcData?.hcAutomations || [];
-    return entities.map((e: { entityId: string; dataJson: string; updatedAt: string }) => {
+    return entities.map((e) => {
       try {
         return JSON.parse(e.dataJson) as Automation;
       } catch {
@@ -183,6 +191,15 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
     <>
       <AnimatedCollapse open={expanded}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
+          {/* Helpers first: they are the state the automations below read and
+              set, and a helper nobody automates does nothing — so they belong
+              inside this section rather than competing with it for a pill. */}
+          <HelpersPanel
+            homeId={homeId}
+            compact={compact}
+            isDarkBackground={isDarkBackground}
+            active={expanded && !demoAutomations}
+          />
           {relayNeedsUpdate && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               HomeKit automations require a relay update. Homecast automations are unaffected.

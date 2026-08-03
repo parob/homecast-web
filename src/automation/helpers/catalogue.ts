@@ -4,7 +4,7 @@
 // display rules that go with each. Shared by the Helpers section and the
 // automation editor so the two can never disagree about what exists.
 
-import type { HelperDefinition, HelperType } from '../types/automation';
+import type { HelperDefinition, HelperType, HelperOperation } from '../types/automation';
 
 /**
  * Helper types the engine can actually run.
@@ -149,6 +149,51 @@ export function defaultHelper(
       return { ...base, type, hasDate: true, hasTime: true, initialValue: '' };
   }
 }
+
+/**
+ * The operations each helper type can actually perform.
+ *
+ * `HelperOperation` is one flat union covering every type, so nothing stops an
+ * automation asking a counter to `pause` — `HelperManager.apply` would route it
+ * to `pauseTimer`, find no timer, and return silently. Constraining the choice
+ * at the point it is made is the only place this can be prevented without
+ * inventing per-type operation unions.
+ */
+export const HELPER_OPERATIONS: Record<CreatableHelperType, { value: HelperOperation; label: string }[]> = {
+  input_boolean: [
+    { value: 'turn_on', label: 'Turn on' },
+    { value: 'turn_off', label: 'Turn off' },
+    { value: 'toggle', label: 'Toggle' },
+    { value: 'set', label: 'Set to…' },
+  ],
+  input_select: [
+    { value: 'set', label: 'Set to…' },
+  ],
+  counter: [
+    { value: 'increment', label: 'Add one' },
+    { value: 'decrement', label: 'Subtract one' },
+    { value: 'reset', label: 'Reset' },
+    { value: 'set', label: 'Set to…' },
+  ],
+  timer: [
+    { value: 'start', label: 'Start' },
+    { value: 'cancel', label: 'Cancel' },
+    { value: 'pause', label: 'Pause' },
+    { value: 'resume', label: 'Resume' },
+    { value: 'finish', label: 'Finish now' },
+  ],
+  input_number: [
+    { value: 'set', label: 'Set to…' },
+    { value: 'increment', label: 'Increase' },
+    { value: 'decrement', label: 'Decrease' },
+  ],
+  input_text: [
+    { value: 'set', label: 'Set to…' },
+  ],
+  input_datetime: [
+    { value: 'set', label: 'Set to…' },
+  ],
+};
 
 /** Human-readable current value for the Helpers list. */
 export function formatHelperValue(helper: HelperDefinition, value: unknown): string {

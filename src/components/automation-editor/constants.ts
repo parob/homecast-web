@@ -144,11 +144,13 @@ export const ACTION_NODES: NodeDefinition[] = [
     category: 'action',
     description: 'Run custom JavaScript to transform data',
   },
-  // NOTE: the `helper` action (virtual switches, modes, counters, timers) is
-  // implemented end-to-end in the engine, serializes both ways, and persists —
-  // but it is deliberately NOT in the palette yet. There is no UI to *create* a
-  // helper definition, so the node would reference helpers a user cannot make.
-  // Add it here alongside the helper-management screen.
+  {
+    type: 'helper',
+    label: 'Set Helper',
+    icon: 'Blocks',
+    category: 'action',
+    description: 'Change a mode, switch, counter or timer',
+  },
 ];
 
 // ============================================================
@@ -380,6 +382,14 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
   ],
   code: [
     { field: 'result', type: 'unknown', label: 'Return Value' },
+  ],
+  helper: [
+    { field: 'helperId', type: 'string', label: 'Helper ID' },
+    { field: 'operation', type: 'string', label: 'Operation' },
+    // The value AFTER the operation, so a later node can branch on the result
+    // rather than re-reading it and racing whatever changed it next.
+    { field: 'state', type: 'unknown', label: 'New Value' },
+    { field: 'success', type: 'boolean', label: 'Succeeded' },
   ],
   // Logic
   if: [

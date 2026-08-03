@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { Plus, ChevronRight, Minus, Play, Square, Blocks } from 'lucide-react';
+import { Plus, Minus, Play, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { serverConnection } from '@/server/connection';
@@ -46,45 +45,12 @@ function parseHelpers(entities: StoredHelperEntity[]): HelperDefinition[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function HelpersPill({ homeId, open, onToggle, isDarkBackground }: {
-  homeId: string;
-  open: boolean;
-  onToggle: () => void;
-  isDarkBackground?: boolean;
-}) {
-  const { data } = useQuery(HC_HELPERS, {
-    variables: { homeId },
-    skip: !homeId,
-    fetchPolicy: 'cache-first',
-    errorPolicy: 'all',
-  });
-  const count = (data?.hcHelpers || []).length;
-  if (!homeId) return null;
-
-  return (
-    <button
-      type="button"
-      data-tour="helpers"
-      data-testid="helpers-pill"
-      onClick={onToggle}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-        isDarkBackground
-          ? (open ? 'bg-white/25 text-white' : 'bg-black/25 text-white/90 hover:bg-black/35')
-          : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80')
-      }`}
-    >
-      <Blocks className="h-3 w-3" />
-      <span>Helpers{count > 0 ? ` ${count}` : ''}</span>
-      <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
-    </button>
-  );
-}
-
-export function HelpersSection({ homeId, compact, isDarkBackground, open: expanded }: {
+export function HelpersPanel({ homeId, compact, isDarkBackground, active }: {
   homeId: string;
   compact?: boolean;
   isDarkBackground?: boolean;
-  open: boolean;
+  /** True while the containing section is open — gates fetching and polling. */
+  active: boolean;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<HelperDefinition | undefined>(undefined);
@@ -92,9 +58,9 @@ export function HelpersSection({ homeId, compact, isDarkBackground, open: expand
   /** Null while unknown; false once we know the engine isn't reachable. */
   const [engineLive, setEngineLive] = useState<boolean | null>(null);
 
-  const { data, refetch } = useQuery(HC_HELPERS, {
+  const { data, refetch } = useQuery<{ hcHelpers: StoredHelperEntity[] }>(HC_HELPERS, {
     variables: { homeId },
-    skip: !homeId || !expanded,
+    skip: !homeId || !active,
     fetchPolicy: 'cache-first',
     errorPolicy: 'all',
   });
@@ -103,7 +69,7 @@ export function HelpersSection({ homeId, compact, isDarkBackground, open: expand
   const [deleteHelper] = useMutation(DELETE_HC_HELPER);
 
   const helpers = useMemo(
-    () => parseHelpers((data?.hcHelpers || []) as StoredHelperEntity[]),
+    () => parseHelpers(data?.hcHelpers ?? []),
     [data],
   );
 
@@ -126,11 +92,11 @@ export function HelpersSection({ homeId, compact, isDarkBackground, open: expand
   // it has to be polled, but there's no reason to pay for that when it isn't
   // on screen.
   useEffect(() => {
-    if (!expanded || !homeId) return;
+    if (!active || !homeId) return;
     void refreshStates();
     const t = setInterval(() => { void refreshStates(); }, STATE_POLL_MS);
     return () => clearInterval(t);
-  }, [expanded, homeId, refreshStates]);
+  }, [active, homeId, refreshStates]);
 
   const operate = useCallback(async (
     helperId: string,
@@ -184,12 +150,21 @@ export function HelpersSection({ homeId, compact, isDarkBackground, open: expand
 
   return (
     <>
-      <AnimatedCollapse open={expanded}>
-        <div className={compact ? 'mb-3' : 'mb-6'}>
+      <div className={compact ? 'mb-3' : 'mb-4'}>
+          {/* Labelled, because inside the Automations section an unlabelled row
+              of controls would read as more automations. */}
+          <div className="flex items-baseline gap-2 mb-1.5">
+            <span className={`text-xs font-medium ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
+              Helpers
+            </span>
+            <span className={`text-[11px] ${isDarkBackground ? 'text-white/35' : 'text-muted-foreground/60'}`}>
+              values your automations can read and set
+            </span>
+          </div>
           {isEmpty && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
-              No helpers yet. A helper is a value your automations own — a mode like Home/Away, a
-              countdown, or a counter — so they can remember things Apple Home has no way to store.
+              A helper is something your automations remember — a mode like Home/Away, a cooldown
+              timer, or a counter. Apple Home has nowhere to put any of that.
             </p>
           )}
           {engineLive === false && !isEmpty && (
@@ -230,8 +205,7 @@ export function HelpersSection({ homeId, compact, isDarkBackground, open: expand
               <span className={compact ? 'text-xs' : 'text-sm'}>New</span>
             </button>
           </div>
-        </div>
-      </AnimatedCollapse>
+      </div>
 
       <HelperEditorDialog
         open={editorOpen}
