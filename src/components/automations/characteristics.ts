@@ -107,6 +107,17 @@ export interface WritableChar {
   currentValue?: unknown;
 }
 
+/**
+ * HomeKit UUIDs are case-insensitive. The relay reports uppercase UUIDs while
+ * cloud-cached automation data may contain lowercase UUIDs, so never resolve
+ * an accessory with a case-sensitive comparison in an editor.
+ */
+export function findAccessoryById(accessories: HomeKitAccessory[], accessoryId: string | undefined): HomeKitAccessory | undefined {
+  if (!accessoryId) return undefined;
+  const normalizedId = accessoryId.toLowerCase();
+  return accessories.find(accessory => accessory.id.toLowerCase() === normalizedId);
+}
+
 function classify(char: HomeKitCharacteristic): CharKind {
   const type = char.characteristicType;
   const valid = char.validValues;

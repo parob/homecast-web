@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  defaultValueFor, describeValue, getWritableCharacteristics, isHiddenChar, primaryWritableChar,
+  defaultValueFor, describeValue, findAccessoryById, getWritableCharacteristics, isHiddenChar, primaryWritableChar,
 } from '../characteristics';
 import type { HomeKitAccessory, HomeKitCharacteristic } from '@/lib/graphql/types';
 
@@ -80,6 +80,21 @@ describe('getWritableCharacteristics', () => {
     const [lock] = getWritableCharacteristics(accessory([char({ characteristicType: 'lock_target_state' })]));
 
     expect(lock.options).toHaveLength(2);
+  });
+});
+
+describe('findAccessoryById', () => {
+  it('matches UUIDs case-insensitively', () => {
+    const acc = accessory([char({ characteristicType: 'power_state' })]);
+
+    expect(findAccessoryById([acc], 'acc-1')).toBe(acc);
+  });
+
+  it('returns undefined for an unknown or empty ID', () => {
+    const acc = accessory([char({ characteristicType: 'power_state' })]);
+
+    expect(findAccessoryById([acc], 'other')).toBeUndefined();
+    expect(findAccessoryById([acc], '')).toBeUndefined();
   });
 });
 

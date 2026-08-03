@@ -16,7 +16,8 @@ import { GET_ACCESSORIES, GET_HOMES } from '@/lib/graphql/queries';
 import { CREATE_AUTOMATION, UPDATE_AUTOMATION } from '@/lib/graphql/mutations';
 import { charLabel, formatValue } from './format';
 import { CharacteristicValueInput } from './CharacteristicValueInput';
-import { defaultValueFor, getWritableCharacteristics, isHiddenChar } from './characteristics';
+import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
+import { defaultValueFor, findAccessoryById, getWritableCharacteristics, isHiddenChar } from './characteristics';
 import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
@@ -198,18 +199,18 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         setOffsetMinutes(firstEvent.offsetMinutes ?? 0);
       } else if (firstEvent?.type === 'characteristic') {
         // Determine if this is a sensor or accessory and write to the correct state
-        const acc = accessories.find(a => a.id === firstEvent.accessoryId);
+        const acc = findAccessoryById(accessories, firstEvent.accessoryId);
         const isSensor = acc ? isSensorAccessory(acc) : false;
         setTriggerCategory(isSensor ? 'sensor' : 'accessory');
         let tv: unknown = true;
         if (firstEvent.triggerValue != null) { try { tv = typeof firstEvent.triggerValue === 'string' ? JSON.parse(firstEvent.triggerValue) : firstEvent.triggerValue; } catch { tv = firstEvent.triggerValue; } }
-        const triggerState = { id: firstEvent.accessoryId ?? '', name: firstEvent.accessoryName ?? '', charType: firstEvent.characteristicType ?? '', value: tv, operator: 'equal' as const };
+        const triggerState = { id: firstEvent.accessoryId ?? '', name: firstEvent.accessoryName ?? '', charType: canonicalCharacteristic(firstEvent.characteristicType ?? ''), value: tv, operator: 'equal' as const };
         if (isSensor) setSensorTrigger(triggerState); else setAccessoryTrigger(triggerState);
       } else if (automation.trigger?.type === 'event') {
         setTriggerCategory('accessory'); // Predicate-based — best guess
       }
 
-      setActions((automation.actions ?? []).map(a => ({ accessoryId: a.accessoryId, accessoryName: a.accessoryName, characteristicType: a.characteristicType, targetValue: a.targetValue != null ? (typeof a.targetValue === 'string' ? JSON.parse(a.targetValue) : a.targetValue) : null })));
+      setActions((automation.actions ?? []).map(a => ({ accessoryId: a.accessoryId, accessoryName: a.accessoryName, characteristicType: canonicalCharacteristic(a.characteristicType), targetValue: a.targetValue != null ? (typeof a.targetValue === 'string' ? JSON.parse(a.targetValue) : a.targetValue) : null })));
 
       // Populate conditions from trigger.conditions
       const triggerConditions = automation.trigger?.conditions ?? [];
@@ -217,7 +218,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
         setConditions(triggerConditions.map(c => ({
           accessoryId: c.accessoryId ?? '',
           accessoryName: c.accessoryName ?? '',
-          characteristicType: c.characteristicType ?? '',
+          characteristicType: canonicalCharacteristic(c.characteristicType ?? ''),
           operator: (c.operator === 'greaterThan' || c.operator === 'greater' ? 'greater' : c.operator === 'lessThan' || c.operator === 'less' ? 'less' : 'equal') as 'equal' | 'greater' | 'less',
           value: c.value != null ? (typeof c.value === 'string' ? (() => { try { return JSON.parse(c.value!); } catch { return c.value; } })() : c.value) : null,
         })));
@@ -307,10 +308,14 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay)
   const relayCannotEdit = homes.find(h => h.id === homeId)?.isAdmin === false;
 
-  const triggerAccessory = accessories.find(a => a.id === triggerAccessoryId);
+  const triggerAccessory = findAccessoryById(accessories, triggerAccessoryId);
   const triggerChars = triggerCategory === 'sensor' ? getReadableChars(triggerAccessory) : getWritableCharacteristics(triggerAccessory);
-  const selectedActionIds = useMemo(() => new Set(actions.map(a => a.accessoryId).filter(Boolean)), [actions]);
-  const selectedConditionIds = useMemo(() => new Set(conditions.map(c => c.accessoryId).filter(Boolean)), [conditions]);
+  const selectedActionIdKeys = useMemo(() => new Set(actions.map(a => a.accessoryId?.toLowerCase()).filter(Boolean)), [actions]);
+  const selectedConditionIdKeys = useMemo(() => new Set(conditions.map(c => c.accessoryId?.toLowerCase()).filter(Boolean)), [conditions]);
+  // AccessoryPicker compares IDs as supplied by the accessory query. Keep
+  // those display IDs while using normalized keys for saved automation data.
+  const selectedActionIds = useMemo(() => new Set(accessories.filter(a => selectedActionIdKeys.has(a.id.toLowerCase())).map(a => a.id)), [accessories, selectedActionIdKeys]);
+  const selectedConditionIds = useMemo(() => new Set(accessories.filter(a => selectedConditionIdKeys.has(a.id.toLowerCase())).map(a => a.id)), [accessories, selectedConditionIdKeys]);
 
   const filteredTriggerAccessories = useMemo(() => {
     if (triggerCategory === 'sensor') return accessories.filter(a => a.isReachable && isSensorAccessory(a));
@@ -321,14 +326,14 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   const handlePickDevice = (accessoryId: string) => {
     const acc = accessories.find(a => a.id === accessoryId);
     if (!acc) return;
-    if (selectedActionIds.has(accessoryId)) setActions(actions.filter(a => a.accessoryId !== accessoryId));
+    if (selectedActionIdKeys.has(accessoryId.toLowerCase())) setActions(actions.filter(a => a.accessoryId.toLowerCase() !== accessoryId.toLowerCase()));
     else setActions([...actions, { accessoryId, accessoryName: acc.name, characteristicType: '', targetValue: null }]);
   };
 
   const handlePickConditionDevice = (accessoryId: string) => {
     const acc = accessories.find(a => a.id === accessoryId);
     if (!acc) return;
-    if (selectedConditionIds.has(accessoryId)) setConditions(conditions.filter(c => c.accessoryId !== accessoryId));
+    if (selectedConditionIdKeys.has(accessoryId.toLowerCase())) setConditions(conditions.filter(c => c.accessoryId.toLowerCase() !== accessoryId.toLowerCase()));
     else setConditions([...conditions, { accessoryId, accessoryName: acc.name, characteristicType: '', operator: 'equal', value: true }]);
   };
 
@@ -559,7 +564,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
               </div>
 
               {conditions.map((cond, i) => {
-                const acc = accessories.find(a => a.id === cond.accessoryId);
+                const acc = findAccessoryById(accessories, cond.accessoryId);
                 const chars = getReadableChars(acc);
                 const selectedChar = chars.find(c => c.type === cond.characteristicType);
                 const BOOL_COND_TYPES = ['power_state', 'on', 'active', 'lock_target_state', 'lock_current_state',
@@ -623,7 +628,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
 
           {/* ACTIONS */}
           {step === 'actions' && (() => {
-            const deviceIds = [...new Set(actions.map(a => a.accessoryId).filter(Boolean))];
+            const deviceIds = [...new Map(actions.filter(a => a.accessoryId).map(a => [a.accessoryId.toLowerCase(), a.accessoryId])).values()];
 
             return (
               <div className="space-y-3">
@@ -633,8 +638,8 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                 )}
 
                 {deviceIds.map(deviceId => {
-                  const deviceActions = actions.filter(a => a.accessoryId === deviceId);
-                  const acc = accessories.find(a => a.id === deviceId);
+                  const deviceActions = actions.filter(a => a.accessoryId.toLowerCase() === deviceId.toLowerCase());
+                  const acc = findAccessoryById(accessories, deviceId);
                   const chars = getWritableCharacteristics(acc);
                   const usedCharTypes = new Set(deviceActions.map(a => a.characteristicType).filter(Boolean));
                   const availableChars = chars.filter(c => !usedCharTypes.has(c.type));
@@ -643,7 +648,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                     <div key={deviceId} className="rounded-xl border p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium truncate">{deviceActions[0]?.accessoryName || 'Unknown device'}</span>
-                        <button onClick={() => setActions(actions.filter(a => a.accessoryId !== deviceId))} className="text-muted-foreground hover:text-foreground shrink-0"><X className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => setActions(actions.filter(a => a.accessoryId.toLowerCase() !== deviceId.toLowerCase()))} className="text-muted-foreground hover:text-foreground shrink-0"><X className="h-3.5 w-3.5" /></button>
                       </div>
 
                       {deviceActions.map((action, j) => {
