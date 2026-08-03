@@ -29,3 +29,16 @@ export function valuesMatch(actual: unknown, expected: unknown): boolean {
   if (actual === expected) return true;
   return normalise(actual) === normalise(expected);
 }
+
+/**
+ * The boolean reading of a characteristic value, under the same normalisation
+ * as valuesMatch, or undefined for anything that isn't a spelling of a boolean
+ * (a brightness of 50, a mode string). Callers use undefined to mean "this
+ * value has no on/off interpretation" rather than guessing.
+ */
+export function booleanish(value: unknown): boolean | undefined {
+  const n = normalise(value);
+  if (n === '1') return true;
+  if (n === '0') return false;
+  return undefined;
+}

@@ -17,7 +17,7 @@ import type {
 import { durationToMs, DEFAULT_UNAVAILABLE_FOR } from '../types/automation';
 import type { StateChangeEvent } from '../types/execution';
 import { getNextSunEvent } from '../state/SunCalculator';
-import { valuesMatch } from '../state/valueMatch';
+import { valuesMatch, booleanish } from '../state/valueMatch';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 
@@ -106,13 +106,10 @@ export class TriggerManager {
   private groupTriggerLastFire = new Map<string, { at: number; value: string }>();
 
   /**
-   * Window for collapsing a group's per-member event burst into one run.
-   * Production measured an 11-light group reporting over 1.3s, so 1.5s left no
-   * margin. Only repeats of the SAME value are suppressed, so a longer window
-   * can't swallow a real change.
-   */
-  /**
-   * How long a group trigger ignores a repeat of the same value.
+   * How long a group trigger ignores a repeat of the same value. The backstop
+   * behind the aggregate check in shouldFireGroupTrigger — it carries the load
+   * alone only when the aggregate can't be computed (no membership, non-boolean
+   * values), and otherwise just absorbs store flaps mid-burst.
    *
    * Sized to how slowly a group actually reports, not to how fast a burst
    * arrives. A 12-light group toggled once produced five runs at 3s — the
@@ -645,7 +642,7 @@ export class TriggerManager {
         if (groupStateEntries) {
           for (const entry of groupStateEntries) {
             const gateKey = `${entry.automationId}:${entry.trigger.id}:${groupId}:${event.characteristicType}`;
-            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, entry.trigger.to, event)) {
+            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, event)) {
               continue;
             }
             this.evaluateStateTrigger(entry, event, groupId);
@@ -655,11 +652,10 @@ export class TriggerManager {
         const groupNumericEntries = this.serviceGroupNumericTriggers.get(groupKey);
         if (groupNumericEntries) {
           for (const entry of groupNumericEntries) {
-            // Numeric group triggers have no single target value to aggregate
-            // over (above/below across N members is ambiguous), so these always
-            // take the time-coalescing path.
+            // Numeric values have no on/off aggregate, so for these the gate's
+            // time-coalescing backstop is what does the work.
             const gateKey = `${entry.automationId}:${entry.trigger.id}:${groupId}:${event.characteristicType}`;
-            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, undefined, event)) {
+            if (!this.shouldFireGroupTrigger(gateKey, groupId, event.characteristicType, event)) {
               continue;
             }
             this.evaluateNumericStateTrigger(entry, event, groupId);
@@ -728,38 +724,56 @@ export class TriggerManager {
    * HomeKit reports a group change as one event per member, so "when Kitchen
    * Lights turn on" used to run the automation once per bulb — an 11-light
    * group produced 10 runs (and 10 notifications) in 1.3s for a single logical
-   * change. This collapses that burst to one run per group transition.
+   * change. And a member changing on its own — one Annex light switched off by
+   * hand — used to fire "when Annex Lights turn off" even though eleven lights
+   * were still on.
    *
    * Only group-registered triggers pass through here. A trigger bound to an
    * individual accessory is dispatched from `stateTriggers` and is untouched,
    * so an automation on one bulb inside the group still fires for that bulb.
    *
-   * Where membership is known we track whether the GROUP satisfies the
-   * trigger's target value and fire only on the false -> true edge, so trailing
-   * members are absorbed and a later off -> on cycle re-arms it. Without
-   * membership, or without a target value to test against, we coalesce by time
-   * instead — a burst is one run, and genuinely separate changes still fire.
+   * The primary gate is the group's aggregate on/off state — the same
+   * any-member-on reading the dashboard group tile and Apple Home show. A
+   * member event passes only if it flips that aggregate: the first light on
+   * from all-off, or the last light off. Everything else — trailing members of
+   * a burst, a lone member toggling while the rest hold the group's state — is
+   * suppressed, however long HomeKit takes to report it.
+   *
+   * The aggregate is recomputed from the store on every event, never latched.
+   * An earlier design latched "group satisfies the trigger" and fired on the
+   * false -> true edge; any way the latch stuck, the automation went silent
+   * forever. Here a member whose state the store doesn't know (or that HomeKit
+   * reports unreachable) is simply left out of the aggregate, and when no
+   * aggregate can be computed at all — membership unknown, values that aren't
+   * booleans — we fall back to time-coalescing the burst instead of going
+   * quiet. Wrong store data can cost at most the transition it is wrong about.
    */
   private shouldFireGroupTrigger(
     gateKey: string,
-    _groupId: string,
-    _characteristicType: string,
-    _to: unknown,
+    groupId: string,
+    characteristicType: string,
     event: StateChangeEvent,
   ): boolean {
-    // Coalesce only a repeat of the SAME value within a short window. A burst
-    // is every member reporting the same new value, so that alone is what we
-    // suppress — gating on time regardless of value would swallow a genuine
-    // off-then-on (or a numeric threshold crossing) inside the window.
-    //
-    // This deliberately holds no latched per-group state. An earlier version
-    // tracked whether the GROUP satisfied the trigger and fired on the
-    // false->true edge, which is more precise but fails closed: any way that
-    // flag gets stuck true — a member whose state the store never learns, a
-    // periodic refresh landing mid-sequence — and the automation goes silent
-    // forever, with nothing to show why. Silence is the worst failure mode
-    // for an automation, so this errs toward firing: the window can only ever
-    // delay a duplicate, never cancel a real change.
+    // Aggregate edge: substitute the member's old value to read the group as
+    // it stood before this event (the store already holds the new value by the
+    // time listeners run), then compare with the group as it stands now.
+    const before = this.groupAnyOn(groupId, characteristicType, {
+      accessoryId: event.accessoryId,
+      value: event.oldValue,
+    });
+    const after = this.groupAnyOn(groupId, characteristicType, {
+      accessoryId: event.accessoryId,
+      value: event.newValue,
+    });
+    if (before !== undefined && after !== undefined && before === after) {
+      return false;
+    }
+
+    // Backstop: coalesce a repeat of the SAME value within a short window.
+    // This is the only gate when the aggregate is uncomputable, and absorbs
+    // mid-burst store flaps when it isn't. Only same-value repeats are
+    // suppressed — gating on time regardless of value would swallow a genuine
+    // off-then-on inside the window.
     const now = Date.now();
     const value = JSON.stringify(event.newValue ?? null);
     const last = this.groupTriggerLastFire.get(gateKey);
@@ -768,6 +782,43 @@ export class TriggerManager {
     }
     this.groupTriggerLastFire.set(gateKey, { at: now, value });
     return true;
+  }
+
+  /**
+   * The group's aggregate on/off — true if any member is on, matching the
+   * dashboard group tile. Undefined when it can't be read: membership unknown,
+   * no member state known, or values that aren't booleans.
+   *
+   * Members the store has no value for, or that HomeKit reports unreachable,
+   * are left out rather than counted — a bulb unplugged while on must not pin
+   * the group "on" forever. `substitute` stands in for one member's stored
+   * value (and is exempt from the reachability skip: the event's own accessory
+   * just reported, so it is reachable whatever a stale flag says).
+   */
+  private groupAnyOn(
+    groupId: string,
+    characteristicType: string,
+    substitute?: { accessoryId: string; value: unknown },
+  ): boolean | undefined {
+    const members = this.serviceGroupResolver?.getMembers?.(groupId);
+    if (!members || members.length === 0) return undefined;
+
+    let anyOn = false;
+    let known = 0;
+    for (const memberId of members) {
+      const substituted = substitute !== undefined && memberId === substitute.accessoryId;
+      if (!substituted && this.stateStore.isReachable(memberId) === false) continue;
+      const raw = substituted
+        ? substitute.value
+        : this.stateStore.getState(memberId, characteristicType);
+      if (raw === undefined) continue;
+      const on = booleanish(raw);
+      if (on === undefined) return undefined;
+      known++;
+      if (on) anyOn = true;
+    }
+    if (known === 0) return undefined;
+    return anyOn;
   }
 
   private evaluateStateTrigger(entry: StateTriggerEntry, event: StateChangeEvent, serviceGroupId?: string): void {
@@ -793,7 +844,19 @@ export class TriggerManager {
     if (trigger.for) {
       if (entry.forTimer) clearTimeout(entry.forTimer);
       entry.forTimer = setTimeout(() => {
-        // Verify the state is still the same (use event's accessoryId for group triggers)
+        // Verify the state has held. A group trigger checks the GROUP's
+        // aggregate — one member dropping out mustn't cancel "lights on for
+        // 10 minutes" while the rest are still lit — and falls back to the
+        // member's own value when no aggregate can be read.
+        const groupId = serviceGroupId ?? trigger.serviceGroupId;
+        if (groupId && trigger.to !== undefined) {
+          const want = booleanish(trigger.to);
+          const aggregate = this.groupAnyOn(groupId, trigger.characteristicType);
+          if (want !== undefined && aggregate !== undefined) {
+            if (aggregate === want) entry.callback(triggerData);
+            return;
+          }
+        }
         const currentValue = this.stateStore.getState(
           event.accessoryId,
           trigger.characteristicType,
