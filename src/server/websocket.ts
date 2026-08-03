@@ -335,6 +335,12 @@ export class ServerWebSocket {
   // Per-session, cleared on disconnect/reconnect — no TTL needed
   private accessoryHomeCache = new Map<string, { homeId: string; roomId: string }>();
 
+  // Group→home mapping, remembered from any group announce that carried a
+  // homeId. Old cached automations announce group writes without one, and the
+  // cloud skips the MQTT publish entirely when the event has no homeId —
+  // unlike accessories there is no cheap HomeKit lookup for a group's home.
+  private groupHomeCache = new Map<string, string>();
+
   constructor(config: ServerConfig, callbacks: ServerWebSocketCallbacks = {}) {
     this.config = {
       ...config,
@@ -1281,6 +1287,11 @@ export class ServerWebSocket {
     homeId?: string,
     affectedCount = 0,
   ): void {
+    if (homeId) {
+      this.groupHomeCache.set(groupId, homeId);
+    } else {
+      homeId = this.groupHomeCache.get(groupId);
+    }
     this.sendEvent({
       id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       type: 'event',
@@ -1837,6 +1848,7 @@ export class ServerWebSocket {
 
     // Clear per-session caches
     this.accessoryHomeCache.clear();
+    this.groupHomeCache.clear();
     // NOT cleared: the relay reconnects every few minutes, and clearing here
     // meant every reconnect re-paid for the same failures. `liveHomeIds`,
     // refreshed from HomeKit on relay start, is what recovers a moved mapping.
