@@ -838,7 +838,10 @@ export default function MQTTBrowser() {
             const ep = getEffectivePayload(g.topic, g.payload.payload);
             const headerPadLeft = 12 + headerDepth * 16;
             const topicDepth = headerDepth + 1;
-            const isEditorOpen = expandedTopic === g.topic;
+            // Keep the group container open while one of its member rows is
+            // selected, so the member's controls remain reachable.
+            const isEditorOpen = expandedTopic === g.topic ||
+              g.memberTopics.some(([topic]) => topic === expandedTopic);
             const openEditor = () => {
               if (isEditorOpen) { setExpandedTopic(null); updateUrlParams({ topic: null, view: null }); }
               else expandTopic(g.topic);
