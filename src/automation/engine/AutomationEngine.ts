@@ -441,6 +441,8 @@ export class AutomationEngine {
       automation.name,
       triggerData,
       automation.variables,
+      [],
+      automation.homeId,
     );
     this.beginLiveStream(ctx, triggerData);
 
@@ -624,6 +626,7 @@ export class AutomationEngine {
       triggerData,
       automation.variables,
       ancestorIds,
+      automation.homeId,
     );
     this.beginLiveStream(ctx, triggerData);
 

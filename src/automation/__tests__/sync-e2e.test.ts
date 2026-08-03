@@ -96,7 +96,7 @@ describe('server -> relay sync', () => {
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalled());
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true, 'home-1');
   });
 
   it('sends the resulting trace back to the server', async () => {

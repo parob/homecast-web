@@ -132,7 +132,7 @@ describe('notify delivery reporting', () => {
     await new Promise((r) => setTimeout(r, 0));
     engine.teardown();
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1, undefined);
   });
 });
 
@@ -169,7 +169,7 @@ describe('a notify does not hold up the actions after it', () => {
 
     // The report has NOT arrived, yet the light is already switched.
     for (let i = 0; i < 30; i++) await Promise.resolve();
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-2', 'power_state', 1, undefined);
     expect(traces).toHaveLength(0);
 
     // ...and once it does arrive, the trace still records the truth.

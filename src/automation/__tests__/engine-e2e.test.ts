@@ -104,7 +104,7 @@ describe('HomeKit event drives the full loop', () => {
     emit(motionEvent(true));
     await waitForTrace();
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true, 'home-1');
     expect(traces[0].status).toBe('success');
   });
 
@@ -185,8 +185,8 @@ describe('repeat', () => {
     });
 
     expect(bridge.setCharacteristic).toHaveBeenCalledTimes(2);
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-a', 'power_state', true);
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-b', 'power_state', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-a', 'power_state', true, 'home-1');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-b', 'power_state', true, 'home-1');
   });
 
   it('until mode always runs at least once', async () => {
@@ -236,7 +236,7 @@ describe('branching and flow control', () => {
 
     await engine.manualTrigger('auto-1');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'matched');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'matched', 'home-1');
   });
 
   it('choose falls back to the default branch', async () => {
@@ -256,7 +256,7 @@ describe('branching and flow control', () => {
 
     await engine.manualTrigger('auto-1');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'default');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'default', 'home-1');
   });
 
   it('parallel runs every branch', async () => {
@@ -269,8 +269,8 @@ describe('branching and flow control', () => {
 
     await engine.manualTrigger('auto-1');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'one');
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'two');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'one', 'home-1');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'two', 'home-1');
   });
 
   it('stop halts the remaining actions', async () => {
@@ -284,7 +284,7 @@ describe('branching and flow control', () => {
 
     await engine.manualTrigger('auto-1');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'before');
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 'before', 'home-1');
     expect(bridge.setCharacteristic).not.toHaveBeenCalledWith('light-1', 'power_state', 'after');
   });
 
@@ -298,7 +298,7 @@ describe('branching and flow control', () => {
 
     await engine.manualTrigger('auto-1');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 42);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 42, 'home-1');
   });
 });
 

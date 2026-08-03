@@ -42,7 +42,7 @@ import { assertSafeOutboundUrl } from './ssrfGuard';
 
 /** Bridge interface for calling HomeKit operations */
 export interface HomeKitBridge {
-  setCharacteristic(accessoryId: string, characteristicType: string, value: unknown): Promise<void>;
+  setCharacteristic(accessoryId: string, characteristicType: string, value: unknown, homeId?: string): Promise<void>;
   setServiceGroup(groupId: string, characteristicType: string, value: unknown, homeId?: string): Promise<void>;
   executeScene(sceneId: string, homeId?: string): Promise<void>;
 }
@@ -276,7 +276,7 @@ export class ActionExecutor {
       // Record before writing so the resulting state change can be attributed
       // to us rather than to a human reaching for the switch.
       this.stateStore.recordWrite(resolvedAccessoryId, action.characteristicType, resolvedValue);
-      await this.bridge.setCharacteristic(resolvedAccessoryId, action.characteristicType, resolvedValue);
+      await this.bridge.setCharacteristic(resolvedAccessoryId, action.characteristicType, resolvedValue, ctx.homeId);
       const output = { accessoryId: resolvedAccessoryId, characteristicType: action.characteristicType, value: resolvedValue, success: true };
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);

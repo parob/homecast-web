@@ -143,7 +143,7 @@ describe('mode state machine (Home / Away / Night / Vacation)', () => {
 
     await engine.manualTrigger('a');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('lock-1', 'lock_target_state', 1);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('lock-1', 'lock_target_state', 1, 'home-1');
   });
 });
 
@@ -187,7 +187,7 @@ describe('counter (no HomeKit equivalent at all)', () => {
     expect(bridge.setCharacteristic).not.toHaveBeenCalled();
 
     await engine.manualTrigger('a');
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('siren-1', 'active', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('siren-1', 'active', true, 'home-1');
   });
 });
 
@@ -210,7 +210,7 @@ describe('input_number', () => {
 
     await engine.manualTrigger('a');
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 40);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 40, 'home-1');
   });
 
   it('increments by the helper step', async () => {
@@ -241,7 +241,7 @@ describe('timer (resettable, unlike HomeKit "turn off after")', () => {
 
     await vi.advanceTimersByTimeAsync(5 * 60_000 + 100);
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', false);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', false, 'home-1');
   });
 
   it('restarting resets the countdown rather than letting the original expire', async () => {

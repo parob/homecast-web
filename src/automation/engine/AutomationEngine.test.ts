@@ -84,7 +84,7 @@ describe('AutomationEngine integration', () => {
       const trace = await engine.manualTrigger('auto-1');
       expect(trace).not.toBeNull();
       expect(trace!.status).toBe('success');
-      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 1);
+      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', 1, 'home-1');
     });
 
     it('records trigger data as node output', async () => {
@@ -152,7 +152,7 @@ describe('AutomationEngine integration', () => {
 
       expect(trace!.status).toBe('success');
       // Bridge should have been called with 90 (80 + 10)
-      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 90);
+      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'brightness', 90, 'home-1');
     });
 
     it('merge node combines data from variables actions', async () => {
@@ -311,7 +311,7 @@ describe('AutomationEngine integration', () => {
       expect(trace!.status).toBe('success');
       // Only the enabled action should have been called
       expect(config.bridge.setCharacteristic).toHaveBeenCalledTimes(1);
-      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light', 'brightness', 80);
+      expect(config.bridge.setCharacteristic).toHaveBeenCalledWith('light', 'brightness', 80, 'home-1');
     });
   });
 

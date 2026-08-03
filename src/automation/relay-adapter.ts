@@ -14,12 +14,12 @@ import { announceRelayWrite, announceRelayGroupWrite } from '../relay/relay-writ
  */
 export function createHomeKitBridgeAdapter(): HomeKitBridge {
   return {
-    async setCharacteristic(accessoryId: string, characteristicType: string, value: unknown) {
-      await HomeKit.setCharacteristic(accessoryId, characteristicType, value);
+    async setCharacteristic(accessoryId: string, characteristicType: string, value: unknown, homeId?: string) {
+      await HomeKit.setCharacteristic(accessoryId, characteristicType, value, homeId);
       // After the await: only announce what actually landed. Origin
       // 'automation' is what stops this feeding back into the engine and
       // re-triggering the automation that caused it.
-      announceRelayWrite([{ accessoryId, characteristicType, value }], 'automation');
+      announceRelayWrite([{ accessoryId, characteristicType, value, homeId }], 'automation');
     },
 
     async setServiceGroup(groupId: string, characteristicType: string, value: unknown, homeId?: string) {

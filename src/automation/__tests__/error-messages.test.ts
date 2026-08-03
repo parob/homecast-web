@@ -169,7 +169,7 @@ describe('an action that was never finished configuring', () => {
     await new Promise((r) => setTimeout(r, 0));
     engine.teardown();
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-1', 'power_state', 0);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('bulb-1', 'power_state', 0, undefined);
     expect(traces[0].status).toBe('success');
   });
 });

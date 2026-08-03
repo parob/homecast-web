@@ -78,7 +78,7 @@ describe('initAutomationEngine wiring', () => {
     emit({ type: 'characteristic.updated', accessoryId: 'sensor-1', characteristicType: 'motion_detected', value: true });
     await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalled());
 
-    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true);
+    expect(bridge.setCharacteristic).toHaveBeenCalledWith('light-1', 'power_state', true, 'home-1');
   });
 
   it('does not fire the group trigger for an accessory outside the group', async () => {
