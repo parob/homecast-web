@@ -6831,14 +6831,9 @@ const Dashboard = () => {
                     belong to the home rather than to any part of it — a Home
                     Mode isn't in the kitchen. Outside HomeKit's room structure
                     entirely, which is only possible because these are ours. */}
-                {selectedHomeId && !selectedRoomId && (helperAccessories.byRoom.get('') ?? []).length > 0 && (
+                {selectedHomeId && !selectedRoomId && (helperAccessories.byRoom.get('') ?? [])
+                  .filter(h => !isDeviceHidden(selectedHomeId, selectedHomeId, h.id)).length > 0 && (
                   <div className={compactMode ? 'mb-3' : 'mb-6'} data-helper-folder>
-                    <div className={`flex items-center gap-2 ${compactMode ? 'mb-1.5 mt-1' : 'mb-3 mt-2'}`}>
-                      <span className={`text-sm font-semibold ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground/70'}`}>
-                        Helpers
-                        {!hideAccessoryCounts && ` (${(helperAccessories.byRoom.get('') ?? []).length})`}
-                      </span>
-                    </div>
                     <div className={
                       compactMode
                         ? (fontSize === 'small'
@@ -6848,7 +6843,9 @@ const Dashboard = () => {
                           ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
                           : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')
                     }>
-                      {(helperAccessories.byRoom.get('') ?? []).map(helper => (
+                      {(helperAccessories.byRoom.get('') ?? [])
+                        .filter(h => !isDeviceHidden(selectedHomeId, selectedHomeId, h.id))
+                        .map(helper => (
                         <HelperAccessoryWidget
                           key={helper.id}
                           helper={helper}
@@ -6858,6 +6855,9 @@ const Dashboard = () => {
                           isDarkBackground={isDarkBackground}
                           onEdit={() => openHelperEditor({ helper })}
                           onOperate={helperAccessories.operate}
+                          isHidden={isDeviceActuallyHidden(selectedHomeId, selectedHomeId, helper.id)}
+                          onHide={() => toggleVisibility('device', 'ui', selectedHomeId, helper.id, selectedHomeId)}
+                          onDelete={() => helperAccessories.remove(helper.id)}
                         />
                       ))}
                     </div>
@@ -6882,7 +6882,12 @@ const Dashboard = () => {
                     const displayAccessories = filterAccessories(ungrouped, contextId);
 
                     // Hide room if it has no visible items (unless showHiddenItems is on)
-                    const roomHelpers = room ? (helperAccessories.byRoom.get(room.id) ?? []) : [];
+                    // Helper accessories hide exactly like real ones: the id goes in
+                    // the room layout's hiddenAccessories, so Show Hidden reveals them
+                    // and the same toggle puts them back.
+                    const allRoomHelpers = room ? (helperAccessories.byRoom.get(room.id) ?? []) : [];
+                    const roomHelpers = allRoomHelpers.filter(
+                      h => !isDeviceHidden(selectedHomeId ?? '', contextId, h.id));
                     if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0 && roomHelpers.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
@@ -7087,6 +7092,9 @@ const Dashboard = () => {
                             isDarkBackground={isDarkBackground}
                             onEdit={() => openHelperEditor({ helper })}
                             onOperate={helperAccessories.operate}
+                            isHidden={isDeviceActuallyHidden(selectedHomeId ?? '', contextId, helper.id)}
+                            onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, helper.id, contextId)}
+                            onDelete={() => helperAccessories.remove(helper.id)}
                           />
                         ))}
                       </MasonryGrid>

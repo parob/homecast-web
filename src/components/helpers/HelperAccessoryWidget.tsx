@@ -1,5 +1,8 @@
-import { Plus, Minus, Play, Square } from 'lucide-react';
+import { Plus, Minus, Play, Square, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { HelperTypeIcon } from './HelperTypeIcon';
 import { formatHelperValue, HELPER_TYPES, type CreatableHelperType } from '@/automation/helpers/catalogue';
 import type { HelperDefinition, HelperOperation } from '@/automation/types/automation';
@@ -13,6 +16,11 @@ export interface HelperAccessoryWidgetProps {
   isDarkBackground?: boolean;
   onEdit: () => void;
   onOperate: (id: string, op: HelperOperation, opts?: { value?: unknown }) => void | Promise<void>;
+  /** Hide from the dashboard — same mechanism real accessories use. */
+  onHide?: () => void;
+  /** True when currently hidden and only visible because Show Hidden is on. */
+  isHidden?: boolean;
+  onDelete?: () => void;
 }
 
 /**
@@ -27,14 +35,17 @@ export interface HelperAccessoryWidgetProps {
  */
 export function HelperAccessoryWidget({
   helper, value, live, compact, isDarkBackground, onEdit, onOperate,
+  onHide, isHidden, onDelete,
 }: HelperAccessoryWidgetProps) {
   const type = helper.type as CreatableHelperType;
   const info = HELPER_TYPES[type];
 
-  return (
+  const tile = (
     <div
       data-helper-accessory={helper.id}
       className={`rounded-[20px] border transition-colors ${compact ? 'p-2.5' : 'p-3.5'} ${
+        isHidden ? 'opacity-50' : ''
+      } ${
         isDarkBackground
           ? 'border-white/10 bg-white/5 hover:border-white/20'
           : 'border-border bg-card hover:border-muted-foreground/30'
@@ -71,6 +82,33 @@ export function HelperAccessoryWidget({
         </span>
       </button>
     </div>
+  );
+
+  if (!onHide && !onDelete) return tile;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onEdit}>
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit
+        </ContextMenuItem>
+        {onHide && (
+          <ContextMenuItem onClick={onHide}>
+            {isHidden
+              ? <><Eye className="h-4 w-4 mr-2" />Show on Dashboard</>
+              : <><EyeOff className="h-4 w-4 mr-2" />Hide from Dashboard</>}
+          </ContextMenuItem>
+        )}
+        {onDelete && (
+          <ContextMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

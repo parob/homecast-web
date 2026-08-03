@@ -123,7 +123,7 @@ export function HelperEditorDialog({
             <HelperTypeFields draft={draft} patch={patch} />
 
             <div className="space-y-1.5">
-              <Label htmlFor="helper-room">Where it lives</Label>
+              <Label htmlFor="helper-room">Location</Label>
               <select
                 id="helper-room"
                 data-testid="helper-room"
@@ -133,7 +133,7 @@ export function HelperEditorDialog({
               >
                 {/* Not a HomeKit room: helper accessories are ours, so they can
                     sit outside HomeKit's room structure entirely. */}
-                <option value="">Helpers (top of the home)</option>
+                <option value="">Top of the home</option>
                 {rooms.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
@@ -142,11 +142,11 @@ export function HelperEditorDialog({
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <Label htmlFor="helper-controllable">Adjustable here</Label>
+                <Label htmlFor="helper-controllable">User Editable</Label>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {draft.controllable === false
                     ? 'Shows its value. Only automations can change it.'
-                    : 'Can be changed by hand from the dashboard.'}
+                    : 'Can be edited from the dashboard.'}
                 </p>
               </div>
               <Switch

@@ -77,8 +77,14 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
 
   const refreshStates = useCallback(async () => {
     try {
+      // homeId is required for ROUTING, not for filtering. Without it the
+      // server falls back to resolving the relay from the caller's user id,
+      // which finds nothing for a cloud-managed customer — the relay belongs to
+      // the operator's service account, not to them. The request then fails and
+      // the dashboard concludes the engine is unreachable, disabling every
+      // control. Resolving by home is the only lookup that works for everyone.
       const res = await serverConnection.request<{ states: Record<string, unknown> }>(
-        'automation.helper_states', {},
+        'automation.helper_states', { homeId },
       );
       setStates(res?.states ?? {});
       setEngineLive(true);
@@ -88,7 +94,7 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
       // value beside a control that would act on it.
       setEngineLive(false);
     }
-  }, []);
+  }, [homeId]);
 
   // Values change whenever an automation touches one, so they have to be
   // polled — but only while something is actually showing them.
@@ -106,14 +112,14 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
   ) => {
     try {
       const res = await serverConnection.request<{ helperId: string; state: unknown }>(
-        'automation.helper_operate', { helperId, operation, ...opts },
+        'automation.helper_operate', { homeId, helperId, operation, ...opts },
       );
       setStates(s => ({ ...s, [helperId]: res?.state }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not change that helper accessory');
       void refreshStates();
     }
-  }, [refreshStates]);
+  }, [homeId, refreshStates]);
 
   const save = useCallback(async (helper: HelperDefinition) => {
     if (!homeId) return;
