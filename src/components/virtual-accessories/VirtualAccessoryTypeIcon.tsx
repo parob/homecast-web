@@ -2,7 +2,7 @@ import {
   ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock,
   type LucideIcon,
 } from 'lucide-react';
-import { HELPER_TYPES, type CreatableHelperType } from '@/automation/helpers/catalogue';
+import { VIRTUAL_TYPES, type CreatableVirtualType } from '@/automation/virtual-accessories/catalogue';
 
 /**
  * Icons kept here rather than in the catalogue so the catalogue stays free of
@@ -13,12 +13,12 @@ const ICONS: Record<string, LucideIcon> = {
   ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock,
 };
 
-export function HelperTypeIcon({
+export function VirtualAccessoryTypeIcon({
   type, className,
 }: {
-  type: CreatableHelperType;
+  type: CreatableVirtualType;
   className?: string;
 }) {
-  const Icon = ICONS[HELPER_TYPES[type].icon] ?? Hash;
+  const Icon = ICONS[VIRTUAL_TYPES[type].icon] ?? Hash;
   return <Icon className={className} aria-hidden />;
 }

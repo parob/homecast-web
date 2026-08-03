@@ -21,7 +21,7 @@ import type { HelperDefinition, HelperType, HelperOperation } from '../types/aut
  * created isn't a choice, and listing it only invites the question. If any of
  * the three gains an implementation, add it here and it appears everywhere.
  */
-export const CREATABLE_HELPER_TYPES = [
+export const CREATABLE_VIRTUAL_TYPES = [
   'input_boolean',
   'input_select',
   'counter',
@@ -31,14 +31,14 @@ export const CREATABLE_HELPER_TYPES = [
   'input_datetime',
 ] as const satisfies readonly HelperType[];
 
-export type CreatableHelperType = (typeof CREATABLE_HELPER_TYPES)[number];
+export type CreatableVirtualType = (typeof CREATABLE_VIRTUAL_TYPES)[number];
 
-export function isCreatableHelperType(type: string): type is CreatableHelperType {
-  return (CREATABLE_HELPER_TYPES as readonly string[]).includes(type);
+export function isCreatableVirtualType(type: string): type is CreatableVirtualType {
+  return (CREATABLE_VIRTUAL_TYPES as readonly string[]).includes(type);
 }
 
-export interface HelperTypeInfo {
-  type: CreatableHelperType;
+export interface VirtualTypeInfo {
+  type: CreatableVirtualType;
   label: string;
   /** What it is, in the user's terms. */
   description: string;
@@ -50,7 +50,7 @@ export interface HelperTypeInfo {
   manuallySettable: boolean;
 }
 
-export const HELPER_TYPES: Record<CreatableHelperType, HelperTypeInfo> = {
+export const VIRTUAL_TYPES: Record<CreatableVirtualType, VirtualTypeInfo> = {
   input_boolean: {
     type: 'input_boolean',
     label: 'Switch',
@@ -112,8 +112,8 @@ export const HELPER_TYPES: Record<CreatableHelperType, HelperTypeInfo> = {
 };
 
 /** The type list in display order. */
-export const HELPER_TYPE_LIST: HelperTypeInfo[] =
-  CREATABLE_HELPER_TYPES.map(t => HELPER_TYPES[t]);
+export const VIRTUAL_TYPE_LIST: VirtualTypeInfo[] =
+  CREATABLE_VIRTUAL_TYPES.map(t => VIRTUAL_TYPES[t]);
 
 /**
  * A new helper of the given type, with defaults that produce something usable
@@ -123,8 +123,8 @@ export const HELPER_TYPE_LIST: HelperTypeInfo[] =
  * cloud the server does, so inventing one here would create a second source of
  * truth for identity — the exact split that caused the hc_id/live-UUID bug.
  */
-export function defaultHelper(
-  type: CreatableHelperType,
+export function defaultVirtualAccessory(
+  type: CreatableVirtualType,
   id: string,
   homeId: string,
   name: string,
@@ -159,7 +159,7 @@ export function defaultHelper(
  * at the point it is made is the only place this can be prevented without
  * inventing per-type operation unions.
  */
-export const HELPER_OPERATIONS: Record<CreatableHelperType, { value: HelperOperation; label: string }[]> = {
+export const VIRTUAL_OPERATIONS: Record<CreatableVirtualType, { value: HelperOperation; label: string }[]> = {
   input_boolean: [
     { value: 'turn_on', label: 'Turn on' },
     { value: 'turn_off', label: 'Turn off' },
@@ -196,7 +196,7 @@ export const HELPER_OPERATIONS: Record<CreatableHelperType, { value: HelperOpera
 };
 
 /** Human-readable current value for the Helpers list. */
-export function formatHelperValue(helper: HelperDefinition, value: unknown): string {
+export function formatVirtualValue(helper: HelperDefinition, value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   switch (helper.type) {
     case 'input_boolean':
@@ -217,8 +217,27 @@ export function formatHelperValue(helper: HelperDefinition, value: unknown): str
  * Returned as a message rather than a boolean so the dialog can say what is
  * wrong instead of just disabling Save with no explanation.
  */
-export function validateHelper(helper: HelperDefinition): string | null {
-  if (!helper.name.trim()) return 'Give the helper a name.';
+export function validateVirtualAccessory(
+  helper: HelperDefinition,
+  siblings: HelperDefinition[] = [],
+): string | null {
+  const name = helper.name.trim();
+  if (!name) return 'Give it a name.';
+
+  // Unique within its location. Two identically-named tiles side by side are
+  // indistinguishable — you cannot tell which one an automation means, and you
+  // cannot tell which one you just changed. Compared case-insensitively because
+  // "Test" and "test" are the same name to a person, and scoped to the location
+  // rather than the home because that is where they sit next to each other.
+  const clash = siblings.some(other =>
+    other.id !== helper.id
+    && (other.roomId ?? '') === (helper.roomId ?? '')
+    && other.name.trim().toLowerCase() === name.toLowerCase());
+  if (clash) {
+    return helper.roomId
+      ? 'Another virtual accessory in this room already has that name.'
+      : 'Another virtual accessory at the top of the home already has that name.';
+  }
 
   switch (helper.type) {
     case 'input_select': {

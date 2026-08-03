@@ -50,8 +50,8 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
-import { HelperEditorDialog } from '@/components/helpers/HelperEditorDialog';
-import { useHelperAccessories } from '@/components/helpers/useHelperAccessories';
+import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
+import { useVirtualAccessories } from '@/components/virtual-accessories/useVirtualAccessories';
 
 /**
  * Bucket name for accessories that belong to the home rather than to a room.
@@ -4203,7 +4203,7 @@ const Dashboard = () => {
   }, []);
 
   // Filter by selected room, apply visibility, and sort by custom order
-  const helperAccessories = useHelperAccessories(selectedHomeId);
+  const helperAccessories = useVirtualAccessories(selectedHomeId);
   helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {
@@ -7713,12 +7713,13 @@ const Dashboard = () => {
           and every tile open it, and each owning a copy would mean four
           different ideas of the same helper. */}
       {selectedHomeId && (
-        <HelperEditorDialog
+        <VirtualAccessoryEditorDialog
           open={helperEditorOpen}
           onOpenChange={setHelperEditorOpen}
           homeId={selectedHomeId}
           rooms={rooms.map(r => ({ id: r.id, name: r.name }))}
           defaultRoomId={helperDefaultRoomId}
+          siblings={helperAccessories.helpers}
           existing={editingHelper}
           onSave={helperAccessories.save}
           onDelete={helperAccessories.remove}

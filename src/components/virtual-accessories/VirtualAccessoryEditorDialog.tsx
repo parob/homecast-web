@@ -6,13 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Trash2, Plus, X } from 'lucide-react';
 import {
-  HELPER_TYPE_LIST, defaultHelper, validateHelper,
-  type CreatableHelperType,
-} from '@/automation/helpers/catalogue';
-import { HelperTypeIcon } from './HelperTypeIcon';
+  VIRTUAL_TYPE_LIST, defaultVirtualAccessory, validateVirtualAccessory,
+  type CreatableVirtualType,
+} from '@/automation/virtual-accessories/catalogue';
+import { VirtualAccessoryTypeIcon } from './VirtualAccessoryTypeIcon';
 import type { HelperDefinition } from '@/automation/types/automation';
 
-interface HelperEditorDialogProps {
+interface VirtualAccessoryEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   homeId: string;
@@ -20,6 +20,8 @@ interface HelperEditorDialogProps {
   rooms?: { id: string; name: string }[];
   /** Pre-selected room when created from a room's menu. */
   defaultRoomId?: string;
+  /** Everything already in this home, so a duplicate name can be refused. */
+  siblings?: HelperDefinition[];
   /** Undefined when creating. */
   existing?: HelperDefinition;
   onSave: (helper: HelperDefinition) => Promise<void>;
@@ -39,9 +41,9 @@ interface HelperEditorDialogProps {
  * bound to that type. Changing it would silently break every automation
  * referencing the helper, so the honest move is to make a new one.
  */
-export function HelperEditorDialog({
-  open, onOpenChange, homeId, rooms = [], defaultRoomId, existing, onSave, onDelete,
-}: HelperEditorDialogProps) {
+export function VirtualAccessoryEditorDialog({
+  open, onOpenChange, homeId, rooms = [], defaultRoomId, siblings = [], existing, onSave, onDelete,
+}: VirtualAccessoryEditorDialogProps) {
   const [draft, setDraft] = useState<HelperDefinition | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -54,12 +56,12 @@ export function HelperEditorDialog({
     setSaving(false);
   }, [open, existing]);
 
-  const problem = useMemo(() => (draft ? validateHelper(draft) : null), [draft]);
+  const problem = useMemo(() => (draft ? validateVirtualAccessory(draft, siblings) : null), [draft, siblings]);
 
-  const pickType = (type: CreatableHelperType) => {
+  const pickType = (type: CreatableVirtualType) => {
     // id is empty until saved: Community's IndexedDB layer and the cloud both
     // mint it, and inventing one here would create a second source of identity.
-    setDraft({ ...defaultHelper(type, '', homeId, ''), roomId: defaultRoomId });
+    setDraft({ ...defaultVirtualAccessory(type, '', homeId, ''), roomId: defaultRoomId });
   };
 
   const handleSave = async () => {
@@ -86,7 +88,7 @@ export function HelperEditorDialog({
         {/* Step 1 — type picker (creating only) */}
         {!draft && (
           <div className="grid gap-2 max-h-[60vh] overflow-y-auto -mx-1 px-1">
-            {HELPER_TYPE_LIST.map(info => (
+            {VIRTUAL_TYPE_LIST.map(info => (
               <button
                 key={info.type}
                 type="button"
@@ -94,7 +96,7 @@ export function HelperEditorDialog({
                 onClick={() => pickType(info.type)}
                 className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
               >
-                <HelperTypeIcon type={info.type} className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
+                <VirtualAccessoryTypeIcon type={info.type} className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{info.label}</span>
                   <span className="block text-xs text-muted-foreground">{info.description}</span>

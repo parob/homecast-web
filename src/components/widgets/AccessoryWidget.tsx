@@ -29,7 +29,7 @@ import { RemoteWidget } from './RemoteWidget';
 import { ContactSensorWidget } from './ContactSensorWidget';
 import { SmokeAlarmWidget } from './SmokeAlarmWidget';
 import { MotionSensorWidget } from './MotionSensorWidget';
-import { HelperWidget } from './HelperWidget';
+import { VirtualAccessoryWidget } from './VirtualAccessoryWidget';
 
 interface AccessoryWidgetProps extends WidgetProps {
   accessory: HomeKitAccessory;
@@ -105,7 +105,7 @@ const AccessoryWidgetInner: React.FC<AccessoryWidgetProps> = (props) => {
 
   switch (widgetType) {
     case 'helper':
-      return <HelperWidget {...props} />;
+      return <VirtualAccessoryWidget {...props} />;
     case 'lightbulb':
       return <LightbulbWidget {...props} />;
     case 'switch':

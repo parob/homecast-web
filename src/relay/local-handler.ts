@@ -341,7 +341,7 @@ async function executeHomeKitActionInner(
         includeAll?: boolean;
       };
       const result = await HomeKit.listAccessories({ homeId, roomId, includeValues });
-      const { listHelperAccessories } = await import('./helper-accessories');
+      const { listVirtualAccessories } = await import('./virtual-accessories');
       // Helper accessories are published here, not alongside here. Everything
       // downstream — the dashboard, sharing, collections, search, REST, MQTT,
       // MCP — reads this one list, so this is the only place that has to know
@@ -357,17 +357,17 @@ async function executeHomeKitActionInner(
           roomNames = new Map(rooms.map(r => [r.id, r.name]));
         } catch { /* naming is cosmetic — never fail the list over it */ }
       }
-      const helpers = listHelperAccessories({ homeId, roomId, roomNames });
+      const helpers = listVirtualAccessories({ homeId, roomId, roomNames });
       const accessories = includeAll ? result : filterAccessories(result);
       return { accessories: [...accessories, ...helpers] };
     }
 
     case 'accessory.get': {
       const { accessoryId } = payload as { accessoryId: string };
-      const { getHelperForAccessory, helperToAccessory, readHelperValue } = await import('./helper-accessories');
-      const helperForGet = getHelperForAccessory(accessoryId);
+      const { getVirtualAccessoryDefinition, toVirtualAccessory, readVirtualValue } = await import('./virtual-accessories');
+      const helperForGet = getVirtualAccessoryDefinition(accessoryId);
       if (helperForGet) {
-        return { accessory: helperToAccessory(helperForGet, readHelperValue(accessoryId)?.value) };
+        return { accessory: toVirtualAccessory(helperForGet, readVirtualValue(accessoryId)?.value) };
       }
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
@@ -388,8 +388,8 @@ async function executeHomeKitActionInner(
         accessoryId: string;
         characteristicType: string;
       };
-      const { readHelperValue } = await import('./helper-accessories');
-      const helperRead = readHelperValue(accessoryId);
+      const { readVirtualValue } = await import('./virtual-accessories');
+      const helperRead = readVirtualValue(accessoryId);
       if (helperRead) return { accessoryId, characteristicType, value: helperRead.value };
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });
@@ -417,8 +417,8 @@ async function executeHomeKitActionInner(
       // accessory. It arrives here as an ordinary characteristic write, it is
       // announced like one, and every client, script and integration that can
       // set a characteristic can set this. Nothing upstream needs to know.
-      const { applyHelperWrite } = await import('./helper-accessories');
-      const helperWrite = applyHelperWrite(accessoryId, value);
+      const { applyVirtualWrite } = await import('./virtual-accessories');
+      const helperWrite = applyVirtualWrite(accessoryId, value);
       if (helperWrite) {
         announceRelayWrite([{ accessoryId, characteristicType, value: helperWrite.value, homeId }], 'client');
         return { success: true, accessoryId, characteristicType, value: helperWrite.value };

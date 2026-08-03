@@ -14,7 +14,7 @@ import { WidgetProps } from './types';
  */
 
 /** Characteristic → how to draw it. Mirrors relay/helper-accessories.ts. */
-const HELPER_CHARS = [
+const VIRTUAL_CHARS = [
   'helper_mode', 'helper_count', 'helper_number',
   'helper_timer', 'helper_text', 'helper_datetime',
 ] as const;
@@ -28,13 +28,13 @@ const ICONS: Record<string, React.ElementType> = {
   helper_datetime: CalendarClock,
 };
 
-interface HelperAccessoryShape {
+interface VirtualAccessoryShape {
   helperType?: string;
   isUserEditable?: boolean;
   helperOptions?: string[];
 }
 
-export const HelperWidget: React.FC<WidgetProps> = memo((props) => {
+export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   const {
     accessory, getEffectiveValue, onSetValue, onSlider, compact, disabled,
     onExpandToggle, onDebug, iconStyle, editMode, editModeType, isHiddenUi,
@@ -43,10 +43,10 @@ export const HelperWidget: React.FC<WidgetProps> = memo((props) => {
     onEdit, editLabel,
   } = props;
 
-  const meta = accessory as unknown as HelperAccessoryShape;
+  const meta = accessory as unknown as VirtualAccessoryShape;
   const service = (accessory.services || [])[0];
   const char = (service?.characteristics || []).find(
-    c => (HELPER_CHARS as readonly string[]).includes(c.characteristicType),
+    c => (VIRTUAL_CHARS as readonly string[]).includes(c.characteristicType),
   );
 
   const value = char ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : undefined;
@@ -179,4 +179,4 @@ function formatValue(charType: string, value: unknown): string {
   return String(value);
 }
 
-HelperWidget.displayName = 'HelperWidget';
+VirtualAccessoryWidget.displayName = 'VirtualAccessoryWidget';

@@ -2,7 +2,7 @@
 // Opens on double-click, has Done/Cancel/Delete buttons
 
 import { useCallback, useMemo, useState, useRef } from 'react';
-import { HELPER_OPERATIONS } from '@/automation/helpers/catalogue';
+import { VIRTUAL_OPERATIONS } from '@/automation/virtual-accessories/catalogue';
 import type { HelperDefinition } from '@/automation/types/automation';
 import { type Node, type Edge } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
@@ -993,7 +993,7 @@ function renderConfigForm(
       case 'helper': {
         const helpers = availableHelpers ?? [];
         const selected = helpers.find(h => h.id === (config.helperId as string));
-        const operations = selected ? HELPER_OPERATIONS[selected.type] ?? [] : [];
+        const operations = selected ? VIRTUAL_OPERATIONS[selected.type] ?? [] : [];
         const operation = (config.operation as string) ?? '';
 
         return (
@@ -1010,7 +1010,7 @@ function renderConfigForm(
                   // Changing the target changes which operations exist, so an
                   // operation carried over from the previous helper could be one
                   // this type cannot perform — the engine would throw at run time.
-                  const allowed = next ? HELPER_OPERATIONS[next.type] ?? [] : [];
+                  const allowed = next ? VIRTUAL_OPERATIONS[next.type] ?? [] : [];
                   const keep = allowed.some(o => o.value === operation);
                   updateConfigBatch({
                     helperId: e.target.value,

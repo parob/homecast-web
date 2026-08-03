@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { HC_HELPERS } from '@/lib/graphql/queries';
 import { SAVE_HC_HELPER, DELETE_HC_HELPER } from '@/lib/graphql/mutations';
-import { isCreatableHelperType } from '@/automation/helpers/catalogue';
+import { isCreatableVirtualType } from '@/automation/virtual-accessories/catalogue';
 import type { HelperDefinition, HelperOperation } from '@/automation/types/automation';
 
 /** How often to re-read live values while helper accessories are on screen. */
@@ -28,7 +28,7 @@ function parseHelpers(entities: StoredHelperEntity[]): HelperDefinition[] {
   for (const e of entities) {
     try {
       const parsed = JSON.parse(e.dataJson) as HelperDefinition;
-      if (!parsed?.type || !isCreatableHelperType(parsed.type)) continue;
+      if (!parsed?.type || !isCreatableVirtualType(parsed.type)) continue;
       out.push({ ...parsed, id: parsed.id || e.entityId });
     } catch {
       // A row we can't read is not a row we can safely show a control for.
@@ -46,7 +46,7 @@ function parseHelpers(entities: StoredHelperEntity[]): HelperDefinition[] {
  * same helper's value, and a change made in one place would leave the others
  * showing the old one until something happened to refetch.
  */
-export function useHelperAccessories(homeId: string | null, options: { active?: boolean } = {}) {
+export function useVirtualAccessories(homeId: string | null, options: { active?: boolean } = {}) {
   const active = options.active ?? true;
   const [states, setStates] = useState<Record<string, unknown>>({});
   /** Null while unknown; false once we know the engine isn't reachable. */

@@ -1,8 +1,8 @@
 /**
- * Helper definition sync — the path that decides whether a helper a user
+ * Virtual accessory definition sync — the path that decides whether a helper a user
  * created actually exists in the running engine.
  *
- * The failure this guards against is specific: a helper stored in the database
+ * The failure this guards against is specific: one stored in the database
  * and absent from the engine looks completely correct in the UI, and every
  * automation referencing it resolves to nothing and quietly does nothing. So
  * these tests are about what survives a sync, not about what a sync stores.

@@ -28,7 +28,7 @@ import { getAutomationEngine } from '../automation';
  * named value it can display, which is what it would do for any characteristic
  * it hasn't been taught.
  */
-export const HELPER_CHARACTERISTIC: Record<string, string> = {
+export const VIRTUAL_CHARACTERISTIC: Record<string, string> = {
   input_boolean: 'power_state',
   input_number: 'helper_number',
   counter: 'helper_count',
@@ -39,7 +39,7 @@ export const HELPER_CHARACTERISTIC: Record<string, string> = {
 };
 
 /** HomeKit-ish category, so category-based sorting and icons have something. */
-const HELPER_CATEGORY: Record<string, string> = {
+const VIRTUAL_CATEGORY: Record<string, string> = {
   input_boolean: 'Switch',
   input_number: 'Sensor',
   counter: 'Sensor',
@@ -49,7 +49,7 @@ const HELPER_CATEGORY: Record<string, string> = {
   input_datetime: 'Other',
 };
 
-const HELPER_SERVICE_TYPE: Record<string, string> = {
+const VIRTUAL_SERVICE_TYPE: Record<string, string> = {
   input_boolean: 'switch',
   input_number: 'helper_number',
   counter: 'helper_count',
@@ -62,7 +62,7 @@ const HELPER_SERVICE_TYPE: Record<string, string> = {
 /** Marks an accessory as engine-owned. Clients use it to offer the right UI. */
 export const VIRTUAL_ACCESSORY_FLAG = 'isVirtual';
 
-export interface HelperAccessory extends HomeKitAccessory {
+export interface VirtualAccessory extends HomeKitAccessory {
   /** Always true. Absent on HomeKit accessories. */
   isVirtual?: boolean;
   /** The helper's type, so a client can render the right control. */
@@ -72,14 +72,14 @@ export interface HelperAccessory extends HomeKitAccessory {
 }
 
 /** Build the accessory representation of one helper. */
-export function helperToAccessory(helper: HelperDefinition, value: unknown): HelperAccessory {
-  const characteristicType = HELPER_CHARACTERISTIC[helper.type] ?? 'helper_value';
+export function toVirtualAccessory(helper: HelperDefinition, value: unknown): VirtualAccessory {
+  const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'helper_value';
   const writable = helper.controllable !== false;
 
   const service: HomeKitService = {
     id: `${helper.id}:service`,
     name: helper.name,
-    serviceType: HELPER_SERVICE_TYPE[helper.type] ?? 'helper',
+    serviceType: VIRTUAL_SERVICE_TYPE[helper.type] ?? 'helper',
     characteristics: [
       {
         id: `${helper.id}:${characteristicType}`,
@@ -107,7 +107,7 @@ export function helperToAccessory(helper: HelperDefinition, value: unknown): Hel
     name: helper.name,
     homeId: helper.homeId,
     roomId: helper.roomId,
-    category: HELPER_CATEGORY[helper.type] ?? 'Other',
+    category: VIRTUAL_CATEGORY[helper.type] ?? 'Other',
     // Engine-owned, so it is reachable exactly when the engine is running —
     // and if the engine weren't running we would not be answering at all.
     isReachable: true,
@@ -118,7 +118,7 @@ export function helperToAccessory(helper: HelperDefinition, value: unknown): Hel
     // Options travel on the service name for input_select clients that want
     // them; the canonical list stays in the helper definition.
     ...(helper.type === 'input_select' ? { helperOptions: helper.options } : {}),
-  } as HelperAccessory;
+  } as VirtualAccessory;
 }
 
 /**
@@ -130,18 +130,18 @@ export function helperToAccessory(helper: HelperDefinition, value: unknown): Hel
  * lands in "Unknown Room". A helper with no room deliberately has no roomName:
  * it belongs to the home, not to any part of it.
  */
-export function listHelperAccessories(
+export function listVirtualAccessories(
   opts: { homeId?: string; roomId?: string; roomNames?: Map<string, string> } = {},
-): HelperAccessory[] {
+): VirtualAccessory[] {
   const engine = getAutomationEngine();
   if (!engine) return [];
 
   const states = engine.getHelperStates();
-  const out: HelperAccessory[] = [];
+  const out: VirtualAccessory[] = [];
   for (const helper of engine.helperManager.getAllHelpers()) {
     if (opts.homeId && helper.homeId?.toUpperCase() !== opts.homeId.toUpperCase()) continue;
     if (opts.roomId && helper.roomId !== opts.roomId) continue;
-    const accessory = helperToAccessory(helper, states[helper.id]);
+    const accessory = toVirtualAccessory(helper, states[helper.id]);
     if (helper.roomId) accessory.roomName = opts.roomNames?.get(helper.roomId);
     out.push(accessory);
   }
@@ -149,7 +149,7 @@ export function listHelperAccessories(
 }
 
 /** The helper behind an accessory id, or undefined if it isn't one. */
-export function getHelperForAccessory(accessoryId: string): HelperDefinition | undefined {
+export function getVirtualAccessoryDefinition(accessoryId: string): HelperDefinition | undefined {
   return getAutomationEngine()?.getHelper(accessoryId);
 }
 
@@ -161,7 +161,7 @@ export function getHelperForAccessory(accessoryId: string): HelperDefinition | u
  * helper operation here keeps the whole write path identical to a real
  * accessory's, right up to the point where HomeKit would have been asked.
  */
-export function writeToHelperOperation(
+export function writeToOperation(
   helper: HelperDefinition,
   value: unknown,
 ): { operation: 'set' | 'turn_on' | 'turn_off' | 'start' | 'cancel'; value?: unknown } {
@@ -185,7 +185,7 @@ export function writeToHelperOperation(
  * the handler so the handler needs no direct knowledge of the engine: the only
  * thing it has to know is "is this mine, and if so what did it become".
  */
-export function applyHelperWrite(accessoryId: string, value: unknown): { value: unknown } | null {
+export function applyVirtualWrite(accessoryId: string, value: unknown): { value: unknown } | null {
   const engine = getAutomationEngine();
   const helper = engine?.getHelper(accessoryId);
   if (!engine || !helper) return null;
@@ -195,13 +195,13 @@ export function applyHelperWrite(accessoryId: string, value: unknown): { value: 
       code: 'CHARACTERISTIC_NOT_WRITABLE',
     });
   }
-  const { operation, value: opValue } = writeToHelperOperation(helper, value);
+  const { operation, value: opValue } = writeToOperation(helper, value);
   engine.operateHelper(helper.id, operation, { value: opValue });
   return { value: engine.getHelperStates()[helper.id] };
 }
 
 /** Current value of a helper accessory, or null when the id isn't one. */
-export function readHelperValue(accessoryId: string): { value: unknown } | null {
+export function readVirtualValue(accessoryId: string): { value: unknown } | null {
   const engine = getAutomationEngine();
   if (!engine?.getHelper(accessoryId)) return null;
   return { value: engine.getHelperStates()[accessoryId] };
