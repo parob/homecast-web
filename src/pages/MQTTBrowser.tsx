@@ -719,7 +719,7 @@ export default function MQTTBrowser() {
             try { setPublishValue(JSON.stringify(JSON.parse(ep), null, 2)); } catch { setPublishValue(ep); }
           };
 
-          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, _insetPx?: number) => {
+          const renderDetailPanel = (topic: string, _payload: string, _timestamp: number, insetPx = 0) => {
             const ep = getEffectivePayload(topic, messages[topic]?.payload || '{}');
             const topicHome = homeForSlug(topic.split('/')[1] || '');
             const homeOffline = topicHome?.relayConnected === false;
@@ -758,8 +758,12 @@ export default function MQTTBrowser() {
                 </div>
               </div>
             );
+            const panelIndent = Math.max(insetPx, 12);
             return (
-              <div className="my-1 mr-3 ml-auto w-full max-w-sm lg:max-w-3xl">
+              <div
+                className="my-1 mr-3 w-full max-w-sm rounded-r-md border-l-2 border-primary/20 bg-muted/10 pl-2 lg:max-w-3xl"
+                style={{ marginLeft: panelIndent, width: `calc(100% - ${panelIndent + 12}px)` }}
+              >
                 {/* Header: status + Controls/JSON toggle (toggle hidden on lg+ where both render side-by-side) */}
                 <div className="flex items-center justify-between px-3 py-1">
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
