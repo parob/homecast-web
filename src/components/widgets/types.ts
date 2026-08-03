@@ -11,6 +11,9 @@ export interface WidgetProps {
    * it fall back to doing nothing rather than silently writing the wrong type.
    */
   onSetValue?: (accessoryId: string, characteristicType: string, value: unknown) => void;
+  /** Edit the accessory's own definition — only meaningful for ones we own. */
+  onEdit?: () => void;
+  editLabel?: string;
   getEffectiveValue: (accessoryId: string, characteristicType: string, serverValue: any) => any;
   compact?: boolean;
   onExpandToggle?: () => void;

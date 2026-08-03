@@ -116,7 +116,7 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
       );
       setStates(s => ({ ...s, [helperId]: res?.state }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not change that helper accessory');
+      toast.error(e instanceof Error ? e.message : 'Could not change that virtual accessory');
       void refreshStates();
     }
   }, [homeId, refreshStates]);
@@ -135,9 +135,9 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
       });
       await refetch();
       void refreshStates();
-      toast.success(helper.id ? 'Helper accessory saved' : 'Helper accessory created');
+      toast.success(helper.id ? 'Virtual accessory saved' : 'Virtual accessory created');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not save the helper accessory');
+      toast.error(e instanceof Error ? e.message : 'Could not save the virtual accessory');
       throw e;
     }
   }, [homeId, saveMutation, refetch, refreshStates]);
@@ -146,9 +146,9 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
     try {
       await deleteMutation({ variables: { helperId } });
       await refetch();
-      toast.success('Helper accessory deleted');
+      toast.success('Virtual accessory deleted');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not delete the helper accessory');
+      toast.error(e instanceof Error ? e.message : 'Could not delete the virtual accessory');
     }
   }, [deleteMutation, refetch]);
 
@@ -170,7 +170,7 @@ export function useHelperAccessories(homeId: string | null, options: { active?: 
       });
       await refetch();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not move that helper accessory');
+      toast.error(e instanceof Error ? e.message : 'Could not move that virtual accessory');
     }
   }, [helpers, homeId, saveMutation, refetch]);
 

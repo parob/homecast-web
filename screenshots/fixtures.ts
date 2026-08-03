@@ -686,10 +686,40 @@ export const MOCK_HC_HELPERS = [
 
 /**
  * The same helpers as the relay publishes them: ordinary accessories with an
- * `isHelper` flag. Appended to accessories.list so the dashboard, sharing,
+ * `isVirtual` flag. Appended to accessories.list so the dashboard, sharing,
  * collections and search all see them without knowing what they are.
  */
+export const HELPER_SWITCH_ID = 'helper-guest-staying';
+
+export const VIRTUAL_SWITCH_ACCESSORY = {
+  id: HELPER_SWITCH_ID,
+  name: 'Guest Staying',
+  homeId: HOME_ID,
+  roomId: ROOMS.bedroom,
+  roomName: 'Bedroom',
+  category: 'Switch',
+  isReachable: true,
+  isVirtual: true,
+  helperType: 'input_boolean',
+  isUserEditable: true,
+  services: [{
+    id: `${HELPER_SWITCH_ID}:service`,
+    name: 'Guest Staying',
+    // A virtual switch really does carry power_state and render through
+    // SwitchWidget — the badge is the only thing that says it isn't a device.
+    serviceType: 'switch',
+    characteristics: [{
+      id: `${HELPER_SWITCH_ID}:power_state`,
+      characteristicType: 'power_state',
+      value: true,
+      isReadable: true,
+      isWritable: true,
+    }],
+  }],
+};
+
 export const HELPER_ACCESSORIES = [
+  VIRTUAL_SWITCH_ACCESSORY,
   {
     id: HELPER_MODE_ID,
     name: 'Home Mode',
@@ -697,7 +727,7 @@ export const HELPER_ACCESSORIES = [
     roomId: undefined,
     category: 'Other',
     isReachable: true,
-    isHelper: true,
+    isVirtual: true,
     helperType: 'input_select',
     isUserEditable: true,
     helperOptions: ['Home', 'Away', 'Night', 'Vacation'],
@@ -722,7 +752,7 @@ export const HELPER_ACCESSORIES = [
     roomName: 'Bedroom',
     category: 'Sensor',
     isReachable: true,
-    isHelper: true,
+    isVirtual: true,
     helperType: 'counter',
     isUserEditable: true,
     services: [{

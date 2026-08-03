@@ -40,6 +40,7 @@ export const HelperWidget: React.FC<WidgetProps> = memo((props) => {
     onExpandToggle, onDebug, iconStyle, editMode, editModeType, isHiddenUi,
     homeName, disableTooltip, onRemove, removeLabel, onHide, hideLabel,
     isHidden, showHiddenItems, onToggleShowHidden, onShare, locationSubtitle,
+    onEdit, editLabel,
   } = props;
 
   const meta = accessory as unknown as HelperAccessoryShape;
@@ -94,6 +95,8 @@ export const HelperWidget: React.FC<WidgetProps> = memo((props) => {
       onToggleShowHidden={onToggleShowHidden}
       onShare={onShare}
       locationSubtitle={locationSubtitle}
+      onEdit={onEdit}
+      editLabel={editLabel}
       headerAction={readOnly ? undefined : renderControl()}
     />
   );

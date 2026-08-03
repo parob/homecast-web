@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Sparkles } from 'lucide-react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -83,6 +83,9 @@ interface WidgetCardProps {
   disableTooltip?: boolean;
   /** Callback to remove accessory from collection/group */
   onRemove?: () => void;
+  /** Edit the accessory itself, for accessories we own rather than HomeKit. */
+  onEdit?: () => void;
+  editLabel?: string;
   /** Label for remove action (e.g., "Remove from Collection", "Remove from Group") */
   removeLabel?: string;
   /** Callback to hide accessory */
@@ -131,6 +134,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   homeName,
   disableTooltip = false,
   onRemove,
+  onEdit,
+  editLabel,
   removeLabel,
   onHide,
   hideLabel,
@@ -302,6 +307,25 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     </div>
   ) : null;
 
+  /**
+   * Virtual accessories are indistinguishable from real ones by design — a
+   * virtual switch genuinely carries `power_state` and renders through
+   * SwitchWidget. That is the point everywhere except here: you should be able
+   * to tell at a glance which things in your home actually exist.
+   *
+   * Marked in WidgetCard rather than per widget, so it covers every type at
+   * once and a new widget can't forget it.
+   */
+  const virtualBadge = (accessory as { isVirtual?: boolean } | undefined)?.isVirtual ? (
+    <span
+      className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-60"
+      title="Virtual accessory — a value your automations own"
+      aria-label="Virtual accessory"
+    >
+      <Sparkles className="h-3 w-3" />
+    </span>
+  ) : null;
+
   // Expanded state styling: just z-index, shadow is on ExpandedOverlay wrapper
   const expandedClass = expanded
     ? 'relative z-50'
@@ -390,7 +414,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Wrap with context menu if we have characteristics, location info, or actions to show
   // Context menu appears on right-click (desktop) or long-press (touch)
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || onRemove || onHide || onToggleShowHidden || onShare || onDebug;
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || onRemove || onEdit || onHide || onToggleShowHidden || onShare || onDebug;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -438,7 +462,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   </div>
                 ))
               )}
-              {(onShare || onRemove || onHide || onDebug) && characteristics.length > 0 && <ContextMenuSeparator />}
+              {(onShare || onRemove || onEdit || onHide || onDebug) && characteristics.length > 0 && <ContextMenuSeparator />}
+              {onEdit && (
+                <ContextMenuItem onClick={onEdit}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  {editLabel || 'Edit Accessory'}
+                </ContextMenuItem>
+              )}
               {onShare && (
                 <ContextMenuItem onClick={onShare}>
                   <Share2 className="h-4 w-4 mr-2" />
@@ -463,7 +493,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   {removeLabel || 'Remove Accessory'}
                 </ContextMenuItem>
               )}
-              {(onShare || onHide || onDebug || onRemove) && onToggleShowHidden && <ContextMenuSeparator />}
+              {(onShare || onHide || onDebug || onRemove || onEdit) && onToggleShowHidden && <ContextMenuSeparator />}
               {onToggleShowHidden && (
                 <ContextMenuItem onClick={onToggleShowHidden}>
                   {showHiddenItems ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
@@ -473,6 +503,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             </ContextMenuContent>
           </ContextMenu>
           {/* Hidden badge outside Card so it's not affected by opacity/grayscale */}
+          {virtualBadge}
           {hiddenBadge}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
@@ -491,6 +522,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             {cardInner}
           </Card>
           {/* Hidden badge outside Card so not affected by opacity/grayscale */}
+          {virtualBadge}
           {hiddenBadge}
         </WidgetWrapper>
       </div>

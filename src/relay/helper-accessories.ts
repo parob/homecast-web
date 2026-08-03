@@ -60,11 +60,11 @@ const HELPER_SERVICE_TYPE: Record<string, string> = {
 };
 
 /** Marks an accessory as engine-owned. Clients use it to offer the right UI. */
-export const HELPER_ACCESSORY_FLAG = 'isHelper';
+export const VIRTUAL_ACCESSORY_FLAG = 'isVirtual';
 
 export interface HelperAccessory extends HomeKitAccessory {
   /** Always true. Absent on HomeKit accessories. */
-  isHelper?: boolean;
+  isVirtual?: boolean;
   /** The helper's type, so a client can render the right control. */
   helperType?: string;
   /** False when the helper is read-only from the dashboard. */
@@ -112,7 +112,7 @@ export function helperToAccessory(helper: HelperDefinition, value: unknown): Hel
     // and if the engine weren't running we would not be answering at all.
     isReachable: true,
     services: [service],
-    isHelper: true,
+    isVirtual: true,
     helperType: helper.type,
     isUserEditable: writable,
     // Options travel on the service name for input_select clients that want

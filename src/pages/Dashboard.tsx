@@ -385,7 +385,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            New Helper Accessory
+            New Virtual Accessory
           </ContextMenuItem>
         )}
         {onPin && (
@@ -784,7 +784,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              New Helper Accessory
+              New Virtual Accessory
             </ContextMenuItem>
           )}
           {onPin && (
@@ -1503,11 +1503,29 @@ const Dashboard = () => {
   const [helperEditorOpen, setHelperEditorOpen] = useState(false);
   const [editingHelper, setEditingHelper] = useState<HelperDefinition | undefined>(undefined);
   const [helperDefaultRoomId, setHelperDefaultRoomId] = useState<string | undefined>(undefined);
+  // Read through refs: this callback is created far above where the helper list
+  // and the editor exist, and threading them as deps would rebuild every tile's
+  // menu on each poll.
+  const helperAccessoriesRef = useRef<HelperDefinition[]>([]);
+  const openHelperEditorRef = useRef<(opts?: { helper?: HelperDefinition; roomId?: string }) => void>(() => {});
+
+  /**
+   * Edit callback for an accessory tile, or undefined when there is nothing to
+   * edit. A HomeKit accessory's definition belongs to Apple Home; a virtual one
+   * is ours, so it gets an Edit entry in the same menu as Share and Hide.
+   */
+  const virtualAccessoryEditor = useCallback((accessory: { id: string }) => {
+    const helper = helperAccessoriesRef.current.find(h => h.id === accessory.id);
+    if (!helper) return undefined;
+    return () => openHelperEditorRef.current({ helper });
+  }, []);
+
   const openHelperEditor = useCallback((opts: { helper?: HelperDefinition; roomId?: string } = {}) => {
     setEditingHelper(opts.helper);
     setHelperDefaultRoomId(opts.roomId);
     setHelperEditorOpen(true);
   }, []);
+  openHelperEditorRef.current = openHelperEditor;
   // Version counter to force re-renders when visibility changes
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   // Version counter to force re-renders when item order changes (for home view cache reads)
@@ -4141,7 +4159,7 @@ const Dashboard = () => {
       // accessories — but the bucket is about placement, not about what put
       // something in it, and it renders first and unlabelled.
       const roomName = accessory.roomName
-        || ((accessory as { isHelper?: boolean }).isHelper ? HOME_LEVEL_ROOM : 'Unknown Room');
+        || ((accessory as { isVirtual?: boolean }).isVirtual ? HOME_LEVEL_ROOM : 'Unknown Room');
       if (!grouped[roomName]) {
         grouped[roomName] = [];
       }
@@ -4186,6 +4204,7 @@ const Dashboard = () => {
 
   // Filter by selected room, apply visibility, and sort by custom order
   const helperAccessories = useHelperAccessories(selectedHomeId);
+  helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {
     // Filter out hidden rooms (unless in edit mode)
@@ -5487,7 +5506,7 @@ const Dashboard = () => {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
               <Blocks className="h-4 w-4 mr-2" />
-              New Helper Accessory
+              New Virtual Accessory
             </DropdownMenuItem>
             {isMobile && (
             <DropdownMenuItem
@@ -6997,6 +7016,8 @@ const Dashboard = () => {
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
+                  onEdit={virtualAccessoryEditor(accessory)}
+                  editLabel="Edit Virtual Accessory"
                                 getEffectiveValue={getEffectiveValue}
                                 compact={true}
 
@@ -7021,6 +7042,8 @@ const Dashboard = () => {
                                   onToggle={handleToggle}
                                   onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
+                  onEdit={virtualAccessoryEditor(accessory)}
+                  editLabel="Edit Virtual Accessory"
                                   getEffectiveValue={getEffectiveValue}
                                   compact={false}
 
@@ -7045,6 +7068,8 @@ const Dashboard = () => {
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
+                  onEdit={virtualAccessoryEditor(accessory)}
+                  editLabel="Edit Virtual Accessory"
                                 getEffectiveValue={getEffectiveValue}
                                 compact={false}
 

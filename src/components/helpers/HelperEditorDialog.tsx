@@ -80,7 +80,7 @@ export function HelperEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogTitle className="text-base font-semibold">
-          {existing ? `Edit ${existing.name}` : draft ? 'New helper accessory' : 'What kind of helper accessory?'}
+          {existing ? `Edit ${existing.name}` : draft ? 'New virtual accessory' : 'What kind of virtual accessory?'}
         </DialogTitle>
 
         {/* Step 1 — type picker (creating only) */}
