@@ -48,6 +48,7 @@ import type {
 } from '@/automation/types/automation';
 import { createEmptyConditionBlock } from '@/automation/types/automation';
 import { CHOOSE_BY_TRIGGER_PREFIX, TRIGGER_GATE_PREFIX } from '@/automation/trigger-branches';
+import { ifConfigToConditionBlock, type IfConditionConfig } from './if-condition';
 
 /**
  * Convert a React Flow graph into an Automation definition.
@@ -63,22 +64,13 @@ export function graphToAutomation(
   const triggerNodes = nodes.filter((n) => (n.data as FlowNodeData).category === 'trigger');
   const triggers: Trigger[] = triggerNodes.map((n) => nodeToTrigger(n));
 
-  // What each trigger actually leads to, kept apart per trigger.
+  // What each trigger actually leads to, kept apart per trigger. IF nodes
+  // capture their True/False subtrees as nested then/else (see collectActions)
+  // instead of flattening them into the branch.
   const branches = triggerNodes.map((triggerNode) => {
     const branchConditions: ConditionBlock = createEmptyConditionBlock();
-    const branchActions: Action[] = [];
-
-    for (const node of getDownstreamNodes(triggerNode.id, nodes, edges)) {
-      const data = node.data as FlowNodeData;
-      if (data.category === 'condition') {
-        const condition = nodeToCondition(node);
-        if (condition) branchConditions.conditions.push(condition);
-      } else if (data.category === 'action' || data.category === 'logic') {
-        const action = nodeToAction(node, nodes, edges);
-        if (action) branchActions.push(action);
-      }
-    }
-
+    const visited = new Set<string>([triggerNode.id]);
+    const branchActions = collectActions([triggerNode.id], nodes, edges, visited, branchConditions);
     return { triggerId: triggerNode.id, conditions: branchConditions, actions: branchActions };
   });
 
@@ -189,32 +181,96 @@ function combineBranches(branches: TriggerBranch[]): { conditions: ConditionBloc
   return { conditions: createEmptyConditionBlock(), actions: [choose] };
 }
 
-function getDownstreamNodes(
-  sourceId: string,
+/**
+ * BFS the graph from `startIds`, turning nodes into an ordered action list.
+ *
+ * IF nodes end the flat walk: their True/False subtrees become the nested
+ * then/else of an IfThenElseAction rather than joining this list. (Until this
+ * existed, both branches were flattened next to the IF and always ran.) A node
+ * wired from both branches — a join — is serialized into BOTH branches: only
+ * one branch executes at run time, so it still runs exactly once.
+ *
+ * Condition-category nodes (from loaded legacy automations) are hoisted into
+ * `hoistedConditions` as before.
+ */
+function collectActions(
+  startIds: string[],
   allNodes: Node<FlowNodeData>[],
   allEdges: Edge[],
-): Node<FlowNodeData>[] {
-  const result: Node<FlowNodeData>[] = [];
-  const visited = new Set<string>([sourceId]);
-  const queue = [sourceId];
+  visited: Set<string>,
+  hoistedConditions: ConditionBlock,
+  /** Restrict the walk to edges out of startIds with this sourceHandle (IF branch roots). */
+  rootHandle?: string,
+): Action[] {
+  const actions: Action[] = [];
+  const queue: string[] = [];
+
+  const enqueueTargets = (sourceId: string, handle?: string) => {
+    for (const edge of allEdges.filter((e) => e.source === sourceId)) {
+      if (handle !== undefined && (edge.sourceHandle ?? undefined) !== handle) continue;
+      if (visited.has(edge.target)) continue;
+      visited.add(edge.target);
+      queue.push(edge.target);
+    }
+  };
+
+  for (const id of startIds) enqueueTargets(id, rootHandle);
 
   while (queue.length > 0) {
     const currentId = queue.shift()!;
+    const node = allNodes.find((n) => n.id === currentId);
+    if (!node) continue;
+    const data = node.data as FlowNodeData;
 
-    const outEdges = allEdges.filter((e) => e.source === currentId);
-    for (const edge of outEdges) {
-      if (visited.has(edge.target)) continue;
-      visited.add(edge.target);
-
-      const targetNode = allNodes.find((n) => n.id === edge.target);
-      if (targetNode) {
-        result.push(targetNode);
-        queue.push(targetNode.id);
-      }
+    if (data.category === 'condition') {
+      const condition = nodeToCondition(node);
+      if (condition) hoistedConditions.conditions.push(condition);
+      enqueueTargets(currentId);
+      continue;
     }
+
+    if (data.category !== 'action' && data.category !== 'logic') continue;
+
+    if (data.nodeType === 'if' || data.nodeType === 'if_then_else') {
+      actions.push(buildIfAction(node, allNodes, allEdges, visited, hoistedConditions));
+      // Subtrees were consumed by buildIfAction — nothing to enqueue here.
+      continue;
+    }
+
+    const action = nodeToAction(node, allNodes, allEdges);
+    if (action) actions.push(action);
+    enqueueTargets(currentId);
   }
 
-  return result;
+  return actions;
+}
+
+function buildIfAction(
+  ifNode: Node<FlowNodeData>,
+  allNodes: Node<FlowNodeData>[],
+  allEdges: Edge[],
+  outerVisited: Set<string>,
+  hoistedConditions: ConditionBlock,
+): IfThenElseAction {
+  const config = (ifNode.data as FlowNodeData).config as IfConditionConfig;
+
+  // Each branch walks with its own copy of the visited set so a join node
+  // reachable from both handles lands in both branches; the union then feeds
+  // back so the outer walk can't pick any of it up again.
+  const thenVisited = new Set(outerVisited);
+  const thenActions = collectActions([ifNode.id], allNodes, allEdges, thenVisited, hoistedConditions, 'true');
+  const elseVisited = new Set(outerVisited);
+  const elseActions = collectActions([ifNode.id], allNodes, allEdges, elseVisited, hoistedConditions, 'false');
+  for (const id of thenVisited) outerVisited.add(id);
+  for (const id of elseVisited) outerVisited.add(id);
+
+  return {
+    type: 'if_then_else',
+    id: ifNode.id,
+    condition: ifConfigToConditionBlock(config, ifNode.id),
+    then: thenActions,
+    else: elseActions,
+  };
 }
 
 // ============================================================
@@ -515,10 +571,13 @@ function nodeToActionInner(
 
     case 'if':
     case 'if_then_else':
+      // Branch contents are attached by buildIfAction (the walk owns the
+      // subtrees); this fallback still carries the condition so no call path
+      // can save an IF that always passes.
       return {
         type: 'if_then_else',
         id: node.id,
-        condition: createEmptyConditionBlock(),
+        condition: ifConfigToConditionBlock(config as IfConditionConfig, node.id),
         then: [],
         else: [],
       } satisfies IfThenElseAction;

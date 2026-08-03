@@ -455,6 +455,17 @@ export function isNodeConfigured(nodeType: string, category: string, config: Rec
     }
   }
   if (category === 'logic') {
+    if (nodeType === 'if') {
+      // An IF needs a condition: rows, an expression, or a carried-through
+      // custom block. Empty passes at run time, but it's never what the user
+      // meant — leave it dashed until it says something.
+      const rows = config.conditions as { accessoryId?: string; characteristicType?: string }[] | undefined;
+      return !!(
+        (rows?.some((r) => r.accessoryId && r.characteristicType))
+        || (config.expression as string)?.trim()
+        || config.conditionJson
+      );
+    }
     if (nodeType === 'sub_workflow') return !!config.automationId;
     if (nodeType === 'repeat') {
       return ((config.mode as string) ?? 'count') !== 'count' || !!(config.count as number);

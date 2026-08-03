@@ -27,6 +27,10 @@ import { NodeInfoPopover } from './NodeInfoPopover';
 import { NotificationIconField } from './NotificationIconField';
 import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
+import {
+  summarizeIfConfig, isCompleteRow,
+  type IfConditionConfig, type IfConditionRow, type IfRowOperator,
+} from '../serialization/if-condition';
 
 // ============================================================
 // Upstream context — what data flows into this node
@@ -36,6 +40,9 @@ interface UpstreamField {
   label: string;        // e.g., "Living Room Light → brightness"
   expression: string;   // e.g., "states('acc-123', 'brightness')"
   nodeLabel: string;    // e.g., "Device Changed"
+  /** Set on live-state fields so the UI can show the device's current value. */
+  accessoryId?: string;
+  characteristicType?: string;
 }
 
 function getUpstreamFields(
@@ -86,6 +93,8 @@ function getUpstreamFields(
           label: `${accName} → ${charType} (live state)`,
           expression: `states('${config.accessoryId}', '${charType}')`,
           nodeLabel: data.label,
+          accessoryId: config.accessoryId as string,
+          characteristicType: charType,
         });
       }
 
@@ -1163,10 +1172,12 @@ function renderConfigForm(
           <IfNodeConfig
             config={config}
             updateConfig={updateConfig}
+            updateConfigBatch={updateConfigBatch}
             nodeId={nodeId}
             allNodes={allNodes}
             allEdges={allEdges}
             accessories={accessories}
+            homes={homes}
           />
         );
 
@@ -1342,22 +1353,174 @@ function renderConfigForm(
 // IF node config — shows upstream data + expression editor
 // ============================================================
 
+/** The characteristic object behind a condition row, for metadata + live value. */
+function findCharacteristic(accessories: HomeKitAccessory[], accessoryId?: string, characteristicType?: string) {
+  if (!accessoryId || !characteristicType) return undefined;
+  return accessories
+    .find((a) => a.id === accessoryId)
+    ?.services?.flatMap((s) => s.characteristics)
+    ?.find((c) => c.characteristicType === characteristicType);
+}
+
+/**
+ * "Currently On · use" — the device's live value beside the condition being
+ * written about it, one tap to adopt. The whole point of the structured IF
+ * form: nobody should have to guess what a sensor reads right now.
+ */
+function CurrentValueChip({ accessories, accessoryId, characteristicType, onUse }: {
+  accessories: HomeKitAccessory[];
+  accessoryId?: string;
+  characteristicType?: string;
+  onUse?: (value: unknown) => void;
+}) {
+  const char = findCharacteristic(accessories, accessoryId, characteristicType);
+  if (!char || char.value === undefined || char.value === null) return null;
+  const label = characteristicValueLabel(characteristicType, char.value) || String(char.value);
+
+  return (
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" data-testid="current-value-chip">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <span>Currently <span className="font-medium text-foreground">{label}</span></span>
+      {onUse && (
+        <button
+          type="button"
+          className="text-primary hover:underline"
+          onClick={() => onUse(defaultValueForCharacteristic(char, characteristicType ?? ''))}
+          data-testid="use-current-value"
+        >
+          use
+        </button>
+      )}
+    </div>
+  );
+}
+
+const IF_OPERATORS: { value: IfRowOperator; label: string }[] = [
+  { value: 'eq', label: 'is' },
+  { value: 'neq', label: 'is not' },
+  { value: 'above', label: 'is above' },
+  { value: 'below', label: 'is below' },
+];
+
+function IfConditionRowEditor({ row, accessories, homes, onChange, onRemove }: {
+  row: IfConditionRow;
+  accessories: HomeKitAccessory[];
+  homes: HomeKitHome[];
+  onChange: (patch: Partial<IfConditionRow>) => void;
+  onRemove: () => void;
+}) {
+  const acc = accessories.find((a) => a.id === row.accessoryId);
+  const chars = acc?.services?.flatMap((s) => s.characteristics)?.filter((c) => c.isReadable || c.isWritable) ?? [];
+  const selectedChar = chars.find((c) => c.characteristicType === row.characteristicType);
+  const numericOp = row.operator === 'above' || row.operator === 'below';
+
+  return (
+    <div className="rounded-lg border p-2 space-y-2" data-testid="if-condition-row">
+      <div className="flex items-center gap-1.5">
+        <div className="flex-1 min-w-0">
+          <DevicePicker
+            value={row.accessoryId || undefined}
+            accessories={accessories}
+            homes={homes}
+            onChange={(id, name) => {
+              // New device: characteristic and value no longer apply.
+              onChange({ accessoryId: id, accessoryName: name, characteristicType: '', value: undefined, threshold: undefined });
+            }}
+          />
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={onRemove} data-testid="remove-condition-row">
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {row.accessoryId && (
+        <CharacteristicPicker
+          value={row.characteristicType || undefined}
+          characteristics={chars.map((c) => ({ type: c.characteristicType, meta: getCharMeta(c) }))}
+          onChange={(v) => {
+            const char = chars.find((c) => c.characteristicType === v);
+            // Pre-fill with the device's current value — the most likely
+            // thing the condition is about, and a true statement today.
+            onChange({ characteristicType: v, value: defaultValueForCharacteristic(char, v), threshold: undefined });
+          }}
+        />
+      )}
+
+      {row.accessoryId && row.characteristicType && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Select value={row.operator} onValueChange={(v) => onChange({ operator: v as IfRowOperator })}>
+              <SelectTrigger className="h-8 text-xs w-[104px] shrink-0"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {IF_OPERATORS.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex-1 min-w-0">
+              {numericOp ? (
+                <Input
+                  type="number"
+                  value={row.threshold ?? ''}
+                  placeholder="Value"
+                  onChange={(e) => onChange({ threshold: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className="h-8 text-xs"
+                />
+              ) : (
+                <SmartValueInput
+                  char={selectedChar}
+                  value={row.value}
+                  onChange={(v) => onChange({ value: v })}
+                  characteristicType={row.characteristicType}
+                />
+              )}
+            </div>
+          </div>
+          <CurrentValueChip
+            accessories={accessories}
+            accessoryId={row.accessoryId}
+            characteristicType={row.characteristicType}
+            onUse={numericOp
+              ? (v) => { const n = typeof v === 'number' ? v : parseFloat(String(v)); if (Number.isFinite(n)) onChange({ threshold: n }); }
+              : (v) => onChange({ value: v })}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 function IfNodeConfig({
   config,
   updateConfig,
+  updateConfigBatch,
   nodeId,
   allNodes,
   allEdges,
   accessories,
+  homes,
 }: {
   config: Record<string, unknown>;
   updateConfig: (key: string, value: unknown) => void;
+  updateConfigBatch?: (updates: Record<string, unknown>) => void;
   nodeId?: string;
   allNodes?: Node<FlowNodeData>[];
   allEdges?: Edge[];
   accessories: HomeKitAccessory[];
+  homes?: HomeKitHome[];
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const ifConfig = config as IfConditionConfig;
+  const mode = ifConfig.conditionMode ?? (ifConfig.expression ? 'expression' : 'simple');
+  const rows = ifConfig.conditions ?? [];
+  const logic = ifConfig.conditionLogic === 'or' ? 'or' : 'and';
+
+  const setBatch = (updates: Record<string, unknown>) => {
+    if (updateConfigBatch) updateConfigBatch(updates);
+    else Object.entries(updates).forEach(([k, v]) => updateConfig(k, v));
+  };
+  const setRows = (next: IfConditionRow[]) => setBatch({ conditionMode: 'simple', conditions: next });
 
   // Get upstream device references
   const upstreamFields = useMemo(() => {
@@ -1388,28 +1551,131 @@ function IfNodeConfig({
   const deviceFields = upstreamFields.filter((f) => f.nodeLabel !== 'Trigger data' && f.nodeLabel !== 'Time');
   const builtinFields = upstreamFields.filter((f) => f.nodeLabel === 'Trigger data' || f.nodeLabel === 'Time');
 
+  const modeSwitch = (
+    <div className="flex items-center bg-muted rounded-lg p-0.5 w-fit">
+      {([
+        { id: 'simple', label: 'Conditions' },
+        { id: 'expression', label: 'Expression' },
+      ] as const).map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          className={cn(
+            'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+            (mode === m.id || (mode === 'custom' && m.id === 'simple'))
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground',
+          )}
+          onClick={() => setBatch({ conditionMode: m.id })}
+          data-testid={`if-mode-${m.id}`}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Custom: a condition this form can't express (written by hand or via MCP).
+  // Never mangle it silently — keep it verbatim unless the user opts out.
+  if (mode === 'custom') {
+    return (
+      <>
+        {modeSwitch}
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5 space-y-2">
+          <p className="text-[11px]">
+            This IF uses a condition written outside the editor. It is kept exactly as saved.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setBatch({ conditionMode: 'simple', conditionJson: undefined, conditions: [] })}
+          >
+            Replace with simple conditions
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  if (mode === 'simple') {
+    return (
+      <>
+        {modeSwitch}
+
+        {rows.map((row, i) => (
+          <IfConditionRowEditor
+            key={i}
+            row={row}
+            accessories={accessories}
+            homes={homes ?? []}
+            onChange={(patch) => setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))}
+            onRemove={() => setRows(rows.filter((_, idx) => idx !== i))}
+          />
+        ))}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs w-full"
+          onClick={() => setRows([...rows, { accessoryId: '', characteristicType: '', operator: 'eq' }])}
+          data-testid="add-condition-row"
+        >
+          + Add condition
+        </Button>
+
+        {rows.filter(isCompleteRow).length > 1 && (
+          <ConfigField label="Pass when">
+            <Select value={logic} onValueChange={(v) => setBatch({ conditionLogic: v })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="and">All conditions match</SelectItem>
+                <SelectItem value="or">Any condition matches</SelectItem>
+              </SelectContent>
+            </Select>
+          </ConfigField>
+        )}
+
+        <p className="text-[10px] text-muted-foreground">
+          <span className="text-emerald-600 font-medium">True</span> and <span className="text-red-400 font-medium">False</span> outputs go to different branches.
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
+      {modeSwitch}
+
       {/* Upstream data — devices from connected nodes */}
       {deviceFields.length > 0 && (
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Input data <span className="text-muted-foreground font-normal">(click to insert)</span></Label>
           <div className="space-y-0.5">
-            {deviceFields.map((field, i) => (
-              <button
-                key={i}
-                type="button"
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 hover:bg-muted text-left transition-colors group"
-                onClick={() => insertExpression(field.expression)}
-                title={field.expression}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-medium truncate">{field.label}</div>
-                  <div className="text-[9px] font-mono text-muted-foreground truncate">{field.expression}</div>
-                </div>
-                <Copy className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
-              </button>
-            ))}
+            {deviceFields.map((field, i) => {
+              const liveChar = findCharacteristic(accessories, field.accessoryId, field.characteristicType);
+              const liveLabel = liveChar?.value !== undefined && liveChar?.value !== null
+                ? characteristicValueLabel(field.characteristicType, liveChar.value) || String(liveChar.value)
+                : null;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 hover:bg-muted text-left transition-colors group"
+                  onClick={() => insertExpression(field.expression)}
+                  title={field.expression}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-medium truncate">{field.label}</div>
+                    <div className="text-[9px] font-mono text-muted-foreground truncate">{field.expression}</div>
+                  </div>
+                  {liveLabel && (
+                    <span className="text-[9px] text-emerald-600 shrink-0" title="Current value">{liveLabel}</span>
+                  )}
+                  <Copy className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1749,9 +2015,11 @@ function buildSummary(
 
   if (category === 'logic') {
     switch (nodeType) {
-      case 'if':
-        if (config.expression) return `${(config.expression as string).slice(0, 30)}`;
+      case 'if': {
+        const summary = summarizeIfConfig(config as IfConditionConfig, names);
+        if (summary) return summary;
         break;
+      }
       case 'wait':
         return `Timeout: ${config.timeoutSeconds ?? 30}s`;
       case 'merge':

@@ -14,6 +14,7 @@ import type {
 } from '@/automation/types/automation';
 import { isConditionBlock } from '@/automation/types/automation';
 import { flattenTriggerBranches } from '@/automation/trigger-branches';
+import { conditionBlockToIfConfig, summarizeIfConfig } from './if-condition';
 import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS, isNodeConfigured } from '../constants';
 
 const VERTICAL_GAP = 80;
@@ -104,16 +105,28 @@ export function automationToGraph(
     nodes.push(...extra);
     y += extra.length * VERTICAL_GAP;
   }
+  let lastLinks: { id: string; handle?: string }[] = lastNodeIds.map((id) => ({ id, handle: 'pass' as string | undefined }));
   for (const action of topLevelActions) {
     const node = actionToNode(action, HORIZONTAL_OFFSET, y, names);
     nodes.push(node);
 
-    for (const prevId of lastNodeIds) {
-      autoEdges.push(createEdge(prevId, node.id, 'pass'));
+    for (const prev of lastLinks) {
+      autoEdges.push(createEdge(prev.id, node.id, prev.handle));
     }
 
-    lastNodeIds = [node.id];
     y += VERTICAL_GAP;
+
+    if (action.type === 'if_then_else') {
+      // IF branches nest their actions inside then/else — surface them as
+      // nodes again, wired from the True/False handles. A root action after
+      // the IF chains from both branch tails (it runs whichever branch was
+      // taken; on re-save it lands in both branches, which runs identically).
+      const branches = emitIfBranches(action, node.id, HORIZONTAL_OFFSET, y, nodes, autoEdges, names);
+      y = branches.y;
+      lastLinks = branches.tails;
+    } else {
+      lastLinks = [{ id: node.id, handle: 'pass' }];
+    }
   }
 
   // Restore sticky notes from saved UI state
@@ -342,6 +355,58 @@ function buildConditionSummary(condition: Condition): string {
 // Action → Node (engine → simplified)
 // ============================================================
 
+/**
+ * Emit the nested then/else actions of an IF as canvas nodes, wired from the
+ * IF's True/False handles. Saved layouts override the generated positions;
+ * the generated edges matter for automations written outside the editor
+ * (MCP, hand-edited JSON), which have no uiState.
+ *
+ * Returns the tails a subsequent sibling action should chain from: the last
+ * node of each branch, or the IF's own handle where a branch is empty.
+ */
+function emitIfBranches(
+  action: Extract<Action, { type: 'if_then_else' }>,
+  ifNodeId: string,
+  x: number,
+  y: number,
+  nodes: Node<FlowNodeData>[],
+  autoEdges: Edge[],
+  names?: EntityNameSource,
+): { y: number; tails: { id: string; handle?: string }[] } {
+  let maxY = y;
+  const tails: { id: string; handle?: string }[] = [];
+
+  const emitBranch = (branchActions: Action[], handle: 'true' | 'false', branchX: number) => {
+    let branchY = y;
+    // A child chains from every tail of what preceded it (a nested IF has
+    // one tail per branch), so "after the IF" wiring survives nesting.
+    let prevs: { id: string; handle?: string }[] = [{ id: ifNodeId, handle }];
+    for (const child of branchActions) {
+      const childNode = actionToNode(child, branchX, branchY, names);
+      nodes.push(childNode);
+      for (const prev of prevs) {
+        autoEdges.push(createEdge(prev.id, childNode.id, prev.handle));
+      }
+      branchY += VERTICAL_GAP;
+
+      if (child.type === 'if_then_else') {
+        const nested = emitIfBranches(child, childNode.id, branchX, branchY, nodes, autoEdges, names);
+        branchY = nested.y;
+        prevs = nested.tails;
+      } else {
+        prevs = [{ id: childNode.id }];
+      }
+    }
+    tails.push(...prevs);
+    if (branchY > maxY) maxY = branchY;
+  };
+
+  emitBranch(action.then ?? [], 'true', x - 180);
+  emitBranch(action.else ?? [], 'false', x + 180);
+
+  return { y: maxY, tails };
+}
+
 function actionToNode(action: Action, x: number, y: number, names?: EntityNameSource): Node<FlowNodeData> {
   const nodeType = simplifyActionType(action.type);
   const isLogic = ['if', 'wait', 'if_then_else', 'choose', 'repeat', 'parallel', 'stop', 'wait_for_trigger'].includes(action.type);
@@ -382,7 +447,7 @@ function extractActionConfig(action: Action): Record<string, unknown> {
     case 'stop': return { reason: action.reason };
     case 'repeat': return { mode: action.mode, count: action.count };
     case 'wait_for_trigger': return { timeoutSeconds: action.timeout?.seconds, continueOnTimeout: action.continueOnTimeout };
-    case 'if_then_else': return { expression: '' };
+    case 'if_then_else': return { ...conditionBlockToIfConfig(action.condition) };
     case 'code': return { code: action.code, timeout: action.timeout };
     case 'merge': return { mergeMode: action.mode, combineKey: action.combineKey };
     case 'call_script': return { automationId: action.scriptId };
@@ -424,6 +489,7 @@ function buildActionSummary(action: Action, names?: EntityNameSource): string {
     case 'variables': return Object.keys(action.variables).join(', ');
     case 'choose': return `${action.choices.length} branches`;
     case 'parallel': return `${action.branches.length} branches`;
+    case 'if_then_else': return summarizeIfConfig(conditionBlockToIfConfig(action.condition), names);
     default: return action.type;
   }
 }
