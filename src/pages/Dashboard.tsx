@@ -4204,6 +4204,58 @@ const Dashboard = () => {
 
   // Filter by selected room, apply visibility, and sort by custom order
   const helperAccessories = useVirtualAccessories(selectedHomeId);
+
+  /**
+   * Room grids, by container id. Populated during render so the single
+   * DndContext below can resolve a drop: it sees only ids, and needs to know
+   * which grid an id came from and which grid it landed in.
+   */
+  const dragContainersRef = useRef<Map<string, {
+    itemIds: string[];
+    onReorder: (order: string[]) => void;
+    roomId: string | null;
+  }>>(new Map());
+
+  /**
+   * A drag that may cross rooms.
+   *
+   * Reordering within a grid behaves exactly as before. Moving BETWEEN grids is
+   * allowed only for virtual accessories: Apple Home owns which room a real
+   * device is in and rejects our writes, so letting one appear to move would
+   * show a change that never happened.
+   */
+  const handleSharedDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    const containers = dragContainersRef.current;
+    let source: string | undefined;
+    let dest: string | undefined;
+    for (const [id, c] of containers) {
+      if (c.itemIds.includes(activeId)) source = id;
+      if (id === overId || c.itemIds.includes(overId)) dest = id;
+    }
+    if (!source || !dest) return;
+
+    if (source === dest) {
+      const c = containers.get(source)!;
+      const from = c.itemIds.indexOf(activeId);
+      const to = c.itemIds.indexOf(overId);
+      if (from === -1 || to === -1) return;
+      c.onReorder(arrayMove(c.itemIds, from, to));
+      return;
+    }
+
+    const isVirtual = helperAccessoriesRef.current.some(h => h.id === activeId);
+    if (!isVirtual) {
+      toast.error('Apple Home decides which room a device is in');
+      return;
+    }
+    void helperAccessories.moveToRoom(activeId, containers.get(dest)!.roomId);
+  }, [helperAccessories]);
   helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {
@@ -6877,6 +6929,12 @@ const Dashboard = () => {
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </>
                 )}
+                <DndContext
+                  sensors={activeSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSharedDragEnd}
+                  onDragStart={(e) => setActiveDragId(String(e.active.id))}
+                >
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
                   (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
@@ -7199,8 +7257,18 @@ const Dashboard = () => {
                           setItemOrderVersion(v => v + 1);
                         };
 
+                        // Registered on every render so the shared drag-end can
+                        // resolve which grid an id belongs to.
+                        dragContainersRef.current.set(contextId, {
+                          itemIds: allItemIds,
+                          onReorder: handleReorder,
+                          roomId: room?.id ?? null,
+                        });
+
                         return selectedHomeId ? (
                           <DraggableGrid
+                            sharedContext
+                            containerId={contextId}
                             enabled={dndEnabled}
                             touchMode={isTouchDevice}
                             itemIds={allItemIds}
@@ -7234,6 +7302,7 @@ const Dashboard = () => {
                   }))
                   ; })()}
                 </div>
+                </DndContext>
                 </div>
               )}
             </div>

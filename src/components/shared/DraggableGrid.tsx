@@ -2,6 +2,7 @@ import React, { useState, useCallback, createContext, useContext, ReactNode, use
 import { createPortal } from 'react-dom';
 import {
   DndContext,
+  useDroppable,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -57,6 +58,20 @@ export interface DraggableGridProps {
   enabled?: boolean;
   /** Use touch-friendly sensors (long-press to drag) instead of pointer sensors */
   touchMode?: boolean;
+  /**
+   * Identifies this grid as a drop target when several share one DndContext.
+   *
+   * Set it (with `sharedContext`) to let an item be dragged from one grid into
+   * another — dnd-kit contexts are isolated, so a per-grid DndContext makes
+   * that impossible by construction.
+   */
+  containerId?: string;
+  /**
+   * Render only the sortable/droppable parts and rely on a DndContext supplied
+   * by the parent. The parent then owns drag-end, which is the only place that
+   * can see both the source and destination grid.
+   */
+  sharedContext?: boolean;
 }
 
 export const DraggableGrid: React.FC<DraggableGridProps> = ({
@@ -68,6 +83,8 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
   onDragEnd,
   enabled = true,
   touchMode = false,
+  containerId,
+  sharedContext = false,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -120,10 +137,30 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
     onDragEnd?.(event, true);
   }, [itemIds, onReorder, onDragEnd]);
 
+  // Droppable so an item can be dropped on an EMPTY grid, where there is no
+  // sortable item to collide with. Registered unconditionally: hooks cannot be
+  // conditional, and an unused droppable is inert.
+  const { setNodeRef: setDroppableRef } = useDroppable({
+    id: containerId ?? '__no_container__',
+    disabled: !sharedContext || !containerId,
+  });
+
   const contextValue: DraggableGridContextType = useMemo(() => ({
     activeId,
     isDragging: activeId !== null,
   }), [activeId]);
+
+  // Parent owns the DndContext: only it can see a drag that started in another
+  // grid, so only it can decide what a cross-grid drop means.
+  if (sharedContext) {
+    return (
+      <SortableContext items={itemIds} strategy={rectSortingStrategy}>
+        <div ref={setDroppableRef} data-drop-container={containerId}>
+          {children}
+        </div>
+      </SortableContext>
+    );
+  }
 
   return (
     <DraggableGridContext.Provider value={enabled ? contextValue : { activeId: null, isDragging: false }}>

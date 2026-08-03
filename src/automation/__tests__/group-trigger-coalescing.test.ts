@@ -230,3 +230,123 @@ describe('the coalescing window is sized for how slowly a group reports', () => 
     await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(2));
   });
 });
+
+/**
+ * A group trigger must follow the GROUP's aggregate state — on if any member
+ * is on, the same reading the dashboard tile shows — not any one member's.
+ *
+ * Observed in production (2026-08-03, George Street): "when Annex Lights turn
+ * off" fired when a single light of twelve was switched off by hand, with the
+ * other eleven still on.
+ */
+describe('a lone member does not speak for the group', () => {
+  /** Trigger on the group going OFF, like the Annex Lights automation. */
+  function groupOffAutomation(): Automation {
+    return {
+      ...groupAutomation(),
+      id: 'auto-group-off',
+      name: 'Kitchen lights off',
+      triggers: [
+        { id: 't-off', type: 'state', serviceGroupId: 'group-1', characteristicType: 'power_state', to: 0 },
+      ],
+      actions: [
+        { id: 'a-off', type: 'set_characteristic', accessoryId: 'porch', characteristicType: 'power_state', value: true },
+      ],
+    };
+  }
+
+  const set = (id: string, value: boolean) => ({
+    type: 'characteristic.updated' as const, accessoryId: id,
+    characteristicType: 'power_state', value,
+  });
+
+  it('one member turning off while the rest stay on does not fire the off trigger', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupOffAutomation()]);
+
+    await turnGroupOn(emit);
+    emit(set('bulb-2', false));
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(bridge.setCharacteristic).not.toHaveBeenCalled();
+  });
+
+  it('the off trigger fires once, on the member that completes all-off', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupOffAutomation()]);
+
+    await turnGroupOn(emit);
+    await turnGroupOff(emit);
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1);
+  });
+
+  it('one member cycling off then on while the group stays on fires neither direction', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupAutomation(), groupOffAutomation()]);
+
+    await turnGroupOn(emit);
+    await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1));
+
+    emit(set('bulb-2', false));
+    await new Promise((r) => setTimeout(r, 40));
+    emit(set('bulb-2', true));
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Just the initial group-on run — the lone member's cycle changed nothing.
+    expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unreachable member stuck "on" in the store cannot pin the group on', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    engine.loadAutomations([groupOffAutomation()]);
+
+    await turnGroupOn(emit);
+    // bulb-3 is unplugged while on: HomeKit reports it unreachable and its
+    // stored "on" would otherwise block all-off forever.
+    emit({ type: 'characteristic.updated', accessoryId: 'bulb-3', characteristicType: 'power_state', value: true, isReachable: undefined } as HomeKitEvent);
+    emit({ type: 'accessory.reachability', accessoryId: 'bulb-3', isReachable: false } as HomeKitEvent);
+
+    for (const id of MEMBERS.filter((m) => m !== 'bulb-3')) {
+      emit(set(id, false));
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1);
+  });
+
+  it('a "for" duration holds as long as the GROUP holds, not the reporting member', async () => {
+    const { bridge, subscribeToHomeKit, emit } = makeHarness();
+    const engine = await initAutomationEngine({
+      bridge, subscribeToHomeKit, onNotify: async () => {}, serviceGroupResolver: resolver,
+    });
+    const auto = groupAutomation();
+    (auto.triggers[0] as { for?: { seconds: number } }).for = { seconds: 0.15 };
+    engine.loadAutomations([auto]);
+
+    // bulb-1 turns the group on (and is the accessory the trigger fired for),
+    // then goes back off during the "for" window while bulb-2 keeps the group
+    // on. The recheck must consult the group, not bulb-1.
+    emit(set('bulb-1', true));
+    await new Promise((r) => setTimeout(r, 25));
+    emit(set('bulb-2', true));
+    await new Promise((r) => setTimeout(r, 25));
+    emit(set('bulb-1', false));
+
+    await vi.waitFor(() => expect(bridge.setCharacteristic).toHaveBeenCalledTimes(1), { timeout: 1000 });
+  });
+});
