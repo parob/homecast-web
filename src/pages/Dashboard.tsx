@@ -476,8 +476,9 @@ interface SortableRoomGroupItemProps {
   id: string;
   group: { id: string; entityId: string; name: string; roomIds: string[]; roomCount: number };
   isExpanded: boolean;
+  isSelected?: boolean;
   hasSelectedChild?: boolean;
-  onToggleExpand: () => void;
+  onSelect: () => void;
   onEdit?: () => void;
   onShare?: () => void;
   onDelete?: () => void;
@@ -493,8 +494,9 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
   id,
   group,
   isExpanded,
+  isSelected,
   hasSelectedChild,
-  onToggleExpand,
+  onSelect,
   onEdit,
   onShare,
   onDelete,
@@ -527,25 +529,25 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
     <div ref={setNodeRef} style={style} data-room-group-entity-id={group.entityId} data-sortable-id={id}>
       {dropZone === 'before' && <div className="h-1 bg-primary rounded-full mb-1" />}
       {/* Only the header has drag listeners */}
-      <div {...attributes} {...listeners} className={`cursor-pointer ${editMode ? 'wiggle' : ''}`} style={roomGroupWiggleOffset} onClick={(e) => { e.preventDefault(); onToggleExpand(); }}>
+      <div {...attributes} {...listeners} className={`cursor-pointer ${editMode ? 'wiggle' : ''}`} style={roomGroupWiggleOffset} onClick={(e) => { e.preventDefault(); onSelect(); }}>
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                onToggleExpand();
+                onSelect();
               }}
               className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
                 isDarkBackground
-                  ? `${hasSelectedChild ? 'text-white bg-white/10' : 'text-white hover:bg-white/10'}`
-                  : `${hasSelectedChild ? 'bg-muted' : 'hover:bg-muted'}`
+                  ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
+                  : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
               } ${dropZone === 'inside' ? 'ring-2 ring-primary ring-inset' : ''}`}
             >
               <Layers className="h-4 w-4" />
               <span className="flex-1 truncate text-left">{group.name}</span>
               {!hideAccessoryCounts && (
-                <span className={`text-xs ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
+                <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                   {group.roomCount}
                 </span>
               )}
@@ -1679,6 +1681,13 @@ const Dashboard = () => {
   const { layout: bgTargetHomeLayout, saveLayoutForEntity: saveBgHomeLayout } = useHomeLayout(backgroundTargetHomeId);
   const { layout: bgTargetRoomLayout, saveLayoutForEntity: saveBgRoomLayout } = useRoomLayout(backgroundTargetRoomId);
   const { layout: bgTargetRoomGroupLayout, saveLayoutForEntity: saveBgRoomGroupLayout } = useRoomGroupLayout(backgroundTargetRoomGroupId);
+
+  // Layout for the currently selected room group (drives its background)
+  const {
+    layout: selectedRoomGroupLayout,
+    layoutJson: selectedRoomGroupLayoutJson,
+    loading: selectedRoomGroupLayoutLoading,
+  } = useRoomGroupLayout(selectedRoomGroupId);
 
   // Handle collection selection
   const handleSelectCollection = useCallback((collection: Collection | null) => {
@@ -3005,7 +3014,7 @@ const Dashboard = () => {
     window.setTimeout(() => {
       // Both the mobile sheet and desktop sidebar render the group; the hidden
       // one has no layout box, so scrollIntoView on it is a no-op.
-      document.querySelectorAll(`[data-room-group-entity-id="${CSS.escape(groupEntityId)}"]`).forEach((el) => {
+      document.querySelectorAll(`[data-room-group-entity-id="${window.CSS.escape(groupEntityId)}"]`).forEach((el) => {
         el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
     }, 230);
@@ -4681,6 +4690,15 @@ const Dashboard = () => {
     if (selectedRoomId && roomLayout?.background && roomLayout.background.type !== 'none') {
       return roomLayout.background;
     }
+    // Room group background when viewing a group (rooms take precedence above)
+    if (!selectedRoomId && selectedRoomGroup) {
+      if (selectedRoomGroupLayoutLoading) {
+        return prevBackgroundRef.current;
+      }
+      if (selectedRoomGroupLayout?.background && selectedRoomGroupLayout.background.type !== 'none') {
+        return selectedRoomGroupLayout.background;
+      }
+    }
     // If home layout is still loading, hold previous background
     if (selectedHomeId && homeLayoutLoading) {
       return prevBackgroundRef.current;
@@ -4691,11 +4709,11 @@ const Dashboard = () => {
     }
     return null;
   }, [
-    selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId,
-    roomLayout?.background, homeLayout?.background, collectionLayout?.background, collectionGroupLayout?.background,
+    selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroup,
+    roomLayout?.background, homeLayout?.background, collectionLayout?.background, collectionGroupLayout?.background, selectedRoomGroupLayout?.background,
     // Use raw JSON strings as stable dependencies - these change whenever any property changes
-    roomLayoutJson, homeLayoutJson, collectionLayoutJson, collectionGroupLayoutJson,
-    homeLayoutLoading, roomLayoutLoading, collectionLayoutLoading, collectionGroupLayoutLoading
+    roomLayoutJson, homeLayoutJson, collectionLayoutJson, collectionGroupLayoutJson, selectedRoomGroupLayoutJson,
+    homeLayoutLoading, roomLayoutLoading, collectionLayoutLoading, collectionGroupLayoutLoading, selectedRoomGroupLayoutLoading
   ]);
 
   // Update previous background ref after computing (for next render)
@@ -4707,28 +4725,29 @@ const Dashboard = () => {
 
   // Clear the saved background override when navigation changes
   // Use a ref to track previous values and only clear on actual navigation
-  const prevNavRef = useRef({ selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId });
+  const prevNavRef = useRef({ selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId });
   useEffect(() => {
     const prev = prevNavRef.current;
     const hasNavigated =
       prev.selectedRoomId !== selectedRoomId ||
       prev.selectedHomeId !== selectedHomeId ||
       prev.selectedCollectionId !== selectedCollectionId ||
-      prev.selectedCollectionGroupId !== selectedCollectionGroupId;
+      prev.selectedCollectionGroupId !== selectedCollectionGroupId ||
+      prev.selectedRoomGroupId !== selectedRoomGroupId;
 
     if (hasNavigated) {
       setSavedBackgroundOverride(null);
       setBgImageLuminance(null);
       setBgImageTopColor(null);
     }
-    prevNavRef.current = { selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId };
-  }, [selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId]);
+    prevNavRef.current = { selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId };
+  }, [selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId]);
 
   // Use override if set, otherwise use computed effective background
   const activeBackground = savedBackgroundOverride ?? effectiveBackground;
 
   // Current entity ID for auto backgrounds
-  const currentEntityId = selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined;
+  const currentEntityId = selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedRoomGroup?.entityId || selectedHomeId || undefined;
 
   // Compute the actual displayed background (including auto backgrounds) for dark mode detection
   const displayedBackground = useMemo(() => {
@@ -5995,18 +6014,19 @@ const Dashboard = () => {
                                     home={home}
                                     tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
                                     isSelected={pendingHomeId === home.id}
-                                    hasSelectedChild={selectedRoomId !== null && pendingHomeId === home.id}
+                                    hasSelectedChild={(selectedRoomId !== null || selectedRoomGroupId !== null) && pendingHomeId === home.id}
                                     hideAccessoryCounts={hideAccessoryCounts}
                                     onSelect={() => {
                                       if (pendingHomeId !== home.id) {
                                         handleSelectHome(home.id);
                                       } else {
-                                        // Same home: clear room/collection to go to home view
+                                        // Same home: clear room/room group/collection to go to home view
                                         setSelectedRoomId(null);
+                                        setSelectedRoomGroupId(null);
                                         localStorage.removeItem('homecast-selected-room');
                                         setSelectedCollection(null);
                                         setSelectedCollectionId(null);
-                                        updateUrlParams({ room: null, collection: null });
+                                        updateUrlParams({ room: null, roomGroup: null, collection: null });
                                       }
                                       setSidebarOpen(false);
                                     }}
@@ -6067,8 +6087,12 @@ const Dashboard = () => {
                                                       id={item.id}
                                                       group={group}
                                                       isExpanded={isExpanded}
+                                                      isSelected={selectedRoomGroupId === group.entityId && selectedRoomId === null}
                                                       hasSelectedChild={selectedRoomId !== null && group.roomIds.includes(selectedRoomId)}
-                                                      onToggleExpand={() => toggleRoomGroupExpanded(group.entityId)}
+                                                      onSelect={() => {
+                                                        handleSelectRoomGroup(group.entityId);
+                                                        setSidebarOpen(false);
+                                                      }}
                                                       onEdit={() => {
                                                         setEditingRoomGroup({
                                                           groupId: group.entityId,
@@ -6181,7 +6205,7 @@ const Dashboard = () => {
                                       ? 'bg-primary text-primary-foreground'
                                       : isDarkBackground ? 'text-white hover:bg-white/10' : 'hover:bg-muted'
                                   }`}
-                                  onClick={() => { setSelectedEnrollmentId(enrollment.id); setSelectedHomeId(null); setSelectedCollection(null); setSelectedCollectionId(null); updateUrlParams({ collection: null, home: null, room: null, enrollment: enrollment.id }); setSidebarOpen(false); }}
+                                  onClick={() => { setSelectedEnrollmentId(enrollment.id); setSelectedHomeId(null); setSelectedCollection(null); setSelectedCollectionId(null); updateUrlParams({ collection: null, home: null, room: null, roomGroup: null, enrollment: enrollment.id }); setSidebarOpen(false); }}
                                 >
                                   <House className="h-4 w-4" />
                                   <span className="flex-1 truncate">{enrollment.homeName}</span>
@@ -6471,7 +6495,7 @@ const Dashboard = () => {
                               home={home}
                               tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
                               isSelected={pendingHomeId === home.id}
-                              hasSelectedChild={selectedRoomId !== null && pendingHomeId === home.id}
+                              hasSelectedChild={(selectedRoomId !== null || selectedRoomGroupId !== null) && pendingHomeId === home.id}
                               hideAccessoryCounts={hideAccessoryCounts}
                               onSelect={() => {
                                 handleSelectHome(home.id);
@@ -6534,8 +6558,9 @@ const Dashboard = () => {
                                                 id={item.id}
                                                 group={group}
                                                 isExpanded={isExpanded}
+                                                isSelected={selectedRoomGroupId === group.entityId && selectedRoomId === null}
                                                 hasSelectedChild={selectedRoomId !== null && group.roomIds.includes(selectedRoomId)}
-                                                onToggleExpand={() => toggleRoomGroupExpanded(group.entityId)}
+                                                onSelect={() => handleSelectRoomGroup(group.entityId)}
                                                 onEdit={() => {
                                                   setEditingRoomGroup({
                                                     groupId: group.entityId,
@@ -6638,7 +6663,7 @@ const Dashboard = () => {
                                 ? 'bg-primary text-primary-foreground'
                                 : isDarkBackground ? 'text-white hover:bg-white/10' : 'hover:bg-muted'
                             }`}
-                            onClick={() => { setSelectedEnrollmentId(enrollment.id); setSelectedHomeId(null); setSelectedCollection(null); setSelectedCollectionId(null); updateUrlParams({ collection: null, home: null, room: null, enrollment: enrollment.id }); }}
+                            onClick={() => { setSelectedEnrollmentId(enrollment.id); setSelectedHomeId(null); setSelectedCollection(null); setSelectedCollectionId(null); updateUrlParams({ collection: null, home: null, room: null, roomGroup: null, enrollment: enrollment.id }); }}
                           >
                             <House className="h-4 w-4" />
                             <span className="flex-1 truncate">{enrollment.homeName}</span>
@@ -6976,13 +7001,15 @@ const Dashboard = () => {
                         ? 'Add a home and accessories in the Apple Home app to get started.'
                         : selectedRoomId
                           ? 'No accessories in this room.'
-                          : 'Select a home to view accessories.'}
+                          : selectedRoomGroup
+                            ? 'No accessories in this room group.'
+                            : 'Select a home to view accessories.'}
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 /* Accessories by Room (grid or masonry) */
-                <div key={`${selectedHomeId}-${selectedRoomId || 'all'}`} style={{ animation: 'fade-slide-in 0.35s ease-out' }}>
+                <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`} style={{ animation: 'fade-slide-in 0.35s ease-out' }}>
                 {/* Header with title */}
                 <h2 className={`text-base font-bold truncate mb-4 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
@@ -7083,13 +7110,55 @@ const Dashboard = () => {
                         </>
                       );
                     })()
+                  ) : selectedRoomGroup ? (
+                    <>
+                      <span className="opacity-60">{homes.find(h => h.id === selectedHomeId)?.name || 'Home'}</span>
+                      <span className="mx-2 opacity-40">/</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <span className="cursor-pointer">{selectedRoomGroup.name}</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={() => {
+                            setEditingRoomGroup({
+                              groupId: selectedRoomGroup.entityId,
+                              groupName: selectedRoomGroup.name,
+                              roomIds: selectedRoomGroup.roomIds,
+                              homeId: selectedHomeId!,
+                            });
+                          }}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit Room Group
+                          </DropdownMenuItem>
+                          {canShare && (
+                            <DropdownMenuItem onClick={() => {
+                              setSidebarShareRoomGroup({
+                                groupId: selectedRoomGroup.entityId,
+                                groupName: selectedRoomGroup.name,
+                                homeId: selectedHomeId!,
+                              });
+                            }}>
+                              <Share2 className="h-4 w-4 mr-2" />
+                              Share Room Group
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => {
+                            setBackgroundSettingsTarget({ type: 'roomGroup', id: selectedRoomGroup.entityId, name: selectedRoomGroup.name });
+                            setBackgroundSettingsOpen(true);
+                          }}>
+                            <ImageIcon className="h-4 w-4 mr-2" />
+                            Set Room Group Background
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
                   ) : (
                     homes.find(h => h.id === selectedHomeId)?.name || 'Home'
                   )}
                 </h2>
                 {/* Area Summary - aggregated sensor readings + scenes/automations pills */}
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
-                  {selectedHomeId && !selectedRoomId && (
+                  {selectedHomeId && !selectedRoomId && !selectedRoomGroup && (
                     <>
                       <ScenesPill
                         homeId={selectedHomeId}
@@ -7111,7 +7180,7 @@ const Dashboard = () => {
                     isDarkBackground={isDarkBackground}
                   />
                 </div>
-                {selectedHomeId && !selectedRoomId && (
+                {selectedHomeId && !selectedRoomId && !selectedRoomGroup && (
                   <>
                     <ScenesSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
