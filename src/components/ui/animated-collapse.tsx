@@ -46,7 +46,14 @@ export const AnimatedCollapse: React.FC<AnimatedCollapseProps> = ({
     >
       <div
         className={cn(
-          "min-h-0",
+          // min-w-0 as well as min-h-0: this is a grid item, and a grid item's
+          // default `min-width: auto` refuses to shrink below its content's
+          // intrinsic width. Anything with a wide intrinsic size — a
+          // `datetime-local` input is the one that found this — widened the
+          // item, and with `overflow-visible` while open it spilled out of the
+          // card rather than being clipped. `w-full` on the child can't help;
+          // the item is already wider than the card by then.
+          "min-h-0 min-w-0",
           open ? "overflow-visible" : "overflow-hidden",
           shouldAnimate && "transition-opacity duration-200 ease-out"
         )}

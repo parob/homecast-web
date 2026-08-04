@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Sparkles } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Variable } from 'lucide-react';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -333,6 +333,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // menu, but a right-click is not something you find by looking — and unlike a
   // HomeKit accessory, everything about this one is editable, so it needs an
   // affordance you can see.
+  //
+  // A variable glyph rather than sparkles: sparkles has come to mean "AI" or
+  // "magic" everywhere else, which is not what this is. These are values the
+  // automation engine owns — a mode, a counter, a countdown — and a variable is
+  // literally what they are.
   const virtualBadge = isVirtualAccessory ? (
     effectiveOnEdit ? (
       <button
@@ -342,7 +347,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         aria-label="Edit virtual accessory"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); effectiveOnEdit(); }}
       >
-        <Sparkles className="h-3 w-3" />
+        <Variable className="h-3.5 w-3.5" />
       </button>
     ) : (
       <span
@@ -350,7 +355,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         title="Virtual accessory — a value your automations own"
         aria-label="Virtual accessory"
       >
-        <Sparkles className="h-3 w-3" />
+        <Variable className="h-3.5 w-3.5" />
       </span>
     )
   ) : null;

@@ -17,6 +17,13 @@ export interface WidgetProps {
   getEffectiveValue: (accessoryId: string, characteristicType: string, serverValue: any) => any;
   compact?: boolean;
   onExpandToggle?: () => void;
+  /**
+   * "That interaction is finished" — committing an edit, not toggling.
+   * Distinct from onExpandToggle, which is wired to clicking the card: a
+   * widget that called that to close itself would also make every click on
+   * the expanded tile close it.
+   */
+  onFinishEditing?: () => void;
   /** Callback to show debug info for this accessory (admin only) */
   onDebug?: () => void;
   iconStyle?: IconStyle;

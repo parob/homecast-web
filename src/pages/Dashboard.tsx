@@ -4449,7 +4449,12 @@ const Dashboard = () => {
       })
       .map(([roomName, accs]): [string, HomeKitAccessory[]] => {
         const room = rooms.find(r => r.name === roomName);
-        const contextId = selectedRoomId || (room?.id) || 'all';
+        // The home-level shelf gets its own id. Falling through to 'all' put
+        // it in the same bucket as 'Unknown Room' — which also has no room
+        // record — so the two overwrote each other in the drag-container map
+        // and whichever lost became undraggable, warning and all.
+        const contextId = selectedRoomId || room?.id
+          || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_ROOM : 'all');
 
         // Sort by category first
         let sorted = [...accs].sort((a, b) => {
@@ -7216,7 +7221,8 @@ const Dashboard = () => {
                   })] as [string, HomeKitAccessory[]]]).map(([roomName, roomAccessories]) => {
                     // Pre-compute visible items to skip empty rooms
                     const room = rooms.find(r => r.name === roomName);
-                    const contextId = selectedRoomId || room?.id || 'all';
+                    const contextId = selectedRoomId || room?.id
+                      || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_ROOM : 'all');
                     const roomGroups = getGroupsForRoom(roomAccessories)
                       .filter(group => !selectedHomeId || !isGroupHidden(selectedHomeId, group.id, contextId));
                     const ungrouped = roomAccessories.filter(accessory => !groupedAccessoryIds.has(accessory.id));
@@ -7368,6 +7374,7 @@ const Dashboard = () => {
                                   onToggle={handleToggle}
                                   onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
+                                  onFinishEditing={collapseExpandedWidget}
                                   getEffectiveValue={getEffectiveValue}
                                   compact={false}
 

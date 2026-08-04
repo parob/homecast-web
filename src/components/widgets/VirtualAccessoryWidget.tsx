@@ -84,7 +84,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     onExpandToggle, onDebug, iconStyle, editMode, editModeType, isHiddenUi,
     homeName, disableTooltip, onRemove, removeLabel, onHide, hideLabel,
     isHidden, showHiddenItems, onToggleShowHidden, onShare, locationSubtitle,
-    onEdit, editLabel,
+    onEdit, editLabel, onFinishEditing,
   } = props;
 
   const { isDarkBackground } = useBackgroundContext();
@@ -238,6 +238,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             label={accessory.name}
             value={typeof value === 'string' ? value : ''}
             onCommit={set}
+            onDone={onFinishEditing}
             className={FIELD_CLASS}
           />
         );
@@ -258,6 +259,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             value={typeof value === 'string' ? value : ''}
             onClick={e => e.stopPropagation()}
             onChange={e => set(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); onFinishEditing?.(); } }}
           />
         );
 
@@ -306,8 +308,10 @@ const VirtualTextControl: React.FC<{
   label: string;
   value: string;
   onCommit: (v: string) => void;
+  /** Enter means finished, so the tile that opened for the edit can close. */
+  onDone?: () => void;
   className: string;
-}> = ({ label, value, onCommit, className }) => {
+}> = ({ label, value, onCommit, onDone, className }) => {
   const [draft, setDraft] = React.useState<string | null>(null);
   const shown = draft ?? value;
 
@@ -338,7 +342,7 @@ const VirtualTextControl: React.FC<{
       onBlur={commit}
       onKeyDown={e => {
         e.stopPropagation();
-        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); }
+        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); onDone?.(); }
         if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur(); }
       }}
     />
