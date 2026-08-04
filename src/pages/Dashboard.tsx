@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
@@ -17,6 +18,8 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
@@ -52,6 +55,7 @@ import { AutomationsSection, AutomationsPill } from '@/components/automations/Au
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
 import { useVirtualAccessories } from '@/components/virtual-accessories/useVirtualAccessories';
+import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccessoryEditContext';
 
 /**
  * Bucket name for accessories that belong to the home rather than to a room.
@@ -1514,8 +1518,8 @@ const Dashboard = () => {
    * edit. A HomeKit accessory's definition belongs to Apple Home; a virtual one
    * is ours, so it gets an Edit entry in the same menu as Share and Hide.
    */
-  const virtualAccessoryEditor = useCallback((accessory: { id: string }) => {
-    const helper = helperAccessoriesRef.current.find(h => h.id === accessory.id);
+  const virtualAccessoryEditor = useCallback((accessoryId: string) => {
+    const helper = helperAccessoriesRef.current.find(h => h.id === accessoryId);
     if (!helper) return undefined;
     return () => openHelperEditorRef.current({ helper });
   }, []);
@@ -4204,6 +4208,80 @@ const Dashboard = () => {
 
   // Filter by selected room, apply visibility, and sort by custom order
   const helperAccessories = useVirtualAccessories(selectedHomeId);
+
+  /**
+   * Room grids, by container id. Populated during render so the single
+   * DndContext below can resolve a drop: it sees only ids, and needs to know
+   * which grid an id came from and which grid it landed in.
+   */
+  const dragContainersRef = useRef<Map<string, {
+    itemIds: string[];
+    onReorder: (order: string[]) => void;
+    roomId: string | null;
+  }>>(new Map());
+
+  /**
+   * A drag that may cross rooms.
+   *
+   * Reordering within a grid behaves exactly as before. Moving BETWEEN grids is
+   * allowed only for virtual accessories: Apple Home owns which room a real
+   * device is in and rejects our writes, so letting one appear to move would
+   * show a change that never happened.
+   */
+  /** True while hovering a room the dragged item is not allowed to enter. */
+  const [dragCrossRoomBlocked, setDragCrossRoomBlocked] = useState(false);
+
+  /** Which container an id currently belongs to, or undefined. */
+  const containerOf = useCallback((id: string): string | undefined => {
+    for (const [cid, c] of dragContainersRef.current) {
+      if (cid === id || c.itemIds.includes(id)) return cid;
+    }
+    return undefined;
+  }, []);
+
+  const handleSharedDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) { setDragCrossRoomBlocked(false); return; }
+    const from = containerOf(String(active.id));
+    const to = containerOf(String(over.id));
+    if (!from || !to || from === to) { setDragCrossRoomBlocked(false); return; }
+    // Crossing rooms — allowed only for accessories we own.
+    const isVirtual = helperAccessoriesRef.current.some(h => h.id === String(active.id));
+    setDragCrossRoomBlocked(!isVirtual);
+  }, [containerOf]);
+
+  const handleSharedDragEnd = useCallback((event: DragEndEvent) => {
+    setDragCrossRoomBlocked(false);
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    const containers = dragContainersRef.current;
+    let source: string | undefined;
+    let dest: string | undefined;
+    for (const [id, c] of containers) {
+      if (c.itemIds.includes(activeId)) source = id;
+      if (id === overId || c.itemIds.includes(overId)) dest = id;
+    }
+    if (!source || !dest) return;
+
+    if (source === dest) {
+      const c = containers.get(source)!;
+      const from = c.itemIds.indexOf(activeId);
+      const to = c.itemIds.indexOf(overId);
+      if (from === -1 || to === -1) return;
+      c.onReorder(arrayMove(c.itemIds, from, to));
+      return;
+    }
+    const isVirtual = helperAccessoriesRef.current.some(h => h.id === activeId);
+    if (!isVirtual) {
+      toast.error('Apple Home decides which room a device is in');
+      return;
+    }
+    void helperAccessories.moveToRoom(activeId, containers.get(dest)!.roomId);
+  }, [helperAccessories]);
   helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {
@@ -4404,6 +4482,56 @@ const Dashboard = () => {
   );
 
   // Stable callback for toggling hidden items visibility (shared by all widgets)
+  /**
+   * Drag overlay for the shared context.
+   *
+   * The per-room renderer could only see its own room's items, which was fine
+   * when a drag could not leave one. Now it can, so the lookup has to span the
+   * home — otherwise the floating tile vanishes the moment you cross a border.
+   */
+  const renderSharedDragOverlay = useCallback((activeId: string) => {
+    if (activeId.startsWith('group-')) {
+      const group = serviceGroups.find(g => `group-${g.id}` === activeId);
+      if (!group) return null;
+      return (
+        <div className="relative cursor-grabbing opacity-90">
+          <ServiceGroupWidget
+            group={group}
+            accessories={getAccessoriesInGroup(group)}
+            onToggle={() => {}}
+            onSlider={() => {}}
+            getEffectiveValue={getEffectiveValue}
+            compact={compactMode}
+            iconStyle={activeIconStyle}
+          />
+        </div>
+      );
+    }
+    const accessory = accessories.find(a => a.id === activeId);
+    if (!accessory) return null;
+    return (
+      <div className="relative cursor-grabbing opacity-90">
+        <AccessoryWidget
+          homeName={getHomeName(accessory.homeId)}
+          accessory={accessory}
+          onToggle={() => {}}
+          onSlider={() => {}}
+          getEffectiveValue={getEffectiveValue}
+          compact={compactMode}
+          iconStyle={activeIconStyle}
+        />
+        {dragCrossRoomBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
+            <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
+              Use Apple Home to change rooms
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
+      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked]);
+
   const handleToggleShowHidden = useCallback(() => {
     setShowHiddenItems(prev => !prev);
   }, []);
@@ -5675,6 +5803,7 @@ const Dashboard = () => {
   );
 
   return (
+    <VirtualAccessoryEditProvider value={virtualAccessoryEditor}>
     <DealsProvider enabled={dealsEffectivelyEnabled} accessories={allAccessoriesData || []}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
@@ -6877,6 +7006,14 @@ const Dashboard = () => {
                     <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
                   </>
                 )}
+                <DndContext
+                  sensors={activeSensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={(e) => setActiveDragId(String(e.active.id))}
+                  onDragOver={handleSharedDragOver}
+                  onDragEnd={(e) => { handleSharedDragEnd(e); setActiveDragId(null); }}
+                  onDragCancel={() => { setActiveDragId(null); setDragCrossRoomBlocked(false); }}
+                >
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
                   (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
@@ -7016,8 +7153,6 @@ const Dashboard = () => {
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
-                  onEdit={virtualAccessoryEditor(accessory)}
-                  editLabel="Edit Virtual Accessory"
                                 getEffectiveValue={getEffectiveValue}
                                 compact={true}
 
@@ -7042,8 +7177,6 @@ const Dashboard = () => {
                                   onToggle={handleToggle}
                                   onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
-                  onEdit={virtualAccessoryEditor(accessory)}
-                  editLabel="Edit Virtual Accessory"
                                   getEffectiveValue={getEffectiveValue}
                                   compact={false}
 
@@ -7068,8 +7201,6 @@ const Dashboard = () => {
                                 onToggle={handleToggle}
                                 onSlider={handleSlider}
                   onSetValue={writeCharacteristic}
-                  onEdit={virtualAccessoryEditor(accessory)}
-                  editLabel="Edit Virtual Accessory"
                                 getEffectiveValue={getEffectiveValue}
                                 compact={false}
 
@@ -7199,8 +7330,18 @@ const Dashboard = () => {
                           setItemOrderVersion(v => v + 1);
                         };
 
+                        // Registered on every render so the shared drag-end can
+                        // resolve which grid an id belongs to.
+                        dragContainersRef.current.set(contextId, {
+                          itemIds: allItemIds,
+                          onReorder: handleReorder,
+                          roomId: room?.id ?? null,
+                        });
+
                         return selectedHomeId ? (
                           <DraggableGrid
+                            sharedContext
+                            containerId={contextId}
                             enabled={dndEnabled}
                             touchMode={isTouchDevice}
                             itemIds={allItemIds}
@@ -7234,6 +7375,13 @@ const Dashboard = () => {
                   }))
                   ; })()}
                 </div>
+                {createPortal(
+                  <DragOverlay>
+                    {activeDragId && renderSharedDragOverlay(activeDragId)}
+                  </DragOverlay>,
+                  document.body,
+                )}
+                </DndContext>
                 </div>
               )}
             </div>
@@ -7997,6 +8145,7 @@ const Dashboard = () => {
     )}
     </BackgroundContext.Provider>
     </DealsProvider>
+    </VirtualAccessoryEditProvider>
   );
 };
 
