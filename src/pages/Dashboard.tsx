@@ -1518,11 +1518,26 @@ const Dashboard = () => {
    * edit. A HomeKit accessory's definition belongs to Apple Home; a virtual one
    * is ours, so it gets an Edit entry in the same menu as Share and Hide.
    */
+  /**
+   * The virtual accessory definition behind an accessory id, or undefined for a
+   * real one. Matched case-insensitively: the id arrives from the relay via
+   * `accessories.list` while the definition comes from the database, and UUID
+   * case is not preserved consistently between those two sources.
+   */
+  const findVirtualAccessory = useCallback((accessoryId: string) => {
+    const wanted = accessoryId.toLowerCase();
+    return helperAccessoriesRef.current.find(h => h.id.toLowerCase() === wanted);
+  }, []);
+  const isVirtualAccessoryId = useCallback(
+    (accessoryId: string) => findVirtualAccessory(accessoryId) !== undefined,
+    [findVirtualAccessory],
+  );
+
   const virtualAccessoryEditor = useCallback((accessoryId: string) => {
-    const helper = helperAccessoriesRef.current.find(h => h.id === accessoryId);
+    const helper = findVirtualAccessory(accessoryId);
     if (!helper) return undefined;
     return () => openHelperEditorRef.current({ helper });
-  }, []);
+  }, [findVirtualAccessory]);
 
   const openHelperEditor = useCallback((opts: { helper?: VirtualAccessoryDefinition; roomId?: string } = {}) => {
     setEditingHelper(opts.helper);
@@ -4246,9 +4261,8 @@ const Dashboard = () => {
     const to = containerOf(String(over.id));
     if (!from || !to || from === to) { setDragCrossRoomBlocked(false); return; }
     // Crossing rooms — allowed only for accessories we own.
-    const isVirtual = helperAccessoriesRef.current.some(h => h.id === String(active.id));
-    setDragCrossRoomBlocked(!isVirtual);
-  }, [containerOf]);
+    setDragCrossRoomBlocked(!isVirtualAccessoryId(String(active.id)));
+  }, [containerOf, isVirtualAccessoryId]);
 
   const handleSharedDragEnd = useCallback((event: DragEndEvent) => {
     setDragCrossRoomBlocked(false);
@@ -4275,13 +4289,14 @@ const Dashboard = () => {
       c.onReorder(arrayMove(c.itemIds, from, to));
       return;
     }
-    const isVirtual = helperAccessoriesRef.current.some(h => h.id === activeId);
-    if (!isVirtual) {
+    const helper = findVirtualAccessory(activeId);
+    if (!helper) {
       toast.error('Apple Home decides which room a device is in');
       return;
     }
-    void helperAccessories.moveToRoom(activeId, containers.get(dest)!.roomId);
-  }, [helperAccessories]);
+    // helper.id, not activeId: the mutation addresses the stored definition.
+    void helperAccessories.moveToRoom(helper.id, containers.get(dest)!.roomId);
+  }, [helperAccessories, findVirtualAccessory]);
   helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {

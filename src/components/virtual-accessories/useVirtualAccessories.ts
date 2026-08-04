@@ -84,7 +84,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
       // the dashboard concludes the engine is unreachable, disabling every
       // control. Resolving by home is the only lookup that works for everyone.
       const res = await serverConnection.request<{ states: Record<string, unknown> }>(
-        'automation.helper_states', { homeId },
+        'automation.virtual_states', { homeId },
       );
       setStates(res?.states ?? {});
       setEngineLive(true);
@@ -112,7 +112,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
   ) => {
     try {
       const res = await serverConnection.request<{ accessoryId: string; state: unknown }>(
-        'automation.helper_operate', { homeId, accessoryId, operation, ...opts },
+        'automation.virtual_operate', { homeId, accessoryId, operation, ...opts },
       );
       setStates(s => ({ ...s, [accessoryId]: res?.state }));
     } catch (e) {

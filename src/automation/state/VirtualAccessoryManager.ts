@@ -442,7 +442,16 @@ export class VirtualAccessoryManager {
   // ============================================================
 
   getVirtualAccessory(id: string): VirtualAccessoryDefinition | undefined {
-    return this.helpers.get(id);
+    const direct = this.helpers.get(id);
+    if (direct) return direct;
+    // Ids reach us from clients that got them from the cloud, which does not
+    // preserve UUID case. An exact-case miss here reads as "no such
+    // accessory", which surfaces as a control that silently does nothing.
+    const wanted = id.toLowerCase();
+    for (const [key, helper] of this.helpers) {
+      if (key.toLowerCase() === wanted) return helper;
+    }
+    return undefined;
   }
 
   /** Current value of every registered helper, keyed by id. */

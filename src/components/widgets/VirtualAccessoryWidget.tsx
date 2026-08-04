@@ -29,8 +29,17 @@ const ICONS: Record<string, React.ElementType> = {
 };
 
 interface VirtualAccessoryShape {
-  helperType?: string;
+  virtualType?: string;
   isUserEditable?: boolean;
+  virtualOptions?: string[];
+  /**
+   * Pre-rename spellings, read but never written — the same inbound-alias
+   * pattern `power_state` uses. In cloud mode the relay's WebView keeps its
+   * cached bundle until the Mac app restarts, so for a while after a deploy a
+   * new browser is reading a relay that still emits the old names. Without
+   * these the tile renders as an unknown type in that window.
+   */
+  helperType?: string;
   helperOptions?: string[];
 }
 
@@ -43,7 +52,12 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     onEdit, editLabel,
   } = props;
 
-  const meta = accessory as unknown as VirtualAccessoryShape;
+  const raw = accessory as unknown as VirtualAccessoryShape;
+  const meta: VirtualAccessoryShape = {
+    ...raw,
+    virtualType: raw.virtualType ?? raw.helperType,
+    virtualOptions: raw.virtualOptions ?? raw.helperOptions,
+  };
   const service = (accessory.services || [])[0];
   const char = (service?.characteristics || []).find(
     c => (VIRTUAL_CHARS as readonly string[]).includes(c.characteristicType),
@@ -114,10 +128,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           >
             {/* A value that is no longer an option still has to show, or the
                 tile would misrepresent the current mode. */}
-            {typeof value === 'string' && value && !(meta.helperOptions ?? []).includes(value) && (
+            {typeof value === 'string' && value && !(meta.virtualOptions ?? []).includes(value) && (
               <option value={value}>{value}</option>
             )}
-            {(meta.helperOptions ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+            {(meta.virtualOptions ?? []).map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         );
 

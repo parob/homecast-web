@@ -854,9 +854,10 @@ export const HC_AUTOMATIONS = gql`
 // engine owns. Same StoredEntityInfo shape as automations; `dataJson` holds the
 // serialized VirtualAccessoryDefinition.
 //
-// The operation name must stay `VirtualAccessoryRows`: Community routes on it (the switch
-// in local-graphql.ts), and a rename that misses the resolver falls through to
-// `default: return {}` — which renders as "no helpers" rather than as an error.
+// The operation name must stay `VirtualAccessories`: Community routes on it (the
+// switch in local-graphql.ts), and a rename that misses the resolver falls
+// through to `default: return {}` — which renders as "none" rather than as an
+// error.
 export const VIRTUAL_ACCESSORIES = gql`
   query VirtualAccessories($homeId: String!) {
     virtualAccessories(homeId: $homeId) {

@@ -66,7 +66,7 @@ export interface VirtualAccessory extends HomeKitAccessory {
   /** Always true. Absent on HomeKit accessories. */
   isVirtual?: boolean;
   /** The helper's type, so a client can render the right control. */
-  helperType?: string;
+  virtualType?: string;
   /** False when the helper is read-only from the dashboard. */
   isUserEditable?: boolean;
 }
@@ -113,11 +113,11 @@ export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: un
     isReachable: true,
     services: [service],
     isVirtual: true,
-    helperType: helper.type,
+    virtualType: helper.type,
     isUserEditable: writable,
     // Options travel on the service name for input_select clients that want
     // them; the canonical list stays in the helper definition.
-    ...(helper.type === 'input_select' ? { helperOptions: helper.options } : {}),
+    ...(helper.type === 'input_select' ? { virtualOptions: helper.options } : {}),
   } as VirtualAccessory;
 }
 
@@ -203,6 +203,9 @@ export function applyVirtualWrite(accessoryId: string, value: unknown): { value:
 /** Current value of a helper accessory, or null when the id isn't one. */
 export function readVirtualValue(accessoryId: string): { value: unknown } | null {
   const engine = getAutomationEngine();
-  if (!engine?.getVirtualAccessory(accessoryId)) return null;
-  return { value: engine.getVirtualStates()[accessoryId] };
+  // Read the state under the helper's own id, not the caller's spelling of it —
+  // the lookup tolerates a case difference and the state map would not.
+  const helper = engine?.getVirtualAccessory(accessoryId);
+  if (!engine || !helper) return null;
+  return { value: engine.getVirtualStates()[helper.id] };
 }

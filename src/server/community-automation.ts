@@ -189,7 +189,7 @@ export async function reloadCommunityAutomations(): Promise<void> {
 
 /**
  * Re-read helpers from IndexedDB into the running engine. Cloud mode gets an
- * `automation.helper_sync` push; locally the resolver has to do it itself.
+ * `automation.virtual_sync` push; locally the resolver has to do it itself.
  *
  * Uses `syncVirtualAccessories`, not `loadVirtualAccessories`: this runs after a delete too, and
  * loading only adds — a deleted helper would keep answering `helper()` and keep
