@@ -321,7 +321,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
    * Marked in WidgetCard rather than per widget, so it covers every type at
    * once and a new widget can't forget it.
    */
-  const virtualBadge = (accessory as { isVirtual?: boolean } | undefined)?.isVirtual ? (
+  const isVirtualAccessory = Boolean((accessory as { isVirtual?: boolean } | undefined)?.isVirtual);
+  const virtualBadge = isVirtualAccessory ? (
     <span
       className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-60"
       title="Virtual accessory — a value your automations own"
@@ -471,7 +472,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               {effectiveOnEdit && (
                 <ContextMenuItem onClick={effectiveOnEdit}>
                   <Pencil className="h-4 w-4 mr-2" />
-                  {editLabel || 'Edit Accessory'}
+                  {/* Named for what it is. The generic label came from the
+                      per-widget prop; now the editor arrives by context, and
+                      the card already knows whether this is one of ours. */}
+                  {editLabel || (isVirtualAccessory ? 'Edit Virtual Accessory' : 'Edit Accessory')}
                 </ContextMenuItem>
               )}
               {onShare && (
