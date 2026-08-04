@@ -10,7 +10,7 @@ import {
   ContextMenuItem,
 } from '@/components/ui/context-menu';
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Sparkles } from 'lucide-react';
-import { useVirtualAccessoryEditor } from './VirtualAccessoryEditContext';
+import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -184,6 +184,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // From context, so every widget type gets it — see VirtualAccessoryEditContext.
   const contextEditor = useVirtualAccessoryEditor(accessory?.id);
   const effectiveOnEdit = onEdit ?? contextEditor;
+  // A HomeKit accessory can only be removed from a collection; a virtual one is
+  // ours, so the same menu slot genuinely deletes it — hence the distinct label.
+  const contextRemover = useVirtualAccessoryRemover(accessory?.id);
+  const effectiveOnRemove = onRemove ?? contextRemover;
+  const effectiveRemoveLabel = onRemove
+    ? (removeLabel || 'Remove Accessory')
+    : 'Delete Virtual Accessory';
 
   const displayTitle = accessory ? getDisplayName(title, accessory.roomName) : title;
 
@@ -436,7 +443,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Wrap with context menu if we have characteristics, location info, or actions to show
   // Context menu appears on right-click (desktop) or long-press (touch)
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || onRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug;
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -484,7 +491,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   </div>
                 ))
               )}
-              {(onShare || onRemove || effectiveOnEdit || onHide || onDebug) && characteristics.length > 0 && <ContextMenuSeparator />}
+              {(onShare || effectiveOnRemove || effectiveOnEdit || onHide || onDebug) && characteristics.length > 0 && <ContextMenuSeparator />}
               {effectiveOnEdit && (
                 <ContextMenuItem onClick={effectiveOnEdit}>
                   <Pencil className="h-4 w-4 mr-2" />
@@ -512,13 +519,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   Debug Accessory
                 </ContextMenuItem>
               )}
-              {onRemove && (
-                <ContextMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
+              {effectiveOnRemove && (
+                <ContextMenuItem onClick={effectiveOnRemove} className="text-destructive focus:text-destructive">
                   <Trash2 className="h-4 w-4 mr-2" />
-                  {removeLabel || 'Remove Accessory'}
+                  {effectiveRemoveLabel}
                 </ContextMenuItem>
               )}
-              {(onShare || onHide || onDebug || onRemove || effectiveOnEdit) && onToggleShowHidden && <ContextMenuSeparator />}
+              {(onShare || onHide || onDebug || effectiveOnRemove || effectiveOnEdit) && onToggleShowHidden && <ContextMenuSeparator />}
               {onToggleShowHidden && (
                 <ContextMenuItem onClick={onToggleShowHidden}>
                   {showHiddenItems ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}

@@ -1443,7 +1443,7 @@ const Dashboard = () => {
   // NOTE: Collection layout hooks moved below after selectedCollectionGroupId is defined
 
   // Helper to update URL params
-  const updateUrlParams = useCallback((params: { collection?: string | null; home?: string | null; room?: string | null; enrollment?: string | null; settings?: string | null }) => {
+  const updateUrlParams = useCallback((params: { collection?: string | null; home?: string | null; room?: string | null; roomGroup?: string | null; enrollment?: string | null; settings?: string | null }) => {
     setSearchParams(prev => {
       const newParams = new URLSearchParams(prev);
       for (const [key, value] of Object.entries(params)) {
@@ -1507,6 +1507,8 @@ const Dashboard = () => {
   const [helperEditorOpen, setHelperEditorOpen] = useState(false);
   const [editingHelper, setEditingHelper] = useState<VirtualAccessoryDefinition | undefined>(undefined);
   const [helperDefaultRoomId, setHelperDefaultRoomId] = useState<string | undefined>(undefined);
+  /** Set while a delete is awaiting confirmation, from the tile's context menu. */
+  const [deletingHelper, setDeletingHelper] = useState<VirtualAccessoryDefinition | undefined>(undefined);
   // Read through refs: this callback is created far above where the helper list
   // and the editor exist, and threading them as deps would rebuild every tile's
   // menu on each poll.
@@ -1514,15 +1516,13 @@ const Dashboard = () => {
   const openHelperEditorRef = useRef<(opts?: { helper?: VirtualAccessoryDefinition; roomId?: string }) => void>(() => {});
 
   /**
-   * Edit callback for an accessory tile, or undefined when there is nothing to
-   * edit. A HomeKit accessory's definition belongs to Apple Home; a virtual one
-   * is ours, so it gets an Edit entry in the same menu as Share and Hide.
-   */
-  /**
    * The virtual accessory definition behind an accessory id, or undefined for a
    * real one. Matched case-insensitively: the id arrives from the relay via
    * `accessories.list` while the definition comes from the database, and UUID
    * case is not preserved consistently between those two sources.
+   *
+   * A HomeKit accessory's definition belongs to Apple Home; a virtual one is
+   * ours, so it gets Edit and Delete entries in the same menu as Share and Hide.
    */
   const findVirtualAccessory = useCallback((accessoryId: string) => {
     const wanted = accessoryId.toLowerCase();
@@ -1533,11 +1533,18 @@ const Dashboard = () => {
     [findVirtualAccessory],
   );
 
-  const virtualAccessoryEditor = useCallback((accessoryId: string) => {
-    const helper = findVirtualAccessory(accessoryId);
-    if (!helper) return undefined;
-    return () => openHelperEditorRef.current({ helper });
-  }, [findVirtualAccessory]);
+  const virtualAccessoryActions = useMemo(() => ({
+    edit: (accessoryId: string) => {
+      const helper = findVirtualAccessory(accessoryId);
+      if (!helper) return undefined;
+      return () => openHelperEditorRef.current({ helper });
+    },
+    remove: (accessoryId: string) => {
+      const helper = findVirtualAccessory(accessoryId);
+      if (!helper) return undefined;
+      return () => setDeletingHelper(helper);
+    },
+  }), [findVirtualAccessory]);
 
   const openHelperEditor = useCallback((opts: { helper?: VirtualAccessoryDefinition; roomId?: string } = {}) => {
     setEditingHelper(opts.helper);
@@ -1637,7 +1644,17 @@ const Dashboard = () => {
   const [editingRoomGroup, setEditingRoomGroup] = useState<{ groupId: string; groupName: string; roomIds: string[]; homeId: string } | null>(null);
   const [sidebarShareRoomGroup, setSidebarShareRoomGroup] = useState<{ groupId: string; groupName: string; homeId: string } | null>(null);
   const [sidebarDeletingRoomGroup, setSidebarDeletingRoomGroup] = useState<{ groupId: string; groupName: string } | null>(null);
-  const [expandedRoomGroups, setExpandedRoomGroups] = useState<Set<string>>(new Set());
+  // Selected room group (shows the group's rooms in the main content area).
+  // Content rendering resolves this to selectedRoomGroup — a stale/unknown id
+  // simply falls back to the home view.
+  const [selectedRoomGroupId, setSelectedRoomGroupId] = useState<string | null>(() => {
+    if (urlCollectionId) return null;
+    return searchParams.get('roomGroup');
+  });
+  const [expandedRoomGroups, setExpandedRoomGroups] = useState<Set<string>>(() => {
+    const urlGroup = searchParams.get('roomGroup');
+    return urlGroup ? new Set([urlGroup]) : new Set();
+  });
 
   // Background settings dialog state
   const [backgroundSettingsOpen, setBackgroundSettingsOpen] = useState(false);
@@ -1676,6 +1693,7 @@ const Dashboard = () => {
       collection: collection?.id ?? null,
       home: null,
       room: null,
+      roomGroup: null,
       enrollment: null
     });
     if (collection) {
@@ -1683,6 +1701,7 @@ const Dashboard = () => {
       setSelectedHomeId(null);
       setPendingHomeId(null);
       setSelectedRoomId(null);
+      setSelectedRoomGroupId(null);
       setSelectedEnrollmentId(null);
       localStorage.removeItem('homecast-selected-home');
       localStorage.removeItem('homecast-selected-room');
@@ -1692,8 +1711,8 @@ const Dashboard = () => {
 
   // Handle home selection (clear collection)
   const handleSelectHome = useCallback((homeId: string) => {
-    // Only toggle expand/collapse if we're already viewing this home's main page (not a room, not a collection)
-    if (pendingHomeId === homeId && selectedRoomId === null && selectedCollectionId === null) {
+    // Only toggle expand/collapse if we're already viewing this home's main page (not a room, not a room group, not a collection)
+    if (pendingHomeId === homeId && selectedRoomId === null && selectedRoomGroupId === null && selectedCollectionId === null) {
       setSidebarRoomsExpanded(prev => !prev);
       return;
     }
@@ -1702,24 +1721,26 @@ const Dashboard = () => {
     setSelectedHomeId(homeId);
     localStorage.setItem('homecast-selected-home', homeId);
     setSelectedRoomId(null);
+    setSelectedRoomGroupId(null);
     localStorage.removeItem('homecast-selected-room');
     // Clear collection and enrollment
     setSelectedCollection(null);
     setSelectedCollectionId(null);
     setSelectedEnrollmentId(null);
-    updateUrlParams({ collection: null, home: homeId, room: null, enrollment: null });
+    updateUrlParams({ collection: null, home: homeId, room: null, roomGroup: null, enrollment: null });
     debouncedSaveLastView({ type: 'home', homeId });
-  }, [updateUrlParams, setSelectedHomeId, pendingHomeId, selectedRoomId, selectedCollectionId, debouncedSaveLastView]);
+  }, [updateUrlParams, setSelectedHomeId, pendingHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId, debouncedSaveLastView]);
 
   // Handle room selection
   const handleSelectRoom = useCallback((roomId: string | null) => {
     setSelectedRoomId(roomId);
+    setSelectedRoomGroupId(null);
     if (roomId) {
       localStorage.setItem('homecast-selected-room', roomId);
-      updateUrlParams({ room: roomId });
+      updateUrlParams({ room: roomId, roomGroup: null });
     } else {
       localStorage.removeItem('homecast-selected-room');
-      updateUrlParams({ room: null });
+      updateUrlParams({ room: null, roomGroup: null });
     }
     // Only save lastView if the room actually changed — avoids unnecessary
     // UpdateSettings mutation which triggers settings_updated broadcast and
@@ -2917,6 +2938,14 @@ const Dashboard = () => {
     });
   }, [roomGroupsData]);
 
+  // Resolve the selected room group id to its data. Null when nothing is
+  // selected or the id is stale (deleted group, old URL) — content rendering
+  // branches on this, so an unresolvable id gracefully shows the home view.
+  const selectedRoomGroup = useMemo(() => {
+    if (!selectedRoomGroupId) return null;
+    return roomGroups.find(g => g.entityId === selectedRoomGroupId) ?? null;
+  }, [roomGroups, selectedRoomGroupId]);
+
   // Compute set of room IDs that are in any room group (for filtering from main list)
   const roomIdsInGroups = useMemo(() => {
     const ids = new Set<string>();
@@ -2939,13 +2968,17 @@ const Dashboard = () => {
         variables: { groupId: sidebarDeletingRoomGroup.groupId },
       });
       toast.success('Room group deleted');
+      if (selectedRoomGroupId === sidebarDeletingRoomGroup.groupId) {
+        setSelectedRoomGroupId(null);
+        updateUrlParams({ roomGroup: null });
+      }
       setSidebarDeletingRoomGroup(null);
       refetchRoomGroups();
     } catch (err) {
       console.error('Failed to delete room group:', err);
       toast.error('Failed to delete room group');
     }
-  }, [sidebarDeletingRoomGroup, deleteRoomGroupMutation, refetchRoomGroups]);
+  }, [sidebarDeletingRoomGroup, deleteRoomGroupMutation, refetchRoomGroups, selectedRoomGroupId, updateUrlParams]);
 
   // Update room group mutation (for reordering rooms within a group)
   const [updateRoomGroupMutation] = useMutation(UPDATE_ROOM_GROUP);
@@ -2962,8 +2995,25 @@ const Dashboard = () => {
     }
   }, [updateRoomGroupMutation, refetchRoomGroups]);
 
+  // Scroll the sidebar so a just-expanded group's rooms are visible. Runs after
+  // the AnimatedCollapse height transition (200ms) so the revealed rooms have
+  // their final height; block:'nearest' scrolls the room list's own scroller
+  // just enough to bring them into view.
+  const scrollRoomGroupIntoView = useCallback((groupEntityId: string) => {
+    window.setTimeout(() => {
+      // Both the mobile sheet and desktop sidebar render the group; the hidden
+      // one has no layout box, so scrollIntoView on it is a no-op.
+      document.querySelectorAll(`[data-room-group-entity-id="${CSS.escape(groupEntityId)}"]`).forEach((el) => {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    }, 230);
+  }, []);
+
   // Toggle room group expansion
   const toggleRoomGroupExpanded = useCallback((groupId: string) => {
+    if (!expandedRoomGroups.has(groupId)) {
+      scrollRoomGroupIntoView(groupId);
+    }
     setExpandedRoomGroups((prev) => {
       const next = new Set(prev);
       if (next.has(groupId)) {
@@ -2973,7 +3023,31 @@ const Dashboard = () => {
       }
       return next;
     });
-  }, []);
+  }, [expandedRoomGroups, scrollRoomGroupIntoView]);
+
+  // Select a room group: show its rooms in the main content area and expand it
+  // in the sidebar. Clicking the already-selected group toggles expansion,
+  // mirroring how re-clicking the selected home toggles its room list.
+  const handleSelectRoomGroup = useCallback((groupEntityId: string) => {
+    if (selectedRoomGroupId === groupEntityId && selectedRoomId === null) {
+      toggleRoomGroupExpanded(groupEntityId);
+      return;
+    }
+    setSelectedRoomGroupId(groupEntityId);
+    setSelectedRoomId(null);
+    localStorage.removeItem('homecast-selected-room');
+    setExpandedRoomGroups((prev) => {
+      if (prev.has(groupEntityId)) return prev;
+      const next = new Set(prev);
+      next.add(groupEntityId);
+      return next;
+    });
+    scrollRoomGroupIntoView(groupEntityId);
+    updateUrlParams({ room: null, roomGroup: groupEntityId });
+    if (pendingHomeId) {
+      debouncedSaveLastView({ type: 'home', homeId: pendingHomeId });
+    }
+  }, [selectedRoomGroupId, selectedRoomId, toggleRoomGroupExpanded, scrollRoomGroupIntoView, updateUrlParams, pendingHomeId, debouncedSaveLastView]);
 
   // Combined accessories data - use relay data
   const accessoriesData = relayAccessoriesData ? { accessories: relayAccessoriesData } : null;
@@ -4306,12 +4380,23 @@ const Dashboard = () => {
       visibleRooms = sortedRooms.filter(r => !isRoomHidden(selectedHomeId, r.id));
     }
     const visibleRoomIds = new Set(visibleRooms.map(r => r.id));
+    const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
+
+    // When a room group is selected, restrict the view to its rooms
+    const groupRoomIds = selectedRoomGroup && !selectedRoomId
+      ? new Set(selectedRoomGroup.roomIds.map(normalizeRoomId))
+      : null;
 
     const entries = selectedRoomId
       ? Object.entries(accessoriesByRoom).filter(([_, accs]) =>
           accs.some(a => a.roomId === selectedRoomId)
         )
       : Object.entries(accessoriesByRoom).filter(([roomName]) => {
+          if (groupRoomIds) {
+            // Room group view: only the group's rooms (no home-level shelf)
+            const room = rooms.find(r => r.name === roomName);
+            return room ? groupRoomIds.has(normalizeRoomId(room.id)) : false;
+          }
           if (roomName === HOME_LEVEL_ROOM) return true;
           // Filter by visible rooms
           const room = rooms.find(r => r.name === roomName);
@@ -4321,8 +4406,10 @@ const Dashboard = () => {
     // Create a map from room name to room ID for ordering
     const roomNameToId = new Map(rooms.map(r => [r.name, r.id]));
 
-    // Sort by sortedRooms order
-    const orderMap = new Map(visibleRooms.map((r, idx) => [r.id, idx]));
+    // Sort by the group's own room order when viewing a group, else sortedRooms order
+    const orderMap = groupRoomIds
+      ? new Map(selectedRoomGroup!.roomIds.map((id, idx) => [normalizeRoomId(id), idx]))
+      : new Map(visibleRooms.map((r, idx) => [normalizeRoomId(r.id), idx]));
 
     // Sort rooms and accessories within each room by category, then apply custom device order
     return entries
@@ -4332,8 +4419,8 @@ const Dashboard = () => {
         if (bName === HOME_LEVEL_ROOM) return 1;
         const aId = roomNameToId.get(aName);
         const bId = roomNameToId.get(bName);
-        const aIdx = aId !== undefined ? orderMap.get(aId) : undefined;
-        const bIdx = bId !== undefined ? orderMap.get(bId) : undefined;
+        const aIdx = aId !== undefined ? orderMap.get(normalizeRoomId(aId)) : undefined;
+        const bIdx = bId !== undefined ? orderMap.get(normalizeRoomId(bId)) : undefined;
         if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
         if (aIdx !== undefined) return -1;
         if (bIdx !== undefined) return 1;
@@ -4358,7 +4445,7 @@ const Dashboard = () => {
         return [roomName, sorted];
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoomId, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, visibility, visibilityVersion]);
+  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, visibility, visibilityVersion]);
 
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
@@ -5825,7 +5912,7 @@ const Dashboard = () => {
   );
 
   return (
-    <VirtualAccessoryEditProvider value={virtualAccessoryEditor}>
+    <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
     <DealsProvider enabled={dealsEffectivelyEnabled} accessories={allAccessoriesData || []}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
@@ -7895,6 +7982,37 @@ const Dashboard = () => {
           onDelete={helperAccessories.remove}
         />
       )}
+
+      {/* Delete straight from a tile's context menu, without opening the editor
+          first — the editor has its own copy of this prompt for the case where
+          you are already in there. */}
+      <AlertDialog
+        open={!!deletingHelper}
+        onOpenChange={open => { if (!open) setDeletingHelper(undefined); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deletingHelper?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Automations referring to this virtual accessory will stop working.
+              This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                const target = deletingHelper;
+                setDeletingHelper(undefined);
+                if (target) await helperAccessories.remove(target.id);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Create Room Group Dialog */}
       {createRoomGroupHome && (
