@@ -52,7 +52,7 @@ export interface InitOptions {
   /** Called for every completed trace, in addition to the cloud push. */
   onTraceComplete?: (trace: ExecutionTrace) => void;
   /** Called whenever a helper value changes, so it can be persisted. */
-  onVirtualStateChange?: (helperId: string, state: unknown) => void;
+  onVirtualStateChange?: (accessoryId: string, state: unknown) => void;
   /**
    * Current values, fetched and applied *before* the engine subscribes.
    *
@@ -94,9 +94,9 @@ export async function initAutomationEngine(options: InitOptions): Promise<Automa
       options.onTraceComplete?.(trace);
       syncInstance?.pushTrace(trace);
     },
-    onVirtualStateChange: (helperId, state) => {
-      options.onVirtualStateChange?.(helperId, state);
-      syncInstance?.pushVirtualState(helperId, state);
+    onVirtualStateChange: (accessoryId, state) => {
+      options.onVirtualStateChange?.(accessoryId, state);
+      syncInstance?.pushVirtualState(accessoryId, state);
     },
     onNotify: options.onNotify,
     // Live run view in the local editor. Same-context only — remote fanout

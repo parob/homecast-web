@@ -106,9 +106,9 @@ export class AutomationSyncManager {
   /**
    * Push helper state update to the server for persistence.
    */
-  pushVirtualState(helperId: string, state: unknown): void {
+  pushVirtualState(accessoryId: string, state: unknown): void {
     if (this.connected) {
-      this.transport.sendMessage('automation.helper_state', { helperId, state });
+      this.transport.sendMessage('automation.helper_state', { accessoryId, state });
     }
   }
 

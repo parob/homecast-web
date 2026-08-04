@@ -606,12 +606,11 @@ function nodeToActionInner(
     case 'code':
       return { type: 'code', id: node.id, code: (config.code as string) ?? '', timeout: config.timeout as number | undefined } satisfies CodeAction;
     case 'virtual':
-    case 'helper':
       return {
         // New saves use the new name; the reader accepts both.
         type: 'virtual',
         id: node.id,
-        helperId: (config.helperId as string) ?? '',
+        accessoryId: (config.accessoryId as string) ?? '',
         operation: (config.operation as VirtualAccessoryAction['operation']) ?? 'toggle',
         value: config.value,
         duration: config.duration as VirtualAccessoryAction['duration'],

@@ -47,10 +47,10 @@ vi.mock('@/native/homekit-bridge', () => ({
 // factory returns the object eagerly rather than reading it at call time.
 const db = vi.hoisted(() => ({
   getHcAutomations: vi.fn(async () => [] as unknown[]),
-  getHcHelpers: vi.fn(async () => [] as unknown[]),
-  getHcHelperStates: vi.fn(async () => ({} as Record<string, unknown>)),
+  getVirtualAccessories: vi.fn(async () => [] as unknown[]),
+  getVirtualAccessoryStates: vi.fn(async () => ({} as Record<string, unknown>)),
   saveExecutionTrace: vi.fn(async () => {}),
-  saveHcHelperState: vi.fn(async () => {}),
+  saveVirtualAccessoryState: vi.fn(async () => {}),
 }));
 vi.mock('@/server/local-db', () => db);
 
@@ -69,8 +69,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   currentEngine = engine;
   db.getHcAutomations.mockResolvedValue([]);
-  db.getHcHelpers.mockResolvedValue([]);
-  db.getHcHelperStates.mockResolvedValue({});
+  db.getVirtualAccessories.mockResolvedValue([]);
+  db.getVirtualAccessoryStates.mockResolvedValue({});
   resolveHomeLocation.mockResolvedValue(undefined);
 });
 
@@ -91,10 +91,10 @@ describe('initCommunityAutomationEngine', () => {
   });
 
   it('loads helpers before automations, since automations may reference them', async () => {
-    db.getHcHelpers.mockResolvedValue([
+    db.getVirtualAccessories.mockResolvedValue([
       { id: 'h1', homeId: 'home-1', data: JSON.stringify({ id: 'h1', type: 'counter', name: 'Opens' }) },
     ]);
-    db.getHcHelperStates.mockResolvedValue({ h1: 12 });
+    db.getVirtualAccessoryStates.mockResolvedValue({ h1: 12 });
 
     await initCommunityAutomationEngine();
 
@@ -118,7 +118,7 @@ describe('initCommunityAutomationEngine', () => {
   });
 
   it('skips a corrupt helper row', async () => {
-    db.getHcHelpers.mockResolvedValue([{ id: 'bad', homeId: 'home-1', data: 'nope' }]);
+    db.getVirtualAccessories.mockResolvedValue([{ id: 'bad', homeId: 'home-1', data: 'nope' }]);
 
     await initCommunityAutomationEngine();
 
@@ -173,7 +173,7 @@ describe('initCommunityAutomationEngine', () => {
 
     onVirtualStateChange('door_opens', 3);
 
-    expect(db.saveHcHelperState).toHaveBeenCalledWith('door_opens', 3);
+    expect(db.saveVirtualAccessoryState).toHaveBeenCalledWith('door_opens', 3);
   });
 
   it('recovers from a failed startup rather than wedging', async () => {

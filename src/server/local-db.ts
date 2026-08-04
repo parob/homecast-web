@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'homecast-local';
-const DB_VERSION = 8; // v8: added hc_helpers, hc_helper_states
+const DB_VERSION = 8; // v8: added hc_virtual_accessories, hc_virtual_states
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -110,11 +110,11 @@ function openDB(): Promise<IDBDatabase> {
       // v8: Helpers (virtual switches, timers, counters, modes). Definitions
       // and values are stored separately — values change constantly, and a
       // counter that resets on every relay restart is useless.
-      if (!db.objectStoreNames.contains('hc_helpers')) {
-        db.createObjectStore('hc_helpers', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('hc_virtual_accessories')) {
+        db.createObjectStore('hc_virtual_accessories', { keyPath: 'id' });
       }
-      if (!db.objectStoreNames.contains('hc_helper_states')) {
-        db.createObjectStore('hc_helper_states', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('hc_virtual_states')) {
+        db.createObjectStore('hc_virtual_states', { keyPath: 'id' });
       }
     };
 
@@ -383,7 +383,7 @@ export async function deleteHcAutomation(automationId: string): Promise<boolean>
 
 // --- Helpers (virtual switches, timers, counters, modes) ---
 
-interface HcHelper {
+interface VirtualAccessoryRow {
   id: string;
   homeId: string;
   /** Serialized VirtualAccessoryDefinition. */
@@ -392,43 +392,43 @@ interface HcHelper {
   updatedAt: string;
 }
 
-interface HcHelperState {
+interface VirtualAccessoryState {
   id: string;
   value: string; // JSON-encoded so booleans/numbers/strings round-trip
   updatedAt: string;
 }
 
-export async function getHcHelpers(homeId?: string): Promise<HcHelper[]> {
-  const all = await getAll<HcHelper>('hc_helpers');
+export async function getVirtualAccessories(homeId?: string): Promise<VirtualAccessoryRow[]> {
+  const all = await getAll<VirtualAccessoryRow>('hc_virtual_accessories');
   return homeId ? all.filter(h => h.homeId === homeId) : all;
 }
 
-export async function saveHcHelper(homeId: string, helperId: string | null, data: string): Promise<HcHelper> {
-  const id = helperId ?? crypto.randomUUID();
-  const existing = await getById<HcHelper>('hc_helpers', id);
+export async function saveVirtualAccessory(homeId: string, accessoryId: string | null, data: string): Promise<VirtualAccessoryRow> {
+  const id = accessoryId ?? crypto.randomUUID();
+  const existing = await getById<VirtualAccessoryRow>('hc_virtual_accessories', id);
   const now = new Date().toISOString();
-  const helper: HcHelper = { id, homeId, data, createdAt: existing?.createdAt ?? now, updatedAt: now };
-  await put('hc_helpers', helper);
+  const helper: VirtualAccessoryRow = { id, homeId, data, createdAt: existing?.createdAt ?? now, updatedAt: now };
+  await put('hc_virtual_accessories', helper);
   return helper;
 }
 
-export async function deleteHcHelper(helperId: string): Promise<boolean> {
-  await remove('hc_helpers', helperId);
-  await remove('hc_helper_states', helperId);
+export async function deleteVirtualAccessory(accessoryId: string): Promise<boolean> {
+  await remove('hc_virtual_accessories', accessoryId);
+  await remove('hc_virtual_states', accessoryId);
   return true;
 }
 
-export async function saveHcHelperState(helperId: string, value: unknown): Promise<void> {
-  await put('hc_helper_states', {
-    id: helperId,
+export async function saveVirtualAccessoryState(accessoryId: string, value: unknown): Promise<void> {
+  await put('hc_virtual_states', {
+    id: accessoryId,
     value: JSON.stringify(value ?? null),
     updatedAt: new Date().toISOString(),
   });
 }
 
 /** All persisted helper values, keyed by helper id. */
-export async function getHcHelperStates(): Promise<Record<string, unknown>> {
-  const rows = await getAll<HcHelperState>('hc_helper_states');
+export async function getVirtualAccessoryStates(): Promise<Record<string, unknown>> {
+  const rows = await getAll<VirtualAccessoryState>('hc_virtual_states');
   const out: Record<string, unknown> = {};
   for (const row of rows) {
     try {

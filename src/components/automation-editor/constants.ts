@@ -387,7 +387,7 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
     { field: 'result', type: 'unknown', label: 'Return Value' },
   ],
   virtual: [
-    { field: 'helperId', type: 'string', label: 'Helper ID' },
+    { field: 'accessoryId', type: 'string', label: 'Helper ID' },
     { field: 'operation', type: 'string', label: 'Operation' },
     // The value AFTER the operation, so a later node can branch on the result
     // rather than re-reading it and racing whatever changed it next.

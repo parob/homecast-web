@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
-import { HC_HELPERS } from '@/lib/graphql/queries';
-import { SAVE_HC_HELPER, DELETE_HC_HELPER } from '@/lib/graphql/mutations';
+import { VIRTUAL_ACCESSORIES } from '@/lib/graphql/queries';
+import { SAVE_VIRTUAL_ACCESSORY, DELETE_VIRTUAL_ACCESSORY } from '@/lib/graphql/mutations';
 import { isCreatableVirtualType } from '@/automation/virtual-accessories/catalogue';
 import type { VirtualAccessoryDefinition, VirtualOperation } from '@/automation/types/automation';
 
@@ -52,17 +52,17 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
   /** Null while unknown; false once we know the engine isn't reachable. */
   const [engineLive, setEngineLive] = useState<boolean | null>(null);
 
-  const { data, refetch } = useQuery<{ hcHelpers: StoredHelperEntity[] }>(HC_HELPERS, {
+  const { data, refetch } = useQuery<{ virtualAccessories: StoredHelperEntity[] }>(VIRTUAL_ACCESSORIES, {
     variables: { homeId },
     skip: !homeId,
     fetchPolicy: 'cache-first',
     errorPolicy: 'all',
   });
 
-  const [saveMutation] = useMutation(SAVE_HC_HELPER);
-  const [deleteMutation] = useMutation(DELETE_HC_HELPER);
+  const [saveMutation] = useMutation(SAVE_VIRTUAL_ACCESSORY);
+  const [deleteMutation] = useMutation(DELETE_VIRTUAL_ACCESSORY);
 
-  const helpers = useMemo(() => parseHelpers(data?.hcHelpers ?? []), [data]);
+  const helpers = useMemo(() => parseHelpers(data?.virtualAccessories ?? []), [data]);
 
   /** roomId → helpers. The home-level folder is keyed by the empty string. */
   const byRoom = useMemo(() => {
@@ -106,15 +106,15 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
   }, [active, homeId, helpers.length, refreshStates]);
 
   const operate = useCallback(async (
-    helperId: string,
+    accessoryId: string,
     operation: VirtualOperation,
     opts: { value?: unknown } = {},
   ) => {
     try {
-      const res = await serverConnection.request<{ helperId: string; state: unknown }>(
-        'automation.helper_operate', { homeId, helperId, operation, ...opts },
+      const res = await serverConnection.request<{ accessoryId: string; state: unknown }>(
+        'automation.helper_operate', { homeId, accessoryId, operation, ...opts },
       );
-      setStates(s => ({ ...s, [helperId]: res?.state }));
+      setStates(s => ({ ...s, [accessoryId]: res?.state }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not change that virtual accessory');
       void refreshStates();
@@ -127,7 +127,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
       await saveMutation({
         variables: {
           homeId,
-          helperId: helper.id || null,
+          accessoryId: helper.id || null,
           // id is stripped on create: the store mints it, and writing an empty
           // one into the blob would leave the definition disagreeing with its row.
           data: JSON.stringify(helper.id ? helper : { ...helper, id: undefined }),
@@ -142,9 +142,9 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     }
   }, [homeId, saveMutation, refetch, refreshStates]);
 
-  const remove = useCallback(async (helperId: string) => {
+  const remove = useCallback(async (accessoryId: string) => {
     try {
-      await deleteMutation({ variables: { helperId } });
+      await deleteMutation({ variables: { accessoryId } });
       await refetch();
       toast.success('Virtual accessory deleted');
     } catch (e) {
@@ -157,14 +157,14 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
    * `roomId` is null. Separate from `save` because dragging a tile should not
    * announce itself with a toast the way an explicit save does.
    */
-  const moveToRoom = useCallback(async (helperId: string, roomId: string | null) => {
-    const helper = helpers.find(h => h.id === helperId);
+  const moveToRoom = useCallback(async (accessoryId: string, roomId: string | null) => {
+    const helper = helpers.find(h => h.id === accessoryId);
     if (!helper || (helper.roomId ?? null) === roomId) return;
     try {
       await saveMutation({
         variables: {
           homeId,
-          helperId,
+          accessoryId,
           data: JSON.stringify({ ...helper, roomId: roomId ?? undefined }),
         },
       });

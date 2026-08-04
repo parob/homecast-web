@@ -44,8 +44,8 @@ async function loadStoredAutomations(): Promise<Automation[]> {
 }
 
 /** Read every stored helper definition, tolerating individual corrupt rows. */
-async function loadStoredHelpers(): Promise<VirtualAccessoryDefinition[]> {
-  const rows = await db.getHcHelpers();
+async function loadStoredVirtualAccessories(): Promise<VirtualAccessoryDefinition[]> {
+  const rows = await db.getVirtualAccessories();
   const helpers: VirtualAccessoryDefinition[] = [];
   for (const row of rows) {
     try {
@@ -148,13 +148,13 @@ export async function initCommunityAutomationEngine(): Promise<void> {
       },
       serviceGroupResolver: resolver,
       onTraceComplete: (trace) => { void persistTrace(trace); },
-      onVirtualStateChange: (helperId, state) => {
-        void db.saveHcHelperState(helperId, state).catch(() => {});
+      onVirtualStateChange: (accessoryId, state) => {
+        void db.saveVirtualAccessoryState(accessoryId, state).catch(() => {});
       },
     });
 
     // Helpers first — automations may reference them in triggers or conditions.
-    engine.loadVirtualAccessories(await loadStoredHelpers(), await db.getHcHelperStates());
+    engine.loadVirtualAccessories(await loadStoredVirtualAccessories(), await db.getVirtualAccessoryStates());
     engine.loadAutomations(await loadStoredAutomations());
 
     // Resolved after startup so a slow/denied geolocation prompt can't hold up
@@ -195,11 +195,11 @@ export async function reloadCommunityAutomations(): Promise<void> {
  * loading only adds — a deleted helper would keep answering `helper()` and keep
  * its triggers registered until the next restart.
  */
-export async function reloadCommunityHelpers(): Promise<void> {
+export async function reloadCommunityVirtualAccessories(): Promise<void> {
   const engine = getAutomationEngine();
   if (!engine) return;
   try {
-    engine.syncVirtualAccessories(await loadStoredHelpers());
+    engine.syncVirtualAccessories(await loadStoredVirtualAccessories());
   } catch (e) {
     console.warn('[CommunityAutomation] Helper reload failed', e);
   }

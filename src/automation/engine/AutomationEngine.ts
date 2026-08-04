@@ -49,7 +49,7 @@ export interface AutomationEngineConfig {
    * Called whenever a helper's value changes, so it can be persisted. Counters
    * and modes are worthless if they reset on every relay restart.
    */
-  onVirtualStateChange?: (helperId: string, state: unknown) => void;
+  onVirtualStateChange?: (accessoryId: string, state: unknown) => void;
   /**
    * Live-view stream: started / step / variables_changed / finished, emitted
    * synchronously as the run progresses (never adding an await to the action
@@ -103,7 +103,7 @@ export class AutomationEngine {
     this.virtualManager = new VirtualAccessoryManager(
       this.stateStore,
       (type, data) => this.fireEvent(type, data),
-      (helperId, state) => this.config.onVirtualStateChange?.(helperId, state),
+      (accessoryId, state) => this.config.onVirtualStateChange?.(accessoryId, state),
     );
 
     this.actionExecutor = new ActionExecutor(
@@ -203,13 +203,13 @@ export class AutomationEngine {
   }
 
   /** Remove a single helper and stop anything it was running. */
-  removeVirtualAccessory(helperId: string): void {
-    this.virtualManager.remove(helperId);
+  removeVirtualAccessory(accessoryId: string): void {
+    this.virtualManager.remove(accessoryId);
   }
 
   /** A helper's definition, or undefined if it isn't registered. */
-  getVirtualAccessory(helperId: string): VirtualAccessoryDefinition | undefined {
-    return this.virtualManager.getVirtualAccessory(helperId);
+  getVirtualAccessory(accessoryId: string): VirtualAccessoryDefinition | undefined {
+    return this.virtualManager.getVirtualAccessory(accessoryId);
   }
 
   /** Current value of every registered helper, keyed by id. */
@@ -226,11 +226,11 @@ export class AutomationEngine {
    * quieter path would have made manual changes invisible to the engine.
    */
   operateVirtualAccessory(
-    helperId: string,
+    accessoryId: string,
     operation: VirtualOperation,
     opts: { value?: unknown; step?: number; duration?: Duration } = {},
   ): void {
-    this.virtualManager.apply(helperId, operation, opts);
+    this.virtualManager.apply(accessoryId, operation, opts);
   }
 
   /**

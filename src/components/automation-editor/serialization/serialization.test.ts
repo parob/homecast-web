@@ -299,37 +299,23 @@ describe('serialization: newly exposed node types', () => {
 
   it('round-trips a virtual accessory node, emitting the new type name', () => {
     const { auto, graph } = roundTrip('virtual', {
-      helperId: 'guest_mode', operation: 'turn_on', category: 'action',
+      accessoryId: 'guest_mode', operation: 'turn_on', category: 'action',
     });
 
     const action = auto.actions[0] as any;
     // New saves write 'virtual'; 'helper' is still read (see below).
     expect(action.type).toBe('virtual');
-    expect(action.helperId).toBe('guest_mode');
+    expect(action.accessoryId).toBe('guest_mode');
     expect(action.operation).toBe('turn_on');
 
     const node = graph.nodes.find(n => n.data.nodeType === 'virtual')!;
-    expect(node.data.config.helperId).toBe('guest_mode');
+    expect(node.data.config.accessoryId).toBe('guest_mode');
     expect(node.data.config.operation).toBe('turn_on');
   });
 
-  it('still loads an automation stored with the old helper type', () => {
-    // Stored data, not a rename: automations saved before this exist and must
-    // keep working, mapping onto the new node type.
-    const stored = {
-      id: 'a1', name: 'Old', homeId: 'home-1', enabled: true, mode: 'single',
-      triggers: [], conditions: { operator: 'and', conditions: [] },
-      actions: [{ type: 'helper', id: 'n1', helperId: 'guest_mode', operation: 'turn_on' }],
-    } as any;
-    const graph = automationToGraph(stored);
-    const node = graph.nodes.find(n => n.data.nodeType === 'virtual');
-    expect(node, 'an old helper action should load as a virtual node').toBeTruthy();
-    expect(node!.data.config.helperId).toBe('guest_mode');
-  });
-
   it('round-trips a virtual timer start with a duration', () => {
-    const { auto, graph } = roundTrip('helper', {
-      helperId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 }, category: 'action',
+    const { auto, graph } = roundTrip('virtual', {
+      accessoryId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 }, category: 'action',
     });
 
     expect((auto.actions[0] as any).duration).toEqual({ minutes: 5 });

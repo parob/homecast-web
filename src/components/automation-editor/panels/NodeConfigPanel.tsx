@@ -992,7 +992,7 @@ function renderConfigForm(
 
       case 'virtual': {
         const helpers = availableHelpers ?? [];
-        const selected = helpers.find(h => h.id === (config.helperId as string));
+        const selected = helpers.find(h => h.id === (config.accessoryId as string));
         const operations = selected ? VIRTUAL_OPERATIONS[selected.type] ?? [] : [];
         const operation = (config.operation as string) ?? '';
 
@@ -1004,7 +1004,7 @@ function renderConfigForm(
             >
               <select
                 className="w-full h-8 rounded-md border bg-background px-2 text-xs"
-                value={(config.helperId as string) ?? ''}
+                value={(config.accessoryId as string) ?? ''}
                 onChange={(e) => {
                   const next = helpers.find(h => h.id === e.target.value);
                   // Changing the target changes which operations exist, so an
@@ -1013,7 +1013,7 @@ function renderConfigForm(
                   const allowed = next ? VIRTUAL_OPERATIONS[next.type] ?? [] : [];
                   const keep = allowed.some(o => o.value === operation);
                   updateConfigBatch({
-                    helperId: e.target.value,
+                    accessoryId: e.target.value,
                     operation: keep ? operation : allowed[0]?.value ?? '',
                     value: undefined,
                   });

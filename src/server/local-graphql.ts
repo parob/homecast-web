@@ -49,10 +49,10 @@ async function reloadCommunityAutomations(): Promise<void> {
 }
 
 /** As above, for helper definitions. */
-async function reloadCommunityHelpers(): Promise<void> {
+async function reloadCommunityVirtualAccessories(): Promise<void> {
   try {
     const m = await import('./community-automation');
-    await m.reloadCommunityHelpers();
+    await m.reloadCommunityVirtualAccessories();
   } catch { /* engine not running in this context */ }
 }
 
@@ -104,7 +104,7 @@ function toStoredAutomation(a: { id: string; homeId: string; data: string; creat
   };
 }
 
-function toStoredHelper(h: { id: string; homeId: string; data: string; createdAt: string; updatedAt?: string }) {
+function toStoredVirtualAccessory(h: { id: string; homeId: string; data: string; createdAt: string; updatedAt?: string }) {
   return {
     id: h.id,
     entityType: 'helper',
@@ -405,28 +405,28 @@ async function resolveOperation(
     // --- HC Helpers ---
     // Virtual entities (modes, switches, counters, timers). Same StoredEntityInfo
     // shape as automations — `dataJson` carries the serialized VirtualAccessoryDefinition.
-    case 'HcHelpers':
+    case 'VirtualAccessories':
       return {
-        hcHelpers: (await db.getHcHelpers(variables.homeId as string))
-          .map(toStoredHelper),
+        virtualAccessories: (await db.getVirtualAccessories(variables.homeId as string))
+          .map(toStoredVirtualAccessory),
       };
 
-    case 'SaveHcHelper': {
-      const helper = await db.saveHcHelper(
+    case 'SaveVirtualAccessory': {
+      const helper = await db.saveVirtualAccessory(
         variables.homeId as string,
-        (variables.helperId as string) || null,
+        (variables.accessoryId as string) || null,
         variables.data as string
       );
       // Same reason as automations: cloud gets a server push, Community has to
       // tell its own engine or the helper won't exist until the next restart.
-      void reloadCommunityHelpers();
-      return { saveHcHelper: toStoredHelper(helper) };
+      void reloadCommunityVirtualAccessories();
+      return { saveVirtualAccessory: toStoredVirtualAccessory(helper) };
     }
 
-    case 'DeleteHcHelper':
-      await db.deleteHcHelper(variables.helperId as string);
-      void reloadCommunityHelpers();
-      return { deleteHcHelper: { success: true, __typename: 'DeleteResult' } };
+    case 'DeleteVirtualAccessory':
+      await db.deleteVirtualAccessory(variables.accessoryId as string);
+      void reloadCommunityVirtualAccessories();
+      return { deleteVirtualAccessory: { success: true, __typename: 'DeleteResult' } };
 
     // --- Execution History ---
     // GET_EXECUTION_HISTORY selects `hcExecutionTraces` with the StoredEntityInfo

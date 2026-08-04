@@ -30,12 +30,12 @@ import { getAutomationEngine } from '../automation';
  */
 export const VIRTUAL_CHARACTERISTIC: Record<string, string> = {
   input_boolean: 'power_state',
-  input_number: 'helper_number',
-  counter: 'helper_count',
-  input_select: 'helper_mode',
-  timer: 'helper_timer',
-  input_text: 'helper_text',
-  input_datetime: 'helper_datetime',
+  input_number: 'virtual_number',
+  counter: 'virtual_count',
+  input_select: 'virtual_mode',
+  timer: 'virtual_timer',
+  input_text: 'virtual_text',
+  input_datetime: 'virtual_datetime',
 };
 
 /** HomeKit-ish category, so category-based sorting and icons have something. */
@@ -51,12 +51,12 @@ const VIRTUAL_CATEGORY: Record<string, string> = {
 
 const VIRTUAL_SERVICE_TYPE: Record<string, string> = {
   input_boolean: 'switch',
-  input_number: 'helper_number',
-  counter: 'helper_count',
-  input_select: 'helper_mode',
-  timer: 'helper_timer',
-  input_text: 'helper_text',
-  input_datetime: 'helper_datetime',
+  input_number: 'virtual_number',
+  counter: 'virtual_count',
+  input_select: 'virtual_mode',
+  timer: 'virtual_timer',
+  input_text: 'virtual_text',
+  input_datetime: 'virtual_datetime',
 };
 
 /** Marks an accessory as engine-owned. Clients use it to offer the right UI. */
@@ -73,13 +73,13 @@ export interface VirtualAccessory extends HomeKitAccessory {
 
 /** Build the accessory representation of one helper. */
 export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: unknown): VirtualAccessory {
-  const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'helper_value';
+  const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'virtual_value';
   const writable = helper.controllable !== false;
 
   const service: HomeKitService = {
     id: `${helper.id}:service`,
     name: helper.name,
-    serviceType: VIRTUAL_SERVICE_TYPE[helper.type] ?? 'helper',
+    serviceType: VIRTUAL_SERVICE_TYPE[helper.type] ?? 'virtual',
     characteristics: [
       {
         id: `${helper.id}:${characteristicType}`,

@@ -542,7 +542,10 @@ async function executeHomeKitActionInner(
     // change instead of assuming it. The event-based path is kept on the sync
     // manager for older servers.
     case 'automation.sync_all': {
-      const { automations, helpers } = payload as { automations?: unknown[]; helpers?: unknown[] };
+      const { automations, virtualAccessories } = payload as {
+        automations?: unknown[]; virtualAccessories?: unknown[];
+      };
+      const virtuals = virtualAccessories;
       const { getAutomationEngine } = await import('../automation');
       const engine = getAutomationEngine();
       if (!engine) {
@@ -556,8 +559,8 @@ async function executeHomeKitActionInner(
       // still works — but absent is NOT the same as empty. Treating a missing
       // key as "delete every helper" would let one old pod wipe them all.
       let syncedHelpers: number | undefined;
-      if (Array.isArray(helpers)) {
-        const list = helpers as Parameters<typeof engine.syncVirtualAccessories>[0];
+      if (Array.isArray(virtuals)) {
+        const list = virtuals as Parameters<typeof engine.syncVirtualAccessories>[0];
         engine.syncVirtualAccessories(list);
         syncedHelpers = list.length;
       }
@@ -566,18 +569,18 @@ async function executeHomeKitActionInner(
       return { loaded: list.length, helpers: syncedHelpers };
     }
 
-    case 'automation.helper_sync': {
-      const { helper } = payload as { helper?: { id?: string } };
+    case 'automation.virtual_sync': {
+      const { virtualAccessory } = payload as { virtualAccessory?: { id?: string } };
       const { getAutomationEngine } = await import('../automation');
       const engine = getAutomationEngine();
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
-      if (!helper?.id) {
-        throw Object.assign(new Error('helper.id required'), { code: ErrorCode.INVALID_REQUEST });
+      if (!virtualAccessory?.id) {
+        throw Object.assign(new Error('virtualAccessory.id required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      engine.upsertVirtualAccessory(helper as Parameters<typeof engine.upsertVirtualAccessory>[0]);
-      return { synced: helper.id };
+      engine.upsertVirtualAccessory(virtualAccessory as Parameters<typeof engine.upsertVirtualAccessory>[0]);
+      return { synced: virtualAccessory.id };
     }
 
     // Current value of every helper the engine has registered.
@@ -587,7 +590,7 @@ async function executeHomeKitActionInner(
     // holds what is true right now. A Helpers list fed from storage would show
     // a mode that an automation changed a second ago as still being the old
     // one, and the manual control beside it would then act on a stale reading.
-    case 'automation.helper_states': {
+    case 'automation.virtual_states': {
       const { getAutomationEngine } = await import('../automation');
       const engine = getAutomationEngine();
       if (!engine) {
@@ -598,9 +601,9 @@ async function executeHomeKitActionInner(
 
     // A person operating a helper by hand. Same vocabulary as the `helper`
     // automation action, and the same dispatch underneath.
-    case 'automation.helper_operate': {
-      const { helperId, operation, value, step, duration } = payload as {
-        helperId?: string; operation?: string; value?: unknown; step?: number;
+    case 'automation.virtual_operate': {
+      const { accessoryId, operation, value, step, duration } = payload as {
+        accessoryId?: string; operation?: string; value?: unknown; step?: number;
         duration?: { hours?: number; minutes?: number; seconds?: number };
       };
       const { getAutomationEngine } = await import('../automation');
@@ -608,38 +611,38 @@ async function executeHomeKitActionInner(
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
-      if (!helperId || !operation) {
-        throw Object.assign(new Error('helperId and operation required'), { code: ErrorCode.INVALID_REQUEST });
+      if (!accessoryId || !operation) {
+        throw Object.assign(new Error('accessoryId and operation required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      if (!engine.getVirtualAccessory(helperId)) {
-        throw Object.assign(new Error(`No such helper: ${helperId}`), { code: ErrorCode.INVALID_REQUEST });
+      if (!engine.getVirtualAccessory(accessoryId)) {
+        throw Object.assign(new Error(`No such helper: ${accessoryId}`), { code: ErrorCode.INVALID_REQUEST });
       }
       try {
         engine.operateVirtualAccessory(
-          helperId,
+          accessoryId,
           operation as Parameters<typeof engine.operateVirtualAccessory>[1],
           { value, step, duration },
         );
       } catch (e) {
         throw Object.assign(new Error(e instanceof Error ? e.message : String(e)), { code: ErrorCode.INVALID_REQUEST });
       }
-      return { helperId, operation, state: engine.getVirtualStates()[helperId] };
+      return { accessoryId, operation, state: engine.getVirtualStates()[accessoryId] };
     }
 
     // Named to match automation.unload: the row is already gone from the
     // database, this only unloads it from the running engine.
-    case 'automation.helper_unload': {
-      const { helperId } = payload as { helperId?: string };
+    case 'automation.virtual_unload': {
+      const { accessoryId } = payload as { accessoryId?: string };
       const { getAutomationEngine } = await import('../automation');
       const engine = getAutomationEngine();
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
-      if (!helperId) {
-        throw Object.assign(new Error('helperId required'), { code: ErrorCode.INVALID_REQUEST });
+      if (!accessoryId) {
+        throw Object.assign(new Error('accessoryId required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      engine.removeVirtualAccessory(helperId);
-      return { deleted: helperId };
+      engine.removeVirtualAccessory(accessoryId);
+      return { deleted: accessoryId };
     }
 
     case 'automation.sync': {

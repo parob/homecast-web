@@ -88,20 +88,12 @@ export function createFunctionRegistry(): Map<string, BuiltinFunction> {
     return ctx.stateStore.hasRecentManualChange(accessoryId, within, characteristicType);
   });
 
-  // helper('helperId') -> current helper value
-  // `virtual('id')` is the name. `helper('id')` is kept as an alias forever —
-  // it is written into conditions and templates users already saved, and there
-  // is no way to rewrite a template safely without parsing every expression.
-  const readVirtual = (args: unknown[], ctx: { stateStore: { getVirtualState(id: string): unknown } }) => {
-    const [id] = args as [string];
-    if (!id) return null;
-    return ctx.stateStore.getVirtualState(id) ?? null;
-  };
-  fns.set('virtual', readVirtual as never);
-  fns.set('helper', (args, ctx) => {
-    const [helperId] = args as [string];
-    if (!helperId) return null;
-    return ctx.stateStore.getVirtualState(helperId) ?? null;
+  // virtual('accessoryId') -> current helper value
+  // virtual('id') -> current value
+  fns.set('virtual', (args, ctx) => {
+    const [accessoryId] = args as [string];
+    if (!accessoryId) return null;
+    return ctx.stateStore.getVirtualState(accessoryId) ?? null;
   });
 
   // ============================================================

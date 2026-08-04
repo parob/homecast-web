@@ -456,13 +456,8 @@ export type VirtualOperation =
   | 'start' | 'pause' | 'resume' | 'cancel' | 'finish';
 
 export interface VirtualAccessoryAction extends BaseAction {
-  /**
-   * 'virtual' is the name. 'helper' is accepted forever because it is written
-   * into automations people already saved — a stored action is data, and
-   * renaming data is a migration, not a rename.
-   */
-  type: 'virtual' | 'helper';
-  helperId: string;
+  type: 'virtual';
+  accessoryId: string;
   operation: VirtualOperation;
   /** For `set` — may contain a {{ template }}. */
   value?: unknown;

@@ -248,9 +248,7 @@ export class ActionExecutor {
         return this.executeCode(action, ctx, tags);
       case 'merge':
         return this.executeMerge(action, ctx, tags);
-      // 'virtual' is the name; 'helper' is what older stored automations say.
       case 'virtual':
-      case 'helper':
         return this.executeHelper(action, ctx, tags);
       default:
         console.warn(`[ActionExecutor] Unsupported action type: ${(action as Action).type}`);
@@ -342,19 +340,19 @@ export class ActionExecutor {
 
   private async executeHelper(action: VirtualAccessoryAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'helper',
-      `Helper ${action.operation} ${action.helperId}`,
-      { helperId: action.helperId, operation: action.operation }, tags);
+      `Helper ${action.operation} ${action.accessoryId}`,
+      { accessoryId: action.accessoryId, operation: action.operation }, tags);
 
     if (!this.virtualManager) {
       const error = 'Helpers are not available in this engine instance';
-      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error });
+      ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, success: false, error });
       ctx.endStep(stepIdx, 'error', undefined, error);
       throw new Error(error);
     }
 
     try {
       const h = this.virtualManager;
-      const id = action.helperId;
+      const id = action.accessoryId;
       const value = action.value !== undefined ? this.resolveTemplateValue(action.value, ctx) : undefined;
 
       // Dispatch lives on VirtualAccessoryManager so this action and a person operating
@@ -362,7 +360,7 @@ export class ActionExecutor {
       h.apply(id, action.operation, { value, step: action.step, duration: action.duration });
 
       const output = {
-        helperId: id,
+        accessoryId: id,
         operation: action.operation,
         state: this.stateStore.getVirtualState(id),
         success: true,
@@ -370,7 +368,7 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       ctx.endStep(stepIdx, 'executed', output);
     } catch (e) {
-      ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error: describeError(e) });
+      ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, success: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
       throw e;
     }

@@ -25,7 +25,7 @@ interface VirtualAccessoryEditorDialogProps {
   /** Undefined when creating. */
   existing?: VirtualAccessoryDefinition;
   onSave: (helper: VirtualAccessoryDefinition) => Promise<void>;
-  onDelete?: (helperId: string) => Promise<void>;
+  onDelete?: (accessoryId: string) => Promise<void>;
 }
 
 /**

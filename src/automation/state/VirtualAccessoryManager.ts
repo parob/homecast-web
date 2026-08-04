@@ -6,7 +6,7 @@ import type { VirtualAccessoryDefinition, Duration, VirtualOperation } from '../
 import { durationToMs } from '../types/automation';
 
 type EventEmitter = (eventType: string, eventData?: Record<string, unknown>) => void;
-type StatePusher = (helperId: string, state: unknown) => void;
+type StatePusher = (accessoryId: string, state: unknown) => void;
 
 interface TimerState {
   state: 'idle' | 'active' | 'paused';
@@ -116,107 +116,107 @@ export class VirtualAccessoryManager {
     }
   }
 
-  remove(helperId: string): void {
-    this.helpers.delete(helperId);
-    this.cancelTimer(helperId);
-    this.timers.delete(helperId);
+  remove(accessoryId: string): void {
+    this.helpers.delete(accessoryId);
+    this.cancelTimer(accessoryId);
+    this.timers.delete(accessoryId);
   }
 
   // ============================================================
   // Input Boolean
   // ============================================================
 
-  toggle(helperId: string): void {
-    const current = this.stateStore.getVirtualState(helperId);
+  toggle(accessoryId: string): void {
+    const current = this.stateStore.getVirtualState(accessoryId);
     const newVal = !current;
-    this.stateStore.updateVirtualState(helperId, newVal);
-    this.pushState(helperId, newVal);
+    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.pushState(accessoryId, newVal);
   }
 
-  turnOn(helperId: string): void {
-    this.stateStore.updateVirtualState(helperId, true);
-    this.pushState(helperId, true);
+  turnOn(accessoryId: string): void {
+    this.stateStore.updateVirtualState(accessoryId, true);
+    this.pushState(accessoryId, true);
   }
 
-  turnOff(helperId: string): void {
-    this.stateStore.updateVirtualState(helperId, false);
-    this.pushState(helperId, false);
+  turnOff(accessoryId: string): void {
+    this.stateStore.updateVirtualState(accessoryId, false);
+    this.pushState(accessoryId, false);
   }
 
   // ============================================================
   // Input Number
   // ============================================================
 
-  setNumber(helperId: string, value: number): void {
-    const def = this.helpers.get(helperId);
+  setNumber(accessoryId: string, value: number): void {
+    const def = this.helpers.get(accessoryId);
     if (def?.type === 'input_number') {
       const clamped = Math.max(def.min, Math.min(def.max, value));
-      this.stateStore.updateVirtualState(helperId, clamped);
-      this.pushState(helperId, clamped);
+      this.stateStore.updateVirtualState(accessoryId, clamped);
+      this.pushState(accessoryId, clamped);
     }
   }
 
-  increment(helperId: string, step?: number): void {
-    const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
+  increment(accessoryId: string, step?: number): void {
+    const def = this.helpers.get(accessoryId);
+    const current = Number(this.stateStore.getVirtualState(accessoryId) ?? 0);
     const s = step ?? (def?.type === 'input_number' ? def.step : 1);
-    this.setNumber(helperId, current + s);
+    this.setNumber(accessoryId, current + s);
   }
 
-  decrement(helperId: string, step?: number): void {
-    const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
+  decrement(accessoryId: string, step?: number): void {
+    const def = this.helpers.get(accessoryId);
+    const current = Number(this.stateStore.getVirtualState(accessoryId) ?? 0);
     const s = step ?? (def?.type === 'input_number' ? def.step : 1);
-    this.setNumber(helperId, current - s);
+    this.setNumber(accessoryId, current - s);
   }
 
   // ============================================================
   // Input Select
   // ============================================================
 
-  selectOption(helperId: string, option: string): void {
-    this.stateStore.updateVirtualState(helperId, option);
-    this.pushState(helperId, option);
+  selectOption(accessoryId: string, option: string): void {
+    this.stateStore.updateVirtualState(accessoryId, option);
+    this.pushState(accessoryId, option);
   }
 
   // ============================================================
   // Input Text
   // ============================================================
 
-  setText(helperId: string, text: string): void {
-    this.stateStore.updateVirtualState(helperId, text);
-    this.pushState(helperId, text);
+  setText(accessoryId: string, text: string): void {
+    this.stateStore.updateVirtualState(accessoryId, text);
+    this.pushState(accessoryId, text);
   }
 
   // ============================================================
   // Counter
   // ============================================================
 
-  incrementCounter(helperId: string): void {
-    const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
+  incrementCounter(accessoryId: string): void {
+    const def = this.helpers.get(accessoryId);
+    const current = Number(this.stateStore.getVirtualState(accessoryId) ?? 0);
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const max = (def?.type === 'counter' ? def.max : undefined) ?? Infinity;
     const newVal = Math.min(current + step, max);
-    this.stateStore.updateVirtualState(helperId, newVal);
-    this.pushState(helperId, newVal);
+    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.pushState(accessoryId, newVal);
   }
 
-  decrementCounter(helperId: string): void {
-    const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
+  decrementCounter(accessoryId: string): void {
+    const def = this.helpers.get(accessoryId);
+    const current = Number(this.stateStore.getVirtualState(accessoryId) ?? 0);
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const min = (def?.type === 'counter' ? def.min : undefined) ?? -Infinity;
     const newVal = Math.max(current - step, min);
-    this.stateStore.updateVirtualState(helperId, newVal);
-    this.pushState(helperId, newVal);
+    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.pushState(accessoryId, newVal);
   }
 
-  resetCounter(helperId: string): void {
-    const def = this.helpers.get(helperId);
+  resetCounter(accessoryId: string): void {
+    const def = this.helpers.get(accessoryId);
     const initial = (def?.type === 'counter' ? def.initial : undefined) ?? 0;
-    this.stateStore.updateVirtualState(helperId, initial);
-    this.pushState(helperId, initial);
+    this.stateStore.updateVirtualState(accessoryId, initial);
+    this.pushState(accessoryId, initial);
   }
 
   // ============================================================
@@ -224,45 +224,45 @@ export class VirtualAccessoryManager {
   // ============================================================
 
   /** Set a helper's value, routing to the right setter for its type. */
-  setVirtualValue(helperId: string, value: unknown): void {
-    const def = this.helpers.get(helperId);
+  setVirtualValue(accessoryId: string, value: unknown): void {
+    const def = this.helpers.get(accessoryId);
     switch (def?.type) {
       case 'input_number':
-        this.setNumber(helperId, Number(value));
+        this.setNumber(accessoryId, Number(value));
         break;
       case 'input_select':
-        this.selectOption(helperId, String(value));
+        this.selectOption(accessoryId, String(value));
         break;
       case 'input_text':
       case 'input_datetime':
-        this.setText(helperId, String(value));
+        this.setText(accessoryId, String(value));
         break;
       case 'input_boolean':
-        if (value) this.turnOn(helperId); else this.turnOff(helperId);
+        if (value) this.turnOn(accessoryId); else this.turnOff(accessoryId);
         break;
       case 'counter': {
         const n = Number(value);
-        this.stateStore.updateVirtualState(helperId, n);
-        this.pushState(helperId, n);
+        this.stateStore.updateVirtualState(accessoryId, n);
+        this.pushState(accessoryId, n);
         break;
       }
       default:
-        throw new Error(`Cannot set a value on helper ${helperId}`);
+        throw new Error(`Cannot set a value on helper ${accessoryId}`);
     }
   }
 
   /** Increment a counter or input_number. */
-  incrementVirtual(helperId: string, step?: number): void {
-    const def = this.helpers.get(helperId);
-    if (def?.type === 'counter') this.incrementCounter(helperId);
-    else this.increment(helperId, step);
+  incrementVirtual(accessoryId: string, step?: number): void {
+    const def = this.helpers.get(accessoryId);
+    if (def?.type === 'counter') this.incrementCounter(accessoryId);
+    else this.increment(accessoryId, step);
   }
 
   /** Decrement a counter or input_number. */
-  decrementVirtual(helperId: string, step?: number): void {
-    const def = this.helpers.get(helperId);
-    if (def?.type === 'counter') this.decrementCounter(helperId);
-    else this.decrement(helperId, step);
+  decrementVirtual(accessoryId: string, step?: number): void {
+    const def = this.helpers.get(accessoryId);
+    if (def?.type === 'counter') this.decrementCounter(accessoryId);
+    else this.decrement(accessoryId, step);
   }
 
   /**
@@ -270,12 +270,12 @@ export class VirtualAccessoryManager {
    * relay restart rather than resetting to their initial value.
    */
   restoreStates(states: Record<string, unknown>): void {
-    for (const [helperId, value] of Object.entries(states)) {
-      if (!this.helpers.has(helperId)) continue;
+    for (const [accessoryId, value] of Object.entries(states)) {
+      if (!this.helpers.has(accessoryId)) continue;
       // Timers are not resumed — a half-elapsed countdown can't be trusted
       // across a restart, and `restoreOnRestart` is not implemented.
-      if (this.helpers.get(helperId)?.type === 'timer') continue;
-      this.stateStore.updateVirtualState(helperId, value);
+      if (this.helpers.get(accessoryId)?.type === 'timer') continue;
+      this.stateStore.updateVirtualState(accessoryId, value);
     }
   }
 
@@ -283,10 +283,10 @@ export class VirtualAccessoryManager {
   // Timer
   // ============================================================
 
-  startTimer(helperId: string, duration?: Duration): void {
-    this.cancelTimer(helperId);
+  startTimer(accessoryId: string, duration?: Duration): void {
+    this.cancelTimer(accessoryId);
 
-    const def = this.helpers.get(helperId);
+    const def = this.helpers.get(accessoryId);
     const dur = duration ?? (def?.type === 'timer' ? def.duration : undefined);
     if (!dur) return;
 
@@ -301,19 +301,19 @@ export class VirtualAccessoryManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateVirtualState(helperId, 'idle');
-      this.fireEvent('timer.finished', { helperId });
-      this.pushState(helperId, 'idle');
+      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.fireEvent('timer.finished', { accessoryId });
+      this.pushState(accessoryId, 'idle');
     }, totalMs);
 
-    this.timers.set(helperId, timerState);
-    this.stateStore.updateVirtualState(helperId, 'active');
-    this.fireEvent('timer.started', { helperId, duration: totalMs });
-    this.pushState(helperId, 'active');
+    this.timers.set(accessoryId, timerState);
+    this.stateStore.updateVirtualState(accessoryId, 'active');
+    this.fireEvent('timer.started', { accessoryId, duration: totalMs });
+    this.pushState(accessoryId, 'active');
   }
 
-  pauseTimer(helperId: string): void {
-    const timerState = this.timers.get(helperId);
+  pauseTimer(accessoryId: string): void {
+    const timerState = this.timers.get(accessoryId);
     if (!timerState || timerState.state !== 'active') return;
 
     if (timerState.timer) clearTimeout(timerState.timer);
@@ -323,13 +323,13 @@ export class VirtualAccessoryManager {
     timerState.remaining = Math.max(0, timerState.remaining - elapsed);
     timerState.state = 'paused';
 
-    this.stateStore.updateVirtualState(helperId, 'paused');
-    this.fireEvent('timer.paused', { helperId, remaining: timerState.remaining });
-    this.pushState(helperId, 'paused');
+    this.stateStore.updateVirtualState(accessoryId, 'paused');
+    this.fireEvent('timer.paused', { accessoryId, remaining: timerState.remaining });
+    this.pushState(accessoryId, 'paused');
   }
 
-  resumeTimer(helperId: string): void {
-    const timerState = this.timers.get(helperId);
+  resumeTimer(accessoryId: string): void {
+    const timerState = this.timers.get(accessoryId);
     if (!timerState || timerState.state !== 'paused' || timerState.remaining <= 0) return;
 
     timerState.state = 'active';
@@ -338,18 +338,18 @@ export class VirtualAccessoryManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateVirtualState(helperId, 'idle');
-      this.fireEvent('timer.finished', { helperId });
-      this.pushState(helperId, 'idle');
+      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.fireEvent('timer.finished', { accessoryId });
+      this.pushState(accessoryId, 'idle');
     }, timerState.remaining);
 
-    this.stateStore.updateVirtualState(helperId, 'active');
-    this.fireEvent('timer.resumed', { helperId });
-    this.pushState(helperId, 'active');
+    this.stateStore.updateVirtualState(accessoryId, 'active');
+    this.fireEvent('timer.resumed', { accessoryId });
+    this.pushState(accessoryId, 'active');
   }
 
-  cancelTimer(helperId: string): void {
-    const timerState = this.timers.get(helperId);
+  cancelTimer(accessoryId: string): void {
+    const timerState = this.timers.get(accessoryId);
     if (!timerState) return;
 
     if (timerState.timer) clearTimeout(timerState.timer);
@@ -358,14 +358,14 @@ export class VirtualAccessoryManager {
     if (timerState.state !== 'idle') {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateVirtualState(helperId, 'idle');
-      this.fireEvent('timer.cancelled', { helperId });
-      this.pushState(helperId, 'idle');
+      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.fireEvent('timer.cancelled', { accessoryId });
+      this.pushState(accessoryId, 'idle');
     }
   }
 
-  finishTimer(helperId: string): void {
-    const timerState = this.timers.get(helperId);
+  finishTimer(accessoryId: string): void {
+    const timerState = this.timers.get(accessoryId);
     if (!timerState || timerState.state === 'idle') return;
 
     if (timerState.timer) clearTimeout(timerState.timer);
@@ -373,9 +373,9 @@ export class VirtualAccessoryManager {
     timerState.state = 'idle';
     timerState.remaining = 0;
 
-    this.stateStore.updateVirtualState(helperId, 'idle');
-    this.fireEvent('timer.finished', { helperId });
-    this.pushState(helperId, 'idle');
+    this.stateStore.updateVirtualState(accessoryId, 'idle');
+    this.fireEvent('timer.finished', { accessoryId });
+    this.pushState(accessoryId, 'idle');
   }
 
   // ============================================================
@@ -411,23 +411,23 @@ export class VirtualAccessoryManager {
    * nothing via the other.
    */
   apply(
-    helperId: string,
+    accessoryId: string,
     operation: VirtualOperation,
     opts: { value?: unknown; step?: number; duration?: Duration } = {},
   ): void {
     switch (operation) {
-      case 'turn_on': this.turnOn(helperId); break;
-      case 'turn_off': this.turnOff(helperId); break;
-      case 'toggle': this.toggle(helperId); break;
-      case 'set': this.setVirtualValue(helperId, opts.value); break;
-      case 'increment': this.incrementVirtual(helperId, opts.step); break;
-      case 'decrement': this.decrementVirtual(helperId, opts.step); break;
-      case 'reset': this.resetCounter(helperId); break;
-      case 'start': this.startTimer(helperId, opts.duration); break;
-      case 'pause': this.pauseTimer(helperId); break;
-      case 'resume': this.resumeTimer(helperId); break;
-      case 'cancel': this.cancelTimer(helperId); break;
-      case 'finish': this.finishTimer(helperId); break;
+      case 'turn_on': this.turnOn(accessoryId); break;
+      case 'turn_off': this.turnOff(accessoryId); break;
+      case 'toggle': this.toggle(accessoryId); break;
+      case 'set': this.setVirtualValue(accessoryId, opts.value); break;
+      case 'increment': this.incrementVirtual(accessoryId, opts.step); break;
+      case 'decrement': this.decrementVirtual(accessoryId, opts.step); break;
+      case 'reset': this.resetCounter(accessoryId); break;
+      case 'start': this.startTimer(accessoryId, opts.duration); break;
+      case 'pause': this.pauseTimer(accessoryId); break;
+      case 'resume': this.resumeTimer(accessoryId); break;
+      case 'cancel': this.cancelTimer(accessoryId); break;
+      case 'finish': this.finishTimer(accessoryId); break;
       default: {
         // Exhaustiveness guard: a new VirtualOperation that nobody wired up
         // should fail loudly here rather than be accepted and ignored.

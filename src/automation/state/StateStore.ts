@@ -28,7 +28,7 @@ export class StateStore {
   // accessoryId -> characteristicType -> lastChangedTimestamp
   private lastChanged = new Map<string, Map<string, number>>();
 
-  // helperId -> value
+  // accessoryId -> value
   private virtualStates = new Map<string, unknown>();
   // accessoryId -> last reported reachability
   private reachability = new Map<string, boolean>();
@@ -253,12 +253,12 @@ export class StateStore {
   // Helper state read/write
   // ============================================================
 
-  getVirtualState(helperId: string): unknown {
-    return this.virtualStates.get(helperId);
+  getVirtualState(accessoryId: string): unknown {
+    return this.virtualStates.get(accessoryId);
   }
 
-  updateVirtualState(helperId: string, value: unknown): void {
-    this.virtualStates.set(helperId, value);
+  updateVirtualState(accessoryId: string, value: unknown): void {
+    this.virtualStates.set(accessoryId, value);
   }
 
   // ============================================================
