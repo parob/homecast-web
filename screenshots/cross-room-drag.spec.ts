@@ -18,7 +18,11 @@ import { HOME_ID } from './fixtures';
 /** Save mutations seen, so we can assert what a drop actually wrote. */
 async function captureSaves(page: Page) {
   const saves: Array<{ helperId: string | null; data: Record<string, unknown> }> = [];
-  await page.route('**/graphql', async (route, request) => {
+  // The GraphQL endpoint is the ROOT, not /graphql — cookie-based calls from a
+  // cross-subdomain context post to `/`. Matching '**/graphql' silently caught
+  // nothing, so every "no save happened" assertion passed against an array that
+  // could never fill.
+  await page.route(/^https?:\/\/(api\.homecast\.cloud|localhost:8080)\/?$/, async (route, request) => {
     if (request.method() === 'POST') {
       try {
         const body = request.postDataJSON();
@@ -55,18 +59,25 @@ async function dragTile(page: Page, fromText: string, toText: string) {
   await page.waitForTimeout(400);
 }
 
+/**
+ * Order matters: Playwright matches route handlers last-registered-first, so
+ * the capture has to be installed AFTER setupMocks or the mock fulfils every
+ * request and the capture never runs — which made the "no save happened"
+ * assertion pass against an array that could never have been filled.
+ */
 async function openDashboard(page: Page) {
   overrideSettings({ groupByRoom: true, compactMode: false });
   await setupMocks(page);
+  const saves = await captureSaves(page);
   await page.goto(`/portal?home=${HOME_ID}`);
   await page.waitForSelector('text=Home Mode', { timeout: 20000 });
+  return saves;
 }
 
 test.describe('cross-room drag', () => {
   test('a virtual accessory can be dragged into a room', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
-    const saves = await captureSaves(page);
-    await openDashboard(page);
+    const saves = await openDashboard(page);
 
     // Home Mode lives at the top of the home (no room). Drag it into Bedroom.
     await dragTile(page, 'Home Mode', 'Ceiling Fan');
@@ -78,8 +89,7 @@ test.describe('cross-room drag', () => {
 
   test('a real accessory is not moved between rooms', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
-    const saves = await captureSaves(page);
-    await openDashboard(page);
+    const saves = await openDashboard(page);
 
     // Ceiling Fan is a HomeKit device in Bedroom; drag it at the Garden tiles.
     await dragTile(page, 'Ceiling Fan', 'Irrigation');

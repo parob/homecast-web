@@ -718,22 +718,7 @@ export const VIRTUAL_SWITCH_ACCESSORY = {
   }],
 };
 
-export const DUPLICATE_NAME_ACCESSORY = {
-  ...VIRTUAL_SWITCH_ACCESSORY,
-  id: 'helper-guest-staying-2',
-  services: [{
-    ...VIRTUAL_SWITCH_ACCESSORY.services[0],
-    id: 'helper-guest-staying-2:service',
-    characteristics: [{
-      ...VIRTUAL_SWITCH_ACCESSORY.services[0].characteristics[0],
-      id: 'helper-guest-staying-2:power_state',
-      value: false,
-    }],
-  }],
-};
-
 export const HELPER_ACCESSORIES = [
-  DUPLICATE_NAME_ACCESSORY,
   VIRTUAL_SWITCH_ACCESSORY,
   {
     id: HELPER_MODE_ID,

@@ -4275,7 +4275,6 @@ const Dashboard = () => {
       c.onReorder(arrayMove(c.itemIds, from, to));
       return;
     }
-
     const isVirtual = helperAccessoriesRef.current.some(h => h.id === activeId);
     if (!isVirtual) {
       toast.error('Apple Home decides which room a device is in');
