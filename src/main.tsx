@@ -96,16 +96,19 @@ if (w.isHomecastIOSApp) {
 }
 
 window.addEventListener('vite:preloadError', (e) => {
-  // Only auto-reload once to avoid infinite loops. If already reloaded, show error instead.
+  // A deploy replaced the hashed chunks under a running session — reload to
+  // pick up the new bundle. Only once per guard window to avoid loops; the
+  // guard clears after the reloaded app has run stably (below), so each
+  // future deploy gets its own reload rather than surfacing a raw error.
   const key = 'homecast-preload-reload';
   if (!sessionStorage.getItem(key)) {
     sessionStorage.setItem(key, '1');
     window.location.reload();
   } else {
-    sessionStorage.removeItem(key);
     console.error('[Homecast] Failed to load module after reload:', e);
   }
 });
+window.setTimeout(() => sessionStorage.removeItem('homecast-preload-reload'), 15_000);
 
 // Race cloud init against a short timeout: if the chunk fetch is slow or fails,
 // don't keep the user on the splash screen forever. Components that need cloud
