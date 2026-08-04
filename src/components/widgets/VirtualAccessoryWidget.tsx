@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { WidgetProps } from './types';
+import { WidgetProps, parseCharacteristicValue } from './types';
 
 /**
  * A helper accessory — a value the automation engine owns.
@@ -18,6 +18,21 @@ const VIRTUAL_CHARS = [
   'virtual_mode', 'virtual_count', 'virtual_number',
   'virtual_timer', 'virtual_text', 'virtual_datetime',
 ] as const;
+
+/**
+ * Inline controls sit on a translucent, photo-backed tile, so `bg-background`
+ * rendered them as stark white rectangles floating over the glass. These borrow
+ * the tile's own surface instead: tinted from the current text colour, so they
+ * read correctly on a light or a dark background without either being hardcoded.
+ */
+const FIELD_CLASS =
+  'h-9 w-full rounded-md border border-current/20 bg-current/10 px-2.5 text-sm '
+  + 'text-inherit outline-none focus:border-current/40 transition-colors';
+
+/** Same surface as FIELD_CLASS, for the push controls. */
+const BUTTON_CLASS =
+  'h-9 inline-flex items-center justify-center rounded-md border border-current/20 '
+  + 'bg-current/10 px-2.5 text-sm hover:bg-current/20 transition-colors';
 
 const ICONS: Record<string, React.ElementType> = {
   virtual_mode: ListChecks,
@@ -67,7 +82,14 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     c => (VIRTUAL_CHARS as readonly string[]).includes(c.characteristicType),
   );
 
-  const value = char ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : undefined;
+  // Characteristic values are JSON-encoded in the cache, exactly as HomeKit
+  // sends them — every other widget decodes with parseCharacteristicValue and
+  // this one read them raw. A string came back wearing its quotes, so the tile
+  // showed `"yo"`, editing it wrote `"\"yo\""`, and each round added a layer.
+  // It also made `value === 'active'` false for a timer that really was active.
+  const value = char
+    ? parseCharacteristicValue(getEffectiveValue(accessory.id, char.characteristicType, char.value))
+    : undefined;
   const charType = char?.characteristicType ?? '';
   const Icon = ICONS[charType] ?? ToggleLeft;
 
@@ -84,9 +106,12 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   const numeric = Number(value);
   const step = char?.stepValue ?? 1;
   const running = value === 'active';
+  // Declared before `control`: renderControl() reads it for the counter, and
+  // calling it any earlier would hit the temporal dead zone.
   const display = charType === 'virtual_timer'
     ? <TimerReadout running={running} remainingMs={meta.virtualRemainingMs} />
     : formatValue(charType, value);
+  const control = readOnly ? undefined : renderControl();
 
   return (
     <WidgetCard
@@ -117,8 +142,17 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       locationSubtitle={locationSubtitle}
       onEdit={onEdit}
       editLabel={editLabel}
-      headerAction={readOnly ? undefined : renderControl()}
-    />
+      // The control lives in the expanded body, not the header. A compact tile
+      // is a glance — a text field or a date picker crammed into that row
+      // dominated it and read as a stray white box sitting on the glass. The
+      // value stays in the subtitle either way, so a compact tile still tells
+      // you what it holds; expanding is what offers to change it.
+      childrenVisible={control !== undefined}
+    >
+      {control !== undefined && (
+        <div className="pt-1" onClick={e => e.stopPropagation()}>{control}</div>
+      )}
+    </WidgetCard>
   );
 
   function renderControl(): React.ReactNode {
@@ -126,7 +160,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       case 'virtual_mode':
         return (
           <select
-            className="h-8 rounded-md border bg-background px-2 text-xs max-w-full"
+            className={FIELD_CLASS}
             aria-label={`Set ${accessory.name}`}
             value={typeof value === 'string' ? value : ''}
             onClick={e => e.stopPropagation()}
@@ -144,23 +178,23 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       case 'virtual_count':
       case 'virtual_number':
         return (
-          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               aria-label={`Decrease ${accessory.name}`}
-              className="p-1 rounded-md hover:bg-muted"
+              className={`${BUTTON_CLASS} flex-1`}
               onClick={() => set(clamp(numeric - step, char))}
             >
-              <Minus className="h-3.5 w-3.5" />
+              <Minus className="h-4 w-4" />
             </button>
-            <span className="text-sm tabular-nums min-w-[2rem] text-center">{display}</span>
+            <span className="text-base tabular-nums min-w-[3rem] text-center">{display}</span>
             <button
               type="button"
               aria-label={`Increase ${accessory.name}`}
-              className="p-1 rounded-md hover:bg-muted"
+              className={`${BUTTON_CLASS} flex-1`}
               onClick={() => set(clamp(numeric + step, char))}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-4 w-4" />
             </button>
           </div>
         );
@@ -170,10 +204,11 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           <button
             type="button"
             aria-label={running ? `Cancel ${accessory.name}` : `Start ${accessory.name}`}
-            className="p-1.5 rounded-md hover:bg-muted"
-            onClick={e => { e.stopPropagation(); set(running ? 'idle' : 'active'); }}
+            className={`${BUTTON_CLASS} w-full gap-1.5`}
+            onClick={() => set(running ? 'idle' : 'active')}
           >
             {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {running ? 'Cancel' : 'Start'}
           </button>
         );
 
@@ -197,7 +232,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
                 : meta.virtualHasTime === false ? 'date'
                   : 'datetime-local'
             }
-            className="h-8 rounded-md border bg-background px-2 text-xs max-w-full"
+            className={FIELD_CLASS}
             aria-label={`Set ${accessory.name}`}
             value={typeof value === 'string' ? value : ''}
             onClick={e => e.stopPropagation()}
@@ -262,7 +297,7 @@ const VirtualTextControl: React.FC<{
   return (
     <input
       type="text"
-      className="h-8 w-28 rounded-md border bg-background px-2 text-xs"
+      className={FIELD_CLASS}
       aria-label={`Set ${label}`}
       value={shown}
       onClick={e => e.stopPropagation()}

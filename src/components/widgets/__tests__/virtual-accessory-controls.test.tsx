@@ -81,6 +81,51 @@ describe('virtual accessory controls', () => {
     expect(missing).toEqual([]);
   });
 
+  // Characteristic values are JSON-encoded in the cache, as HomeKit sends them.
+  // This widget read them raw while every other one decodes, so a string came
+  // back wearing its quotes: the tile showed `"yo"`, editing it wrote
+  // `"\"yo\""`, and each round added another layer.
+  it('shows the value, not its JSON encoding', () => {
+    cleanup();
+    const encoded = accessoryFor('virtual_text');
+    encoded.services[0].characteristics[0].value = JSON.stringify('how are you');
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: encoded,
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect((screen.getByLabelText('Set Test Value') as HTMLInputElement).value)
+      .toBe('how are you');
+  });
+
+  it('treats a JSON-encoded "active" as a running timer', () => {
+    cleanup();
+    const encoded = accessoryFor('virtual_timer');
+    encoded.services[0].characteristics[0].value = JSON.stringify('active');
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: encoded,
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByLabelText('Cancel Test Value')).toBeTruthy();
+  });
+
   it('writes the text a user types, on Enter', () => {
     const writes = renderWidget('virtual_text');
     const input = screen.getByLabelText('Set Test Value');
@@ -138,6 +183,27 @@ describe('virtual accessory controls', () => {
 
     expect(screen.getByText('2:05 left')).toBeTruthy();
     expect(screen.getByLabelText('Cancel Test Value')).toBeTruthy();
+  });
+
+  // A compact tile is a glance. A text field or a date picker crammed into that
+  // row dominated it and read as a stray white box sitting on the glass — so
+  // the control belongs to the expanded body, and the compact tile keeps only
+  // the value.
+  it('keeps controls out of the compact tile', () => {
+    cleanup();
+    const props = {
+      accessory: accessoryFor('virtual_text'),
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      onSetValue: () => {},
+      onSlider: () => {},
+      onToggle: () => {},
+      compact: true,
+    } as unknown as WidgetProps;
+    render(<VirtualAccessoryWidget {...props} />);
+
+    expect(screen.queryByLabelText('Set Test Value')).toBeNull();
+    // ...but it still says what it holds.
+    expect(screen.getByText('Test Value')).toBeTruthy();
   });
 
   it('offers nothing when the accessory is not user-editable', () => {
