@@ -330,7 +330,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     effectiveOnEdit ? (
       <button
         type="button"
-        className="absolute top-1.5 left-1.5 z-30 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity"
+        className="absolute bottom-1.5 right-1.5 z-30 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity"
         title="Virtual accessory — click to edit"
         aria-label="Edit virtual accessory"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); effectiveOnEdit(); }}
@@ -339,7 +339,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       </button>
     ) : (
       <span
-        className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-60"
+        className="absolute bottom-1.5 right-1.5 z-20 pointer-events-none opacity-60"
         title="Virtual accessory — a value your automations own"
         aria-label="Virtual accessory"
       >

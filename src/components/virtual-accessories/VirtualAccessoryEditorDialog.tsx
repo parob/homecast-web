@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -165,26 +169,16 @@ export function VirtualAccessoryEditorDialog({
 
             <div className="flex items-center gap-2 pt-1">
               {existing && onDelete && (
-                confirmDelete ? (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    data-testid="helper-delete-confirm"
-                    onClick={async () => { await onDelete(existing.id); onOpenChange(false); }}
-                  >
-                    Delete for good
-                  </Button>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1.5" />
-                    Delete
-                  </Button>
-                )
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  data-testid="helper-delete"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  Delete
+                </Button>
               )}
               <div className="flex-1" />
               <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -198,10 +192,34 @@ export function VirtualAccessoryEditorDialog({
               </Button>
             </div>
 
-            {existing && confirmDelete && (
-              <p className="text-xs text-muted-foreground">
-                Automations referring to this helper will stop working.
-              </p>
+            {/*
+              A confirmation prompt rather than a button that turns into a
+              second, more dangerous button: the two-stage inline version put
+              "Delete for good" under the cursor that had just clicked Delete,
+              so the confirming click could land before the warning was read.
+            */}
+            {existing && onDelete && (
+              <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {existing.name}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Automations referring to this virtual accessory will stop
+                      working. This can't be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      data-testid="helper-delete-confirm"
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={async () => { await onDelete(existing.id); onOpenChange(false); }}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         )}

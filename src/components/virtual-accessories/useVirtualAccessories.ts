@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { VIRTUAL_ACCESSORIES } from '@/lib/graphql/queries';
 import { SAVE_VIRTUAL_ACCESSORY, DELETE_VIRTUAL_ACCESSORY } from '@/lib/graphql/mutations';
+import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
 import { isCreatableVirtualType } from '@/automation/virtual-accessories/catalogue';
 import type { VirtualAccessoryDefinition, VirtualOperation } from '@/automation/types/automation';
 
@@ -61,6 +62,21 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
 
   const [saveMutation] = useMutation(SAVE_VIRTUAL_ACCESSORY);
   const [deleteMutation] = useMutation(DELETE_VIRTUAL_ACCESSORY);
+
+  /**
+   * Virtual accessories are published through `accessories.list`, so the tiles
+   * on screen come from the HomeKit data cache — not from this query. Refetching
+   * here alone updated the definitions and left the cache holding the old list:
+   * a new accessory didn't appear, a deleted one didn't go away, and a moved one
+   * stayed in its old room until the page was reloaded.
+   *
+   * Safe to do the moment a mutation resolves: the server acknowledges the
+   * relay's `virtual_sync`/`virtual_unload` before returning, so by then the
+   * relay is already answering `accessories.list` with the new set.
+   */
+  const refreshAccessories = useCallback(() => {
+    invalidateHomeKitCache('accessories', { prefix: true });
+  }, []);
 
   const helpers = useMemo(() => parseHelpers(data?.virtualAccessories ?? []), [data]);
 
@@ -134,23 +150,25 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
         },
       });
       await refetch();
+      refreshAccessories();
       void refreshStates();
       toast.success(helper.id ? 'Virtual accessory saved' : 'Virtual accessory created');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save the virtual accessory');
       throw e;
     }
-  }, [homeId, saveMutation, refetch, refreshStates]);
+  }, [homeId, saveMutation, refetch, refreshStates, refreshAccessories]);
 
   const remove = useCallback(async (accessoryId: string) => {
     try {
       await deleteMutation({ variables: { accessoryId } });
       await refetch();
+      refreshAccessories();
       toast.success('Virtual accessory deleted');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not delete the virtual accessory');
     }
-  }, [deleteMutation, refetch]);
+  }, [deleteMutation, refetch, refreshAccessories]);
 
   /**
    * Move a helper accessory to a room, or to the home-level folder when
@@ -169,10 +187,11 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
         },
       });
       await refetch();
+      refreshAccessories();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not move that virtual accessory');
     }
-  }, [helpers, homeId, saveMutation, refetch]);
+  }, [helpers, homeId, saveMutation, refetch, refreshAccessories]);
 
   return {
     helpers,
