@@ -22,7 +22,7 @@ const MAX_CACHE_SIZE = 500;
  * Syntax:
  *   states('ACC_ID', 'power_state') == 1
  *   states('ACC_ID', 'temperature') > 25 && now().hour >= 22
- *   helper('vacation_mode') == true
+ *   virtual('vacation_mode') == true
  *   trigger.from_value != trigger.to_value
  *   variables.counter + 1
  *   min(states('S1', 'temp'), states('S2', 'temp'))

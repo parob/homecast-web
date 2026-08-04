@@ -27,7 +27,7 @@ export { ExpressionEngine } from './expression/ExpressionEngine';
 export { ScriptRunner } from './engine/ScriptRunner';
 
 // Re-export types
-export type { Automation, Trigger, Condition, Action, Script, HelperDefinition, Blueprint } from './types/automation';
+export type { Automation, Trigger, Condition, Action, Script, VirtualAccessoryDefinition, Blueprint } from './types/automation';
 export type { ExecutionTrace, TraceStep, ExecutionStatus } from './types/execution';
 export type { NotifyDelivery } from './types/notify';
 export { NOTIFY_DELIVERY_UNKNOWN } from './types/notify';
@@ -52,7 +52,7 @@ export interface InitOptions {
   /** Called for every completed trace, in addition to the cloud push. */
   onTraceComplete?: (trace: ExecutionTrace) => void;
   /** Called whenever a helper value changes, so it can be persisted. */
-  onHelperStateChange?: (helperId: string, state: unknown) => void;
+  onVirtualStateChange?: (accessoryId: string, state: unknown) => void;
   /**
    * Current values, fetched and applied *before* the engine subscribes.
    *
@@ -94,9 +94,9 @@ export async function initAutomationEngine(options: InitOptions): Promise<Automa
       options.onTraceComplete?.(trace);
       syncInstance?.pushTrace(trace);
     },
-    onHelperStateChange: (helperId, state) => {
-      options.onHelperStateChange?.(helperId, state);
-      syncInstance?.pushHelperState(helperId, state);
+    onVirtualStateChange: (accessoryId, state) => {
+      options.onVirtualStateChange?.(accessoryId, state);
+      syncInstance?.pushVirtualState(accessoryId, state);
     },
     onNotify: options.onNotify,
     // Live run view in the local editor. Same-context only — remote fanout

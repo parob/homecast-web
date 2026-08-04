@@ -15,17 +15,17 @@ import { WidgetProps } from './types';
 
 /** Characteristic → how to draw it. Mirrors relay/helper-accessories.ts. */
 const VIRTUAL_CHARS = [
-  'helper_mode', 'helper_count', 'helper_number',
-  'helper_timer', 'helper_text', 'helper_datetime',
+  'virtual_mode', 'virtual_count', 'virtual_number',
+  'virtual_timer', 'virtual_text', 'virtual_datetime',
 ] as const;
 
 const ICONS: Record<string, React.ElementType> = {
-  helper_mode: ListChecks,
-  helper_count: Hash,
-  helper_number: SlidersHorizontal,
-  helper_timer: Timer,
-  helper_text: Type,
-  helper_datetime: CalendarClock,
+  virtual_mode: ListChecks,
+  virtual_count: Hash,
+  virtual_number: SlidersHorizontal,
+  virtual_timer: Timer,
+  virtual_text: Type,
+  virtual_datetime: CalendarClock,
 };
 
 interface VirtualAccessoryShape {
@@ -103,7 +103,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 
   function renderControl(): React.ReactNode {
     switch (charType) {
-      case 'helper_mode':
+      case 'virtual_mode':
         return (
           <select
             className="h-8 rounded-md border bg-background px-2 text-xs max-w-full"
@@ -121,8 +121,8 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           </select>
         );
 
-      case 'helper_count':
-      case 'helper_number':
+      case 'virtual_count':
+      case 'virtual_number':
         return (
           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
             <button
@@ -145,7 +145,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           </div>
         );
 
-      case 'helper_timer':
+      case 'virtual_timer':
         return (
           <button
             type="button"
@@ -173,7 +173,7 @@ function clamp(v: number, char?: { minValue?: number; maxValue?: number }): numb
 
 function formatValue(charType: string, value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
-  if (charType === 'helper_timer') {
+  if (charType === 'virtual_timer') {
     return value === 'active' ? 'Running' : value === 'paused' ? 'Paused' : 'Idle';
   }
   return String(value);

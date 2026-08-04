@@ -111,23 +111,23 @@ describe('StateStore', () => {
 
   describe('helpers', () => {
     it('stores and retrieves helper state', () => {
-      store.updateHelperState('vacation_mode', true);
-      expect(store.getHelperState('vacation_mode')).toBe(true);
+      store.updateVirtualState('vacation_mode', true);
+      expect(store.getVirtualState('vacation_mode')).toBe(true);
     });
 
     it('returns undefined for unknown helpers', () => {
-      expect(store.getHelperState('nonexistent')).toBeUndefined();
+      expect(store.getVirtualState('nonexistent')).toBeUndefined();
     });
   });
 
   describe('clear', () => {
     it('clears all state', () => {
       store.updateDeviceState('acc-1', 'brightness', 80);
-      store.updateHelperState('mode', 'home');
+      store.updateVirtualState('mode', 'home');
       store.clear();
 
       expect(store.getState('acc-1', 'brightness')).toBeUndefined();
-      expect(store.getHelperState('mode')).toBeUndefined();
+      expect(store.getVirtualState('mode')).toBeUndefined();
     });
   });
 });

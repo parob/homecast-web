@@ -10,7 +10,7 @@ import {
   type CreatableVirtualType,
 } from '@/automation/virtual-accessories/catalogue';
 import { VirtualAccessoryTypeIcon } from './VirtualAccessoryTypeIcon';
-import type { HelperDefinition } from '@/automation/types/automation';
+import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 
 interface VirtualAccessoryEditorDialogProps {
   open: boolean;
@@ -21,11 +21,11 @@ interface VirtualAccessoryEditorDialogProps {
   /** Pre-selected room when created from a room's menu. */
   defaultRoomId?: string;
   /** Everything already in this home, so a duplicate name can be refused. */
-  siblings?: HelperDefinition[];
+  siblings?: VirtualAccessoryDefinition[];
   /** Undefined when creating. */
-  existing?: HelperDefinition;
-  onSave: (helper: HelperDefinition) => Promise<void>;
-  onDelete?: (helperId: string) => Promise<void>;
+  existing?: VirtualAccessoryDefinition;
+  onSave: (helper: VirtualAccessoryDefinition) => Promise<void>;
+  onDelete?: (accessoryId: string) => Promise<void>;
 }
 
 /**
@@ -44,7 +44,7 @@ interface VirtualAccessoryEditorDialogProps {
 export function VirtualAccessoryEditorDialog({
   open, onOpenChange, homeId, rooms = [], defaultRoomId, siblings = [], existing, onSave, onDelete,
 }: VirtualAccessoryEditorDialogProps) {
-  const [draft, setDraft] = useState<HelperDefinition | null>(null);
+  const [draft, setDraft] = useState<VirtualAccessoryDefinition | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -75,8 +75,8 @@ export function VirtualAccessoryEditorDialog({
     }
   };
 
-  const patch = (changes: Partial<HelperDefinition>) =>
-    setDraft(d => (d ? ({ ...d, ...changes } as HelperDefinition) : d));
+  const patch = (changes: Partial<VirtualAccessoryDefinition>) =>
+    setDraft(d => (d ? ({ ...d, ...changes } as VirtualAccessoryDefinition) : d));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,7 +122,7 @@ export function VirtualAccessoryEditorDialog({
               />
             </div>
 
-            <HelperTypeFields draft={draft} patch={patch} />
+            <VirtualAccessoryTypeFields draft={draft} patch={patch} />
 
             <div className="space-y-1.5">
               <Label htmlFor="helper-room">Location</Label>
@@ -211,11 +211,11 @@ export function VirtualAccessoryEditorDialog({
 }
 
 /** The fields that exist only for one helper type. */
-function HelperTypeFields({
+function VirtualAccessoryTypeFields({
   draft, patch,
 }: {
-  draft: HelperDefinition;
-  patch: (changes: Partial<HelperDefinition>) => void;
+  draft: VirtualAccessoryDefinition;
+  patch: (changes: Partial<VirtualAccessoryDefinition>) => void;
 }) {
   switch (draft.type) {
     case 'input_boolean':

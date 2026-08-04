@@ -422,8 +422,8 @@ test.describe('Automation editor screenshot', () => {
 
 // ── Features Hero Screenshot ────────────────────────────────────────────────
 
-test.describe('Helper accessory screenshots', () => {
-  test('home-level helpers and one in a room', async ({ page }, testInfo) => {
+test.describe('Virtual accessory screenshots', () => {
+  test('home-level and in-room virtual accessories', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
     overrideSettings({
       sidebarCollapsed: false,
@@ -435,7 +435,7 @@ test.describe('Helper accessory screenshots', () => {
     // Helper accessories arrive through accessories.list like everything else,
     // so there is no helper-specific container to wait for — wait for the tile.
     await page.waitForSelector('text=Home Mode', { timeout: 15000 });
-    await page.screenshot({ path: img('helper-accessories.png') });
+    await page.screenshot({ path: img('virtual-accessories.png') });
   });
 });
 

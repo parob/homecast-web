@@ -942,9 +942,9 @@ export const DELETE_HC_AUTOMATION = gql`
   }
 `;
 
-export const SAVE_HC_HELPER = gql`
-  mutation SaveHcHelper($homeId: String!, $helperId: String, $data: String!) {
-    saveHcHelper(homeId: $homeId, helperId: $helperId, data: $data) {
+export const SAVE_VIRTUAL_ACCESSORY = gql`
+  mutation SaveVirtualAccessory($homeId: String!, $accessoryId: String, $data: String!) {
+    saveVirtualAccessory(homeId: $homeId, accessoryId: $accessoryId, data: $data) {
       id
       entityType
       entityId
@@ -955,9 +955,9 @@ export const SAVE_HC_HELPER = gql`
   }
 `;
 
-export const DELETE_HC_HELPER = gql`
-  mutation DeleteHcHelper($helperId: String!) {
-    deleteHcHelper(helperId: $helperId)
+export const DELETE_VIRTUAL_ACCESSORY = gql`
+  mutation DeleteVirtualAccessory($accessoryId: String!) {
+    deleteVirtualAccessory(accessoryId: $accessoryId)
   }
 `;
 

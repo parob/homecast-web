@@ -9,28 +9,28 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { StateStore } from '../state/StateStore';
-import { HelperManager } from '../state/HelperManager';
-import type { HelperDefinition } from '../types/automation';
+import { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
+import type { VirtualAccessoryDefinition } from '../types/automation';
 
-function mode(name = 'Home Mode', options = ['Home', 'Away']): HelperDefinition {
+function mode(name = 'Home Mode', options = ['Home', 'Away']): VirtualAccessoryDefinition {
   return { id: 'mode', name, homeId: 'H', type: 'input_select', options, initialValue: options[0] };
 }
-function counter(step = 1): HelperDefinition {
+function counter(step = 1): VirtualAccessoryDefinition {
   return { id: 'count', name: 'Door Opens', homeId: 'H', type: 'counter', initial: 0, step };
 }
-function timer(minutes = 5): HelperDefinition {
+function timer(minutes = 5): VirtualAccessoryDefinition {
   return { id: 'timer', name: 'Cooldown', homeId: 'H', type: 'timer', duration: { minutes } };
 }
 
-describe('HelperManager.replaceAll', () => {
+describe('VirtualAccessoryManager.replaceAll', () => {
   let store: StateStore;
-  let manager: HelperManager;
+  let manager: VirtualAccessoryManager;
   let events: Array<[string, unknown]>;
 
   beforeEach(() => {
     store = new StateStore();
     events = [];
-    manager = new HelperManager(store, (t, d) => events.push([t, d]), () => {});
+    manager = new VirtualAccessoryManager(store, (t, d) => events.push([t, d]), () => {});
   });
 
   it('keeps the value of a helper the sync did not change', () => {
@@ -41,29 +41,29 @@ describe('HelperManager.replaceAll', () => {
     // An unrelated edit elsewhere re-sends the whole set.
     manager.replaceAll([mode(), counter()]);
 
-    expect(store.getHelperState('mode')).toBe('Away');
-    expect(store.getHelperState('count')).toBe(1);
+    expect(store.getVirtualState('mode')).toBe('Away');
+    expect(store.getVirtualState('count')).toBe(1);
   });
 
   it('keeps the value when the definition itself changed', () => {
     manager.replaceAll([counter(1)]);
     manager.incrementCounter('count');
     manager.incrementCounter('count');
-    expect(store.getHelperState('count')).toBe(2);
+    expect(store.getVirtualState('count')).toBe(2);
 
     manager.replaceAll([counter(5)]);  // step edited
 
-    expect(store.getHelperState('count')).toBe(2);
+    expect(store.getVirtualState('count')).toBe(2);
     manager.incrementCounter('count');
-    expect(store.getHelperState('count')).toBe(7);  // new step applied
+    expect(store.getVirtualState('count')).toBe(7);  // new step applied
   });
 
   it('removes a helper that is absent from the set', () => {
     manager.replaceAll([mode(), counter()]);
     manager.replaceAll([mode()]);
 
-    expect(manager.getHelper('count')).toBeUndefined();
-    expect(manager.getAllHelpers().map(h => h.id)).toEqual(['mode']);
+    expect(manager.getVirtualAccessory('count')).toBeUndefined();
+    expect(manager.getAllVirtualAccessories().map(h => h.id)).toEqual(['mode']);
   });
 
   it('does not disturb a running timer when nothing about it changed', () => {
@@ -71,12 +71,12 @@ describe('HelperManager.replaceAll', () => {
     try {
       manager.replaceAll([timer()]);
       manager.startTimer('timer');
-      expect(store.getHelperState('timer')).toBe('active');
+      expect(store.getVirtualState('timer')).toBe('active');
 
       events.length = 0;
       manager.replaceAll([timer()]);
 
-      expect(store.getHelperState('timer')).toBe('active');
+      expect(store.getVirtualState('timer')).toBe('active');
       expect(events.map(([t]) => t)).not.toContain('timer.cancelled');
     } finally {
       vi.useRealTimers();
@@ -90,7 +90,7 @@ describe('HelperManager.replaceAll', () => {
       manager.startTimer('timer');
 
       manager.replaceAll([timer(10)]);
-      expect(store.getHelperState('timer')).toBe('idle');
+      expect(store.getVirtualState('timer')).toBe('idle');
 
       // The old countdown must not still fire — that was the bug re-registering
       // over the top of a live timeout would have caused.
@@ -107,18 +107,18 @@ describe('HelperManager.replaceAll', () => {
     manager.selectOption('mode', 'Away');
     manager.replaceAll([mode(), counter()]);
 
-    expect(store.getHelperState('mode')).toBe('Away');  // survivor
-    expect(store.getHelperState('count')).toBe(0);      // newcomer
+    expect(store.getVirtualState('mode')).toBe('Away');  // survivor
+    expect(store.getVirtualState('count')).toBe(0);      // newcomer
   });
 });
 
-describe('HelperManager.apply', () => {
+describe('VirtualAccessoryManager.apply', () => {
   let store: StateStore;
-  let manager: HelperManager;
+  let manager: VirtualAccessoryManager;
 
   beforeEach(() => {
     store = new StateStore();
-    manager = new HelperManager(store, () => {}, () => {});
+    manager = new VirtualAccessoryManager(store, () => {}, () => {});
     manager.replaceAll([
       mode(), counter(),
       { id: 'flag', name: 'Guest', homeId: 'H', type: 'input_boolean', initialValue: false },
@@ -127,19 +127,19 @@ describe('HelperManager.apply', () => {
 
   it('routes every operation to the same place an automation action would', () => {
     manager.apply('flag', 'turn_on');
-    expect(store.getHelperState('flag')).toBe(true);
+    expect(store.getVirtualState('flag')).toBe(true);
 
     manager.apply('flag', 'toggle');
-    expect(store.getHelperState('flag')).toBe(false);
+    expect(store.getVirtualState('flag')).toBe(false);
 
     manager.apply('mode', 'set', { value: 'Away' });
-    expect(store.getHelperState('mode')).toBe('Away');
+    expect(store.getVirtualState('mode')).toBe('Away');
 
     manager.apply('count', 'increment');
-    expect(store.getHelperState('count')).toBe(1);
+    expect(store.getVirtualState('count')).toBe(1);
 
     manager.apply('count', 'reset');
-    expect(store.getHelperState('count')).toBe(0);
+    expect(store.getVirtualState('count')).toBe(0);
   });
 
   it('throws on an operation nobody wired up, rather than accepting it silently', () => {

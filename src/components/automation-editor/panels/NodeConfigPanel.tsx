@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo, useState, useRef } from 'react';
 import { VIRTUAL_OPERATIONS } from '@/automation/virtual-accessories/catalogue';
-import type { HelperDefinition } from '@/automation/types/automation';
+import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 import { type Node, type Edge } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -139,7 +139,7 @@ interface NodeConfigPanelProps {
   scenes?: HomeKitScene[];
   serviceGroups?: HomeKitServiceGroup[];
   availableAutomations?: { id: string; name: string }[];
-  availableHelpers?: HelperDefinition[];
+  availableHelpers?: VirtualAccessoryDefinition[];
   /** Automation ID for test mode (only for saved automations) */
   automationId?: string;
   /**
@@ -410,7 +410,7 @@ function renderConfigForm(
   allEdges?: Edge[],
   serviceGroups?: HomeKitServiceGroup[],
   availableAutomations?: { id: string; name: string }[],
-  availableHelpers?: HelperDefinition[],
+  availableHelpers?: VirtualAccessoryDefinition[],
 ) {
   // ---- TRIGGERS ----
   if (category === 'trigger') {
@@ -990,9 +990,9 @@ function renderConfigForm(
           </>
         );
 
-      case 'helper': {
+      case 'virtual': {
         const helpers = availableHelpers ?? [];
-        const selected = helpers.find(h => h.id === (config.helperId as string));
+        const selected = helpers.find(h => h.id === (config.accessoryId as string));
         const operations = selected ? VIRTUAL_OPERATIONS[selected.type] ?? [] : [];
         const operation = (config.operation as string) ?? '';
 
@@ -1004,7 +1004,7 @@ function renderConfigForm(
             >
               <select
                 className="w-full h-8 rounded-md border bg-background px-2 text-xs"
-                value={(config.helperId as string) ?? ''}
+                value={(config.accessoryId as string) ?? ''}
                 onChange={(e) => {
                   const next = helpers.find(h => h.id === e.target.value);
                   // Changing the target changes which operations exist, so an
@@ -1013,7 +1013,7 @@ function renderConfigForm(
                   const allowed = next ? VIRTUAL_OPERATIONS[next.type] ?? [] : [];
                   const keep = allowed.some(o => o.value === operation);
                   updateConfigBatch({
-                    helperId: e.target.value,
+                    accessoryId: e.target.value,
                     operation: keep ? operation : allowed[0]?.value ?? '',
                     value: undefined,
                   });

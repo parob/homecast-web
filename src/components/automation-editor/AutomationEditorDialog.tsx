@@ -32,7 +32,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@apollo/client/react';
-import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS, HC_HELPERS } from '@/lib/graphql/queries';
+import { GET_ACCESSORIES, GET_HOMES, GET_SCENES, GET_SERVICE_GROUPS, HC_AUTOMATIONS, VIRTUAL_ACCESSORIES } from '@/lib/graphql/queries';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, Save, Undo2, Redo2, Loader2, Plus, Trash2, History } from 'lucide-react';
@@ -54,7 +54,7 @@ import { createDefaultNodeData, ALL_NODE_DEFINITIONS, CATEGORY_STYLES } from './
 import type { NodeDefinition } from './constants';
 import { graphToAutomation } from './serialization/graphToAutomation';
 import { automationToGraph } from './serialization/automationToGraph';
-import type { Automation, HelperDefinition } from '@/automation/types/automation';
+import type { Automation, VirtualAccessoryDefinition } from '@/automation/types/automation';
 
 const nodeTypes: NodeTypes = {
   automationNode: BaseNode,
@@ -127,8 +127,8 @@ function AutomationEditorInner({
     HC_AUTOMATIONS,
     { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first' },
   );
-  const { data: helpersData } = useQuery<{ hcHelpers: { id: string; entityId: string; dataJson: string }[] }>(
-    HC_HELPERS,
+  const { data: helpersData } = useQuery<{ virtualAccessories: { id: string; entityId: string; dataJson: string }[] }>(
+    VIRTUAL_ACCESSORIES,
     { variables: { homeId }, skip: !homeId, fetchPolicy: 'cache-first', errorPolicy: 'all' },
   );
   const accessories = accessoriesData?.accessories || [];
@@ -138,10 +138,10 @@ function AutomationEditorInner({
   // The Set Helper node offers operations that depend on the helper's type, so
   // it needs the definitions, not just names.
   const availableHelpers = useMemo(() => {
-    const out: HelperDefinition[] = [];
-    for (const row of helpersData?.hcHelpers ?? []) {
+    const out: VirtualAccessoryDefinition[] = [];
+    for (const row of helpersData?.virtualAccessories ?? []) {
       try {
-        const parsed = JSON.parse(row.dataJson) as HelperDefinition;
+        const parsed = JSON.parse(row.dataJson) as VirtualAccessoryDefinition;
         if (parsed?.type) out.push({ ...parsed, id: parsed.id || row.entityId });
       } catch { /* unreadable row — not something to offer as a target */ }
     }

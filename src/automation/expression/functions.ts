@@ -88,11 +88,12 @@ export function createFunctionRegistry(): Map<string, BuiltinFunction> {
     return ctx.stateStore.hasRecentManualChange(accessoryId, within, characteristicType);
   });
 
-  // helper('helperId') -> current helper value
-  fns.set('helper', (args, ctx) => {
-    const [helperId] = args as [string];
-    if (!helperId) return null;
-    return ctx.stateStore.getHelperState(helperId) ?? null;
+  // virtual('accessoryId') -> current helper value
+  // virtual('id') -> current value
+  fns.set('virtual', (args, ctx) => {
+    const [accessoryId] = args as [string];
+    if (!accessoryId) return null;
+    return ctx.stateStore.getVirtualState(accessoryId) ?? null;
   });
 
   // ============================================================

@@ -297,28 +297,29 @@ describe('serialization: newly exposed node types', () => {
     return { auto, graph };
   }
 
-  it('round-trips a helper node', () => {
-    const { auto, graph } = roundTrip('helper', {
-      helperId: 'guest_mode', operation: 'turn_on', category: 'action',
+  it('round-trips a virtual accessory node, emitting the new type name', () => {
+    const { auto, graph } = roundTrip('virtual', {
+      accessoryId: 'guest_mode', operation: 'turn_on', category: 'action',
     });
 
     const action = auto.actions[0] as any;
-    expect(action.type).toBe('helper');
-    expect(action.helperId).toBe('guest_mode');
+    // New saves write 'virtual'; 'helper' is still read (see below).
+    expect(action.type).toBe('virtual');
+    expect(action.accessoryId).toBe('guest_mode');
     expect(action.operation).toBe('turn_on');
 
-    const node = graph.nodes.find(n => n.data.nodeType === 'helper')!;
-    expect(node.data.config.helperId).toBe('guest_mode');
+    const node = graph.nodes.find(n => n.data.nodeType === 'virtual')!;
+    expect(node.data.config.accessoryId).toBe('guest_mode');
     expect(node.data.config.operation).toBe('turn_on');
   });
 
-  it('round-trips a helper timer start with a duration', () => {
-    const { auto, graph } = roundTrip('helper', {
-      helperId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 }, category: 'action',
+  it('round-trips a virtual timer start with a duration', () => {
+    const { auto, graph } = roundTrip('virtual', {
+      accessoryId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 }, category: 'action',
     });
 
     expect((auto.actions[0] as any).duration).toEqual({ minutes: 5 });
-    const node = graph.nodes.find(n => n.data.nodeType === 'helper')!;
+    const node = graph.nodes.find(n => n.data.nodeType === 'virtual')!;
     expect(node.data.config.duration).toEqual({ minutes: 5 });
   });
 

@@ -4,13 +4,13 @@
 // display rules that go with each. Shared by the Helpers section and the
 // automation editor so the two can never disagree about what exists.
 
-import type { HelperDefinition, HelperType, HelperOperation } from '../types/automation';
+import type { VirtualAccessoryDefinition, VirtualAccessoryType, VirtualOperation } from '../types/automation';
 
 /**
  * Helper types the engine can actually run.
  *
- * `HelperDefinition` also declares `template_sensor` and `group`, and
- * `HelperManager.register()` has no case for either — creating one would
+ * `VirtualAccessoryDefinition` also declares `template_sensor` and `group`, and
+ * `VirtualAccessoryManager.register()` has no case for either — creating one would
  * register a helper with no initial value and no behaviour, which is
  * indistinguishable from a helper that simply never changes. `schedule` is
  * worse than useless: `isScheduleActive` is evaluated once at registration and
@@ -29,7 +29,7 @@ export const CREATABLE_VIRTUAL_TYPES = [
   'input_number',
   'input_text',
   'input_datetime',
-] as const satisfies readonly HelperType[];
+] as const satisfies readonly VirtualAccessoryType[];
 
 export type CreatableVirtualType = (typeof CREATABLE_VIRTUAL_TYPES)[number];
 
@@ -128,7 +128,7 @@ export function defaultVirtualAccessory(
   id: string,
   homeId: string,
   name: string,
-): HelperDefinition {
+): VirtualAccessoryDefinition {
   const base = { id, homeId, name };
   switch (type) {
     case 'input_boolean':
@@ -153,13 +153,13 @@ export function defaultVirtualAccessory(
 /**
  * The operations each helper type can actually perform.
  *
- * `HelperOperation` is one flat union covering every type, so nothing stops an
- * automation asking a counter to `pause` — `HelperManager.apply` would route it
+ * `VirtualOperation` is one flat union covering every type, so nothing stops an
+ * automation asking a counter to `pause` — `VirtualAccessoryManager.apply` would route it
  * to `pauseTimer`, find no timer, and return silently. Constraining the choice
  * at the point it is made is the only place this can be prevented without
  * inventing per-type operation unions.
  */
-export const VIRTUAL_OPERATIONS: Record<CreatableVirtualType, { value: HelperOperation; label: string }[]> = {
+export const VIRTUAL_OPERATIONS: Record<CreatableVirtualType, { value: VirtualOperation; label: string }[]> = {
   input_boolean: [
     { value: 'turn_on', label: 'Turn on' },
     { value: 'turn_off', label: 'Turn off' },
@@ -196,7 +196,7 @@ export const VIRTUAL_OPERATIONS: Record<CreatableVirtualType, { value: HelperOpe
 };
 
 /** Human-readable current value for the Helpers list. */
-export function formatVirtualValue(helper: HelperDefinition, value: unknown): string {
+export function formatVirtualValue(helper: VirtualAccessoryDefinition, value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   switch (helper.type) {
     case 'input_boolean':
@@ -218,8 +218,8 @@ export function formatVirtualValue(helper: HelperDefinition, value: unknown): st
  * wrong instead of just disabling Save with no explanation.
  */
 export function validateVirtualAccessory(
-  helper: HelperDefinition,
-  siblings: HelperDefinition[] = [],
+  helper: VirtualAccessoryDefinition,
+  siblings: VirtualAccessoryDefinition[] = [],
 ): string | null {
   const name = helper.name.trim();
   if (!name) return 'Give it a name.';

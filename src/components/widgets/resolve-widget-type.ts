@@ -122,7 +122,7 @@ export function resolveWidgetType(input: {
   // enum, countdown or free-text equivalent. Matched before the info check:
   // they have exactly one service, and it isn't one HomeKit knows, so the
   // "nothing controllable here" test would otherwise write them off.
-  const helperService = serviceTypes.find(st => st.startsWith('helper'));
+  const helperService = serviceTypes.find(st => st.startsWith('virtual'));
   if (helperService) {
     return { widgetType: 'helper' };
   }

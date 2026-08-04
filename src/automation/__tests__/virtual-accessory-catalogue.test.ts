@@ -2,7 +2,7 @@
  * The catalogue is the list of virtual accessory types a user is offered. Its one job is
  * to stay honest about what the engine can actually run.
  *
- * `HelperDefinition` declares ten types; `HelperManager.register()` handles
+ * `VirtualAccessoryDefinition` declares ten types; `VirtualAccessoryManager.register()` handles
  * seven. Offering one of the other three would create a virtual accessory that registers
  * with no value and no behaviour — indistinguishable, from the outside, from one
  * that simply never changes. That is the drift these tests exist to
@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { StateStore } from '../state/StateStore';
-import { HelperManager } from '../state/HelperManager';
+import { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
 import {
   CREATABLE_VIRTUAL_TYPES, VIRTUAL_TYPES, VIRTUAL_TYPE_LIST,
   defaultVirtualAccessory, validateVirtualAccessory, formatVirtualValue, isCreatableVirtualType,
@@ -23,12 +23,12 @@ describe('virtual accessory catalogue', () => {
     // with no entry, which is what "silently does nothing" looks like.
     for (const type of CREATABLE_VIRTUAL_TYPES) {
       const store = new StateStore();
-      const manager = new HelperManager(store, () => {}, () => {});
+      const manager = new VirtualAccessoryManager(store, () => {}, () => {});
       manager.register(defaultVirtualAccessory(type, 'x', 'H', 'Test'));
 
       expect(
-        store.getHelperState('x'),
-        `${type} registered without an initial value — HelperManager.register has no case for it`,
+        store.getVirtualState('x'),
+        `${type} registered without an initial value — VirtualAccessoryManager.register has no case for it`,
       ).toBeDefined();
     }
   });
