@@ -34,6 +34,8 @@ interface VirtualAccessoryShape {
   virtualOptions?: string[];
   virtualHasDate?: boolean;
   virtualHasTime?: boolean;
+  virtualRemainingMs?: number;
+  virtualDurationMs?: number;
   /**
    * Pre-rename spellings, read but never written — the same inbound-alias
    * pattern `power_state` uses. In cloud mode the relay's WebView keeps its
@@ -79,10 +81,12 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     else onSetValue?.(accessory.id, charType, v);
   };
 
-  const display = formatValue(charType, value);
   const numeric = Number(value);
   const step = char?.stepValue ?? 1;
   const running = value === 'active';
+  const display = charType === 'virtual_timer'
+    ? <TimerReadout running={running} remainingMs={meta.virtualRemainingMs} />
+    : formatValue(charType, value);
 
   return (
     <WidgetCard
@@ -206,6 +210,36 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     }
   }
 });
+
+/**
+ * A running countdown, ticking locally.
+ *
+ * The relay reports the remaining time when the accessory list is fetched, and
+ * that is minutes apart — so the number is counted down here between fetches
+ * and re-anchored whenever a fresh one arrives. Showing "Running" and nothing
+ * else was the whole reason a started timer looked like one that hadn't.
+ */
+const TimerReadout: React.FC<{ running: boolean; remainingMs?: number }> = ({ running, remainingMs }) => {
+  const [now, setNow] = React.useState(() => Date.now());
+  const anchor = React.useRef({ at: Date.now(), ms: remainingMs });
+
+  if (anchor.current.ms !== remainingMs) anchor.current = { at: Date.now(), ms: remainingMs };
+
+  React.useEffect(() => {
+    if (!running || remainingMs === undefined) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running, remainingMs]);
+
+  if (!running) return <>Idle</>;
+  if (remainingMs === undefined) return <>Running</>;
+
+  const left = Math.max(0, (anchor.current.ms ?? 0) - (now - anchor.current.at));
+  const total = Math.round(left / 1000);
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return <>{mm}:{String(ss).padStart(2, '0')} left</>;
+};
 
 /**
  * Free text needs a draft: the value is re-read every 10s while the tile is on

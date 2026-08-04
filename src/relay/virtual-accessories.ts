@@ -72,10 +72,17 @@ export interface VirtualAccessory extends HomeKitAccessory {
   /** input_datetime only — which halves it holds. */
   virtualHasDate?: boolean;
   virtualHasTime?: boolean;
+  /** timer only — the live countdown, so a tile can show it. */
+  virtualRemainingMs?: number;
+  virtualDurationMs?: number;
 }
 
 /** Build the accessory representation of one helper. */
-export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: unknown): VirtualAccessory {
+export function toVirtualAccessory(
+  helper: VirtualAccessoryDefinition,
+  value: unknown,
+  countdown?: { remaining: number; duration: number },
+): VirtualAccessory {
   const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'virtual_value';
   const writable = helper.controllable !== false;
 
@@ -127,6 +134,11 @@ export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: un
     ...(helper.type === 'input_datetime'
       ? { virtualHasDate: helper.hasDate, virtualHasTime: helper.hasTime }
       : {}),
+    // A countdown with nothing counting down is indistinguishable from one that
+    // never started, which is exactly how it was reported.
+    ...(countdown
+      ? { virtualRemainingMs: countdown.remaining, virtualDurationMs: countdown.duration }
+      : {}),
   } as VirtualAccessory;
 }
 
@@ -150,7 +162,8 @@ export function listVirtualAccessories(
   for (const helper of engine.virtualManager.getAllVirtualAccessories()) {
     if (opts.homeId && helper.homeId?.toUpperCase() !== opts.homeId.toUpperCase()) continue;
     if (opts.roomId && helper.roomId !== opts.roomId) continue;
-    const accessory = toVirtualAccessory(helper, states[helper.id]);
+    const accessory = toVirtualAccessory(
+      helper, states[helper.id], engine.virtualManager.getTimerRemainingMs(helper.id));
     if (helper.roomId) accessory.roomName = opts.roomNames?.get(helper.roomId);
     out.push(accessory);
   }

@@ -115,6 +115,31 @@ describe('virtual accessory controls', () => {
     }
   });
 
+  // A running timer reported only `active`, and the tile's `isOn` compared the
+  // characteristic against `helper_timer` — a name that stopped existing at the
+  // rename — so nothing about the tile changed when you started it. It was
+  // reported as "the timer doesn't start"; it had started every time.
+  it('shows a started timer is running, and how long is left', () => {
+    cleanup();
+    const running = accessoryFor('virtual_timer');
+    running.services[0].characteristics[0].value = 'active';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...running, virtualRemainingMs: 125_000, virtualDurationMs: 300_000 },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByText('2:05 left')).toBeTruthy();
+    expect(screen.getByLabelText('Cancel Test Value')).toBeTruthy();
+  });
+
   it('offers nothing when the accessory is not user-editable', () => {
     cleanup();
     renderWidget('virtual_text', { isUserEditable: false });

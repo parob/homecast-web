@@ -467,6 +467,25 @@ export class VirtualAccessoryManager {
     return Array.from(this.helpers.values());
   }
 
+  /**
+   * How much of a countdown is left, in ms, or undefined if it isn't a timer.
+   *
+   * Published alongside the accessory so a tile can show the countdown. Without
+   * it the only thing a client knows is `active`, and a five-minute timer that
+   * shows no time reads as one that never started.
+   */
+  getTimerRemainingMs(accessoryId: string): { remaining: number; duration: number } | undefined {
+    const def = this.getVirtualAccessory(accessoryId);
+    const t = def && this.timers.get(def.id);
+    if (!t) return undefined;
+    // `remaining` is only decremented on pause; while running, the truth is how
+    // long ago it started.
+    const remaining = t.state === 'active' && t.startedAt
+      ? Math.max(0, t.duration - (Date.now() - t.startedAt))
+      : t.remaining;
+    return { remaining, duration: t.duration };
+  }
+
   // ============================================================
   // Teardown
   // ============================================================
