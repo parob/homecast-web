@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Variable } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil } from 'lucide-react';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,6 +19,32 @@ import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicVa
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { WidgetWrapper } from './WidgetWrapper';
+
+/**
+ * Two sparkles rather than lucide's three.
+ *
+ * Lucide's `Sparkles` is one star plus two small crosses, which at 14px is
+ * three specks of noise in a tile corner. This keeps its exact geometry and
+ * stroke — so it still reads as part of the same icon set — and drops the
+ * lower-left cross, leaving a star and one companion.
+ */
+const TwoSparkles: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    <path d="M20 3v4" />
+    <path d="M22 5h-4" />
+  </svg>
+);
 
 // Context for passing widget colors to child components
 export interface WidgetColorContextType {
@@ -334,10 +360,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // HomeKit accessory, everything about this one is editable, so it needs an
   // affordance you can see.
   //
-  // A variable glyph rather than sparkles: sparkles has come to mean "AI" or
-  // "magic" everywhere else, which is not what this is. These are values the
-  // automation engine owns — a mode, a counter, a countdown — and a variable is
-  // literally what they are.
+  // Two sparkles, not lucide's three — see TwoSparkles.
   const virtualBadge = isVirtualAccessory ? (
     effectiveOnEdit ? (
       <button
@@ -347,7 +370,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         aria-label="Edit virtual accessory"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); effectiveOnEdit(); }}
       >
-        <Variable className="h-3.5 w-3.5" />
+        <TwoSparkles className="h-3.5 w-3.5" />
       </button>
     ) : (
       <span
@@ -355,7 +378,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         title="Virtual accessory — a value your automations own"
         aria-label="Virtual accessory"
       >
-        <Variable className="h-3.5 w-3.5" />
+        <TwoSparkles className="h-3.5 w-3.5" />
       </span>
     )
   ) : null;
