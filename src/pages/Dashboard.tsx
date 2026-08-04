@@ -32,7 +32,9 @@ import {
   defaultAnimateLayoutChanges,
   type AnimateLayoutChanges,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+// Aliased: an unqualified `CSS` here shadows the global one, which made
+// `window.CSS.escape` resolve to this object and fail to type-check.
+import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME } from '@/lib/graphql/mutations';
@@ -335,7 +337,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
   } = useSortable({ id: room.id, disabled: dragDisabled, animateLayoutChanges: animateLayoutChangesNoSnapBack });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: DndCSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -513,7 +515,7 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
   } = useSortable({ id, animateLayoutChanges: animateLayoutChangesNoSnapBack });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: DndCSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -619,7 +621,7 @@ const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
   } = useSortable({ id, animateLayoutChanges: animateLayoutChangesNoSnapBack, disabled });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: DndCSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -703,7 +705,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
   } = useSortable({ id: home.id, disabled: dragDisabled });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: DndCSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -902,7 +904,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
   } = useSortable({ id: group.id, disabled: dragDisabled });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: DndCSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
