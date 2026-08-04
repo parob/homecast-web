@@ -4332,7 +4332,7 @@ const Dashboard = () => {
    *
    * Reordering within a grid behaves exactly as before. Moving BETWEEN grids is
    * refused for everything: Apple Home owns which room a real device is in and
-   * rejects our writes, and a virtual accessory's room is part of its
+   * rejects our writes, and a virtual accessory's location is part of its
    * definition, so it is changed where the rest of the definition is — in the
    * editor. One rule for every tile is easier to learn than two, and each kind
    * says where to go instead.
@@ -4342,8 +4342,8 @@ const Dashboard = () => {
   /** What to tell someone who tries it, which differs by what they dragged. */
   const crossRoomAdvice = useCallback(
     (accessoryId: string) => (isVirtualAccessoryId(accessoryId)
-      ? 'Use Edit Virtual Accessory to change its room'
-      : 'Apple Home decides which room a device is in'),
+      ? 'Edit the virtual accessory to change its location'
+      : 'Use the Apple Home app to move accessories between rooms'),
     [isVirtualAccessoryId],
   );
 
@@ -7481,7 +7481,7 @@ const Dashboard = () => {
                                 {groupByRoom && !dragOverValid && (
                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
                                     <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-                                      Apple Home decides which room a device is in
+                                      Use the Apple Home app to move accessories between rooms
                                     </div>
                                   </div>
                                 )}
