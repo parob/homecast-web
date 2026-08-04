@@ -5,6 +5,7 @@ import { TRACK_DEAL_CLICK } from '@/lib/graphql/mutations';
 import { GET_DEAL_PRICE_HISTORY } from '@/lib/graphql/queries';
 import { DEAL_TIER_STYLES } from '@/lib/deals';
 import { getCurrencySymbol } from '@/lib/marketplace';
+import { openExternalUrl } from '@/lib/open-url';
 import type { DealInfo, PricePoint } from '@/lib/graphql/types';
 import {
   Popover,
@@ -37,7 +38,8 @@ export function DealBadge({ deal, isRelated }: DealBadgeProps) {
   const handleAmazonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     trackClick({ variables: { dealId: deal.id } }).catch(() => {});
-    window.open(deal.dealUrl, '_blank', 'noopener');
+    // window.open is silently ignored inside the app's WKWebView
+    openExternalUrl(deal.dealUrl);
   };
 
   const listingLabel = deal.listingType === 'multi_pack'
@@ -62,7 +64,7 @@ export function DealBadge({ deal, isRelated }: DealBadgeProps) {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
-          className={`absolute top-2.5 right-2.5 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 ${style.pulse ? 'animate-pulse' : ''}`}
+          className={`absolute bottom-2.5 right-2.5 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 ${style.pulse ? 'animate-pulse' : ''}`}
           style={{ backgroundColor: style.color }}
           onClick={e => { e.stopPropagation(); setOpen(true); }}
           aria-label={`${style.label} available`}
