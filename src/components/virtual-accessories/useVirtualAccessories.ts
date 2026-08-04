@@ -170,29 +170,6 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     }
   }, [deleteMutation, refetch, refreshAccessories]);
 
-  /**
-   * Move a helper accessory to a room, or to the home-level folder when
-   * `roomId` is null. Separate from `save` because dragging a tile should not
-   * announce itself with a toast the way an explicit save does.
-   */
-  const moveToRoom = useCallback(async (accessoryId: string, roomId: string | null) => {
-    const helper = helpers.find(h => h.id === accessoryId);
-    if (!helper || (helper.roomId ?? null) === roomId) return;
-    try {
-      await saveMutation({
-        variables: {
-          homeId,
-          accessoryId,
-          data: JSON.stringify({ ...helper, roomId: roomId ?? undefined }),
-        },
-      });
-      await refetch();
-      refreshAccessories();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not move that virtual accessory');
-    }
-  }, [helpers, homeId, saveMutation, refetch, refreshAccessories]);
-
   return {
     helpers,
     byRoom,
@@ -204,6 +181,5 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     operate,
     save,
     remove,
-    moveToRoom,
   };
 }

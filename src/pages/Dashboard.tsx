@@ -4080,6 +4080,13 @@ const Dashboard = () => {
   // Collapse with small delay when mouse leaves (allows time to enter expanded overlay)
   const handleWidgetMouseLeave = useCallback(() => {
     collapseTimeoutRef.current = setTimeout(() => {
+      // Moving the pointer away is not the same as being finished. A widget
+      // with a field in it — a virtual accessory's text box, its date picker,
+      // whose native popup renders outside the tile entirely — has to survive
+      // the pointer leaving, or it unmounts mid-edit and the change is lost
+      // before the field can commit it. Focus says whether they are still in
+      // there; the pointer doesn't.
+      if (document.activeElement?.closest('[data-expandable-widget]')) return;
       setExpandedWidgetId(null);
     }, 100);
   }, []);
@@ -4324,12 +4331,21 @@ const Dashboard = () => {
    * A drag that may cross rooms.
    *
    * Reordering within a grid behaves exactly as before. Moving BETWEEN grids is
-   * allowed only for virtual accessories: Apple Home owns which room a real
-   * device is in and rejects our writes, so letting one appear to move would
-   * show a change that never happened.
+   * refused for everything: Apple Home owns which room a real device is in and
+   * rejects our writes, and a virtual accessory's room is part of its
+   * definition, so it is changed where the rest of the definition is — in the
+   * editor. One rule for every tile is easier to learn than two, and each kind
+   * says where to go instead.
    */
   /** True while hovering a room the dragged item is not allowed to enter. */
   const [dragCrossRoomBlocked, setDragCrossRoomBlocked] = useState(false);
+  /** What to tell someone who tries it, which differs by what they dragged. */
+  const crossRoomAdvice = useCallback(
+    (accessoryId: string) => (isVirtualAccessoryId(accessoryId)
+      ? 'Use Edit Virtual Accessory to change its room'
+      : 'Apple Home decides which room a device is in'),
+    [isVirtualAccessoryId],
+  );
 
   /** Which container an id currently belongs to, or undefined. */
   const containerOf = useCallback((id: string): string | undefined => {
@@ -4345,9 +4361,9 @@ const Dashboard = () => {
     const from = containerOf(String(active.id));
     const to = containerOf(String(over.id));
     if (!from || !to || from === to) { setDragCrossRoomBlocked(false); return; }
-    // Crossing rooms — allowed only for accessories we own.
-    setDragCrossRoomBlocked(!isVirtualAccessoryId(String(active.id)));
-  }, [containerOf, isVirtualAccessoryId]);
+    // Crossing rooms is never a drag — the badge says where to do it instead.
+    setDragCrossRoomBlocked(true);
+  }, [containerOf]);
 
   const handleSharedDragEnd = useCallback((event: DragEndEvent) => {
     setDragCrossRoomBlocked(false);
@@ -4374,14 +4390,8 @@ const Dashboard = () => {
       c.onReorder(arrayMove(c.itemIds, from, to));
       return;
     }
-    const helper = findVirtualAccessory(activeId);
-    if (!helper) {
-      toast.error('Apple Home decides which room a device is in');
-      return;
-    }
-    // helper.id, not activeId: the mutation addresses the stored definition.
-    void helperAccessories.moveToRoom(helper.id, containers.get(dest)!.roomId);
-  }, [helperAccessories, findVirtualAccessory]);
+    toast.error(crossRoomAdvice(activeId));
+  }, [crossRoomAdvice]);
   helperAccessoriesRef.current = helperAccessories.helpers;
 
   const filteredRooms = useMemo(() => {
@@ -4636,14 +4646,14 @@ const Dashboard = () => {
         {dragCrossRoomBlocked && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
             <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-              Use Apple Home to change rooms
+              {crossRoomAdvice(activeId)}
             </div>
           </div>
         )}
       </div>
     );
   }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
-      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked]);
+      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice]);
 
   const handleToggleShowHidden = useCallback(() => {
     setShowHiddenItems(prev => !prev);
@@ -7321,6 +7331,7 @@ const Dashboard = () => {
                           const accessoryContent = compactMode ? (
                             // Compact mode: show compact widget with click-to-expand
                             <div
+                              data-expandable-widget
                               className={`relative 'cursor-pointer'`}
                               style={undefined}
                               onClick={() => handleWidgetClick(accessory.id)}
@@ -7436,7 +7447,7 @@ const Dashboard = () => {
                                 {groupByRoom && !dragOverValid && (
                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
                                     <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-                                      Use Apple Home app to change rooms
+                                      {crossRoomAdvice(activeId)}
                                     </div>
                                   </div>
                                 )}
@@ -7463,7 +7474,7 @@ const Dashboard = () => {
                                 {groupByRoom && !dragOverValid && (
                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
                                     <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-                                      Use Apple Home app to change rooms
+                                      Apple Home decides which room a device is in
                                     </div>
                                   </div>
                                 )}

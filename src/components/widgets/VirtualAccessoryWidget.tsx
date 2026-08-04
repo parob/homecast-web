@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 /**
  * A helper accessory — a value the automation engine owns.
@@ -20,19 +21,34 @@ const VIRTUAL_CHARS = [
 ] as const;
 
 /**
- * Inline controls sit on a translucent, photo-backed tile, so `bg-background`
- * rendered them as stark white rectangles floating over the glass. These borrow
- * the tile's own surface instead: tinted from the current text colour, so they
- * read correctly on a light or a dark background without either being hardcoded.
+ * Controls sit on a translucent, photo-backed tile, so `bg-background` drew
+ * them as stark white rectangles floating over the glass. They take the tile's
+ * own treatment instead, chosen the way every other widget chooses it — from
+ * `isDarkBackground`, not from a `dark:` variant, because the tile is dark when
+ * the wallpaper behind it is, which Tailwind's dark mode knows nothing about.
+ *
+ * `color-scheme` matters more than it looks: it is what makes a native date
+ * picker's calendar and its little clock glyph render dark rather than as a
+ * white slab.
+ *
+ * `min-w-0` matters too — a `datetime-local` input has a wide intrinsic size
+ * and will happily overflow its container without it.
  */
-const FIELD_CLASS =
-  'h-9 w-full rounded-md border border-current/20 bg-current/10 px-2.5 text-sm '
-  + 'text-inherit outline-none focus:border-current/40 transition-colors';
+function fieldClass(dark: boolean): string {
+  return 'h-9 w-full min-w-0 max-w-full box-border rounded-md border px-2.5 text-sm '
+    + 'outline-none transition-colors '
+    + (dark
+      ? 'bg-white/15 border-white/25 text-white focus:border-white/50 [color-scheme:dark]'
+      : 'bg-white/70 border-slate-300 text-slate-900 focus:border-slate-400 [color-scheme:light]');
+}
 
-/** Same surface as FIELD_CLASS, for the push controls. */
-const BUTTON_CLASS =
-  'h-9 inline-flex items-center justify-center rounded-md border border-current/20 '
-  + 'bg-current/10 px-2.5 text-sm hover:bg-current/20 transition-colors';
+function buttonClass(dark: boolean): string {
+  return 'h-9 inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 '
+    + 'text-sm transition-colors '
+    + (dark
+      ? 'bg-white/15 border-white/25 text-white hover:bg-white/25'
+      : 'bg-white/70 border-slate-300 text-slate-900 hover:bg-white');
+}
 
 const ICONS: Record<string, React.ElementType> = {
   virtual_mode: ListChecks,
@@ -70,6 +86,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     isHidden, showHiddenItems, onToggleShowHidden, onShare, locationSubtitle,
     onEdit, editLabel,
   } = props;
+
+  const { isDarkBackground } = useBackgroundContext();
+  const FIELD_CLASS = fieldClass(isDarkBackground);
+  const BUTTON_CLASS = buttonClass(isDarkBackground);
 
   const raw = accessory as unknown as VirtualAccessoryShape;
   const meta: VirtualAccessoryShape = {
@@ -204,7 +224,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           <button
             type="button"
             aria-label={running ? `Cancel ${accessory.name}` : `Start ${accessory.name}`}
-            className={`${BUTTON_CLASS} w-full gap-1.5`}
+            className={`${BUTTON_CLASS} w-full`}
             onClick={() => set(running ? 'idle' : 'active')}
           >
             {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -218,6 +238,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             label={accessory.name}
             value={typeof value === 'string' ? value : ''}
             onCommit={set}
+            className={FIELD_CLASS}
           />
         );
 
@@ -285,7 +306,8 @@ const VirtualTextControl: React.FC<{
   label: string;
   value: string;
   onCommit: (v: string) => void;
-}> = ({ label, value, onCommit }) => {
+  className: string;
+}> = ({ label, value, onCommit, className }) => {
   const [draft, setDraft] = React.useState<string | null>(null);
   const shown = draft ?? value;
 
@@ -294,10 +316,21 @@ const VirtualTextControl: React.FC<{
     setDraft(null);
   };
 
+  // Commit on the way out too. `blur` doesn't fire when a field is unmounted,
+  // and this one lives in a tile that collapses — so anything typed and not
+  // yet confirmed would simply disappear. Read through refs so the effect can
+  // stay mount-scoped and still see the last draft.
+  const pending = React.useRef({ draft, value, onCommit });
+  pending.current = { draft, value, onCommit };
+  React.useEffect(() => () => {
+    const p = pending.current;
+    if (p.draft !== null && p.draft !== p.value) p.onCommit(p.draft);
+  }, []);
+
   return (
     <input
       type="text"
-      className={FIELD_CLASS}
+      className={className}
       aria-label={`Set ${label}`}
       value={shown}
       onClick={e => e.stopPropagation()}

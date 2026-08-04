@@ -163,6 +163,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       <div ref={parentRef} className="hidden" />
       {shouldRender && createPortal(
         <div
+          // Marks this as expanded-widget content even though the portal puts
+          // it outside the widget's own subtree. Dashboard's collapse-on-
+          // mouse-leave asks whether focus is still inside a widget before
+          // closing, and without the marker a field in here looked like focus
+          // had left — so a half-typed value unmounted before it could commit.
+          data-expandable-widget
           className="fixed z-[10018] pointer-events-auto"
           style={{
             left: coords.x,

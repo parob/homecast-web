@@ -206,6 +206,27 @@ describe('virtual accessory controls', () => {
     expect(screen.getByText('Test Value')).toBeTruthy();
   });
 
+  // The tile collapses when the pointer leaves it, which unmounts the field.
+  // `blur` does not fire on unmount, so anything typed and not yet confirmed
+  // simply disappeared — you edited the text and nothing happened.
+  it('commits a half-typed value if the field is torn down', () => {
+    cleanup();
+    const writes: unknown[][] = [];
+    const props = {
+      accessory: accessoryFor('virtual_text'),
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      onSetValue: (...args: unknown[]) => { writes.push(args); },
+      onSlider: () => {},
+      onToggle: () => {},
+    } as unknown as WidgetProps;
+    const { unmount } = render(<VirtualAccessoryWidget {...props} />);
+
+    fireEvent.change(screen.getByLabelText('Set Test Value'), { target: { value: 'back monday' } });
+    unmount();
+
+    expect(writes).toEqual([['va-1', 'virtual_text', 'back monday']]);
+  });
+
   it('offers nothing when the accessory is not user-editable', () => {
     cleanup();
     renderWidget('virtual_text', { isUserEditable: false });
