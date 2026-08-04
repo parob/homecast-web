@@ -404,7 +404,7 @@ async function resolveOperation(
 
     // --- HC Helpers ---
     // Virtual entities (modes, switches, counters, timers). Same StoredEntityInfo
-    // shape as automations — `dataJson` carries the serialized HelperDefinition.
+    // shape as automations — `dataJson` carries the serialized VirtualAccessoryDefinition.
     case 'HcHelpers':
       return {
         hcHelpers: (await db.getHcHelpers(variables.homeId as string))

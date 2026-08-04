@@ -54,7 +54,7 @@ import { createDefaultNodeData, ALL_NODE_DEFINITIONS, CATEGORY_STYLES } from './
 import type { NodeDefinition } from './constants';
 import { graphToAutomation } from './serialization/graphToAutomation';
 import { automationToGraph } from './serialization/automationToGraph';
-import type { Automation, HelperDefinition } from '@/automation/types/automation';
+import type { Automation, VirtualAccessoryDefinition } from '@/automation/types/automation';
 
 const nodeTypes: NodeTypes = {
   automationNode: BaseNode,
@@ -138,10 +138,10 @@ function AutomationEditorInner({
   // The Set Helper node offers operations that depend on the helper's type, so
   // it needs the definitions, not just names.
   const availableHelpers = useMemo(() => {
-    const out: HelperDefinition[] = [];
+    const out: VirtualAccessoryDefinition[] = [];
     for (const row of helpersData?.hcHelpers ?? []) {
       try {
-        const parsed = JSON.parse(row.dataJson) as HelperDefinition;
+        const parsed = JSON.parse(row.dataJson) as VirtualAccessoryDefinition;
         if (parsed?.type) out.push({ ...parsed, id: parsed.id || row.entityId });
       } catch { /* unreadable row — not something to offer as a target */ }
     }

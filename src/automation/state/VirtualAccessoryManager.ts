@@ -2,7 +2,7 @@
 // Virtual entity management: input_boolean, input_number, input_select, timer, counter, etc.
 
 import type { StateStore } from './StateStore';
-import type { HelperDefinition, Duration, HelperOperation } from '../types/automation';
+import type { VirtualAccessoryDefinition, Duration, VirtualOperation } from '../types/automation';
 import { durationToMs } from '../types/automation';
 
 type EventEmitter = (eventType: string, eventData?: Record<string, unknown>) => void;
@@ -23,8 +23,8 @@ interface TimerState {
  * Fires events on the engine's event bus (e.g., timer.finished).
  * Pushes state changes to the server via the sync callback.
  */
-export class HelperManager {
-  private helpers = new Map<string, HelperDefinition>();
+export class VirtualAccessoryManager {
+  private helpers = new Map<string, VirtualAccessoryDefinition>();
   private timers = new Map<string, TimerState>();
 
   constructor(
@@ -37,40 +37,40 @@ export class HelperManager {
   // Registration
   // ============================================================
 
-  register(helper: HelperDefinition): void {
+  register(helper: VirtualAccessoryDefinition): void {
     this.helpers.set(helper.id, helper);
 
     // Set initial state
     switch (helper.type) {
       case 'input_boolean':
-        this.stateStore.updateHelperState(helper.id, helper.initialValue ?? false);
+        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? false);
         break;
       case 'input_number':
-        this.stateStore.updateHelperState(helper.id, helper.initialValue ?? helper.min);
+        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? helper.min);
         break;
       case 'input_select':
-        this.stateStore.updateHelperState(helper.id, helper.initialValue ?? helper.options[0] ?? '');
+        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? helper.options[0] ?? '');
         break;
       case 'input_text':
-        this.stateStore.updateHelperState(helper.id, helper.initialValue ?? '');
+        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? '');
         break;
       case 'input_datetime':
-        this.stateStore.updateHelperState(helper.id, helper.initialValue ?? '');
+        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? '');
         break;
       case 'timer':
         this.timers.set(helper.id, { state: 'idle', duration: 0, remaining: 0 });
-        this.stateStore.updateHelperState(helper.id, 'idle');
+        this.stateStore.updateVirtualState(helper.id, 'idle');
         break;
       case 'counter':
-        this.stateStore.updateHelperState(helper.id, helper.initial ?? 0);
+        this.stateStore.updateVirtualState(helper.id, helper.initial ?? 0);
         break;
       case 'schedule':
-        this.stateStore.updateHelperState(helper.id, this.isScheduleActive(helper) ? 'on' : 'off');
+        this.stateStore.updateVirtualState(helper.id, this.isScheduleActive(helper) ? 'on' : 'off');
         break;
     }
   }
 
-  loadAll(helpers: HelperDefinition[]): void {
+  loadAll(helpers: VirtualAccessoryDefinition[]): void {
     for (const h of helpers) this.register(h);
   }
 
@@ -94,7 +94,7 @@ export class HelperManager {
    *   honestly, so it goes back to idle.
    * - **Deleted** helpers are removed, which also cancels their timers.
    */
-  replaceAll(helpers: HelperDefinition[]): void {
+  replaceAll(helpers: VirtualAccessoryDefinition[]): void {
     const next = new Map(helpers.map(h => [h.id, h]));
 
     for (const id of [...this.helpers.keys()]) {
@@ -107,11 +107,11 @@ export class HelperManager {
       // so key order is stable; a false "changed" only costs a rebuild.
       if (existing && JSON.stringify(existing) === JSON.stringify(helper)) continue;
 
-      const carried = existing ? this.stateStore.getHelperState(helper.id) : undefined;
+      const carried = existing ? this.stateStore.getVirtualState(helper.id) : undefined;
       if (existing) this.remove(helper.id);  // also clears any pending timeout
       this.register(helper);
       if (carried !== undefined && helper.type !== 'timer') {
-        this.stateStore.updateHelperState(helper.id, carried);
+        this.stateStore.updateVirtualState(helper.id, carried);
       }
     }
   }
@@ -127,19 +127,19 @@ export class HelperManager {
   // ============================================================
 
   toggle(helperId: string): void {
-    const current = this.stateStore.getHelperState(helperId);
+    const current = this.stateStore.getVirtualState(helperId);
     const newVal = !current;
-    this.stateStore.updateHelperState(helperId, newVal);
+    this.stateStore.updateVirtualState(helperId, newVal);
     this.pushState(helperId, newVal);
   }
 
   turnOn(helperId: string): void {
-    this.stateStore.updateHelperState(helperId, true);
+    this.stateStore.updateVirtualState(helperId, true);
     this.pushState(helperId, true);
   }
 
   turnOff(helperId: string): void {
-    this.stateStore.updateHelperState(helperId, false);
+    this.stateStore.updateVirtualState(helperId, false);
     this.pushState(helperId, false);
   }
 
@@ -151,21 +151,21 @@ export class HelperManager {
     const def = this.helpers.get(helperId);
     if (def?.type === 'input_number') {
       const clamped = Math.max(def.min, Math.min(def.max, value));
-      this.stateStore.updateHelperState(helperId, clamped);
+      this.stateStore.updateVirtualState(helperId, clamped);
       this.pushState(helperId, clamped);
     }
   }
 
   increment(helperId: string, step?: number): void {
     const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getHelperState(helperId) ?? 0);
+    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
     const s = step ?? (def?.type === 'input_number' ? def.step : 1);
     this.setNumber(helperId, current + s);
   }
 
   decrement(helperId: string, step?: number): void {
     const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getHelperState(helperId) ?? 0);
+    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
     const s = step ?? (def?.type === 'input_number' ? def.step : 1);
     this.setNumber(helperId, current - s);
   }
@@ -175,7 +175,7 @@ export class HelperManager {
   // ============================================================
 
   selectOption(helperId: string, option: string): void {
-    this.stateStore.updateHelperState(helperId, option);
+    this.stateStore.updateVirtualState(helperId, option);
     this.pushState(helperId, option);
   }
 
@@ -184,7 +184,7 @@ export class HelperManager {
   // ============================================================
 
   setText(helperId: string, text: string): void {
-    this.stateStore.updateHelperState(helperId, text);
+    this.stateStore.updateVirtualState(helperId, text);
     this.pushState(helperId, text);
   }
 
@@ -194,28 +194,28 @@ export class HelperManager {
 
   incrementCounter(helperId: string): void {
     const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getHelperState(helperId) ?? 0);
+    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const max = (def?.type === 'counter' ? def.max : undefined) ?? Infinity;
     const newVal = Math.min(current + step, max);
-    this.stateStore.updateHelperState(helperId, newVal);
+    this.stateStore.updateVirtualState(helperId, newVal);
     this.pushState(helperId, newVal);
   }
 
   decrementCounter(helperId: string): void {
     const def = this.helpers.get(helperId);
-    const current = Number(this.stateStore.getHelperState(helperId) ?? 0);
+    const current = Number(this.stateStore.getVirtualState(helperId) ?? 0);
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const min = (def?.type === 'counter' ? def.min : undefined) ?? -Infinity;
     const newVal = Math.max(current - step, min);
-    this.stateStore.updateHelperState(helperId, newVal);
+    this.stateStore.updateVirtualState(helperId, newVal);
     this.pushState(helperId, newVal);
   }
 
   resetCounter(helperId: string): void {
     const def = this.helpers.get(helperId);
     const initial = (def?.type === 'counter' ? def.initial : undefined) ?? 0;
-    this.stateStore.updateHelperState(helperId, initial);
+    this.stateStore.updateVirtualState(helperId, initial);
     this.pushState(helperId, initial);
   }
 
@@ -224,7 +224,7 @@ export class HelperManager {
   // ============================================================
 
   /** Set a helper's value, routing to the right setter for its type. */
-  setHelperValue(helperId: string, value: unknown): void {
+  setVirtualValue(helperId: string, value: unknown): void {
     const def = this.helpers.get(helperId);
     switch (def?.type) {
       case 'input_number':
@@ -242,7 +242,7 @@ export class HelperManager {
         break;
       case 'counter': {
         const n = Number(value);
-        this.stateStore.updateHelperState(helperId, n);
+        this.stateStore.updateVirtualState(helperId, n);
         this.pushState(helperId, n);
         break;
       }
@@ -252,14 +252,14 @@ export class HelperManager {
   }
 
   /** Increment a counter or input_number. */
-  incrementHelper(helperId: string, step?: number): void {
+  incrementVirtual(helperId: string, step?: number): void {
     const def = this.helpers.get(helperId);
     if (def?.type === 'counter') this.incrementCounter(helperId);
     else this.increment(helperId, step);
   }
 
   /** Decrement a counter or input_number. */
-  decrementHelper(helperId: string, step?: number): void {
+  decrementVirtual(helperId: string, step?: number): void {
     const def = this.helpers.get(helperId);
     if (def?.type === 'counter') this.decrementCounter(helperId);
     else this.decrement(helperId, step);
@@ -275,7 +275,7 @@ export class HelperManager {
       // Timers are not resumed — a half-elapsed countdown can't be trusted
       // across a restart, and `restoreOnRestart` is not implemented.
       if (this.helpers.get(helperId)?.type === 'timer') continue;
-      this.stateStore.updateHelperState(helperId, value);
+      this.stateStore.updateVirtualState(helperId, value);
     }
   }
 
@@ -301,13 +301,13 @@ export class HelperManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateHelperState(helperId, 'idle');
+      this.stateStore.updateVirtualState(helperId, 'idle');
       this.fireEvent('timer.finished', { helperId });
       this.pushState(helperId, 'idle');
     }, totalMs);
 
     this.timers.set(helperId, timerState);
-    this.stateStore.updateHelperState(helperId, 'active');
+    this.stateStore.updateVirtualState(helperId, 'active');
     this.fireEvent('timer.started', { helperId, duration: totalMs });
     this.pushState(helperId, 'active');
   }
@@ -323,7 +323,7 @@ export class HelperManager {
     timerState.remaining = Math.max(0, timerState.remaining - elapsed);
     timerState.state = 'paused';
 
-    this.stateStore.updateHelperState(helperId, 'paused');
+    this.stateStore.updateVirtualState(helperId, 'paused');
     this.fireEvent('timer.paused', { helperId, remaining: timerState.remaining });
     this.pushState(helperId, 'paused');
   }
@@ -338,12 +338,12 @@ export class HelperManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateHelperState(helperId, 'idle');
+      this.stateStore.updateVirtualState(helperId, 'idle');
       this.fireEvent('timer.finished', { helperId });
       this.pushState(helperId, 'idle');
     }, timerState.remaining);
 
-    this.stateStore.updateHelperState(helperId, 'active');
+    this.stateStore.updateVirtualState(helperId, 'active');
     this.fireEvent('timer.resumed', { helperId });
     this.pushState(helperId, 'active');
   }
@@ -358,7 +358,7 @@ export class HelperManager {
     if (timerState.state !== 'idle') {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateHelperState(helperId, 'idle');
+      this.stateStore.updateVirtualState(helperId, 'idle');
       this.fireEvent('timer.cancelled', { helperId });
       this.pushState(helperId, 'idle');
     }
@@ -373,7 +373,7 @@ export class HelperManager {
     timerState.state = 'idle';
     timerState.remaining = 0;
 
-    this.stateStore.updateHelperState(helperId, 'idle');
+    this.stateStore.updateVirtualState(helperId, 'idle');
     this.fireEvent('timer.finished', { helperId });
     this.pushState(helperId, 'idle');
   }
@@ -382,7 +382,7 @@ export class HelperManager {
   // Schedule
   // ============================================================
 
-  private isScheduleActive(helper: HelperDefinition & { type: 'schedule' }): boolean {
+  private isScheduleActive(helper: VirtualAccessoryDefinition & { type: 'schedule' }): boolean {
     const now = new Date();
     const day = now.getDay();
     const minuteOfDay = now.getHours() * 60 + now.getMinutes();
@@ -412,16 +412,16 @@ export class HelperManager {
    */
   apply(
     helperId: string,
-    operation: HelperOperation,
+    operation: VirtualOperation,
     opts: { value?: unknown; step?: number; duration?: Duration } = {},
   ): void {
     switch (operation) {
       case 'turn_on': this.turnOn(helperId); break;
       case 'turn_off': this.turnOff(helperId); break;
       case 'toggle': this.toggle(helperId); break;
-      case 'set': this.setHelperValue(helperId, opts.value); break;
-      case 'increment': this.incrementHelper(helperId, opts.step); break;
-      case 'decrement': this.decrementHelper(helperId, opts.step); break;
+      case 'set': this.setVirtualValue(helperId, opts.value); break;
+      case 'increment': this.incrementVirtual(helperId, opts.step); break;
+      case 'decrement': this.decrementVirtual(helperId, opts.step); break;
       case 'reset': this.resetCounter(helperId); break;
       case 'start': this.startTimer(helperId, opts.duration); break;
       case 'pause': this.pauseTimer(helperId); break;
@@ -429,7 +429,7 @@ export class HelperManager {
       case 'cancel': this.cancelTimer(helperId); break;
       case 'finish': this.finishTimer(helperId); break;
       default: {
-        // Exhaustiveness guard: a new HelperOperation that nobody wired up
+        // Exhaustiveness guard: a new VirtualOperation that nobody wired up
         // should fail loudly here rather than be accepted and ignored.
         const unhandled: never = operation;
         throw new Error(`Unknown helper operation: ${String(unhandled)}`);
@@ -441,7 +441,7 @@ export class HelperManager {
   // Query
   // ============================================================
 
-  getHelper(id: string): HelperDefinition | undefined {
+  getVirtualAccessory(id: string): VirtualAccessoryDefinition | undefined {
     return this.helpers.get(id);
   }
 
@@ -449,12 +449,12 @@ export class HelperManager {
   getAllStates(): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const id of this.helpers.keys()) {
-      out[id] = this.stateStore.getHelperState(id);
+      out[id] = this.stateStore.getVirtualState(id);
     }
     return out;
   }
 
-  getAllHelpers(): HelperDefinition[] {
+  getAllVirtualAccessories(): VirtualAccessoryDefinition[] {
     return Array.from(this.helpers.values());
   }
 

@@ -21,7 +21,7 @@ import {
 import { createHomeKitBridgeAdapter } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
 import { resolveHomeLocation } from '../automation/location';
-import type { Automation, HelperDefinition } from '../automation/types/automation';
+import type { Automation, VirtualAccessoryDefinition } from '../automation/types/automation';
 import type { ExecutionTrace } from '../automation/types/execution';
 import { HomeKit } from '../native/homekit-bridge';
 import * as db from './local-db';
@@ -44,12 +44,12 @@ async function loadStoredAutomations(): Promise<Automation[]> {
 }
 
 /** Read every stored helper definition, tolerating individual corrupt rows. */
-async function loadStoredHelpers(): Promise<HelperDefinition[]> {
+async function loadStoredHelpers(): Promise<VirtualAccessoryDefinition[]> {
   const rows = await db.getHcHelpers();
-  const helpers: HelperDefinition[] = [];
+  const helpers: VirtualAccessoryDefinition[] = [];
   for (const row of rows) {
     try {
-      helpers.push(JSON.parse(row.data) as HelperDefinition);
+      helpers.push(JSON.parse(row.data) as VirtualAccessoryDefinition);
     } catch {
       console.warn(`[CommunityAutomation] Skipping unparseable helper ${row.id}`);
     }
@@ -148,13 +148,13 @@ export async function initCommunityAutomationEngine(): Promise<void> {
       },
       serviceGroupResolver: resolver,
       onTraceComplete: (trace) => { void persistTrace(trace); },
-      onHelperStateChange: (helperId, state) => {
+      onVirtualStateChange: (helperId, state) => {
         void db.saveHcHelperState(helperId, state).catch(() => {});
       },
     });
 
     // Helpers first — automations may reference them in triggers or conditions.
-    engine.loadHelpers(await loadStoredHelpers(), await db.getHcHelperStates());
+    engine.loadVirtualAccessories(await loadStoredHelpers(), await db.getHcHelperStates());
     engine.loadAutomations(await loadStoredAutomations());
 
     // Resolved after startup so a slow/denied geolocation prompt can't hold up
@@ -191,7 +191,7 @@ export async function reloadCommunityAutomations(): Promise<void> {
  * Re-read helpers from IndexedDB into the running engine. Cloud mode gets an
  * `automation.helper_sync` push; locally the resolver has to do it itself.
  *
- * Uses `syncHelpers`, not `loadHelpers`: this runs after a delete too, and
+ * Uses `syncVirtualAccessories`, not `loadVirtualAccessories`: this runs after a delete too, and
  * loading only adds — a deleted helper would keep answering `helper()` and keep
  * its triggers registered until the next restart.
  */
@@ -199,7 +199,7 @@ export async function reloadCommunityHelpers(): Promise<void> {
   const engine = getAutomationEngine();
   if (!engine) return;
   try {
-    engine.syncHelpers(await loadStoredHelpers());
+    engine.syncVirtualAccessories(await loadStoredHelpers());
   } catch (e) {
     console.warn('[CommunityAutomation] Helper reload failed', e);
   }

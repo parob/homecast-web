@@ -145,8 +145,8 @@ export const ACTION_NODES: NodeDefinition[] = [
     description: 'Run custom JavaScript to transform data',
   },
   {
-    type: 'helper',
-    label: 'Set Helper',
+    type: 'virtual',
+    label: 'Set Virtual Accessory',
     icon: 'Blocks',
     category: 'action',
     description: 'Change a mode, switch, counter or timer',
@@ -386,7 +386,7 @@ export const NODE_OUTPUT_SCHEMAS: Record<string, NodeOutputField[]> = {
   code: [
     { field: 'result', type: 'unknown', label: 'Return Value' },
   ],
-  helper: [
+  virtual: [
     { field: 'helperId', type: 'string', label: 'Helper ID' },
     { field: 'operation', type: 'string', label: 'Operation' },
     // The value AFTER the operation, so a later node can branch on the result

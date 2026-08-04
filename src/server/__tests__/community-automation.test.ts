@@ -11,7 +11,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 const engine = {
   loadAutomations: vi.fn(),
-  loadHelpers: vi.fn(),
+  loadVirtualAccessories: vi.fn(),
   setLocation: vi.fn(),
 };
 
@@ -98,11 +98,11 @@ describe('initCommunityAutomationEngine', () => {
 
     await initCommunityAutomationEngine();
 
-    expect(engine.loadHelpers).toHaveBeenCalledWith(
+    expect(engine.loadVirtualAccessories).toHaveBeenCalledWith(
       [expect.objectContaining({ id: 'h1' })],
       { h1: 12 },
     );
-    expect(engine.loadHelpers.mock.invocationCallOrder[0])
+    expect(engine.loadVirtualAccessories.mock.invocationCallOrder[0])
       .toBeLessThan(engine.loadAutomations.mock.invocationCallOrder[0]);
   });
 
@@ -122,7 +122,7 @@ describe('initCommunityAutomationEngine', () => {
 
     await initCommunityAutomationEngine();
 
-    expect(engine.loadHelpers).toHaveBeenCalledWith([], {});
+    expect(engine.loadVirtualAccessories).toHaveBeenCalledWith([], {});
   });
 
   it('starts the service-group resolver, without which group triggers never fire', async () => {
@@ -167,11 +167,11 @@ describe('initCommunityAutomationEngine', () => {
 
   it('persists helper state changes so counters survive a restart', async () => {
     await initCommunityAutomationEngine();
-    const { onHelperStateChange } = initAutomationEngine.mock.calls[0][0] as never as {
-      onHelperStateChange: (id: string, v: unknown) => void;
+    const { onVirtualStateChange } = initAutomationEngine.mock.calls[0][0] as never as {
+      onVirtualStateChange: (id: string, v: unknown) => void;
     };
 
-    onHelperStateChange('door_opens', 3);
+    onVirtualStateChange('door_opens', 3);
 
     expect(db.saveHcHelperState).toHaveBeenCalledWith('door_opens', 3);
   });

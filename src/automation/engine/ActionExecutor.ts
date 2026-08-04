@@ -25,7 +25,7 @@ import type {
   NotifyAction,
   CodeAction,
   MergeAction,
-  HelperAction,
+  VirtualAccessoryAction,
   TriggerData,
 } from '../types/automation';
 import { durationToMs } from '../types/automation';
@@ -37,7 +37,7 @@ import { describeError } from '../../lib/describe-error';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
-import type { HelperManager } from '../state/HelperManager';
+import type { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
 import { assertSafeOutboundUrl } from './ssrfGuard';
 
 /** Bridge interface for calling HomeKit operations */
@@ -120,7 +120,7 @@ export class ActionExecutor {
     private callbacks: EngineCallbacks,
     private codeSandbox: CodeSandbox = new WorkerCodeSandbox(),
     /** Absent in tests that don't exercise helper actions. */
-    private helperManager?: HelperManager,
+    private virtualManager?: VirtualAccessoryManager,
   ) {}
 
   /**
@@ -248,6 +248,8 @@ export class ActionExecutor {
         return this.executeCode(action, ctx, tags);
       case 'merge':
         return this.executeMerge(action, ctx, tags);
+      // 'virtual' is the name; 'helper' is what older stored automations say.
+      case 'virtual':
       case 'helper':
         return this.executeHelper(action, ctx, tags);
       default:
@@ -338,12 +340,12 @@ export class ActionExecutor {
   // Helpers (virtual switches, timers, counters, modes)
   // ============================================================
 
-  private async executeHelper(action: HelperAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+  private async executeHelper(action: VirtualAccessoryAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
     const stepIdx = ctx.beginStep('action', action.id, 'helper',
       `Helper ${action.operation} ${action.helperId}`,
       { helperId: action.helperId, operation: action.operation }, tags);
 
-    if (!this.helperManager) {
+    if (!this.virtualManager) {
       const error = 'Helpers are not available in this engine instance';
       ctx.setNodeOutput(action.id, { helperId: action.helperId, success: false, error });
       ctx.endStep(stepIdx, 'error', undefined, error);
@@ -351,18 +353,18 @@ export class ActionExecutor {
     }
 
     try {
-      const h = this.helperManager;
+      const h = this.virtualManager;
       const id = action.helperId;
       const value = action.value !== undefined ? this.resolveTemplateValue(action.value, ctx) : undefined;
 
-      // Dispatch lives on HelperManager so this action and a person operating
+      // Dispatch lives on VirtualAccessoryManager so this action and a person operating
       // the same helper from the Helpers list cannot diverge.
       h.apply(id, action.operation, { value, step: action.step, duration: action.duration });
 
       const output = {
         helperId: id,
         operation: action.operation,
-        state: this.stateStore.getHelperState(id),
+        state: this.stateStore.getVirtualState(id),
         success: true,
       };
       ctx.setNodeOutput(action.id, output);

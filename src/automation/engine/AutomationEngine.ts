@@ -2,7 +2,7 @@
 // Lifecycle: initialize → load → register → execute → teardown
 
 import { StateStore } from '../state/StateStore';
-import { HelperManager } from '../state/HelperManager';
+import { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
 import { TriggerManager, type ServiceGroupResolver } from './TriggerManager';
 import { ConditionEvaluator } from './ConditionEvaluator';
 import { ActionExecutor, StopExecutionError } from './ActionExecutor';
@@ -11,8 +11,8 @@ import type { CodeSandbox } from './CodeSandbox';
 import { ScriptRunner } from './ScriptRunner';
 import { ExecutionContext } from './ExecutionContext';
 import type {
-  Automation, Trigger, TriggerData, AutomationMode, HelperDefinition,
-  HelperOperation, Duration,
+  Automation, Trigger, TriggerData, AutomationMode, VirtualAccessoryDefinition,
+  VirtualOperation, Duration,
 } from '../types/automation';
 import type { ExecutionTrace, ExecutionEvent, ExecutionStatus, BlockedReason } from '../types/execution';
 import { describeTriggerData, capLarge } from './trace-summaries';
@@ -49,7 +49,7 @@ export interface AutomationEngineConfig {
    * Called whenever a helper's value changes, so it can be persisted. Counters
    * and modes are worthless if they reset on every relay restart.
    */
-  onHelperStateChange?: (helperId: string, state: unknown) => void;
+  onVirtualStateChange?: (helperId: string, state: unknown) => void;
   /**
    * Live-view stream: started / step / variables_changed / finished, emitted
    * synchronously as the run progresses (never adding an await to the action
@@ -66,7 +66,7 @@ export interface AutomationEngineConfig {
  */
 export class AutomationEngine {
   readonly stateStore: StateStore;
-  readonly helperManager: HelperManager;
+  readonly virtualManager: VirtualAccessoryManager;
   /** Exposed so relay-initiated writes can be expanded to a group's members. */
   readonly serviceGroupResolver?: ServiceGroupResolver;
   private triggerManager: TriggerManager;
@@ -100,10 +100,10 @@ export class AutomationEngine {
       registerTemporaryTrigger: (triggers, callback) => this.registerTemporaryTrigger(triggers, callback),
     };
 
-    this.helperManager = new HelperManager(
+    this.virtualManager = new VirtualAccessoryManager(
       this.stateStore,
       (type, data) => this.fireEvent(type, data),
-      (helperId, state) => this.config.onHelperStateChange?.(helperId, state),
+      (helperId, state) => this.config.onVirtualStateChange?.(helperId, state),
     );
 
     this.actionExecutor = new ActionExecutor(
@@ -112,7 +112,7 @@ export class AutomationEngine {
       config.bridge,
       callbacks,
       config.codeSandbox,
-      this.helperManager,
+      this.virtualManager,
     );
 
     this.scriptRunner = new ScriptRunner(this.actionExecutor, (trace) => {
@@ -173,64 +173,64 @@ export class AutomationEngine {
    * Call before `loadAutomations` so automations referencing a helper find it
    * already in the state store.
    */
-  loadHelpers(helpers: HelperDefinition[], persistedStates?: Record<string, unknown>): void {
-    this.helperManager.loadAll(helpers);
-    if (persistedStates) this.helperManager.restoreStates(persistedStates);
+  loadVirtualAccessories(helpers: VirtualAccessoryDefinition[], persistedStates?: Record<string, unknown>): void {
+    this.virtualManager.loadAll(helpers);
+    if (persistedStates) this.virtualManager.restoreStates(persistedStates);
     console.log(`[AutomationEngine] Loaded ${helpers.length} helpers`);
   }
 
   /**
    * Apply a complete helper set, as `sync_all` does for automations.
    *
-   * Unlike `loadHelpers` this REPLACES — a helper missing from the set is
+   * Unlike `loadVirtualAccessories` this REPLACES — a helper missing from the set is
    * deleted rather than left running. Safe to call repeatedly: helpers whose
    * definition hasn't changed keep their value and their timers.
    */
-  syncHelpers(helpers: HelperDefinition[]): void {
-    this.helperManager.replaceAll(helpers);
+  syncVirtualAccessories(helpers: VirtualAccessoryDefinition[]): void {
+    this.virtualManager.replaceAll(helpers);
     console.log(`[AutomationEngine] Synced ${helpers.length} helpers`);
   }
 
   /** Create or update a single helper, keeping its current value if it exists. */
-  upsertHelper(helper: HelperDefinition): void {
-    const existing = this.helperManager.getHelper(helper.id);
-    const carried = existing ? this.stateStore.getHelperState(helper.id) : undefined;
-    if (existing) this.helperManager.remove(helper.id);
-    this.helperManager.register(helper);
+  upsertVirtualAccessory(helper: VirtualAccessoryDefinition): void {
+    const existing = this.virtualManager.getVirtualAccessory(helper.id);
+    const carried = existing ? this.stateStore.getVirtualState(helper.id) : undefined;
+    if (existing) this.virtualManager.remove(helper.id);
+    this.virtualManager.register(helper);
     if (carried !== undefined && helper.type !== 'timer') {
-      this.stateStore.updateHelperState(helper.id, carried);
+      this.stateStore.updateVirtualState(helper.id, carried);
     }
   }
 
   /** Remove a single helper and stop anything it was running. */
-  removeHelper(helperId: string): void {
-    this.helperManager.remove(helperId);
+  removeVirtualAccessory(helperId: string): void {
+    this.virtualManager.remove(helperId);
   }
 
   /** A helper's definition, or undefined if it isn't registered. */
-  getHelper(helperId: string): HelperDefinition | undefined {
-    return this.helperManager.getHelper(helperId);
+  getVirtualAccessory(helperId: string): VirtualAccessoryDefinition | undefined {
+    return this.virtualManager.getVirtualAccessory(helperId);
   }
 
   /** Current value of every registered helper, keyed by id. */
-  getHelperStates(): Record<string, unknown> {
-    return this.helperManager.getAllStates();
+  getVirtualStates(): Record<string, unknown> {
+    return this.virtualManager.getAllStates();
   }
 
   /**
    * Operate a helper by hand — the same operations the `helper` action uses.
    *
-   * Goes through HelperManager.apply, so a manual change notifies listeners and
+   * Goes through VirtualAccessoryManager.apply, so a manual change notifies listeners and
    * pushes state exactly as an automation's would. A person setting Home Mode
    * to Away must be able to trigger the automations that watch it; a separate
    * quieter path would have made manual changes invisible to the engine.
    */
-  operateHelper(
+  operateVirtualAccessory(
     helperId: string,
-    operation: HelperOperation,
+    operation: VirtualOperation,
     opts: { value?: unknown; step?: number; duration?: Duration } = {},
   ): void {
-    this.helperManager.apply(helperId, operation, opts);
+    this.virtualManager.apply(helperId, operation, opts);
   }
 
   /**
@@ -299,7 +299,7 @@ export class AutomationEngine {
     // Teardown trigger manager, script runner and helper timers
     this.triggerManager.teardown();
     this.scriptRunner.teardown();
-    this.helperManager.teardown();
+    this.virtualManager.teardown();
 
     // Unsubscribe from HomeKit
     if (this.homeKitUnsubscribe) {

@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo, useState, useRef } from 'react';
 import { VIRTUAL_OPERATIONS } from '@/automation/virtual-accessories/catalogue';
-import type { HelperDefinition } from '@/automation/types/automation';
+import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 import { type Node, type Edge } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -139,7 +139,7 @@ interface NodeConfigPanelProps {
   scenes?: HomeKitScene[];
   serviceGroups?: HomeKitServiceGroup[];
   availableAutomations?: { id: string; name: string }[];
-  availableHelpers?: HelperDefinition[];
+  availableHelpers?: VirtualAccessoryDefinition[];
   /** Automation ID for test mode (only for saved automations) */
   automationId?: string;
   /**
@@ -410,7 +410,7 @@ function renderConfigForm(
   allEdges?: Edge[],
   serviceGroups?: HomeKitServiceGroup[],
   availableAutomations?: { id: string; name: string }[],
-  availableHelpers?: HelperDefinition[],
+  availableHelpers?: VirtualAccessoryDefinition[],
 ) {
   // ---- TRIGGERS ----
   if (category === 'trigger') {
@@ -990,7 +990,7 @@ function renderConfigForm(
           </>
         );
 
-      case 'helper': {
+      case 'virtual': {
         const helpers = availableHelpers ?? [];
         const selected = helpers.find(h => h.id === (config.helperId as string));
         const operations = selected ? VIRTUAL_OPERATIONS[selected.type] ?? [] : [];

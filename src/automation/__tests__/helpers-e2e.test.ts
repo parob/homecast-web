@@ -1,7 +1,7 @@
 /**
  * Helpers: virtual switches, timers, counters and modes.
  *
- * `HelperManager` was fully implemented but never instantiated — zero
+ * `VirtualAccessoryManager` was fully implemented but never instantiated — zero
  * references outside its own file — and there were no actions to mutate a
  * helper, so even wired up an automation could not toggle one.
  *
@@ -13,14 +13,14 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AutomationEngine } from '../engine/AutomationEngine';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
-import type { Automation, Action, HelperDefinition } from '../types/automation';
+import type { Automation, Action, VirtualAccessoryDefinition } from '../types/automation';
 
 let engine: AutomationEngine;
 let bridge: { setCharacteristic: ReturnType<typeof vi.fn>; setServiceGroup: ReturnType<typeof vi.fn>; executeScene: ReturnType<typeof vi.fn> };
 let helperWrites: Array<{ helperId: string; state: unknown }>;
 let emit: (e: HomeKitEvent) => void;
 
-const HELPERS: HelperDefinition[] = [
+const HELPERS: VirtualAccessoryDefinition[] = [
   { id: 'guest_mode', type: 'input_boolean', name: 'Guest mode', homeId: 'home-1', initialValue: false },
   { id: 'house_mode', type: 'input_select', name: 'House mode', homeId: 'home-1', options: ['Home', 'Away', 'Night', 'Vacation'], initialValue: 'Home' },
   { id: 'door_opens', type: 'counter', name: 'Door opens today', homeId: 'home-1', initial: 0, step: 1 },
@@ -48,15 +48,15 @@ beforeEach(() => {
     bridge,
     onTraceComplete: () => {},
     onNotify: async () => {},
-    onHelperStateChange: (helperId, state) => { helperWrites.push({ helperId, state }); },
+    onVirtualStateChange: (helperId, state) => { helperWrites.push({ helperId, state }); },
   });
   engine.initialize((handler) => { emit = handler; return () => {}; });
-  engine.loadHelpers(HELPERS);
+  engine.loadVirtualAccessories(HELPERS);
 });
 
 afterEach(() => engine.teardown());
 
-const state = (id: string) => engine.stateStore.getHelperState(id);
+const state = (id: string) => engine.stateStore.getVirtualState(id);
 
 describe('virtual switch (replaces homebridge-dummy)', () => {
   it('starts at its initial value', () => {
@@ -298,10 +298,10 @@ describe('persistence', () => {
     const restored = new AutomationEngine({ bridge, onTraceComplete: () => {}, onNotify: async () => {} });
     restored.initialize(() => () => {});
 
-    restored.loadHelpers(HELPERS, { door_opens: 17, house_mode: 'Vacation' });
+    restored.loadVirtualAccessories(HELPERS, { door_opens: 17, house_mode: 'Vacation' });
 
-    expect(restored.stateStore.getHelperState('door_opens')).toBe(17);
-    expect(restored.stateStore.getHelperState('house_mode')).toBe('Vacation');
+    expect(restored.stateStore.getVirtualState('door_opens')).toBe(17);
+    expect(restored.stateStore.getVirtualState('house_mode')).toBe('Vacation');
     restored.teardown();
   });
 
@@ -309,9 +309,9 @@ describe('persistence', () => {
     const restored = new AutomationEngine({ bridge, onTraceComplete: () => {}, onNotify: async () => {} });
     restored.initialize(() => () => {});
 
-    restored.loadHelpers(HELPERS, { bathroom_timer: 'active' });
+    restored.loadVirtualAccessories(HELPERS, { bathroom_timer: 'active' });
 
-    expect(restored.stateStore.getHelperState('bathroom_timer')).toBe('idle');
+    expect(restored.stateStore.getVirtualState('bathroom_timer')).toBe('idle');
     restored.teardown();
   });
 });

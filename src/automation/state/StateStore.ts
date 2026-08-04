@@ -29,7 +29,7 @@ export class StateStore {
   private lastChanged = new Map<string, Map<string, number>>();
 
   // helperId -> value
-  private helperStates = new Map<string, unknown>();
+  private virtualStates = new Map<string, unknown>();
   // accessoryId -> last reported reachability
   private reachability = new Map<string, boolean>();
   private reachabilityListeners = new Set<(accessoryId: string, isReachable: boolean) => void>();
@@ -253,12 +253,12 @@ export class StateStore {
   // Helper state read/write
   // ============================================================
 
-  getHelperState(helperId: string): unknown {
-    return this.helperStates.get(helperId);
+  getVirtualState(helperId: string): unknown {
+    return this.virtualStates.get(helperId);
   }
 
-  updateHelperState(helperId: string, value: unknown): void {
-    this.helperStates.set(helperId, value);
+  updateVirtualState(helperId: string, value: unknown): void {
+    this.virtualStates.set(helperId, value);
   }
 
   // ============================================================
@@ -381,7 +381,7 @@ export class StateStore {
   clear(): void {
     this.deviceStates.clear();
     this.lastChanged.clear();
-    this.helperStates.clear();
+    this.virtualStates.clear();
     this.reachability.clear();
     this.specificListeners.clear();
     this.globalListeners.clear();

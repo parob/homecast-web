@@ -5,7 +5,7 @@ import { serverConnection } from '@/server/connection';
 import { HC_HELPERS } from '@/lib/graphql/queries';
 import { SAVE_HC_HELPER, DELETE_HC_HELPER } from '@/lib/graphql/mutations';
 import { isCreatableVirtualType } from '@/automation/virtual-accessories/catalogue';
-import type { HelperDefinition, HelperOperation } from '@/automation/types/automation';
+import type { VirtualAccessoryDefinition, VirtualOperation } from '@/automation/types/automation';
 
 /** How often to re-read live values while helper accessories are on screen. */
 const STATE_POLL_MS = 10_000;
@@ -23,11 +23,11 @@ interface StoredHelperEntity {
  * would be a tile with a control that does nothing. That can only happen if the
  * helper was created by a newer build, so it's a forwards-compatibility guard.
  */
-function parseHelpers(entities: StoredHelperEntity[]): HelperDefinition[] {
-  const out: HelperDefinition[] = [];
+function parseHelpers(entities: StoredHelperEntity[]): VirtualAccessoryDefinition[] {
+  const out: VirtualAccessoryDefinition[] = [];
   for (const e of entities) {
     try {
-      const parsed = JSON.parse(e.dataJson) as HelperDefinition;
+      const parsed = JSON.parse(e.dataJson) as VirtualAccessoryDefinition;
       if (!parsed?.type || !isCreatableVirtualType(parsed.type)) continue;
       out.push({ ...parsed, id: parsed.id || e.entityId });
     } catch {
@@ -66,7 +66,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
 
   /** roomId → helpers. The home-level folder is keyed by the empty string. */
   const byRoom = useMemo(() => {
-    const map = new Map<string, HelperDefinition[]>();
+    const map = new Map<string, VirtualAccessoryDefinition[]>();
     for (const h of helpers) {
       const key = h.roomId ?? '';
       const list = map.get(key);
@@ -107,7 +107,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
 
   const operate = useCallback(async (
     helperId: string,
-    operation: HelperOperation,
+    operation: VirtualOperation,
     opts: { value?: unknown } = {},
   ) => {
     try {
@@ -121,7 +121,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     }
   }, [homeId, refreshStates]);
 
-  const save = useCallback(async (helper: HelperDefinition) => {
+  const save = useCallback(async (helper: VirtualAccessoryDefinition) => {
     if (!homeId) return;
     try {
       await saveMutation({

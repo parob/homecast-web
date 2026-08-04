@@ -386,7 +386,7 @@ export async function deleteHcAutomation(automationId: string): Promise<boolean>
 interface HcHelper {
   id: string;
   homeId: string;
-  /** Serialized HelperDefinition. */
+  /** Serialized VirtualAccessoryDefinition. */
   data: string;
   createdAt: string;
   updatedAt: string;

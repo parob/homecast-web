@@ -278,7 +278,7 @@ export type Action =
   | NotifyAction
   | CodeAction
   | MergeAction
-  | HelperAction;
+  | VirtualAccessoryAction;
 
 export type ActionType = Action['type'];
 
@@ -445,7 +445,7 @@ export interface MergeAction extends BaseAction {
  * One action with an operation rather than a dozen action types — the editor
  * renders it as a single node whose operations narrow to the helper's type.
  */
-export type HelperOperation =
+export type VirtualOperation =
   // input_boolean
   | 'turn_on' | 'turn_off' | 'toggle'
   // input_number / input_text / input_select / input_datetime / counter
@@ -455,10 +455,15 @@ export type HelperOperation =
   // timer
   | 'start' | 'pause' | 'resume' | 'cancel' | 'finish';
 
-export interface HelperAction extends BaseAction {
-  type: 'helper';
+export interface VirtualAccessoryAction extends BaseAction {
+  /**
+   * 'virtual' is the name. 'helper' is accepted forever because it is written
+   * into automations people already saved — a stored action is data, and
+   * renaming data is a migration, not a rename.
+   */
+  type: 'virtual' | 'helper';
   helperId: string;
-  operation: HelperOperation;
+  operation: VirtualOperation;
   /** For `set` — may contain a {{ template }}. */
   value?: unknown;
   /** For timer `start` — overrides the helper's configured duration. */
@@ -513,21 +518,21 @@ export type InputSelector =
 // Helpers (virtual entities)
 // ============================================================
 
-export type HelperDefinition =
-  | InputBooleanHelper
-  | InputNumberHelper
-  | InputSelectHelper
-  | InputTextHelper
-  | InputDateTimeHelper
-  | TimerHelper
-  | CounterHelper
-  | ScheduleHelper
-  | TemplateSensorHelper
-  | GroupHelper;
+export type VirtualAccessoryDefinition =
+  | BooleanVirtualAccessory
+  | NumberVirtualAccessory
+  | ModeVirtualAccessory
+  | TextVirtualAccessory
+  | DateTimeVirtualAccessory
+  | TimerVirtualAccessory
+  | CounterVirtualAccessory
+  | ScheduleVirtualAccessory
+  | TemplateSensorVirtualAccessory
+  | GroupVirtualAccessory;
 
-export type HelperType = HelperDefinition['type'];
+export type VirtualAccessoryType = VirtualAccessoryDefinition['type'];
 
-interface BaseHelper {
+interface BaseVirtualAccessory {
   id: string;
   name: string;
   homeId: string;
@@ -552,12 +557,12 @@ interface BaseHelper {
   controllable?: boolean;
 }
 
-export interface InputBooleanHelper extends BaseHelper {
+export interface BooleanVirtualAccessory extends BaseVirtualAccessory {
   type: 'input_boolean';
   initialValue?: boolean;
 }
 
-export interface InputNumberHelper extends BaseHelper {
+export interface NumberVirtualAccessory extends BaseVirtualAccessory {
   type: 'input_number';
   min: number;
   max: number;
@@ -566,13 +571,13 @@ export interface InputNumberHelper extends BaseHelper {
   unit?: string;
 }
 
-export interface InputSelectHelper extends BaseHelper {
+export interface ModeVirtualAccessory extends BaseVirtualAccessory {
   type: 'input_select';
   options: string[];
   initialValue?: string;
 }
 
-export interface InputTextHelper extends BaseHelper {
+export interface TextVirtualAccessory extends BaseVirtualAccessory {
   type: 'input_text';
   minLength?: number;
   maxLength?: number;
@@ -580,20 +585,20 @@ export interface InputTextHelper extends BaseHelper {
   initialValue?: string;
 }
 
-export interface InputDateTimeHelper extends BaseHelper {
+export interface DateTimeVirtualAccessory extends BaseVirtualAccessory {
   type: 'input_datetime';
   hasDate: boolean;
   hasTime: boolean;
   initialValue?: string;
 }
 
-export interface TimerHelper extends BaseHelper {
+export interface TimerVirtualAccessory extends BaseVirtualAccessory {
   type: 'timer';
   duration?: Duration;
   restoreOnRestart?: boolean;
 }
 
-export interface CounterHelper extends BaseHelper {
+export interface CounterVirtualAccessory extends BaseVirtualAccessory {
   type: 'counter';
   initial?: number;
   step?: number;
@@ -607,18 +612,18 @@ export interface ScheduleBlock {
   to: string; // HH:MM
 }
 
-export interface ScheduleHelper extends BaseHelper {
+export interface ScheduleVirtualAccessory extends BaseVirtualAccessory {
   type: 'schedule';
   blocks: ScheduleBlock[];
 }
 
-export interface TemplateSensorHelper extends BaseHelper {
+export interface TemplateSensorVirtualAccessory extends BaseVirtualAccessory {
   type: 'template_sensor';
   expression: string;
   unit?: string;
 }
 
-export interface GroupHelper extends BaseHelper {
+export interface GroupVirtualAccessory extends BaseVirtualAccessory {
   type: 'group';
   accessoryIds: string[];
   characteristicType: string;

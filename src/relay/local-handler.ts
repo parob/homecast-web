@@ -557,8 +557,8 @@ async function executeHomeKitActionInner(
       // key as "delete every helper" would let one old pod wipe them all.
       let syncedHelpers: number | undefined;
       if (Array.isArray(helpers)) {
-        const list = helpers as Parameters<typeof engine.syncHelpers>[0];
-        engine.syncHelpers(list);
+        const list = helpers as Parameters<typeof engine.syncVirtualAccessories>[0];
+        engine.syncVirtualAccessories(list);
         syncedHelpers = list.length;
       }
       const list = (automations ?? []) as Parameters<typeof engine.loadAutomations>[0];
@@ -576,7 +576,7 @@ async function executeHomeKitActionInner(
       if (!helper?.id) {
         throw Object.assign(new Error('helper.id required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      engine.upsertHelper(helper as Parameters<typeof engine.upsertHelper>[0]);
+      engine.upsertVirtualAccessory(helper as Parameters<typeof engine.upsertVirtualAccessory>[0]);
       return { synced: helper.id };
     }
 
@@ -593,7 +593,7 @@ async function executeHomeKitActionInner(
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
-      return { states: engine.getHelperStates() };
+      return { states: engine.getVirtualStates() };
     }
 
     // A person operating a helper by hand. Same vocabulary as the `helper`
@@ -611,19 +611,19 @@ async function executeHomeKitActionInner(
       if (!helperId || !operation) {
         throw Object.assign(new Error('helperId and operation required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      if (!engine.getHelper(helperId)) {
+      if (!engine.getVirtualAccessory(helperId)) {
         throw Object.assign(new Error(`No such helper: ${helperId}`), { code: ErrorCode.INVALID_REQUEST });
       }
       try {
-        engine.operateHelper(
+        engine.operateVirtualAccessory(
           helperId,
-          operation as Parameters<typeof engine.operateHelper>[1],
+          operation as Parameters<typeof engine.operateVirtualAccessory>[1],
           { value, step, duration },
         );
       } catch (e) {
         throw Object.assign(new Error(e instanceof Error ? e.message : String(e)), { code: ErrorCode.INVALID_REQUEST });
       }
-      return { helperId, operation, state: engine.getHelperStates()[helperId] };
+      return { helperId, operation, state: engine.getVirtualStates()[helperId] };
     }
 
     // Named to match automation.unload: the row is already gone from the
@@ -638,7 +638,7 @@ async function executeHomeKitActionInner(
       if (!helperId) {
         throw Object.assign(new Error('helperId required'), { code: ErrorCode.INVALID_REQUEST });
       }
-      engine.removeHelper(helperId);
+      engine.removeVirtualAccessory(helperId);
       return { deleted: helperId };
     }
 

@@ -18,6 +18,8 @@ function nodeTypeToFilename(nodeType: string): string {
     run_scene: 'run-scene',
     http_request: 'http-request',
     sub_workflow: 'sub-workflow',
+    // The published doc is still helper.md; renaming it needs a docs deploy.
+    virtual: 'helper',
   };
   return mapping[nodeType] ?? nodeType;
 }

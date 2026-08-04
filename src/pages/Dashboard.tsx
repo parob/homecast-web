@@ -63,7 +63,7 @@ import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccess
  * name because rooms are grouped by name.
  */
 const HOME_LEVEL_ROOM = '\u0000home-level';
-import type { HelperDefinition } from '@/automation/types/automation';
+import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
@@ -1505,13 +1505,13 @@ const Dashboard = () => {
   // Helper accessories: ours, not HomeKit's, so they live in the room grid
   // alongside real accessories and in a home-level folder above the rooms.
   const [helperEditorOpen, setHelperEditorOpen] = useState(false);
-  const [editingHelper, setEditingHelper] = useState<HelperDefinition | undefined>(undefined);
+  const [editingHelper, setEditingHelper] = useState<VirtualAccessoryDefinition | undefined>(undefined);
   const [helperDefaultRoomId, setHelperDefaultRoomId] = useState<string | undefined>(undefined);
   // Read through refs: this callback is created far above where the helper list
   // and the editor exist, and threading them as deps would rebuild every tile's
   // menu on each poll.
-  const helperAccessoriesRef = useRef<HelperDefinition[]>([]);
-  const openHelperEditorRef = useRef<(opts?: { helper?: HelperDefinition; roomId?: string }) => void>(() => {});
+  const helperAccessoriesRef = useRef<VirtualAccessoryDefinition[]>([]);
+  const openHelperEditorRef = useRef<(opts?: { helper?: VirtualAccessoryDefinition; roomId?: string }) => void>(() => {});
 
   /**
    * Edit callback for an accessory tile, or undefined when there is nothing to
@@ -1524,7 +1524,7 @@ const Dashboard = () => {
     return () => openHelperEditorRef.current({ helper });
   }, []);
 
-  const openHelperEditor = useCallback((opts: { helper?: HelperDefinition; roomId?: string } = {}) => {
+  const openHelperEditor = useCallback((opts: { helper?: VirtualAccessoryDefinition; roomId?: string } = {}) => {
     setEditingHelper(opts.helper);
     setHelperDefaultRoomId(opts.roomId);
     setHelperEditorOpen(true);

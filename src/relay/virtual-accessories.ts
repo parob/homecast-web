@@ -12,7 +12,7 @@
 // where the read and the write are serviced.
 
 import type { HomeKitAccessory, HomeKitService } from '../native/homekit-bridge';
-import type { HelperDefinition } from '../automation/types/automation';
+import type { VirtualAccessoryDefinition } from '../automation/types/automation';
 import { getAutomationEngine } from '../automation';
 
 /**
@@ -72,7 +72,7 @@ export interface VirtualAccessory extends HomeKitAccessory {
 }
 
 /** Build the accessory representation of one helper. */
-export function toVirtualAccessory(helper: HelperDefinition, value: unknown): VirtualAccessory {
+export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: unknown): VirtualAccessory {
   const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'helper_value';
   const writable = helper.controllable !== false;
 
@@ -136,9 +136,9 @@ export function listVirtualAccessories(
   const engine = getAutomationEngine();
   if (!engine) return [];
 
-  const states = engine.getHelperStates();
+  const states = engine.getVirtualStates();
   const out: VirtualAccessory[] = [];
-  for (const helper of engine.helperManager.getAllHelpers()) {
+  for (const helper of engine.virtualManager.getAllVirtualAccessories()) {
     if (opts.homeId && helper.homeId?.toUpperCase() !== opts.homeId.toUpperCase()) continue;
     if (opts.roomId && helper.roomId !== opts.roomId) continue;
     const accessory = toVirtualAccessory(helper, states[helper.id]);
@@ -149,8 +149,8 @@ export function listVirtualAccessories(
 }
 
 /** The helper behind an accessory id, or undefined if it isn't one. */
-export function getVirtualAccessoryDefinition(accessoryId: string): HelperDefinition | undefined {
-  return getAutomationEngine()?.getHelper(accessoryId);
+export function getVirtualAccessoryDefinition(accessoryId: string): VirtualAccessoryDefinition | undefined {
+  return getAutomationEngine()?.getVirtualAccessory(accessoryId);
 }
 
 /**
@@ -162,7 +162,7 @@ export function getVirtualAccessoryDefinition(accessoryId: string): HelperDefini
  * accessory's, right up to the point where HomeKit would have been asked.
  */
 export function writeToOperation(
-  helper: HelperDefinition,
+  helper: VirtualAccessoryDefinition,
   value: unknown,
 ): { operation: 'set' | 'turn_on' | 'turn_off' | 'start' | 'cancel'; value?: unknown } {
   if (helper.type === 'input_boolean') {
@@ -187,7 +187,7 @@ export function writeToOperation(
  */
 export function applyVirtualWrite(accessoryId: string, value: unknown): { value: unknown } | null {
   const engine = getAutomationEngine();
-  const helper = engine?.getHelper(accessoryId);
+  const helper = engine?.getVirtualAccessory(accessoryId);
   if (!engine || !helper) return null;
 
   if (helper.controllable === false) {
@@ -196,13 +196,13 @@ export function applyVirtualWrite(accessoryId: string, value: unknown): { value:
     });
   }
   const { operation, value: opValue } = writeToOperation(helper, value);
-  engine.operateHelper(helper.id, operation, { value: opValue });
-  return { value: engine.getHelperStates()[helper.id] };
+  engine.operateVirtualAccessory(helper.id, operation, { value: opValue });
+  return { value: engine.getVirtualStates()[helper.id] };
 }
 
 /** Current value of a helper accessory, or null when the id isn't one. */
 export function readVirtualValue(accessoryId: string): { value: unknown } | null {
   const engine = getAutomationEngine();
-  if (!engine?.getHelper(accessoryId)) return null;
-  return { value: engine.getHelperStates()[accessoryId] };
+  if (!engine?.getVirtualAccessory(accessoryId)) return null;
+  return { value: engine.getVirtualStates()[accessoryId] };
 }
