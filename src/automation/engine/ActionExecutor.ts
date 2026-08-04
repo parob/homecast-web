@@ -249,7 +249,7 @@ export class ActionExecutor {
       case 'merge':
         return this.executeMerge(action, ctx, tags);
       case 'virtual':
-        return this.executeHelper(action, ctx, tags);
+        return this.executeVirtual(action, ctx, tags);
       default:
         console.warn(`[ActionExecutor] Unsupported action type: ${(action as Action).type}`);
     }
@@ -335,16 +335,16 @@ export class ActionExecutor {
   }
 
   // ============================================================
-  // Helpers (virtual switches, timers, counters, modes)
+  // Virtual accessories (switches, timers, counters, modes)
   // ============================================================
 
-  private async executeHelper(action: VirtualAccessoryAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
-    const stepIdx = ctx.beginStep('action', action.id, 'helper',
-      `Helper ${action.operation} ${action.accessoryId}`,
+  private async executeVirtual(action: VirtualAccessoryAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
+    const stepIdx = ctx.beginStep('action', action.id, 'virtual',
+      `Virtual accessory ${action.operation} ${action.accessoryId}`,
       { accessoryId: action.accessoryId, operation: action.operation }, tags);
 
     if (!this.virtualManager) {
-      const error = 'Helpers are not available in this engine instance';
+      const error = 'Virtual accessories are not available in this engine instance';
       ctx.setNodeOutput(action.id, { accessoryId: action.accessoryId, success: false, error });
       ctx.endStep(stepIdx, 'error', undefined, error);
       throw new Error(error);

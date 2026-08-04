@@ -104,7 +104,7 @@ const AccessoryWidgetInner: React.FC<AccessoryWidgetProps> = (props) => {
   }
 
   switch (widgetType) {
-    case 'helper':
+    case 'virtual':
       return <VirtualAccessoryWidget {...props} />;
     case 'lightbulb':
       return <LightbulbWidget {...props} />;

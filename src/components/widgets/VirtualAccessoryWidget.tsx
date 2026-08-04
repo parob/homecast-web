@@ -32,6 +32,8 @@ interface VirtualAccessoryShape {
   virtualType?: string;
   isUserEditable?: boolean;
   virtualOptions?: string[];
+  virtualHasDate?: boolean;
+  virtualHasTime?: boolean;
   /**
    * Pre-rename spellings, read but never written — the same inbound-alias
    * pattern `power_state` uses. In cloud mode the relay's WebView keeps its
@@ -87,7 +89,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       title={accessory.name}
       subtitle={display}
       icon={<Icon className="h-4 w-4" />}
-      isOn={charType === 'helper_timer' ? running : false}
+      isOn={charType === 'virtual_timer' ? running : false}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
@@ -171,12 +173,75 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           </button>
         );
 
+      case 'virtual_text':
+        return (
+          <VirtualTextControl
+            label={accessory.name}
+            value={typeof value === 'string' ? value : ''}
+            onCommit={set}
+          />
+        );
+
+      case 'virtual_datetime':
+        // The input's own value format is the storage format: the engine keeps
+        // whatever string it is given, and `date`/`time`/`datetime-local` all
+        // produce sortable ISO-ish text that expressions can compare.
+        return (
+          <input
+            type={
+              meta.virtualHasDate === false ? 'time'
+                : meta.virtualHasTime === false ? 'date'
+                  : 'datetime-local'
+            }
+            className="h-8 rounded-md border bg-background px-2 text-xs max-w-full"
+            aria-label={`Set ${accessory.name}`}
+            value={typeof value === 'string' ? value : ''}
+            onClick={e => e.stopPropagation()}
+            onChange={e => set(e.target.value)}
+          />
+        );
+
       default:
-        // Text and date-time have no one-gesture control; the value is the tile.
         return undefined;
     }
   }
 });
+
+/**
+ * Free text needs a draft: the value is re-read every 10s while the tile is on
+ * screen, and binding the input straight to it would overwrite what is being
+ * typed. Committed on Enter or on leaving the field, and Escape abandons it.
+ */
+const VirtualTextControl: React.FC<{
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+}> = ({ label, value, onCommit }) => {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const shown = draft ?? value;
+
+  const commit = () => {
+    if (draft !== null && draft !== value) onCommit(draft);
+    setDraft(null);
+  };
+
+  return (
+    <input
+      type="text"
+      className="h-8 w-28 rounded-md border bg-background px-2 text-xs"
+      aria-label={`Set ${label}`}
+      value={shown}
+      onClick={e => e.stopPropagation()}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); }
+        if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur(); }
+      }}
+    />
+  );
+};
 
 function clamp(v: number, char?: { minValue?: number; maxValue?: number }): number {
   let out = v;

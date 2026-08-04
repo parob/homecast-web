@@ -107,7 +107,7 @@ function toStoredAutomation(a: { id: string; homeId: string; data: string; creat
 function toStoredVirtualAccessory(h: { id: string; homeId: string; data: string; createdAt: string; updatedAt?: string }) {
   return {
     id: h.id,
-    entityType: 'helper',
+    entityType: 'hc_virtual_accessory',
     entityId: h.id,
     parentId: h.homeId,
     dataJson: h.data,

@@ -69,6 +69,9 @@ export interface VirtualAccessory extends HomeKitAccessory {
   virtualType?: string;
   /** False when the helper is read-only from the dashboard. */
   isUserEditable?: boolean;
+  /** input_datetime only — which halves it holds. */
+  virtualHasDate?: boolean;
+  virtualHasTime?: boolean;
 }
 
 /** Build the accessory representation of one helper. */
@@ -118,6 +121,12 @@ export function toVirtualAccessory(helper: VirtualAccessoryDefinition, value: un
     // Options travel on the service name for input_select clients that want
     // them; the canonical list stays in the helper definition.
     ...(helper.type === 'input_select' ? { virtualOptions: helper.options } : {}),
+    // Which halves a date-time holds. A client can't infer this from the value
+    // — an unset one is an empty string — and it decides whether the control is
+    // a date picker, a clock, or both.
+    ...(helper.type === 'input_datetime'
+      ? { virtualHasDate: helper.hasDate, virtualHasTime: helper.hasTime }
+      : {}),
   } as VirtualAccessory;
 }
 

@@ -10,7 +10,7 @@
 import { getPrimaryServiceType, normalizeServiceType, type ServiceType } from './types';
 
 export type WidgetType =
-  | 'helper'
+  | 'virtual'
   | 'lightbulb' | 'switch' | 'outlet' | 'thermostat'
   | 'lock' | 'fan' | 'air_purifier' | 'humidifier'
   | 'window_covering' | 'garage_door' | 'door_window'
@@ -118,13 +118,13 @@ export function resolveWidgetType(input: {
       st => st !== 'accessory_information' && st !== 'protocol_information'
     ).length === 0;
 
-  // Helper accessories carry their own characteristics because HomeKit has no
+  // Virtual accessories carry their own characteristics because HomeKit has no
   // enum, countdown or free-text equivalent. Matched before the info check:
   // they have exactly one service, and it isn't one HomeKit knows, so the
   // "nothing controllable here" test would otherwise write them off.
-  const helperService = serviceTypes.find(st => st.startsWith('virtual'));
-  if (helperService) {
-    return { widgetType: 'helper' };
+  const virtualService = serviceTypes.find(st => st.startsWith('virtual'));
+  if (virtualService) {
+    return { widgetType: 'virtual' };
   }
 
   if (isInfoDevice) {
