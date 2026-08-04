@@ -17,7 +17,7 @@ import { HOME_ID } from './fixtures';
 
 /** Save mutations seen, so we can assert what a drop actually wrote. */
 async function captureSaves(page: Page) {
-  const saves: Array<{ helperId: string | null; data: Record<string, unknown> }> = [];
+  const saves: Array<{ accessoryId: string | null; data: Record<string, unknown> }> = [];
   // The GraphQL endpoint is the ROOT, not /graphql — cookie-based calls from a
   // cross-subdomain context post to `/`. Matching '**/graphql' silently caught
   // nothing, so every "no save happened" assertion passed against an array that
@@ -26,9 +26,9 @@ async function captureSaves(page: Page) {
     if (request.method() === 'POST') {
       try {
         const body = request.postDataJSON();
-        if (body?.operationName === 'SaveHcHelper') {
+        if (body?.operationName === 'SaveVirtualAccessory') {
           saves.push({
-            helperId: body.variables?.helperId ?? null,
+            accessoryId: body.variables?.accessoryId ?? null,
             data: JSON.parse(body.variables?.data ?? '{}'),
           });
         }

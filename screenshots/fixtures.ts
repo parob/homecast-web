@@ -633,7 +633,7 @@ export const HELPER_MODE_ID = 'helper-home-mode';
 export const HELPER_TIMER_ID = 'helper-porch-cooldown';
 export const HELPER_COUNTER_ID = 'helper-door-opens';
 
-export const MOCK_HC_HELPERS = [
+export const MOCK_VIRTUAL_ACCESSORIES = [
   {
     id: 'se-helper-1',
     entityType: 'hc_helper',
@@ -734,10 +734,10 @@ export const HELPER_ACCESSORIES = [
     services: [{
       id: `${HELPER_MODE_ID}:service`,
       name: 'Home Mode',
-      serviceType: 'helper_mode',
+      serviceType: 'virtual_mode',
       characteristics: [{
-        id: `${HELPER_MODE_ID}:helper_mode`,
-        characteristicType: 'helper_mode',
+        id: `${HELPER_MODE_ID}:virtual_mode`,
+        characteristicType: 'virtual_mode',
         value: 'Away',
         isReadable: true,
         isWritable: true,
@@ -758,10 +758,10 @@ export const HELPER_ACCESSORIES = [
     services: [{
       id: `${HELPER_COUNTER_ID}:service`,
       name: 'Door Opens Today',
-      serviceType: 'helper_count',
+      serviceType: 'virtual_count',
       characteristics: [{
-        id: `${HELPER_COUNTER_ID}:helper_count`,
-        characteristicType: 'helper_count',
+        id: `${HELPER_COUNTER_ID}:virtual_count`,
+        characteristicType: 'virtual_count',
         value: 4,
         isReadable: true,
         isWritable: true,
@@ -773,7 +773,7 @@ export const HELPER_ACCESSORIES = [
 ];
 
 /** What the relay reports for the helpers above. */
-export const MOCK_HELPER_STATES: Record<string, unknown> = {
+export const MOCK_VIRTUAL_STATES: Record<string, unknown> = {
   [HELPER_MODE_ID]: 'Away',
   [HELPER_TIMER_ID]: 'idle',
   [HELPER_COUNTER_ID]: 4,

@@ -19,8 +19,8 @@ import {
   MOCK_DEALS, MOCK_DEAL_PRICE_HISTORY,
   MOCK_HC_AUTOMATIONS, MOCK_HOMEKIT_AUTOMATIONS,
 
-  MOCK_HC_HELPERS,
-  MOCK_HELPER_STATES,
+  MOCK_VIRTUAL_ACCESSORIES,
+  MOCK_VIRTUAL_STATES,
   HELPER_ACCESSORIES,
 } from './fixtures';
 
@@ -195,8 +195,8 @@ function resolveGraphQL(
     case 'HcAutomations':
       return { hcAutomations: MOCK_HC_AUTOMATIONS };
 
-    case 'HcHelpers':
-      return { hcHelpers: MOCK_HC_HELPERS };
+    case 'VirtualAccessories':
+      return { virtualAccessories: MOCK_VIRTUAL_ACCESSORIES };
 
     case 'SaveHcAutomation':
       return { saveHcAutomation: MOCK_HC_AUTOMATIONS[0] };
@@ -271,14 +271,14 @@ function handleWsRequest(
     // Helper accessories read their live values from the engine, and operating
     // one round-trips through the relay — both have to answer or every tile
     // renders disabled.
-    case 'automation.helper_states':
-      return { states: MOCK_HELPER_STATES };
+    case 'automation.virtual_states':
+      return { states: MOCK_VIRTUAL_STATES };
 
-    case 'automation.helper_operate':
+    case 'automation.virtual_operate':
       return {
-        helperId: payload.helperId,
+        accessoryId: payload.accessoryId,
         operation: payload.operation,
-        state: MOCK_HELPER_STATES[payload.helperId as string],
+        state: MOCK_VIRTUAL_STATES[payload.accessoryId as string],
       };
 
     case 'homes.list':

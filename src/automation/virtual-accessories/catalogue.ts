@@ -222,7 +222,7 @@ export function validateVirtualAccessory(
   siblings: VirtualAccessoryDefinition[] = [],
 ): string | null {
   const name = helper.name.trim();
-  if (!name) return 'Give it a name.';
+  if (!name) return 'A name is required.';
 
   // Unique within its location. Two identically-named tiles side by side are
   // indistinguishable — you cannot tell which one an automation means, and you
@@ -242,7 +242,7 @@ export function validateVirtualAccessory(
   switch (helper.type) {
     case 'input_select': {
       const options = helper.options.map(o => o.trim()).filter(Boolean);
-      if (options.length < 2) return 'A mode needs at least two options.';
+      if (options.length < 2) return 'A mode requires at least two options.';
       if (new Set(options).size !== options.length) return 'Options must be unique.';
       if (helper.initialValue && !options.includes(helper.initialValue)) {
         return 'The starting value must be one of the options.';
@@ -267,11 +267,11 @@ export function validateVirtualAccessory(
     case 'timer': {
       const d = helper.duration;
       const total = (d?.hours ?? 0) + (d?.minutes ?? 0) + (d?.seconds ?? 0);
-      if (!total) return 'Set how long the timer runs.';
+      if (!total) return 'A duration is required.';
       return null;
     }
     case 'input_datetime':
-      if (!helper.hasDate && !helper.hasTime) return 'Include a date, a time, or both.';
+      if (!helper.hasDate && !helper.hasTime) return 'A date, a time, or both must be included.';
       return null;
     default:
       return null;

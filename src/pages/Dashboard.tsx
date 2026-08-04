@@ -5603,6 +5603,13 @@ const Dashboard = () => {
                 </>
               )}
             </DropdownMenuItem>
+            {/* The room header has its own menu branch, and creating was only in
+                the home one — so viewing a room offered no way to add anything
+                to it. Pre-selects this room, since that is where you asked. */}
+            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
+              <Blocks className="h-4 w-4 mr-2" />
+              New Virtual Accessory
+            </DropdownMenuItem>
           </div>
         ) : selectedHomeId && hasContentAccess ? (
           <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">

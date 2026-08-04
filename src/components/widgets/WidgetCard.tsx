@@ -322,14 +322,30 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
    * once and a new widget can't forget it.
    */
   const isVirtualAccessory = Boolean((accessory as { isVirtual?: boolean } | undefined)?.isVirtual);
+  // The badge doubles as the way in to editing. Edit also lives in the context
+  // menu, but a right-click is not something you find by looking — and unlike a
+  // HomeKit accessory, everything about this one is editable, so it needs an
+  // affordance you can see.
   const virtualBadge = isVirtualAccessory ? (
-    <span
-      className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-60"
-      title="Virtual accessory — a value your automations own"
-      aria-label="Virtual accessory"
-    >
-      <Sparkles className="h-3 w-3" />
-    </span>
+    effectiveOnEdit ? (
+      <button
+        type="button"
+        className="absolute top-1.5 left-1.5 z-30 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity"
+        title="Virtual accessory — click to edit"
+        aria-label="Edit virtual accessory"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); effectiveOnEdit(); }}
+      >
+        <Sparkles className="h-3 w-3" />
+      </button>
+    ) : (
+      <span
+        className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-60"
+        title="Virtual accessory — a value your automations own"
+        aria-label="Virtual accessory"
+      >
+        <Sparkles className="h-3 w-3" />
+      </span>
+    )
   ) : null;
 
   // Expanded state styling: just z-index, shadow is on ExpandedOverlay wrapper

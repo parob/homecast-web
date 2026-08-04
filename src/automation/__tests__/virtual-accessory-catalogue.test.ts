@@ -108,8 +108,8 @@ describe('validateVirtualAccessory', () => {
   it('rejects a timer with no duration', () => {
     const h = named('timer');
     if (h.type !== 'timer') throw new Error('wrong type');
-    expect(validateVirtualAccessory({ ...h, duration: {} })).toMatch(/how long/i);
-    expect(validateVirtualAccessory({ ...h, duration: undefined })).toMatch(/how long/i);
+    expect(validateVirtualAccessory({ ...h, duration: {} })).toMatch(/duration/i);
+    expect(validateVirtualAccessory({ ...h, duration: undefined })).toMatch(/duration/i);
   });
 
   it('rejects a date-time that is neither a date nor a time', () => {
