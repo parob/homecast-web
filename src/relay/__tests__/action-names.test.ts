@@ -44,3 +44,35 @@ describe('relay action dispatch', () => {
     }
   });
 });
+
+/**
+ * Every relay action the app asks for must exist on the relay.
+ *
+ * The rename to "virtual accessory" left `useVirtualAccessories` calling
+ * `automation.helper_states` and `automation.helper_operate` after the relay
+ * had renamed both. Nothing failed loudly: the request fell through to a
+ * handler that didn't know the action, and the dashboard reads any error from
+ * that poll as "the engine is unreachable" — which disables every control on
+ * every virtual accessory. A rename that misses one side is invisible, and this
+ * is the third time it has cost a working feature.
+ */
+describe('actions the app requests exist on the relay', () => {
+  const CALLERS = [
+    'src/components/virtual-accessories/useVirtualAccessories.ts',
+    'src/pages/Dashboard.tsx',
+  ];
+
+  it('every automation.* action requested is a case in local-handler', () => {
+    const labels = new Set(caseLabels());
+    const missing: string[] = [];
+
+    for (const file of CALLERS) {
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/'(automation\.[a-z_]+)'/g)) {
+        if (!labels.has(m[1])) missing.push(`${file}: ${m[1]}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+});
