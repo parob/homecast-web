@@ -102,7 +102,9 @@ const TemperatureDial: React.FC<{
       >
         <CircularSlider
           size={size}
-          trackWidth={14}
+          // Proportional, not fixed: a 14px ring that reads right at 150px looks
+          // like a thread once the dial becomes the panel's hero at 190.
+          trackWidth={isLarge ? Math.round(size * 0.125) : 14}
           handleSize={0}
           minValue={min}
           maxValue={max}
@@ -539,6 +541,11 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
   // true for it — "off" there means the target mode is Off, not the flag.
   const isRunning = isHeaterCooler ? isActive : effectiveMode !== 'off';
 
+  // Expanded, the mode row carries Off, so a power switch in the header is a
+  // second control for the same thing. It stays hidden in both states — the
+  // header must not gain a control when the unit stops.
+  const hideHeaderSwitch = expanded && hasModeControls;
+
   // One source for the mode colour so the selected pill and the dial arc agree —
   // a blue Cool arc under an orange Cool button read as two different states.
   const modeButtonClasses = (isSelected: boolean) => {
@@ -551,9 +558,13 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     // unit would resume in, which left a switched-off air conditioner painting
     // its buttons cooling-blue.
     if (!isRunning) {
+      // A translucent dark fill rather than bg-muted: when a widget is off over
+      // a dark background WidgetWrapper forces every span to white, which was
+      // white text on a pale grey button. This reads in both, because the text
+      // colour flips with the background and the fill follows it.
       return isSelected
-        ? 'bg-slate-500 hover:bg-slate-600 text-white border-transparent'
-        : 'bg-muted hover:bg-muted/80 border-transparent';
+        ? 'bg-slate-600 hover:bg-slate-700 text-white border-transparent'
+        : 'bg-black/15 hover:bg-black/25 border-transparent';
     }
     const selectedBg = effectiveMode === 'cool' ? 'bg-sky-500 hover:bg-sky-600'
       : effectiveMode === 'heat' ? 'bg-orange-500 hover:bg-orange-600'
@@ -714,7 +725,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
               })}
             </div>
           </div>
-        ) : activeChar?.isWritable && (!isActive || noResponse || expanded) ? (
+        ) : activeChar?.isWritable && (!isActive || noResponse) && !hideHeaderSwitch ? (
           // Expanded, the switch is always here rather than appearing only once
           // the unit is off — the header has to look the same in both states.
           <div className="flex items-center gap-2">
