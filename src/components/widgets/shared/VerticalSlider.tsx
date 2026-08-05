@@ -141,12 +141,12 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       {/* Readout sits above the fill line so it stays legible at any value. */}
       <div className={`relative flex h-full flex-col items-center justify-between pointer-events-none ${isDense ? 'py-3' : 'py-4'}`}>
         <div className="px-1 text-center">
-          <div className={`font-semibold tabular-nums drop-shadow-sm ${isDense ? 'text-lg' : 'text-2xl'}`}>{readout}</div>
-          {label && <div className={`opacity-70 ${isDense ? 'text-[10px] leading-tight' : 'text-xs'}`}>{label}</div>}
+          <div className={`font-semibold tabular-nums drop-shadow-sm ${isDense ? 'text-[18px]' : 'text-[24px]'}`}>{readout}</div>
+          {label && <div className={`opacity-70 ${isDense ? 'text-[10px] leading-tight' : 'text-[12px]'}`}>{label}</div>}
         </div>
         {Icon && (
-          <div className={`flex items-center justify-center rounded-full bg-white/25 backdrop-blur-sm ${isDense ? 'h-8 w-8' : 'h-9 w-9'}`}>
-            <Icon className={isDense ? 'h-4 w-4' : 'h-5 w-5'} />
+          <div className={`flex items-center justify-center rounded-full bg-white/25 backdrop-blur-sm ${isDense ? 'h-[32px] w-[32px]' : 'h-[36px] w-[36px]'}`}>
+            <Icon className={isDense ? 'h-[16px] w-[16px]' : 'h-[20px] w-[20px]'} />
           </div>
         )}
       </div>

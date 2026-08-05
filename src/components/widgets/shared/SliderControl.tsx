@@ -56,8 +56,8 @@ export const SliderControl: React.FC<SliderControlProps> = ({
   const trackColorClass = trackColorClassProp !== undefined ? trackColorClassProp : (useColoredSlider ? colors.sliderTrack : undefined);
   const thumbColorClass = useColoredSlider ? `border-${colors.sliderThumb.replace('bg-', '')}` : undefined;
 
-  const labelTextClass = compact ? 'text-[10px]' : (isLarge ? 'text-sm' : 'text-xs');
-  const iconSizeClass = compact ? 'h-2.5 w-2.5' : (isLarge ? 'h-4 w-4' : 'h-3 w-3');
+  const labelTextClass = compact ? 'text-[10px]' : (isLarge ? 'text-[13px]' : 'text-xs');
+  const iconSizeClass = compact ? 'h-2.5 w-2.5' : (isLarge ? 'h-[16px] w-[16px]' : 'h-3 w-3');
 
   return (
     <div className={`${compact ? "space-y-1" : "space-y-2"} ${disabled ? 'cursor-not-allowed' : ''}`}>

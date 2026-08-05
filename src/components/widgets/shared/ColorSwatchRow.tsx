@@ -42,7 +42,7 @@ export const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({
     Math.abs(p.hue - hue) <= 6 && Math.abs(p.saturation - saturation) <= 10;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+    <div className="flex flex-wrap items-center gap-[6px]" onClick={(e) => e.stopPropagation()}>
       {COLOR_PRESETS.map((p) => {
         const active = isActive(p);
         return (
@@ -53,7 +53,7 @@ export const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({
             aria-pressed={active}
             disabled={disabled}
             onClick={() => onSelect(p.hue, p.saturation)}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-transform ${
+            className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full transition-transform ${
               disabled ? 'cursor-not-allowed opacity-50' : 'hover:scale-110 active:scale-95'
             } ${active ? 'ring-2 ring-offset-2 ring-offset-transparent ring-white/80' : ''}`}
             style={{ backgroundColor: `hsl(${p.hue} ${p.saturation}% 50%)` }}
@@ -68,7 +68,7 @@ export const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({
         aria-pressed={pickerOpen}
         disabled={disabled}
         onClick={onTogglePicker}
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/20 transition-colors ${
+        className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-current/20 transition-colors ${
           disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-white/20'
         } ${pickerOpen ? 'bg-white/25' : 'bg-white/10'}`}
       >

@@ -45,14 +45,14 @@ const ModeButtons: React.FC<{
   }, [buttons.length]);
 
   return (
-    <div ref={containerRef} className="flex gap-1 flex-nowrap overflow-hidden">
+    <div ref={containerRef} className={`flex flex-nowrap overflow-hidden ${large ? "gap-[6px]" : "gap-1"}`}>
       {buttons.map((btn) => (
         <Button
           key={btn.key}
           variant="outline"
           size="sm"
           onClick={() => { if (!viewOnly) btn.onClick(); }}
-          className={`flex-1 min-w-0 ${useSmallFont ? 'rounded-md text-[10px] h-6 px-0.5' : (large ? 'rounded-xl text-sm font-medium h-11 px-2' : 'rounded-md text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${viewOnly ? 'cursor-not-allowed' : ''}`}
+          className={`flex-1 min-w-0 ${useSmallFont ? 'rounded-md text-[10px] h-6 px-0.5' : (large ? 'rounded-xl text-[15px] font-medium h-[44px] px-2' : 'rounded-md text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${viewOnly ? 'cursor-not-allowed' : ''}`}
           disabled={disabled}
         >
           <span className="truncate">{btn.label}</span>
@@ -130,13 +130,13 @@ const TemperatureDial: React.FC<{
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ cursor: 'default' }}>
           {currentTemp !== null && currentTemp !== undefined && (
             <>
-              <span className={`${isLarge ? 'text-base' : 'text-sm'} font-bold text-muted-foreground`}>{Number(currentTemp).toFixed(1)}°</span>
+              <span className={`${isLarge ? 'text-[16px]' : 'text-sm'} font-bold text-muted-foreground`}>{Number(currentTemp).toFixed(1)}°</span>
               <ChevronDown className="h-3 w-3 text-muted-foreground -my-0.5" />
             </>
           )}
-          <span className={`${isLarge ? 'text-2xl' : 'text-xl'} font-bold`}>{displayValue.toFixed(1)}°</span>
+          <span className={`${isLarge ? 'text-[26px]' : 'text-xl'} font-bold`}>{displayValue.toFixed(1)}°</span>
           {status && (
-            <span className="text-[9px] font-medium text-muted-foreground mt-0.5">{status}</span>
+            <span className={`${isLarge ? "text-[11px]" : "text-[9px]"} font-medium text-muted-foreground mt-0.5`}>{status}</span>
           )}
         </div>
       </div>
@@ -739,7 +739,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
             <div className="flex flex-col">
               {/* Mode row and fan share the space under the dial; without a gap
                   the fan label sat directly on top of the mode buttons. */}
-              <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-4' : ''}`}>
+              <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-[16px]' : ''}`}>
                 {/* Mode selection buttons (including Off) */}
                 {(() => {
                   // Build all mode buttons including Off
