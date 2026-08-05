@@ -10,7 +10,6 @@ import type { DealInfo, DealTier, HomeKitAccessory } from './graphql/types';
 
 export interface DealMatch {
   deal: DealInfo;
-  isRelated: boolean;
 }
 
 export const DEAL_TIER_STYLES = {
@@ -22,17 +21,24 @@ export const DEAL_TIER_STYLES = {
 const TIER_ORDER: Record<DealTier, number> = { good: 0, great: 1, hot: 2 };
 
 /**
- * Extract manufacturer from an accessory's characteristics.
+ * Extract the HomeKit identity (manufacturer + model) of an accessory —
+ * the same pair the server maps to a device.
  */
-function getAccessoryManufacturer(accessory: HomeKitAccessory): string | null {
+export function getAccessoryIdentity(
+  accessory: HomeKitAccessory,
+): { manufacturer: string; model: string } | null {
+  let manufacturer: string | null = null;
+  let model: string | null = null;
   for (const svc of accessory.services) {
     for (const char of svc.characteristics) {
       if (char.characteristicType === 'manufacturer' && char.value) {
-        return String(char.value);
+        manufacturer = String(char.value);
+      } else if (char.characteristicType === 'model' && char.value) {
+        model = String(char.value);
       }
     }
   }
-  return null;
+  return manufacturer && model ? { manufacturer, model } : null;
 }
 
 /**
@@ -51,8 +57,11 @@ function getUnitPrice(deal: DealInfo): number {
 /**
  * Find the best deal for an accessory.
  *
- * Since deals are pre-matched by the server (via HomeKitMapping -> Device -> ProductPage -> Deal),
- * we just need to connect deals to accessories by matching the manufacturer.
+ * Deals are matched server-side on the exact HomeKit (manufacturer, model)
+ * pair, and carry those pairs in `mappings`. Matching here on the same exact
+ * pair keeps the badge on the product that is actually on offer — the old
+ * manufacturer-substring test badged every accessory of the brand, so one
+ * Hue deal lit up all thirty Hue bulbs in a home.
  */
 export function findDealForAccessory(
   accessory: HomeKitAccessory,
@@ -60,16 +69,17 @@ export function findDealForAccessory(
 ): DealMatch | null {
   if (!deals.length) return null;
 
-  const manufacturer = getAccessoryManufacturer(accessory);
-  if (!manufacturer) return null;
+  const identity = getAccessoryIdentity(accessory);
+  if (!identity) return null;
 
-  const mfrLower = manufacturer.toLowerCase();
+  const mfr = identity.manufacturer.toLowerCase();
+  const model = identity.model.toLowerCase();
 
-  // Find deals whose deviceManufacturer matches this accessory's manufacturer
-  const matching = deals.filter(d => {
-    const dm = d.deviceManufacturer.toLowerCase();
-    return mfrLower.includes(dm) || dm.includes(mfrLower.split(' ')[0]);
-  });
+  const matching = deals.filter(d =>
+    (d.mappings ?? []).some(
+      m => m.manufacturer.toLowerCase() === mfr && m.model.toLowerCase() === model,
+    ),
+  );
 
   if (!matching.length) return null;
 
@@ -80,5 +90,5 @@ export function findDealForAccessory(
     return getUnitPrice(a) < getUnitPrice(b) ? a : b;
   });
 
-  return { deal: best, isRelated: false };
+  return { deal: best };
 }

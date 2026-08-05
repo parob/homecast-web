@@ -91,6 +91,10 @@ export const GET_ACTIVE_DEALS = gql`
       unitPrice
       allTimeLow
       isNearAtl
+      mappings {
+        manufacturer
+        model
+      }
     }
   }
 `;
@@ -100,6 +104,59 @@ export const GET_DEAL_PRICE_HISTORY = gql`
     dealPriceHistory(dealId: $dealId) {
       date
       price
+    }
+  }
+`;
+
+export const GET_TRACKED_ACCESSORIES = gql`
+  query GetTrackedAccessories($marketplace: String, $accessories: [AccessoryInput!]) {
+    trackedAccessories(marketplace: $marketplace, accessories: $accessories) {
+      manufacturer
+      model
+    }
+  }
+`;
+
+export const GET_ACCESSORY_PRICE_INFO = gql`
+  query GetAccessoryPriceInfo(
+    $manufacturer: String!
+    $model: String!
+    $marketplace: String
+    $days: Int
+  ) {
+    accessoryPriceInfo(
+      manufacturer: $manufacturer
+      model: $model
+      marketplace: $marketplace
+      days: $days
+    ) {
+      productName
+      imageUrl
+      currency
+      marketplace
+      dealUrl
+      currentPrice
+      regularPrice
+      allTimeLow
+      allTimeLowDate
+      avg30dPrice
+      trackedSince
+      lastCheckedAt
+      pricePointCount
+      isNearAtl
+      priceHistory {
+        date
+        price
+      }
+      deal {
+        id
+        dealPrice
+        regularPrice
+        discountPercentage
+        dealTier
+        dealUrl
+        currency
+      }
     }
   }
 `;

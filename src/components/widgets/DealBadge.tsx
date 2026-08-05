@@ -1,5 +1,5 @@
 import React, { useState, lazy, Suspense } from 'react';
-import { Percent, ExternalLink } from 'lucide-react';
+import { Percent, ExternalLink, ChevronRight } from 'lucide-react';
 import { useMutation, useLazyQuery } from '@apollo/client/react';
 import { TRACK_DEAL_CLICK } from '@/lib/graphql/mutations';
 import { GET_DEAL_PRICE_HISTORY } from '@/lib/graphql/queries';
@@ -19,10 +19,10 @@ const DealPriceChart = lazy(() => import('./DealPriceChart'));
 
 interface DealBadgeProps {
   deal: DealInfo;
-  isRelated: boolean;
+  onSeeFullHistory?: () => void;
 }
 
-export function DealBadge({ deal, isRelated }: DealBadgeProps) {
+export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
   const [open, setOpen] = useState(false);
   const [trackClick] = useMutation(TRACK_DEAL_CLICK);
   const [fetchHistory, { data: historyData }] = useLazyQuery<{ dealPriceHistory: PricePoint[] }>(GET_DEAL_PRICE_HISTORY);
@@ -91,19 +91,14 @@ export function DealBadge({ deal, isRelated }: DealBadgeProps) {
           )}
 
           <div className="p-3 space-y-2">
-            {/* Related label + listing type */}
-            <div className="flex items-center gap-1.5">
-              {isRelated && (
-                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  Related product
-                </span>
-              )}
-              {listingLabel && (
+            {/* Listing type */}
+            {listingLabel && (
+              <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded">
                   {listingLabel}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Product name */}
             <p className="text-sm font-medium leading-tight line-clamp-2">
@@ -156,11 +151,27 @@ export function DealBadge({ deal, isRelated }: DealBadgeProps) {
               </p>
             )}
 
-            {/* Near all-time low indicator */}
+            {/* All-time low — a separate claim from the tier, so it gets its
+                own line rather than inflating a small discount into "Amazing" */}
             {deal.isNearAtl && (
-              <p className="text-[11px] font-medium" style={{ color: style.color }}>
-                Near all-time low
+              <p className="text-[11px] font-medium text-muted-foreground">
+                📉 Lowest price we've tracked
               </p>
+            )}
+
+            {/* Into the full price history */}
+            {onSeeFullHistory && (
+              <button
+                className="w-full flex items-center justify-between text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                  onSeeFullHistory();
+                }}
+              >
+                See full price history
+                <ChevronRight className="w-3 h-3" />
+              </button>
             )}
 
             {/* Amazon button */}

@@ -62,6 +62,30 @@ export interface PricePoint {
   price: number;
 }
 
+export interface MappedAccessory {
+  manufacturer: string;
+  model: string;
+}
+
+export interface AccessoryPriceInfo {
+  productName: string;
+  imageUrl: string | null;
+  currency: string;
+  marketplace: string;
+  dealUrl: string;
+  currentPrice: string | null;
+  regularPrice: string | null;
+  allTimeLow: string | null;
+  allTimeLowDate: string | null;
+  avg30dPrice: string | null;
+  trackedSince: string | null;
+  lastCheckedAt: string | null;
+  pricePointCount: number;
+  isNearAtl: boolean;
+  priceHistory: PricePoint[];
+  deal: DealInfo | null;
+}
+
 export interface DealInfo {
   id: string;
   deviceId: string;
@@ -83,6 +107,7 @@ export interface DealInfo {
   priceHistory?: PricePoint[];
   allTimeLow: string | null;
   isNearAtl: boolean;
+  mappings?: MappedAccessory[];
 }
 
 export interface GetActiveDealsResponse {

@@ -1,18 +1,34 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
 import { useQuery } from '@apollo/client/react';
-import { GET_ACTIVE_DEALS } from '@/lib/graphql/queries';
+import { GET_ACTIVE_DEALS, GET_TRACKED_ACCESSORIES } from '@/lib/graphql/queries';
 import { getMarketplace } from '@/lib/marketplace';
-import type { DealInfo, GetActiveDealsResponse, HomeKitAccessory } from '@/lib/graphql/types';
+import { getAccessoryIdentity } from '@/lib/deals';
+import type {
+  DealInfo,
+  GetActiveDealsResponse,
+  HomeKitAccessory,
+  MappedAccessory,
+} from '@/lib/graphql/types';
+import type { PriceHistoryTarget } from '@/components/widgets/PriceHistoryDialog';
 
 interface DealsContextValue {
   deals: DealInfo[];
+  /** Whether we track a product for this accessory (gates the menu entry). */
+  isTracked: (accessory: HomeKitAccessory) => boolean;
+  /** Open the Price & Deals screen. No-op outside the dashboard. */
+  openPriceHistory: (accessory: HomeKitAccessory) => void;
 }
 
-const DealsContext = createContext<DealsContextValue>({ deals: [] });
+const DealsContext = createContext<DealsContextValue>({
+  deals: [],
+  isTracked: () => false,
+  openPriceHistory: () => {},
+});
 
 interface DealsProviderProps {
   enabled: boolean;
   accessories: HomeKitAccessory[];
+  onOpenPriceHistory?: (target: PriceHistoryTarget) => void;
   children: React.ReactNode;
 }
 
@@ -47,7 +63,12 @@ function extractAccessoryInputs(accessories: HomeKitAccessory[]): Array<{ manufa
   return result;
 }
 
-export function DealsProvider({ enabled, accessories, children }: DealsProviderProps) {
+export function DealsProvider({
+  enabled,
+  accessories,
+  onOpenPriceHistory,
+  children,
+}: DealsProviderProps) {
   const marketplace = getMarketplace();
 
   const accessoryInputs = useMemo(
@@ -61,10 +82,53 @@ export function DealsProvider({ enabled, accessories, children }: DealsProviderP
     pollInterval: 300_000, // 5 min refresh
   });
 
+  // Which accessories have a listing behind them. Deal badges are rare by
+  // design, so this is what keeps price info reachable for the rest —
+  // fetched once for the whole set rather than per widget.
+  const { data: trackedData } = useQuery<{ trackedAccessories: MappedAccessory[] }>(
+    GET_TRACKED_ACCESSORIES,
+    {
+      skip: !enabled || accessoryInputs.length === 0,
+      variables: { marketplace, accessories: accessoryInputs },
+    },
+  );
+
   const deals = enabled ? (data?.activeDeals ?? []) : [];
 
+  const trackedKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of trackedData?.trackedAccessories ?? []) {
+      set.add(`${m.manufacturer.toLowerCase()}|${m.model.toLowerCase()}`);
+    }
+    return set;
+  }, [trackedData]);
+
+  const isTracked = useCallback((accessory: HomeKitAccessory) => {
+    const identity = getAccessoryIdentity(accessory);
+    if (!identity) return false;
+    return trackedKeys.has(
+      `${identity.manufacturer.toLowerCase()}|${identity.model.toLowerCase()}`,
+    );
+  }, [trackedKeys]);
+
+  const openPriceHistory = useCallback((accessory: HomeKitAccessory) => {
+    const identity = getAccessoryIdentity(accessory);
+    if (!identity || !onOpenPriceHistory) return;
+    onOpenPriceHistory({
+      manufacturer: identity.manufacturer,
+      model: identity.model,
+      accessoryName: accessory.name,
+      marketplace,
+    });
+  }, [onOpenPriceHistory, marketplace]);
+
+  const value = useMemo(
+    () => ({ deals, isTracked, openPriceHistory }),
+    [deals, isTracked, openPriceHistory],
+  );
+
   return (
-    <DealsContext.Provider value={{ deals }}>
+    <DealsContext.Provider value={value}>
       {children}
     </DealsContext.Provider>
   );

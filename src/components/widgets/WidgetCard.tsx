@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag } from 'lucide-react';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,6 +18,8 @@ import { getDisplayName } from '@/lib/graphql/types';
 import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, ServiceType } from './types';
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
 import { useDragHandle } from '@/components/shared/SortableItem';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useDeals } from '@/contexts/DealsContext';
 import { WidgetWrapper } from './WidgetWrapper';
 
 // Context for passing widget colors to child components
@@ -27,6 +29,8 @@ export interface WidgetColorContextType {
   iconStyle: IconStyle;
   /** True when the card renders inside an ExpandedOverlay — child controls size up */
   expanded: boolean;
+  /** True when the hero sits in the narrow landscape slot beside its secondaries */
+  heroDense: boolean;
 }
 
 export const WidgetColorContext = createContext<WidgetColorContextType>({
@@ -34,6 +38,7 @@ export const WidgetColorContext = createContext<WidgetColorContextType>({
   isOn: false,
   iconStyle: 'standard',
   expanded: false,
+  heroDense: false,
 });
 
 export const useWidgetColors = () => useContext(WidgetColorContext);
@@ -58,6 +63,17 @@ interface WidgetCardProps {
   childrenVisible?: boolean;
   /** Content that renders outside the collapsed area, can overflow the card bounds */
   overlayContent?: React.ReactNode;
+  /**
+   * Device-specific primary control (a brightness bar, a temperature dial)
+   * shown only in the expanded overlay, where there is room for it to be the
+   * thing you reach for. `children` become the secondary controls beside it.
+   */
+  hero?: React.ReactNode;
+  /**
+   * 'bar' is a tall drag control that wants a narrow column; 'block' is a
+   * square-ish control (a dial) that needs width in both orientations.
+   */
+  heroShape?: 'bar' | 'block';
   className?: string;
   style?: React.CSSProperties;
   accessory?: HomeKitAccessory;
@@ -120,6 +136,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   children,
   childrenVisible,
   overlayContent,
+  hero,
+  heroShape = 'bar',
   className = '',
   style,
   accessory,
@@ -176,6 +194,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
   const useServiceColors = (iconStyle === 'standard' || iconStyle === 'colourful') && serviceType;
   const widgetColors = useServiceColors ? getIconColor(serviceType) : DEFAULT_ICON_COLOR;
+
+  // The hero only earns its space in the expanded overlay; inline tiles keep
+  // the compact stacked controls.
+  const isMobile = useIsMobile();
+  const showHero = !!hero && expanded && !effectiveCompact;
+  const heroPortrait = isMobile !== false;
 
   const effectiveHeaderAction = editModeType ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
@@ -349,6 +373,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     isOn: effectiveIsOn,
     iconStyle,
     expanded,
+    heroDense: showHero && !heroPortrait,
   };
 
   // Get drag handle from SortableItem context (if inside a sortable)
@@ -400,7 +425,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </div>
         )}
       </CardHeader>
-      {children && (
+      {(children || showHero) && (
         <AnimatedCollapse open={!effectiveCompact && showChildren}>
           <CardContent
             className={`${expanded ? 'px-5 pb-5' : 'px-4 pb-4'} ${tightContent ? 'pt-0' : 'pt-2'}`}
@@ -408,7 +433,24 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             onPointerDown={(e) => e.stopPropagation()}
           >
             <div className={`relative z-10 ${effectiveDisabled ? 'pointer-events-none' : 'pointer-events-auto cursor-auto'} ${noResponseClass} ${hiddenClass}`}>
-              {children}
+              {showHero ? (
+                // Portrait puts the hero control front and centre with the
+                // secondary controls beneath; landscape stands it alongside
+                // them, because a tall bar in a short panel is unusable.
+                heroPortrait ? (
+                  <div className="flex flex-col gap-4">
+                    <div className={heroShape === 'block' ? 'flex justify-center' : 'h-[260px]'}>{hero}</div>
+                    {children && <div className="space-y-3">{children}</div>}
+                  </div>
+                ) : (
+                  <div className="flex gap-4">
+                    <div className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
+                    {children && <div className="min-w-0 flex-1 space-y-3">{children}</div>}
+                  </div>
+                )
+              ) : (
+                children
+              )}
               {effectiveDisabled && effectiveOnDisabledClick && (
                 <div
                   className="absolute inset-0 z-50 pointer-events-auto cursor-default"
@@ -427,7 +469,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Wrap with context menu if we have characteristics, location info, or actions to show
   // Context menu appears on right-click (desktop) or long-press (touch)
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug;
+  // Read from context rather than adding a prop: there are 28 widget
+  // components forwarding WidgetProps, and threading one through all of them
+  // is how the last menu item ended up wired in exactly one place.
+  const { isTracked, openPriceHistory } = useDeals();
+  const canShowPrices = !!accessory && isTracked(accessory);
+
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -489,6 +537,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 <ContextMenuItem onClick={onShare}>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share Accessory
+                </ContextMenuItem>
+              )}
+              {canShowPrices && accessory && (
+                <ContextMenuItem onClick={() => openPriceHistory(accessory)}>
+                  <Tag className="h-4 w-4 mr-2" />
+                  Price &amp; Deals
                 </ContextMenuItem>
               )}
               {onHide && (

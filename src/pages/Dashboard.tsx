@@ -73,6 +73,7 @@ import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { DealBadge } from '@/components/widgets/DealBadge';
+import { PriceHistoryDialog, type PriceHistoryTarget } from '@/components/widgets/PriceHistoryDialog';
 import { findDealForAccessory } from '@/lib/deals';
 import { ErrorWithTrace } from '@/components/shared/ErrorWithTrace';
 import { getCloud } from '@/lib/cloud';
@@ -1021,11 +1022,16 @@ const CATEGORY_ORDER = [
 
 /** Renders a deal badge for an accessory. Must be inside DealsProvider so useDeals() reads the correct context. */
 function AccessoryDealBadge({ accessory }: { accessory: import('@/lib/graphql/types').HomeKitAccessory }) {
-  const { deals } = useDeals();
+  const { deals, openPriceHistory } = useDeals();
   if (!deals?.length) return null;
   const match = findDealForAccessory(accessory, deals);
   if (!match) return null;
-  return <DealBadge deal={match.deal} isRelated={match.isRelated} />;
+  return (
+    <DealBadge
+      deal={match.deal}
+      onSeeFullHistory={() => openPriceHistory(accessory)}
+    />
+  );
 }
 
 // --- Tutorial demo dataset --------------------------------------------------
@@ -1900,6 +1906,7 @@ const Dashboard = () => {
 
   // Debug accessory state (triggered via right-click menu for admins)
   const [debugAccessory, setDebugAccessory] = useState<HomeKitAccessory | null>(null);
+  const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -5950,7 +5957,11 @@ const Dashboard = () => {
 
   return (
     <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
-    <DealsProvider enabled={dealsEffectivelyEnabled} accessories={allAccessoriesData || []}>
+    <DealsProvider
+      enabled={dealsEffectivelyEnabled}
+      accessories={allAccessoriesData || []}
+      onOpenPriceHistory={setPriceHistoryTarget}
+    >
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7591,6 +7602,13 @@ const Dashboard = () => {
         {showAdsenseBanner && <AdBanner onUpgrade={handleUpgrade} />}
         </div>
       </div>
+
+      {/* Price & Deals — reachable from the widget context menu and the
+          deal popover, whether or not the product is currently on offer */}
+      <PriceHistoryDialog
+        target={priceHistoryTarget}
+        onClose={() => setPriceHistoryTarget(null)}
+      />
 
       {/* Debug Dialog for grouped accessories */}
       <Dialog open={!!debugAccessory} onOpenChange={(open) => !open && setDebugAccessory(null)}>
