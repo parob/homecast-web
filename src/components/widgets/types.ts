@@ -31,7 +31,7 @@ export interface WidgetProps {
   editMode?: boolean;
   /** When true, controls are disabled and show as view-only (for shared view-only mode) */
   disabled?: boolean;
-  /** When true, widget is expanded and should float above others with glow effect */
+  /** When true, widget renders inside an ExpandedOverlay — larger controls and typography */
   expanded?: boolean;
   /** Current edit mode type for showing appropriate visibility icon */
   editModeType?: 'ui' | null;

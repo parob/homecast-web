@@ -82,13 +82,13 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   const subtextClass = (isDarkBackground && !isEnabled) ? 'text-white/60' : 'text-muted-foreground';
   return (
     <div
-      className={`relative rounded-[20px] h-fit cursor-pointer transition-all ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
+      className={`relative rounded-2xl h-fit cursor-pointer transition-all ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
       style={{ contain: 'layout style paint' }}
       onClick={onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
     >
       {/* Blur layer — matches WidgetWrapper */}
-      <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
+      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
       {/* Content */}
       <div className={`relative z-[1] ${compact ? 'p-2.5' : 'p-4'}`}>
         {/* items-start, not items-center: the name wraps to as many lines as it

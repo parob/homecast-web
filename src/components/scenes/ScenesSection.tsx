@@ -140,11 +140,11 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 tabIndex={0}
                 onClick={() => { setEditingScene(scene); setFormOpen(true); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
-                className={`relative rounded-[20px] h-fit cursor-pointer transition-all ${!isDarkBackground ? 'ring-1 ring-inset ring-slate-200' : ''}`}
+                className={`relative rounded-2xl h-fit cursor-pointer transition-all ${!isDarkBackground ? 'ring-1 ring-inset ring-slate-200' : ''}`}
                 style={{ contain: 'layout style paint' }}
               >
                 {/* Blur layer — matches WidgetWrapper */}
-                <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-sm ${isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80'} transform-gpu`} />
+                <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm ${isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80'} transform-gpu`} />
                 <div className="relative z-[1] flex items-center gap-2 p-3">
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
                     <Zap className="h-4 w-4" />
@@ -172,7 +172,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
             ))}
             <button
               onClick={() => { setEditingScene(null); setFormOpen(true); }}
-              className={`flex items-center justify-center gap-1.5 rounded-[20px] border-2 border-dashed p-3 text-xs font-medium transition-colors ${
+              className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
                 isDarkBackground
                   ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
                   : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'

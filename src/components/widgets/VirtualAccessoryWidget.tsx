@@ -36,16 +36,16 @@ const VIRTUAL_CHARS = [
  * `min-w-0` matters too — a `datetime-local` input has a wide intrinsic size
  * and will happily overflow its container without it.
  */
-function fieldClass(dark: boolean): string {
-  return 'h-9 w-full min-w-0 max-w-full box-border rounded-md border px-2.5 text-sm '
+function fieldClass(dark: boolean, large?: boolean): string {
+  return `${large ? 'h-11' : 'h-9'} w-full min-w-0 max-w-full box-border rounded-md border px-2.5 text-sm `
     + 'outline-none transition-colors '
     + (dark
       ? 'bg-white/15 border-white/25 text-white focus:border-white/50 [color-scheme:dark]'
       : 'bg-white/70 border-slate-300 text-slate-900 focus:border-slate-400 [color-scheme:light]');
 }
 
-function buttonClass(dark: boolean): string {
-  return 'h-9 inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 '
+function buttonClass(dark: boolean, large?: boolean): string {
+  return `${large ? 'h-11' : 'h-9'} inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 `
     + 'text-sm transition-colors '
     + (dark
       ? 'bg-white/15 border-white/25 text-white hover:bg-white/25'
@@ -85,7 +85,7 @@ interface VirtualAccessoryShape {
 
 export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   const {
-    accessory, getEffectiveValue, onSetValue, onSlider, compact, disabled,
+    accessory, getEffectiveValue, onSetValue, onSlider, compact, expanded, disabled,
     onExpandToggle, onDebug, iconStyle, editMode, editModeType, isHiddenUi,
     homeName, disableTooltip, onRemove, removeLabel, onHide, hideLabel,
     isHidden, showHiddenItems, onToggleShowHidden, onShare, locationSubtitle,
@@ -97,8 +97,8 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // the relay — so a duration is known even while the relay serves an older
   // bundle that doesn't publish one.
   const definition = useVirtualAccessoryDefinition(accessory?.id);
-  const FIELD_CLASS = fieldClass(isDarkBackground);
-  const BUTTON_CLASS = buttonClass(isDarkBackground);
+  const FIELD_CLASS = fieldClass(isDarkBackground, expanded);
+  const BUTTON_CLASS = buttonClass(isDarkBackground, expanded);
 
   const raw = accessory as unknown as VirtualAccessoryShape;
   const meta: VirtualAccessoryShape = {
@@ -158,6 +158,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
       serviceType="switch"

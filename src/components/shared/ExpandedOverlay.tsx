@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useEffect, createContext } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
@@ -7,10 +7,16 @@ export interface ExpandedOverlayProps {
   onClose: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Overlay panel width in px (clamped to the viewport). */
+  width?: number;
   children: React.ReactNode;
 }
 
-const OVERLAY_WIDTH = 320;
+// Portals preserve React context, so a per-accessory overlay opened from inside
+// an already-open group overlay sees depth 1 and skips its scrim.
+const OverlayDepthContext = createContext(0);
+
+const DEFAULT_OVERLAY_WIDTH = 360;
 const PADDING = 10;
 // Offset the overlay content down from the widget's top edge so it visually
 // starts just below the top of the compact trigger rather than flush with it.
@@ -19,7 +25,7 @@ const TOP_OFFSET = 16;
 // Calculate overlay position and coordinates based on parent element.
 // The overlay is top-aligned with the trigger so it always opens downward from
 // the widget's top edge — never pushed above the viewport regardless of content height.
-const getOverlayPositionAndCoords = (element: HTMLElement | null): {
+const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: number): {
   position: 'left' | 'center' | 'right';
   x: number;
   y: number;
@@ -31,27 +37,27 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null): {
   // Calculate where overlay would be if centered on the widget
   const widgetCenterX = rect.left + rect.width / 2;
   const widgetTopY = rect.top;
-  const overlayLeft = widgetCenterX - OVERLAY_WIDTH / 2 - PADDING;
-  const overlayRight = widgetCenterX + OVERLAY_WIDTH / 2 + PADDING;
+  const overlayLeft = widgetCenterX - overlayWidth / 2 - PADDING;
+  const overlayRight = widgetCenterX + overlayWidth / 2 + PADDING;
 
   // Check against viewport edges
   const viewportRight = window.innerWidth;
 
   let position: 'left' | 'center' | 'right' = 'center';
-  let x = widgetCenterX - OVERLAY_WIDTH / 2 - PADDING; // Default: centered
+  let x = widgetCenterX - overlayWidth / 2 - PADDING; // Default: centered
 
   if (overlayLeft < 0) {
     position = 'left';
     x = rect.left - PADDING;
   } else if (overlayRight > viewportRight) {
     position = 'right';
-    x = rect.right - OVERLAY_WIDTH - PADDING;
+    x = rect.right - overlayWidth - PADDING;
   }
 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, children }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
@@ -60,6 +66,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const { isDarkBackground } = useBackgroundContext();
+  const depth = useContext(OverlayDepthContext);
+
+  // Clamp before the position math so narrow viewports get correct alignment,
+  // not just a squeezed panel.
+  const requestedWidth = width ?? DEFAULT_OVERLAY_WIDTH;
+  const effectiveWidth = typeof window !== 'undefined'
+    ? Math.min(requestedWidth, window.innerWidth - 32)
+    : requestedWidth;
 
   // Handle open/close state transitions
   useEffect(() => {
@@ -83,7 +97,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   useLayoutEffect(() => {
     if (isExpanded && shouldRender && parentRef.current) {
       const parent = parentRef.current.parentElement;
-      const { position: pos, x, y } = getOverlayPositionAndCoords(parent);
+      const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
       setPosition(pos);
       setCoords({ x, y });
       // Trigger ready state after position is set
@@ -91,7 +105,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
         setReady(true);
       });
     }
-  }, [isExpanded, shouldRender]);
+  }, [isExpanded, shouldRender, effectiveWidth]);
 
   // Dismiss when tapping outside the overlay, or when scrolling past a
   // threshold. Needed for touch/compact mode where there's no mouse-leave to
@@ -162,55 +176,71 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     <>
       <div ref={parentRef} className="hidden" />
       {shouldRender && createPortal(
-        <div
-          // Marks this as expanded-widget content even though the portal puts
-          // it outside the widget's own subtree. Dashboard's collapse-on-
-          // mouse-leave asks whether focus is still inside a widget before
-          // closing, and without the marker a field in here looked like focus
-          // had left — so a half-typed value unmounted before it could commit.
-          data-expandable-widget
-          className="fixed z-[10018] pointer-events-auto"
-          style={{
-            left: coords.x,
-            // Anchor overlay's content to sit TOP_OFFSET px below the widget's
-            // top edge (accounting for the 10px wrapper padding ring). Clamp
-            // so it never draws above the viewport.
-            top: Math.max(0, coords.y - PADDING + TOP_OFFSET),
-          }}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className="p-[10px]">
+        <>
+          {/* Subtle scrim behind the panel. pointer-events-none keeps the
+              pointerdown-outside dismissal working (tapping another widget
+              closes this overlay AND opens that one). Only the outermost
+              overlay dims — nested overlays (group → accessory) skip it. */}
+          {depth === 0 && (
             <div
-              ref={contentRef}
-              className={`relative w-[320px] max-w-[calc(100vw-2rem)] rounded-[20px] overflow-visible cursor-pointer [&_*]:cursor-pointer transition-transform duration-150 ${
-                ready && !isClosing
-                  ? 'scale-100'
-                  : 'scale-90'
-              }`}
-              style={{ transformOrigin }}
-              onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                  e.stopPropagation();
-                  onClose();
-                }
-              }}
-            >
-              {/* Blur background layer - animates independently to avoid breaking children's backdrop-blur */}
-              <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-xl transition-opacity duration-150 ${
-                isDarkBackground ? 'bg-black/20' : 'bg-white/60 shadow-black/10'
-              } ${
-                ready && !isClosing ? 'opacity-100' : 'opacity-0'
-              }`} />
-              {/* Content layer - no opacity animation to preserve backdrop-blur */}
-              <div className={`relative transition-opacity duration-150 ${
-                ready && !isClosing ? 'opacity-100' : 'opacity-0'
-              }`}>
-                {children}
+              aria-hidden
+              className={`fixed-full-screen z-[10017] pointer-events-none backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
+                isDarkBackground ? 'bg-black/15' : 'bg-black/[0.07]'
+              } ${ready && !isClosing ? 'opacity-100' : 'opacity-0'}`}
+            />
+          )}
+          <div
+            // Marks this as expanded-widget content even though the portal puts
+            // it outside the widget's own subtree. Dashboard's collapse-on-
+            // mouse-leave asks whether focus is still inside a widget before
+            // closing, and without the marker a field in here looked like focus
+            // had left — so a half-typed value unmounted before it could commit.
+            data-expandable-widget
+            className="fixed z-[10018] pointer-events-auto"
+            style={{
+              left: coords.x,
+              // Anchor overlay's content to sit TOP_OFFSET px below the widget's
+              // top edge (accounting for the 10px wrapper padding ring). Clamp
+              // so it never draws above the viewport.
+              top: Math.max(0, coords.y - PADDING + TOP_OFFSET),
+            }}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div className="p-[10px]">
+              <div
+                ref={contentRef}
+                className={`relative max-w-[calc(100vw-2rem)] rounded-2xl overflow-visible cursor-pointer [&_*]:cursor-pointer transition-transform duration-fast ease-standard ${
+                  ready && !isClosing
+                    ? 'scale-100'
+                    : 'scale-90'
+                }`}
+                style={{ transformOrigin, width: effectiveWidth }}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) {
+                    e.stopPropagation();
+                    onClose();
+                  }
+                }}
+              >
+                {/* Blur background layer - animates independently to avoid breaking children's backdrop-blur */}
+                <div className={`absolute inset-0 rounded-2xl shadow-xl transition-opacity duration-fast ease-standard ${
+                  isDarkBackground ? 'material-thin-dark' : 'material-thin shadow-black/10'
+                } ${
+                  ready && !isClosing ? 'opacity-100' : 'opacity-0'
+                }`} />
+                {/* Content layer - no opacity animation to preserve backdrop-blur */}
+                <div className={`relative transition-opacity duration-fast ease-standard ${
+                  ready && !isClosing ? 'opacity-100' : 'opacity-0'
+                }`}>
+                  <OverlayDepthContext.Provider value={depth + 1}>
+                    {children}
+                  </OverlayDepthContext.Provider>
+                </div>
               </div>
             </div>
           </div>
-        </div>,
+        </>,
         document.body
       )}
     </>

@@ -64,8 +64,8 @@ export function MobileTabBar({
       <div className="flex justify-center px-4 pb-2">
         <div
           className={cn(
-            "pointer-events-auto flex items-center gap-1 px-2 py-1.5 rounded-[20px] backdrop-blur-xl transition-colors duration-300",
-            isDarkBackground ? "bg-black/40" : "bg-white/70"
+            "pointer-events-auto flex items-center gap-1 px-2 py-1.5 rounded-2xl transition-colors duration-300",
+            isDarkBackground ? "material-regular-dark" : "material-regular"
           )}
           style={{ maxWidth: 'calc(100% - 32px)' }}
         >
@@ -77,7 +77,7 @@ export function MobileTabBar({
                 key={`${tab.type}-${tab.id}`}
                 onClick={() => handleTap(tab)}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-[14px] min-w-0 transition-colors",
+                  "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg min-w-0 transition-colors",
                   active
                     ? isDarkBackground ? "bg-white/20" : "bg-black/10"
                     : "active:bg-white/10"

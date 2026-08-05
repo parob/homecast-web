@@ -105,7 +105,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
+        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
           isDarkBackground
             ? `text-white ${hasSelectedChild ? 'bg-white/10' : isSelected ? 'bg-white/20' : 'hover:bg-white/10'}`
             : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -481,7 +481,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
                           <button
                             key={group.id}
                             onClick={(e) => { e.stopPropagation(); onGroupSelect?.(group.id); }}
-                            className={`flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                               isDarkBackground
                                 ? `text-white ${selectedGroupId === group.id ? 'bg-white/20' : 'hover:bg-white/10'}`
                                 : `${selectedGroupId === group.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`

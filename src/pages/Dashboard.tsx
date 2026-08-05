@@ -354,7 +354,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           {...attributes}
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
-          className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
             isDarkBackground
               ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -538,7 +538,7 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
                 e.preventDefault();
                 onSelect();
               }}
-              className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
+              className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
                 isDarkBackground
                   ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
                   : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -640,7 +640,7 @@ const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
             {...attributes}
             {...listeners}
             onClick={(e) => { e.stopPropagation(); onSelect(); }}
-            className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${
+            className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
               isDragging ? 'cursor-grabbing' : ''
             } ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
           >
@@ -723,7 +723,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           disabled={isLoading}
-          className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
             isDarkBackground
               ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -920,7 +920,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`relative flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${
+        className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${
           isDarkBackground
             ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
             : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -5981,7 +5981,7 @@ const Dashboard = () => {
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'bg-black/40 backdrop-blur-xl' : 'bg-background'}`} style={{ width: mobileSidebarWidth }} aria-describedby={undefined}>
+                <SheetContent side="left" className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'material-regular-dark' : 'bg-background'}`} style={{ width: mobileSidebarWidth }} aria-describedby={undefined}>
                   <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                   <div
                     className="h-full flex flex-col overflow-hidden"
@@ -6216,7 +6216,7 @@ const Dashboard = () => {
                               {pendingEnrollments.map((enrollment) => (
                                 <button
                                   key={enrollment.id}
-                                  className={`flex items-center gap-2 w-full rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${
+                                  className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                                     selectedEnrollmentId === enrollment.id
                                       ? 'bg-primary text-primary-foreground'
                                       : isDarkBackground ? 'text-white hover:bg-white/10' : 'hover:bg-muted'
@@ -6473,11 +6473,11 @@ const Dashboard = () => {
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-8' : isInMobileApp ? '' : 'pt-3'} pl-3 pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
           style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(12px + var(--safe-area-top, 0px))' } : undefined) }}
         >
-          <div className={`rounded-[20px] transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
-            <div className={`rounded-[20px] p-3 max-h-full overflow-y-auto scrollbar-hidden transition-all duration-300 ${isDarkBackground ? 'bg-black/40 backdrop-blur-xl text-white' : ''}`}>
+          <div className={`rounded-2xl transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
+            <div className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden transition-all duration-300 ${isDarkBackground ? 'material-regular-dark text-white' : ''}`}>
               {/* Header in sidebar */}
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center justify-center rounded-[10px] transition-colors duration-300 bg-primary" style={{ height: 32, width: 32 }}>
+                <div className="flex items-center justify-center rounded-md transition-colors duration-300 bg-primary" style={{ height: 32, width: 32 }}>
                   <Home className="transition-colors duration-300 text-primary-foreground" style={{ height: 16, width: 16 }} />
                 </div>
                 <div className="flex flex-col">
@@ -6674,7 +6674,7 @@ const Dashboard = () => {
                         {pendingEnrollments.map((enrollment) => (
                           <button
                             key={enrollment.id}
-                            className={`flex items-center gap-2 w-full rounded-[12px] px-3 py-2 text-left text-sm transition-colors ${
+                            className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                               selectedEnrollmentId === enrollment.id
                                 ? 'bg-primary text-primary-foreground'
                                 : isDarkBackground ? 'text-white hover:bg-white/10' : 'hover:bg-muted'
@@ -7378,6 +7378,7 @@ const Dashboard = () => {
                                   onFinishEditing={collapseExpandedWidget}
                                   getEffectiveValue={getEffectiveValue}
                                   compact={false}
+                                  expanded
 
                                   onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
                                   iconStyle={activeIconStyle}

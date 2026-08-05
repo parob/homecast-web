@@ -14,12 +14,13 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
-  
-  
+
+
   editMode,
   editModeType,
   isHiddenUi,
@@ -83,9 +84,10 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       childrenVisible={isActive && hasControls && accessory.isReachable}
       
       
@@ -121,7 +123,7 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
                 <button
                   key={mode}
                   onClick={() => onSlider(accessory.id, 'target_air_purifier_state', index)}
-                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
+                  className={`flex-1 ${expanded ? 'py-3 text-sm' : 'py-2 text-xs'} px-3 rounded-lg font-medium transition-all ${
                     targetState === index
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted hover:bg-muted/80'

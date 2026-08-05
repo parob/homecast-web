@@ -136,7 +136,7 @@ export function MainLayout({
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", shouldUseDarkText ? "bg-black/40 backdrop-blur-xl" : "bg-background")} aria-describedby={undefined}>
+              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", shouldUseDarkText ? "material-regular-dark" : "bg-background")} aria-describedby={undefined}>
                 <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                 <div className="h-full flex flex-col overflow-hidden">
                   {/* Close sheet when a nav button is clicked */}
@@ -166,7 +166,7 @@ export function MainLayout({
             >
               <div className={cn(
                 shouldUseDarkText
-                  ? "rounded-[20px] p-3 bg-black/50 backdrop-blur-xl text-white shadow-[0_0_20px_rgba(0,0,0,0.3)]"
+                  ? "rounded-2xl p-3 material-thick-dark text-white shadow-[0_0_20px_rgba(0,0,0,0.3)]"
                   : "p-4"
               )}>
                 {sidebar}

@@ -11,12 +11,13 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
-  
-  
+
+
   editMode,
   editModeType,
   isHiddenUi,
@@ -52,9 +53,10 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       serviceType="fan"
       iconStyle={iconStyle}
       childrenVisible={isOn && hasControls && accessory.isReachable}
@@ -101,22 +103,22 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
             <div className="flex gap-2">
               <Button
                 variant={direction === 0 ? 'default' : 'outline'}
-                size="sm"
+                size={expanded ? 'lg' : 'sm'}
                 className="flex-1"
                 onClick={() => onSlider(accessory.id, 'rotation_direction', 0)}
                 disabled={!accessory.isReachable}
               >
-                <RotateCw className="h-3 w-3 mr-1" />
+                <RotateCw className={expanded ? 'h-4 w-4 mr-1.5' : 'h-3 w-3 mr-1'} />
                 Forward
               </Button>
               <Button
                 variant={direction === 1 ? 'default' : 'outline'}
-                size="sm"
+                size={expanded ? 'lg' : 'sm'}
                 className="flex-1"
                 onClick={() => onSlider(accessory.id, 'rotation_direction', 1)}
                 disabled={!accessory.isReachable}
               >
-                <RotateCcw className="h-3 w-3 mr-1" />
+                <RotateCcw className={expanded ? 'h-4 w-4 mr-1.5' : 'h-3 w-3 mr-1'} />
                 Reverse
               </Button>
             </div>

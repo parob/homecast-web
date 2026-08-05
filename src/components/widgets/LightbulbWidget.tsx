@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { Lightbulb, Sun, Palette } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, ColorControl } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const LightbulbWidget: React.FC<WidgetProps> = memo(({
@@ -10,12 +10,13 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
-  
-  
+
+
   editMode,
   editModeType,
   isHiddenUi,
@@ -43,6 +44,7 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
   const brightness = brightnessChar ? getEffectiveValue(accessory.id, brightnessChar.type, brightnessChar.value) : null;
   const colorTemp = colorTempChar ? getEffectiveValue(accessory.id, colorTempChar.type, colorTempChar.value) : null;
   const hue = hueChar ? getEffectiveValue(accessory.id, hueChar.type, hueChar.value) : null;
+  const saturation = saturationChar ? getEffectiveValue(accessory.id, saturationChar.type, saturationChar.value) : null;
 
   const subtitle = isOn && brightness !== null ? `${Math.round(brightness)}% brightness` : null;
 
@@ -55,9 +57,10 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       serviceType="lightbulb"
       iconStyle={iconStyle}
       childrenVisible={isOn && !!brightnessChar && accessory.isReachable}
@@ -88,7 +91,7 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
       }
     >
       {brightnessChar && (
-        <div className={compact ? "space-y-1.5" : "space-y-4"}>
+        <div className={compact ? "space-y-1.5" : (expanded ? "space-y-5" : "space-y-4")}>
           <SliderControl
             label="Brightness"
             icon={Sun}
@@ -126,13 +129,28 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           )}
 
           {!compact && hue !== null && (
-            <div className="flex items-center gap-2">
-              <div
-                className="h-6 w-6 rounded-full border border-border"
-                style={{ backgroundColor: `hsl(${hue}, ${saturationChar ? getEffectiveValue(accessory.id, 'saturation', saturationChar.value) : 100}%, 50%)` }}
+            expanded && hueChar?.isWritable && saturationChar?.isWritable ? (
+              <ColorControl
+                hue={hue ?? 0}
+                saturation={saturation ?? 0}
+                onCommitHue={(v) => {
+                  onSlider(accessory.id, 'hue', v);
+                  // At zero saturation the bulb is white and the hue would not
+                  // show, so picking a colour has to mean it.
+                  if ((saturation ?? 0) === 0) onSlider(accessory.id, 'saturation', 100);
+                }}
+                onCommitSaturation={(v) => onSlider(accessory.id, 'saturation', v)}
+                disabled={!accessory.isReachable}
               />
-              <span className="text-xs text-muted-foreground">Color active</span>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-6 w-6 rounded-full border border-border"
+                  style={{ backgroundColor: `hsl(${hue}, ${saturation ?? 100}%, 50%)` }}
+                />
+                <span className="text-xs text-muted-foreground">Color active</span>
+              </div>
+            )
           )}
         </div>
       )}

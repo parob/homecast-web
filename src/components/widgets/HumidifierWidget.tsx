@@ -14,12 +14,13 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
-  
-  
+
+
   editMode,
   editModeType,
   isHiddenUi,
@@ -84,9 +85,10 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       childrenVisible={isActive && hasControls && accessory.isReachable}
       
       
@@ -122,14 +124,14 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
                 <button
                   key={TARGET_STATES[index]}
                   onClick={() => onSlider(accessory.id, 'target_humidifier_dehumidifier_state', index)}
-                  className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                  className={`flex-1 ${expanded ? 'py-3 text-sm' : 'py-2 text-xs'} px-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1 ${
                     targetState === index
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted hover:bg-muted/80'
                   }`}
                   disabled={!accessory.isReachable}
                 >
-                  {index === 1 ? <CloudRain className="h-3 w-3" /> : <Sun className="h-3 w-3" />}
+                  {index === 1 ? <CloudRain className={expanded ? 'h-4 w-4' : 'h-3 w-3'} /> : <Sun className={expanded ? 'h-4 w-4' : 'h-3 w-3'} />}
                   {index === 1 ? 'Humidify' : 'Dehumidify'}
                 </button>
               ))}

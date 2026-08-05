@@ -238,6 +238,33 @@ All colors MUST be HSL.
   padding-right: var(--safe-area-right);
 }
 
+/* Materials — the app's glass recipes, defined once.
+   Chrome (sidebar, header, tab bar, overlay panel) picks one of these instead of
+   inventing its own tint; widget tints stay bespoke because there the colour is
+   semantic (on/off, accent) rather than material.
+
+   The -dark variants are chosen in JS from BackgroundContext, not via a CSS
+   ancestor: overlays portal to document.body, so any DOM-scoped rule would miss
+   them. saturate() is what gives the glass its Apple-like vibrancy — colour
+   behind the panel stays lively instead of going muddy under the blur. */
+.material-thin,
+.material-regular,
+.material-thick,
+.material-thin-dark,
+.material-regular-dark,
+.material-thick-dark {
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.material-thin { background-color: rgb(255 255 255 / 0.6); }
+.material-regular { background-color: rgb(255 255 255 / 0.7); }
+.material-thick { background-color: rgb(255 255 255 / 0.85); }
+
+.material-thin-dark { background-color: rgb(0 0 0 / 0.2); }
+.material-regular-dark { background-color: rgb(0 0 0 / 0.4); }
+.material-thick-dark { background-color: rgb(0 0 0 / 0.55); }
+
 /* Extends a fixed element behind safe areas (iOS Safari).
    On Safari, fixed inset-0 stops at safe area boundaries.
    Negative insets push past them to the true screen edge.
@@ -248,6 +275,25 @@ All colors MUST be HSL.
   right: calc(var(--safe-area-right) * -1);
   bottom: calc(var(--safe-area-bottom) * -1);
   left: calc(var(--safe-area-left) * -1);
+}
+
+/* Apple-style continuous ("squircle") corners, applied to everything that has a
+   finite radius. Fully-round elements (pills, avatars, switches) are excluded —
+   a squircle there would visibly de-circle them.
+
+   Progressive enhancement: border-radius is the universal fallback (Safari 16
+   floor); corner-shape ships in Safari 26 / Chrome 139+. Mask/clip-path
+   approaches are ruled out — they break the backdrop-blur glass layers. */
+@supports (corner-shape: squircle) {
+  [class*="rounded-"]:not([class*="rounded-full"]) {
+    corner-shape: squircle;
+  }
+
+  /* Escape hatch for elements whose radius comes from inline styles or a CSS
+     variable rather than a rounded-* class. */
+  .corner-smooth {
+    corner-shape: squircle;
+  }
 }
 
 /* ExpandedOverlay: blur is provided outside scale transform, so disable children's blur */

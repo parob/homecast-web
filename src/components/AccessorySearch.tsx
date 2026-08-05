@@ -366,7 +366,7 @@ export function AccessorySearch({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex flex-col gap-0 p-0 overflow-hidden transition-all duration-200 !rounded-[30px]"
+        className="flex flex-col gap-0 p-0 overflow-hidden transition-all duration-200 !rounded-3xl"
         style={{ maxWidth: totalResults > 0 ? '75vw' : '40rem' }}
         hideCloseButton
       >

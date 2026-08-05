@@ -241,7 +241,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
               type="button"
               data-testid="new-automation-button"
               onClick={() => setNewTypeOpen(true)}
-              className={`w-full flex items-center justify-center gap-1.5 rounded-[20px] border-2 border-dashed transition-colors ${compact ? 'p-2.5' : 'p-4'} ${
+              className={`w-full flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed transition-colors ${compact ? 'p-2.5' : 'p-4'} ${
                 isDarkBackground
                   ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
                   : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'

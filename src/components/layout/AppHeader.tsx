@@ -43,8 +43,8 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
         {/* Left content with bubble background on mobile */}
         <div className="relative flex items-center h-[56px] px-3 pointer-events-auto">
           <div className={cn(
-            "absolute inset-0 backdrop-blur-xl rounded-[20px] -z-10 transition-colors duration-300 md:hidden",
-            isDarkBackground ? "bg-black/40" : "bg-white/70"
+            "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300 md:hidden",
+            isDarkBackground ? "material-regular-dark" : "material-regular"
           )} />
           {children}
         </div>
@@ -53,15 +53,15 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
         {!isInMacApp && (
           <div className="relative flex items-center gap-2 pl-5 pr-[17px] h-[56px] pointer-events-auto">
             <div className={cn(
-              "absolute inset-0 rounded-[20px] -z-10 transition-colors duration-300",
-              isDarkBackground ? "" : "backdrop-blur-xl bg-white/70"
+              "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
+              isDarkBackground ? "" : "material-regular"
             )} />
             {leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(
                 "flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors duration-300 no-drag",
                 isDarkBackground
-                  ? "bg-black/40 backdrop-blur-xl text-white/90"
+                  ? "material-regular-dark text-white/90"
                   : "bg-muted text-muted-foreground"
               )}>
                 <LogIn className="h-3 w-3" />
@@ -76,15 +76,15 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       {isInMacApp && (
         <div className="absolute top-[25px] right-[23px] flex items-center gap-2 pl-5 pr-[17px] h-[56px] pointer-events-auto">
           <div className={cn(
-            "absolute inset-0 rounded-[20px] -z-10 transition-colors duration-300",
-            isDarkBackground ? "" : "backdrop-blur-xl bg-white/70"
+            "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
+            isDarkBackground ? "" : "material-regular"
           )} />
           {leftBadge}
           {!isAuthenticated && !isLoading && (
             <span className={cn(
               "flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors duration-300 no-drag",
               isDarkBackground
-                ? "bg-black/40 backdrop-blur-xl text-white/70"
+                ? "material-regular-dark text-white/70"
                 : "bg-black/10 text-muted-foreground"
             )}>
               <LogIn className="h-3 w-3" />

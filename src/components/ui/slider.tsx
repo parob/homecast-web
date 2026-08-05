@@ -19,10 +19,16 @@ interface SliderProps {
   trackBgClass?: string;
   /** When true, gradient fills won't scale with slider position */
   fixedGradient?: boolean;
+  /** 'lg' renders a taller track for expanded widget overlays */
+  size?: 'default' | 'lg';
+  /** Inline styles for the filled track portion (e.g. dynamic gradients) */
+  trackFillStyle?: React.CSSProperties;
+  /** Inline styles for the track background */
+  trackBgStyle?: React.CSSProperties;
 }
 
 const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
-  ({ className, value, defaultValue, min = 0, max = 100, step = 1, disabled, onValueChange, onValueCommit, trackColorClass, thumbColorClass, trackBgClass, fixedGradient, ...props }, ref) => {
+  ({ className, value, defaultValue, min = 0, max = 100, step = 1, disabled, onValueChange, onValueCommit, trackColorClass, thumbColorClass, trackBgClass, fixedGradient, size = 'default', trackFillStyle, trackBgStyle, ...props }, ref) => {
     const externalValue = value?.[0] ?? defaultValue?.[0] ?? min;
     const [internalValue, setInternalValue] = React.useState(externalValue);
     const [isDragging, setIsDragging] = React.useState(false);
@@ -78,9 +84,10 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
     };
 
     const cursorStyle = disabled ? 'not-allowed' : 'pointer';
+    const heightClass = size === 'lg' ? 'h-[28px]' : 'h-[18px]';
 
     return (
-      <div className={cn("relative flex w-full items-center h-[18px]", className)} style={{ cursor: cursorStyle }}>
+      <div className={cn("relative flex w-full items-center", heightClass, className)} style={{ cursor: cursorStyle }}>
         <input
           ref={ref}
           type="range"
@@ -96,15 +103,17 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
           style={{ cursor: cursorStyle }}
           {...props}
         />
-        <div className={cn("relative h-[18px] w-full grow overflow-hidden rounded-full", trackBgClass || "bg-muted")} style={{ cursor: cursorStyle }}>
+        <div className={cn("relative w-full grow overflow-hidden rounded-full", heightClass, trackBgClass || "bg-muted")} style={{ cursor: cursorStyle }}>
           {/* Background track - lighter version of fill color */}
           <div
             className={cn("absolute inset-0 rounded-full opacity-30", trackColorClass || "bg-primary")}
+            style={trackBgStyle}
           />
           {/* Filled portion */}
           <div
             className={cn("absolute h-full rounded-full transition-all", trackColorClass || "bg-primary")}
             style={{
+              ...trackFillStyle,
               width: `${percentage}%`,
               ...(fixedGradient && percentage > 0 ? { backgroundSize: `${10000 / percentage}% 100%` } : {})
             }}

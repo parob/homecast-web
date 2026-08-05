@@ -71,13 +71,32 @@ export default {
           ring: "hsl(var(--sidebar-ring))",
         },
       },
+      // Apple-leaning radius ladder. Every step is one notch larger than the
+      // Tailwind/shadcn defaults, which is what makes legacy screens match the
+      // hand-tuned chrome without touching each call site. Pair with the
+      // continuous-corner rule in index.css.
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        sm: "6px",
+        md: "8px",
+        lg: "12px",
+        xl: "16px",
+        "2xl": "20px",
+        "3xl": "28px",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(ellipse at center, var(--tw-gradient-stops))",
+      },
+      // Motion tokens. `ease-standard` is the iOS sheet curve — it leaves fast
+      // and settles slowly, which is what makes Apple's transitions feel like
+      // deceleration rather than a linear slide. Durations are named by intent
+      // so a panel and a tile agree without each picking its own number.
+      transitionTimingFunction: {
+        standard: "cubic-bezier(0.32, 0.72, 0, 1)",
+      },
+      transitionDuration: {
+        fast: "150ms",
+        base: "200ms",
+        slow: "300ms",
       },
       keyframes: {
         "accordion-down": {

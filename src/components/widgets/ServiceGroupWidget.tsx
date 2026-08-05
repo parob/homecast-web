@@ -262,10 +262,13 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Create color context value for SliderControl
   const widgetColors = iconColor || DEFAULT_ICON_COLOR;
+  // One provider serves both the inline card and the overlay, so it stays
+  // false — the overlay's own controls opt into the larger sizing explicitly.
   const colorContextValue = {
     colors: widgetColors,
     isOn: groupOn,
     iconStyle,
+    expanded: false,
   };
 
   // Icon background and text colors
@@ -350,7 +353,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 </div>
                 {!isBlindsGroup && (
                   <div
-                    className={`relative shrink-0 scale-75 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+                    className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
                     onClick={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}
                   >
@@ -591,7 +594,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                       onClose={() => setExpandedAccessoryId(null)}
                      
                     >
-                      {/* inOverlay=true makes WidgetCard fully transparent, letting ExpandedOverlay's blur layer show through */}
+                      {/* expanded renders the larger overlay layout; the card stays transparent so ExpandedOverlay's blur layer shows through */}
                       <AccessoryWidget
                         accessory={accessory}
                         onToggle={onAccessoryToggle}
@@ -600,7 +603,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                         compact={false}
                         iconStyle={iconStyle}
                         disabled={effectiveDisabled}
-                        inOverlay={true}
+                        expanded={true}
                       />
                     </ExpandedOverlay>
                   )}
@@ -621,20 +624,20 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Expanded card content for the overlay (non-compact, shares state with parent)
   const expandedCardContent = (
     <Card className={`relative ${expandedCardBgClass} ${noResponseClass} cursor-pointer`} onClick={handleExpandedCardClick}>
-      <CardHeader className={`p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
+      <CardHeader className={`p-5 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-5'}`}>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center min-w-0 flex-1 gap-2 cursor-pointer">
-            <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
+          <div className="flex items-center min-w-0 flex-1 gap-2.5 cursor-pointer">
+            <div className={`shrink-0 flex items-center justify-center h-11 w-11 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
               {isBlindsGroup
-                ? <Blinds className="h-4 w-4" />
-                : <Lightbulb className="h-4 w-4" />
+                ? <Blinds className="h-5 w-5" />
+                : <Lightbulb className="h-5 w-5" />
               }
             </div>
             <div className="min-w-0">
-              <CardTitle className={`truncate font-medium leading-tight text-sm `}>
+              <CardTitle className={`truncate font-medium leading-tight text-base `}>
                 {getDisplayName(group.name, roomName)}
               </CardTitle>
-              <CardDescription className={`text-xs mt-0.5 flex items-center gap-1.5 `}>
+              <CardDescription className={`text-sm mt-0.5 flex items-center gap-1.5 `}>
                 {allNoResponse
                   ? 'No Response'
                   : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
@@ -675,7 +678,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
         </div>
       </CardHeader>
       <AnimatedCollapse open={!allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && brightness !== null))}>
-        <CardContent className={`relative px-4 pb-3 pt-1 space-y-2 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <CardContent className={`relative px-5 pb-4 pt-1 space-y-3 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           {isBlindsGroup && (
             <SliderControl
               label="All Blinds"
@@ -685,6 +688,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               onCommit={(v) => onSlider('target_position', v)}
               disabled={effectiveDisabled}
               trackBgClass="bg-muted/25"
+              expanded
             />
           )}
           {isLightsGroup && groupOn && brightness !== null && (
@@ -696,6 +700,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               onCommit={(v) => onSlider('brightness', v)}
               disabled={effectiveDisabled}
               trackBgClass="bg-muted/25"
+              expanded
             />
           )}
           {isLightsGroup && groupOn && colorTempInfo && (
@@ -711,6 +716,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
               trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
               fixedGradient={iconStyle === 'colourful'}
+              expanded
             />
           )}
           {effectiveDisabled && effectiveOnDisabledClick && (
@@ -722,8 +728,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
         </CardContent>
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded}>
-        <CardContent className={`relative px-3 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[17rem] overflow-y-auto pr-1' : ''}`}>
+        <CardContent className={`relative px-4 pb-4 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[20rem] overflow-y-auto pr-1' : ''}`}>
             {accessories.map((accessory) => {
               const isBlind = accessory.services?.some(s => s.serviceType === 'window_covering');
               const serviceType = getPrimaryServiceType(accessory);
@@ -782,15 +788,15 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                     setExpandedAccessoryId(isAccessoryExpanded ? null : accessory.id);
                   }}
                 >
-                  <div className={`rounded-md px-2 py-1.5 ${accCardBgClass} ${isBlind ? 'space-y-2' : ''}`}>
+                  <div className={`rounded-md px-2.5 py-2.5 ${accCardBgClass} ${isBlind ? 'space-y-2' : ''}`}>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${accIconBgClass}`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded ${accIconBgClass}`}>
                           {getServiceIcon(serviceType)}
                         </div>
-                        <span className="truncate text-xs">{getDisplayName(accessory.name, accessory.roomName)}</span>
+                        <span className="truncate text-sm">{getDisplayName(accessory.name, accessory.roomName)}</span>
                         {isBlind && (
-                          <span className="text-[10px] text-muted-foreground">{accPosition}%</span>
+                          <span className="text-xs text-muted-foreground">{accPosition}%</span>
                         )}
                       </div>
                       {!isBlind && powerCharType && onAccessoryToggle && (
@@ -798,14 +804,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                           checked={accIsOn}
                           onCheckedChange={() => onAccessoryToggle(accessory.id, powerCharType!, accIsOn)}
                           disabled={effectiveDisabled || !accessory.isReachable}
-                          className="scale-75"
+                          className="scale-90"
                           onClick={(e) => e.stopPropagation()}
                           checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
                         />
                       )}
                     </div>
                     {isBlind && onAccessorySlider && (
-                      <div className="pl-8" onClick={(e) => e.stopPropagation()}>
+                      <div className="pl-10" onClick={(e) => e.stopPropagation()}>
                         <Slider
                           value={[accPosition]}
                           min={0}
@@ -814,6 +820,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                           onValueCommit={(v) => onAccessorySlider(accessory.id, 'target_position', v[0])}
                           disabled={effectiveDisabled || !accessory.isReachable}
                           className="w-full"
+                          size="lg"
                           trackColorClass={iconStyle === 'colourful' && iconColor ? iconColor.sliderTrack : undefined}
                           trackBgClass="bg-muted/25"
                         />
@@ -826,7 +833,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                       onClose={() => setExpandedAccessoryId(null)}
                      
                     >
-                      {/* inOverlay=true makes WidgetCard fully transparent, letting ExpandedOverlay's blur layer show through */}
+                      {/* expanded renders the larger overlay layout; the card stays transparent so ExpandedOverlay's blur layer shows through */}
                       <AccessoryWidget
                         accessory={accessory}
                         onToggle={onAccessoryToggle}
@@ -835,7 +842,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                         compact={false}
                         iconStyle={iconStyle}
                         disabled={effectiveDisabled}
-                        inOverlay={true}
+                        expanded={true}
                       />
                     </ExpandedOverlay>
                   )}

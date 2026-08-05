@@ -20,6 +20,8 @@ interface SliderControlProps {
   trackBgClass?: string;
   trackColorClass?: string;
   fixedGradient?: boolean;
+  /** Override for the expanded (large) sizing; defaults to the WidgetCard context */
+  expanded?: boolean;
 }
 
 export const SliderControl: React.FC<SliderControlProps> = ({
@@ -39,9 +41,11 @@ export const SliderControl: React.FC<SliderControlProps> = ({
   trackBgClass,
   trackColorClass: trackColorClassProp,
   fixedGradient,
+  expanded,
 }) => {
   const [dragging, setDragging] = useState<number | null>(null);
-  const { colors, isOn, iconStyle } = useWidgetColors();
+  const { colors, isOn, iconStyle, expanded: ctxExpanded } = useWidgetColors();
+  const isLarge = !compact && (expanded ?? ctxExpanded);
 
   const displayValue = dragging !== null ? dragging : value;
   const formattedValue = formatValue ? formatValue(displayValue) : `${Math.round(displayValue)}${unit}`;
@@ -52,17 +56,20 @@ export const SliderControl: React.FC<SliderControlProps> = ({
   const trackColorClass = trackColorClassProp !== undefined ? trackColorClassProp : (useColoredSlider ? colors.sliderTrack : undefined);
   const thumbColorClass = useColoredSlider ? `border-${colors.sliderThumb.replace('bg-', '')}` : undefined;
 
+  const labelTextClass = compact ? 'text-[10px]' : (isLarge ? 'text-sm' : 'text-xs');
+  const iconSizeClass = compact ? 'h-2.5 w-2.5' : (isLarge ? 'h-4 w-4' : 'h-3 w-3');
+
   return (
     <div className={`${compact ? "space-y-1" : "space-y-2"} ${disabled ? 'cursor-not-allowed' : ''}`}>
       <div className="flex items-center justify-between">
-        <div className={`flex items-center text-muted-foreground ${compact ? 'gap-1 text-[10px]' : 'gap-1.5 text-xs'}`}>
-          {Icon && <Icon className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />}
+        <div className={`flex items-center text-muted-foreground ${compact ? 'gap-1' : 'gap-1.5'} ${labelTextClass}`}>
+          {Icon && <Icon className={iconSizeClass} />}
           <span>{label}</span>
         </div>
-        <span className={`font-medium ${compact ? 'text-[10px]' : 'text-xs'}`}>{formattedValue}</span>
+        <span className={`font-medium ${labelTextClass}`}>{formattedValue}</span>
       </div>
       <div className={`flex items-center ${compact ? 'gap-2' : 'gap-3'} ${disabled ? 'cursor-not-allowed' : ''}`}>
-        {IconLeft && <IconLeft className={`${compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} shrink-0`} />}
+        {IconLeft && <IconLeft className={`${iconSizeClass} shrink-0`} />}
         <Slider
           value={[displayValue]}
           min={min}
@@ -75,12 +82,13 @@ export const SliderControl: React.FC<SliderControlProps> = ({
           }}
           disabled={disabled}
           className={`flex-1 ${disabled ? 'cursor-not-allowed' : ''}`}
+          size={isLarge ? 'lg' : 'default'}
           trackColorClass={trackColorClass}
           thumbColorClass={thumbColorClass}
           trackBgClass={trackBgClass}
           fixedGradient={fixedGradient}
         />
-        {IconRight && <IconRight className={`${compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} shrink-0`} />}
+        {IconRight && <IconRight className={`${iconSizeClass} shrink-0`} />}
       </div>
     </div>
   );

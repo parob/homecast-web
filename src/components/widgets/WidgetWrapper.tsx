@@ -39,9 +39,9 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const borderClass = !isOn && !isDarkBackground ? 'ring-1 ring-inset ring-slate-200' : '';
 
   return (
-    <div className={`relative rounded-[20px] h-fit ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
+    <div className={`relative rounded-2xl h-fit ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
       {/* Blur layer - separate from content so it doesn't break during height animation */}
-      <div className={`absolute inset-0 rounded-[20px] backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
+      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
       {/* Content */}
       <div className="relative z-[1] transform-gpu">
         {children}

@@ -39,7 +39,7 @@ export const AnimatedCollapse: React.FC<AnimatedCollapseProps> = ({
     <div
       className={cn(
         "grid",
-        shouldAnimate && "transition-[grid-template-rows,opacity] duration-200 ease-out",
+        shouldAnimate && "transition-[grid-template-rows,opacity] duration-base ease-standard",
         className
       )}
       style={{ gridTemplateRows: open ? '1fr' : '0fr' }}

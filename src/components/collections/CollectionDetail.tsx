@@ -1304,6 +1304,7 @@ export function CollectionDetail({
                             homeName={getHomeName(accessory.homeId)}
                             accessory={accessory}
                             compact={false}
+                            expanded
                             onToggle={onToggle}
                             onSlider={onSlider}
                             getEffectiveValue={getEffectiveValue}
@@ -1324,7 +1325,7 @@ export function CollectionDetail({
             {/* Placeholder for incoming item when dragging between groups */}
             {showDropPlaceholder && (
               <div
-                className="rounded-[20px] border-2 border-dashed border-primary/50 bg-primary/5 transition-all duration-200"
+                className="rounded-2xl border-2 border-dashed border-primary/50 bg-primary/5 transition-all duration-200"
                 style={activeDragRect && activeDragRect.width > 0 ? {
                   width: activeDragRect.width,
                   height: activeDragRect.height,
@@ -1499,7 +1500,7 @@ export function CollectionDetail({
 
         {/* Content */}
         {payload.items.length === 0 && payload.groups.length === 0 ? (
-          <div className={`rounded-[20px] border border-dashed p-8 text-center ${isDarkBackground ? 'bg-black/30 backdrop-blur-xl border-white/20' : 'bg-background/80 backdrop-blur-sm'}`}>
+          <div className={`rounded-2xl border border-dashed p-8 text-center ${isDarkBackground ? 'bg-black/30 backdrop-blur-xl border-white/20' : 'bg-background/80 backdrop-blur-sm'}`}>
             <Lightbulb className={`mx-auto h-12 w-12 ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/50'}`} />
             <h3 className={`mt-4 text-lg font-medium ${isDarkBackground ? 'text-white' : ''}`}>No accessories in collection</h3>
             <p className={`mt-2 text-sm mb-4 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
@@ -1633,6 +1634,7 @@ export function CollectionDetail({
                                 homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
                                 compact={false}
+                                expanded
                                 onToggle={onToggle}
                                 onSlider={onSlider}
                                 getEffectiveValue={getEffectiveValue}

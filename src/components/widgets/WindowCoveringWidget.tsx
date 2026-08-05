@@ -117,9 +117,10 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
   disabled,
 
@@ -257,9 +258,10 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       serviceType="window_covering"
       iconStyle={iconStyle}
       childrenVisible={showExpanded}
@@ -302,7 +304,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     >
       {showExpanded && (
         <div className="flex gap-2 -mt-1">
-          <div className="flex-1 h-24">
+          <div className={`flex-1 ${expanded ? 'h-32' : 'h-24'}`}>
             <CurtainVisualFull
               currentPosition={currentPosition}
               targetPosition={targetPosition}
@@ -328,9 +330,9 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
               }}
               disabled={noResponse}
-              className={`h-8 w-8 p-0 rounded-md ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
-              <ChevronUp className="h-4 w-4" />
+              <ChevronUp className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
             </Button>
             <Button
               variant="outline"
@@ -341,9 +343,9 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
               }}
               disabled={noResponse}
-              className={`h-8 w-8 p-0 rounded-md ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
             </Button>
           </div>
         </div>

@@ -10,12 +10,13 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
-  
+
   iconStyle,
-  
-  
+
+
   editMode,
   editModeType,
   isHiddenUi,
@@ -49,9 +50,10 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
-      
+
       serviceType="speaker"
       iconStyle={iconStyle}
       childrenVisible={!isMuted && hasControls && accessory.isReachable}

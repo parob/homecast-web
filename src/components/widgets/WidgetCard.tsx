@@ -25,12 +25,15 @@ export interface WidgetColorContextType {
   colors: IconColor;
   isOn: boolean;
   iconStyle: IconStyle;
+  /** True when the card renders inside an ExpandedOverlay — child controls size up */
+  expanded: boolean;
 }
 
 export const WidgetColorContext = createContext<WidgetColorContextType>({
   colors: DEFAULT_ICON_COLOR,
   isOn: false,
   iconStyle: 'standard',
+  expanded: false,
 });
 
 export const useWidgetColors = () => useContext(WidgetColorContext);
@@ -236,10 +239,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Icon element (shared between compact and non-compact)
   const iconElement = (
-    <div className={`shrink-0 items-center justify-center flex ${
-      effectiveCompact ? 'h-8 w-8 rounded-full' : 'h-9 w-9 rounded-full'
+    <div className={`shrink-0 items-center justify-center flex rounded-full ${
+      effectiveCompact ? 'h-8 w-8' : (expanded ? 'h-11 w-11' : 'h-9 w-9')
     } ${iconBgClass} ${iconTextClass} ${iconShadowClass} ${iconOpacityClass}`}>
-      <div className="[&>svg]:h-4 [&>svg]:w-4">
+      <div className={!effectiveCompact && expanded ? '[&>svg]:h-5 [&>svg]:w-5' : '[&>svg]:h-4 [&>svg]:w-4'}>
         {icon}
       </div>
     </div>
@@ -252,7 +255,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         {iconElement}
         {effectiveHeaderAction && (
           <div
-            className={`relative shrink-0 scale-75 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
@@ -286,12 +289,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       {iconElement}
       <div className="min-w-0 flex-1">
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
-          <CardTitle className={`font-medium leading-tight text-sm ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
+          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
             {displayTitle}
           </CardTitle>
           <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
             <CardDescription
-              className={`text-xs mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
+              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
             >
               {effectiveSubtitle || '\u00A0'}
             </CardDescription>
@@ -345,6 +348,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     colors: widgetColors,
     isOn: effectiveIsOn,
     iconStyle,
+    expanded,
   };
 
   // Get drag handle from SortableItem context (if inside a sortable)
@@ -359,7 +363,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const cardInner = (
     <>
-      <CardHeader className={effectiveCompact ? "p-3" : `p-4 ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : 'pb-4'}`}>
+      <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
         {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
@@ -399,7 +403,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       {children && (
         <AnimatedCollapse open={!effectiveCompact && showChildren}>
           <CardContent
-            className={`px-4 pb-4 ${tightContent ? 'pt-0' : 'pt-2'}`}
+            className={`${expanded ? 'px-5 pb-5' : 'px-4 pb-4'} ${tightContent ? 'pt-0' : 'pt-2'}`}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -433,7 +437,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               <Card
                 ref={ref}
                 onClick={handleCardClick}
-                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
                 style={style}
               >
                 {cardInner}
@@ -528,7 +532,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           <Card
             ref={ref}
             onClick={handleCardClick}
-            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
           >
             {cardInner}
           </Card>
