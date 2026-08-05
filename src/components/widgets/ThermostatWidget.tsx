@@ -52,7 +52,7 @@ const ModeButtons: React.FC<{
           variant="outline"
           size="sm"
           onClick={() => { if (!viewOnly) btn.onClick(); }}
-          className={`flex-1 rounded-md min-w-0 ${useSmallFont ? 'text-[10px] h-6 px-0.5' : (large ? 'text-sm h-9 px-1.5' : 'text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${viewOnly ? 'cursor-not-allowed' : ''}`}
+          className={`flex-1 min-w-0 ${useSmallFont ? 'rounded-md text-[10px] h-6 px-0.5' : (large ? 'rounded-xl text-sm font-medium h-11 px-2' : 'rounded-md text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${viewOnly ? 'cursor-not-allowed' : ''}`}
           disabled={disabled}
         >
           <span className="truncate">{btn.label}</span>
@@ -81,15 +81,18 @@ const TemperatureDial: React.FC<{
    * primary control it should simply sit in the layout.
    */
   inline?: boolean;
-}> = ({ value, currentTemp, min, max, onChange, disabled, status, strokeColor, trackColor, size = 150, inline = false }) => {
+  /** Fades the dial when the unit is off, without removing it. */
+  dimmed?: boolean;
+}> = ({ value, currentTemp, min, max, onChange, disabled, status, strokeColor, trackColor, size = 150, inline = false, dimmed = false }) => {
   const [dragging, setDragging] = useState<number | null>(null);
   const displayValue = dragging !== null ? dragging : value;
   const isLarge = size > 150;
 
   return (
-    <div className={inline
+    <div className={`${inline
       ? "flex flex-col items-center justify-center"
-      : "absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20"}>
+      : "absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20"} ${
+      dimmed ? 'opacity-45 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
         style={{ width: size, height: size }}
@@ -522,7 +525,32 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
   const DynamicIcon = getDynamicIcon();
 
-  const showDial = !compact && !editMode && hasTempControls && accessory.isReachable && isActive;
+  // Expanded, the panel keeps one shape whatever the unit is doing: the dial and
+  // the mode row are always present, greyed when the unit is off, rather than
+  // appearing and disappearing so the whole panel reflows as you switch it on.
+  // A plain thermostat has no `active` characteristic, so isActive is pinned
+  // true for it — "off" there means the target mode is Off, not the flag.
+  const isRunning = isHeaterCooler ? isActive : effectiveMode !== 'off';
+
+  // One source for the mode colour so the selected pill and the dial arc agree —
+  // a blue Cool arc under an orange Cool button read as two different states.
+  const modeButtonClasses = (isSelected: boolean) => {
+    if (iconStyle !== 'colourful') {
+      return isSelected
+        ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
+        : 'bg-primary/20 hover:bg-primary/30 border-transparent';
+    }
+    const selectedBg = effectiveMode === 'cool' ? 'bg-sky-500 hover:bg-sky-600'
+      : effectiveMode === 'heat' ? 'bg-orange-500 hover:bg-orange-600'
+        : effectiveMode === 'auto' ? 'bg-emerald-500 hover:bg-emerald-600'
+          : 'bg-slate-500 hover:bg-slate-600';
+    const modeColors = activeServiceType ? getIconColor(activeServiceType) : null;
+    return isSelected
+      ? `${selectedBg} text-white border-transparent`
+      : `${modeColors?.accentMuted ?? 'bg-muted'} ${modeColors?.accentMutedHover ?? 'hover:bg-muted/80'} border-transparent`;
+  };
+  const fullLayout = !compact && !editMode && hasTempControls && accessory.isReachable && (isActive || expanded);
+  const showDial = fullLayout;
   // Expanded, the dial stops overhanging the card edge and becomes the control
   // the panel is built around.
   const heroDial = showDial && expanded;
@@ -534,17 +562,21 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     const minTemp = tempChar?.characteristic?.minValue ?? 10;
     const maxTemp = tempChar?.characteristic?.maxValue ?? 35;
     const currentTarget = Number(targetTemp) || 22;
+    // Colour by what the unit is doing, not by what kind of unit it is — an
+    // air conditioner set to Cool was drawing a hot orange arc.
     const strokeColor = iconStyle === 'standard'
       ? 'hsl(var(--primary))'
-      : activeServiceType === 'heater_cooler' ? '#0ea5e9'
-        : activeServiceType === 'climate_balanced' ? '#10b981'
-          : '#f97316';
+      : effectiveMode === 'cool' ? '#0ea5e9'
+        : effectiveMode === 'heat' ? '#f97316'
+          : effectiveMode === 'auto' ? '#10b981'
+            : 'hsl(var(--muted-foreground))';
     const trackColor = iconStyle === 'standard'
       ? 'hsl(var(--primary) / 0.2)'
       : iconStyle === 'colourful'
-        ? (activeServiceType === 'heater_cooler' ? '#bae6fd'
-          : activeServiceType === 'climate_balanced' ? '#a7f3d0'
-            : '#fed7aa')
+        ? (effectiveMode === 'cool' ? '#bae6fd'
+          : effectiveMode === 'heat' ? '#fed7aa'
+            : effectiveMode === 'auto' ? '#a7f3d0'
+              : 'hsl(var(--muted))')
         : 'hsl(var(--muted))';
 
     return (
@@ -554,7 +586,10 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
         min={minTemp}
         max={maxTemp}
         onChange={(v) => { if (!isViewOnly) onSlider(accessory.id, targetTempType, v); }}
-        disabled={isViewOnly || noResponse}
+        // Off, the dial stays put but stops responding — the panel keeps its
+        // shape and the mode row is what you reach for.
+        disabled={isViewOnly || noResponse || !isRunning}
+        dimmed={!isRunning}
         status={currentStateDesc}
         strokeColor={strokeColor}
         trackColor={trackColor}
@@ -609,7 +644,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       locationSubtitle={locationSubtitle}
       headerAction={
         // For heater_cooler when off: show compact mode buttons (Auto/Heat/Cool) in header
-        isHeaterCooler && hasModeControls && !isActive && accessory.isReachable ? (
+        isHeaterCooler && hasModeControls && !isActive && accessory.isReachable && !expanded ? (
           <div className="flex items-center gap-2">
             {/* Show current temp in compact mode even when off */}
             {compact && currentTemp !== null && currentTemp !== undefined && (
@@ -689,7 +724,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       {hasControls && (
         <div className={compact ? "space-y-2" : ""}>
           {/* Full height layout with dial on right */}
-          {!compact && !editMode && hasTempControls && accessory.isReachable && isActive ? (
+          {fullLayout ? (
             <div className="flex flex-col">
               {/* Left side: mode buttons, current temp, and fan controls */}
               <div className="flex-1 flex flex-col justify-between">
@@ -732,17 +767,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
                   // Get themed button classes based on icon style - all buttons use widget color
                   const widgetColors = activeServiceType ? getIconColor(activeServiceType) : null;
-                  const getButtonClasses = (isSelected: boolean) => {
-                    if (iconStyle === 'colourful' && widgetColors) {
-                      return isSelected
-                        ? `${widgetColors.accent} text-white border-transparent`
-                        : `${widgetColors.accentMuted} ${widgetColors.accentMutedHover} border-transparent`;
-                    }
-                    // Standard and basic modes use primary color
-                    return isSelected
-                      ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                      : 'bg-primary/20 hover:bg-primary/30 border-transparent';
-                  };
+                  const getButtonClasses = modeButtonClasses;
 
                   return (
                     <ModeButtons
@@ -817,17 +842,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
                 // Get themed button classes based on icon style - all buttons use widget color
                 const widgetColors = activeServiceType ? getIconColor(activeServiceType) : null;
-                const getButtonClasses = (isSelected: boolean) => {
-                  if (iconStyle === 'colourful' && widgetColors) {
-                    return isSelected
-                      ? `${widgetColors.accent} text-white border-transparent`
-                      : `${widgetColors.accentMuted} ${widgetColors.accentMutedHover} border-transparent`;
-                  }
-                  // Standard and basic modes use primary color
-                  return isSelected
-                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-                    : 'bg-primary/20 hover:bg-primary/30 border-transparent';
-                };
+                const getButtonClasses = modeButtonClasses;
 
                 return (
                   <ModeButtons

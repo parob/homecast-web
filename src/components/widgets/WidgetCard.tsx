@@ -437,14 +437,17 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 // Portrait puts the hero control front and centre with the
                 // secondary controls beneath; landscape stands it alongside
                 // them, because a tall bar in a short panel is unusable.
-                heroPortrait ? (
+                (heroPortrait || heroShape === 'block') ? (
+                  // A dial never wants a control column beside it — that layout
+                  // left the panel top-heavy with dead space underneath.
                   <div className="flex flex-col gap-4">
                     <div className={heroShape === 'block' ? 'flex justify-center' : 'h-[260px]'}>{hero}</div>
                     {children && <div className="space-y-3">{children}</div>}
                   </div>
                 ) : (
+                  // Only bars reach here — blocks always take the stacked branch.
                   <div className="flex gap-4">
-                    <div className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
+                    <div className="h-[190px] w-[84px] shrink-0">{hero}</div>
                     {children && <div className="min-w-0 flex-1 space-y-3">{children}</div>}
                   </div>
                 )
