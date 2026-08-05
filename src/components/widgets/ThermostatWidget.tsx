@@ -92,7 +92,7 @@ const TemperatureDial: React.FC<{
     <div className={`${inline
       ? "flex flex-col items-center justify-center"
       : "absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20"} ${
-      dimmed ? 'opacity-45 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
+      dimmed ? 'opacity-60 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
         // The arc stops short of the bottom of its own SVG box, so inline the
@@ -569,6 +569,24 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     const minTemp = tempChar?.characteristic?.minValue ?? 10;
     const maxTemp = tempChar?.characteristic?.maxValue ?? 35;
     const currentTarget = Number(targetTemp) || 22;
+    // Off, the arc goes neutral: a live blue "Cool" arc on a switched-off unit
+    // was the main reason the off panel did not read as off.
+    if (!isRunning) return (
+      <TemperatureDial
+        value={Number(targetTemp) || 22}
+        currentTemp={currentTemp !== null && currentTemp !== undefined ? Number(currentTemp) : null}
+        min={tempChar?.characteristic?.minValue ?? 10}
+        max={tempChar?.characteristic?.maxValue ?? 35}
+        onChange={() => {}}
+        disabled
+        dimmed
+        status="Off"
+        strokeColor="hsl(var(--muted-foreground) / 0.5)"
+        trackColor="hsl(var(--muted-foreground) / 0.18)"
+        size={inline ? 190 : 150}
+        inline={inline}
+      />
+    );
     // Colour by what the unit is doing, not by what kind of unit it is — an
     // air conditioner set to Cool was drawing a hot orange arc.
     const strokeColor = iconStyle === 'standard'
@@ -608,8 +626,11 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
   // Build subtitle showing current temperature (always visible, even when off)
   const getSubtitle = () => {
-    if (currentTemp === null || currentTemp === undefined) return undefined;
+    if (currentTemp === null || currentTemp === undefined) return isRunning ? undefined : 'Off';
     const tempStr = `${Number(currentTemp).toFixed(1)}°`;
+    // Say it in words. Fading the controls tells you something is inactive; it
+    // does not tell you the unit is off rather than merely idle.
+    if (!isRunning) return `Off · ${tempStr}`;
     if (humidity !== null && humidity !== undefined) {
       return `${tempStr} · ${Math.round(Number(humidity))}%`;
     }
@@ -751,7 +772,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                       key: 'off',
                       icon: Power,
                       label: 'Off',
-                      isSelected: false, // Never selected when device is on
+                      // Selected when the unit is off — otherwise a switched-off
+                      // air conditioner still showed Cool highlighted.
+                      isSelected: !isActive,
                       onClick: () => onToggle(accessory.id, 'active', isActive),
                     });
                     // Mode buttons - always show available modes

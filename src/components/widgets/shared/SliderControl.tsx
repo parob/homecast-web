@@ -60,7 +60,7 @@ export const SliderControl: React.FC<SliderControlProps> = ({
   const iconSizeClass = compact ? 'h-2.5 w-2.5' : (isLarge ? 'h-[16px] w-[16px]' : 'h-3 w-3');
 
   return (
-    <div className={`${compact ? "space-y-1" : "space-y-2"} ${disabled ? 'cursor-not-allowed' : ''}`}>
+    <div className={`${compact ? "space-y-1" : "space-y-2"} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
       <div className="flex items-center justify-between">
         <div className={`flex items-center text-muted-foreground ${compact ? 'gap-1' : 'gap-1.5'} ${labelTextClass}`}>
           {Icon && <Icon className={iconSizeClass} />}
