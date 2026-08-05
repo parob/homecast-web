@@ -75,13 +75,21 @@ const TemperatureDial: React.FC<{
   trackColor?: string;
   /** Dial diameter in px — larger in the expanded overlay */
   size?: number;
-}> = ({ value, currentTemp, min, max, onChange, disabled, status, strokeColor, trackColor, size = 150 }) => {
+  /**
+   * Inline (hero) rather than floating off the card's right edge. The floating
+   * placement exists to overhang a short inline tile; as the expanded panel's
+   * primary control it should simply sit in the layout.
+   */
+  inline?: boolean;
+}> = ({ value, currentTemp, min, max, onChange, disabled, status, strokeColor, trackColor, size = 150, inline = false }) => {
   const [dragging, setDragging] = useState<number | null>(null);
   const displayValue = dragging !== null ? dragging : value;
   const isLarge = size > 150;
 
   return (
-    <div className="absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20">
+    <div className={inline
+      ? "flex flex-col items-center justify-center"
+      : "absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20"}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
         style={{ width: size, height: size }}
@@ -514,6 +522,48 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
   const DynamicIcon = getDynamicIcon();
 
+  const showDial = !compact && !editMode && hasTempControls && accessory.isReachable && isActive;
+  // Expanded, the dial stops overhanging the card edge and becomes the control
+  // the panel is built around.
+  const heroDial = showDial && expanded;
+
+  const renderDial = (inline: boolean) => {
+    const tempChar = targetTempType === 'heating_threshold' ? heatingThresholdChar
+      : targetTempType === 'cooling_threshold' ? coolingThresholdChar
+      : targetTempChar;
+    const minTemp = tempChar?.characteristic?.minValue ?? 10;
+    const maxTemp = tempChar?.characteristic?.maxValue ?? 35;
+    const currentTarget = Number(targetTemp) || 22;
+    const strokeColor = iconStyle === 'standard'
+      ? 'hsl(var(--primary))'
+      : activeServiceType === 'heater_cooler' ? '#0ea5e9'
+        : activeServiceType === 'climate_balanced' ? '#10b981'
+          : '#f97316';
+    const trackColor = iconStyle === 'standard'
+      ? 'hsl(var(--primary) / 0.2)'
+      : iconStyle === 'colourful'
+        ? (activeServiceType === 'heater_cooler' ? '#bae6fd'
+          : activeServiceType === 'climate_balanced' ? '#a7f3d0'
+            : '#fed7aa')
+        : 'hsl(var(--muted))';
+
+    return (
+      <TemperatureDial
+        value={currentTarget}
+        currentTemp={currentTemp !== null && currentTemp !== undefined ? Number(currentTemp) : null}
+        min={minTemp}
+        max={maxTemp}
+        onChange={(v) => { if (!isViewOnly) onSlider(accessory.id, targetTempType, v); }}
+        disabled={isViewOnly || noResponse}
+        status={currentStateDesc}
+        strokeColor={strokeColor}
+        trackColor={trackColor}
+        size={inline ? 190 : 150}
+        inline={inline}
+      />
+    );
+  };
+
   // Build subtitle showing current temperature (always visible, even when off)
   const getSubtitle = () => {
     if (currentTemp === null || currentTemp === undefined) return undefined;
@@ -629,51 +679,11 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
           </div>
         ) : undefined
       }
-      className={!compact && !editMode && hasTempControls && accessory.isReachable && isActive ? `relative overflow-visible ${expanded ? 'pr-[155px]' : 'pr-[135px]'}` : ""}
+      className={showDial && !heroDial ? "relative overflow-visible pr-[135px]" : ""}
+      heroShape="block"
+      hero={heroDial ? renderDial(true) : undefined}
       overlayContent={
-        !compact && !editMode && hasTempControls && accessory.isReachable && isActive ? (() => {
-          const tempChar = targetTempType === 'heating_threshold' ? heatingThresholdChar
-            : targetTempType === 'cooling_threshold' ? coolingThresholdChar
-            : targetTempChar;
-          const minTemp = tempChar?.characteristic?.minValue ?? 10;
-          const maxTemp = tempChar?.characteristic?.maxValue ?? 35;
-          const currentTarget = Number(targetTemp) || 22;
-          // Stroke color based on icon style and service type
-          const getStrokeColor = () => {
-            if (iconStyle === 'standard') return 'hsl(var(--primary))';
-            // Colourful mode uses service-type-specific colors
-            if (activeServiceType === 'heater_cooler') return '#0ea5e9'; // sky-500
-            if (activeServiceType === 'climate_balanced') return '#10b981'; // emerald-500
-            return '#f97316'; // orange-500
-          };
-          // Track background color based on icon style
-          const getTrackColor = () => {
-            if (iconStyle === 'standard') return 'hsl(var(--primary) / 0.2)';
-            if (iconStyle === 'colourful') {
-              if (activeServiceType === 'heater_cooler') return '#bae6fd'; // sky-200
-              if (activeServiceType === 'climate_balanced') return '#a7f3d0'; // emerald-200
-              return '#fed7aa'; // orange-200
-            }
-            return 'hsl(var(--muted))';
-          };
-          const strokeColor = getStrokeColor();
-          const trackColor = getTrackColor();
-
-          return (
-            <TemperatureDial
-              value={currentTarget}
-              currentTemp={currentTemp !== null && currentTemp !== undefined ? Number(currentTemp) : null}
-              min={minTemp}
-              max={maxTemp}
-              onChange={(v) => { if (!isViewOnly) onSlider(accessory.id, targetTempType, v); }}
-              disabled={isViewOnly || noResponse}
-              status={currentStateDesc}
-              strokeColor={strokeColor}
-              trackColor={trackColor}
-              size={expanded ? 175 : 150}
-            />
-          );
-        })() : undefined
+        showDial && !heroDial ? renderDial(false) : undefined
       }
     >
       {hasControls && (

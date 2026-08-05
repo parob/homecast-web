@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { Speaker, Volume2, VolumeX, Volume1 } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, VerticalSlider } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const SpeakerWidget: React.FC<WidgetProps> = memo(({
@@ -41,8 +41,25 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
   const VolumeIcon = isMuted ? VolumeX : volume > 50 ? Volume2 : Volume1;
   const hasControls = volumeChar?.isWritable;
 
+  const showHero = expanded && !compact && !!volumeChar?.isWritable && !isMuted;
+
   return (
     <WidgetCard
+      hero={showHero ? (
+        <VerticalSlider
+          value={volume}
+          min={volumeChar.characteristic?.minValue ?? 0}
+          max={volumeChar.characteristic?.maxValue ?? 100}
+          step={volumeChar.characteristic?.stepValue ?? 5}
+          onCommit={(v) => onSlider(accessory.id, 'volume', v)}
+          disabled={!accessory.isReachable}
+          icon={VolumeIcon}
+          label="Volume"
+          fillClassName="bg-violet-400/80"
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={isMuted ? 'Muted' : `${Math.round(volume)}% volume`}
       icon={<Speaker className="h-4 w-4" />}
@@ -83,7 +100,7 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
         )
       }
     >
-      {hasControls && (
+      {hasControls && !showHero && (
         <SliderControl
           label="Volume"
           icon={VolumeIcon}

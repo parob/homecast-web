@@ -1,6 +1,7 @@
 import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useEffect, createContext } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -16,7 +17,10 @@ export interface ExpandedOverlayProps {
 // an already-open group overlay sees depth 1 and skips its scrim.
 const OverlayDepthContext = createContext(0);
 
-const DEFAULT_OVERLAY_WIDTH = 360;
+// Portrait panels are narrower so the hero control reads as a tall bar; on
+// desktop the hero stands beside its secondary controls and needs the width.
+const PORTRAIT_WIDTH = 300;
+const LANDSCAPE_WIDTH = 380;
 const PADDING = 10;
 // Offset the overlay content down from the widget's top edge so it visually
 // starts just below the top of the compact trigger rather than flush with it.
@@ -65,12 +69,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [ready, setReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
+  const [panelHeight, setPanelHeight] = useState(0);
   const { isDarkBackground } = useBackgroundContext();
   const depth = useContext(OverlayDepthContext);
+  const isMobile = useIsMobile();
 
   // Clamp before the position math so narrow viewports get correct alignment,
   // not just a squeezed panel.
-  const requestedWidth = width ?? DEFAULT_OVERLAY_WIDTH;
+  const requestedWidth = width ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
   const effectiveWidth = typeof window !== 'undefined'
     ? Math.min(requestedWidth, window.innerWidth - 32)
     : requestedWidth;
@@ -106,6 +112,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       });
     }
   }, [isExpanded, shouldRender, effectiveWidth]);
+
+  // Measure once the panel has content: a portrait panel with a hero control is
+  // tall enough to run off the bottom of a phone, and top-aligning to the
+  // trigger would leave half of it unreachable.
+  useLayoutEffect(() => {
+    if (!shouldRender || !contentRef.current) return;
+    setPanelHeight(contentRef.current.offsetHeight);
+  }, [shouldRender, ready, children]);
 
   // Dismiss when tapping outside the overlay, or when scrolling past a
   // threshold. Needed for touch/compact mode where there's no mouse-leave to
@@ -164,6 +178,15 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     onMouseLeave?.();
   }, [onMouseLeave]);
 
+  // Anchor below the trigger's top edge, then pull back up if that would push
+  // the panel past the bottom of the viewport.
+  const anchoredTop = coords.y - PADDING + TOP_OFFSET;
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const lowestTop = viewportH && panelHeight
+    ? viewportH - panelHeight - PADDING * 2 - 8
+    : anchoredTop;
+  const top = Math.max(8, Math.min(anchoredTop, Math.max(8, lowestTop)));
+
   const transformOrigin = position === 'left'
     ? 'top left'
     : position === 'right'
@@ -202,7 +225,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               // Anchor overlay's content to sit TOP_OFFSET px below the widget's
               // top edge (accounting for the 10px wrapper padding ring). Clamp
               // so it never draws above the viewport.
-              top: Math.max(0, coords.y - PADDING + TOP_OFFSET),
+              top,
             }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={handleMouseLeave}

@@ -269,6 +269,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     isOn: groupOn,
     iconStyle,
     expanded: false,
+    heroDense: false,
   };
 
   // Icon background and text colors

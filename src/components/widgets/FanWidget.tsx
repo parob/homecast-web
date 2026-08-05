@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Fan, RotateCcw, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, VerticalSlider } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const FanWidget: React.FC<WidgetProps> = memo(({
@@ -44,8 +44,25 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
 
   const hasControls = speedChar?.isWritable;
 
+  const showHero = expanded && !compact && !!speedChar?.isWritable && isOn;
+
   return (
     <WidgetCard
+      hero={showHero ? (
+        <VerticalSlider
+          value={speed ?? 0}
+          min={speedChar.characteristic?.minValue ?? 0}
+          max={speedChar.characteristic?.maxValue ?? 100}
+          step={speedChar.characteristic?.stepValue ?? 10}
+          onCommit={(v) => onSlider(accessory.id, 'rotation_speed', v)}
+          disabled={!accessory.isReachable}
+          icon={Fan}
+          label="Fan Speed"
+          fillClassName="bg-sky-400/80"
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={isOn && speed !== null ? `${Math.round(speed)}% speed` : isOn ? 'On' : null}
       icon={<Fan className={`h-4 w-4 ${isOn ? 'animate-spin' : ''}`} style={{ animationDuration: speed ? `${2000 / (speed / 50)}ms` : '2s' }} />}
@@ -88,16 +105,19 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
     >
       {hasControls && (
         <div className={compact ? "space-y-1.5" : "space-y-4"}>
-          <SliderControl
-            label="Fan Speed"
-            value={speed ?? 0}
-            min={speedChar.characteristic?.minValue ?? 0}
-            max={speedChar.characteristic?.maxValue ?? 100}
-            step={speedChar.characteristic?.stepValue ?? 10}
-            unit="%"
-            onCommit={(v) => onSlider(accessory.id, 'rotation_speed', v)}
-            compact={compact}
-          />
+          {/* The hero bar already is the speed control. */}
+          {!showHero && (
+            <SliderControl
+              label="Fan Speed"
+              value={speed ?? 0}
+              min={speedChar.characteristic?.minValue ?? 0}
+              max={speedChar.characteristic?.maxValue ?? 100}
+              step={speedChar.characteristic?.stepValue ?? 10}
+              unit="%"
+              onCommit={(v) => onSlider(accessory.id, 'rotation_speed', v)}
+              compact={compact}
+            />
+          )}
 
           {!compact && directionChar?.isWritable && (
             <div className="flex gap-2">

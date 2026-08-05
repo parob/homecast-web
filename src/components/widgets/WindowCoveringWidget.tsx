@@ -2,6 +2,7 @@ import React, { memo, useState, useRef, useCallback } from 'react';
 import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
+import { VerticalSlider } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
@@ -188,6 +189,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // Show expanded controls when not compact and has controls and reachable
   // Still show in view-only mode (but with cursor-not-allowed)
   const showExpanded = !compact && hasControls && accessory.isReachable;
+  const showHero = expanded && showExpanded;
 
   // Get colors based on icon style
   const widgetColors = getIconColor('window_covering');
@@ -259,6 +261,31 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       accessory={accessory}
       compact={compact}
       expanded={expanded}
+      hero={showHero ? (
+        // Inverted: the fill descends from the top, so the control mimics the
+        // blind itself coming down rather than an abstract level rising.
+        <VerticalSlider
+          value={100 - targetPosition}
+          min={0}
+          max={100}
+          step={5}
+          onCommit={(v) => {
+            const openness = 100 - v;
+            if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - openness) : openness);
+          }}
+          disabled={isViewOnly || noResponse}
+          icon={Blinds}
+          // The fill is how far the blind has come down, but the readout stays
+          // openness so it agrees with the header rather than quoting the
+          // complement back at you.
+          label="Open"
+          formatValue={(v) => `${Math.round(100 - v)}%`}
+          invert
+          fillClassName="bg-violet-400/80"
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
+        />
+      ) : undefined}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
 
@@ -302,7 +329,37 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
         ) : undefined
       }
     >
-      {showExpanded && (
+      {showHero && (
+        // The bar handles fine positioning; these are the two places you
+        // actually want most of the time.
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className={`h-11 flex-1 ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+            disabled={noResponse}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
+            }}
+          >
+            <ChevronUp className="mr-1 h-4 w-4" />
+            Open
+          </Button>
+          <Button
+            variant="outline"
+            className={`h-11 flex-1 ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+            disabled={noResponse}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
+            }}
+          >
+            <ChevronDown className="mr-1 h-4 w-4" />
+            Close
+          </Button>
+        </div>
+      )}
+      {showExpanded && !showHero && (
         <div className="flex gap-2 -mt-1">
           <div className={`flex-1 ${expanded ? 'h-32' : 'h-24'}`}>
             <CurtainVisualFull

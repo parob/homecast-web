@@ -1,7 +1,7 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { Lightbulb, Sun, Palette } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch, ColorControl } from './shared';
+import { SliderControl, ColoredSwitch, ColorControl, VerticalSlider, ColorSwatchRow } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const LightbulbWidget: React.FC<WidgetProps> = memo(({
@@ -32,6 +32,7 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
   onShare,
   locationSubtitle,
 }) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const powerChar = getCharacteristic(accessory, 'on') || getCharacteristic(accessory, 'power_state');
   const brightnessChar = getCharacteristic(accessory, 'brightness');
   const colorTempChar = getCharacteristic(accessory, 'color_temperature');
@@ -48,8 +49,44 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
 
   const subtitle = isOn && brightness !== null ? `${Math.round(brightness)}% brightness` : null;
 
+  const canPickColor = expanded && !!hueChar?.isWritable && !!saturationChar?.isWritable;
+  const showHero = expanded && !compact && !!brightnessChar?.isWritable;
+
+  // The bar wears the bulb's own colour, so the control reads as the light
+  // rather than as a generic slider. Colour-temperature bulbs get a warm-to-cool
+  // approximation of their current temperature instead.
+  const heroFill = (() => {
+    if (hue !== null && (saturation ?? 0) > 0) {
+      return `hsl(${hue} ${saturation}% 55%)`;
+    }
+    if (colorTemp !== null && colorTempChar) {
+      const min = colorTempChar.characteristic?.minValue ?? 140;
+      const max = colorTempChar.characteristic?.maxValue ?? 500;
+      // HomeKit mireds run cool→warm as the number rises.
+      const warmth = max > min ? (colorTemp - min) / (max - min) : 0.5;
+      return `hsl(${44 - warmth * 6} ${55 + warmth * 40}% ${62 - warmth * 6}%)`;
+    }
+    return 'hsl(45 95% 58%)';
+  })();
+
   return (
     <WidgetCard
+      hero={showHero ? (
+        <VerticalSlider
+          value={brightness ?? 0}
+          min={brightnessChar.characteristic?.minValue ?? 0}
+          max={brightnessChar.characteristic?.maxValue ?? 100}
+          step={brightnessChar.characteristic?.stepValue ?? 1}
+          onCommit={(v) => onSlider(accessory.id, 'brightness', v)}
+          disabled={!accessory.isReachable}
+          icon={Lightbulb}
+          label="Brightness"
+          fillStyle={{ backgroundColor: heroFill }}
+          fillClassName=""
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={subtitle}
       icon={<Lightbulb className="h-4 w-4" />}
@@ -91,20 +128,24 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
       }
     >
       {brightnessChar && (
-        <div className={compact ? "space-y-1.5" : (expanded ? "space-y-5" : "space-y-4")}>
-          <SliderControl
-            label="Brightness"
-            icon={Sun}
-            value={brightness ?? 0}
-            min={brightnessChar.characteristic?.minValue ?? 0}
-            max={brightnessChar.characteristic?.maxValue ?? 100}
-            step={brightnessChar.characteristic?.stepValue ?? 1}
-            unit="%"
-            onCommit={(v) => onSlider(accessory.id, 'brightness', v)}
-            disabled={!accessory.isReachable || !brightnessChar?.isWritable}
-            compact={compact}
-            trackBgClass="bg-muted/25"
-          />
+        <div className={compact ? "space-y-1.5" : (expanded ? "space-y-4" : "space-y-4")}>
+          {/* The hero bar already reports brightness — a second slider saying
+              the same thing would just be clutter. */}
+          {!showHero && (
+            <SliderControl
+              label="Brightness"
+              icon={Sun}
+              value={brightness ?? 0}
+              min={brightnessChar.characteristic?.minValue ?? 0}
+              max={brightnessChar.characteristic?.maxValue ?? 100}
+              step={brightnessChar.characteristic?.stepValue ?? 1}
+              unit="%"
+              onCommit={(v) => onSlider(accessory.id, 'brightness', v)}
+              disabled={!accessory.isReachable || !brightnessChar?.isWritable}
+              compact={compact}
+              trackBgClass="bg-muted/25"
+            />
+          )}
 
           {!compact && colorTempChar?.isWritable && (
             <div className="space-y-2">
@@ -129,19 +170,34 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           )}
 
           {!compact && hue !== null && (
-            expanded && hueChar?.isWritable && saturationChar?.isWritable ? (
-              <ColorControl
-                hue={hue ?? 0}
-                saturation={saturation ?? 0}
-                onCommitHue={(v) => {
-                  onSlider(accessory.id, 'hue', v);
-                  // At zero saturation the bulb is white and the hue would not
-                  // show, so picking a colour has to mean it.
-                  if ((saturation ?? 0) === 0) onSlider(accessory.id, 'saturation', 100);
-                }}
-                onCommitSaturation={(v) => onSlider(accessory.id, 'saturation', v)}
-                disabled={!accessory.isReachable}
-              />
+            canPickColor ? (
+              <div className="space-y-3">
+                <ColorSwatchRow
+                  hue={hue ?? 0}
+                  saturation={saturation ?? 0}
+                  onSelect={(h, s) => {
+                    onSlider(accessory.id, 'hue', h);
+                    onSlider(accessory.id, 'saturation', s);
+                  }}
+                  pickerOpen={pickerOpen}
+                  onTogglePicker={() => setPickerOpen(o => !o)}
+                  disabled={!accessory.isReachable}
+                />
+                {pickerOpen && (
+                  <ColorControl
+                    hue={hue ?? 0}
+                    saturation={saturation ?? 0}
+                    onCommitHue={(v) => {
+                      onSlider(accessory.id, 'hue', v);
+                      // At zero saturation the bulb is white and the hue would
+                      // not show, so picking a colour has to mean it.
+                      if ((saturation ?? 0) === 0) onSlider(accessory.id, 'saturation', 100);
+                    }}
+                    onCommitSaturation={(v) => onSlider(accessory.id, 'saturation', v)}
+                    disabled={!accessory.isReachable}
+                  />
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-2">
                 <div
