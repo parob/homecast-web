@@ -24,6 +24,20 @@ vi.mock('@/lib/config', () => ({
   config: { isCommunity: false, apiBase: 'https://api.test', graphqlUrl: 'https://api.test/', wsUrl: 'wss://api.test/ws' },
 }));
 
+// jsdom has no matchMedia, and the widget tree reaches a breakpoint hook.
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 afterEach(cleanup);
 
 /** Every characteristic the relay can publish for a virtual accessory. */
@@ -172,7 +186,7 @@ describe('virtual accessory controls', () => {
     render(
       <VirtualAccessoryWidget
         {...({
-          accessory: { ...running, virtualEndsAt: Date.now() + 125_000, virtualDurationMs: 300_000 },
+          accessory: { ...running, id: 'timer-ends', virtualEndsAt: Date.now() + 125_000, virtualDurationMs: 300_000 },
           getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
           onSetValue: () => {},
           onSlider: () => {},
@@ -271,7 +285,7 @@ describe('virtual accessory controls', () => {
         {...({
           // No endsAt — exactly what the relay reports the instant you press
           // start, and what an older relay bundle reports always.
-          accessory: { ...started, virtualDurationMs: 300_000 },
+          accessory: { ...started, id: 'timer-optimistic', virtualDurationMs: 300_000 },
           getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
           onSetValue: () => {},
           onSlider: () => {},
@@ -297,6 +311,7 @@ describe('virtual accessory controls', () => {
         {...({
           accessory: {
             ...running,
+            id: 'timer-cached',
             virtualEndsAt: Date.now() + 90_000,
             // A remaining span from when the list was fetched, long stale, and
             // deliberately disagreeing. The end time is what counts.
@@ -312,6 +327,39 @@ describe('virtual accessory controls', () => {
     );
 
     expect(screen.getByText('1:30 left')).toBeTruthy();
+  });
+
+  // The compact tile and the expanded tile are separate instances of this
+  // widget rendering the same accessory. With the anchor held per instance,
+  // expanding a timer that had been counting down for two minutes pinned a
+  // fresh end and restarted it at five.
+  it('does not restart the countdown when a second tile mounts', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const running = accessoryFor('virtual_timer');
+      running.services[0].characteristics[0].value = 'active';
+      // No endsAt — the relay hasn't reported one, so the end is pinned locally.
+      const props = {
+        accessory: { ...running, id: 'timer-two-tiles', virtualDurationMs: 300_000 },
+        getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+        onSetValue: () => {},
+        onSlider: () => {},
+        onToggle: () => {},
+      } as unknown as WidgetProps;
+
+      const first = render(<VirtualAccessoryWidget {...props} />);
+      expect(screen.getByText('5:00 left')).toBeTruthy();
+
+      vi.advanceTimersByTime(60_000);
+      first.unmount();
+
+      // A second tile for the same accessory, mounted a minute later.
+      render(<VirtualAccessoryWidget {...props} />);
+      expect(screen.getByText('4:00 left')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('offers nothing when the accessory is not user-editable', () => {

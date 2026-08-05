@@ -141,6 +141,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   const display = charType === 'virtual_timer'
     ? (
       <TimerReadout
+        accessoryId={accessory.id}
         running={running}
         endsAt={meta.virtualEndsAt}
         durationMs={configuredMs ?? meta.virtualDurationMs}
@@ -303,38 +304,39 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 });
 
 /**
- * A running countdown.
+ * When a countdown is due to finish, for timers the relay hasn't told us about.
  *
- * Anchored to when it will END, not to how much is left. A remaining span is
- * only true at the instant it was measured, and the accessory list is fetched
- * minutes apart — so a tile rendering one was always showing a stale number,
- * and showed 0:00 outright whenever the last reading had been taken while the
- * timer was idle, which is exactly what pressing start produces.
+ * Module scope rather than component state, because a tile is not one
+ * component. The compact tile and the expanded tile are separate instances of
+ * this widget rendering the same accessory, so a per-instance anchor meant
+ * expanding a timer that had been counting down for two minutes pinned a fresh
+ * end and restarted it at five. The instant a countdown finishes belongs to the
+ * accessory; it must outlive whichever tile happens to be mounted.
  *
- * When the relay hasn't reported an end yet — the moment you press start, and
- * for as long as its bundle predates `virtualEndsAt` — the end is computed here
- * from the configured duration. That is the same arithmetic the relay does, so
- * the two agree, and it needs nothing from the relay at all.
+ * Only a fallback. Once the relay reports `virtualEndsAt` this is redundant —
+ * but the relay's own bundle can be older than the app's, and a countdown that
+ * only works after the Mac app is restarted is not a working countdown.
  */
+const localTimerEnds = new Map<string, number>();
+
 const TimerReadout: React.FC<{
+  accessoryId: string;
   running: boolean;
   endsAt?: number;
   durationMs?: number;
-}> = ({ running, endsAt, durationMs }) => {
+}> = ({ accessoryId, running, endsAt, durationMs }) => {
   const [now, setNow] = React.useState(() => Date.now());
 
-  // Pinned when the countdown starts, and cleared when it stops, so a re-render
-  // can't keep pushing the finish line further away.
-  const localEnd = React.useRef<number | undefined>(undefined);
-  if (!running) localEnd.current = undefined;
-  else if (localEnd.current === undefined && durationMs !== undefined) {
-    localEnd.current = Date.now() + durationMs;
+  if (!running) localTimerEnds.delete(accessoryId);
+  else if (endsAt !== undefined) localTimerEnds.set(accessoryId, endsAt);
+  else if (!localTimerEnds.has(accessoryId) && durationMs !== undefined) {
+    localTimerEnds.set(accessoryId, Date.now() + durationMs);
   }
 
-  // Deliberately not derived from `remainingMs`: that is a span measured at
-  // some past instant, and recomputing `now + remainingMs` each tick would push
-  // the finish line forward exactly as fast as the clock moved.
-  const target = running ? (endsAt ?? localEnd.current) : undefined;
+  // Deliberately not derived from a remaining span: that is only true at the
+  // instant it was measured, and recomputing `now + remaining` each tick would
+  // push the finish line forward exactly as fast as the clock moved.
+  const target = running ? (endsAt ?? localTimerEnds.get(accessoryId)) : undefined;
 
   React.useEffect(() => {
     if (!running) return;
