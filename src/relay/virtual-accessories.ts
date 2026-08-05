@@ -72,7 +72,13 @@ export interface VirtualAccessory extends HomeKitAccessory {
   /** input_datetime only — which halves it holds. */
   virtualHasDate?: boolean;
   virtualHasTime?: boolean;
-  /** timer only — the live countdown, so a tile can show it. */
+  /**
+   * timer only. `virtualEndsAt` is an absolute instant, so it stays true however
+   * long it sits in a cache — unlike a remaining span, which is only true when
+   * it is measured.
+   */
+  virtualTimerState?: string;
+  virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
   /** input_number only — 'stepper' (default) or 'field'. */
@@ -83,7 +89,12 @@ export interface VirtualAccessory extends HomeKitAccessory {
 export function toVirtualAccessory(
   helper: VirtualAccessoryDefinition,
   value: unknown,
-  countdown?: { remaining: number; duration: number },
+  countdown?: {
+    state: 'idle' | 'active' | 'paused';
+    durationMs: number;
+    endsAt?: number;
+    remainingMs?: number;
+  },
 ): VirtualAccessory {
   const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'virtual_value';
   const writable = helper.controllable !== false;
@@ -142,7 +153,12 @@ export function toVirtualAccessory(
     // A countdown with nothing counting down is indistinguishable from one that
     // never started, which is exactly how it was reported.
     ...(countdown
-      ? { virtualRemainingMs: countdown.remaining, virtualDurationMs: countdown.duration }
+      ? {
+        virtualTimerState: countdown.state,
+        virtualDurationMs: countdown.durationMs,
+        ...(countdown.endsAt !== undefined ? { virtualEndsAt: countdown.endsAt } : {}),
+        ...(countdown.remainingMs !== undefined ? { virtualRemainingMs: countdown.remainingMs } : {}),
+      }
       : {}),
   } as VirtualAccessory;
 }
@@ -168,7 +184,7 @@ export function listVirtualAccessories(
     if (opts.homeId && helper.homeId?.toUpperCase() !== opts.homeId.toUpperCase()) continue;
     if (opts.roomId && helper.roomId !== opts.roomId) continue;
     const accessory = toVirtualAccessory(
-      helper, states[helper.id], engine.virtualManager.getTimerRemainingMs(helper.id));
+      helper, states[helper.id], engine.virtualManager.getTimerInfo(helper.id));
     if (helper.roomId) accessory.roomName = opts.roomNames?.get(helper.roomId);
     out.push(accessory);
   }

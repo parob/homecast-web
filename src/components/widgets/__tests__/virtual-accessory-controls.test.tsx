@@ -172,7 +172,7 @@ describe('virtual accessory controls', () => {
     render(
       <VirtualAccessoryWidget
         {...({
-          accessory: { ...running, virtualRemainingMs: 125_000, virtualDurationMs: 300_000 },
+          accessory: { ...running, virtualEndsAt: Date.now() + 125_000, virtualDurationMs: 300_000 },
           getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
           onSetValue: () => {},
           onSlider: () => {},
@@ -269,7 +269,9 @@ describe('virtual accessory controls', () => {
     render(
       <VirtualAccessoryWidget
         {...({
-          accessory: { ...started, virtualRemainingMs: 0, virtualDurationMs: 300_000 },
+          // No endsAt — exactly what the relay reports the instant you press
+          // start, and what an older relay bundle reports always.
+          accessory: { ...started, virtualDurationMs: 300_000 },
           getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
           onSetValue: () => {},
           onSlider: () => {},
@@ -279,6 +281,37 @@ describe('virtual accessory controls', () => {
     );
 
     expect(screen.getByText('5:00 left')).toBeTruthy();
+  });
+
+  // The countdown is anchored to when the timer ENDS, not to how much was left
+  // when someone last looked. A span is only true at the instant it was
+  // measured, and the accessory list is fetched minutes apart — so an end that
+  // has been sitting in a cache for a while still reads correctly.
+  it('reads a cached end time correctly however old it is', () => {
+    cleanup();
+    const running = accessoryFor('virtual_timer');
+    running.services[0].characteristics[0].value = 'active';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: {
+            ...running,
+            virtualEndsAt: Date.now() + 90_000,
+            // A remaining span from when the list was fetched, long stale, and
+            // deliberately disagreeing. The end time is what counts.
+            virtualRemainingMs: 300_000,
+            virtualDurationMs: 300_000,
+          },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByText('1:30 left')).toBeTruthy();
   });
 
   it('offers nothing when the accessory is not user-editable', () => {

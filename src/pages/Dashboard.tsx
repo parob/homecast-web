@@ -1548,6 +1548,7 @@ const Dashboard = () => {
       if (!helper) return undefined;
       return () => setDeletingHelper(helper);
     },
+    definition: findVirtualAccessory,
   }), [findVirtualAccessory]);
 
   const openHelperEditor = useCallback((opts: { helper?: VirtualAccessoryDefinition; roomId?: string } = {}) => {

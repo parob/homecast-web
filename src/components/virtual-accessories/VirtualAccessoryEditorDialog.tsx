@@ -274,7 +274,7 @@ function VirtualAccessoryTypeFields({
     case 'timer':
       return (
         <div className="space-y-1.5">
-          <Label>Runs for</Label>
+          <Label>Duration</Label>
           <div className="grid grid-cols-3 gap-3">
             {(['hours', 'minutes', 'seconds'] as const).map(unit => (
               <NumberField

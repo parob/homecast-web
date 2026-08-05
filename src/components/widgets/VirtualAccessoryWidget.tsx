@@ -3,6 +3,8 @@ import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, Sliders
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useVirtualAccessoryDefinition } from './VirtualAccessoryEditContext';
+import { durationToMs } from '@/automation/types/automation';
 
 /**
  * A helper accessory — a value the automation engine owns.
@@ -65,6 +67,8 @@ interface VirtualAccessoryShape {
   virtualOptions?: string[];
   virtualHasDate?: boolean;
   virtualHasTime?: boolean;
+  virtualTimerState?: string;
+  virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
   virtualControl?: string;
@@ -89,6 +93,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   } = props;
 
   const { isDarkBackground } = useBackgroundContext();
+  // Configuration comes from the definition the browser already holds, not from
+  // the relay — so a duration is known even while the relay serves an older
+  // bundle that doesn't publish one.
+  const definition = useVirtualAccessoryDefinition(accessory?.id);
   const FIELD_CLASS = fieldClass(isDarkBackground);
   const BUTTON_CLASS = buttonClass(isDarkBackground);
 
@@ -129,8 +137,15 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   const running = value === 'active';
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
+  const configuredMs = definition?.type === 'timer' ? durationToMs(definition.duration) : undefined;
   const display = charType === 'virtual_timer'
-    ? <TimerReadout running={running} remainingMs={meta.virtualRemainingMs} durationMs={meta.virtualDurationMs} />
+    ? (
+      <TimerReadout
+        running={running}
+        endsAt={meta.virtualEndsAt}
+        durationMs={configuredMs ?? meta.virtualDurationMs}
+      />
+    )
     : formatValue(charType, value);
   const control = readOnly ? undefined : renderControl();
 
@@ -287,39 +302,49 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 });
 
 /**
- * A running countdown, ticking locally.
+ * A running countdown.
  *
- * The relay reports the remaining time when the accessory list is fetched, and
- * that is minutes apart — so the number is counted down here between fetches
- * and re-anchored whenever a fresh one arrives. Showing "Running" and nothing
- * else was the whole reason a started timer looked like one that hadn't.
+ * Anchored to when it will END, not to how much is left. A remaining span is
+ * only true at the instant it was measured, and the accessory list is fetched
+ * minutes apart — so a tile rendering one was always showing a stale number,
+ * and showed 0:00 outright whenever the last reading had been taken while the
+ * timer was idle, which is exactly what pressing start produces.
+ *
+ * When the relay hasn't reported an end yet — the moment you press start, and
+ * for as long as its bundle predates `virtualEndsAt` — the end is computed here
+ * from the configured duration. That is the same arithmetic the relay does, so
+ * the two agree, and it needs nothing from the relay at all.
  */
 const TimerReadout: React.FC<{
   running: boolean;
-  remainingMs?: number;
+  endsAt?: number;
   durationMs?: number;
-}> = ({ running, remainingMs, durationMs }) => {
+}> = ({ running, endsAt, durationMs }) => {
   const [now, setNow] = React.useState(() => Date.now());
-  // Pressing start updates the tile optimistically, but the remaining time it
-  // is holding was read while the timer was still idle — zero. Counting down
-  // from the configured duration until the relay reports a real one is why
-  // this doesn't read 0:00 the moment you press start.
-  const effective = remainingMs !== undefined && remainingMs > 0 ? remainingMs : durationMs;
-  const anchor = React.useRef({ at: Date.now(), ms: effective });
 
-  if (anchor.current.ms !== effective) anchor.current = { at: Date.now(), ms: effective };
+  // Pinned when the countdown starts, and cleared when it stops, so a re-render
+  // can't keep pushing the finish line further away.
+  const localEnd = React.useRef<number | undefined>(undefined);
+  if (!running) localEnd.current = undefined;
+  else if (localEnd.current === undefined && durationMs !== undefined) {
+    localEnd.current = Date.now() + durationMs;
+  }
+
+  // Deliberately not derived from `remainingMs`: that is a span measured at
+  // some past instant, and recomputing `now + remainingMs` each tick would push
+  // the finish line forward exactly as fast as the clock moved.
+  const target = running ? (endsAt ?? localEnd.current) : undefined;
 
   React.useEffect(() => {
-    if (!running || effective === undefined) return;
+    if (!running) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [running, effective]);
+  }, [running]);
 
   if (!running) return <>Idle</>;
-  if (effective === undefined) return <>Running</>;
+  if (target === undefined) return <>Running</>;
 
-  const left = Math.max(0, (anchor.current.ms ?? 0) - (now - anchor.current.at));
-  const total = Math.round(left / 1000);
+  const total = Math.max(0, Math.round((target - now) / 1000));
   const mm = Math.floor(total / 60);
   const ss = total % 60;
   return <>{mm}:{String(ss).padStart(2, '0')} left</>;

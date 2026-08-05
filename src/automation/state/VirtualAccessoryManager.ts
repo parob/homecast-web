@@ -474,23 +474,35 @@ export class VirtualAccessoryManager {
    * it the only thing a client knows is `active`, and a five-minute timer that
    * shows no time reads as one that never started.
    */
-  getTimerRemainingMs(accessoryId: string): { remaining: number; duration: number } | undefined {
+  /**
+   * What a client needs to render a countdown, or undefined if it isn't a timer.
+   *
+   * `endsAt` is an absolute instant, not a remaining span. A span is only true
+   * at the moment it is measured, and the accessory list is fetched minutes
+   * apart — so a tile showing one was always displaying a stale number, and
+   * showed 0:00 whenever the last reading had been taken while idle. An instant
+   * stays true however long it sits in a cache.
+   */
+  getTimerInfo(accessoryId: string): {
+    state: 'idle' | 'active' | 'paused';
+    durationMs: number;
+    endsAt?: number;
+    remainingMs?: number;
+  } | undefined {
     const def = this.getVirtualAccessory(accessoryId);
     if (def?.type !== 'timer') return undefined;
     const t = this.timers.get(def.id);
-    // An idle timer's TimerState carries a duration of 0, which is true but
-    // useless to a client: pressing start is about to produce the CONFIGURED
-    // duration, and a tile that optimistically shows "running" needs a number
-    // to count down from before the relay can tell it one. Without this it
-    // showed 0:00 the instant you pressed start.
-    const configured = durationToMs(def.duration);
-    if (!t || t.state === 'idle') return { remaining: 0, duration: configured };
-    // `remaining` is only decremented on pause; while running, the truth is how
-    // long ago it started.
-    const remaining = t.state === 'active' && t.startedAt
-      ? Math.max(0, t.duration - (Date.now() - t.startedAt))
-      : t.remaining;
-    return { remaining, duration: t.duration || configured };
+    // The configured duration, not the running TimerState's — an idle one
+    // carries 0, which is true and useless to something about to start it.
+    const durationMs = durationToMs(def.duration);
+    if (!t || t.state === 'idle') return { state: 'idle', durationMs };
+    if (t.state === 'paused') return { state: 'paused', durationMs, remainingMs: t.remaining };
+    return {
+      state: 'active',
+      durationMs,
+      endsAt: (t.startedAt ?? Date.now()) + t.duration,
+      remainingMs: Math.max(0, t.duration - (Date.now() - (t.startedAt ?? Date.now()))),
+    };
   }
 
   // ============================================================
