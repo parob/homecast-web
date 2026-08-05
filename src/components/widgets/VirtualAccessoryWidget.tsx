@@ -68,6 +68,7 @@ interface VirtualAccessoryShape {
   virtualHasDate?: boolean;
   virtualHasTime?: boolean;
   virtualTimerState?: string;
+  virtualStartedAt?: number;
   virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
@@ -143,6 +144,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       <TimerReadout
         accessoryId={accessory.id}
         running={running}
+        startedAt={meta.virtualStartedAt}
         endsAt={meta.virtualEndsAt}
         durationMs={configuredMs ?? meta.virtualDurationMs}
       />
@@ -304,39 +306,58 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 });
 
 /**
- * When a countdown is due to finish, for timers the relay hasn't told us about.
+ * When a countdown started, for timers the relay hasn't told us about.
  *
  * Module scope rather than component state, because a tile is not one
- * component. The compact tile and the expanded tile are separate instances of
- * this widget rendering the same accessory, so a per-instance anchor meant
- * expanding a timer that had been counting down for two minutes pinned a fresh
- * end and restarted it at five. The instant a countdown finishes belongs to the
- * accessory; it must outlive whichever tile happens to be mounted.
+ * component: the compact tile and the expanded tile are separate instances of
+ * this widget rendering the same accessory, so a per-instance record meant
+ * expanding a timer that had been running two minutes restarted it at five.
  *
- * Only a fallback. Once the relay reports `virtualEndsAt` this is redundant —
- * but the relay's own bundle can be older than the app's, and a countdown that
- * only works after the Mac app is restarted is not a working countdown.
+ * Only a fallback, and only for the gap between pressing start and the relay
+ * reporting a start of its own — which is permanent while the relay serves a
+ * bundle older than `virtualStartedAt`. A countdown that only works after the
+ * Mac app is restarted is not a working countdown.
  */
-const localTimerEnds = new Map<string, number>();
+const localTimerStarts = new Map<string, number>();
 
+/**
+ * A running countdown.
+ *
+ * Derived, every tick, from when the timer started and how long it runs for —
+ * never from a remaining span. A span is only true at the instant it was
+ * measured, and the accessory list is fetched minutes apart, so a tile
+ * rendering one showed a stale number; it showed 0:00 outright whenever the
+ * last reading had been taken while the timer was idle, which is the state
+ * pressing start leaves behind.
+ *
+ * Both inputs are facts that don't decay, so every instance computes the same
+ * answer at whatever moment it happens to render.
+ */
 const TimerReadout: React.FC<{
   accessoryId: string;
   running: boolean;
+  startedAt?: number;
   endsAt?: number;
   durationMs?: number;
-}> = ({ accessoryId, running, endsAt, durationMs }) => {
+}> = ({ accessoryId, running, startedAt, endsAt, durationMs }) => {
   const [now, setNow] = React.useState(() => Date.now());
 
-  if (!running) localTimerEnds.delete(accessoryId);
-  else if (endsAt !== undefined) localTimerEnds.set(accessoryId, endsAt);
-  else if (!localTimerEnds.has(accessoryId) && durationMs !== undefined) {
-    localTimerEnds.set(accessoryId, Date.now() + durationMs);
+  // A locally-noted start is a guess — the moment a tile first saw the timer
+  // running — so it is the last resort, never something that overrides what
+  // the relay actually knows.
+  const needsGuess = running && startedAt === undefined && endsAt === undefined;
+  if (!running) localTimerStarts.delete(accessoryId);
+  else if (needsGuess && !localTimerStarts.has(accessoryId)) {
+    localTimerStarts.set(accessoryId, Date.now());
   }
 
-  // Deliberately not derived from a remaining span: that is only true at the
-  // instant it was measured, and recomputing `now + remaining` each tick would
-  // push the finish line forward exactly as fast as the clock moved.
-  const target = running ? (endsAt ?? localTimerEnds.get(accessoryId)) : undefined;
+  // Start + duration in preference to endsAt: the duration is configuration
+  // this browser already holds, so it stays right even when the relay's copy
+  // is out of date. endsAt is the same arithmetic done by the relay.
+  const begin = startedAt ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
+  const target = !running
+    ? undefined
+    : (begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt);
 
   React.useEffect(() => {
     if (!running) return;

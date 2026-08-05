@@ -78,6 +78,7 @@ export interface VirtualAccessory extends HomeKitAccessory {
    * it is measured.
    */
   virtualTimerState?: string;
+  virtualStartedAt?: number;
   virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
@@ -92,6 +93,7 @@ export function toVirtualAccessory(
   countdown?: {
     state: 'idle' | 'active' | 'paused';
     durationMs: number;
+    startedAt?: number;
     endsAt?: number;
     remainingMs?: number;
   },
@@ -156,6 +158,7 @@ export function toVirtualAccessory(
       ? {
         virtualTimerState: countdown.state,
         virtualDurationMs: countdown.durationMs,
+        ...(countdown.startedAt !== undefined ? { virtualStartedAt: countdown.startedAt } : {}),
         ...(countdown.endsAt !== undefined ? { virtualEndsAt: countdown.endsAt } : {}),
         ...(countdown.remainingMs !== undefined ? { virtualRemainingMs: countdown.remainingMs } : {}),
       }

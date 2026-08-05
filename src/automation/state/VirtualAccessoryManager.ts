@@ -486,6 +486,7 @@ export class VirtualAccessoryManager {
   getTimerInfo(accessoryId: string): {
     state: 'idle' | 'active' | 'paused';
     durationMs: number;
+    startedAt?: number;
     endsAt?: number;
     remainingMs?: number;
   } | undefined {
@@ -500,6 +501,10 @@ export class VirtualAccessoryManager {
     return {
       state: 'active',
       durationMs,
+      // The two facts a client needs to compute the remaining time itself, at
+      // whatever moment it happens to render. Anything we compute here is only
+      // true when we compute it.
+      startedAt: t.startedAt,
       endsAt: (t.startedAt ?? Date.now()) + t.duration,
       remainingMs: Math.max(0, t.duration - (Date.now() - (t.startedAt ?? Date.now()))),
     };

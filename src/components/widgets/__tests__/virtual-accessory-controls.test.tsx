@@ -362,6 +362,37 @@ describe('virtual accessory controls', () => {
     }
   });
 
+  // The whole point of start-plus-duration: it is two facts that don't decay,
+  // so a tile mounted at any moment computes the same answer. A remaining span
+  // could only ever be right at the instant it was measured.
+  it('reads the same remaining time whenever a tile renders', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const running = accessoryFor('virtual_timer');
+      running.services[0].characteristics[0].value = 'active';
+      const startedAt = Date.now();
+      const props = {
+        accessory: {
+          ...running, id: 'timer-derived', virtualStartedAt: startedAt, virtualDurationMs: 300_000,
+        },
+        getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+        onSetValue: () => {},
+        onSlider: () => {},
+        onToggle: () => {},
+      } as unknown as WidgetProps;
+
+      for (const [advance, expected] of [[0, '5:00 left'], [90_000, '3:30 left'], [180_000, '2:00 left']] as const) {
+        cleanup();
+        vi.setSystemTime(startedAt + advance);
+        render(<VirtualAccessoryWidget {...props} />);
+        expect(screen.getByText(expected)).toBeTruthy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('offers nothing when the accessory is not user-editable', () => {
     cleanup();
     renderWidget('virtual_text', { isUserEditable: false });
