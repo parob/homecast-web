@@ -547,6 +547,14 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
         ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
         : 'bg-primary/20 hover:bg-primary/30 border-transparent';
     }
+    // Stopped, the row goes neutral. effectiveMode still reports the mode the
+    // unit would resume in, which left a switched-off air conditioner painting
+    // its buttons cooling-blue.
+    if (!isRunning) {
+      return isSelected
+        ? 'bg-slate-500 hover:bg-slate-600 text-white border-transparent'
+        : 'bg-muted hover:bg-muted/80 border-transparent';
+    }
     const selectedBg = effectiveMode === 'cool' ? 'bg-sky-500 hover:bg-sky-600'
       : effectiveMode === 'heat' ? 'bg-orange-500 hover:bg-orange-600'
         : effectiveMode === 'auto' ? 'bg-emerald-500 hover:bg-emerald-600'
@@ -775,7 +783,10 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                       // Selected when the unit is off — otherwise a switched-off
                       // air conditioner still showed Cool highlighted.
                       isSelected: !isActive,
-                      onClick: () => onToggle(accessory.id, 'active', isActive),
+                      // Always off, never a toggle: handleToggle writes the
+                      // inverse of what it is handed, so passing true forces
+                      // false. Pressing Off on a stopped unit turned it on.
+                      onClick: () => onToggle(accessory.id, 'active', true),
                     });
                     // Mode buttons - always show available modes
                     availableHCModes.forEach((mode) => {
@@ -783,8 +794,16 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                         key: mode.name,
                         icon: mode.icon,
                         label: mode.name,
-                        isSelected: targetMode === mode.index, // Highlighted when this mode is active
-                        onClick: () => handleModeChange(mode.index),
+                        // Only the running unit shows a mode as chosen; stopped,
+                        // Off is what is selected.
+                        isSelected: isActive && targetMode === mode.index,
+                        onClick: () => {
+                          // The row is now visible while the unit is off, so a
+                          // mode press has to start it — otherwise picking Cool
+                          // on a stopped unit set the mode and did nothing.
+                          if (!isActive) onToggle(accessory.id, 'active', false);
+                          handleModeChange(mode.index);
+                        },
                       });
                     });
                   } else {
@@ -847,7 +866,8 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                     icon: Power,
                     label: 'Off',
                     isSelected: !isActive,
-                    onClick: () => onToggle(accessory.id, 'active', isActive),
+                    // Always off, never a toggle — see the note above.
+                    onClick: () => onToggle(accessory.id, 'active', true),
                   });
                   // Mode buttons
                   availableHCModes.forEach((mode) => {
