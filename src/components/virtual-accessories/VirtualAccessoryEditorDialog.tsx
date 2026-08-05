@@ -20,6 +20,8 @@ interface VirtualAccessoryEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   homeId: string;
+  /** Shown as the home-level option, so it reads as a place rather than a concept. */
+  homeName?: string;
   /** Rooms this helper accessory can be placed in. */
   rooms?: { id: string; name: string }[];
   /** Pre-selected room when created from a room's menu. */
@@ -46,7 +48,7 @@ interface VirtualAccessoryEditorDialogProps {
  * referencing the helper, so the honest move is to make a new one.
  */
 export function VirtualAccessoryEditorDialog({
-  open, onOpenChange, homeId, rooms = [], defaultRoomId, siblings = [], existing, onSave, onDelete,
+  open, onOpenChange, homeId, homeName, rooms = [], defaultRoomId, siblings = [], existing, onSave, onDelete,
 }: VirtualAccessoryEditorDialogProps) {
   const [draft, setDraft] = useState<VirtualAccessoryDefinition | null>(null);
   const [saving, setSaving] = useState(false);
@@ -137,9 +139,11 @@ export function VirtualAccessoryEditorDialog({
                 value={draft.roomId ?? ''}
                 onChange={e => patch({ roomId: e.target.value || undefined })}
               >
-                {/* Not a HomeKit room: helper accessories are ours, so they can
-                    sit outside HomeKit's room structure entirely. */}
-                <option value="">Top of the home</option>
+                {/* Not a HomeKit room: virtual accessories are ours, so they
+                    can sit outside HomeKit's room structure entirely. Named
+                    after the home, because "the top of the home" describes
+                    where the tile lands rather than where the thing lives. */}
+                <option value="">{homeName || 'Top of the home'}</option>
                 {rooms.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
@@ -310,6 +314,24 @@ function VirtualAccessoryTypeFields({
                 onChange={e => patch({ unit: e.target.value || undefined })}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="helper-number-control">Dashboard control</Label>
+            <select
+              id="helper-number-control"
+              data-testid="helper-number-control"
+              className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+              value={draft.control ?? 'stepper'}
+              onChange={e => patch({ control: e.target.value as 'stepper' | 'field' })}
+            >
+              <option value="stepper">Plus and minus buttons</option>
+              <option value="field">Type a number</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              {(draft.control ?? 'stepper') === 'stepper'
+                ? `Nudges by ${draft.step || 1} at a time.`
+                : `Any value between ${draft.min} and ${draft.max}.`}
+            </p>
           </div>
         </>
       );

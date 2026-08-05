@@ -476,14 +476,21 @@ export class VirtualAccessoryManager {
    */
   getTimerRemainingMs(accessoryId: string): { remaining: number; duration: number } | undefined {
     const def = this.getVirtualAccessory(accessoryId);
-    const t = def && this.timers.get(def.id);
-    if (!t) return undefined;
+    if (def?.type !== 'timer') return undefined;
+    const t = this.timers.get(def.id);
+    // An idle timer's TimerState carries a duration of 0, which is true but
+    // useless to a client: pressing start is about to produce the CONFIGURED
+    // duration, and a tile that optimistically shows "running" needs a number
+    // to count down from before the relay can tell it one. Without this it
+    // showed 0:00 the instant you pressed start.
+    const configured = durationToMs(def.duration);
+    if (!t || t.state === 'idle') return { remaining: 0, duration: configured };
     // `remaining` is only decremented on pause; while running, the truth is how
     // long ago it started.
     const remaining = t.state === 'active' && t.startedAt
       ? Math.max(0, t.duration - (Date.now() - t.startedAt))
       : t.remaining;
-    return { remaining, duration: t.duration };
+    return { remaining, duration: t.duration || configured };
   }
 
   // ============================================================

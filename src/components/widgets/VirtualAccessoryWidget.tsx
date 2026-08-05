@@ -67,6 +67,7 @@ interface VirtualAccessoryShape {
   virtualHasTime?: boolean;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
+  virtualControl?: string;
   /**
    * Pre-rename spellings, read but never written — the same inbound-alias
    * pattern `power_state` uses. In cloud mode the relay's WebView keeps its
@@ -129,7 +130,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
   const display = charType === 'virtual_timer'
-    ? <TimerReadout running={running} remainingMs={meta.virtualRemainingMs} />
+    ? <TimerReadout running={running} remainingMs={meta.virtualRemainingMs} durationMs={meta.virtualDurationMs} />
     : formatValue(charType, value);
   const control = readOnly ? undefined : renderControl();
 
@@ -197,6 +198,22 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 
       case 'virtual_count':
       case 'virtual_number':
+        // A field where the author asked for one: clicking + forty times to
+        // reach 40 is not a control, it's a punishment.
+        if (charType === 'virtual_number' && meta.virtualControl === 'field') {
+          return (
+            <VirtualNumberField
+              label={accessory.name}
+              value={numeric}
+              min={char?.minValue}
+              max={char?.maxValue}
+              step={step}
+              onCommit={v => set(clamp(v, char))}
+              onDone={onFinishEditing}
+              className={FIELD_CLASS}
+            />
+          );
+        }
         return (
           <div className="flex items-center justify-between gap-2">
             <button
@@ -277,26 +294,93 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
  * and re-anchored whenever a fresh one arrives. Showing "Running" and nothing
  * else was the whole reason a started timer looked like one that hadn't.
  */
-const TimerReadout: React.FC<{ running: boolean; remainingMs?: number }> = ({ running, remainingMs }) => {
+const TimerReadout: React.FC<{
+  running: boolean;
+  remainingMs?: number;
+  durationMs?: number;
+}> = ({ running, remainingMs, durationMs }) => {
   const [now, setNow] = React.useState(() => Date.now());
-  const anchor = React.useRef({ at: Date.now(), ms: remainingMs });
+  // Pressing start updates the tile optimistically, but the remaining time it
+  // is holding was read while the timer was still idle — zero. Counting down
+  // from the configured duration until the relay reports a real one is why
+  // this doesn't read 0:00 the moment you press start.
+  const effective = remainingMs !== undefined && remainingMs > 0 ? remainingMs : durationMs;
+  const anchor = React.useRef({ at: Date.now(), ms: effective });
 
-  if (anchor.current.ms !== remainingMs) anchor.current = { at: Date.now(), ms: remainingMs };
+  if (anchor.current.ms !== effective) anchor.current = { at: Date.now(), ms: effective };
 
   React.useEffect(() => {
-    if (!running || remainingMs === undefined) return;
+    if (!running || effective === undefined) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [running, remainingMs]);
+  }, [running, effective]);
 
   if (!running) return <>Idle</>;
-  if (remainingMs === undefined) return <>Running</>;
+  if (effective === undefined) return <>Running</>;
 
   const left = Math.max(0, (anchor.current.ms ?? 0) - (now - anchor.current.at));
   const total = Math.round(left / 1000);
   const mm = Math.floor(total / 60);
   const ss = total % 60;
   return <>{mm}:{String(ss).padStart(2, '0')} left</>;
+};
+
+/**
+ * A number you type. Same draft discipline as the text control — the value is
+ * re-read while the tile is open, and binding straight to it would fight the
+ * typing — but it commits a number and refuses anything that isn't one, so a
+ * half-typed "-" or an empty box can't be written as 0.
+ */
+const VirtualNumberField: React.FC<{
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step: number;
+  onCommit: (v: number) => void;
+  onDone?: () => void;
+  className: string;
+}> = ({ label, value, min, max, step, onCommit, onDone, className }) => {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const shown = draft ?? (Number.isFinite(value) ? String(value) : '');
+
+  const commit = () => {
+    if (draft !== null) {
+      const n = Number(draft);
+      if (draft.trim() !== '' && Number.isFinite(n) && n !== value) onCommit(n);
+    }
+    setDraft(null);
+  };
+
+  const pending = React.useRef({ draft, value, onCommit });
+  pending.current = { draft, value, onCommit };
+  React.useEffect(() => () => {
+    const p = pending.current;
+    if (p.draft === null) return;
+    const n = Number(p.draft);
+    if (p.draft.trim() !== '' && Number.isFinite(n) && n !== p.value) p.onCommit(n);
+  }, []);
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      className={className}
+      aria-label={`Set ${label}`}
+      value={shown}
+      min={min}
+      max={max}
+      step={step}
+      onClick={e => e.stopPropagation()}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); onDone?.(); }
+        if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur(); }
+      }}
+    />
+  );
 };
 
 /**

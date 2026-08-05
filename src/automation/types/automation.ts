@@ -564,6 +564,13 @@ export interface NumberVirtualAccessory extends BaseVirtualAccessory {
   step: number;
   initialValue?: number;
   unit?: string;
+  /**
+   * How the dashboard offers to change it. Steppers suit a small range you
+   * nudge; a field suits a wide one you know the value for — clicking + forty
+   * times to reach 40 is not a control, it's a punishment. Defaults to
+   * 'stepper', which is what it has always done.
+   */
+  control?: 'stepper' | 'field';
 }
 
 export interface ModeVirtualAccessory extends BaseVirtualAccessory {

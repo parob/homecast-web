@@ -20,32 +20,6 @@ import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconCo
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { WidgetWrapper } from './WidgetWrapper';
 
-/**
- * Two sparkles rather than lucide's three.
- *
- * Lucide's `Sparkles` is one star plus two small crosses, which at 14px is
- * three specks of noise in a tile corner. This keeps its exact geometry and
- * stroke — so it still reads as part of the same icon set — and drops the
- * lower-left cross, leaving a star and one companion.
- */
-const TwoSparkles: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-    <path d="M20 3v4" />
-    <path d="M22 5h-4" />
-  </svg>
-);
-
 // Context for passing widget colors to child components
 export interface WidgetColorContextType {
   colors: IconColor;
@@ -354,35 +328,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
    * Marked in WidgetCard rather than per widget, so it covers every type at
    * once and a new widget can't forget it.
    */
+  // Read for the menu label only — there is no longer a badge. Marking these
+  // was worth trying, since they are indistinguishable from real accessories by
+  // design and a virtual switch really does render through SwitchWidget, but
+  // every glyph read as decoration or as somebody else's meaning, and a corner
+  // mark on a tile you already recognise earns less than the noise it costs.
+  // Edit and Delete stay on the context menu, where a tile's actions live.
   const isVirtualAccessory = Boolean((accessory as { isVirtual?: boolean } | undefined)?.isVirtual);
-  // The badge doubles as the way in to editing. Edit also lives in the context
-  // menu, but a right-click is not something you find by looking — and unlike a
-  // HomeKit accessory, everything about this one is editable, so it needs an
-  // affordance you can see.
-  //
-  // Two sparkles, not lucide's three — see TwoSparkles.
-  const virtualBadge = isVirtualAccessory ? (
-    effectiveOnEdit ? (
-      <button
-        type="button"
-        className="absolute bottom-1.5 right-1.5 z-30 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity"
-        title="Virtual accessory — click to edit"
-        aria-label="Edit virtual accessory"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); effectiveOnEdit(); }}
-      >
-        <TwoSparkles className="h-3.5 w-3.5" />
-      </button>
-    ) : (
-      <span
-        className="absolute bottom-1.5 right-1.5 z-20 pointer-events-none opacity-60"
-        title="Virtual accessory — a value your automations own"
-        aria-label="Virtual accessory"
-      >
-        <TwoSparkles className="h-3.5 w-3.5" />
-      </span>
-    )
-  ) : null;
-
   // Expanded state styling: just z-index, shadow is on ExpandedOverlay wrapper
   const expandedClass = expanded
     ? 'relative z-50'
@@ -563,7 +515,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             </ContextMenuContent>
           </ContextMenu>
           {/* Hidden badge outside Card so it's not affected by opacity/grayscale */}
-          {virtualBadge}
           {hiddenBadge}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
@@ -582,7 +533,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             {cardInner}
           </Card>
           {/* Hidden badge outside Card so not affected by opacity/grayscale */}
-          {virtualBadge}
           {hiddenBadge}
         </WidgetWrapper>
       </div>

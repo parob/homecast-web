@@ -128,6 +128,33 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  /*
+   * Date and time inputs, on WebKit, size themselves to their value.
+   *
+   * `::-webkit-date-and-time-value` is the element holding the formatted date.
+   * On iOS and Mac Catalyst it is centred and sized to its content, and it wins
+   * over `width: 100%` on the input — so a `datetime-local` in a narrow card
+   * pushed itself wider than the card and spilled out. Chrome lays the same
+   * markup out correctly, which is why this only ever showed up in the app.
+   *
+   * Left-aligned as well as unpinned: a centred value in a full-width field
+   * looks like a button, which is not what it is.
+   */
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value,
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    text-align: left;
+  }
+
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    min-width: 0;
+  }
+
   html {
     /* Enable smooth scrolling at high refresh rates */
     scroll-behavior: smooth;

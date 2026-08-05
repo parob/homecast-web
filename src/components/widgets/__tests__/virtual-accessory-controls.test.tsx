@@ -227,6 +227,60 @@ describe('virtual accessory controls', () => {
     expect(writes).toEqual([['va-1', 'virtual_text', 'back monday']]);
   });
 
+  // Clicking + forty times to reach 40 is not a control, so a number can be
+  // configured to offer a field instead of a stepper.
+  it('offers a stepper or a field for a number, as configured', () => {
+    cleanup();
+    renderWidget('virtual_number');
+    expect(screen.getByLabelText('Increase Test Value')).toBeTruthy();
+    expect(screen.queryByLabelText('Set Test Value')).toBeNull();
+
+    cleanup();
+    const writes = renderWidget('virtual_number', { virtualControl: 'field' });
+    expect(screen.queryByLabelText('Increase Test Value')).toBeNull();
+
+    const input = screen.getByLabelText('Set Test Value');
+    fireEvent.change(input, { target: { value: '40' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(writes).toEqual([['va-1', 'virtual_number', 40]]);
+  });
+
+  it('never writes a number for a box left empty or half-typed', () => {
+    cleanup();
+    const writes = renderWidget('virtual_number', { virtualControl: 'field' });
+    const input = screen.getByLabelText('Set Test Value');
+
+    for (const value of ['', '-', 'abc']) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+    }
+
+    expect(writes).toEqual([]);
+  });
+
+  // Pressing start updates the tile optimistically, but the remaining time it
+  // holds was read while the timer was idle — zero. It read 0:00 on start.
+  it('counts a just-started timer down from its configured duration', () => {
+    cleanup();
+    const started = accessoryFor('virtual_timer');
+    started.services[0].characteristics[0].value = 'active';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...started, virtualRemainingMs: 0, virtualDurationMs: 300_000 },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByText('5:00 left')).toBeTruthy();
+  });
+
   it('offers nothing when the accessory is not user-editable', () => {
     cleanup();
     renderWidget('virtual_text', { isUserEditable: false });

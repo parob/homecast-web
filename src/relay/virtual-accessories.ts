@@ -75,6 +75,8 @@ export interface VirtualAccessory extends HomeKitAccessory {
   /** timer only — the live countdown, so a tile can show it. */
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
+  /** input_number only — 'stepper' (default) or 'field'. */
+  virtualControl?: string;
 }
 
 /** Build the accessory representation of one helper. */
@@ -134,6 +136,9 @@ export function toVirtualAccessory(
     ...(helper.type === 'input_datetime'
       ? { virtualHasDate: helper.hasDate, virtualHasTime: helper.hasTime }
       : {}),
+    // Steppers suit a small range you nudge; a field suits a wide one you know
+    // the value for. The choice is the author's, so it has to reach the client.
+    ...(helper.type === 'input_number' ? { virtualControl: helper.control ?? 'stepper' } : {}),
     // A countdown with nothing counting down is indistinguishable from one that
     // never started, which is exactly how it was reported.
     ...(countdown

@@ -8063,6 +8063,7 @@ const Dashboard = () => {
           open={helperEditorOpen}
           onOpenChange={setHelperEditorOpen}
           homeId={selectedHomeId}
+          homeName={homes.find(h => h.id === selectedHomeId)?.name}
           rooms={rooms.map(r => ({ id: r.id, name: r.name }))}
           defaultRoomId={helperDefaultRoomId}
           siblings={helperAccessories.helpers}
