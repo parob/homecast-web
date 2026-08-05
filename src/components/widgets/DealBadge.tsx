@@ -117,7 +117,6 @@ export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
               <Suspense fallback={<div className="h-[60px] w-full" />}>
                 <DealPriceChart
                   chartData={chartData}
-                  color={style.color}
                   gradientId={`deal-grad-${deal.id}`}
                   atlPrice={atlPrice}
                 />

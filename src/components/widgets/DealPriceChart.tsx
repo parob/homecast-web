@@ -19,7 +19,6 @@ import {
  */
 export interface DealPriceChartProps {
   chartData: { date: string; price: number }[];
-  color: string;
   gradientId: string;
   atlPrice: number | null;
   /** Show axes, grid and hover tooltip, at a taller size. */
@@ -33,14 +32,17 @@ const shortDate = (iso: string) =>
 
 export default function DealPriceChart({
   chartData,
-  color,
   gradientId,
   atlPrice,
   detailed = false,
   currencySymbol = '',
 }: DealPriceChartProps) {
   return (
-    <div className={detailed ? 'h-[200px] w-full' : 'h-[60px] w-full'}>
+    // text-primary sets currentColor for the series, so the line and its fill
+    // follow the theme instead of a hardcoded hex. One accent for every chart:
+    // colouring the line by deal tier said nothing the label above it didn't
+    // already say, and its no-deal fallback was a muddy grey slab.
+    <div className={`text-primary ${detailed ? 'h-[200px] w-full' : 'h-[60px] w-full'}`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={chartData}
@@ -49,30 +51,30 @@ export default function DealPriceChart({
             : { top: 2, right: 2, bottom: 2, left: 2 }}
         >
           <defs>
+            {/* A tint, not a block — a saturated fill over 200px reads as a slab */}
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.05} />
+              <stop offset="0%" stopColor="currentColor" stopOpacity={0.18} />
+              <stop offset="100%" stopColor="currentColor" stopOpacity={0.01} />
             </linearGradient>
           </defs>
           {detailed && (
-            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.12} vertical={false} />
+            // Solid hairline: a dashed grid reads as a threshold when it's just a grid
+            <CartesianGrid className="stroke-border" vertical={false} />
           )}
           {detailed && (
             <XAxis
               dataKey="date"
               tickFormatter={shortDate}
-              tick={{ fontSize: 11 }}
-              stroke="currentColor"
-              strokeOpacity={0.3}
+              tick={{ fontSize: 11, fill: 'currentColor' }}
+              className="stroke-border text-muted-foreground"
               minTickGap={28}
             />
           )}
           <YAxis
             domain={['dataMin - 2', 'dataMax + 2']}
             hide={!detailed}
-            tick={{ fontSize: 11 }}
-            stroke="currentColor"
-            strokeOpacity={0.3}
+            tick={{ fontSize: 11, fill: 'currentColor' }}
+            className="stroke-border text-muted-foreground"
             width={52}
             tickFormatter={(v: number) => `${currencySymbol}${v.toFixed(0)}`}
           />
@@ -83,21 +85,29 @@ export default function DealPriceChart({
               formatter={(v: number) => [`${currencySymbol}${v.toFixed(2)}`, 'Price']}
             />
           )}
+          {/* stepAfter, not a curve: a price holds until it changes. A smooth
+              interpolation claims prices the product never actually had. */}
           <Area
-            type="monotone"
+            type="stepAfter"
             dataKey="price"
-            stroke={color}
-            strokeWidth={1.5}
+            stroke="currentColor"
+            strokeWidth={2}
             fill={`url(#${gradientId})`}
           />
           {atlPrice != null && (
+            // Dashed here is meaningful — this is a threshold, not a gridline
             <ReferenceLine
               y={atlPrice}
-              stroke={color}
-              strokeDasharray="3 3"
-              strokeOpacity={0.5}
+              className="stroke-muted-foreground"
+              strokeDasharray="4 4"
+              strokeOpacity={0.7}
               label={detailed
-                ? { value: 'all-time low', position: 'insideBottomLeft', fontSize: 10, fill: color }
+                ? {
+                    value: 'all-time low',
+                    position: 'insideBottomLeft',
+                    fontSize: 10,
+                    className: 'fill-muted-foreground',
+                  }
                 : undefined}
             />
           )}
