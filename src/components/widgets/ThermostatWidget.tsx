@@ -95,7 +95,10 @@ const TemperatureDial: React.FC<{
       dimmed ? 'opacity-45 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
-        style={{ width: size, height: size }}
+        // The arc stops short of the bottom of its own SVG box, so inline the
+        // dial leaves a band of dead space before whatever follows it. Pull the
+        // next control up into it rather than letting the panel sag.
+        style={{ width: size, height: size, marginBottom: inline ? -size * 0.2 : 0 }}
       >
         <CircularSlider
           size={size}
@@ -489,8 +492,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     }
 
     // Device has BOTH capabilities - color depends on target mode (user selection)
-    // Green when OFF
-    if (!isActive) {
+    // Green when OFF — but not in the expanded panel, where recolouring the
+    // whole tile on switch-off is exactly the state-driven redesign we avoid.
+    if (!isActive && !expanded) {
       return 'climate_balanced';
     }
 
@@ -519,6 +523,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       return AirVent; // Has both capabilities - generic AC icon
     }
 
+    // Expanded, a power glyph in place of the device icon is another way the
+    // panel changed shape with state — keep it reading as a thermostat.
+    if (expanded && effectiveMode === 'off') return Thermometer;
     // For thermostat, use mode icon
     return ModeIcon;
   };
@@ -625,7 +632,10 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
 
       serviceType={activeServiceType}
       iconStyle={iconStyle}
-      childrenVisible={isActive && hasControls && accessory.isReachable}
+      // Expanded, the controls stay put when the unit is off — collapsing them
+      // left an air conditioner showing nothing but a toggle, and you could not
+      // see what it was set to without switching it on first.
+      childrenVisible={(isActive || expanded) && hasControls && accessory.isReachable}
       
       
       editMode={editMode}
@@ -675,8 +685,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
               })}
             </div>
           </div>
-        ) : activeChar?.isWritable && (!isActive || noResponse) ? (
-          // Show switch for non-heater_cooler devices or when not responding
+        ) : activeChar?.isWritable && (!isActive || noResponse || expanded) ? (
+          // Expanded, the switch is always here rather than appearing only once
+          // the unit is off — the header has to look the same in both states.
           <div className="flex items-center gap-2">
             {/* Show current temp in compact mode even when off */}
             {compact && currentTemp !== null && currentTemp !== undefined && (
@@ -726,8 +737,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
           {/* Full height layout with dial on right */}
           {fullLayout ? (
             <div className="flex flex-col">
-              {/* Left side: mode buttons, current temp, and fan controls */}
-              <div className="flex-1 flex flex-col justify-between">
+              {/* Mode row and fan share the space under the dial; without a gap
+                  the fan label sat directly on top of the mode buttons. */}
+              <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-4' : ''}`}>
                 {/* Mode selection buttons (including Off) */}
                 {(() => {
                   // Build all mode buttons including Off
@@ -790,9 +802,10 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                     step={fanSpeedChar?.characteristic?.stepValue ?? 10}
                     formatValue={(v) => `${Math.round(v)}%`}
                     onCommit={(v) => { if (!isViewOnly) onSlider(accessory.id, 'rotation_speed', v); }}
-                    disabled={isViewOnly || noResponse}
+                    // Present but inert when the unit is off, like the dial.
+                    disabled={isViewOnly || noResponse || !isRunning}
                     icon={Fan}
-                    compact
+                    compact={!expanded}
                   />
                 )}
               </div>
