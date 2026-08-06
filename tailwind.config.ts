@@ -75,13 +75,29 @@ export default {
       // Tailwind/shadcn defaults, which is what makes legacy screens match the
       // hand-tuned chrome without touching each call site. Pair with the
       // continuous-corner rule in index.css.
+      //
+      // --corner-scale is 1 everywhere except where corner-shape is live, where
+      // it grows the radius to match the shape (see index.css for why). Going
+      // through the scale rather than overriding each class is what keeps the
+      // per-side (rounded-t-lg) and responsive (sm:rounded-xl) variants honest.
+      //
+      // Only the surface tier scales. A radius past half an element's height is
+      // clamped by CSS into a pill, and the control tier has no headroom left:
+      // scaling md turned chips and menu items into pills, and lg turned the
+      // h-10 w-10 icon tiles into circles. xl and up are already clamped on
+      // h-10 controls (input, button), so scaling them costs nothing there and
+      // only reads on the tall surfaces — cards, sheets, dialogs, widgets —
+      // which is where the corner is actually visible. sm/md/lg still get the
+      // continuous shape, just not the extra radius; at 8-16px the difference
+      // between a squircle and a circular arc is a couple of pixels anyway.
+      // `full` and `none` stay off this ladder, so pills are never touched.
       borderRadius: {
         sm: "8px",
         md: "12px",
         lg: "16px",
-        xl: "22px",
-        "2xl": "28px",
-        "3xl": "40px",
+        xl: "calc(22px * var(--corner-scale, 1))",
+        "2xl": "calc(28px * var(--corner-scale, 1))",
+        "3xl": "calc(40px * var(--corner-scale, 1))",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(ellipse at center, var(--tw-gradient-stops))",
