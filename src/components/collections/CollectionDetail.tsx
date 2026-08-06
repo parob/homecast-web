@@ -245,6 +245,7 @@ export function CollectionDetail({
   const [editingGroupName, setEditingGroupName] = useState('');
   const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [removeStaleDialogOpen, setRemoveStaleDialogOpen] = useState(false);
 
   // Track which group we're adding items to (when clicking from a specific group's empty state)
   const [addingToGroupId, setAddingToGroupId] = useState<string | null>(null);
@@ -552,6 +553,11 @@ export function CollectionDetail({
   );
   const allItemsOffline = offlineItemCount > 0 && offlineItemCount === payload.items.length;
   const hasStaleHomes = staleHomeIds.size > 0;
+  // Only stale items are removable — an offline relay's accessories come back on reconnect
+  const staleItemCount = useMemo(() =>
+    payload.items.filter(i => staleHomeIds.has(i.home_id)).length,
+    [payload.items, staleHomeIds]
+  );
   const offlineHomeNames = useMemo(() =>
     [...unavailableHomeIds].map(id => homeNameMap.get(id)).filter(Boolean) as string[],
     [unavailableHomeIds, homeNameMap]
@@ -698,11 +704,13 @@ export function CollectionDetail({
       });
       if (result.data?.updateCollection) {
         onUpdate(result.data.updateCollection);
-      } else {
-        toast.error('Failed to update');
+        return true;
       }
+      toast.error('Failed to update');
+      return false;
     } catch {
       toast.error('Failed to update collection');
+      return false;
     }
   };
 
@@ -774,6 +782,18 @@ export function CollectionDetail({
     const newPayload = { ...payload, items: newItems };
     setPayload(newPayload);
     savePayload(newPayload);
+  };
+
+  // Drop every item pointing at a home that no longer exists (stale home IDs)
+  const removeStaleItems = async () => {
+    const removed = staleItemCount;
+    const newItems = payload.items.filter(i => !staleHomeIds.has(i.home_id));
+    const newPayload = { ...payload, items: newItems };
+    setRemoveStaleDialogOpen(false);
+    setPayload(newPayload);
+    if (await savePayload(newPayload)) {
+      toast.success(`Removed ${removed} unavailable ${removed === 1 ? 'accessory' : 'accessories'}`);
+    }
   };
 
   const removeServiceGroup = (serviceGroupId: string) => {
@@ -1483,11 +1503,22 @@ export function CollectionDetail({
               : "The relay is not connected. Accessories will be available when the Mac comes back online."}
             className={isDarkBackground ? "bg-black/30 border-white/20" : ""}
             isDarkBackground={isDarkBackground}
+            actions={staleItemCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className={`gap-1.5 ${isDarkBackground ? 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white' : ''}`}
+                onClick={() => setRemoveStaleDialogOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove {staleItemCount} unavailable {staleItemCount === 1 ? 'accessory' : 'accessories'}
+              </Button>
+            ) : undefined}
           />
         ) : unavailableHomeIds.size > 0 && (
           <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${isDarkBackground ? 'bg-white/10 border border-white/10' : 'bg-amber-500/10 border border-amber-500/20'}`}>
             <WifiOff className={`h-4 w-4 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-500'}`} />
-            <span className={isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}>
+            <span className={`min-w-0 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
               {offlineItemCount} {offlineItemCount === 1 ? 'accessory' : 'accessories'} unavailable
               {hasStaleHomes
                 ? ' — home IDs changed, reconnect relay to repair'
@@ -1495,6 +1526,17 @@ export function CollectionDetail({
                   ? ` — ${offlineHomeNames.join(' and ')} ${offlineHomeNames.length === 1 ? 'relay' : 'relays'} offline`
                   : ' — relay offline'}
             </span>
+            {staleItemCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-6 px-2 ml-auto shrink-0 gap-1 text-xs ${isDarkBackground ? 'text-white/70 hover:text-white hover:bg-white/15' : 'text-muted-foreground hover:text-foreground hover:bg-amber-500/15'}`}
+                onClick={() => setRemoveStaleDialogOpen(true)}
+              >
+                <Trash2 className="h-3 w-3" />
+                Remove
+              </Button>
+            )}
           </div>
         )}
 
@@ -1971,6 +2013,32 @@ export function CollectionDetail({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Unavailable Accessories Confirmation */}
+      <AlertDialog open={removeStaleDialogOpen} onOpenChange={setRemoveStaleDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Remove {staleItemCount} unavailable {staleItemCount === 1 ? 'accessory' : 'accessories'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {staleItemCount === 1 ? 'This item points' : 'These items point'} at a home ID that no longer exists,
+              so {staleItemCount === 1 ? 'it' : 'they'} can't be shown or controlled. Reconnecting the relay repairs
+              {staleItemCount === 1 ? ' it' : ' them'} automatically — once removed you'll have to add
+              {staleItemCount === 1 ? ' it' : ' them'} back by hand.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={removeStaleItems}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
