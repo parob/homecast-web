@@ -95,10 +95,16 @@ const TemperatureDial: React.FC<{
       dimmed ? 'opacity-60 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
-        // The arc stops short of the bottom of its own SVG box, so inline the
-        // dial leaves a band of dead space before whatever follows it. Pull the
-        // next control up into it rather than letting the panel sag.
-        style={{ width: size, height: size, marginBottom: inline ? -size * 0.2 : 0 }}
+        // The arc stops short of both ends of its own SVG box. Inline, pull the
+        // dial up into the band above it and leave more of the band below, so it
+        // sits closer to the title and further from the mode row rather than
+        // floating midway between them.
+        style={{
+          width: size,
+          height: size,
+          marginTop: inline ? -size * 0.07 : 0,
+          marginBottom: inline ? -size * 0.07 : 0,
+        }}
       >
         <CircularSlider
           size={size}
@@ -602,7 +608,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
         status="Off"
         strokeColor="hsl(var(--muted-foreground) / 0.5)"
         trackColor="hsl(var(--muted-foreground) / 0.18)"
-        size={inline ? 190 : 150}
+        size={inline ? 212 : 150}
         inline={inline}
       />
     );
@@ -637,7 +643,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
         status={currentStateDesc}
         strokeColor={strokeColor}
         trackColor={trackColor}
-        size={inline ? 190 : 150}
+        size={inline ? 212 : 150}
         inline={inline}
       />
     );
