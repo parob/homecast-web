@@ -28,6 +28,9 @@ const TOP_OFFSET = 16;
 // How long after a resize a pointer-leave is treated as the panel having moved
 // rather than the user having left.
 const RESIZE_GRACE_MS = 600;
+// If a resize leaves the pointer outside and it never comes back, the panel
+// should not sit there indefinitely.
+const RESIZE_ABANDON_MS = 5000;
 
 // Calculate overlay position and coordinates based on parent element.
 // The overlay is top-aligned with the trigger so it always opens downward from
@@ -79,6 +82,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   // Whether a leave should close the panel. Disarmed whenever the panel resizes,
   // and re-armed only once the pointer is inside it again.
   const leaveArmedRef = useRef(false);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const abandonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The resize observer is set up once and must not capture stale props, so the
+  // two things its timer needs are read through refs.
+  const onMouseLeaveRef = useRef<(() => void) | undefined>(undefined);
+  const isPointerOutsideRef = useRef<(x: number, y: number) => boolean>(() => true);
   const { isDarkBackground } = useBackgroundContext();
   const depth = useContext(OverlayDepthContext);
   const isMobile = useIsMobile();
@@ -139,11 +148,28 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       // deliberately back inside, nothing it does counts as leaving.
       leaveArmedRef.current = false;
       setPanelHeight(el.offsetHeight);
+
+      // ...but don't wait forever. If the pointer never returns, close.
+      if (abandonTimerRef.current) clearTimeout(abandonTimerRef.current);
+      const pointer = lastPointerRef.current;
+      if (!pointer || !onMouseLeaveRef.current) return;
+      abandonTimerRef.current = setTimeout(() => {
+        const p = lastPointerRef.current;
+        // Still resting inside the resized panel? Then it was never abandoned.
+        if (p && !isPointerOutsideRef.current(p.x, p.y)) {
+          leaveArmedRef.current = true;
+          return;
+        }
+        onMouseLeaveRef.current?.();
+      }, RESIZE_ABANDON_MS);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (abandonTimerRef.current) clearTimeout(abandonTimerRef.current);
+    };
   }, [shouldRender]);
 
   // Dismiss when tapping outside the overlay, or when scrolling past a
@@ -229,6 +255,11 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     onMouseLeave?.();
   }, [isPointerOutside, leaveFollowsResize, onMouseLeave]);
 
+  useEffect(() => {
+    onMouseLeaveRef.current = onMouseLeave;
+    isPointerOutsideRef.current = isPointerOutside;
+  });
+
   const handleMouseEnter = useCallback(() => {
     leaveArmedRef.current = true;
     onMouseEnter?.();
@@ -241,8 +272,13 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     if (!isExpanded || !onMouseLeave) return;
     const onMove = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
       if (!isPointerOutside(e.clientX, e.clientY)) {
         leaveArmedRef.current = true;
+        if (abandonTimerRef.current) {
+          clearTimeout(abandonTimerRef.current);
+          abandonTimerRef.current = null;
+        }
         return;
       }
       // Outside — but only meaningful if the pointer had been inside since the
