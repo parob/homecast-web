@@ -261,30 +261,29 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       accessory={accessory}
       compact={compact}
       expanded={expanded}
+      heroShape="block"
       hero={showHero ? (
-        // Inverted: the fill descends from the top, so the control mimics the
-        // blind itself coming down rather than an abstract level rising.
-        <VerticalSlider
-          value={100 - targetPosition}
-          min={0}
-          max={100}
-          step={5}
-          onCommit={(v) => {
-            const openness = 100 - v;
-            if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - openness) : openness);
-          }}
-          disabled={isViewOnly || noResponse}
-          icon={Blinds}
-          // The fill is how far the blind has come down, but the readout stays
-          // openness so it agrees with the header rather than quoting the
-          // complement back at you.
-          label="Open"
-          formatValue={(v) => `${Math.round(100 - v)}%`}
-          invert
-          fillClassName="bg-violet-400/80"
-          trackClassName="bg-black/10"
-          className="h-full text-slate-900"
-        />
+        // The fill is openness, filling upward. Mimicking the blind descending
+        // read better in theory and worse in practice: a fully closed blind
+        // showed a completely full bar labelled "0% Open", so the picture and
+        // the number contradicted each other. Full bar now means wide open.
+        <div className="h-[240px] w-[132px]">
+          <VerticalSlider
+            value={targetPosition}
+            min={0}
+            max={100}
+            step={5}
+            onCommit={(v) => {
+              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - v) : v);
+            }}
+            disabled={isViewOnly || noResponse}
+            icon={Blinds}
+            label="Open"
+            fillClassName="bg-violet-400/80"
+            trackClassName="bg-black/10"
+            className="h-full text-slate-900"
+          />
+        </div>
       ) : undefined}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
