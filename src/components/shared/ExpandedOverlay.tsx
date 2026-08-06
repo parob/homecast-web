@@ -25,6 +25,9 @@ const PADDING = 10;
 // Offset the overlay content down from the widget's top edge so it visually
 // starts just below the top of the compact trigger rather than flush with it.
 const TOP_OFFSET = 16;
+// How long after a resize a pointer-leave is treated as the panel having moved
+// rather than the user having left.
+const RESIZE_GRACE_MS = 600;
 
 // Calculate overlay position and coordinates based on parent element.
 // The overlay is top-aligned with the trigger so it always opens downward from
@@ -70,6 +73,9 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
+  // When the panel last changed size. A leave triggered within this window was
+  // caused by the boundary moving, not by the user going anywhere.
+  const lastResizeRef = useRef(0);
   const { isDarkBackground } = useBackgroundContext();
   const depth = useContext(OverlayDepthContext);
   const isMobile = useIsMobile();
@@ -124,7 +130,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   useLayoutEffect(() => {
     const el = contentRef.current;
     if (!shouldRender || !el) return;
-    const measure = () => setPanelHeight(el.offsetHeight);
+    const measure = () => {
+      lastResizeRef.current = performance.now();
+      setPanelHeight(el.offsetHeight);
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
@@ -184,9 +193,48 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   }, [isExpanded, onClose]);
 
   // Handle mouse leave - call immediately
-  const handleMouseLeave = useCallback(() => {
+  // Is the pointer genuinely away from both the panel and the tile it came from?
+  // The tolerance covers the gap between them and sub-pixel rounding.
+  const isPointerOutside = useCallback((x: number, y: number) => {
+    const within = (rect?: DOMRect | null) =>
+      !!rect && x >= rect.left - 8 && x <= rect.right + 8 && y >= rect.top - 8 && y <= rect.bottom + 8;
+    return !within(contentRef.current?.getBoundingClientRect())
+      && !within(parentRef.current?.parentElement?.getBoundingClientRect());
+  }, []);
+
+  // mouseleave fires whenever the boundary crosses the pointer — including when
+  // the panel resizes itself under a cursor that never moved, which is exactly
+  // what happens when you switch a device on and its controls appear. Treat it
+  // as a leave only if the pointer really is outside now.
+  // Switching a device on or off grows or shrinks the panel, and a shrink can
+  // leave a perfectly still cursor outside it. The browser reports that as a
+  // leave, which closed the panel the instant you used it. Ignore leaves for a
+  // moment after a resize, so the pointer has a chance to be somewhere on
+  // purpose — and give the user time to move back in.
+  const leaveFollowsResize = useCallback(
+    () => performance.now() - lastResizeRef.current < RESIZE_GRACE_MS,
+    [],
+  );
+
+  const handleMouseLeave = useCallback((e: React.MouseEvent) => {
+    if (leaveFollowsResize()) return;
+    if (!isPointerOutside(e.clientX, e.clientY)) return;
     onMouseLeave?.();
-  }, [onMouseLeave]);
+  }, [isPointerOutside, leaveFollowsResize, onMouseLeave]);
+
+  // Because a swallowed mouseleave never fires again, moving away afterwards has
+  // to be caught here. A resize produces no pointermove, so this cannot be
+  // triggered by the panel changing shape.
+  useEffect(() => {
+    if (!isExpanded || !onMouseLeave) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return;
+      if (leaveFollowsResize()) return;
+      if (isPointerOutside(e.clientX, e.clientY)) onMouseLeave();
+    };
+    document.addEventListener('pointermove', onMove);
+    return () => document.removeEventListener('pointermove', onMove);
+  }, [isExpanded, isPointerOutside, leaveFollowsResize, onMouseLeave]);
 
   // Anchor below the trigger's top edge, then pull back up if that would push
   // the panel past the bottom of the viewport.
