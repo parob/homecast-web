@@ -76,6 +76,9 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
+  // Whether a leave should close the panel. Disarmed whenever the panel resizes,
+  // and re-armed only once the pointer is inside it again.
+  const leaveArmedRef = useRef(false);
   const { isDarkBackground } = useBackgroundContext();
   const depth = useContext(OverlayDepthContext);
   const isMobile = useIsMobile();
@@ -132,6 +135,9 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     if (!shouldRender || !el) return;
     const measure = () => {
       lastResizeRef.current = performance.now();
+      // The panel just moved out from under the pointer. Until the pointer is
+      // deliberately back inside, nothing it does counts as leaving.
+      leaveArmedRef.current = false;
       setPanelHeight(el.offsetHeight);
     };
     measure();
@@ -217,10 +223,16 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   );
 
   const handleMouseLeave = useCallback((e: React.MouseEvent) => {
+    if (!leaveArmedRef.current) return;
     if (leaveFollowsResize()) return;
     if (!isPointerOutside(e.clientX, e.clientY)) return;
     onMouseLeave?.();
   }, [isPointerOutside, leaveFollowsResize, onMouseLeave]);
+
+  const handleMouseEnter = useCallback(() => {
+    leaveArmedRef.current = true;
+    onMouseEnter?.();
+  }, [onMouseEnter]);
 
   // Because a swallowed mouseleave never fires again, moving away afterwards has
   // to be caught here. A resize produces no pointermove, so this cannot be
@@ -229,8 +241,16 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     if (!isExpanded || !onMouseLeave) return;
     const onMove = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
+      if (!isPointerOutside(e.clientX, e.clientY)) {
+        leaveArmedRef.current = true;
+        return;
+      }
+      // Outside — but only meaningful if the pointer had been inside since the
+      // panel last changed shape. A panel that shrank away from a resting
+      // cursor should not close the moment that cursor twitches.
+      if (!leaveArmedRef.current) return;
       if (leaveFollowsResize()) return;
-      if (isPointerOutside(e.clientX, e.clientY)) onMouseLeave();
+      onMouseLeave();
     };
     document.addEventListener('pointermove', onMove);
     return () => document.removeEventListener('pointermove', onMove);
@@ -290,7 +310,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               // so it never draws above the viewport.
               top,
             }}
-            onMouseEnter={onMouseEnter}
+            onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
             <div className="p-[10px]">
