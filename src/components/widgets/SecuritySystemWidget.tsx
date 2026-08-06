@@ -31,6 +31,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
   onSlider,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -71,15 +72,20 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
 
   // Get button classes based on iconStyle and state
   const getButtonClasses = (isActive: boolean) => {
+    // Unselected modes take a translucent dark fill rather than a pale tint:
+    // WidgetWrapper forces every span to white while the system is disarmed,
+    // which put white text on pale pink. This flips with the background, so it
+    // stays readable either way. The selected mode is solid and ringed — pale
+    // versus slightly-less-pale did not read as a choice.
+    const unselected = 'bg-black/15 hover:bg-black/25 border-transparent font-normal';
     if (iconStyle === 'colourful') {
       return isActive
-        ? `${widgetColors.accent} text-white border-transparent`
-        : `${widgetColors.accentMuted} ${widgetColors.accentMutedHover} border-transparent`;
+        ? `${widgetColors.accent} text-white border-transparent font-semibold ring-2 ring-inset ring-white/45`
+        : unselected;
     }
-    // Standard and basic modes use primary color
     return isActive
-      ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-      : 'bg-primary/20 hover:bg-primary/30 border-transparent';
+      ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent font-semibold ring-2 ring-inset ring-white/45'
+      : unselected;
   };
 
   return (
@@ -91,6 +97,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
       
@@ -117,7 +124,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
       {targetStateChar?.isWritable && (
         <div className="space-y-3">
           {/* State buttons */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid grid-cols-2 ${expanded ? 'gap-[10px]' : 'gap-2'}`}>
             {SECURITY_STATES.slice(0, 4).map((state, index) => {
               const Icon = state.icon;
               const isActive = targetState === index;
@@ -126,13 +133,13 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
                   key={state.name}
                   variant="outline"
                   size="sm"
-                  className={`flex-1 h-auto py-3 ${getButtonClasses(isActive)}`}
+                  className={`flex-1 h-auto ${expanded ? 'py-[14px] rounded-xl' : 'py-3'} ${getButtonClasses(isActive)}`}
                   onClick={() => onSlider(accessory.id, 'security_system_target_state', index)}
                   disabled={!accessory.isReachable}
                 >
                   <div className="flex flex-col items-center gap-1">
-                    <Icon className="h-4 w-4" />
-                    <span className="text-xs">{state.name}</span>
+                    <Icon className={expanded ? 'h-[20px] w-[20px]' : 'h-4 w-4'} />
+                    <span className={expanded ? 'text-[14px]' : 'text-xs'}>{state.name}</span>
                   </div>
                 </Button>
               );
