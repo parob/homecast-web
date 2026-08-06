@@ -64,7 +64,7 @@ export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
-          className={`absolute bottom-2.5 right-2.5 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 ${style.pulse ? 'animate-pulse' : ''}`}
+          className={`absolute bottom-3.5 right-3.5 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 ${style.pulse ? 'animate-pulse' : ''}`}
           style={{ backgroundColor: style.color }}
           onClick={e => { e.stopPropagation(); setOpen(true); }}
           aria-label={`${style.label} available`}
