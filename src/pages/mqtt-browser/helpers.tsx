@@ -177,6 +177,14 @@ export function TopicPath({ topic, short }: { topic: string; short?: boolean }) 
     if (short) return <span className="text-foreground">{p.slice(3).join('/')}</span>;
     return <><span className="text-blue-500">{p[1]}</span>/<span className="text-purple-400">{p[2]}</span>/<span className="text-foreground">{p.slice(3).join('/')}</span></>;
   }
+  // homecast/{home}/{accessory} — an accessory that belongs to the home rather
+  // than to a room, so there is no room segment to colour. Without this it fell
+  // through to the raw topic and these rows printed their whole path while
+  // every room row beside them showed a bare slug.
+  if (p[0] === 'homecast' && p.length === 3) {
+    if (short) return <span className="text-foreground">{p[2]}</span>;
+    return <><span className="text-blue-500">{p[1]}</span>/<span className="text-foreground">{p[2]}</span></>;
+  }
   return <>{topic}</>;
 }
 
