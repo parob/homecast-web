@@ -203,7 +203,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const effectiveHeaderAction = editModeType ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
-  const showChildren = childrenVisible ?? !!children;
+  // A hero counts as content: a switch has no children at all, so keying the
+  // collapse on children alone left its rocker mounted inside a shut collapse.
+  const showChildren = childrenVisible ?? (!!children || showHero);
   const characteristics = accessory ? getAllCharacteristics(accessory) : [];
   const hasCharacteristics = characteristics.length > 0;
 

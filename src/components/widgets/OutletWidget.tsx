@@ -1,7 +1,8 @@
 import React, { memo } from 'react';
 import { Plug, Zap } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { ColoredSwitch } from './shared';
+import { getIconColor } from './iconColors';
+import { ColoredSwitch, VerticalToggle } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const OutletWidget: React.FC<WidgetProps> = memo(({
@@ -9,6 +10,7 @@ export const OutletWidget: React.FC<WidgetProps> = memo(({
   onToggle,
   getEffectiveValue,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -35,6 +37,11 @@ export const OutletWidget: React.FC<WidgetProps> = memo(({
 
   const powerValue = powerChar ? getEffectiveValue(accessory.id, powerChar.type, powerChar.value) : false;
   const isOn = powerValue === true || powerValue === 1;
+
+  // The rocker replaces the header switch in the expanded panel — two
+  // controls for one thing reads as a bug.
+  const showHero = !!expanded && !compact && !!powerChar;
+  const accentClass = getIconColor('outlet')?.accent ?? 'bg-primary';
   const inUse = inUseChar?.value === true || inUseChar?.value === 1;
 
   return (
@@ -57,6 +64,17 @@ export const OutletWidget: React.FC<WidgetProps> = memo(({
       accessory={accessory}
       isReachable={accessory.isReachable}
       compact={compact}
+      expanded={expanded}
+      heroShape="block"
+      hero={showHero ? (
+        <VerticalToggle
+          checked={isOn}
+          onChange={() => onToggle(accessory.id, powerChar!.type, isOn)}
+          disabled={!accessory.isReachable}
+          icon={Plug}
+          activeClassName={iconStyle === 'colourful' ? accentClass : 'bg-primary'}
+        />
+      ) : undefined}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
       
@@ -79,7 +97,7 @@ export const OutletWidget: React.FC<WidgetProps> = memo(({
       onShare={onShare}
       locationSubtitle={locationSubtitle}
       headerAction={
-        powerChar && (
+        powerChar && !showHero && (
           <ColoredSwitch
             checked={isOn}
             onCheckedChange={() => onToggle(accessory.id, powerChar.type, isOn)}
