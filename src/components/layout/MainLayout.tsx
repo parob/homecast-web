@@ -20,6 +20,10 @@ if ((window as Window & { HomecastAndroid?: unknown }).HomecastAndroid) {
 // Header height constants (in pixels)
 const HEADER_HEIGHT = 80;
 const MAC_TRAFFIC_LIGHTS = 28;
+// What AppHeader actually occupies in the Mac app: 33px of title-bar padding
+// above a row that is 3.5rem tall but never shorter than 56px. Kept as a
+// calc so it tracks the text-size setting the way the header itself does.
+const MAC_HEADER_HEIGHT = 'calc(33px + max(3.5rem, 56px))';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -97,13 +101,13 @@ export function MainLayout({
   }, [shouldUseDarkText]);
 
   const sidebarPaddingTop = isInMacApp
-    ? `${HEADER_HEIGHT + MAC_TRAFFIC_LIGHTS}px`
+    ? MAC_HEADER_HEIGHT
     : isInMobileApp
     ? `calc(${HEADER_HEIGHT}px + var(--safe-area-top, 0px))`
     : `${HEADER_HEIGHT}px`;
 
   const contentPaddingTop = isInMacApp
-    ? `${HEADER_HEIGHT + MAC_TRAFFIC_LIGHTS}px`
+    ? MAC_HEADER_HEIGHT
     : isInMobileApp
     ? `calc(${HEADER_HEIGHT}px + var(--safe-area-top, 0px))`
     : `${HEADER_HEIGHT}px`;
@@ -136,11 +140,13 @@ export function MainLayout({
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", shouldUseDarkText ? "material-regular-dark" : "bg-background")} aria-describedby={undefined}>
+              {/* Mac: clear the traffic lights the same way the Dashboard drawer
+                  does — inset the padding, not the panel. */}
+              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", shouldUseDarkText ? "material-regular-dark" : "bg-background")} style={isInMacApp ? { paddingTop: 33 } : undefined} aria-describedby={undefined}>
                 <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                 <div className="h-full flex flex-col overflow-hidden">
                   {/* Close sheet when a nav button is clicked */}
-                  <div className={cn("p-4 mt-3 overflow-y-auto flex-1", shouldUseDarkText && "text-white")} onClick={(e) => {
+                  <div className={cn("p-4 mt-3 overflow-y-auto scrollbar-hidden flex-1", shouldUseDarkText && "text-white")} onClick={(e) => {
                     if ((e.target as HTMLElement).closest('button')) setSidebarOpen(false);
                   }}>
                     {sidebar}

@@ -4,6 +4,10 @@ import { AppHeader } from './AppHeader';
 // Header height constants (in pixels)
 const HEADER_HEIGHT = 80;
 const MAC_TRAFFIC_LIGHTS = 28;
+// What AppHeader actually occupies in the Mac app: 33px of title-bar padding
+// above a row that is 3.5rem tall but never shorter than 56px. Kept as a
+// calc so it tracks the text-size setting the way the header itself does.
+const MAC_HEADER_HEIGHT = 'calc(33px + max(3.5rem, 56px))';
 
 interface PageLayoutProps {
   children: React.ReactNode;
@@ -25,13 +29,13 @@ export function PageLayout({
   sidebar,
 }: PageLayoutProps) {
   const sidebarPaddingTop = isInMacApp
-    ? `${HEADER_HEIGHT + MAC_TRAFFIC_LIGHTS}px`
+    ? MAC_HEADER_HEIGHT
     : isInMobileApp
     ? `calc(${HEADER_HEIGHT}px + var(--safe-area-top, 0px))`
     : `${HEADER_HEIGHT}px`;
 
   const contentPaddingTop = isInMacApp
-    ? `${HEADER_HEIGHT + MAC_TRAFFIC_LIGHTS}px`
+    ? MAC_HEADER_HEIGHT
     : isInMobileApp
     ? `calc(${HEADER_HEIGHT}px + var(--safe-area-top, 0px))`
     : `${HEADER_HEIGHT}px`;

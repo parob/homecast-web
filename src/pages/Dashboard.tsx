@@ -5993,14 +5993,16 @@ const Dashboard = () => {
                   </Button>
                 </SheetTrigger>
                 {/* The Mac app hides its title bar but the traffic lights still
-                    sit there, so a drawer pinned to inset-y-0 opened underneath
-                    them — start it below the same 33px the header reserves. */}
+                    sit there, so the drawer's contents have to clear the same
+                    33px the header reserves. Inset the padding rather than the
+                    panel — starting the panel itself at 33 leaves a lighter
+                    band above it and the drawer reads as chopped off. */}
                 <SheetContent
                   side="left"
                   className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'material-regular-dark' : 'bg-background'}`}
                   style={{
                     width: mobileSidebarWidth,
-                    ...(isInMacApp ? { top: 33, height: 'calc(100% - 33px)' } : {}),
+                    ...(isInMacApp ? { paddingTop: 33 } : {}),
                   }}
                   aria-describedby={undefined}
                 >
@@ -6027,7 +6029,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </div>
-                    <div className={`p-3 overflow-y-auto flex-1 ${isDarkBackground ? 'text-white' : ''}`}>
+                    <div className={`p-3 overflow-y-auto scrollbar-hidden flex-1 ${isDarkBackground ? 'text-white' : ''}`}>
                     {/* Homes Section */}
                     <div className="mb-6" data-tour="sidebar-homes">
                       {homesLoading ? (
@@ -6492,8 +6494,11 @@ const Dashboard = () => {
         <div className={`flex w-full ${isInMacApp || fullWidth ? '' : 'max-w-7xl'}`}>
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
-          className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-8' : isInMobileApp ? '' : 'pt-3'} pl-3 pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
-          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(12px + var(--safe-area-top, 0px))' } : undefined) }}
+          // Nudged 5px in and down from the window edge — the panel reads as
+          // floating rather than tucked into the corner. Written as calc so it
+          // still tracks the text-size setting.
+          className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
+          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
         >
           <div className={`rounded-2xl transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
             <div className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden transition-all duration-300 ${isDarkBackground ? 'material-regular-dark text-white' : ''}`}>
