@@ -42,9 +42,13 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       <div className={cn("relative mx-auto w-full px-4 h-[80px] flex items-center justify-between", !isInMacApp && !fullWidth && "max-w-7xl")}>
         {/* Left content with bubble background on mobile */}
         <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
+          {/* Same rule as the right-hand cluster: over a dark background the
+              buttons carry their own fill, so a bubble as well made the burger
+              a 56px slab beside two 40px circles. Over a light one the bubble
+              is what makes them legible. */}
           <div className={cn(
             "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300 md:hidden",
-            isDarkBackground ? "material-regular-dark" : "material-regular"
+            isDarkBackground ? "" : "material-regular"
           )} />
           {children}
         </div>
@@ -74,7 +78,11 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       </div>
       {/* Mac app: position bubble at top-right, in title bar area */}
       {isInMacApp && (
-        <div className="absolute top-[25px] right-[23px] flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
+        // Centred on the same line as the left cluster. The header carries 33px
+        // of title-bar padding and centres its 80px row, putting that line at
+        // 73px; this is absolutely positioned against the header's padding box,
+        // so it has to reach 73 on its own — 45 plus half its 56px height.
+        <div className="absolute top-[45px] right-[23px] flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
           <div className={cn(
             "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
             isDarkBackground ? "" : "material-regular"
