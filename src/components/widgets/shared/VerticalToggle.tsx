@@ -1,5 +1,6 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 interface VerticalToggleProps {
   checked: boolean;
@@ -33,6 +34,11 @@ export const VerticalToggle: React.FC<VerticalToggleProps> = ({
   width = 88,
   height = 174,
 }) => {
+  // Off over a dark background the tile goes dark, and this label is a div —
+  // so WidgetWrapper's rule that whitens spans skips it and it stayed near
+  // black on near black.
+  const { isDarkBackground } = useBackgroundContext();
+  const labelDark = !checked && isDarkBackground;
   const pad = 8;
   const knob = width - pad * 2;
 
@@ -69,7 +75,9 @@ export const VerticalToggle: React.FC<VerticalToggleProps> = ({
           )}
         </span>
       </button>
-      <div className="text-[16px] font-medium">{checked ? onLabel : offLabel}</div>
+      <div className={`text-[16px] font-medium ${labelDark ? 'text-white' : ''}`}>
+        {checked ? onLabel : offLabel}
+      </div>
     </div>
   );
 };
