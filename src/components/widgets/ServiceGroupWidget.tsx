@@ -364,7 +364,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   const cardContent = (
     <Card className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} cursor-pointer`} onClick={handleCardClick}>
-      <CardHeader className={showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
+      <CardHeader className={showCompact ? 'p-[14px]' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
         {showCompact ? (
           // Compact mode - vertical layout matching preview style
           <div

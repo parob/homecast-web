@@ -390,7 +390,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const cardInner = (
     <>
-      <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-[20px]' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-[20px]' : 'pb-4')}`}>
+      {/* Compact padding is fixed px on purpose: the text-size setting scales the
+          root font, so a rem padding shrank exactly when the text did and left
+          the small setting looking cramped against the tile edge. */}
+      <CardHeader className={effectiveCompact ? "p-[14px]" : `${expanded ? 'p-[20px]' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-[20px]' : 'pb-4')}`}>
         {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
