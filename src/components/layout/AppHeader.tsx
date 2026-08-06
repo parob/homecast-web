@@ -41,7 +41,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     >
       <div className={cn("relative mx-auto w-full px-4 h-[80px] flex items-center justify-between", !isInMacApp && !fullWidth && "max-w-7xl")}>
         {/* Left content with bubble background on mobile */}
-        <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.75rem,12px)] pointer-events-auto">
+        <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
           <div className={cn(
             "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300 md:hidden",
             isDarkBackground ? "material-regular-dark" : "material-regular"

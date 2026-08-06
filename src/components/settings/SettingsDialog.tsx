@@ -616,7 +616,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                               if (isHomesRow) setSelectedHomeId(null);
                             }}
                             className={cn(
-                              "w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors rounded-lg",
+                              "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 px-3 py-1.5 text-sm transition-colors rounded-lg",
                               isActive && !(isHomesRow && selectedHomeId)
                                 ? "bg-muted font-medium text-foreground"
                                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
@@ -638,7 +638,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                                 setSelectedHomeId(home.id);
                               }}
                               className={cn(
-                                "w-full flex items-center gap-2 pl-9 pr-3 py-1 text-xs transition-colors rounded-lg",
+                                "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 pl-7 pr-3 py-1 text-xs transition-colors rounded-lg",
                                 selectedHomeId === home.id
                                   ? "bg-muted font-medium text-foreground"
                                   : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"

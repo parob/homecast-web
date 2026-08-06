@@ -5988,7 +5988,7 @@ const Dashboard = () => {
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2rem,32px)] w-[max(2rem,32px)] bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>

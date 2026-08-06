@@ -90,7 +90,10 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       {/* Blur layer — matches WidgetWrapper */}
       <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
       {/* Content */}
-      <div className={`relative z-[1] ${compact ? 'p-2.5' : 'p-4'}`}>
+      {/* Fixed floors: this padding is what separates the icon and the toggle
+          from the card edge, and rem units shrank it exactly at the text sizes
+          where the card was already tightest. */}
+      <div className={`relative z-[1] ${compact ? 'p-[max(0.625rem,12px)]' : 'p-[max(1rem,18px)]'}`}>
         {/* items-start, not items-center: the name wraps to as many lines as it
             needs, and centring the icon/controls against a 3-line name looks off. */}
         <div className={`flex items-start justify-between ${compact ? 'gap-1.5' : 'gap-2'}`}>
