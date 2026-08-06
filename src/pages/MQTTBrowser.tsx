@@ -332,15 +332,34 @@ export default function MQTTBrowser() {
         const text = payload.toString();
         msgTimestamps.current.push(Date.now());
         setConnStats(prev => ({ ...prev, totalMessages: prev.totalMessages + 1 }));
+        // An empty retained payload is how MQTT says "this topic is gone" — it
+        // is what the relay publishes when an accessory is renamed, removed, or
+        // moved to a different room. Dropping the row is the whole point of
+        // that publish; keeping it left the vacated topic on screen as a blank
+        // row, indistinguishable from a live device reporting nothing.
+        const isTombstone = text === '';
         // Track availability topics separately
         if (topic.endsWith('/availability')) {
           const baseTopic = topic.replace(/\/availability$/, '');
-          setAvailability(prev => ({ ...prev, [baseTopic]: text }));
+          setAvailability(prev => {
+            if (!isTombstone) return { ...prev, [baseTopic]: text };
+            if (!(baseTopic in prev)) return prev;
+            const { [baseTopic]: _gone, ...rest } = prev;
+            return rest;
+          });
           return;
         }
         // Track group membership topics
         if (topic.endsWith('/members')) {
           const baseTopic = topic.replace(/\/members$/, '');
+          if (isTombstone) {
+            setGroupMembers(prev => {
+              if (!(baseTopic in prev)) return prev;
+              const { [baseTopic]: _gone, ...rest } = prev;
+              return rest;
+            });
+            return;
+          }
           try {
             const members: string[] = JSON.parse(text);
             setGroupMembers(prev => ({ ...prev, [baseTopic]: members }));
@@ -354,6 +373,15 @@ export default function MQTTBrowser() {
         }
         // Skip /set echo topics
         if (topic.endsWith('/set')) return;
+        if (isTombstone) {
+          setMessages(prev => {
+            if (!(topic in prev)) return prev;
+            const { [topic]: _gone, ...rest } = prev;
+            return rest;
+          });
+          setSelectedTopic(prev => (prev === topic ? null : prev));
+          return;
+        }
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
       client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
