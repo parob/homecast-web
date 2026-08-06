@@ -76,12 +76,12 @@ export default {
       // hand-tuned chrome without touching each call site. Pair with the
       // continuous-corner rule in index.css.
       borderRadius: {
-        sm: "6px",
-        md: "8px",
-        lg: "12px",
-        xl: "16px",
-        "2xl": "20px",
-        "3xl": "28px",
+        sm: "8px",
+        md: "12px",
+        lg: "16px",
+        xl: "22px",
+        "2xl": "28px",
+        "3xl": "40px",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(ellipse at center, var(--tw-gradient-stops))",

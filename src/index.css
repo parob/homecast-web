@@ -285,14 +285,21 @@ All colors MUST be HSL.
    floor); corner-shape ships in Safari 26 / Chrome 139+. Mask/clip-path
    approaches are ruled out — they break the backdrop-blur glass layers. */
 @supports (corner-shape: squircle) {
-  [class*="rounded-"]:not([class*="rounded-full"]) {
-    corner-shape: squircle;
-  }
-
-  /* Escape hatch for elements whose radius comes from inline styles or a CSS
-     variable rather than a rounded-* class. */
+  [class*="rounded-"]:not([class*="rounded-full"]),
   .corner-smooth {
     corner-shape: squircle;
+  }
+}
+
+/* Not every engine that ships corner-shape accepts the `squircle` keyword —
+   some only take the superellipse() form it is shorthand for. Without this the
+   whole enhancement silently no-ops and you get plain circular corners. */
+@supports not (corner-shape: squircle) {
+  @supports (corner-shape: superellipse(4)) {
+    [class*="rounded-"]:not([class*="rounded-full"]),
+    .corner-smooth {
+      corner-shape: superellipse(4);
+    }
   }
 }
 
