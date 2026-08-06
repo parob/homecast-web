@@ -21,8 +21,13 @@ const GROUP = 'homecast/beach-house-1111/kitchen-aaaa/lights-group';
 const KITCHEN_LAMP = 'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2';
 const BEDROOM_LAMP = 'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2';
 
+// A helper accessory belongs to the home, not to a room, so it publishes one
+// level up — the same shape as a roomless service group.
+const HOME_LEVEL_HELPER = 'homecast/beach-house-1111/holiday-mode-8be1';
+
 const messages: Record<string, TopicMessage> = {
   [KITCHEN_LAMP]: msg({ on: true, brightness: 72 }),
+  [HOME_LEVEL_HELPER]: msg({ on: true }),
   'homecast/beach-house-1111/kitchen-aaaa/fan-9c8d': msg({ active: 1, speed: 30 }),
   [GROUP]: msg({ on: true, brightness: 40 }),
   [BEDROOM_LAMP]: msg({ on: false, brightness: 0 }),
@@ -77,6 +82,14 @@ describe('buildTopicTree', () => {
     expect(beachHouse.plain.map(([t]) => t)).toContain('homecast/beach-house-1111/status');
   });
 
+  it('parks a home-level accessory beside the home status, not in any room', () => {
+    const beachHouse = tree.find(h => h.slug === 'beach-house-1111')!;
+    expect(beachHouse.plain.map(([t]) => t)).toContain(HOME_LEVEL_HELPER);
+    // It must not be mistaken for a room of its own, which is what an
+    // `unknown-xxxx` room segment used to produce.
+    expect(beachHouse.rooms.map(r => r.slug)).toEqual(['bedroom-bbbb', 'kitchen-aaaa']);
+  });
+
   it('collapses to a single unlabeled bucket when home grouping is off', () => {
     const flat = buildTopicTree(filtered, groupMembers, slugToTopic, messages, { groupByHome: false, groupByRoom: false });
     expect(flat).toHaveLength(1);
@@ -115,5 +128,7 @@ describe('rowTypeForTopic', () => {
     expect(rowTypeForTopic(GROUP, groupMembers)).toBe('group');
     expect(rowTypeForTopic('homecast/beach-house-1111/status', groupMembers)).toBe('home');
     expect(rowTypeForTopic(KITCHEN_LAMP, groupMembers)).toBe('accessory');
+    // Same depth as the home status row, but it is an accessory
+    expect(rowTypeForTopic(HOME_LEVEL_HELPER, groupMembers)).toBe('accessory');
   });
 });

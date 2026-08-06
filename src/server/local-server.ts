@@ -81,6 +81,7 @@ export function initLocalServer(): void {
     __localserver_disconnect_handler?: (clientId: string) => void;
     __localserver_graphql_handler?: (clientId: string, request: { operationName?: string; query?: string; variables?: Record<string, unknown>; authorization?: string }) => void;
     __localserver_http_handler?: (clientId: string, request: { method: string; path: string; body?: string; authorization?: string }) => void;
+    __homecast_relay_action?: (action: string, payload?: Record<string, unknown>) => Promise<unknown>;
   };
 
   if (!w.isHomeKitRelayCapable) return;
@@ -96,6 +97,20 @@ export function initLocalServer(): void {
 
   w.__localserver_handler = (clientId: string, msg: ProtocolMessage) => {
     handleRequest(clientId, msg);
+  };
+
+  // The relay action path, as a promise a native caller can await.
+  //
+  // The MQTT bridge lives in Swift and used to reach HomeKit through
+  // `window.homekit` — the raw native bridge, which is one layer below this
+  // one. That layer only knows about HomeKit's own accessories, so helper
+  // accessories (engine-owned, and therefore only ever visible from JS) were
+  // absent from MQTT while every other Community surface had them. Going
+  // through the same executor the WebSocket, REST and MCP paths use is what
+  // makes MQTT show the same set of accessories as everything else.
+  w.__homecast_relay_action = async (action: string, payload?: Record<string, unknown>) => {
+    const { executeHomeKitAction } = await import('../relay/local-handler');
+    return executeHomeKitAction(action, payload ?? {});
   };
 
   w.__localserver_disconnect_handler = (clientId: string) => {
