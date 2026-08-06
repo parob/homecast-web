@@ -116,7 +116,10 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
         <TooltipContent
           side="bottom"
           className={cn(
-            'max-w-xs max-h-[75vh] overflow-y-auto shadow-lg',
+            // Roomier than a one-line tooltip: this one lists rooms and their
+            // sensors, so it reads as a panel and wants a panel's inset. Fixed
+            // px so it does not tighten up at the small text setting.
+            'max-w-xs max-h-[75vh] overflow-y-auto shadow-lg px-[16px] py-[14px]',
             tooltipStyles
           )}
         >
