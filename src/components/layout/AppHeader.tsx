@@ -39,7 +39,12 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       )}
       style={isInMacApp ? { paddingTop: '33px' } : undefined}
     >
-      <div className={cn("relative mx-auto w-full px-4 h-[80px] flex items-center justify-between", !isInMacApp && !fullWidth && "max-w-7xl")}>
+      {/* In the Mac app the 33px above this row already clears the traffic
+          lights, so a full 80px row on top of it pushed the whole page down.
+          56px is exactly the bubble's height — nothing to spare, nothing wasted. */}
+      <div className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
+        isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
+        !isInMacApp && !fullWidth && "max-w-7xl")}>
         {/* Left content with bubble background on mobile */}
         <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
           {/* Same rule as the right-hand cluster: over a dark background the
@@ -78,11 +83,10 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       </div>
       {/* Mac app: position bubble at top-right, in title bar area */}
       {isInMacApp && (
-        // Centred on the same line as the left cluster. The header carries 33px
-        // of title-bar padding and centres its 80px row, putting that line at
-        // 73px; this is absolutely positioned against the header's padding box,
-        // so it has to reach 73 on its own — 45 plus half its 56px height.
-        <div className="absolute top-[45px] right-[23px] flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
+        // Centred on the same line as the left cluster: 33px of title-bar
+        // padding plus half a 56px row puts that line at 61px, and this is
+        // positioned against the header's padding box, so it starts at 33.
+        <div className="absolute top-[33px] right-[23px] flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
           <div className={cn(
             "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
             isDarkBackground ? "" : "material-regular"

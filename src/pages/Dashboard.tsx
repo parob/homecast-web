@@ -5992,7 +5992,18 @@ const Dashboard = () => {
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'material-regular-dark' : 'bg-background'}`} style={{ width: mobileSidebarWidth }} aria-describedby={undefined}>
+                {/* The Mac app hides its title bar but the traffic lights still
+                    sit there, so a drawer pinned to inset-y-0 opened underneath
+                    them — start it below the same 33px the header reserves. */}
+                <SheetContent
+                  side="left"
+                  className={`p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left ${isDarkBackground ? 'material-regular-dark' : 'bg-background'}`}
+                  style={{
+                    width: mobileSidebarWidth,
+                    ...(isInMacApp ? { top: 33, height: 'calc(100% - 33px)' } : {}),
+                  }}
+                  aria-describedby={undefined}
+                >
                   <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                   <div
                     className="h-full flex flex-col overflow-hidden"
