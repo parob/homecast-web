@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { DoorOpen, DoorClosed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl } from './shared';
+import { SliderControl, ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 interface DoorWindowWidgetProps extends WidgetProps {
@@ -17,6 +17,7 @@ export const DoorWindowWidget: React.FC<DoorWindowWidgetProps> = memo(({
   getEffectiveValue,
   deviceType,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -54,6 +55,17 @@ export const DoorWindowWidget: React.FC<DoorWindowWidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        <ValueReadout
+          value={isFullyOpen ? 'Open' : isOpen ? `${Math.round(currentPosition)}` : 'Closed'}
+          unit={!isFullyOpen && isOpen ? '%' : undefined}
+          label={isMoving ? POSITION_STATES[positionState] : deviceType === 'window' ? 'Window' : 'Door'}
+          icon={<Icon />}
+          tone={isOpen ? 'warning' : 'normal'}
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-1">

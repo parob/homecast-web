@@ -2,11 +2,13 @@ import React, { memo } from 'react';
 import { DoorOpen, DoorClosed, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
+import { ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 
 export const ContactSensorWidget: React.FC<WidgetProps> = memo(({
   accessory,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -48,6 +50,16 @@ export const ContactSensorWidget: React.FC<WidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        <ValueReadout
+          value={isOpen ? 'Open' : 'Closed'}
+          label={isOpen ? 'Contact broken' : 'Contact made'}
+          icon={<Icon />}
+          tone={isOpen ? 'warning' : 'normal'}
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2">

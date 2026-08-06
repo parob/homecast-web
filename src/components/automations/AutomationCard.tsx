@@ -102,7 +102,9 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
             <img
               src={isHomeKit ? '/homekit_logo.png' : '/icon-192.png'}
               alt={isHomeKit ? 'HomeKit' : 'Homecast'}
-              className={`${compact ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 rounded-md`}
+              // Matches the accessory tiles: these sit in the same grid, and a
+              // smaller icon here read as a different, lesser kind of card.
+              className={`${compact ? 'h-8 w-8' : 'h-9 w-9'} shrink-0 rounded-md`}
             />
             <div className="min-w-0 flex-1">
               {/* Wraps rather than truncating — automation names are frequently
@@ -125,7 +127,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
           </div>
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
             <div onClick={handleToggle}>
-              <Switch checked={isEnabled} className={compact ? 'scale-75' : ''} />
+              <Switch checked={isEnabled} className={compact ? 'scale-90' : ''} />
             </div>
             {onDelete && (
               <button

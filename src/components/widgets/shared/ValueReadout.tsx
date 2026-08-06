@@ -40,7 +40,9 @@ export const ValueReadout: React.FC<ValueReadoutProps> = ({
         </div>
       )}
       <div className={`flex items-baseline gap-[2px] ${toneClass}`}>
-        <span className="text-[44px] font-semibold leading-none tabular-nums">{value}</span>
+        {/* A number can carry 44px; a word like "Detected" at that size shouts.
+            Size by what the value actually is. */}
+        <span className={`font-semibold leading-none tabular-nums ${/\d/.test(value) ? 'text-[44px]' : 'text-[30px]'}`}>{value}</span>
         {unit && <span className="text-[20px] font-medium opacity-70">{unit}</span>}
       </div>
       {label && <div className="text-[14px] opacity-70">{label}</div>}

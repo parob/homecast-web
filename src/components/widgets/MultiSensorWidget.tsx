@@ -7,15 +7,18 @@ import {
   BatteryLow,
   BatteryWarning,
   Footprints,
+  Droplets,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { WidgetCard } from './WidgetCard';
+import { ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 
 export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
   accessory,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -100,6 +103,31 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        // Several readings, so no single hero number — they sit side by side at
+        // a size you can read from across the room, motion first because it is
+        // the one that changes.
+        <div className="flex flex-wrap items-start justify-center gap-x-[24px] gap-y-[4px]">
+          {motionDetected !== undefined && (
+            <ValueReadout
+              value={motionDetected ? 'Motion' : 'Clear'}
+              icon={<Footprints />}
+              tone={motionDetected ? 'warning' : 'normal'}
+            />
+          )}
+          {tempValue !== null && !isNaN(tempValue) && (
+            <ValueReadout value={tempValue.toFixed(1)} unit="°C" label="Temperature" icon={<Thermometer />} />
+          )}
+          {humidityValue !== null && !isNaN(humidityValue) && (
+            <ValueReadout value={Math.round(humidityValue).toString()} unit="%" label="Humidity" icon={<Droplets />} />
+          )}
+          {lightLevel !== null && !isNaN(lightLevel) && (
+            <ValueReadout value={Math.round(lightLevel).toString()} unit="lx" label="Light" icon={<Sun />} />
+          )}
+        </div>
+      ) : undefined}
       title={accessory.name}
       subtitle={subtitleParts.join(' · ')}
       icon={<PrimaryIcon className="h-4 w-4" />}

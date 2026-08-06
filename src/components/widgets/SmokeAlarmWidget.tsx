@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
+import { ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 
 // Compact status display for right side
@@ -55,6 +56,7 @@ const StatusDisplay: React.FC<{
 export const SmokeAlarmWidget: React.FC<WidgetProps> = memo(({
   accessory,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -124,6 +126,16 @@ export const SmokeAlarmWidget: React.FC<WidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        <ValueReadout
+          value={isAlarming ? 'Alarm' : 'Clear'}
+          label={smokeDetected ? 'Smoke detected' : coDetected ? 'Carbon monoxide' : 'No smoke or CO'}
+          icon={<Siren />}
+          tone={isAlarming ? 'danger' : 'normal'}
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2 text-muted-foreground">

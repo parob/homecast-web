@@ -1,11 +1,13 @@
 import React, { memo } from 'react';
 import { Activity, Footprints, Thermometer, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
+import { ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 
 export const MotionSensorWidget: React.FC<WidgetProps> = memo(({
   accessory,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -83,6 +85,16 @@ export const MotionSensorWidget: React.FC<WidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        <ValueReadout
+          value={motionDetected ? 'Motion' : 'Clear'}
+          label={motionDetected ? 'Detected now' : 'No motion'}
+          icon={<Footprints />}
+          tone={motionDetected ? 'warning' : 'normal'}
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={subtitle}
       icon={
