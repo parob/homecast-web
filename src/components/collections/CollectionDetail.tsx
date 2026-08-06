@@ -1505,9 +1505,9 @@ export function CollectionDetail({
             isDarkBackground={isDarkBackground}
             actions={staleItemCount > 0 ? (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className={`gap-1.5 ${isDarkBackground ? 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white' : ''}`}
+                className={`gap-1.5 ${isDarkBackground ? 'bg-white/10 text-white hover:bg-white/20 hover:text-white active:bg-white/25' : 'bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted/80'}`}
                 onClick={() => setRemoveStaleDialogOpen(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1530,7 +1530,7 @@ export function CollectionDetail({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-6 px-2 ml-auto shrink-0 gap-1 text-xs ${isDarkBackground ? 'text-white/70 hover:text-white hover:bg-white/15' : 'text-muted-foreground hover:text-foreground hover:bg-amber-500/15'}`}
+                className={`h-6 px-2 ml-auto shrink-0 gap-1 text-xs ${isDarkBackground ? 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white active:bg-white/25' : 'bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted/80'}`}
                 onClick={() => setRemoveStaleDialogOpen(true)}
               >
                 <Trash2 className="h-3 w-3" />
