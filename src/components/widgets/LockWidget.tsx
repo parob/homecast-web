@@ -1,7 +1,7 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
-import { Lock, AlertTriangle, Battery, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
+import { Lock, LockOpen, AlertTriangle, Battery, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { ColoredSwitch } from './shared';
+import { ColoredSwitch, CircleControl } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 
 // Normalize lock state from various formats to HomeKit numeric values
@@ -18,6 +18,7 @@ export const LockWidget: React.FC<WidgetProps> = memo(({
   accessory,
   onToggle,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -97,8 +98,25 @@ export const LockWidget: React.FC<WidgetProps> = memo(({
     </span>
   );
 
+  // Jammed is a real state, not a spinner — offering the button anyway would
+  // pretend the lock is fine.
+  const showHero = !!expanded && !compact && !!hasControls;
+
   return (
     <WidgetCard
+      heroShape="block"
+      hero={showHero ? (
+        <CircleControl
+          icon={isLocked ? Lock : LockOpen}
+          isActive={isLocked}
+          label={isJammed ? 'Jammed' : isPending ? (isLocked ? 'Unlocking…' : 'Locking…') : (isLocked ? 'Locked' : 'Unlocked')}
+          detail={hasBattery && batteryLevel !== null ? `Battery ${Math.round(batteryLevel)}%` : undefined}
+          onPress={handleToggle}
+          disabled={!accessory.isReachable || isPending}
+          activeClassName="bg-emerald-500 text-white"
+        />
+      ) : undefined}
+      expanded={expanded}
       title={accessory.name}
       subtitle={subtitle}
       icon={<Lock className="h-4 w-4" />}
@@ -128,7 +146,7 @@ export const LockWidget: React.FC<WidgetProps> = memo(({
       onShare={onShare}
       locationSubtitle={locationSubtitle}
       headerAction={
-        hasControls && (
+        hasControls && !showHero && (
           <div className="flex items-center gap-2">
             {hasBattery && !compact && (
               <div className="flex items-center gap-1.5">

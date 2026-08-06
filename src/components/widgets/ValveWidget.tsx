@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Droplets, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, CircleControl } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 const VALVE_TYPES = ['Generic', 'Irrigation', 'Shower Head', 'Water Faucet'];
@@ -10,6 +10,7 @@ const VALVE_TYPES = ['Generic', 'Irrigation', 'Shower Head', 'Water Faucet'];
 export const ValveWidget: React.FC<WidgetProps> = memo(({
   accessory,
   onToggle,
+  expanded,
   onSlider,
   getEffectiveValue,
   compact,
@@ -53,8 +54,22 @@ export const ValveWidget: React.FC<WidgetProps> = memo(({
     return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   };
 
+  const showHero = !!expanded && !compact && !!activeChar?.isWritable;
+
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={showHero ? (
+        <CircleControl
+          icon={Droplets}
+          isActive={isActive}
+          label={isActive ? 'Running' : 'Off'}
+          onPress={() => onToggle(accessory.id, 'active', isActive)}
+          disabled={!accessory.isReachable}
+          activeClassName="bg-sky-500 text-white"
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2">
@@ -95,7 +110,7 @@ export const ValveWidget: React.FC<WidgetProps> = memo(({
       onToggleShowHidden={onToggleShowHidden}
       onShare={onShare}
       locationSubtitle={locationSubtitle}
-      headerAction={
+      headerAction={!showHero &&
         activeChar?.isWritable && (
           <ColoredSwitch
             checked={isActive}

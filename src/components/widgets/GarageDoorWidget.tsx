@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Warehouse, ChevronUp, ChevronDown } from 'lucide-react';
+import { CircleControl } from './shared';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, getCharacteristic } from './types';
@@ -9,6 +10,7 @@ const POSITION_STATES = ['Closing', 'Opening', 'Stopped'];
 export const GarageDoorWidget: React.FC<WidgetProps> = memo(({
   accessory,
   onSlider,
+  expanded,
   getEffectiveValue,
   compact,
   onExpandToggle,
@@ -45,8 +47,24 @@ export const GarageDoorWidget: React.FC<WidgetProps> = memo(({
   const isFullyOpen = currentPosition >= 100;
   const isFullyClosed = currentPosition <= 0;
 
+  const showHero = !!expanded && !compact;
+
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={showHero ? (
+        <CircleControl
+          icon={Warehouse}
+          isActive={isOpen}
+          label={isMoving ? POSITION_STATES[positionState] : isFullyOpen ? 'Open' : isFullyClosed ? 'Closed' : `${Math.round(currentPosition)}% open`}
+          // One press does the opposite of where the door is, the way a remote
+          // does — a door part-way open closes.
+          onPress={() => onSlider(accessory.id, 'target_position', isOpen ? 0 : 100)}
+          disabled={!accessory.isReachable}
+          activeClassName="bg-amber-500 text-white"
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-1">

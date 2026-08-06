@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Wind, Gauge, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, VerticalSlider } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 const TARGET_STATES = ['Manual', 'Auto'];
@@ -54,8 +54,28 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
   const airQualityColor = airQuality <= 2 ? 'text-green-500' : airQuality <= 3 ? 'text-yellow-500' : 'text-red-500';
   const hasControls = targetStateChar?.isWritable || speedChar?.isWritable;
 
+  const showHero = !!expanded && !compact && !!speedChar?.isWritable && isActive && targetState === 0;
+
   return (
     <WidgetCard
+      heroShape="block"
+      hero={showHero ? (
+        <div className="h-[240px] w-[132px]">
+          <VerticalSlider
+            value={speed ?? 0}
+            min={speedChar.characteristic?.minValue ?? 0}
+            max={speedChar.characteristic?.maxValue ?? 100}
+            step={speedChar.characteristic?.stepValue ?? 10}
+            onCommit={(v) => onSlider(accessory.id, 'rotation_speed', v)}
+            disabled={!accessory.isReachable}
+            icon={Wind}
+            label="Fan Speed"
+            fillClassName="bg-teal-400/80"
+            trackClassName="bg-black/10"
+            className="h-full text-slate-900"
+          />
+        </div>
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2">
@@ -136,7 +156,7 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
             </div>
           )}
 
-          {speedChar?.isWritable && targetState === 0 && (
+          {speedChar?.isWritable && targetState === 0 && !showHero && (
             <SliderControl
               label="Fan Speed"
               icon={Gauge}

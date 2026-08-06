@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Droplets, CloudRain, Sun, Gauge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch } from './shared';
+import { SliderControl, ColoredSwitch, VerticalSlider } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 const TARGET_STATES = ['Humidifier & Dehumidifier', 'Humidifier', 'Dehumidifier'];
@@ -58,8 +58,28 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
   const StateIcon = isHumidifying ? CloudRain : isDehumidifying ? Sun : Droplets;
   const hasControls = targetStateChar?.isWritable || targetHumidityChar?.isWritable || speedChar?.isWritable;
 
+  const showHero = !!expanded && !compact && !!targetHumidityChar?.isWritable && isActive;
+
   return (
     <WidgetCard
+      heroShape="block"
+      hero={showHero ? (
+        <div className="h-[240px] w-[132px]">
+          <VerticalSlider
+            value={targetHumidity ?? 50}
+            min={targetHumidityChar.characteristic?.minValue ?? 0}
+            max={targetHumidityChar.characteristic?.maxValue ?? 100}
+            step={targetHumidityChar.characteristic?.stepValue ?? 5}
+            onCommit={(v) => onSlider(accessory.id, 'target_humidity', v)}
+            disabled={!accessory.isReachable}
+            icon={Droplets}
+            label="Target Humidity"
+            fillClassName="bg-sky-400/80"
+            trackClassName="bg-black/10"
+            className="h-full text-slate-900"
+          />
+        </div>
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2">
@@ -138,7 +158,7 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
             </div>
           )}
 
-          {targetHumidityChar?.isWritable && (
+          {targetHumidityChar?.isWritable && !showHero && (
             <SliderControl
               label="Target Humidity"
               value={targetHumidity ?? 50}

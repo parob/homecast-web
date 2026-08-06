@@ -234,12 +234,32 @@ const KNOWN_SERVICE_TYPES: ServiceType[] = [
   'camera', 'microphone', 'doorbell', 'target_control', 'data_stream', 'siri', 'smart_speaker'
 ];
 
+/**
+ * Readable spellings that are not the canonical name.
+ *
+ * HomeKit's own constants are HMServiceTypeLockMechanism and friends, so a
+ * source that sends readable names rather than UUIDs lands here. Unrecognised
+ * types fall through to the switch widget, which is why a lock could show up as
+ * a plain on/off toggle instead of a lock.
+ */
+const SERVICE_TYPE_ALIASES: Record<string, ServiceType> = {
+  lock_mechanism: 'lock',
+  lockmechanism: 'lock',
+  garage_door_opener: 'garage_door',
+  window_covering_service: 'window_covering',
+  humidifier: 'humidifier_dehumidifier',
+  dehumidifier: 'humidifier_dehumidifier',
+};
+
 // Normalize service type (handles UUID or readable name)
 export const normalizeServiceType = (serviceType: string): ServiceType | null => {
   // If it's already a readable name
   if (KNOWN_SERVICE_TYPES.includes(serviceType as ServiceType)) {
     return serviceType as ServiceType;
   }
+
+  const alias = SERVICE_TYPE_ALIASES[serviceType.toLowerCase()];
+  if (alias) return alias;
 
   // Try UUID mapping (case-insensitive)
   return SERVICE_TYPE_MAP[serviceType.toUpperCase()] || null;

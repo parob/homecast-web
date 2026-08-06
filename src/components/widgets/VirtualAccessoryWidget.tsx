@@ -306,6 +306,20 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 });
 
 /**
+ * A running countdown.
+ *
+ * Anchored to when it will END, not to how much is left. A remaining span is
+ * only true at the instant it was measured, and the accessory list is fetched
+ * minutes apart — so a tile rendering one was always showing a stale number,
+ * and showed 0:00 outright whenever the last reading had been taken while the
+ * timer was idle, which is exactly what pressing start produces.
+ *
+ * When the relay hasn't reported an end yet — the moment you press start, and
+ * for as long as its bundle predates `virtualEndsAt` — the end is computed here
+ * from the configured duration. That is the same arithmetic the relay does, so
+ * the two agree, and it needs nothing from the relay at all.
+ */
+/**
  * When a countdown started, for timers the relay hasn't told us about.
  *
  * Module scope rather than component state, because a tile is not one

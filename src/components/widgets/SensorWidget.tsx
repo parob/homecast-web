@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
+import { ValueReadout } from './shared';
 import { WidgetProps, getCharacteristic, ServiceType, hasServiceType } from './types';
 
 interface SensorWidgetProps extends WidgetProps {
@@ -15,6 +16,7 @@ export const SensorWidget: React.FC<SensorWidgetProps> = memo(({
   accessory,
   sensorType,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -138,8 +140,24 @@ export const SensorWidget: React.FC<SensorWidgetProps> = memo(({
       statusText = 'Active';
   }
 
+  // A sensor has nothing to control, so the large view is simply the reading
+  // made legible from across the room. statusText already carries the value and
+  // its unit; split so the unit can sit small beside a big number.
+  const readoutMatch = statusText.match(/^(-?[\d.]+)\s*(.*)$/);
+
   return (
     <WidgetCard
+      heroShape="block"
+      expanded={expanded}
+      hero={expanded && !compact ? (
+        <ValueReadout
+          value={readoutMatch ? readoutMatch[1] : statusText}
+          unit={readoutMatch ? readoutMatch[2] : undefined}
+          label={label}
+          icon={icon}
+          tone={isDanger ? 'danger' : isActive ? 'warning' : 'normal'}
+        />
+      ) : undefined}
       title={accessory.name}
       subtitle={
         <span className="flex items-center gap-2">

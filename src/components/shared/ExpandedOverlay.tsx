@@ -113,13 +113,23 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     }
   }, [isExpanded, shouldRender, effectiveWidth]);
 
-  // Measure once the panel has content: a portrait panel with a hero control is
-  // tall enough to run off the bottom of a phone, and top-aligning to the
-  // trigger would leave half of it unreachable.
+  // Measure the panel: a portrait panel with a hero control is tall enough to
+  // run off the bottom of a phone, and top-aligning to the trigger would leave
+  // half of it unreachable.
+  //
+  // Observed rather than sampled, because the panel resizes on its own — switch
+  // a device on and its controls collapse open over 200ms. A one-shot
+  // measurement caught the old height and the panel sat wrong until some later
+  // render happened to fix it.
   useLayoutEffect(() => {
-    if (!shouldRender || !contentRef.current) return;
-    setPanelHeight(contentRef.current.offsetHeight);
-  }, [shouldRender, ready, children]);
+    const el = contentRef.current;
+    if (!shouldRender || !el) return;
+    const measure = () => setPanelHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [shouldRender]);
 
   // Dismiss when tapping outside the overlay, or when scrolling past a
   // threshold. Needed for touch/compact mode where there's no mouse-leave to
@@ -219,7 +229,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             // closing, and without the marker a field in here looked like focus
             // had left — so a half-typed value unmounted before it could commit.
             data-expandable-widget
-            className="fixed z-[10018] pointer-events-auto"
+            // Glide when the panel resizes itself. Not while opening — the
+            // position is being established then, and easing it would drag the
+            // panel across the screen on every expand.
+            className={`fixed z-[10018] pointer-events-auto ${
+              ready && !isClosing ? 'transition-[top] duration-base ease-standard' : ''
+            }`}
             style={{
               left: coords.x,
               // Anchor overlay's content to sit TOP_OFFSET px below the widget's
