@@ -108,9 +108,10 @@ const TemperatureDial: React.FC<{
       >
         <CircularSlider
           size={size}
-          // Proportional, not fixed: a 14px ring that reads right at 150px looks
-          // like a thread once the dial becomes the panel's hero at 190.
-          trackWidth={isLarge ? Math.round(size * 0.125) : 14}
+          // Proportional at every size. A fixed 14px ring was both thin to look
+          // at and thin to grab on the inline dial, where it is the only way to
+          // set a temperature.
+          trackWidth={Math.round(size * 0.125)}
           handleSize={0}
           minValue={min}
           maxValue={max}
@@ -785,7 +786,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
             <div className="flex flex-col">
               {/* Mode row and fan share the space under the dial; without a gap
                   the fan label sat directly on top of the mode buttons. */}
-              <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-[16px]' : ''}`}>
+              {/* Inline, the mode row sits a little higher than centre so the fan
+                  label and its track are not squeezed against the card edge. */}
+              <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-[16px]' : 'gap-2 -mt-1'}`}>
                 {/* Mode selection buttons (including Off) */}
                 {(() => {
                   // Build all mode buttons including Off

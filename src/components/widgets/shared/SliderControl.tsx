@@ -46,6 +46,11 @@ export const SliderControl: React.FC<SliderControlProps> = ({
   const [dragging, setDragging] = useState<number | null>(null);
   const { colors, isOn, iconStyle, expanded: ctxExpanded } = useWidgetColors();
   const isLarge = !compact && (expanded ?? ctxExpanded);
+  // The track is the hit target, and an 18px bar is fiddly with a mouse and
+  // worse with a thumb. Anything that isn't a compact tile gets the tall track,
+  // whether or not it is in the expanded panel. Label sizing still follows
+  // isLarge — this is about the grab area, not the typography.
+  const tallTrack = !compact;
 
   const displayValue = dragging !== null ? dragging : value;
   const formattedValue = formatValue ? formatValue(displayValue) : `${Math.round(displayValue)}${unit}`;
@@ -82,7 +87,7 @@ export const SliderControl: React.FC<SliderControlProps> = ({
           }}
           disabled={disabled}
           className={`flex-1 ${disabled ? 'cursor-not-allowed' : ''}`}
-          size={isLarge ? 'lg' : 'default'}
+          size={tallTrack ? 'lg' : 'default'}
           trackColorClass={trackColorClass}
           thumbColorClass={thumbColorClass}
           trackBgClass={trackBgClass}
