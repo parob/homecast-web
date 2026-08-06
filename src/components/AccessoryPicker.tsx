@@ -509,7 +509,7 @@ export function AccessoryPicker({
           </Select>
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-scroll scrollable-content">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-scroll">
         {loading ? (
           <div className="p-4 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

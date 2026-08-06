@@ -552,7 +552,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </DialogTitle>
               <DialogDescription className="sr-only">Configure display and server settings</DialogDescription>
             </DialogHeader>
-            <div className="flex-1 overflow-y-auto scrollable-content border-t">
+            <div className="flex-1 overflow-y-auto border-t">
               {mobileSection ? (
                 <div className="p-6">
                   {renderSection(mobileSection)}
@@ -655,7 +655,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </nav>
 
               {/* Content area */}
-              <div className="flex-1 min-w-0 overflow-y-auto scrollable-content">
+              <div className="flex-1 min-w-0 overflow-y-auto">
                 <div className="p-6">
                   {renderSection(activeTab)}
                 </div>

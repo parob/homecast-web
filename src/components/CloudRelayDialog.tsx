@@ -171,7 +171,7 @@ export function CloudRelayDialog({ open, onOpenChange, homes, prefilledHomeName 
               Manage how each home connects to Homecast.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-scroll scrollable-content">
+          <div className="flex-1 overflow-y-scroll">
             <div className="px-6 pb-6 space-y-2">
               {enrollments.length === 0 && selfHostedHomes.length === 0 && (
                 <p className="text-xs text-muted-foreground py-4 text-center">No homes configured yet.</p>
