@@ -160,18 +160,81 @@ describe('virtual accessory controls', () => {
     expect(input.value).toBe('half-typ');
   });
 
-  it('picks the date-time input the definition actually needs', () => {
-    const cases: [Record<string, unknown>, string][] = [
-      [{ virtualHasDate: true, virtualHasTime: true }, 'datetime-local'],
-      [{ virtualHasDate: true, virtualHasTime: false }, 'date'],
-      [{ virtualHasDate: false, virtualHasTime: true }, 'time'],
+  // A native date input is drawn by the platform: WebKit on Mac Catalyst gave
+  // back `31 Jul 2026 at 15:25` where Chrome gave `31/07/2026, 15:25`, and no
+  // CSS reaches inside either. The segments are ours now, so the definition
+  // decides which of them exist rather than which `type` attribute is set.
+  it('offers the date-time segments the definition actually needs', () => {
+    const cases: [Record<string, unknown>, string[]][] = [
+      [{ virtualHasDate: true, virtualHasTime: true }, ['Day', 'Month', 'Year', 'Hour', 'Minute']],
+      [{ virtualHasDate: true, virtualHasTime: false }, ['Day', 'Month', 'Year']],
+      [{ virtualHasDate: false, virtualHasTime: true }, ['Hour', 'Minute']],
     ];
 
     for (const [extra, expected] of cases) {
       cleanup();
       renderWidget('virtual_datetime', extra);
-      expect(screen.getByLabelText('Set Test Value')).toHaveProperty('type', expected);
+      const shown = ['Day', 'Month', 'Year', 'Hour', 'Minute'].filter(s => screen.queryByLabelText(s));
+      expect(shown.sort()).toEqual([...expected].sort());
     }
+  });
+
+  it('writes a whole date-time only once every segment is filled', () => {
+    const writes = renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: true });
+
+    fireEvent.change(screen.getByLabelText('Day'), { target: { value: '31' } });
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '7' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2026' } });
+    // A half-typed date must never reach the relay — a write here would set the
+    // value to a day the user never chose.
+    expect(writes).toEqual([]);
+
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '15' } });
+    fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '25' } });
+    fireEvent.keyDown(screen.getByLabelText('Minute'), { key: 'Enter' });
+
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T15:25']]);
+  });
+
+  it('keeps the storage format each date-time shape had before', () => {
+    cleanup();
+    const dateOnly = renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: false });
+    fireEvent.change(screen.getByLabelText('Day'), { target: { value: '01' } });
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '02' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2026' } });
+    fireEvent.keyDown(screen.getByLabelText('Year'), { key: 'Enter' });
+    expect(dateOnly).toEqual([['va-1', 'virtual_datetime', '2026-02-01']]);
+
+    cleanup();
+    const timeOnly = renderWidget('virtual_datetime', { virtualHasDate: false, virtualHasTime: true });
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '09' } });
+    fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '05' } });
+    fireEvent.keyDown(screen.getByLabelText('Minute'), { key: 'Enter' });
+    expect(timeOnly).toEqual([['va-1', 'virtual_datetime', '09:05']]);
+  });
+
+  it('shows a stored date-time in the segments it was saved from', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect((screen.getByLabelText('Day') as HTMLInputElement).value).toBe('31');
+    expect((screen.getByLabelText('Month') as HTMLInputElement).value).toBe('07');
+    expect((screen.getByLabelText('Year') as HTMLInputElement).value).toBe('2026');
+    expect((screen.getByLabelText('Hour') as HTMLInputElement).value).toBe('15');
+    expect((screen.getByLabelText('Minute') as HTMLInputElement).value).toBe('25');
   });
 
   // A running timer reported only `active`, and the tile's `isOn` compared the

@@ -4,6 +4,7 @@ import { WidgetCard } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useVirtualAccessoryDefinition } from './VirtualAccessoryEditContext';
+import { VirtualDateTimeControl, formatStored } from './VirtualDateTimeControl';
 import { durationToMs } from '@/automation/types/automation';
 
 /**
@@ -149,7 +150,11 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         durationMs={configuredMs ?? meta.virtualDurationMs}
       />
     )
-    : formatValue(charType, value);
+    : charType === 'virtual_datetime'
+      // Read the same way the field writes it, or the collapsed tile says
+      // `2026-07-31T15:25` about a field that says `31/07/2026, 15:25`.
+      ? formatStored(value, meta.virtualHasDate !== false, meta.virtualHasTime !== false)
+      : formatValue(charType, value);
   const control = readOnly ? undefined : renderControl();
 
   return (
@@ -280,22 +285,21 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         );
 
       case 'virtual_datetime':
-        // The input's own value format is the storage format: the engine keeps
-        // whatever string it is given, and `date`/`time`/`datetime-local` all
-        // produce sortable ISO-ish text that expressions can compare.
+        // Segments of our own rather than a native date input: WebKit hands
+        // that one to the OS, so the Mac app drew `31 Jul 2026 at 15:25` where
+        // the browser drew `31/07/2026, 15:25`. Same characteristic, same
+        // storage format — sortable ISO-ish text the engine keeps verbatim and
+        // expressions compare — only the drawing is ours now.
         return (
-          <input
-            type={
-              meta.virtualHasDate === false ? 'time'
-                : meta.virtualHasTime === false ? 'date'
-                  : 'datetime-local'
-            }
+          <VirtualDateTimeControl
+            label={accessory.name}
+            value={value}
+            hasDate={meta.virtualHasDate !== false}
+            hasTime={meta.virtualHasTime !== false}
+            onCommit={set}
+            onDone={onFinishEditing}
             className={FIELD_CLASS}
-            aria-label={`Set ${accessory.name}`}
-            value={typeof value === 'string' ? value : ''}
-            onClick={e => e.stopPropagation()}
-            onChange={e => set(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); onFinishEditing?.(); } }}
+            dark={isDarkBackground}
           />
         );
 
