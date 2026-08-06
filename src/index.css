@@ -61,9 +61,6 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    /* Neutral by default; raised only where corner-shape is live. */
-    --corner-scale: 1;
-
     /* Status colors */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
@@ -280,38 +277,17 @@ All colors MUST be HSL.
   left: calc(var(--safe-area-left) * -1);
 }
 
-/* Apple-style continuous ("squircle") corners, applied to everything that has a
-   finite radius. Fully-round elements (pills, avatars, switches) are excluded —
-   a squircle there would visibly de-circle them.
+/* Corners are plain circular border-radius on purpose.
 
-   The radius has to grow with the shape. A superellipse at the same nominal
-   radius reads as *less* round than a circular arc, because it hugs in toward
-   the corner — the gap from the box corner is 0.225R against a circle's 0.414R.
-   Apple's continuous corner compensates by extending the curve 1.528x the
-   nominal radius along each edge; --corner-scale reproduces that, and only
-   inside this block, so the circular fallback keeps its own tuning.
+   corner-shape: squircle used to be applied here. It is Chromium-only, so it
+   only ever fired in Chrome — Safari and Firefox fall back to a circular arc.
+   That is what made the same screen look harder in Chrome than in Safari: at
+   an equal radius a superellipse hugs in toward the corner (0.225R of corner
+   clearance against a circle's 0.414R), so it reads as *less* round, not more.
+   Growing the radius to compensate only traded that for bloated-looking cards.
 
-   corner-shape is Chromium-only (Chrome 139+). Safari 26 and Firefox do not
-   ship it and fall back to plain border-radius, which is why the two engines
-   look different. Mask/clip-path polyfills are ruled out — they break the
-   backdrop-blur glass layers. */
-@supports (corner-shape: squircle) or (corner-shape: superellipse(2)) {
-  :root {
-    --corner-scale: 1.528;
-  }
-
-  /* [class~="rounded"] catches the bare `rounded` utility — ~100 call sites.
-     [class*="rounded-"] needs the hyphen, so they were all missing the shape. */
-  [class*="rounded-"]:not([class*="rounded-full"]),
-  [class~="rounded"]:not([class*="rounded-full"]),
-  .corner-smooth {
-    /* superellipse(2) IS squircle — the exponent is 2^k, so k=2 gives 4. Both
-       spellings are declared so the rule cannot silently no-op on an engine
-       that ships only one of them; the later valid declaration wins. */
-    corner-shape: superellipse(2);
-    corner-shape: squircle;
-  }
-}
+   Rounder corners come from the radius ladder in tailwind.config.ts, which
+   every engine honours identically. Keep it that way — one shape everywhere. */
 
 /* ExpandedOverlay: blur is provided outside scale transform, so disable children's blur */
 /* Make all child backgrounds transparent so overlay's blur layer shows through */

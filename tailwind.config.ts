@@ -76,28 +76,23 @@ export default {
       // hand-tuned chrome without touching each call site. Pair with the
       // continuous-corner rule in index.css.
       //
-      // --corner-scale is 1 everywhere except where corner-shape is live, where
-      // it grows the radius to match the shape (see index.css for why). Going
-      // through the scale rather than overriding each class is what keeps the
-      // per-side (rounded-t-lg) and responsive (sm:rounded-xl) variants honest.
+      // This ladder is the only thing that sets how round anything looks, in
+      // every engine. Raising a step is what makes corners rounder — don't
+      // reach for corner-shape, which is Chromium-only and made Chrome look
+      // harder than Safari, not softer (see the note in index.css).
       //
-      // Only the surface tier scales. A radius past half an element's height is
-      // clamped by CSS into a pill, and the control tier has no headroom left:
-      // scaling md turned chips and menu items into pills, and lg turned the
-      // h-10 w-10 icon tiles into circles. xl and up are already clamped on
-      // h-10 controls (input, button), so scaling them costs nothing there and
-      // only reads on the tall surfaces — cards, sheets, dialogs, widgets —
-      // which is where the corner is actually visible. sm/md/lg still get the
-      // continuous shape, just not the extra radius; at 8-16px the difference
-      // between a squircle and a circular arc is a couple of pixels anyway.
+      // Headroom is the constraint when raising a step: CSS clamps a radius
+      // past half an element's height into a pill, so the control tier has
+      // almost none left. md is on 26-30px chips and inputs, lg is on the
+      // h-10 w-10 icon tiles, and xl/2xl already clamp on h-10 controls.
       // `full` and `none` stay off this ladder, so pills are never touched.
       borderRadius: {
         sm: "8px",
         md: "12px",
         lg: "16px",
-        xl: "calc(22px * var(--corner-scale, 1))",
-        "2xl": "calc(28px * var(--corner-scale, 1))",
-        "3xl": "calc(40px * var(--corner-scale, 1))",
+        xl: "22px",
+        "2xl": "28px",
+        "3xl": "40px",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(ellipse at center, var(--tw-gradient-stops))",
