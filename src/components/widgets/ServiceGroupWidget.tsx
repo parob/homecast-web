@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { SliderControl } from '@/components/widgets/shared/SliderControl';
+import { VerticalSlider } from '@/components/widgets/shared/VerticalSlider';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 // Import directly from source files to avoid circular dependency with barrel export
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
@@ -27,6 +28,7 @@ import { getDisplayName } from '@/lib/graphql/types';
 import {
   Lightbulb,
   Blinds,
+  Palette,
   Power,
   Plug,
   Wind,
@@ -679,47 +681,64 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
         </div>
       </CardHeader>
       <AnimatedCollapse open={!allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && brightness !== null))}>
-        <CardContent className={`relative px-5 pb-4 pt-1 space-y-3 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          {isBlindsGroup && (
-            <SliderControl
-              label="All Blinds"
-              value={position}
-              step={5}
-              unit="%"
-              onCommit={(v) => onSlider('target_position', v)}
-              disabled={effectiveDisabled}
-              trackBgClass="bg-muted/25"
-              expanded
-            />
-          )}
-          {isLightsGroup && groupOn && brightness !== null && (
-            <SliderControl
-              label="All Lights"
-              value={brightness}
-              step={1}
-              unit="%"
-              onCommit={(v) => onSlider('brightness', v)}
-              disabled={effectiveDisabled}
-              trackBgClass="bg-muted/25"
-              expanded
-            />
-          )}
-          {isLightsGroup && groupOn && colorTempInfo && (
-            <SliderControl
-              label="Color Temp"
-              value={colorTempInfo.value}
-              min={colorTempInfo.min}
-              max={colorTempInfo.max}
-              step={10}
-              unit="K"
-              onCommit={(v) => onSlider('color_temperature', v)}
-              disabled={effectiveDisabled}
-              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
-              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
-              fixedGradient={iconStyle === 'colourful'}
-              expanded
-            />
-          )}
+        <CardContent className={`relative px-5 pb-4 pt-1 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+          {/* Brightness and colour sit side by side as tall bars, the way Apple
+              Home shows them, rather than stacked horizontal sliders that read
+              as a settings form. */}
+          <div className="flex justify-center gap-[12px]">
+            {isBlindsGroup && (
+              <div className="h-[220px] w-[132px]">
+                <VerticalSlider
+                  value={position}
+                  step={5}
+                  onCommit={(v) => onSlider('target_position', v)}
+                  disabled={effectiveDisabled}
+                  icon={Blinds}
+                  label="All Blinds"
+                  fillClassName="bg-violet-400/80"
+                  trackClassName="bg-black/10"
+                  className="h-full text-slate-900"
+                  dense
+                />
+              </div>
+            )}
+            {isLightsGroup && groupOn && brightness !== null && (
+              <div className="h-[220px] w-[132px]">
+                <VerticalSlider
+                  value={brightness}
+                  step={1}
+                  onCommit={(v) => onSlider('brightness', v)}
+                  disabled={effectiveDisabled}
+                  icon={Lightbulb}
+                  label="Brightness"
+                  fillStyle={{ backgroundColor: 'hsl(45 95% 58%)' }}
+                  fillClassName=""
+                  trackClassName="bg-black/10"
+                  className="h-full text-slate-900"
+                  dense
+                />
+              </div>
+            )}
+            {isLightsGroup && groupOn && colorTempInfo && (
+              <div className="h-[220px] w-[132px]">
+                <VerticalSlider
+                  value={colorTempInfo.value}
+                  min={colorTempInfo.min}
+                  max={colorTempInfo.max}
+                  step={10}
+                  onCommit={(v) => onSlider('color_temperature', v)}
+                  disabled={effectiveDisabled}
+                  icon={Palette}
+                  label="Color Temp"
+                  formatValue={(v) => `${Math.round(v)}K`}
+                  fillClassName="bg-gradient-to-t from-orange-300 to-sky-300"
+                  trackClassName="bg-black/10"
+                  className="h-full text-slate-900"
+                  dense
+                />
+              </div>
+            )}
+          </div>
           {effectiveDisabled && effectiveOnDisabledClick && (
             <div
               className="absolute inset-0 z-50 pointer-events-auto cursor-default"
@@ -730,127 +749,61 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded}>
         <CardContent className={`relative px-4 pb-4 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[20rem] overflow-y-auto pr-1' : ''}`}>
+          {/* The members are the same compact tiles as the dashboard, in a grid.
+              A list of name-plus-toggle rows could only ever switch a light on
+              or off; a tile opens into the light's own expanded controls, which
+              is what you want when one bulb in the group is wrong. */}
+          <div className={`grid grid-cols-2 gap-[10px] pt-1 ${accessories.length > 4 ? 'max-h-[19rem] overflow-y-auto pr-1' : ''}`}>
             {accessories.map((accessory) => {
-              const isBlind = accessory.services?.some(s => s.serviceType === 'window_covering');
-              const serviceType = getPrimaryServiceType(accessory);
-
-              // Get power state
-              let powerCharType: string | null = null;
-              let accIsOn = false;
-              for (const service of accessory.services || []) {
-                for (const char of service.characteristics || []) {
-                  if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
-                    powerCharType = char.characteristicType;
-                    const value = getEffectiveValue ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : char.value;
-                    accIsOn = value === true || value === 1 || value === '1' || value === 'true';
-                    break;
-                  }
-                }
-              }
-
-              // Get position for blinds
-              let accPosition = 0;
-              if (isBlind) {
-                for (const service of accessory.services || []) {
-                  for (const char of service.characteristics || []) {
-                    if (char.characteristicType === 'current_position') {
-                      const value = getEffectiveValue ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : char.value;
-                      accPosition = Number(value) || 0;
-                      accIsOn = accPosition > 50;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              // Get accessory-specific icon color for colourful mode
-              const accIconColor = getIconColor(serviceType);
-
-              // Use colorful theme colors for inline accessories
-              const accCardBgClass = iconStyle === 'colourful' && accIconColor && accIsOn
-                ? accIconColor.cardBg
-                : isDarkBackground
-                  ? (accIsOn ? 'bg-white/20' : 'bg-white/10')
-                  : (accIsOn ? 'bg-primary/10' : 'bg-muted/30');
-              const accIconBgClass = iconStyle === 'colourful' && accIconColor
-                ? (accIsOn ? `${accIconColor.bg} ${accIconColor.text}` : `${accIconColor.bgOff} ${accIconColor.textOff}`)
-                : (accIsOn ? 'bg-primary/20 text-primary' : 'bg-muted');
               const isAccessoryExpanded = expandedAccessoryId === accessory.id;
-
-              // Blur tint for expanded overlay
-
               return (
                 <div
                   key={accessory.id}
+                  data-expandable-widget
                   className="relative cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpandedAccessoryId(isAccessoryExpanded ? null : accessory.id);
                   }}
                 >
-                  <div className={`rounded-md px-2.5 py-2.5 ${accCardBgClass} ${isBlind ? 'space-y-2' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded ${accIconBgClass}`}>
-                          {getServiceIcon(serviceType)}
-                        </div>
-                        <span className="truncate text-sm">{getDisplayName(accessory.name, accessory.roomName)}</span>
-                        {isBlind && (
-                          <span className="text-xs text-muted-foreground">{accPosition}%</span>
-                        )}
-                      </div>
-                      {!isBlind && powerCharType && onAccessoryToggle && (
-                        <Switch
-                          checked={accIsOn}
-                          onCheckedChange={() => onAccessoryToggle(accessory.id, powerCharType!, accIsOn)}
-                          disabled={effectiveDisabled || !accessory.isReachable}
-                          className="scale-90"
-                          onClick={(e) => e.stopPropagation()}
-                          checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
-                        />
-                      )}
-                    </div>
-                    {isBlind && onAccessorySlider && (
-                      <div className="pl-10" onClick={(e) => e.stopPropagation()}>
-                        <Slider
-                          value={[accPosition]}
-                          min={0}
-                          max={100}
-                          step={5}
-                          onValueCommit={(v) => onAccessorySlider(accessory.id, 'target_position', v[0])}
-                          disabled={effectiveDisabled || !accessory.isReachable}
-                          className="w-full"
-                          size="lg"
-                          trackColorClass={iconStyle === 'colourful' && iconColor ? iconColor.sliderTrack : undefined}
-                          trackBgClass="bg-muted/25"
-                        />
-                      </div>
-                    )}
-                  </div>
                   {onAccessoryToggle && onAccessorySlider && getEffectiveValue && (
-                    <ExpandedOverlay
-                      isExpanded={isAccessoryExpanded}
-                      onClose={() => setExpandedAccessoryId(null)}
-                     
-                    >
-                      {/* expanded renders the larger overlay layout; the card stays transparent so ExpandedOverlay's blur layer shows through */}
+                    <>
                       <AccessoryWidget
                         accessory={accessory}
                         onToggle={onAccessoryToggle}
                         onSlider={onAccessorySlider}
                         getEffectiveValue={getEffectiveValue}
-                        compact={false}
+                        compact
                         iconStyle={iconStyle}
                         disabled={effectiveDisabled}
-                        expanded={true}
                       />
-                    </ExpandedOverlay>
+                      <ExpandedOverlay
+                        isExpanded={isAccessoryExpanded}
+                        onClose={() => setExpandedAccessoryId(null)}
+                      >
+                        <AccessoryWidget
+                          accessory={accessory}
+                          onToggle={onAccessoryToggle}
+                          onSlider={onAccessorySlider}
+                          getEffectiveValue={getEffectiveValue}
+                          compact={false}
+                          expanded
+                          iconStyle={iconStyle}
+                          disabled={effectiveDisabled}
+                        />
+                      </ExpandedOverlay>
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
+          {effectiveDisabled && effectiveOnDisabledClick && (
+            <div
+              className="absolute inset-0 z-50 pointer-events-auto cursor-default"
+              onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
+            />
+          )}
         </CardContent>
       </AnimatedCollapse>
     </Card>
@@ -968,6 +921,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             onClose={handleOverlayMouseLeave}
             onMouseEnter={() => {}}
             onMouseLeave={handleOverlayMouseLeave}
+            // Wider than a single-device panel: two bars side by side plus a
+            // two-column grid of members need the room.
+            width={360}
            
           >
             <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
@@ -992,6 +948,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           onClose={handleOverlayMouseLeave}
           onMouseEnter={() => {}}
           onMouseLeave={handleOverlayMouseLeave}
+          width={360}
         >
           <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
             {expandedCardContent}

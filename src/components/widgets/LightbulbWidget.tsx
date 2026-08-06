@@ -71,7 +71,9 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
 
   return (
     <WidgetCard
+      heroShape="block"
       hero={showHero ? (
+        <div className="h-[240px] w-[132px]">
         <VerticalSlider
           value={brightness ?? 0}
           min={brightnessChar.characteristic?.minValue ?? 0}
@@ -86,6 +88,7 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           trackClassName="bg-black/10"
           className="h-full text-slate-900"
         />
+        </div>
       ) : undefined}
       title={accessory.name}
       subtitle={subtitle}
