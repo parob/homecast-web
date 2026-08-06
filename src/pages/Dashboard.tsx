@@ -5487,13 +5487,13 @@ const Dashboard = () => {
   const headerRightMenu = (
     <>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-10 w-10 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-10 w-10 -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
+        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
@@ -5983,12 +5983,12 @@ const Dashboard = () => {
 
 
       <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
-          <div className="flex items-center gap-3 md:gap-3">
+          <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-8 w-8 bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2rem,32px)] w-[max(2rem,32px)] bg-transparent transition-colors duration-300 ${isDarkBackground ? 'text-white hover:bg-white/30 active:bg-white/40' : 'hover:bg-black/30 active:bg-black/40'}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
