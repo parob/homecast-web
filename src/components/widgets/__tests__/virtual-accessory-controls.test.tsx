@@ -213,6 +213,51 @@ describe('virtual accessory controls', () => {
     expect(timeOnly).toEqual([['va-1', 'virtual_datetime', '09:05']]);
   });
 
+  // The segments are ours, but the picker is still the platform's: a real date
+  // input sits behind them, invisible and untabbable, purely so `showPicker()`
+  // has something to open. Without a calendar button to press, clicking the
+  // field is the only way in — which is the point of it being there.
+  it('opens the platform picker from the field, with no button to press', () => {
+    cleanup();
+    renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: true });
+
+    const native = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+    expect(native).toBeTruthy();
+    expect(native.getAttribute('aria-hidden')).toBe('true');
+    expect(native.tabIndex).toBe(-1);
+
+    let opened = 0;
+    (native as unknown as { showPicker: () => void }).showPicker = () => { opened += 1; };
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    expect(opened).toBe(1);
+
+    // Clicking a segment must not: the picker takes the arrow keys with it, and
+    // typing is the other half of the control.
+    fireEvent.click(screen.getByLabelText('Day'));
+    expect(opened).toBe(1);
+  });
+
+  it('writes what the picker picked', () => {
+    cleanup();
+    const writes = renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: true });
+
+    const native = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.change(native, { target: { value: '2026-12-24T18:00' } });
+
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-12-24T18:00']]);
+  });
+
+  it('gives the picker the input type each date-time shape needs', () => {
+    for (const [extra, type] of [
+      [{ virtualHasDate: true, virtualHasTime: false }, 'date'],
+      [{ virtualHasDate: false, virtualHasTime: true }, 'time'],
+    ] as [Record<string, unknown>, string][]) {
+      cleanup();
+      renderWidget('virtual_datetime', extra);
+      expect(document.querySelector(`input[type="${type}"]`)).toBeTruthy();
+    }
+  });
+
   it('shows a stored date-time in the segments it was saved from', () => {
     cleanup();
     const saved = accessoryFor('virtual_datetime');

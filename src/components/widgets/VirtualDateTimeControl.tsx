@@ -8,7 +8,10 @@ import React from 'react';
  * while WebKit on Mac Catalyst and iOS hands it to the OS and gets a single
  * run of prose back: `31 Jul 2026 at 15:25`, no segments, no indicator. Same
  * markup, same value, two visibly different controls, and no CSS reaches
- * inside either one. So the segments are ours.
+ * inside either one. So the segments are ours — but only the segments. A real
+ * date input is still here, invisible behind them, because the picker is worth
+ * keeping and `showPicker()` opens it on demand: each platform's own calendar,
+ * anchored to the field, with none of the button the native control draws.
  *
  * The layout isn't hardcoded: `Intl.DateTimeFormat.formatToParts` says which
  * order this locale writes and which separators it uses, and the segments are
@@ -169,6 +172,7 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
   const stored = typeof value === 'string' ? value : '';
   const parts = draft ?? parseStored(stored);
   const inputs = React.useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
+  const picker = React.useRef<HTMLInputElement | null>(null);
 
   const layout = React.useMemo(() => {
     const sample = new Date(2026, 6, 31, 15, 25);
@@ -275,17 +279,48 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     commit();
   };
 
+  /**
+   * The platform's own picker, opened without a button to open it with.
+   *
+   * `showPicker()` is the whole reason a real date input is still in here: it
+   * gives each platform the picker it already knows — a calendar in the
+   * browser, the system picker in the Mac app — anchored to the field, without
+   * the calendar glyph the native control insists on drawing next to it.
+   * Supported everywhere we ship (Safari 16 / macOS 13 is the floor), and if a
+   * browser ever refuses, the field is still fully typeable.
+   */
+  const openPicker = (): boolean => {
+    const el = picker.current;
+    if (!el || typeof el.showPicker !== 'function') return false;
+    try {
+      el.showPicker();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // The segments only fill the left of a full-width field, and a click on the
-  // space beside them — or on a separator — has to land somewhere. It starts
-  // at the first segment the way a native date field does, rather than doing
-  // nothing at all.
+  // space beside them — or on a separator — has to land somewhere. That space
+  // is what opens the picker now that nothing else does. Clicks on a segment
+  // are left alone: the picker takes the arrow keys with it, and typing a date
+  // is the other half of this control.
   const onGroupClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    if (openPicker()) return;
     const first = order.find(f => parts[f] === '') ?? order[0];
     if (!first) return;
     inputs.current[first]?.focus();
     inputs.current[first]?.select();
+  };
+
+  // What the picker itself writes: already in the storage format, since it is
+  // the same native input the field used to be.
+  const onPicked = (next: string) => {
+    latest.current.draft = null;
+    setDraft(null);
+    if (next !== stored) onCommit(next);
   };
 
   // The box is as wide as its digits, and `dd` is wider than `31` — letters are
@@ -299,11 +334,28 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     <div
       role="group"
       aria-label={`Set ${label}`}
-      className={`${className} inline-flex items-center cursor-text `
+      className={`${className} relative inline-flex items-center cursor-text `
         + (dark ? 'focus-within:border-white/50' : 'focus-within:border-slate-400')}
       onClick={onGroupClick}
       onBlur={onGroupBlur}
     >
+      {/*
+        The picker, and nothing else. It has to be laid out for `showPicker()`
+        to have somewhere to anchor — a `display: none` input opens nothing —
+        so it is a transparent copy of the field rather than a hidden one, and
+        takes neither pointer nor focus so the segments in front of it stay the
+        control. `hasDate`/`hasTime` pick the same input type this field used
+        to be, which is why what it writes needs no translation.
+      */}
+      <input
+        ref={picker}
+        type={hasDate && hasTime ? 'datetime-local' : hasDate ? 'date' : 'time'}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+        value={buildStored(parts, hasDate, hasTime) ?? ''}
+        onChange={e => onPicked(e.target.value)}
+      />
       {layout.map((part, i) => {
         if (!isField(part.type)) {
           return (

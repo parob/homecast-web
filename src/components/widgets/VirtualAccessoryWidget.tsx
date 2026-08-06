@@ -287,7 +287,8 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       case 'virtual_datetime':
         // Segments of our own rather than a native date input: WebKit hands
         // that one to the OS, so the Mac app drew `31 Jul 2026 at 15:25` where
-        // the browser drew `31/07/2026, 15:25`. Same characteristic, same
+        // the browser drew `31/07/2026, 15:25`. The platform's picker is still
+        // there, opened from the field itself. Same characteristic, same
         // storage format — sortable ISO-ish text the engine keeps verbatim and
         // expressions compare — only the drawing is ours now.
         return (
