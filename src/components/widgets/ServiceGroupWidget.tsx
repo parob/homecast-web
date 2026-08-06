@@ -6,6 +6,8 @@ import { Slider } from '@/components/ui/slider';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { SliderControl } from '@/components/widgets/shared/SliderControl';
 import { VerticalSlider } from '@/components/widgets/shared/VerticalSlider';
+import { ColorSwatchRow } from '@/components/widgets/shared/ColorSwatchRow';
+import { ColorControl } from '@/components/widgets/shared/ColorControl';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 // Import directly from source files to avoid circular dependency with barrel export
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
@@ -121,6 +123,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedAccessoryId, setExpandedAccessoryId] = useState<string | null>(null);
   const [isWidgetExpanded, setIsWidgetExpanded] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { isDarkBackground } = useBackgroundContext();
 
   // Get drag handle from SortableItem context (if inside a sortable)
@@ -138,6 +141,29 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const hasColorTemp = accessories.some(acc =>
     acc.services?.some(s => s.characteristics?.some(c => c.characteristicType === 'color_temperature' && c.isWritable))
   );
+  // Colour needs both: hue without saturation cannot express a colour, and a
+  // group write has to set the pair or the members land somewhere arbitrary.
+  const hasColorControl = accessories.some(acc =>
+    acc.services?.some(sv => sv.characteristics?.some(c => c.characteristicType === 'hue' && c.isWritable)) &&
+    acc.services?.some(sv => sv.characteristics?.some(c => c.characteristicType === 'saturation' && c.isWritable))
+  );
+
+  const averageOf = (type: string): number => {
+    let total = 0;
+    let count = 0;
+    for (const acc of accessories) {
+      for (const sv of acc.services || []) {
+        for (const c of sv.characteristics || []) {
+          if (c.characteristicType === type) {
+            const raw = getEffectiveValue ? getEffectiveValue(acc.id, type, c.value) : c.value;
+            const n = raw !== null && raw !== undefined ? Number(raw) : NaN;
+            if (!isNaN(n)) { total += n; count++; }
+          }
+        }
+      }
+    }
+    return count > 0 ? Math.round(total / count) : 0;
+  };
 
   // Calculate if group is on (computed directly, not memoized)
   const isGroupOn = () => {
@@ -732,13 +758,41 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   label="Color Temp"
                   formatValue={(v) => `${Math.round(v)}K`}
                   fillClassName="bg-gradient-to-t from-orange-300 to-sky-300"
-                  trackClassName="bg-black/10"
+                  fixedGradient
+                  trackClassName="bg-gradient-to-t from-orange-200/40 to-sky-200/40"
                   className="h-full text-slate-900"
                   dense
                 />
               </div>
             )}
           </div>
+          {isLightsGroup && groupOn && hasColorControl && (
+            <div className="mt-[14px] space-y-[12px]">
+              <ColorSwatchRow
+                hue={averageOf('hue')}
+                saturation={averageOf('saturation')}
+                onSelect={(h, sat) => {
+                  onSlider('hue', h);
+                  onSlider('saturation', sat);
+                }}
+                pickerOpen={pickerOpen}
+                onTogglePicker={() => setPickerOpen(o => !o)}
+                disabled={effectiveDisabled}
+              />
+              {pickerOpen && (
+                <ColorControl
+                  hue={averageOf('hue')}
+                  saturation={averageOf('saturation')}
+                  onCommitHue={(v) => {
+                    onSlider('hue', v);
+                    if (averageOf('saturation') === 0) onSlider('saturation', 100);
+                  }}
+                  onCommitSaturation={(v) => onSlider('saturation', v)}
+                  disabled={effectiveDisabled}
+                />
+              )}
+            </div>
+          )}
           {effectiveDisabled && effectiveOnDisabledClick && (
             <div
               className="absolute inset-0 z-50 pointer-events-auto cursor-default"

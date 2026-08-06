@@ -26,6 +26,13 @@ interface VerticalSliderProps {
   invert?: boolean;
   /** Narrow bar (landscape, beside secondary controls) — shrinks the readout. */
   dense?: boolean;
+  /**
+   * Keeps a gradient fill sized to the whole track and crops it, instead of
+   * squashing the full range into however tall the fill happens to be. A colour
+   * temperature bar at 10% should show the warm end, not the entire warm-to-cool
+   * sweep compressed into a sliver.
+   */
+  fixedGradient?: boolean;
 }
 
 /**
@@ -53,6 +60,7 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   className = '',
   invert = false,
   dense,
+  fixedGradient = false,
 }) => {
   const { heroDense } = useWidgetColors();
   const isDense = dense ?? heroDense;
@@ -135,7 +143,18 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
         className={`absolute inset-x-0 ${invert ? 'top-0' : 'bottom-0'} ${fillClassName} ${
           dragging === null ? 'transition-[height] duration-base ease-standard' : ''
         }`}
-        style={{ height: `${clampedPct}%`, ...fillStyle }}
+        style={{
+          height: `${clampedPct}%`,
+          // Anchored to the end the fill grows from, so the visible slice is the
+          // part of the gradient that actually corresponds to the value.
+          ...(fixedGradient && clampedPct > 0
+            ? {
+                backgroundSize: `100% ${10000 / clampedPct}%`,
+                backgroundPosition: invert ? 'top' : 'bottom',
+              }
+            : {}),
+          ...fillStyle,
+        }}
       />
 
       {/* Readout sits above the fill line so it stays legible at any value. */}
