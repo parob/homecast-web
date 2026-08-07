@@ -50,6 +50,15 @@ export function InspectorPanel({
           if (!out) return;
           onPublishProp(topic, out.key, out.value);
         }}
+        // Anything that isn't a toggle or a slider comes through here: a
+        // timer's Start, a mode's option, a text or date value. Without it the
+        // widget called an undefined handler and the press did nothing at all —
+        // every string-valued control in the browser was inert.
+        onSetValue={(_id, characteristicType, value) => {
+          const out = mqttPublishFor(type, characteristicType, value);
+          if (!out) return;
+          onPublishProp(topic, out.key, out.value);
+        }}
         getEffectiveValue={(_id, _characteristicType, serverValue) => serverValue}
       />
     );

@@ -82,20 +82,58 @@ export function parseStored(value: unknown): DateParts {
 }
 
 /**
+ * Fill the segments a half-finished entry left blank.
+ *
+ * A partly-filled date used to be discarded outright, so typing an hour and
+ * leaving the minutes alone threw the hour away too and the field snapped back
+ * to what it held before — the edit looked like it had been rejected, with
+ * nothing saying why.
+ *
+ * A blank time segment means zero: `14:` is a quarter past nothing, not an
+ * unanswered question. A blank date segment cannot mean zero — there is no day
+ * 0 — so it keeps whatever the field already held, and falls back to today for
+ * a value being entered for the first time.
+ */
+function fillBlanks(parts: DateParts, needed: Field[], previous: DateParts): DateParts {
+  const now = new Date();
+  const today: Record<Field, string> = {
+    day: String(now.getDate()),
+    month: String(now.getMonth() + 1),
+    year: String(now.getFullYear()),
+    hour: '0',
+    minute: '0',
+  };
+  const out = { ...parts };
+  for (const f of needed) {
+    if (out[f] !== '') continue;
+    out[f] = f === 'hour' || f === 'minute' ? '0' : (previous[f] || today[f]);
+  }
+  return out;
+}
+
+/**
  * Segments → storage text.
  *
- * `null` means "not finished" — a half-typed date must never be written, or
- * every keystroke would publish a different wrong day. An empty field is a
- * real answer though, and clears the value.
+ * Always produces a value. Committing only happens when the user is finished —
+ * Done, a press outside, Enter, or the tile collapsing — so anything still
+ * blank at that point is an answer rather than a keystroke in progress, and
+ * gets completed by `fillBlanks`. An entirely empty field is its own answer and
+ * clears the value.
  */
-export function buildStored(parts: DateParts, hasDate: boolean, hasTime: boolean): string | null {
+export function buildStored(
+  rawParts: DateParts,
+  hasDate: boolean,
+  hasTime: boolean,
+  previous: DateParts = EMPTY,
+): string {
   const needed: Field[] = [
     ...(hasDate ? (['day', 'month', 'year'] as Field[]) : []),
     ...(hasTime ? (['hour', 'minute'] as Field[]) : []),
   ];
-  const filled = needed.filter(f => parts[f] !== '');
+  const filled = needed.filter(f => rawParts[f] !== '');
+  // Everything blank is a deliberate clear, and stays one.
   if (filled.length === 0) return '';
-  if (filled.length !== needed.length) return null;
+  const parts = filled.length === needed.length ? rawParts : fillBlanks(rawParts, needed, previous);
 
   const year = pad(parts.year, 4);
   const month = pad(String(clamp(parts.month, 1, 12)), 2);
@@ -212,8 +250,8 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     const pending = latest.current.draft;
     latest.current.draft = null;
     if (pending) {
-      const next = buildStored(pending, hasDate, hasTime);
-      if (next !== null && next !== stored) onCommit(next);
+      const next = buildStored(pending, hasDate, hasTime, parseStored(stored));
+      if (next !== stored) onCommit(next);
     }
     setDraft(null);
   };
@@ -237,8 +275,8 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
   React.useEffect(() => () => {
     const l = latest.current;
     if (!l.draft) return;
-    const next = buildStored(l.draft, l.hasDate, l.hasTime);
-    if (next !== null && next !== l.stored) l.onCommit(next);
+    const next = buildStored(l.draft, l.hasDate, l.hasTime, parseStored(l.stored));
+    if (next !== l.stored) l.onCommit(next);
   }, []);
 
   const setPart = (field: Field, text: string) => {

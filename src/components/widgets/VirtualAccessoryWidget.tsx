@@ -403,18 +403,17 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 const localTimerStarts = new Map<string, number>();
 
 /**
- * When a finished timer finished, at the resolution that is actually useful.
+ * When a finished timer ran out — the time itself, not how long ago.
  *
- * Minutes ago for something recent, because "3 min ago" answers "did that just
- * happen?" without arithmetic; a clock time once it is far enough back that the
- * elapsed span stops meaning anything.
+ * "3 min ago" decays the moment you stop looking at it, and the question a
+ * finished timer answers is when it ended. The date comes along only when that
+ * wasn't today, so the common case stays short.
  */
 function formatFinished(at: number, now: number): string {
-  const secs = Math.max(0, Math.round((now - at) / 1000));
-  if (secs < 60) return 'just now';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins} min ago`;
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const then = new Date(at);
+  const time = then.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const sameDay = then.toDateString() === new Date(now).toDateString();
+  return sameDay ? time : `${then.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`;
 }
 
 /**
@@ -457,15 +456,13 @@ const TimerReadout: React.FC<{
     ? undefined
     : (begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt);
 
-  // Tick while running for the countdown, and while a finish time is on show
-  // so "just now" becomes "1 min ago" on its own. A minute is plenty for the
-  // latter — a per-second tick to move a per-minute label is pure waste.
-  const showingFinished = !running && finishedAt !== undefined;
+  // Only a running countdown decays. A finish time is a fixed instant, so once
+  // the timer stops there is nothing left to re-render for.
   React.useEffect(() => {
-    if (!running && !showingFinished) return;
-    const t = setInterval(() => setNow(Date.now()), running ? 1000 : 30_000);
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [running, showingFinished]);
+  }, [running]);
 
   // Idle says nothing about whether this timer has ever run. When we know it
   // has, say when — that is the whole question you ask about a timer you

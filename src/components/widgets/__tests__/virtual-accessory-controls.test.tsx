@@ -345,6 +345,61 @@ describe('virtual accessory controls', () => {
     expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T16:25']]);
   });
 
+  it('completes a half-filled date instead of throwing the edit away', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    // Set an hour, leave the minutes alone, then leave the field. The whole
+    // entry used to be discarded, so the hour went with it and the tile
+    // snapped back to what it held before.
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '09' } });
+    fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '' } });
+    fireEvent.blur(screen.getByLabelText('Hour'), { relatedTarget: document.body });
+
+    // A blank time segment is zero — `09:` is nine o'clock, not a question.
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T09:00']]);
+  });
+
+  it('keeps the date it already had when only the time is retyped', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Day'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '08' } });
+    fireEvent.blur(screen.getByLabelText('Hour'), { relatedTarget: document.body });
+
+    // A blank day cannot mean zero, so it keeps the one already stored.
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T08:25']]);
+  });
+
   it('offers only the half of the picker each shape needs', () => {
     cleanup();
     renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: false });
