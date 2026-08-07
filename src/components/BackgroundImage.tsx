@@ -214,6 +214,19 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     }, 500);
   };
 
+  // Cold start — nothing was on screen before this wallpaper — so it paints at
+  // full opacity the moment it decodes instead of fading up.
+  //
+  // The fade is only correct when there is an outgoing background to cross into.
+  // On a cold load there isn't: the page is still bg-background, while
+  // isDarkBackground has already flipped (luminance is reported the instant the
+  // image decodes, which is up to 500ms before the fade finishes). That left
+  // every widget wearing the dark recipe — bg-black/20 and white text — over a
+  // backdrop that was still white, i.e. grey on grey, for the length of the
+  // fade. Painting immediately makes the wallpaper and the recipe that assumes
+  // it land together.
+  const instant = prevBg === null;
+
   return (
     <div
       className={cn(
@@ -242,6 +255,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           brightness={effectiveSettings?.brightness ?? 50}
           blur={effectiveSettings?.blur ?? 20}
           opacity={!isTransitioning || newBgReady ? 1 : 0}
+          instant={instant}
           onImageLoad={handleNewBgReady}
           onImageLuminance={handleImageLuminance}
           onImageTopColor={handleImageTopColor}
@@ -256,18 +270,20 @@ interface BackgroundLayerProps {
   brightness: number;
   blur: number;
   opacity: number;
+  /** Cold start: paint at full opacity on decode rather than fading up. */
+  instant?: boolean;
   onImageLoad?: () => void;
   onImageLuminance?: (luminance: number) => void;
   onImageTopColor?: (color: string) => void;
 }
 
-function BackgroundLayer({ settings, brightness, blur, opacity, onImageLoad, onImageLuminance, onImageTopColor }: BackgroundLayerProps) {
+function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageTopColor }: BackgroundLayerProps) {
   const isSolid = settings.type === 'preset' && settings.presetId?.startsWith('solid-');
   const isGradient = settings.type === 'preset' && settings.presetId?.startsWith('gradient-');
 
   return (
     <div
-      className="absolute inset-0 transition-opacity duration-500"
+      className={cn('absolute inset-0', !instant && 'transition-opacity duration-500')}
       style={{ opacity }}
     >
       {isSolid ? (
@@ -287,6 +303,7 @@ function BackgroundLayer({ settings, brightness, blur, opacity, onImageLoad, onI
           presetId={settings.type === 'preset' ? settings.presetId : undefined}
           blur={blur}
           brightness={brightness}
+          instant={instant}
           onLoad={onImageLoad}
           onLuminanceReady={onImageLuminance}
           onTopColorReady={onImageTopColor}
@@ -357,6 +374,8 @@ interface ImageBackgroundProps {
   presetId?: string;
   blur: number;
   brightness: number;
+  /** Cold start: paint at full opacity on decode rather than fading up. */
+  instant?: boolean;
   onLoad?: () => void;
   onLuminanceReady?: (luminance: number) => void;
   onTopColorReady?: (color: string) => void;
@@ -367,6 +386,7 @@ function ImageBackground({
   presetId,
   blur,
   brightness,
+  instant,
   onLoad,
   onLuminanceReady,
   onTopColorReady,
@@ -465,7 +485,8 @@ function ImageBackground({
       {/* Image background */}
       <div
         className={cn(
-          'absolute inset-0 transition-opacity duration-300',
+          'absolute inset-0',
+          !instant && 'transition-opacity duration-300',
           isLoaded ? 'opacity-100' : 'opacity-0'
         )}
         style={{
@@ -486,7 +507,11 @@ function ImageBackground({
       </div>
       {/* Brightness overlay - darken when <50, brighten when >50 */}
       <div
-        className={`absolute inset-0 transition-opacity duration-300 ${brightness < 50 ? 'bg-black' : 'bg-white'}`}
+        className={cn(
+          'absolute inset-0',
+          !instant && 'transition-opacity duration-300',
+          brightness < 50 ? 'bg-black' : 'bg-white',
+        )}
         style={{ opacity: isLoaded && brightness !== 50 ? Math.abs(brightness - 50) / 50 : 0 }}
       />
     </>
