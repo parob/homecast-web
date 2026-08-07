@@ -56,6 +56,12 @@ const queryClient = new QueryClient();
 // Redirect to portal — used for cloud-only routes in Community mode
 const ToPortal = () => <Navigate to="/portal" replace />;
 
+// Dev-only harness for the wallpaper-load → widget-recolour sequence.
+// import.meta.env.DEV is statically false in a production build, so both the
+// route and the lazy chunk drop out entirely.
+const BgDemo = import.meta.env.DEV ? lazy(() => import("./pages/BgDemo")) : null;
+const devRoutes = BgDemo ? <Route path="/bgdemo" element={<BgDemo />} /> : null;
+
 // Routes that need auth + websocket providers
 const MainRoutes = () => (
   <WebSocketProvider>
@@ -79,6 +85,7 @@ const MainRoutes = () => (
               <Route path="/mqtt" element={<MQTTBrowser />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
+              {devRoutes}
               <Route path="*" element={<ToPortal />} />
             </>
           ) : (
@@ -102,6 +109,7 @@ const MainRoutes = () => (
               <Route path="/mqtt" element={<MQTTBrowser />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
+              {devRoutes}
               <Route path="*" element={<NotFound />} />
             </>
           )}
