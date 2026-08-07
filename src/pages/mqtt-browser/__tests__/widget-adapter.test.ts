@@ -44,6 +44,32 @@ describe('virtual accessories in the MQTT browser', () => {
     expect((idle!.accessory as unknown as Record<string, unknown>).virtualTimerState).toBe('idle');
   });
 
+  it('reads the countdown instants so the tile can show more than "active"', () => {
+    const out = mqttToAccessory(
+      'homecast/home-1111/timer-abcd',
+      '{"timer": "active", "timer_started_at": 1000, "timer_ends_at": 301000, "timer_duration_ms": 300000}',
+      true,
+    );
+    const acc = out!.accessory as unknown as Record<string, unknown>;
+    expect(acc.virtualStartedAt).toBe(1000);
+    expect(acc.virtualEndsAt).toBe(301000);
+    expect(acc.virtualDurationMs).toBe(300000);
+    // The countdown keys are metadata, not a second characteristic
+    expect(out!.accessory.services![0].characteristics).toHaveLength(1);
+  });
+
+  it('omits a countdown field rather than passing NaN to the readout', () => {
+    // An older relay publishes the state alone; a malformed value must not
+    // become a countdown to nowhere.
+    const bare = mqttToAccessory('homecast/home-1111/timer-abcd', '{"timer": "active"}', true);
+    const bareAcc = bare!.accessory as unknown as Record<string, unknown>;
+    expect('virtualEndsAt' in bareAcc).toBe(false);
+
+    const junk = mqttToAccessory(
+      'homecast/home-1111/timer-abcd', '{"timer": "active", "timer_ends_at": "soon"}', true);
+    expect('virtualEndsAt' in (junk!.accessory as unknown as Record<string, unknown>)).toBe(false);
+  });
+
   it('publishes a widget change back under the key the bridge accepts', () => {
     expect(mqttPublishFor('virtual_mode', 'virtual_mode', 'Away')).toEqual({ key: 'mode', value: 'Away' });
     expect(mqttPublishFor('virtual_count', 'virtual_count', 7)).toEqual({ key: 'count', value: 7 });

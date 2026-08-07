@@ -67,6 +67,14 @@ const encodeHvacMode = (v: unknown) => HVAC_INT_TO_STR[Number(v)] ?? 'off';
 const toBool = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 const toInt01 = (v: unknown) => toBool(v) ? 1 : 0;
 
+/** `{ [key]: n }` when v is a real number, `{}` otherwise — so an absent or
+ *  malformed field stays absent rather than becoming NaN, which the timer
+ *  readout would render as a countdown to nowhere. */
+const num = (v: unknown, key: string): Record<string, number> => {
+  const n = typeof v === 'number' ? v : Number(v);
+  return v === undefined || v === null || !Number.isFinite(n) ? {} : { [key]: n };
+};
+
 // ---- per-type characteristic specs ------------------------------------
 
 const PER_TYPE: Record<InferredType, CharSpec[]> = {
@@ -253,10 +261,18 @@ export function mqttToAccessory(
       // bounds and duration are unknown here. The widget treats each as
       // optional; what it must not do is decide the helper is read-only.
       isUserEditable: true,
-      // A countdown's state IS its value over MQTT — there is no separate
-      // field — so the widget's running check has to be fed from it.
+      // A countdown's state IS its value over MQTT, so the widget's running
+      // check is fed from it. When it ends is separate: the bridge publishes
+      // absolute instants alongside, because a remaining span is only true at
+      // the moment it is measured and a retained payload is read long after.
+      // Without these the tile can say "active" and nothing more.
       ...(type === 'virtual_timer'
-        ? { virtualTimerState: String(parsed.timer ?? 'idle') }
+        ? {
+          virtualTimerState: String(parsed.timer ?? 'idle'),
+          ...num(parsed.timer_started_at, 'virtualStartedAt'),
+          ...num(parsed.timer_ends_at, 'virtualEndsAt'),
+          ...num(parsed.timer_duration_ms, 'virtualDurationMs'),
+        }
         : {}),
     });
   }
