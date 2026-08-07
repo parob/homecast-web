@@ -23,7 +23,7 @@ describe('virtual accessories in the MQTT browser', () => {
       expect(out, `${payload} produced no accessory`).not.toBeNull();
       expect(out!.type).toBe(expectedType);
 
-      const acc = out!.accessory as Record<string, unknown>;
+      const acc = out!.accessory as unknown as Record<string, unknown>;
       expect(acc.isVirtual).toBe(true);
       expect(acc.virtualType).toBe(virtualType);
       // resolve-widget-type selects the virtual widget off this prefix
@@ -39,9 +39,9 @@ describe('virtual accessories in the MQTT browser', () => {
 
   it('feeds the timer widget its running state, which over MQTT is the value', () => {
     const running = mqttToAccessory('homecast/home-1111/timer-abcd', '{"timer": "active"}', true);
-    expect((running!.accessory as Record<string, unknown>).virtualTimerState).toBe('active');
+    expect((running!.accessory as unknown as Record<string, unknown>).virtualTimerState).toBe('active');
     const idle = mqttToAccessory('homecast/home-1111/timer-abcd', '{"timer": "idle"}', true);
-    expect((idle!.accessory as Record<string, unknown>).virtualTimerState).toBe('idle');
+    expect((idle!.accessory as unknown as Record<string, unknown>).virtualTimerState).toBe('idle');
   });
 
   it('publishes a widget change back under the key the bridge accepts', () => {

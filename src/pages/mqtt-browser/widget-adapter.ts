@@ -230,9 +230,10 @@ export function mqttToAccessory(
   const service: HomeKitService = {
     id: `${topic}:svc`,
     name,
+    // 'unknown' returned above, so the type is always a real one here.
     // resolve-widget-type picks the virtual widget off a serviceType starting
     // "virtual", which is exactly what these types are named.
-    serviceType: type === 'unknown' ? 'switch' : type,
+    serviceType: type,
     characteristics,
   };
 
