@@ -14,6 +14,7 @@
 import type { HomeKitAccessory, HomeKitService } from '../native/homekit-bridge';
 import type { VirtualAccessoryDefinition } from '../automation/types/automation';
 import { getAutomationEngine } from '../automation';
+import { uniqueKey } from '../lib/slug';
 
 /**
  * The characteristic each helper type carries.
@@ -253,6 +254,81 @@ export function applyVirtualWrite(accessoryId: string, value: unknown): { value:
   const { operation, value: opValue } = writeToOperation(helper, value);
   engine.operateVirtualAccessory(helper.id, operation, { value: opValue });
   return { value: engine.getVirtualStates()[helper.id] };
+}
+
+/**
+ * Service the helper accessories inside a `state.set` tree.
+ *
+ * `state.set` is the path REST, MCP and Home Assistant all take, and it is
+ * addressed by slug rather than by id: the native side resolves each key
+ * against HomeKit. A helper accessory is not in HomeKit, so every write to one
+ * arriving this way was silently dropped — while the same accessory's
+ * `_settable` list advertised the characteristic as writable, which is worse
+ * than not supporting it at all.
+ *
+ * They are peeled off here and serviced by the engine, exactly as
+ * `characteristic.set` already does. Returns the tree with them removed, ready
+ * for the native call, plus the changes to announce.
+ */
+export function applyVirtualStateWrites(
+  state: Record<string, Record<string, Record<string, unknown>>>,
+  homeId?: string,
+): {
+  remaining: Record<string, Record<string, Record<string, unknown>>>;
+  changes: Array<{ accessoryId: string; characteristicType: string; value: unknown }>;
+  failed: string[];
+} {
+  const engine = getAutomationEngine();
+  const changes: Array<{ accessoryId: string; characteristicType: string; value: unknown }> = [];
+  const failed: string[] = [];
+  if (!engine) return { remaining: state, changes, failed };
+
+  // Slug → helper, built once. Matches the key `GET /rest/state` reports, which
+  // is the only spelling a caller can have seen.
+  const bySlug = new Map<string, VirtualAccessoryDefinition>();
+  for (const helper of engine.virtualManager.getAllVirtualAccessories()) {
+    if (homeId && helper.homeId?.toUpperCase() !== homeId.toUpperCase()) continue;
+    bySlug.set(uniqueKey(helper.name, helper.id), helper);
+  }
+  if (bySlug.size === 0) return { remaining: state, changes, failed };
+
+  const remaining: Record<string, Record<string, Record<string, unknown>>> = {};
+  for (const [roomKey, accessories] of Object.entries(state)) {
+    if (!accessories || typeof accessories !== 'object') {
+      remaining[roomKey] = accessories;
+      continue;
+    }
+    const keptInRoom: Record<string, Record<string, unknown>> = {};
+    for (const [accKey, props] of Object.entries(accessories)) {
+      const helper = bySlug.get(accKey);
+      if (!helper || !props || typeof props !== 'object') {
+        keptInRoom[accKey] = props;
+        continue;
+      }
+      for (const [prop, value] of Object.entries(props)) {
+        if (prop === 'type' || prop === '_settable') continue;
+        // The characteristic this helper actually carries. A caller naming
+        // some other one is telling us about an accessory this isn't.
+        const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'virtual_value';
+        if (prop !== characteristicType && prop !== 'on') {
+          failed.push(`${roomKey}/${accKey}.${prop}`);
+          continue;
+        }
+        try {
+          const applied = applyVirtualWrite(helper.id, value);
+          if (applied) {
+            changes.push({ accessoryId: helper.id, characteristicType, value: applied.value });
+          }
+        } catch {
+          // Read-only, or a value the helper rejects. Reported rather than
+          // thrown: one bad key must not lose the rest of a bulk write.
+          failed.push(`${roomKey}/${accKey}.${prop}`);
+        }
+      }
+    }
+    if (Object.keys(keptInRoom).length > 0) remaining[roomKey] = keptInRoom;
+  }
+  return { remaining, changes, failed };
 }
 
 /** Current value of a helper accessory, or null when the id isn't one. */

@@ -71,7 +71,10 @@ const TOOLS = [
       'Settable properties by type: light (on, brightness, hue, saturation, color_temp), ' +
       'climate (active, heat_target, cool_target, hvac_mode), switch/outlet (on), ' +
       'lock (lock_target), alarm (alarm_target), fan (on, speed), speaker (volume, mute), ' +
-      'blind (target), valve (active). Returns {updated, failed, changes, errors, message}.',
+      'blind (target), valve (active). Virtual accessories take the characteristic get_state ' +
+      'reports for them: virtual_mode, virtual_count (sets the count), virtual_number, virtual_text, ' +
+      'virtual_datetime, virtual_timer ("active" starts it, anything else cancels); a virtual ' +
+      'switch uses on. Returns {updated, failed, changes, errors, message}.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -98,6 +101,12 @@ const TOOLS = [
               speed: { type: 'integer', description: '0-100' },
               volume: { type: 'integer', description: '0-100' },
               mute: { type: 'boolean' },
+              virtual_mode: { type: 'string', description: 'Virtual accessory: the option to select' },
+              virtual_count: { type: 'integer', description: 'Virtual accessory: sets the count' },
+              virtual_number: { type: 'number', description: 'Virtual accessory: the value' },
+              virtual_text: { type: 'string', description: 'Virtual accessory: the text' },
+              virtual_datetime: { type: 'string', description: 'Virtual accessory: ISO date and/or time' },
+              virtual_timer: { type: 'string', description: 'Virtual accessory: "active" starts, anything else cancels' },
               target: { type: 'integer', description: '0-100 (blinds)' },
             },
             required: ['home', 'room', 'accessory'],

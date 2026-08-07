@@ -221,14 +221,11 @@ export const UUID_TO_SIMPLE: Record<string, string> = {
 const SKIP_SERVICES = new Set(['accessory_information', 'battery', 'label']);
 const SKIP_CHARS = new Set(['name', 'manufacturer', 'model', 'serial_number', 'firmware_revision', 'hardware_revision', 'identify']);
 
-function sanitizeName(name: string): string {
-  return name.trim().replace(/\s+/g, '_').toLowerCase();
-}
-
-export function uniqueKey(name: string, uuid: string): string {
-  const shortId = uuid ? uuid.slice(-4).toLowerCase() : '0000';
-  return `${sanitizeName(name)}_${shortId}`;
-}
+// Re-exported so every existing importer (and the parity test) keeps working;
+// the definition lives in lib/slug so the relay can use it without pulling this
+// module's whole dependency graph in.
+import { sanitizeName, uniqueKey } from '@/lib/slug';
+export { sanitizeName, uniqueKey };
 
 export function getSimpleName(charType: string): string | null {
   if (CHAR_TO_SIMPLE[charType]) return CHAR_TO_SIMPLE[charType];

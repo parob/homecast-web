@@ -698,18 +698,33 @@ async function executeHomeKitActionInner(
       // resolves slug keys internally. Limit enforcement happens at the
       // characteristic.set level for individual accessory control.
       console.log('[state.set] state:', JSON.stringify(state), 'homeId:', homeId);
-      const result = await HomeKit.setState(state, homeId);
+      // Helper accessories are serviced by the engine; the native side resolves
+      // keys against HomeKit and has never heard of them, so a write to one
+      // arriving here used to vanish — while `_settable` advertised it. Peel
+      // them off, then let native have the rest.
+      const { applyVirtualStateWrites } = await import('./virtual-accessories');
+      const virtualWrites = applyVirtualStateWrites(state, homeId);
+      const hasHomeKitWork = Object.keys(virtualWrites.remaining).length > 0;
+      const result = hasHomeKitWork
+        ? await HomeKit.setState(virtualWrites.remaining, homeId)
+        : { ok: 0, failed: [] as string[], changes: [] as Array<{ accessoryId: string; characteristicType: string; value: unknown }> };
       console.log('[state.set] result:', JSON.stringify(result));
+      const changes = [...(result.changes ?? []), ...virtualWrites.changes];
       // As for characteristic.set: HomeKit stays silent about writes we made
       // ourselves. This is the path REST, MCP and Home Assistant all take, so
       // without it a device changed by an assistant or a script never triggered
       // a Homecast automation. Native resolves the slug keys and expands
       // service groups to their members, so these are ready to feed straight in.
       announceRelayWrite(
-        (result.changes ?? []).map((c) => ({ ...c, homeId })),
+        changes.map((c) => ({ ...c, homeId })),
         'client',
       );
-      return result;
+      return {
+        ...result,
+        ok: (result.ok ?? 0) + virtualWrites.changes.length,
+        failed: [...(result.failed ?? []), ...virtualWrites.failed],
+        changes,
+      };
     }
 
     case 'observe.start':
