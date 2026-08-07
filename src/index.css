@@ -9,11 +9,6 @@
 @tailwind utilities;
 
 
-@keyframes fade-slide-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes wiggle {
   0% { transform: rotate(calc(-0.25deg - var(--wiggle-offset, 0deg))); }
   50% { transform: rotate(calc(0.25deg + var(--wiggle-offset, 0deg))); }

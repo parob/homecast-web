@@ -7058,7 +7058,15 @@ const Dashboard = () => {
                 </Card>
               ) : (
                 /* Accessories by Room (grid or masonry) */
-                <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`} style={{ animation: 'fade-slide-in 0.35s ease-out' }}>
+                /* No entrance animation here. fade-slide-in animated opacity and
+                   transform, and either one on an ancestor of a backdrop-filter
+                   element establishes a new backdrop root — so for the 0.35s it
+                   ran, every widget's backdrop-blur sampled nothing and the tiles
+                   rendered as a flat tint over an unfiltered wallpaper, then
+                   snapped to glass the instant the animation finished. The key
+                   stays: remounting on home/group/room change is what resets
+                   widget state. */
+                <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`}>
                 {/* Header with title */}
                 <h2 className={`text-base font-bold truncate mb-4 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
