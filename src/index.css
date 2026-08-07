@@ -358,6 +358,26 @@ All colors MUST be HSL.
   user-select: none;
 }
 
+/* Mac Catalyst and iOS run the iOS WebKit port, which draws its own overflow
+   scroll indicators. That port never supported ::-webkit-scrollbar, and these
+   indicators ignore scrollbar-width, so neither half of the global rule above
+   reaches them — in the Mac app they show up over the sidebar even though every
+   browser hides them. The only way to remove one is to put it outside a clip:
+   widen the scroller by the clip distance so its indicator lands beyond the
+   parent's edge, and pad the content back by the same amount so nothing moves.
+   Scoped to the two app shells; browsers are already handled by the rule above. */
+html.mac-app .scroll-clip,
+html.ios-app .scroll-clip {
+  overflow: hidden;
+}
+
+html.mac-app .scroll-clip-inner,
+html.ios-app .scroll-clip-inner {
+  /* --scroll-clip-pad is whatever right padding the scroller already had. */
+  margin-right: -20px;
+  padding-right: calc(var(--scroll-clip-pad, 0px) + 20px);
+}
+
 /* Disable text selection in Mac app WKWebView for native-like feel */
 /* Font thinning: WKWebView renders fonts thicker than Chrome — lighten via stroke trick */
 html.mac-app {

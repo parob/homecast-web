@@ -6029,7 +6029,10 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </div>
-                    <div className={`p-3 overflow-y-auto scrollbar-hidden flex-1 ${isDarkBackground ? 'text-white' : ''}`}>
+                    <div
+                      className={`p-3 overflow-y-auto scrollbar-hidden scroll-clip-inner flex-1 ${isDarkBackground ? 'text-white' : ''}`}
+                      style={{ '--scroll-clip-pad': '0.75rem' } as React.CSSProperties}
+                    >
                     {/* Homes Section */}
                     <div className="mb-6" data-tour="sidebar-homes">
                       {homesLoading ? (
@@ -6098,7 +6101,7 @@ const Dashboard = () => {
                                     editMode={isTouchDevice && editMode}
                                   >
                                   <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
-                                    <div className="ml-2 pt-1">
+                                    <div className="ml-2 pt-1 scroll-clip">
                                       {roomsLoading ? (
                                         <div className="flex items-center justify-center py-2">
                                           <Loader2 className="h-3 w-3 animate-spin text-white" />
@@ -6111,7 +6114,7 @@ const Dashboard = () => {
                                           onDragEnd={handleSidebarDragEnd}
                                           onDragCancel={handleSidebarDragCancel}
                                         >
-                                          <div className="max-h-[300px] overflow-y-auto scrollbar-hidden">
+                                          <div className="max-h-[300px] overflow-y-auto scrollbar-hidden scroll-clip-inner">
                                           <SortableContext
                                             items={sidebarSortableIds}
                                             strategy={verticalListSortingStrategy}
@@ -6500,8 +6503,11 @@ const Dashboard = () => {
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
           style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
         >
-          <div className={`rounded-2xl transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
-            <div className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden transition-all duration-300 ${isDarkBackground ? 'material-regular-dark text-white' : ''}`}>
+          <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
+            <div
+              className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden scroll-clip-inner transition-all duration-300 ${isDarkBackground ? 'material-regular-dark text-white' : ''}`}
+              style={{ '--scroll-clip-pad': '0.75rem' } as React.CSSProperties}
+            >
               {/* Header in sidebar */}
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center justify-center rounded-md transition-colors duration-300 bg-primary" style={{ height: 32, width: 32 }}>
@@ -6572,7 +6578,7 @@ const Dashboard = () => {
                             >
                             {/* Rooms nested under selected home */}
                             <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
-                              <div className="ml-2 pt-1">
+                              <div className="ml-2 pt-1 scroll-clip">
                                 {roomsLoading ? (
                                   <div className="flex items-center justify-center py-2">
                                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -6585,7 +6591,7 @@ const Dashboard = () => {
                                     onDragEnd={handleSidebarDragEnd}
                                     onDragCancel={handleSidebarDragCancel}
                                   >
-                                    <div className="max-h-[300px] overflow-y-auto scrollbar-hidden">
+                                    <div className="max-h-[300px] overflow-y-auto scrollbar-hidden scroll-clip-inner">
                                     <SortableContext
                                       items={sidebarSortableIds}
                                       strategy={verticalListSortingStrategy}
