@@ -280,8 +280,15 @@ function VirtualAccessoryTypeFields({
               <NumberField
                 key={unit}
                 label={unit[0].toUpperCase() + unit.slice(1)}
-                value={draft.duration?.[unit] ?? 0}
-                onChange={v => patch({ duration: { ...draft.duration, [unit]: v ?? 0 } })}
+                // Empty is a state this has to hold. Coercing to 0 on the way
+                // in and out meant clearing a box to retype it refilled itself
+                // with 0 under the cursor, so the next keystroke landed after
+                // the zero — and leaving one blank silently rewrote it. Every
+                // unit is optional in a Duration, and durationToMs already
+                // reads an absent one as zero.
+                value={draft.duration?.[unit]}
+                placeholder="0"
+                onChange={v => patch({ duration: { ...draft.duration, [unit]: v } })}
               />
             ))}
           </div>
@@ -383,12 +390,14 @@ function VirtualAccessoryTypeFields({
  * to 0 and would silently cap the counter at nothing.
  */
 function NumberField({
-  label, value, onChange, optional,
+  label, value, onChange, optional, placeholder,
 }: {
   label: string;
   value: number | undefined;
   onChange: (value: number | undefined) => void;
   optional?: boolean;
+  /** What an empty box means. Falls back to "None" for an optional field. */
+  placeholder?: string;
 }) {
   const id = `helper-num-${label.toLowerCase().replace(/\s+/g, '-')}`;
   return (
@@ -399,7 +408,7 @@ function NumberField({
         type="number"
         inputMode="decimal"
         value={value ?? ''}
-        placeholder={optional ? 'None' : undefined}
+        placeholder={placeholder ?? (optional ? 'None' : undefined)}
         onChange={e => {
           const raw = e.target.value;
           if (raw === '') { onChange(undefined); return; }
