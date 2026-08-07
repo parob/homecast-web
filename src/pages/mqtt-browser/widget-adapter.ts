@@ -272,6 +272,7 @@ export function mqttToAccessory(
           ...num(parsed.timer_started_at, 'virtualStartedAt'),
           ...num(parsed.timer_ends_at, 'virtualEndsAt'),
           ...num(parsed.timer_duration_ms, 'virtualDurationMs'),
+          ...num(parsed.timer_finished_at, 'virtualFinishedAt'),
         }
         : {}),
     });

@@ -13,6 +13,14 @@ interface TimerState {
   duration: number; // total duration in ms
   remaining: number; // remaining ms
   startedAt?: number;
+  /**
+   * When the countdown last ran out, and only that: a cancelled timer never
+   * finished. Idle is otherwise indistinguishable from never-started, so this
+   * is the only thing that tells you a timer you weren't watching has been and
+   * gone. Survives until the next start, which begins a fresh TimerState and so
+   * clears it without having to remember to.
+   */
+  finishedAt?: number;
   timer?: ReturnType<typeof setTimeout>;
   interval?: ReturnType<typeof setInterval>;
 }
@@ -301,6 +309,7 @@ export class VirtualAccessoryManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
+      timerState.finishedAt = Date.now();
       this.stateStore.updateVirtualState(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
@@ -338,6 +347,7 @@ export class VirtualAccessoryManager {
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
+      timerState.finishedAt = Date.now();
       this.stateStore.updateVirtualState(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
@@ -372,6 +382,9 @@ export class VirtualAccessoryManager {
     timerState.timer = undefined;
     timerState.state = 'idle';
     timerState.remaining = 0;
+    // Cut short, but finished all the same — it fires timer.finished, so it
+    // has to leave the same trace behind. cancelTimer deliberately does not.
+    timerState.finishedAt = Date.now();
 
     this.stateStore.updateVirtualState(accessoryId, 'idle');
     this.fireEvent('timer.finished', { accessoryId });
@@ -489,6 +502,7 @@ export class VirtualAccessoryManager {
     startedAt?: number;
     endsAt?: number;
     remainingMs?: number;
+    finishedAt?: number;
   } | undefined {
     const def = this.getVirtualAccessory(accessoryId);
     if (def?.type !== 'timer') return undefined;
@@ -496,7 +510,7 @@ export class VirtualAccessoryManager {
     // The configured duration, not the running TimerState's — an idle one
     // carries 0, which is true and useless to something about to start it.
     const durationMs = durationToMs(def.duration);
-    if (!t || t.state === 'idle') return { state: 'idle', durationMs };
+    if (!t || t.state === 'idle') return { state: 'idle', durationMs, finishedAt: t?.finishedAt };
     if (t.state === 'paused') return { state: 'paused', durationMs, remainingMs: t.remaining };
     return {
       state: 'active',

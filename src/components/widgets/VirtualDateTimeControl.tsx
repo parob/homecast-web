@@ -200,6 +200,14 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
   const latest = React.useRef({ draft, stored, onCommit, hasDate, hasTime });
   latest.current = { draft, stored, onCommit, hasDate, hasTime };
 
+  // Leaving the panel — via Done or a press outside it — is what makes the
+  // pending choice real. Declared as a function so the outside-press effect
+  // above can call it without ordering games.
+  function closePanel() {
+    commit();
+    setOpen(false);
+  }
+
   const commit = () => {
     const pending = latest.current.draft;
     latest.current.draft = null;
@@ -217,7 +225,7 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!wrapper.current?.contains(e.target as Node | null)) setOpen(false);
+      if (!wrapper.current?.contains(e.target as Node | null)) closePanel();
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
@@ -313,14 +321,21 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     inputs.current[first]?.select();
   };
 
-  // What the panel picks is written straight through. There is no draft to
-  // reconcile — pressing a day is a finished decision, not a half-typed one —
-  // so anything being typed is dropped in favour of it.
+  // A pick lands in the draft, not on the device.
+  //
+  // Writing it straight through meant every step of choosing a date was its own
+  // change: picking a day, then an hour, then a minute sent three, and each one
+  // was a value the user had not finished expressing. Two of them were wrong by
+  // construction. Nothing else in the widget behaves that way — a typed date
+  // waits for the group to lose focus — so the picker now waits too, and the
+  // draft is committed by the same routes that already commit a typed one:
+  // Done, a press outside, Enter, or the tile collapsing.
+  //
+  // It still replaces anything half-typed: pressing a day is a finished
+  // decision about that field, even though the value as a whole isn't.
   const onPicked = (next: DateParts) => {
-    const value = buildStored(next, hasDate, hasTime);
-    latest.current.draft = null;
-    setDraft(null);
-    if (value !== null && value !== stored) onCommit(value);
+    latest.current.draft = next;
+    setDraft(next);
   };
 
   // The box is as wide as its digits, and `dd` is wider than `31` — letters are
@@ -377,7 +392,7 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
           hasDate={hasDate}
           hasTime={hasTime}
           onChange={onPicked}
-          onClose={() => setOpen(false)}
+          onClose={closePanel}
           dark={dark}
         />
       )}

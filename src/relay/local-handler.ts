@@ -367,7 +367,18 @@ async function executeHomeKitActionInner(
       const { getVirtualAccessoryDefinition, toVirtualAccessory, readVirtualValue } = await import('./virtual-accessories');
       const helperForGet = getVirtualAccessoryDefinition(accessoryId);
       if (helperForGet) {
-        return { accessory: toVirtualAccessory(helperForGet, readVirtualValue(accessoryId)?.value) };
+        // The countdown has to come too. `accessories.list` passes it and this
+        // did not, so a timer fetched singly reported only that it was running
+        // — which is the exact shape of the one question a caller asks about a
+        // running timer.
+        const { getAutomationEngine } = await import('../automation');
+        return {
+          accessory: toVirtualAccessory(
+            helperForGet,
+            readVirtualValue(accessoryId)?.value,
+            getAutomationEngine()?.virtualManager.getTimerInfo(accessoryId),
+          ),
+        };
       }
       if (!isAccessoryAllowed(accessoryId)) {
         throw Object.assign(new Error('Accessory not included in your plan'), { code: ErrorCode.ACCESSORY_NOT_FOUND });

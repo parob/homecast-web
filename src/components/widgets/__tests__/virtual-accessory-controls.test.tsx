@@ -255,7 +255,67 @@ describe('virtual accessory controls', () => {
     // react-day-picker names its days by their number alone.
     fireEvent.click(screen.getAllByRole('gridcell', { name: '3' })[0]);
 
+    // Nothing yet: a pick is a draft. Writing each step of choosing a date
+    // sent values the user had not finished expressing.
+    expect(writes).toEqual([]);
+
+    fireEvent.click(screen.getByText('Done'));
     // The time it already had is kept — picking a day is not clearing a time.
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-03T15:25']]);
+  });
+
+  it('sends one change for a whole date-and-time choice, not one per press', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '3' })[0]);
+    fireEvent.click(screen.getByLabelText('Increase hour'));
+    fireEvent.click(screen.getByLabelText('Increase hour'));
+    expect(writes).toEqual([]);
+
+    fireEvent.click(screen.getByText('Done'));
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-03T17:25']]);
+  });
+
+  it('commits a pending pick when the picker is left rather than dismissed', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '3' })[0]);
+    // Pressing away from the panel is how it closes on a tile with no Done in
+    // reach — deferring the write must not mean losing it.
+    fireEvent.pointerDown(document.body);
+
     expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-03T15:25']]);
   });
 
@@ -279,7 +339,9 @@ describe('virtual accessory controls', () => {
 
     fireEvent.click(screen.getByLabelText('Set Test Value'));
     fireEvent.click(screen.getByLabelText('Increase hour'));
+    expect(writes).toEqual([]);
 
+    fireEvent.click(screen.getByText('Done'));
     expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T16:25']]);
   });
 

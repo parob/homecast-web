@@ -203,9 +203,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const effectiveHeaderAction = editModeType ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
-  // A hero counts as content: a switch has no children at all, so keying the
-  // collapse on children alone left its rocker mounted inside a shut collapse.
-  const showChildren = childrenVisible ?? (!!children || showHero);
+  const showChildren = childrenVisible ?? !!children;
   const characteristics = accessory ? getAllCharacteristics(accessory) : [];
   const hasCharacteristics = characteristics.length > 0;
 
@@ -266,9 +264,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Icon element (shared between compact and non-compact)
   const iconElement = (
     <div className={`shrink-0 items-center justify-center flex rounded-full ${
-      effectiveCompact ? 'h-8 w-8' : (expanded ? 'h-[44px] w-[44px]' : 'h-9 w-9')
+      effectiveCompact ? 'h-8 w-8' : (expanded ? 'h-11 w-11' : 'h-9 w-9')
     } ${iconBgClass} ${iconTextClass} ${iconShadowClass} ${iconOpacityClass}`}>
-      <div className={!effectiveCompact && expanded ? '[&>svg]:h-[20px] [&>svg]:w-[20px]' : '[&>svg]:h-4 [&>svg]:w-4'}>
+      <div className={!effectiveCompact && expanded ? '[&>svg]:h-5 [&>svg]:w-5' : '[&>svg]:h-4 [&>svg]:w-4'}>
         {icon}
       </div>
     </div>
@@ -315,12 +313,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       {iconElement}
       <div className="min-w-0 flex-1">
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
-          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-[17px]' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
+          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
             {displayTitle}
           </CardTitle>
           <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
             <CardDescription
-              className={`${expanded ? 'text-[14px]' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
+              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
             >
               {effectiveSubtitle || '\u00A0'}
             </CardDescription>
@@ -390,10 +388,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const cardInner = (
     <>
-      {/* Compact padding is fixed px on purpose: the text-size setting scales the
-          root font, so a rem padding shrank exactly when the text did and left
-          the small setting looking cramped against the tile edge. */}
-      <CardHeader className={effectiveCompact ? "p-[14px]" : `${expanded ? 'p-[20px]' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-[20px]' : 'pb-4')}`}>
+      <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
         {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
@@ -433,7 +428,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       {(children || showHero) && (
         <AnimatedCollapse open={!effectiveCompact && showChildren}>
           <CardContent
-            className={`${expanded ? 'px-[20px] pb-[20px]' : 'px-4 pb-4'} ${tightContent ? 'pt-0' : 'pt-2'}`}
+            className={`${expanded ? 'px-5 pb-5' : 'px-4 pb-4'} ${tightContent ? 'pt-0' : 'pt-2'}`}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -442,18 +437,15 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 // Portrait puts the hero control front and centre with the
                 // secondary controls beneath; landscape stands it alongside
                 // them, because a tall bar in a short panel is unusable.
-                (heroPortrait || heroShape === 'block') ? (
-                  // A dial never wants a control column beside it — that layout
-                  // left the panel top-heavy with dead space underneath.
-                  <div className="flex flex-col gap-[16px]">
+                heroPortrait ? (
+                  <div className="flex flex-col gap-4">
                     <div className={heroShape === 'block' ? 'flex justify-center' : 'h-[260px]'}>{hero}</div>
-                    {children && <div className="space-y-[12px]">{children}</div>}
+                    {children && <div className="space-y-3">{children}</div>}
                   </div>
                 ) : (
-                  // Only bars reach here — blocks always take the stacked branch.
-                  <div className="flex gap-[16px]">
-                    <div className="h-[190px] w-[84px] shrink-0">{hero}</div>
-                    {children && <div className="min-w-0 flex-1 space-y-[12px]">{children}</div>}
+                  <div className="flex gap-4">
+                    <div className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
+                    {children && <div className="min-w-0 flex-1 space-y-3">{children}</div>}
                   </div>
                 )
               ) : (

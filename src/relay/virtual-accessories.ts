@@ -82,6 +82,13 @@ export interface VirtualAccessory extends HomeKitAccessory {
   virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
+  /**
+   * When the countdown last ran out. Idle is otherwise indistinguishable from
+   * never-started, so without this a timer that has been and gone reads the
+   * same as one nobody has ever pressed. Cleared by the next start, and never
+   * set by a cancel — cancelling is not finishing.
+   */
+  virtualFinishedAt?: number;
   /** input_number only — 'stepper' (default) or 'field'. */
   virtualControl?: string;
 }
@@ -96,6 +103,7 @@ export function toVirtualAccessory(
     startedAt?: number;
     endsAt?: number;
     remainingMs?: number;
+    finishedAt?: number;
   },
 ): VirtualAccessory {
   const characteristicType = VIRTUAL_CHARACTERISTIC[helper.type] ?? 'virtual_value';
@@ -161,6 +169,7 @@ export function toVirtualAccessory(
         ...(countdown.startedAt !== undefined ? { virtualStartedAt: countdown.startedAt } : {}),
         ...(countdown.endsAt !== undefined ? { virtualEndsAt: countdown.endsAt } : {}),
         ...(countdown.remainingMs !== undefined ? { virtualRemainingMs: countdown.remainingMs } : {}),
+        ...(countdown.finishedAt !== undefined ? { virtualFinishedAt: countdown.finishedAt } : {}),
       }
       : {}),
   } as VirtualAccessory;

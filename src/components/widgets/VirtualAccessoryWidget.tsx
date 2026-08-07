@@ -73,6 +73,7 @@ interface VirtualAccessoryShape {
   virtualEndsAt?: number;
   virtualRemainingMs?: number;
   virtualDurationMs?: number;
+  virtualFinishedAt?: number;
   virtualControl?: string;
   /**
    * Pre-rename spellings, read but never written — the same inbound-alias
@@ -148,6 +149,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         startedAt={meta.virtualStartedAt}
         endsAt={meta.virtualEndsAt}
         durationMs={configuredMs ?? meta.virtualDurationMs}
+        finishedAt={meta.virtualFinishedAt}
       />
     )
     : charType === 'virtual_datetime'
@@ -340,6 +342,21 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 const localTimerStarts = new Map<string, number>();
 
 /**
+ * When a finished timer finished, at the resolution that is actually useful.
+ *
+ * Minutes ago for something recent, because "3 min ago" answers "did that just
+ * happen?" without arithmetic; a clock time once it is far enough back that the
+ * elapsed span stops meaning anything.
+ */
+function formatFinished(at: number, now: number): string {
+  const secs = Math.max(0, Math.round((now - at) / 1000));
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
  * A running countdown.
  *
  * Derived, every tick, from when the timer started and how long it runs for —
@@ -358,7 +375,8 @@ const TimerReadout: React.FC<{
   startedAt?: number;
   endsAt?: number;
   durationMs?: number;
-}> = ({ accessoryId, running, startedAt, endsAt, durationMs }) => {
+  finishedAt?: number;
+}> = ({ accessoryId, running, startedAt, endsAt, durationMs, finishedAt }) => {
   const [now, setNow] = React.useState(() => Date.now());
 
   // A locally-noted start is a guess — the moment a tile first saw the timer
@@ -378,13 +396,20 @@ const TimerReadout: React.FC<{
     ? undefined
     : (begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt);
 
+  // Tick while running for the countdown, and while a finish time is on show
+  // so "just now" becomes "1 min ago" on its own. A minute is plenty for the
+  // latter — a per-second tick to move a per-minute label is pure waste.
+  const showingFinished = !running && finishedAt !== undefined;
   React.useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    if (!running && !showingFinished) return;
+    const t = setInterval(() => setNow(Date.now()), running ? 1000 : 30_000);
     return () => clearInterval(t);
-  }, [running]);
+  }, [running, showingFinished]);
 
-  if (!running) return <>Idle</>;
+  // Idle says nothing about whether this timer has ever run. When we know it
+  // has, say when — that is the whole question you ask about a timer you
+  // weren't watching, and it stands until the next start.
+  if (!running) return <>{finishedAt !== undefined ? `Finished ${formatFinished(finishedAt, now)}` : 'Idle'}</>;
   if (target === undefined) return <>Running</>;
 
   const total = Math.max(0, Math.round((target - now) / 1000));
