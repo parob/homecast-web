@@ -213,49 +213,88 @@ describe('virtual accessory controls', () => {
     expect(timeOnly).toEqual([['va-1', 'virtual_datetime', '09:05']]);
   });
 
-  // The segments are ours, but the picker is still the platform's: a real date
-  // input sits behind them, invisible and untabbable, purely so `showPicker()`
-  // has something to open. Without a calendar button to press, clicking the
-  // field is the only way in — which is the point of it being there.
-  it('opens the platform picker from the field, with no button to press', () => {
+  // The picker is ours. Keeping a native date input behind the segments for
+  // `showPicker()` did nothing whatsoever in Mac Catalyst's WKWebView, which
+  // left the Mac app with a field you could only type into — and no native
+  // input may come back, because that is what drew `31 Jul 2026 at 15:25`.
+  it('opens a picker of our own from the field, with no native input involved', () => {
     cleanup();
     renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: true });
 
-    const native = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
-    expect(native).toBeTruthy();
-    expect(native.getAttribute('aria-hidden')).toBe('true');
-    expect(native.tabIndex).toBe(-1);
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+    expect(screen.queryByRole('grid')).toBeNull();
 
-    let opened = 0;
-    (native as unknown as { showPicker: () => void }).showPicker = () => { opened += 1; };
-    fireEvent.click(screen.getByLabelText('Set Test Value'));
-    expect(opened).toBe(1);
-
-    // Clicking a segment must not: the picker takes the arrow keys with it, and
-    // typing is the other half of the control.
+    // Clicking the digits counts: that is where a hand goes, and when it did
+    // nothing the field read as typing-only.
     fireEvent.click(screen.getByLabelText('Day'));
-    expect(opened).toBe(1);
+    expect(screen.getByRole('grid')).toBeTruthy();
+    expect(screen.getByLabelText('Increase hour')).toBeTruthy();
   });
 
-  it('writes what the picker picked', () => {
+  it('writes the day pressed in the calendar', () => {
     cleanup();
-    const writes = renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: true });
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
 
-    const native = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
-    fireEvent.change(native, { target: { value: '2026-12-24T18:00' } });
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
 
-    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-12-24T18:00']]);
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    // The calendar opens on the month already selected, so the 3rd is July's.
+    // react-day-picker names its days by their number alone.
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '3' })[0]);
+
+    // The time it already had is kept — picking a day is not clearing a time.
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-03T15:25']]);
   });
 
-  it('gives the picker the input type each date-time shape needs', () => {
-    for (const [extra, type] of [
-      [{ virtualHasDate: true, virtualHasTime: false }, 'date'],
-      [{ virtualHasDate: false, virtualHasTime: true }, 'time'],
-    ] as [Record<string, unknown>, string][]) {
-      cleanup();
-      renderWidget('virtual_datetime', extra);
-      expect(document.querySelector(`input[type="${type}"]`)).toBeTruthy();
-    }
+  it('steps the time from the panel, and keeps the date', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_datetime');
+    saved.services[0].characteristics[0].value = '2026-07-31T15:25';
+    const writes: unknown[][] = [];
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...saved, virtualHasDate: true, virtualHasTime: true },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: (...args: unknown[]) => { writes.push(args); },
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    fireEvent.click(screen.getByLabelText('Increase hour'));
+
+    expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T16:25']]);
+  });
+
+  it('offers only the half of the picker each shape needs', () => {
+    cleanup();
+    renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: false });
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    expect(screen.getByRole('grid')).toBeTruthy();
+    expect(screen.queryByLabelText('Increase hour')).toBeNull();
+
+    cleanup();
+    renderWidget('virtual_datetime', { virtualHasDate: false, virtualHasTime: true });
+    fireEvent.click(screen.getByLabelText('Set Test Value'));
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(screen.getByLabelText('Increase hour')).toBeTruthy();
   });
 
   it('shows a stored date-time in the segments it was saved from', () => {

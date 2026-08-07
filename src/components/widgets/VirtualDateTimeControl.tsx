@@ -1,4 +1,5 @@
 import React from 'react';
+import { VirtualDateTimePanel } from './VirtualDateTimePanel';
 
 /**
  * A date and time field that reads the same on every platform.
@@ -8,10 +9,13 @@ import React from 'react';
  * while WebKit on Mac Catalyst and iOS hands it to the OS and gets a single
  * run of prose back: `31 Jul 2026 at 15:25`, no segments, no indicator. Same
  * markup, same value, two visibly different controls, and no CSS reaches
- * inside either one. So the segments are ours — but only the segments. A real
- * date input is still here, invisible behind them, because the picker is worth
- * keeping and `showPicker()` opens it on demand: each platform's own calendar,
- * anchored to the field, with none of the button the native control draws.
+ * inside either one. So the segments are ours.
+ *
+ * So is the picker, in `VirtualDateTimePanel`. Keeping a real date input around
+ * for `showPicker()` was the cheaper idea and it does nothing at all in
+ * Catalyst's WKWebView — which left the Mac app with a field you could only
+ * type into, the complaint this whole control exists to answer. Clicking the
+ * field opens ours instead, on every platform, and typing still works.
  *
  * The layout isn't hardcoded: `Intl.DateTimeFormat.formatToParts` says which
  * order this locale writes and which separators it uses, and the segments are
@@ -172,7 +176,8 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
   const stored = typeof value === 'string' ? value : '';
   const parts = draft ?? parseStored(stored);
   const inputs = React.useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
-  const picker = React.useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const wrapper = React.useRef<HTMLDivElement | null>(null);
 
   const layout = React.useMemo(() => {
     const sample = new Date(2026, 6, 31, 15, 25);
@@ -204,6 +209,19 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     }
     setDraft(null);
   };
+
+  // A press anywhere else closes the panel. In a compact tile the overlay
+  // collapses on an outside press anyway, but an always-expanded grid tile has
+  // no such thing, and a panel that only ever closes from its own Done button
+  // is a panel left open.
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapper.current?.contains(e.target as Node | null)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
 
   // Commit on the way out too. `blur` doesn't fire when a field is unmounted,
   // and this one lives in a tile that collapses the moment the pointer leaves
@@ -261,11 +279,13 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
       case 'Delete': e.preventDefault(); setPart(field, ''); break;
       case 'Enter':
         commit();
+        setOpen(false);
         e.currentTarget.blur();
         onDone?.();
         break;
       case 'Escape':
         setDraft(null);
+        setOpen(false);
         e.currentTarget.blur();
         break;
       default: break;
@@ -279,48 +299,28 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     commit();
   };
 
-  /**
-   * The platform's own picker, opened without a button to open it with.
-   *
-   * `showPicker()` is the whole reason a real date input is still in here: it
-   * gives each platform the picker it already knows — a calendar in the
-   * browser, the system picker in the Mac app — anchored to the field, without
-   * the calendar glyph the native control insists on drawing next to it.
-   * Supported everywhere we ship (Safari 16 / macOS 13 is the floor), and if a
-   * browser ever refuses, the field is still fully typeable.
-   */
-  const openPicker = (): boolean => {
-    const el = picker.current;
-    if (!el || typeof el.showPicker !== 'function') return false;
-    try {
-      el.showPicker();
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  // The segments only fill the left of a full-width field, and a click on the
-  // space beside them — or on a separator — has to land somewhere. That space
-  // is what opens the picker now that nothing else does. Clicks on a segment
-  // are left alone: the picker takes the arrow keys with it, and typing a date
-  // is the other half of this control.
+  // Any click in the field opens the picker — including one on the digits,
+  // which is where a hand naturally goes. The segment still takes focus
+  // underneath, so the caret is where it was pressed and typing carries on
+  // over the top of an open panel.
   const onGroupClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    setOpen(true);
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    if (openPicker()) return;
     const first = order.find(f => parts[f] === '') ?? order[0];
     if (!first) return;
     inputs.current[first]?.focus();
     inputs.current[first]?.select();
   };
 
-  // What the picker itself writes: already in the storage format, since it is
-  // the same native input the field used to be.
-  const onPicked = (next: string) => {
+  // What the panel picks is written straight through. There is no draft to
+  // reconcile — pressing a day is a finished decision, not a half-typed one —
+  // so anything being typed is dropped in favour of it.
+  const onPicked = (next: DateParts) => {
+    const value = buildStored(next, hasDate, hasTime);
     latest.current.draft = null;
     setDraft(null);
-    if (next !== stored) onCommit(next);
+    if (value !== null && value !== stored) onCommit(value);
   };
 
   // The box is as wide as its digits, and `dd` is wider than `31` — letters are
@@ -331,60 +331,56 @@ export const VirtualDateTimeControl: React.FC<VirtualDateTimeControlProps> = ({
     + (dark ? 'focus:bg-white/25' : 'focus:bg-slate-900/10');
 
   return (
-    <div
-      role="group"
-      aria-label={`Set ${label}`}
-      className={`${className} relative inline-flex items-center cursor-text `
-        + (dark ? 'focus-within:border-white/50' : 'focus-within:border-slate-400')}
-      onClick={onGroupClick}
-      onBlur={onGroupBlur}
-    >
-      {/*
-        The picker, and nothing else. It has to be laid out for `showPicker()`
-        to have somewhere to anchor — a `display: none` input opens nothing —
-        so it is a transparent copy of the field rather than a hidden one, and
-        takes neither pointer nor focus so the segments in front of it stay the
-        control. `hasDate`/`hasTime` pick the same input type this field used
-        to be, which is why what it writes needs no translation.
-      */}
-      <input
-        ref={picker}
-        type={hasDate && hasTime ? 'datetime-local' : hasDate ? 'date' : 'time'}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
-        value={buildStored(parts, hasDate, hasTime) ?? ''}
-        onChange={e => onPicked(e.target.value)}
-      />
-      {layout.map((part, i) => {
-        if (!isField(part.type)) {
+    <div ref={wrapper} className="w-full">
+      <div
+        role="group"
+        aria-label={`Set ${label}`}
+        className={`${className} inline-flex items-center cursor-pointer `
+          + (dark ? 'focus-within:border-white/50' : 'focus-within:border-slate-400')}
+        onClick={onGroupClick}
+        onBlur={onGroupBlur}
+      >
+        {layout.map((part, i) => {
+          if (!isField(part.type)) {
+            return (
+              <span key={`lit-${i}`} className="select-none opacity-70 whitespace-pre">{part.value}</span>
+            );
+          }
+          const { len } = LIMITS[part.type];
           return (
-            <span key={`lit-${i}`} className="select-none opacity-70 whitespace-pre">{part.value}</span>
+            <input
+              key={part.type}
+              ref={el => { inputs.current[part.type as Field] = el; }}
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              spellCheck={false}
+              className={segmentClass}
+              // Exactly as wide as its digits: `tabular-nums` makes every digit
+              // one `ch`, so the separators sit tight against the numbers the
+              // way Chrome's own segments do. Slack here reads as `31 / 07`.
+              style={{ width: `${len}ch` }}
+              aria-label={LABELS[part.type]}
+              placeholder={PLACEHOLDERS[part.type]}
+              value={parts[part.type]}
+              onFocus={e => e.currentTarget.select()}
+              onChange={e => onSegmentChange(part.type as Field, e.target.value)}
+              onKeyDown={e => onSegmentKeyDown(part.type as Field, e)}
+            />
           );
-        }
-        const { len } = LIMITS[part.type];
-        return (
-          <input
-            key={part.type}
-            ref={el => { inputs.current[part.type as Field] = el; }}
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            spellCheck={false}
-            className={segmentClass}
-            // Exactly as wide as its digits: `tabular-nums` makes every digit
-            // one `ch`, so the separators sit tight against the numbers the way
-            // Chrome's own segments do. Any slack here reads as `31 / 07`.
-            style={{ width: `${len}ch` }}
-            aria-label={LABELS[part.type]}
-            placeholder={PLACEHOLDERS[part.type]}
-            value={parts[part.type]}
-            onFocus={e => e.currentTarget.select()}
-            onChange={e => onSegmentChange(part.type as Field, e.target.value)}
-            onKeyDown={e => onSegmentKeyDown(part.type as Field, e)}
-          />
-        );
-      })}
+        })}
+      </div>
+
+      {open && (
+        <VirtualDateTimePanel
+          parts={parts}
+          hasDate={hasDate}
+          hasTime={hasTime}
+          onChange={onPicked}
+          onClose={() => setOpen(false)}
+          dark={dark}
+        />
+      )}
     </div>
   );
 };
