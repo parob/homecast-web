@@ -10,7 +10,32 @@ export type InferredType =
   | 'lightbulb' | 'fan' | 'thermostat' | 'lock' | 'outlet' | 'switch'
   | 'speaker' | 'motion_sensor' | 'contact_sensor' | 'occupancy_sensor'
   | 'temperature_sensor' | 'humidity_sensor' | 'multi_sensor'
-  | 'window_covering' | 'garage_door' | 'unknown';
+  | 'window_covering' | 'garage_door'
+  | 'virtual_number' | 'virtual_count' | 'virtual_mode'
+  | 'virtual_timer' | 'virtual_text' | 'virtual_datetime'
+  | 'unknown';
+
+/**
+ * Virtual accessory types, keyed by the characteristic they carry.
+ *
+ * A virtual accessory has no HomeKit analogue — no enum, no countdown, no free
+ * text — so it publishes under its own key and needs its own widget. Inferring
+ * it from the payload key is all MQTT gives us: the definition (a select's
+ * options, a timer's duration, a number's bounds) lives in the engine and never
+ * reaches the topic. VirtualAccessoryWidget already tolerates all of that being
+ * absent, so the control degrades rather than failing to render.
+ *
+ * A boolean helper is deliberately absent: it publishes plain `on`, which is
+ * indistinguishable from a real switch, and renders identically either way.
+ */
+const VIRTUAL_TYPES: Record<string, { type: InferredType; virtualType: string }> = {
+  number:   { type: 'virtual_number',   virtualType: 'input_number' },
+  count:    { type: 'virtual_count',    virtualType: 'counter' },
+  mode:     { type: 'virtual_mode',     virtualType: 'input_select' },
+  timer:    { type: 'virtual_timer',    virtualType: 'timer' },
+  text:     { type: 'virtual_text',     virtualType: 'input_text' },
+  datetime: { type: 'virtual_datetime', virtualType: 'input_datetime' },
+};
 
 interface CharSpec {
   /** Key in the published MQTT JSON payload this spec reads from. */
@@ -113,6 +138,15 @@ const PER_TYPE: Record<InferredType, CharSpec[]> = {
   garage_door: [
     { mqttKey: 'position', characteristicType: 'current_position', isWritable: true, minValue: 0, maxValue: 100, stepValue: 1, writeKey: 'target' },
   ],
+  // Each virtual accessory carries exactly one characteristic, named the same
+  // as the widget reads it, and every one of them is writable — a helper exists
+  // to be set.
+  virtual_number:   [{ mqttKey: 'number',   characteristicType: 'virtual_number',   isWritable: true }],
+  virtual_count:    [{ mqttKey: 'count',    characteristicType: 'virtual_count',    isWritable: true, stepValue: 1 }],
+  virtual_mode:     [{ mqttKey: 'mode',     characteristicType: 'virtual_mode',     isWritable: true }],
+  virtual_timer:    [{ mqttKey: 'timer',    characteristicType: 'virtual_timer',    isWritable: true }],
+  virtual_text:     [{ mqttKey: 'text',     characteristicType: 'virtual_text',     isWritable: true }],
+  virtual_datetime: [{ mqttKey: 'datetime', characteristicType: 'virtual_datetime', isWritable: true }],
   unknown: [],
 };
 
@@ -120,6 +154,12 @@ const PER_TYPE: Record<InferredType, CharSpec[]> = {
 
 export function inferServiceType(payload: Record<string, unknown>): InferredType {
   const has = (k: string) => k in payload;
+  // Virtual accessories first. Their keys are unique in the bridge's whole
+  // vocabulary, and a helper publishes nothing else, so there is nothing here
+  // for a real accessory to collide with.
+  for (const [key, spec] of Object.entries(VIRTUAL_TYPES)) {
+    if (has(key)) return spec.type;
+  }
   if (has('brightness') || has('color_temp') || has('hue') || has('saturation')) return 'lightbulb';
   if (has('speed')) return 'fan';
   if (has('hvac_mode') || has('heat_target') || has('cool_target')) return 'thermostat';
@@ -190,6 +230,8 @@ export function mqttToAccessory(
   const service: HomeKitService = {
     id: `${topic}:svc`,
     name,
+    // resolve-widget-type picks the virtual widget off a serviceType starting
+    // "virtual", which is exactly what these types are named.
     serviceType: type === 'unknown' ? 'switch' : type,
     characteristics,
   };
@@ -200,6 +242,23 @@ export function mqttToAccessory(
     isReachable,
     services: [service],
   };
+
+  const virtual = VIRTUAL_TYPES[specs[0]?.mqttKey ?? ''];
+  if (virtual && virtual.type === type) {
+    Object.assign(accessory, {
+      isVirtual: true,
+      virtualType: virtual.virtualType,
+      // The definition lives in the engine and never reaches MQTT, so options,
+      // bounds and duration are unknown here. The widget treats each as
+      // optional; what it must not do is decide the helper is read-only.
+      isUserEditable: true,
+      // A countdown's state IS its value over MQTT — there is no separate
+      // field — so the widget's running check has to be fed from it.
+      ...(type === 'virtual_timer'
+        ? { virtualTimerState: String(parsed.timer ?? 'idle') }
+        : {}),
+    });
+  }
 
   return { accessory, type };
 }
