@@ -62,6 +62,11 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
     { label: 'Homecast MQTT Broker', community: false, basic: false, standard: true, cloud: true },
     { label: 'Home Assistant', community: '✓ *', basic: true, standard: true, cloud: true },
     { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
+    // Both run on the relay, in every edition. Virtual accessories are also
+    // exempt from the accessory limit — a value the engine owns is not a device
+    // anyone is being sold — so Basic gets them without spending its ten.
+    { label: 'Automations', community: true, basic: true, standard: true, cloud: true },
+    { label: 'Virtual Accessories', community: true, basic: true, standard: true, cloud: true },
 
     { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
     { label: 'Ad-free', community: true, basic: false, standard: true, cloud: true },

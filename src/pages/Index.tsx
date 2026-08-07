@@ -710,6 +710,7 @@ const Index = () => {
               details: [
                 'Templates for common patterns like motion lights and schedules',
                 'Supports device triggers, time-based schedules, and sun events',
+                'Virtual modes, counters and timers your automations can remember',
                 'Runs on the relay — works even when your browser is closed',
               ],
               image: '/images/features/automations.png', imageAlt: 'Automation flow editor', reversed: true,
