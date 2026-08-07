@@ -72,7 +72,11 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
     ? 'bg-blue-200/75'
     : (isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80');
 
-  const borderClass = !isEnabled && !isDarkBackground ? 'ring-1 ring-inset ring-slate-200' : '';
+  // Ring stays mounted and only recolours — an inset box-shadow can't
+  // interpolate to `none`, so removing the class would snap. Matches WidgetWrapper.
+  const borderClass = !isEnabled
+    ? `ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`
+    : '';
   const darkTextClass = !isEnabled && isDarkBackground
     ? '[&_h3]:!text-white [&_p]:!text-white/70 [&_span]:!text-white/70'
     : '';
@@ -82,13 +86,13 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   const subtextClass = (isDarkBackground && !isEnabled) ? 'text-white/60' : 'text-muted-foreground';
   return (
     <div
-      className={`relative rounded-2xl h-fit cursor-pointer transition-all ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
+      className={`relative rounded-2xl h-fit cursor-pointer transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
       style={{ contain: 'layout style paint' }}
       onClick={onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
     >
       {/* Blur layer — matches WidgetWrapper */}
-      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm ${colorClass} transform-gpu`} />
+      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu`} />
       {/* Content */}
       {/* Fixed floors: this padding is what separates the icon and the toggle
           from the card edge, and rem units shrank it exactly at the text sizes

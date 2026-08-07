@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
 import { BackgroundImage } from '@/components/BackgroundImage';
@@ -35,14 +35,6 @@ interface MainLayoutProps {
   background?: BackgroundSettings | null;
 }
 
-// Get a stable key for background changes (used to reset readiness state)
-function getBackgroundChangeKey(settings?: BackgroundSettings | null): string {
-  if (!settings || settings.type === 'none') return 'none';
-  if (settings.type === 'preset' && settings.presetId) return `preset:${settings.presetId}`;
-  if (settings.type === 'custom' && settings.customUrl) return `custom:${settings.customUrl}`;
-  return 'none';
-}
-
 export function MainLayout({
   children,
   headerContent,
@@ -56,49 +48,27 @@ export function MainLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
 
-  // Determine if there's an active background and if it's dark enough for light text
+  // Determine if there's an active background and if it's dark enough for light text.
+  //
+  // There is deliberately no extra "background has loaded" gate here. It used to
+  // AND this with a readiness flag reset on every background change, which
+  // defeated the hold-previous behaviour inside useBackgroundDarkness: swapping
+  // one dark wallpaper for another flashed the whole chrome to light text for the
+  // duration of the image load, because the outgoing (still dark) wallpaper was
+  // what was actually on screen. The hook already returns the previous answer
+  // while a new image's luminance is pending, and false on a cold start when
+  // there is no previous answer — which is the readable choice, since nothing is
+  // painted over bg-background yet. Gating on top of that could only ever be a
+  // no-op or a regression.
   const { hasBackground, isDarkBackground } = useBackgroundDarkness(background, bgImageLuminance);
-
-  // Track when background becomes visible (coordinates text color change)
-  const backgroundKey = useMemo(() => getBackgroundChangeKey(background), [background]);
-  const [isBackgroundReady, setIsBackgroundReady] = useState(() => {
-    if (!background || background.type === 'none') return true;
-    if (background.type === 'preset' && background.presetId &&
-      (background.presetId.startsWith('solid-') || background.presetId.startsWith('gradient-'))) return true;
-    return false;
-  });
-
-  // Reset readiness when background changes
-  useEffect(() => {
-    if (!background || background.type === 'none') {
-      setIsBackgroundReady(true);
-    } else if (
-      background.type === 'preset' &&
-      background.presetId &&
-      (background.presetId.startsWith('solid-') || background.presetId.startsWith('gradient-'))
-    ) {
-      // Gradients and solid colors render instantly — no loading needed
-      setIsBackgroundReady(true);
-    } else {
-      // Images need to load before we apply dark text styling
-      setIsBackgroundReady(false);
-    }
-  }, [backgroundKey]);
-
-  const handleBackgroundReady = useCallback(() => {
-    setIsBackgroundReady(true);
-  }, []);
-
-  // Only apply dark text styling when both dark AND ready
-  const shouldUseDarkText = isDarkBackground && isBackgroundReady;
 
   // Android Tauri app: sync status bar icon color with background darkness.
   // Calls the @JavascriptInterface directly (registered on WebView creation,
   // always available — no timing dependency on Tauri's on_page_load).
   useEffect(() => {
     const w = window as Window & { HomecastAndroid?: { setStatusBarDarkIcons: (dark: boolean) => void } };
-    w.HomecastAndroid?.setStatusBarDarkIcons(!shouldUseDarkText);
-  }, [shouldUseDarkText]);
+    w.HomecastAndroid?.setStatusBarDarkIcons(!isDarkBackground);
+  }, [isDarkBackground]);
 
   const sidebarPaddingTop = isInMacApp
     ? MAC_HEADER_HEIGHT
@@ -117,36 +87,36 @@ export function MainLayout({
     : '64px';
 
   return (
-    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground: shouldUseDarkText }}>
+    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
     <div className="fixed inset-0">
       {/* Backdrop color painted past the safe areas — the layout container
           itself must stay at inset-0 so content keeps clear of the notch. */}
       <div aria-hidden className={cn("fixed-full-screen pointer-events-none -z-10", hasBackground && isDarkBackground ? "bg-black" : "bg-background")} />
       {/* Background image layer */}
-      <BackgroundImage settings={background} onReady={handleBackgroundReady} onLuminanceChange={setBgImageLuminance} />
+      <BackgroundImage settings={background} onLuminanceChange={setBgImageLuminance} />
 
       <AppHeader
         isInMacApp={isInMacApp}
         isInMobileApp={isInMobileApp}
         hasBackground={hasBackground}
-        isDarkBackground={shouldUseDarkText}
+        isDarkBackground={isDarkBackground}
       >
         <div className="flex items-center gap-3">
           {/* Mobile menu button - shown when sidebar content exists */}
           {sidebar && isMobile && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 !bg-transparent hover:!bg-black/10 active:!bg-black/20 transition-colors duration-300", shouldUseDarkText && "!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50 active:!bg-black/60")}>
+                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 !bg-transparent hover:!bg-black/10 active:!bg-black/20 transition-colors duration-300", isDarkBackground && "!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50 active:!bg-black/60")}>
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
               {/* Mac: clear the traffic lights the same way the Dashboard drawer
                   does — inset the padding, not the panel. */}
-              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", shouldUseDarkText ? "material-regular-dark" : "bg-background")} style={isInMacApp ? { paddingTop: 33 } : undefined} aria-describedby={undefined}>
+              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", isDarkBackground ? "material-regular-dark" : "bg-background")} style={isInMacApp ? { paddingTop: 33 } : undefined} aria-describedby={undefined}>
                 <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                 <div className="h-full flex flex-col overflow-hidden">
                   {/* Close sheet when a nav button is clicked */}
-                  <div className={cn("p-4 mt-3 overflow-y-auto scrollbar-hidden flex-1", shouldUseDarkText && "text-white")} onClick={(e) => {
+                  <div className={cn("p-4 mt-3 overflow-y-auto scrollbar-hidden flex-1", isDarkBackground && "text-white")} onClick={(e) => {
                     if ((e.target as HTMLElement).closest('button')) setSidebarOpen(false);
                   }}>
                     {sidebar}
@@ -171,7 +141,7 @@ export function MainLayout({
               style={{ paddingTop: sidebarPaddingTop }}
             >
               <div className={cn(
-                shouldUseDarkText
+                isDarkBackground
                   ? "rounded-2xl p-3 material-thick-dark text-white shadow-[0_0_20px_rgba(0,0,0,0.3)]"
                   : "p-4"
               )}>
