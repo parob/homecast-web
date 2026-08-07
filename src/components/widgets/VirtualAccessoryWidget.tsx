@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock } from 'lucide-react';
-import { WidgetCard } from './WidgetCard';
+import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useVirtualAccessoryDefinition } from './VirtualAccessoryEditContext';
@@ -44,6 +44,55 @@ function fieldClass(dark: boolean, large?: boolean): string {
       ? 'bg-white/15 border-white/25 text-white focus:border-white/50 [color-scheme:dark]'
       : 'bg-white/70 border-slate-300 text-slate-900 focus:border-slate-400 [color-scheme:light]');
 }
+
+/**
+ * A mode picker drawn the way the rest of the app draws one.
+ *
+ * A native `<select>` is a bordered rectangle with a system chevron. Beside a
+ * fan's slider and a lock's switch it reads as a form field dropped onto the
+ * dashboard, which is exactly what stood out. Every other multi-choice control
+ * here — alarm modes, thermostat modes, purifier modes — is a row of pills, so
+ * a short option list becomes one too, with the same selected treatment.
+ *
+ * Long lists keep the select: a dozen pills wrap into a block that buries the
+ * tile, and at that length a dropdown is genuinely the better control.
+ */
+const SEGMENTED_MAX_OPTIONS = 4;
+
+const ModeSegmented: React.FC<{
+  options: string[];
+  value: string;
+  onSelect: (v: string) => void;
+  label: string;
+  large?: boolean;
+}> = ({ options, value, onSelect, label, large }) => {
+  const { colors, iconStyle } = useWidgetColors();
+  const selected = iconStyle === 'colourful'
+    ? `${colors.accent} text-white ring-2 ring-inset ring-white/45`
+    : 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-inset ring-white/45';
+
+  return (
+    // Wraps rather than truncates: mode names are the author's own words, and
+    // "Vacat…" tells you less than a second row costs.
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+      {options.map(o => {
+        const isActive = o === value;
+        return (
+          <button
+            key={o}
+            type="button"
+            aria-pressed={isActive}
+            onClick={e => { e.stopPropagation(); onSelect(o); }}
+            className={`flex-1 basis-[5.5rem] truncate rounded-lg px-2 transition-colors ${large ? 'h-11 text-[14px]' : 'h-9 text-xs'} `
+              + (isActive ? `${selected} font-semibold` : 'bg-black/15 hover:bg-black/25 font-normal')}
+          >
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 function buttonClass(dark: boolean, large?: boolean): string {
   return `${large ? 'h-11' : 'h-9'} inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 `
@@ -204,23 +253,35 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 
   function renderControl(): React.ReactNode {
     switch (charType) {
-      case 'virtual_mode':
+      case 'virtual_mode': {
+        const options = meta.virtualOptions ?? [];
+        const current = typeof value === 'string' ? value : '';
+        // A value that is no longer an option still has to show, or the tile
+        // would misrepresent the current mode.
+        const shown = current && !options.includes(current) ? [current, ...options] : options;
+        if (shown.length > 1 && shown.length <= SEGMENTED_MAX_OPTIONS) {
+          return (
+            <ModeSegmented
+              options={shown}
+              value={current}
+              onSelect={set}
+              label={`Set ${accessory.name}`}
+              large={expanded}
+            />
+          );
+        }
         return (
           <select
             className={FIELD_CLASS}
             aria-label={`Set ${accessory.name}`}
-            value={typeof value === 'string' ? value : ''}
+            value={current}
             onClick={e => e.stopPropagation()}
             onChange={e => set(e.target.value)}
           >
-            {/* A value that is no longer an option still has to show, or the
-                tile would misrepresent the current mode. */}
-            {typeof value === 'string' && value && !(meta.virtualOptions ?? []).includes(value) && (
-              <option value={value}>{value}</option>
-            )}
-            {(meta.virtualOptions ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+            {shown.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         );
+      }
 
       case 'virtual_count':
       case 'virtual_number':

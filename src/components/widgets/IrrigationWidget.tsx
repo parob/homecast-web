@@ -1,6 +1,5 @@
 import React, { memo } from 'react';
 import { Flower2, Timer, Droplets, Calendar } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { WidgetCard } from './WidgetCard';
 import { ColoredSwitch } from './shared';
@@ -56,19 +55,12 @@ export const IrrigationWidget: React.FC<WidgetProps> = memo(({
   return (
     <WidgetCard
       title={accessory.name}
-      subtitle={
-        <span className="flex items-center gap-2 flex-wrap">
-          <Badge variant={inUse ? 'default' : 'secondary'}>
-            {inUse ? 'Watering' : 'Idle'}
-          </Badge>
-          {programMode > 0 && (
-            <Badge variant="outline" className="gap-1">
-              <Calendar className="h-3 w-3" />
-              {PROGRAM_MODES[programMode]}
-            </Badge>
-          )}
-        </span>
-      }
+      // Plain text, like every other tile's subtitle. Badges made this one the
+      // only widget on the dashboard wearing filled pills under its name, which
+      // read as a status chip bolted on rather than part of the card.
+      subtitle={[inUse ? 'Watering' : 'Idle', programMode > 0 ? PROGRAM_MODES[programMode] : null]
+        .filter(Boolean)
+        .join(' · ')}
       icon={
         <Flower2 className={`h-4 w-4 ${inUse ? 'text-green-500' : ''}`} />
       }

@@ -1,6 +1,5 @@
 import React, { memo } from 'react';
-import { Droplets, Timer } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Droplets } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { SliderControl, ColoredSwitch, CircleControl } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
@@ -54,6 +53,8 @@ export const ValveWidget: React.FC<WidgetProps> = memo(({
     return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   };
 
+  const typeLabel = VALVE_TYPES[valveType] || 'Valve';
+
   const showHero = !!expanded && !compact && !!activeChar?.isWritable;
 
   return (
@@ -71,19 +72,19 @@ export const ValveWidget: React.FC<WidgetProps> = memo(({
         />
       ) : undefined}
       title={accessory.name}
-      subtitle={
-        <span className="flex items-center gap-2">
-          <Badge variant={inUse ? 'default' : 'secondary'}>
-            {VALVE_TYPES[valveType] || 'Valve'}
-          </Badge>
-          {inUse && remaining && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Timer className="h-3 w-3" />
-              {formatDuration(remaining)}
-            </span>
-          )}
-        </span>
-      }
+      // Plain text, like every other tile. A filled badge made this the one
+      // widget wearing a chip under its name, and what the chip said was the
+      // valve type — which on a valve actually called "Irrigation" was the
+      // name again. State first, as everywhere else; the type only earns a
+      // place when it tells you something the name hasn't already.
+      subtitle={[
+        inUse ? 'Running' : 'Off',
+        // "Garden Irrigation" is shown as "Irrigation" once the card strips the
+        // room, so match the tail rather than the whole name — otherwise the
+        // subtitle repeats the title back at you.
+        accessory.name.trim().toLowerCase().endsWith(typeLabel.toLowerCase()) ? null : typeLabel,
+        inUse && remaining ? formatDuration(remaining) : null,
+      ].filter(Boolean).join(' · ')}
       icon={<Droplets className={`h-4 w-4 ${inUse ? 'text-blue-500' : ''}`} />}
       serviceType="valve"
       iconStyle={iconStyle}
