@@ -1,7 +1,7 @@
 import React, { memo, useState } from 'react';
 import { Lightbulb, Sun, Palette } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { SliderControl, ColoredSwitch, ColorControl, VerticalSlider, ColorSwatchRow } from './shared';
+import { SliderControl, ColoredSwitch, ColorControl, VerticalSlider, ColorSwatchRow, mirrorMired, formatMirroredAsKelvin } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 
 export const LightbulbWidget: React.FC<WidgetProps> = memo(({
@@ -150,27 +150,35 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
             />
           )}
 
-          {!compact && colorTempChar?.isWritable && (
-            <div className="space-y-2">
-              <SliderControl
-                label="Color Temp"
-                icon={Palette}
-                value={colorTemp ?? (colorTempChar.characteristic?.minValue ?? 140)}
-                min={colorTempChar.characteristic?.minValue ?? 140}
-                max={colorTempChar.characteristic?.maxValue ?? 500}
-                step={colorTempChar.characteristic?.stepValue ?? 10}
-                unit="K"
-                onCommit={(v) => onSlider(accessory.id, 'color_temperature', v)}
-                trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
-                trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
-                fixedGradient={iconStyle === 'colourful'}
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Warm</span>
-                <span>Cool</span>
+          {!compact && colorTempChar?.isWritable && (() => {
+            // Mireds run cool→warm as they rise, so the slider travels on the
+            // mirrored axis: warm on the left, cool on the right, matching both
+            // the captions below it and Apple Home. See shared/colorTemp.
+            const ctMin = colorTempChar.characteristic?.minValue ?? 140;
+            const ctMax = colorTempChar.characteristic?.maxValue ?? 500;
+            const currentMired = colorTemp ?? ctMin;
+            return (
+              <div className="space-y-2">
+                <SliderControl
+                  label="Color Temp"
+                  icon={Palette}
+                  value={mirrorMired(currentMired, ctMin, ctMax)}
+                  min={ctMin}
+                  max={ctMax}
+                  step={colorTempChar.characteristic?.stepValue ?? 10}
+                  formatValue={(v) => formatMirroredAsKelvin(v, ctMin, ctMax)}
+                  onCommit={(v) => onSlider(accessory.id, 'color_temperature', mirrorMired(v, ctMin, ctMax))}
+                  trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-200/60 to-sky-200/60" : "bg-muted/25"}
+                  trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-400 to-sky-400" : undefined}
+                  fixedGradient={iconStyle === 'colourful'}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Warm</span>
+                  <span>Cool</span>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {!compact && hue !== null && (
             canPickColor ? (

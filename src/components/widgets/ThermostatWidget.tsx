@@ -775,6 +775,9 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       className={showDial && !heroDial ? "relative overflow-visible pr-[135px]" : ""}
       heroShape="block"
       hero={heroDial ? renderDial(true) : undefined}
+      // The dial is wide; standing it beside the mode row squeezed the labels
+      // down to "H…", "C…", "A…". Stack instead: dial, then fan, then modes.
+      heroStack
       overlayContent={
         showDial && !heroDial ? renderDial(false) : undefined
       }
@@ -784,11 +787,30 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
           {/* Full height layout with dial on right */}
           {fullLayout ? (
             <div className="flex flex-col">
-              {/* Mode row and fan share the space under the dial; without a gap
-                  the fan label sat directly on top of the mode buttons. */}
-              {/* Inline, the mode row sits a little higher than centre so the fan
-                  label and its track are not squeezed against the card edge. */}
+              {/* Dial, then fan, then modes — one column, each row full width
+                  under a centred dial. The continuous controls stay together and
+                  the mode pills anchor the bottom, which is what makes the
+                  expanded card read as symmetrical rather than top-heavy.
+                  A gap is load-bearing: without one the fan label sits directly
+                  on the mode buttons. */}
               <div className={`flex-1 flex flex-col justify-between ${expanded ? 'gap-[16px]' : 'gap-2 -mt-1'}`}>
+                {/* Fan speed slider */}
+                {hasFanControls && (
+                  <SliderControl
+                    label="Fan"
+                    value={Number(fanSpeed) || 50}
+                    min={fanSpeedChar?.characteristic?.minValue ?? 0}
+                    max={fanSpeedChar?.characteristic?.maxValue ?? 100}
+                    step={fanSpeedChar?.characteristic?.stepValue ?? 10}
+                    formatValue={(v) => `${Math.round(v)}%`}
+                    onCommit={(v) => { if (!isViewOnly) onSlider(accessory.id, 'rotation_speed', v); }}
+                    // Present but inert when the unit is off, like the dial.
+                    disabled={isViewOnly || noResponse || !isRunning}
+                    icon={Fan}
+                    compact={!expanded}
+                  />
+                )}
+
                 {/* Mode selection buttons (including Off) */}
                 {(() => {
                   // Build all mode buttons including Off
@@ -854,22 +876,6 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
                   );
                 })()}
 
-                {/* Fan speed slider */}
-                {hasFanControls && (
-                  <SliderControl
-                    label="Fan"
-                    value={Number(fanSpeed) || 50}
-                    min={fanSpeedChar?.characteristic?.minValue ?? 0}
-                    max={fanSpeedChar?.characteristic?.maxValue ?? 100}
-                    step={fanSpeedChar?.characteristic?.stepValue ?? 10}
-                    formatValue={(v) => `${Math.round(v)}%`}
-                    onCommit={(v) => { if (!isViewOnly) onSlider(accessory.id, 'rotation_speed', v); }}
-                    // Present but inert when the unit is off, like the dial.
-                    disabled={isViewOnly || noResponse || !isRunning}
-                    icon={Fan}
-                    compact={!expanded}
-                  />
-                )}
               </div>
             </div>
           ) : (

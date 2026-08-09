@@ -8,6 +8,7 @@ import { SliderControl } from '@/components/widgets/shared/SliderControl';
 import { VerticalSlider } from '@/components/widgets/shared/VerticalSlider';
 import { ColorSwatchRow } from '@/components/widgets/shared/ColorSwatchRow';
 import { ColorControl } from '@/components/widgets/shared/ColorControl';
+import { mirrorMired, formatMirroredAsKelvin } from '@/components/widgets/shared/colorTemp';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 // Import directly from source files to avoid circular dependency with barrel export
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
@@ -501,15 +502,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           {isLightsGroup && groupOn && colorTempInfo && (
             <SliderControl
               label="Color Temp"
-              value={colorTempInfo.value}
+              // Mirrored axis — warm left, cool right. See shared/colorTemp.
+              value={mirrorMired(colorTempInfo.value, colorTempInfo.min, colorTempInfo.max)}
               min={colorTempInfo.min}
               max={colorTempInfo.max}
               step={10}
-              unit="K"
-              onCommit={(v) => onSlider('color_temperature', v)}
+              formatValue={(v) => formatMirroredAsKelvin(v, colorTempInfo.min, colorTempInfo.max)}
+              onCommit={(v) => onSlider('color_temperature', mirrorMired(v, colorTempInfo.min, colorTempInfo.max))}
               disabled={effectiveDisabled}
-              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-200/60 to-orange-200/60" : "bg-muted/25"}
-              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-sky-400 to-orange-400" : undefined}
+              trackBgClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-200/60 to-sky-200/60" : "bg-muted/25"}
+              trackColorClass={iconStyle === 'colourful' ? "bg-gradient-to-r from-orange-400 to-sky-400" : undefined}
               fixedGradient={iconStyle === 'colourful'}
             />
           )}
@@ -748,15 +750,17 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             {isLightsGroup && groupOn && colorTempInfo && (
               <div className="h-[220px] w-[132px]">
                 <VerticalSlider
-                  value={colorTempInfo.value}
+                  // Mirrored axis, so travelling up the bar gets cooler — which
+                  // is the direction its gradient has always been painted in.
+                  value={mirrorMired(colorTempInfo.value, colorTempInfo.min, colorTempInfo.max)}
                   min={colorTempInfo.min}
                   max={colorTempInfo.max}
                   step={10}
-                  onCommit={(v) => onSlider('color_temperature', v)}
+                  onCommit={(v) => onSlider('color_temperature', mirrorMired(v, colorTempInfo.min, colorTempInfo.max))}
                   disabled={effectiveDisabled}
                   icon={Palette}
                   label="Color Temp"
-                  formatValue={(v) => `${Math.round(v)}K`}
+                  formatValue={(v) => formatMirroredAsKelvin(v, colorTempInfo.min, colorTempInfo.max)}
                   fillClassName="bg-gradient-to-t from-orange-300 to-sky-300"
                   fixedGradient
                   trackClassName="bg-gradient-to-t from-orange-200/40 to-sky-200/40"

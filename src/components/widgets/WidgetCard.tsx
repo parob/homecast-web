@@ -74,6 +74,15 @@ interface WidgetCardProps {
    * square-ish control (a dial) that needs width in both orientations.
    */
   heroShape?: 'bar' | 'block';
+  /**
+   * Forces the hero to sit above its controls rather than alongside them.
+   *
+   * Landscape normally stands a hero beside the secondaries, which is right for
+   * a tall bar in a short panel. A wide hero cannot do that without taking the
+   * width its controls need — the thermostat's dial left the mode row as
+   * "H…", "C…", "A…". Widgets whose hero is wide say so here.
+   */
+  heroStack?: boolean;
   className?: string;
   style?: React.CSSProperties;
   accessory?: HomeKitAccessory;
@@ -138,6 +147,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   overlayContent,
   hero,
   heroShape = 'bar',
+  heroStack,
   className = '',
   style,
   accessory,
@@ -199,7 +209,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // the compact stacked controls.
   const isMobile = useIsMobile();
   const showHero = !!hero && expanded && !effectiveCompact;
-  const heroPortrait = isMobile !== false;
+  const heroPortrait = heroStack || isMobile !== false;
 
   const effectiveHeaderAction = editModeType ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
