@@ -357,7 +357,11 @@ export class ActionExecutor {
 
       // Dispatch lives on VirtualAccessoryManager so this action and a person operating
       // the same helper from the Helpers list cannot diverge.
-      h.apply(id, action.operation, { value, step: action.step, duration: action.duration });
+      // 'automation': this write must not be announced back into the trigger
+      // system, or the action would re-satisfy the trigger that caused it.
+      h.apply(id, action.operation, {
+        value, step: action.step, duration: action.duration, origin: 'automation',
+      });
 
       const output = {
         accessoryId: id,

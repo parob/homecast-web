@@ -257,8 +257,59 @@ export class StateStore {
     return this.virtualStates.get(accessoryId);
   }
 
-  updateVirtualState(accessoryId: string, value: unknown): void {
+  /**
+   * Set a virtual accessory's value, and announce it like any other change.
+   *
+   * `characteristicType` is what the accessory publishes elsewhere — the same
+   * name `accessories.list` reports and a trigger is registered against — so a
+   * "Device Changed" trigger aimed at a virtual accessory fires, and template
+   * triggers reading `virtual()` re-evaluate. Without the announcement this
+   * wrote the map and told nobody: putting the house into Away mode changed a
+   * value that anything watching for it never heard about, and an automation
+   * meant to react to it only ran if some unrelated device happened to change
+   * afterwards.
+   *
+   * `silent` is for restoring a value rather than setting one — seeding the
+   * store from what was persisted is not something that just happened, and
+   * announcing it would fire every trigger watching it on every relay reload.
+   */
+  updateVirtualState(accessoryId: string, value: unknown, options?: {
+    characteristicType?: string;
+    silent?: boolean;
+  }): void {
+    const oldValue = this.virtualStates.get(accessoryId);
+    const isFirstReport = !this.virtualStates.has(accessoryId);
     this.virtualStates.set(accessoryId, value);
+
+    if (options?.silent) return;
+    // Same suppression a device gets: re-setting the value it already holds is
+    // not a change, and a trigger watching for it must not fire twice.
+    if (!isFirstReport && valuesMatch(oldValue, value)) return;
+
+    const characteristicType = options?.characteristicType;
+    if (!characteristicType) return;
+
+    const ts = Date.now();
+    let changedMap = this.lastChanged.get(accessoryId);
+    if (!changedMap) {
+      changedMap = new Map();
+      this.lastChanged.set(accessoryId, changedMap);
+    }
+    changedMap.set(characteristicType, ts);
+
+    const event: StateChangeEvent = {
+      accessoryId,
+      characteristicType,
+      newValue: value,
+      oldValue,
+      timestamp: ts,
+    };
+    for (const listener of this.specificListeners.get(`${accessoryId}:${characteristicType}`) ?? []) {
+      try { listener(event); } catch (e) { console.error('[StateStore] Listener error:', e); }
+    }
+    for (const listener of this.globalListeners) {
+      try { listener(event); } catch (e) { console.error('[StateStore] Global listener error:', e); }
+    }
   }
 
   // ============================================================

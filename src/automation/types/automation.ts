@@ -5,6 +5,33 @@
 // Utilities
 // ============================================================
 
+/**
+ * The characteristic each virtual accessory type carries.
+ *
+ * Switch and Number reuse names the rest of the stack already understands, so
+ * they render, publish and script exactly like the real thing.
+ *
+ * The other types have no HomeKit analogue — HomeKit has no enum, no countdown
+ * and no free text — so they carry their own names. Those are real
+ * characteristics on a real accessory, not a side channel: a client that
+ * understands `virtual_mode` controls it, and one that doesn't still sees a
+ * named value it can display, which is what it would do for any characteristic
+ * it hasn't been taught.
+ *
+ * Lives here rather than in the relay because the engine needs it too — a
+ * value change is announced under this name, which is the same name a trigger
+ * is registered against.
+ */
+export const VIRTUAL_CHARACTERISTIC: Record<string, string> = {
+  input_boolean: 'power_state',
+  input_number: 'virtual_number',
+  counter: 'virtual_count',
+  input_select: 'virtual_mode',
+  timer: 'virtual_timer',
+  input_text: 'virtual_text',
+  input_datetime: 'virtual_datetime',
+};
+
 export interface Duration {
   hours?: number;
   minutes?: number;

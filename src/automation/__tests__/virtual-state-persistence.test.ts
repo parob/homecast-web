@@ -89,3 +89,70 @@ describe('virtual accessory values across a rebuild', () => {
     expect(manager.getVirtualAccessory('va-count')).toBeUndefined();
   });
 });
+
+describe('a value change announces itself', () => {
+  it('reaches a trigger watching that accessory', () => {
+    const seen: Array<{ accessoryId: string; characteristicType: string; newValue: unknown }> = [];
+    store.onAnyStateChange(e => seen.push({
+      accessoryId: e.accessoryId, characteristicType: e.characteristicType, newValue: e.newValue,
+    }));
+    manager.replaceAll([MODE], {});
+
+    manager.selectOption('va-mode', 'Away');
+
+    // Announced under the name the accessory publishes everywhere else, which
+    // is the name a trigger is registered against.
+    expect(seen).toEqual([
+      { accessoryId: 'va-mode', characteristicType: 'virtual_mode', newValue: 'Away' },
+    ]);
+  });
+
+  it('says nothing when registering or restoring', () => {
+    manager.replaceAll([MODE, COUNTER], { 'va-mode': 'Away', 'va-count': 4 });
+    const seen: unknown[] = [];
+    store.onAnyStateChange(e => seen.push(e));
+
+    // A rebuild that changes nothing: seeding is not an event, or every
+    // trigger would fire on every relay reload.
+    manager.replaceAll([MODE, COUNTER], { 'va-mode': 'Away', 'va-count': 4 });
+
+    expect(seen).toEqual([]);
+  });
+
+  it('does not announce a write the automation engine made itself', () => {
+    manager.replaceAll([MODE], {});
+    const seen: unknown[] = [];
+    store.onAnyStateChange(e => seen.push(e));
+
+    // The engine's own action landing as a state change would re-satisfy the
+    // trigger that caused it and run the automation again — the cycle
+    // relay-write.ts stops for devices, and this obeys the same rule.
+    manager.apply('va-mode', 'set', { value: 'Away', origin: 'automation' });
+
+    expect(store.getVirtualState('va-mode')).toBe('Away');
+    expect(seen).toEqual([]);
+  });
+
+  it('announces the same write when a person or an API makes it', () => {
+    manager.replaceAll([MODE], {});
+    const seen: unknown[] = [];
+    store.onAnyStateChange(e => seen.push(e));
+
+    manager.apply('va-mode', 'set', { value: 'Away' });
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it('says nothing when the value is set to what it already holds', () => {
+    manager.replaceAll([MODE], {});
+    manager.selectOption('va-mode', 'Away');
+    const seen: unknown[] = [];
+    store.onAnyStateChange(e => seen.push(e));
+
+    // Re-setting the value it already holds is not a change — the same
+    // suppression a real device gets, so a trigger cannot fire twice on it.
+    manager.selectOption('va-mode', 'Away');
+
+    expect(seen).toEqual([]);
+  });
+});

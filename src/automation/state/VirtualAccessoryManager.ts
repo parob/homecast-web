@@ -3,7 +3,7 @@
 
 import type { StateStore } from './StateStore';
 import type { VirtualAccessoryDefinition, Duration, VirtualOperation } from '../types/automation';
-import { durationToMs } from '../types/automation';
+import { durationToMs, VIRTUAL_CHARACTERISTIC } from '../types/automation';
 
 type EventEmitter = (eventType: string, eventData?: Record<string, unknown>) => void;
 type StatePusher = (accessoryId: string, state: unknown) => void;
@@ -51,29 +51,29 @@ export class VirtualAccessoryManager {
     // Set initial state
     switch (helper.type) {
       case 'input_boolean':
-        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? false);
+        this.setValue(helper.id, helper.initialValue ?? false, true);
         break;
       case 'input_number':
-        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? helper.min);
+        this.setValue(helper.id, helper.initialValue ?? helper.min, true);
         break;
       case 'input_select':
-        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? helper.options[0] ?? '');
+        this.setValue(helper.id, helper.initialValue ?? helper.options[0] ?? '', true);
         break;
       case 'input_text':
-        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? '');
+        this.setValue(helper.id, helper.initialValue ?? '', true);
         break;
       case 'input_datetime':
-        this.stateStore.updateVirtualState(helper.id, helper.initialValue ?? '');
+        this.setValue(helper.id, helper.initialValue ?? '', true);
         break;
       case 'timer':
         this.timers.set(helper.id, { state: 'idle', duration: 0, remaining: 0 });
-        this.stateStore.updateVirtualState(helper.id, 'idle');
+        this.setValue(helper.id, 'idle', true);
         break;
       case 'counter':
-        this.stateStore.updateVirtualState(helper.id, helper.initial ?? 0);
+        this.setValue(helper.id, helper.initial ?? 0, true);
         break;
       case 'schedule':
-        this.stateStore.updateVirtualState(helper.id, this.isScheduleActive(helper) ? 'on' : 'off');
+        this.setValue(helper.id, this.isScheduleActive(helper) ? 'on' : 'off', true);
         break;
     }
   }
@@ -133,10 +133,49 @@ export class VirtualAccessoryManager {
       // Timers are never restored: a half-elapsed countdown cannot be trusted
       // across a rebuild, which is the same call restoreStates makes.
       if (carried !== undefined && helper.type !== 'timer') {
-        this.stateStore.updateVirtualState(helper.id, carried);
+        // Silent: putting back the value it already had across a rebuild is
+        // not a change, and announcing it would fire every trigger watching
+        // this accessory on every sync.
+        this.setValue(helper.id, carried, true);
       }
     }
   }
+
+
+  /**
+   * Set a value and let the rest of the engine hear about it.
+   *
+   * The characteristic name is the one this accessory publishes everywhere
+   * else, which is also the name a trigger is registered against — so a
+   * "Device Changed" trigger aimed at a virtual accessory fires, and a
+   * template trigger reading `virtual()` re-evaluates.
+   *
+   * `silent` is for seeding rather than setting: registering an accessory or
+   * restoring what was persisted is not something that just happened, and
+   * announcing it would fire every trigger watching it on every relay reload.
+   */
+  private setValue(accessoryId: string, value: unknown, silent = false): void {
+    const type = this.helpers.get(accessoryId)?.type;
+    this.stateStore.updateVirtualState(accessoryId, value, {
+      characteristicType: type ? VIRTUAL_CHARACTERISTIC[type] : undefined,
+      // An engine write is never announced back into the engine. Its own
+      // action would land as a state change, re-satisfy the trigger that
+      // caused it and run again — the same cycle relay-write.ts exists to stop
+      // for HomeKit devices, and the reason a virtual accessory has to obey the
+      // same rule now that it announces at all.
+      silent: silent || this.origin === 'automation',
+    });
+  }
+
+  /**
+   * Who is performing the current operation.
+   *
+   * A person, an API call, MQTT or the dashboard is a 'client' write and is
+   * announced; the automation engine's own action is not. Set around `apply`
+   * rather than threaded through twelve operation methods, because every one
+   * of them would otherwise have to remember, and forgetting is silent.
+   */
+  private origin: 'client' | 'automation' = 'client';
 
   remove(accessoryId: string): void {
     this.helpers.delete(accessoryId);
@@ -151,17 +190,17 @@ export class VirtualAccessoryManager {
   toggle(accessoryId: string): void {
     const current = this.stateStore.getVirtualState(accessoryId);
     const newVal = !current;
-    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.setValue(accessoryId, newVal);
     this.pushState(accessoryId, newVal);
   }
 
   turnOn(accessoryId: string): void {
-    this.stateStore.updateVirtualState(accessoryId, true);
+    this.setValue(accessoryId, true);
     this.pushState(accessoryId, true);
   }
 
   turnOff(accessoryId: string): void {
-    this.stateStore.updateVirtualState(accessoryId, false);
+    this.setValue(accessoryId, false);
     this.pushState(accessoryId, false);
   }
 
@@ -173,7 +212,7 @@ export class VirtualAccessoryManager {
     const def = this.helpers.get(accessoryId);
     if (def?.type === 'input_number') {
       const clamped = Math.max(def.min, Math.min(def.max, value));
-      this.stateStore.updateVirtualState(accessoryId, clamped);
+      this.setValue(accessoryId, clamped);
       this.pushState(accessoryId, clamped);
     }
   }
@@ -197,7 +236,7 @@ export class VirtualAccessoryManager {
   // ============================================================
 
   selectOption(accessoryId: string, option: string): void {
-    this.stateStore.updateVirtualState(accessoryId, option);
+    this.setValue(accessoryId, option);
     this.pushState(accessoryId, option);
   }
 
@@ -206,7 +245,7 @@ export class VirtualAccessoryManager {
   // ============================================================
 
   setText(accessoryId: string, text: string): void {
-    this.stateStore.updateVirtualState(accessoryId, text);
+    this.setValue(accessoryId, text);
     this.pushState(accessoryId, text);
   }
 
@@ -220,7 +259,7 @@ export class VirtualAccessoryManager {
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const max = (def?.type === 'counter' ? def.max : undefined) ?? Infinity;
     const newVal = Math.min(current + step, max);
-    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.setValue(accessoryId, newVal);
     this.pushState(accessoryId, newVal);
   }
 
@@ -230,14 +269,14 @@ export class VirtualAccessoryManager {
     const step = (def?.type === 'counter' ? def.step : undefined) ?? 1;
     const min = (def?.type === 'counter' ? def.min : undefined) ?? -Infinity;
     const newVal = Math.max(current - step, min);
-    this.stateStore.updateVirtualState(accessoryId, newVal);
+    this.setValue(accessoryId, newVal);
     this.pushState(accessoryId, newVal);
   }
 
   resetCounter(accessoryId: string): void {
     const def = this.helpers.get(accessoryId);
     const initial = (def?.type === 'counter' ? def.initial : undefined) ?? 0;
-    this.stateStore.updateVirtualState(accessoryId, initial);
+    this.setValue(accessoryId, initial);
     this.pushState(accessoryId, initial);
   }
 
@@ -264,7 +303,7 @@ export class VirtualAccessoryManager {
         break;
       case 'counter': {
         const n = Number(value);
-        this.stateStore.updateVirtualState(accessoryId, n);
+        this.setValue(accessoryId, n);
         this.pushState(accessoryId, n);
         break;
       }
@@ -297,7 +336,7 @@ export class VirtualAccessoryManager {
       // Timers are not resumed — a half-elapsed countdown can't be trusted
       // across a restart, and `restoreOnRestart` is not implemented.
       if (this.helpers.get(accessoryId)?.type === 'timer') continue;
-      this.stateStore.updateVirtualState(accessoryId, value);
+      this.setValue(accessoryId, value, true);
     }
   }
 
@@ -324,13 +363,13 @@ export class VirtualAccessoryManager {
       timerState.state = 'idle';
       timerState.remaining = 0;
       timerState.finishedAt = Date.now();
-      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.setValue(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
     }, totalMs);
 
     this.timers.set(accessoryId, timerState);
-    this.stateStore.updateVirtualState(accessoryId, 'active');
+    this.setValue(accessoryId, 'active');
     this.fireEvent('timer.started', { accessoryId, duration: totalMs });
     this.pushState(accessoryId, 'active');
   }
@@ -346,7 +385,7 @@ export class VirtualAccessoryManager {
     timerState.remaining = Math.max(0, timerState.remaining - elapsed);
     timerState.state = 'paused';
 
-    this.stateStore.updateVirtualState(accessoryId, 'paused');
+    this.setValue(accessoryId, 'paused');
     this.fireEvent('timer.paused', { accessoryId, remaining: timerState.remaining });
     this.pushState(accessoryId, 'paused');
   }
@@ -362,12 +401,12 @@ export class VirtualAccessoryManager {
       timerState.state = 'idle';
       timerState.remaining = 0;
       timerState.finishedAt = Date.now();
-      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.setValue(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
     }, timerState.remaining);
 
-    this.stateStore.updateVirtualState(accessoryId, 'active');
+    this.setValue(accessoryId, 'active');
     this.fireEvent('timer.resumed', { accessoryId });
     this.pushState(accessoryId, 'active');
   }
@@ -382,7 +421,7 @@ export class VirtualAccessoryManager {
     if (timerState.state !== 'idle') {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      this.stateStore.updateVirtualState(accessoryId, 'idle');
+      this.setValue(accessoryId, 'idle');
       this.fireEvent('timer.cancelled', { accessoryId });
       this.pushState(accessoryId, 'idle');
     }
@@ -400,7 +439,7 @@ export class VirtualAccessoryManager {
     // has to leave the same trace behind. cancelTimer deliberately does not.
     timerState.finishedAt = Date.now();
 
-    this.stateStore.updateVirtualState(accessoryId, 'idle');
+    this.setValue(accessoryId, 'idle');
     this.fireEvent('timer.finished', { accessoryId });
     this.pushState(accessoryId, 'idle');
   }
@@ -438,6 +477,20 @@ export class VirtualAccessoryManager {
    * nothing via the other.
    */
   apply(
+    accessoryId: string,
+    operation: VirtualOperation,
+    opts: { value?: unknown; step?: number; duration?: Duration; origin?: 'client' | 'automation' } = {},
+  ): void {
+    const previousOrigin = this.origin;
+    this.origin = opts.origin ?? 'client';
+    try {
+      this.applyInner(accessoryId, operation, opts);
+    } finally {
+      this.origin = previousOrigin;
+    }
+  }
+
+  private applyInner(
     accessoryId: string,
     operation: VirtualOperation,
     opts: { value?: unknown; step?: number; duration?: Duration } = {},
