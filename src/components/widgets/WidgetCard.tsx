@@ -326,7 +326,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
             {displayTitle}
           </CardTitle>
-          <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
+          {/* No height cap when the subtitle is showing. It used to be capped at
+              32px, which fits exactly one line — so a tile carrying its location
+              as well as its state ("Closed · 57%" over "Clitheroe Road · Bedroom
+              1") had the second line sliced in half, and worse in the expanded
+              panel where the text is bigger. Nothing animates this height, so
+              the cap was only ever clipping. max-h-0 stays: that branch is what
+              collapses the subtitle away when the title needs two lines. */}
+          <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
             <CardDescription
               className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
             >
