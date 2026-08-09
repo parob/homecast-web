@@ -571,8 +571,19 @@ async function executeHomeKitActionInner(
       // key as "delete every helper" would let one old pod wipe them all.
       let syncedHelpers: number | undefined;
       if (Array.isArray(virtuals)) {
-        const list = virtuals as Parameters<typeof engine.syncVirtualAccessories>[0];
-        engine.syncVirtualAccessories(list);
+        // `currentState` is the value, not part of the definition, so it is
+        // split off here: leaving it on would make every value change look
+        // like a definition change and rebuild the helper — cancelling its
+        // timers — each time it was set.
+        const raw = virtuals as Array<Record<string, unknown>>;
+        const persistedStates: Record<string, unknown> = {};
+        const list = raw.map(({ currentState, ...definition }) => {
+          if (currentState !== undefined && typeof definition.id === 'string') {
+            persistedStates[definition.id] = currentState;
+          }
+          return definition;
+        }) as unknown as Parameters<typeof engine.syncVirtualAccessories>[0];
+        engine.syncVirtualAccessories(list, persistedStates);
         syncedHelpers = list.length;
       }
       const list = (automations ?? []) as Parameters<typeof engine.loadAutomations>[0];

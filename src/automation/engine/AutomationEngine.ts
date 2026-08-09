@@ -186,8 +186,11 @@ export class AutomationEngine {
    * deleted rather than left running. Safe to call repeatedly: helpers whose
    * definition hasn't changed keep their value and their timers.
    */
-  syncVirtualAccessories(helpers: VirtualAccessoryDefinition[]): void {
-    this.virtualManager.replaceAll(helpers);
+  syncVirtualAccessories(
+    helpers: VirtualAccessoryDefinition[],
+    persistedStates?: Record<string, unknown>,
+  ): void {
+    this.virtualManager.replaceAll(helpers, persistedStates);
     console.log(`[AutomationEngine] Synced ${helpers.length} helpers`);
   }
 

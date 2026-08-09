@@ -108,7 +108,10 @@ export class AutomationSyncManager {
    */
   pushVirtualState(accessoryId: string, state: unknown): void {
     if (this.connected) {
-      this.transport.sendMessage('automation.helper_state', { accessoryId, state });
+      // `automation.virtual_state`, not `helper_state`: the rename renamed the
+      // server's handler and left this behind, so every value a user set was
+      // sent to an action nothing listened for and silently dropped.
+      this.transport.sendMessage('automation.virtual_state', { accessoryId, state });
     }
   }
 

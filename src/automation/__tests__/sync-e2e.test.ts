@@ -89,6 +89,20 @@ afterEach(() => {
   clearAutomationHandlers();
 });
 
+describe('relay -> server: virtual accessory values', () => {
+  it('pushes a changed value under the action the server listens for', () => {
+    // The rename left this sending `automation.helper_state`, which nothing
+    // handled, so every value a user set was dropped in flight and reset to
+    // its initial on the relay's next reload. The name is the whole contract.
+    sync.pushVirtualState('va-mode', 'Away');
+
+    const msg = harness.sent.find(m => m.type.endsWith('virtual_state'));
+    expect(msg, `sent: ${harness.sent.map(m => m.type).join(', ')}`).toBeDefined();
+    expect(msg!.type).toBe('automation.virtual_state');
+    expect(msg!.payload).toEqual({ accessoryId: 'va-mode', state: 'Away' });
+  });
+});
+
 describe('server -> relay sync', () => {
   it('loads automations pushed as sync_all and runs them on a HomeKit event', async () => {
     engine.loadAutomations([makeAutomation()]);

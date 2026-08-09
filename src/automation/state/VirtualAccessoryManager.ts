@@ -102,7 +102,10 @@ export class VirtualAccessoryManager {
    *   honestly, so it goes back to idle.
    * - **Deleted** helpers are removed, which also cancels their timers.
    */
-  replaceAll(helpers: VirtualAccessoryDefinition[]): void {
+  replaceAll(
+    helpers: VirtualAccessoryDefinition[],
+    persistedStates?: Record<string, unknown>,
+  ): void {
     const next = new Map(helpers.map(h => [h.id, h]));
 
     for (const id of [...this.helpers.keys()]) {
@@ -115,9 +118,20 @@ export class VirtualAccessoryManager {
       // so key order is stable; a false "changed" only costs a rebuild.
       if (existing && JSON.stringify(existing) === JSON.stringify(helper)) continue;
 
-      const carried = existing ? this.stateStore.getVirtualState(helper.id) : undefined;
+      // What the value should be after this rebuild. A helper already running
+      // here keeps what it holds — this engine is the thing that has been
+      // changing it, so its value is newer than anything the sync carries.
+      // One we are meeting for the first time takes the stored value instead
+      // of the definition's initial one: a relay reload rebuilds the whole set
+      // from scratch, and without this every value reset to its initial on
+      // every reload, which is exactly what "it keeps forgetting" was.
+      const carried = existing
+        ? this.stateStore.getVirtualState(helper.id)
+        : persistedStates?.[helper.id];
       if (existing) this.remove(helper.id);  // also clears any pending timeout
       this.register(helper);
+      // Timers are never restored: a half-elapsed countdown cannot be trusted
+      // across a rebuild, which is the same call restoreStates makes.
       if (carried !== undefined && helper.type !== 'timer') {
         this.stateStore.updateVirtualState(helper.id, carried);
       }
