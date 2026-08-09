@@ -400,6 +400,34 @@ describe('virtual accessory controls', () => {
     expect(writes).toEqual([['va-1', 'virtual_datetime', '2026-07-31T08:25']]);
   });
 
+  it('closes the expanded tile when Enter finishes a text edit', () => {
+    cleanup();
+    const onFinishEditing = vi.fn();
+    const saved = accessoryFor('virtual_text');
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: saved,
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+          onFinishEditing,
+          expanded: true,
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    const input = screen.getByLabelText('Set Test Value');
+    fireEvent.change(input, { target: { value: 'hello' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // Enter means finished, so the tile that opened for the edit closes —
+    // the same thing it does for a number and for a date.
+    expect(onFinishEditing).toHaveBeenCalledTimes(1);
+  });
+
   it('offers only the half of the picker each shape needs', () => {
     cleanup();
     renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: false });

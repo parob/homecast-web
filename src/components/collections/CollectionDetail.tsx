@@ -1321,6 +1321,7 @@ export function CollectionDetail({
                         >
                           <AccessoryWidget
                                           onSetValue={onSetValue}
+                                          onFinishEditing={collapseExpandedWidget}
                             homeName={getHomeName(accessory.homeId)}
                             accessory={accessory}
                             compact={false}
@@ -1673,6 +1674,7 @@ export function CollectionDetail({
                             >
                               <AccessoryWidget
                                           onSetValue={onSetValue}
+                                          onFinishEditing={collapseExpandedWidget}
                                 homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
                                 compact={false}

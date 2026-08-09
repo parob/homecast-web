@@ -454,6 +454,7 @@ export function AccessorySearch({
                                           <ExpandedOverlay isExpanded={isExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
                                             <AccessoryWidget
                                           onSetValue={onSetValue}
+                                          onFinishEditing={collapseExpandedWidget}
                                               accessory={acc}
                                               onToggle={onToggle}
                                               onSlider={onSlider}
