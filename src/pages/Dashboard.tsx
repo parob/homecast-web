@@ -56,7 +56,7 @@ import { AreaSummary } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
-import { useVirtualAccessories } from '@/components/virtual-accessories/useVirtualAccessories';
+import { useVirtualAccessories, type VirtualTimerInfo } from '@/components/virtual-accessories/useVirtualAccessories';
 import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccessoryEditContext';
 
 /**
@@ -1532,6 +1532,7 @@ const Dashboard = () => {
   // and the editor exist, and threading them as deps would rebuild every tile's
   // menu on each poll.
   const helperAccessoriesRef = useRef<VirtualAccessoryDefinition[]>([]);
+  const helperTimersRef = useRef<Record<string, VirtualTimerInfo>>({});
   const openHelperEditorRef = useRef<(opts?: { helper?: VirtualAccessoryDefinition; roomId?: string }) => void>(() => {});
 
   /**
@@ -1546,6 +1547,17 @@ const Dashboard = () => {
   const findVirtualAccessory = useCallback((accessoryId: string) => {
     const wanted = accessoryId.toLowerCase();
     return helperAccessoriesRef.current.find(h => h.id.toLowerCase() === wanted);
+  }, []);
+  /**
+   * A timer's live countdown. Same case-insensitive match as the definition
+   * lookup, and for the same reason — the id comes from the relay while this
+   * is keyed by the stored id.
+   */
+  const findVirtualTimer = useCallback((accessoryId: string) => {
+    const wanted = accessoryId.toLowerCase();
+    const hit = Object.entries(helperTimersRef.current)
+      .find(([id]) => id.toLowerCase() === wanted);
+    return hit?.[1];
   }, []);
   const isVirtualAccessoryId = useCallback(
     (accessoryId: string) => findVirtualAccessory(accessoryId) !== undefined,
@@ -1564,7 +1576,8 @@ const Dashboard = () => {
       return () => setDeletingHelper(helper);
     },
     definition: findVirtualAccessory,
-  }), [findVirtualAccessory]);
+    timer: findVirtualTimer,
+  }), [findVirtualAccessory, findVirtualTimer]);
 
   const openHelperEditor = useCallback((opts: { helper?: VirtualAccessoryDefinition; roomId?: string } = {}) => {
     setEditingHelper(opts.helper);
@@ -4410,6 +4423,7 @@ const Dashboard = () => {
     toast.error(crossRoomAdvice(activeId));
   }, [crossRoomAdvice]);
   helperAccessoriesRef.current = helperAccessories.helpers;
+  helperTimersRef.current = helperAccessories.timers;
 
   const filteredRooms = useMemo(() => {
     // Filter out hidden rooms (unless in edit mode)

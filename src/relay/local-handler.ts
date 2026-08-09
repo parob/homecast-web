@@ -618,7 +618,18 @@ async function executeHomeKitActionInner(
       if (!engine) {
         throw Object.assign(new Error('Automation engine not running'), { code: ErrorCode.UNKNOWN_ACTION });
       }
-      return { states: engine.getVirtualStates() };
+      // Timer info travels with the values, because it changes at the same
+      // moments and for the same reasons. It is accessory-level rather than a
+      // characteristic, so it does NOT ride the value channel — a tile polling
+      // states alone saw a timer go idle and had nothing to say when it ran
+      // out, which reads as though it never ran.
+      const timers: Record<string, unknown> = {};
+      for (const helper of engine.virtualManager.getAllVirtualAccessories()) {
+        if (helper.type !== 'timer') continue;
+        const info = engine.virtualManager.getTimerInfo(helper.id);
+        if (info) timers[helper.id] = info;
+      }
+      return { states: engine.getVirtualStates(), timers };
     }
 
     // A person operating a helper by hand. Same vocabulary as the `helper`

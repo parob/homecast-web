@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
+import type { VirtualTimerInfo } from '@/components/virtual-accessories/useVirtualAccessories';
 
 /**
  * How a widget offers "edit this accessory" and "delete this accessory".
@@ -27,10 +28,19 @@ export interface VirtualAccessoryActions {
    * of date, which is the normal state of affairs right after a deploy.
    */
   definition: (accessoryId: string) => VirtualAccessoryDefinition | undefined;
+  /**
+   * A timer's live countdown, or undefined if this isn't one.
+   *
+   * Polled, unlike the accessory itself: the countdown changes when the timer
+   * does, while the accessory list is minutes old, so a tile reading the
+   * accessory could not say when a timer had run out.
+   */
+  timer?: (accessoryId: string) => VirtualTimerInfo | undefined;
 }
 
 const NONE: VirtualAccessoryActions = {
   edit: () => undefined, remove: () => undefined, definition: () => undefined,
+  timer: () => undefined,
 };
 
 const VirtualAccessoryActionsContext = createContext<VirtualAccessoryActions>(NONE);
@@ -52,4 +62,9 @@ export function useVirtualAccessoryDefinition(
 ): VirtualAccessoryDefinition | undefined {
   const { definition } = useContext(VirtualAccessoryActionsContext);
   return accessoryId ? definition(accessoryId) : undefined;
+}
+
+export function useVirtualTimerInfo(accessoryId?: string): VirtualTimerInfo | undefined {
+  const { timer } = useContext(VirtualAccessoryActionsContext);
+  return accessoryId ? timer?.(accessoryId) : undefined;
 }

@@ -9,8 +9,9 @@
 // coverage assertion below runs over the whole characteristic list rather than
 // naming the two that were missing.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import { VirtualAccessoryWidget } from '../VirtualAccessoryWidget';
+import { VirtualAccessoryEditProvider } from '../VirtualAccessoryEditContext';
 import type { WidgetProps } from '../types';
 
 // The widget tree reaches lib/config, which reads localStorage at import time.
@@ -428,6 +429,55 @@ describe('virtual accessory controls', () => {
     expect(onFinishEditing).toHaveBeenCalledTimes(1);
   });
 
+  it('shows when a timer last ran out, from the polled countdown', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_timer');
+    saved.services[0].characteristics[0].value = 'idle';
+    const finishedAt = new Date('2026-08-09T14:32:00').getTime();
+
+    render(
+      <VirtualAccessoryEditProvider
+        value={{
+          edit: () => undefined,
+          remove: () => undefined,
+          definition: () => undefined,
+          // The live channel, which is where a finish actually shows up: the
+          // accessory itself is as old as the last accessories.list.
+          timer: () => ({ state: 'idle' as const, durationMs: 20_000, finishedAt }),
+        }}
+      >
+        <VirtualAccessoryWidget
+          {...({
+            accessory: saved,
+            getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+            onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+          } as unknown as WidgetProps)}
+        />
+      </VirtualAccessoryEditProvider>,
+    );
+
+    expect(screen.getByText(/Finished/)).toBeTruthy();
+    expect(screen.queryByText('Idle')).toBeNull();
+  });
+
+  it('still says Idle for a timer that has never run', () => {
+    cleanup();
+    const saved = accessoryFor('virtual_timer');
+    saved.services[0].characteristics[0].value = 'idle';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: saved,
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByText('Idle')).toBeTruthy();
+  });
+
   it('offers only the half of the picker each shape needs', () => {
     cleanup();
     renderWidget('virtual_datetime', { virtualHasDate: true, virtualHasTime: false });
@@ -680,6 +730,80 @@ describe('virtual accessory controls', () => {
         render(<VirtualAccessoryWidget {...props} />);
         expect(screen.getByText(expected)).toBeTruthy();
       }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A timer that has run out has five seconds to say so, then goes back to
+  // answering the question you actually ask of a finished timer: when.
+  it('announces that a timer is up, then settles into its finish time', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const finishedAt = Date.now();
+      renderWidget('virtual_timer', { virtualFinishedAt: finishedAt });
+      expect(screen.getByRole('status').textContent).toBe('Time’s up');
+
+      act(() => { vi.advanceTimersByTime(5_100); });
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByText(/^Finished /)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Opening the app a moment after it fired should still show the alert — the
+  // window is keyed on the finish instant, not on watching the transition.
+  it('still announces a timer that finished just before the tile mounted', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      renderWidget('virtual_timer', { virtualFinishedAt: Date.now() - 3_000 });
+      expect(screen.getByRole('status').textContent).toBe('Time’s up');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stays quiet about a timer that finished long ago', () => {
+    cleanup();
+    renderWidget('virtual_timer', { virtualFinishedAt: Date.now() - 3_600_000 });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText(/^Finished /)).toBeTruthy();
+  });
+
+  // cancelTimer leaves finishedAt alone on purpose, so a cancelled timer has
+  // nothing to announce and nothing to report.
+  it('stays quiet about a cancelled timer', () => {
+    cleanup();
+    renderWidget('virtual_timer', {});
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('Idle')).toBeTruthy();
+  });
+
+  // A finish instant outlives the run after it. Starting again within the
+  // window must not leave the tile shouting over a live countdown.
+  it('stops announcing once the timer is started again', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const restarted = accessoryFor('virtual_timer', {
+        virtualFinishedAt: Date.now() - 1_000,
+        virtualStartedAt: Date.now(),
+        virtualDurationMs: 300_000,
+      });
+      restarted.services[0].characteristics[0].value = 'active';
+      render(<VirtualAccessoryWidget {...({
+        accessory: restarted,
+        getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+        onSetValue: () => {},
+        onSlider: () => {},
+        onToggle: () => {},
+      } as unknown as WidgetProps)} />);
+
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByText('5:00 left')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

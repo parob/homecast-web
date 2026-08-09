@@ -47,9 +47,27 @@ function parseHelpers(entities: StoredHelperEntity[]): VirtualAccessoryDefinitio
  * same helper's value, and a change made in one place would leave the others
  * showing the old one until something happened to refetch.
  */
+/**
+ * A timer's countdown, as the relay reports it.
+ *
+ * Polled alongside the values rather than read off the accessory, because it
+ * changes at the same moments and the accessory list is fetched minutes apart —
+ * a tile reading the accessory saw a timer go idle and had nothing to say about
+ * when it ran out.
+ */
+export interface VirtualTimerInfo {
+  state: 'idle' | 'active' | 'paused';
+  durationMs: number;
+  startedAt?: number;
+  endsAt?: number;
+  remainingMs?: number;
+  finishedAt?: number;
+}
+
 export function useVirtualAccessories(homeId: string | null, options: { active?: boolean } = {}) {
   const active = options.active ?? true;
   const [states, setStates] = useState<Record<string, unknown>>({});
+  const [timers, setTimers] = useState<Record<string, VirtualTimerInfo>>({});
   /** Null while unknown; false once we know the engine isn't reachable. */
   const [engineLive, setEngineLive] = useState<boolean | null>(null);
 
@@ -99,10 +117,14 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
       // the operator's service account, not to them. The request then fails and
       // the dashboard concludes the engine is unreachable, disabling every
       // control. Resolving by home is the only lookup that works for everyone.
-      const res = await serverConnection.request<{ states: Record<string, unknown> }>(
-        'automation.virtual_states', { homeId },
-      );
+      const res = await serverConnection.request<{
+        states: Record<string, unknown>;
+        timers?: Record<string, VirtualTimerInfo>;
+      }>('automation.virtual_states', { homeId });
       setStates(res?.states ?? {});
+      // Absent on a relay too old to send them — leave what we have rather
+      // than blanking a countdown that is still running.
+      if (res?.timers) setTimers(res.timers);
       setEngineLive(true);
     } catch {
       // Relay offline, or running a build without helper support. Values stay
@@ -174,6 +196,7 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     helpers,
     byRoom,
     states,
+    timers,
     live: engineLive === true,
     engineUnreachable: engineLive === false,
     refetch,

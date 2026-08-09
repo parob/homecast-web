@@ -3,7 +3,7 @@ import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, Sliders
 import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
-import { useVirtualAccessoryDefinition } from './VirtualAccessoryEditContext';
+import { useVirtualAccessoryDefinition, useVirtualTimerInfo } from './VirtualAccessoryEditContext';
 import { VirtualDateTimeControl, formatStored } from './VirtualDateTimeControl';
 import { durationToMs } from '@/automation/types/automation';
 
@@ -149,6 +149,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // the relay — so a duration is known even while the relay serves an older
   // bundle that doesn't publish one.
   const definition = useVirtualAccessoryDefinition(accessory?.id);
+  // Polled, so it is current; the accessory's own copy is as old as the last
+  // accessories.list, which is minutes. Preferred wherever it has an answer —
+  // a timer running out is exactly the moment the accessory has not heard about.
+  const liveTimer = useVirtualTimerInfo(accessory?.id);
   const FIELD_CLASS = fieldClass(isDarkBackground, expanded);
   const BUTTON_CLASS = buttonClass(isDarkBackground, expanded);
 
@@ -190,15 +194,26 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
   const configuredMs = definition?.type === 'timer' ? durationToMs(definition.duration) : undefined;
+  // Hook is called unconditionally — every other type simply has no finish
+  // instant, so it reads false.
+  const recentlyFinished = useRecentlyFinished(meta.virtualFinishedAt, TIMER_ALERT_MS);
+  // A finish instant outlives the run after it, so a timer started again within
+  // five seconds would otherwise still be shouting. Running wins.
+  const alerting = charType === 'virtual_timer' && !running && recentlyFinished;
   const display = charType === 'virtual_timer'
     ? (
-      <TimerReadout
+      alerting
+        // role=status so a screen reader hears it too — the animation says
+        // nothing to anyone who can't see it, and this is the whole point of
+        // the five seconds.
+        ? <span role="status">Time’s up</span>
+        : <TimerReadout
         accessoryId={accessory.id}
         running={running}
-        startedAt={meta.virtualStartedAt}
-        endsAt={meta.virtualEndsAt}
-        durationMs={configuredMs ?? meta.virtualDurationMs}
-        finishedAt={meta.virtualFinishedAt}
+        startedAt={liveTimer?.startedAt ?? meta.virtualStartedAt}
+        endsAt={liveTimer?.endsAt ?? meta.virtualEndsAt}
+        durationMs={configuredMs ?? liveTimer?.durationMs ?? meta.virtualDurationMs}
+        finishedAt={liveTimer?.finishedAt ?? meta.virtualFinishedAt}
       />
     )
     : charType === 'virtual_datetime'
@@ -212,8 +227,15 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     <WidgetCard
       title={accessory.name}
       subtitle={display}
-      icon={<Icon className="h-4 w-4" />}
-      isOn={charType === 'virtual_timer' ? running : false}
+      // The alarm rides on the icon, never on the tile. An animated transform
+      // (or opacity) on an ancestor of a backdrop-filter element establishes a
+      // new backdrop root, which switches the widget's glass off for as long as
+      // it runs — see the entrance animation this was learned from.
+      icon={<Icon className={`h-4 w-4${alerting ? ' timer-alarm' : ''}`} />}
+      // Lighting the tile for the alert reuses the on-state tint, which is a
+      // colour change only, so the glass survives it. WidgetWrapper fades tints
+      // over 300ms, so it comes up and settles rather than blinking.
+      isOn={charType === 'virtual_timer' ? (running || alerting) : false}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
@@ -401,6 +423,38 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
  * Mac app is restarted is not a working countdown.
  */
 const localTimerStarts = new Map<string, number>();
+
+/** How long a timer shouts that it is up before settling into its finish time. */
+const TIMER_ALERT_MS = 5000;
+
+/**
+ * True for `windowMs` after a timer last ran out.
+ *
+ * Keyed on the finish instant rather than on a running→idle transition. A tile
+ * is not one component — the compact and expanded tiles are separate instances
+ * of this widget rendering the same accessory — so a watcher for the transition
+ * would miss every finish that landed while its own instance happened to be
+ * unmounted. An instant says the same thing to whoever renders next, which is
+ * also why opening the app three seconds after a timer fired still shows it.
+ *
+ * Cancelling deliberately leaves finishedAt alone (see cancelTimer in
+ * VirtualAccessoryManager), so a cancelled timer stays quiet — only one that
+ * actually ran down, or was finished early on purpose, announces itself.
+ */
+function useRecentlyFinished(finishedAt: number | undefined, windowMs: number): boolean {
+  const [, tick] = React.useState(0);
+  const active = finishedAt !== undefined && Date.now() - finishedAt < windowMs;
+
+  // One timeout to close the window — the alert doesn't count down, it just ends.
+  React.useEffect(() => {
+    if (!active || finishedAt === undefined) return;
+    const left = windowMs - (Date.now() - finishedAt);
+    const t = setTimeout(() => tick(n => n + 1), Math.max(0, left) + 50);
+    return () => clearTimeout(t);
+  }, [active, finishedAt, windowMs]);
+
+  return active;
+}
 
 /**
  * When a finished timer ran out — the time itself, not how long ago.
