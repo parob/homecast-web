@@ -65,6 +65,15 @@ import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccess
  * name because rooms are grouped by name.
  */
 const HOME_LEVEL_ROOM = '\u0000home-level';
+
+/**
+ * Ancestor crumbs in the title bar. They keep the dimmed weight of the plain
+ * text they replaced and brighten on hover, so the bar reads as navigation
+ * rather than a label.
+ */
+const BREADCRUMB_LINK_CLASS =
+  'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
+
 import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
@@ -7076,11 +7085,27 @@ const Dashboard = () => {
                       const roomName = currentRoom?.name || 'Room';
                       return (
                         <>
-                          <span className="opacity-60">{homes.find(h => h.id === selectedHomeId)?.name || 'Home'}</span>
+                          {selectedHomeId ? (
+                            <button
+                              type="button"
+                              className={BREADCRUMB_LINK_CLASS}
+                              onClick={() => handleSelectHome(selectedHomeId)}
+                            >
+                              {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
+                            </button>
+                          ) : (
+                            <span className="opacity-60">Home</span>
+                          )}
                           <span className="mx-2 opacity-40">/</span>
                           {parentGroup && (
                             <>
-                              <span className="opacity-60">{parentGroup.name}</span>
+                              <button
+                                type="button"
+                                className={BREADCRUMB_LINK_CLASS}
+                                onClick={() => handleSelectRoomGroup(parentGroup.entityId)}
+                              >
+                                {parentGroup.name}
+                              </button>
                               <span className="mx-2 opacity-40">/</span>
                             </>
                           )}
@@ -7169,7 +7194,17 @@ const Dashboard = () => {
                     })()
                   ) : selectedRoomGroup ? (
                     <>
-                      <span className="opacity-60">{homes.find(h => h.id === selectedHomeId)?.name || 'Home'}</span>
+                      {selectedHomeId ? (
+                        <button
+                          type="button"
+                          className={BREADCRUMB_LINK_CLASS}
+                          onClick={() => handleSelectHome(selectedHomeId)}
+                        >
+                          {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
+                        </button>
+                      ) : (
+                        <span className="opacity-60">Home</span>
+                      )}
                       <span className="mx-2 opacity-40">/</span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
