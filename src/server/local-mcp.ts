@@ -52,7 +52,19 @@ const TOOLS = [
     name: 'get_state',
     description:
       'Get state across all homes. Returns nested dict: {home_key: {room_key: {accessory_key: {type, on, brightness, ...}}}}. ' +
-      'Settable properties listed in _settable array. Scene names in _scenes per home.',
+      'Settable properties listed in _settable array. Scene names in _scenes per home. ' +
+      'VIRTUAL ACCESSORIES appear here alongside real devices: values the home owns rather than hardware, ' +
+      'read and written exactly like a device. Recognise one by its characteristic — ' +
+      'virtual_mode (a named choice like "Home"/"Away"), virtual_count (a number you add to), ' +
+      'virtual_number (a setting), virtual_text (free text), virtual_datetime (a date and/or time), ' +
+      'virtual_timer ("idle"/"active"/"paused"); a virtual switch carries plain on. ' +
+      'They are the home\'s memory: HomeKit stores whether a light is on, never whether the house is in Away mode ' +
+      'or whether you have already reported the leak. Read one before deciding rather than guessing, ' +
+      'and set one after acting so the next thing to look knows what happened. ' +
+      'A Homecast automation can read one in a condition with virtual(\'<id>\') and change one with a ' +
+      'Set Virtual Accessory action, but those automations are built in the app, not over MCP. ' +
+      'A HomeKit automation cannot use one at all — HomeKit cannot see them, so the slug will not resolve. ' +
+      'Changing one does not itself fire an automation: it is a value to read, not an event to react to.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -257,6 +269,10 @@ const TOOLS = [
       '{"type":"duration","durationSeconds":3600} — repeating interval. ' +
       'Presence and location (arrive/leave home) triggers CANNOT be created — Apple restricts them to the Home app; ' +
       'tell the user to create those in Apple Home. ' +
+      'Virtual accessories CANNOT appear anywhere in a HomeKit automation — not as an event, a condition or an ' +
+      'action — because HomeKit cannot see them, so their slug will not resolve. Either read the virtual accessory ' +
+      'yourself with get_state and create the automation only when it says so, or have the user build a Homecast ' +
+      'automation in the app, where a condition can read one with virtual(\'<id>\') and an action can set one. ' +
       'CONDITIONS must ALL be true for actions to run and support equality only ' +
       '(e.g. only while alarm_state is "away"): {"type":"characteristic","accessory":"<slug>","characteristic":"<property>","value":<v>}. ' +
       'No greater/less-than or time-window conditions. ' +
