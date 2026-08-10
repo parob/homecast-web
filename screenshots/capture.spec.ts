@@ -708,6 +708,21 @@ test.describe('App Store screenshots', () => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
   });
 
+  /**
+   * A tighter viewport than the docs shots use, scaled up to the same
+   * 2560×1600 the App Store wants.
+   *
+   * At 1280 wide the masonry lays out four narrow columns, so a room with five
+   * devices produced one thin band of tiles across the top and two thirds of
+   * the frame was empty wallpaper — and the store renders these at 800×400,
+   * where that band is unreadable. Fewer, wider columns fill the frame, make
+   * every label legible at thumbnail size, and give the thermostat's dial room
+   * beside its name instead of squeezing it.
+   *
+   * Keep the product 2560×1600: the store rejects anything else for Mac.
+   */
+  test.use({ viewport: { width: 1000, height: 625 }, deviceScaleFactor: 2.56 });
+
   // 1 — Home overview with ocean gradient
   test('appstore 01 — My Home overview', async ({ page }) => {
     overrideSettings(BASE_SETTINGS);
@@ -763,6 +778,18 @@ test.describe('App Store screenshots', () => {
     await page.waitForTimeout(3000);
     await page.screenshot({ path: appStoreImg('05-beach-house.png') });
   });
+
+  /**
+   * The dialog shots keep the roomier viewport.
+   *
+   * The zoom above exists to close up dead space around a handful of tiles;
+   * a settings dialog has the opposite problem. It is taller than a 625px
+   * viewport, so the same zoom slices the bottom row off mid-token — and a
+   * screenshot that looks cropped by accident is worse than one with margin
+   * around it.
+   */
+  test.describe('dialogs', () => {
+    test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
 
   // 6 — Settings dialog (Display tab — community builds have no Plan content)
   test('appstore 06 — Settings', async ({ page }) => {
@@ -838,6 +865,7 @@ test.describe('App Store screenshots', () => {
     await page.waitForTimeout(2000);
     await page.screenshot({ path: appStoreImg('10-oauth-consent.png') });
   });
+  }); // dialogs
 });
 
 // ── iPhone App Store Screenshots (1284×2778 at 3x) ──────────────────────────

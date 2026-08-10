@@ -337,7 +337,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       {iconElement}
       <div className="min-w-0 flex-1">
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
-          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2' : 'truncate'} selectable`}>
+          {/* `break-words` is what makes the two-line clamp end in an ellipsis.
+              Without it a word longer than the column — "Conditioner" beside a
+              thermostat's dial — overflows the box and gets sliced mid-word by
+              the clamp's `overflow: hidden`, with no ellipsis to show anything
+              was lost. Breaking it lets the clamp do its job. */}
+          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2 break-words' : 'truncate'} selectable`}>
             {displayTitle}
           </CardTitle>
           {/* No height cap when the subtitle is showing. It used to be capped at

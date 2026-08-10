@@ -492,8 +492,17 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
   // - Cool-only: always blue
   // - Both capabilities: green when off/idle/auto, orange when heating, blue when cooling
   const getActiveServiceType = (): ServiceType | null => {
-    // Regular thermostats - always orange (even when off, for slight orange tint)
+    // Regular thermostats follow the mode they are set to, the same way a
+    // heater_cooler does. They used to be orange unconditionally, which put a
+    // warm tile around an air conditioner reading 24° with a blue dial, a blue
+    // Cool button and a snowflake on its icon — everything inside the tile said
+    // cool and only the tile itself said heat.
+    //
+    // Off stays orange: that tint is the resting look of a thermostat, and it
+    // is the one state where no mode is being asked for.
     if (!isHeaterCooler) {
+      if (effectiveMode === 'cool') return 'heater_cooler';
+      if (effectiveMode === 'auto') return 'climate_balanced';
       return 'thermostat';
     }
 
