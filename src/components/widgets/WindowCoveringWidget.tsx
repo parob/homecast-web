@@ -229,6 +229,9 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
 
   const statusText = coveringStatusText(isMoving, isOpening, currentPosition);
 
+  // How much of the window the blind covers — what you actually see of it.
+  const coverage = 100 - targetPosition;
+
   const subtitle = (
     <span className="flex items-center gap-2">
       <span className={isMoving ? 'text-primary' : 'text-muted-foreground'}>
@@ -276,19 +279,32 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
         // a 132px bar reads as stranded, and this is the control you drag.
         <div className="h-[240px] w-full max-w-[200px]">
           <VerticalSlider
-            value={targetPosition}
+            // The bar IS the blind: colour is the material, hanging from the top
+            // and growing downward as it closes. So it works in coverage, not
+            // openness — `invert` anchors the fill to the top and, with it,
+            // makes dragging down raise the value. Coverage rising as you drag
+            // down is the same gesture as before: pull down to close.
+            value={coverage}
+            invert
             min={0}
             max={100}
             step={5}
             onCommit={(v) => {
-              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - v) : v);
+              // v is coverage; the raw characteristic is coverage on inverted
+              // blinds and openness on the rest.
+              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? v : (100 - v));
             }}
             disabled={isViewOnly || noResponse}
             icon={Blinds}
-            // "Open" as the unit for the number above it — the state in words is
-            // the subtitle's job, and saying the same sentence twice in one
-            // small panel reads as a bug.
-            label="Open"
+            // A percentage of openness printed on a bar that draws coverage
+            // contradicts itself at the ends — "0% Open" across a fully violet
+            // bar was why this used to fill upward. At the end stops the readout
+            // is the word, which the picture agrees with; in between the number
+            // is unambiguous on its own, and the subtitle carries the state.
+            formatValue={(v) => {
+              const open = Math.round(100 - v);
+              return open >= 100 ? 'Open' : open <= 0 ? 'Closed' : `${open}%`;
+            }}
             fillClassName="bg-violet-400/80"
             trackClassName="bg-black/10"
             className="h-full text-slate-900"
