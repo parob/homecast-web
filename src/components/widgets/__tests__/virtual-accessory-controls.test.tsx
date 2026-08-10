@@ -609,14 +609,16 @@ describe('virtual accessory controls', () => {
 
   // Clicking + forty times to reach 40 is not a control, so a number can be
   // configured to offer a field instead of a stepper.
-  it('offers a stepper or a field for a number, as configured', () => {
+  it('gives a number a box to type in, and a counter its buttons', () => {
     cleanup();
-    renderWidget('virtual_number');
+    // A number holds a value someone has in mind; nudging to it was forty
+    // presses to reach 40. The counter keeps its buttons — counting is the
+    // whole point of one.
+    renderWidget('virtual_count');
     expect(screen.getByLabelText('Increase Test Value')).toBeTruthy();
-    expect(screen.queryByLabelText('Set Test Value')).toBeNull();
 
     cleanup();
-    const writes = renderWidget('virtual_number', { virtualControl: 'field' });
+    const writes = renderWidget('virtual_number');
     expect(screen.queryByLabelText('Increase Test Value')).toBeNull();
 
     const input = screen.getByLabelText('Set Test Value');
@@ -628,7 +630,7 @@ describe('virtual accessory controls', () => {
 
   it('never writes a number for a box left empty or half-typed', () => {
     cleanup();
-    const writes = renderWidget('virtual_number', { virtualControl: 'field' });
+    const writes = renderWidget('virtual_number');
     const input = screen.getByLabelText('Set Test Value');
 
     for (const value of ['', '-', 'abc']) {
@@ -1080,5 +1082,63 @@ describe('virtual accessory controls', () => {
     renderWidget('virtual_text', { isUserEditable: false });
 
     expect(screen.queryByLabelText('Set Test Value')).toBeNull();
+  });
+});
+
+describe('compact tile actions', () => {
+  const compactProps = (charType: string, extra: Record<string, unknown>, onSetValue: (...a: unknown[]) => void) => ({
+    accessory: { ...accessoryFor(charType, extra), id: `c-${charType}` },
+    getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+    onSetValue,
+    onSlider: () => {}, onToggle: () => {},
+    compact: true,
+  } as unknown as WidgetProps);
+
+  it('starts a timer without opening the tile', () => {
+    cleanup();
+    const writes: unknown[][] = [];
+    render(<VirtualAccessoryWidget {...compactProps('virtual_timer', {}, (...a) => writes.push(a))} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }));
+
+    expect(writes).toEqual([['c-virtual_timer', 'virtual_timer', 'active']]);
+  });
+
+  it('counts up and down without opening the tile', () => {
+    cleanup();
+    const writes: unknown[][] = [];
+    render(<VirtualAccessoryWidget {...compactProps('virtual_count', {}, (...a) => writes.push(a))} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Increase/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Decrease/ }));
+
+    expect(writes.map(w => w[2])).toEqual([3, 1]);
+  });
+
+  it('offers a short mode list inline', () => {
+    cleanup();
+    const writes: unknown[][] = [];
+    render(<VirtualAccessoryWidget
+      {...compactProps('virtual_mode', { virtualOptions: ['Home', 'Away'] }, (...a) => writes.push(a))} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set Test Value to Away' }));
+
+    expect(writes).toEqual([['c-virtual_mode', 'virtual_mode', 'Away']]);
+  });
+
+  it('leaves a long mode list to the expanded tile', () => {
+    cleanup();
+    render(<VirtualAccessoryWidget
+      {...compactProps('virtual_mode', { virtualOptions: ['A', 'B', 'C', 'D'] }, () => {})} />);
+
+    // Four labels cannot be read in a tile header; opening it is the honest
+    // answer rather than four stubs.
+    expect(screen.queryByRole('button', { name: /^Set Test Value to/ })).toBeNull();
+  });
+
+  it('gives text no compact control — it needs the room', () => {
+    cleanup();
+    render(<VirtualAccessoryWidget {...compactProps('virtual_text', {}, () => {})} />);
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 });

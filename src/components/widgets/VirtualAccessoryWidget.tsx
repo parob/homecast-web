@@ -188,6 +188,19 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // A control that looks live and isn't is worse than no control.
   const readOnly = disabled || editMode || meta.isUserEditable === false || !char;
 
+  /**
+   * Start or cancel, from wherever it was pressed.
+   *
+   * Shared so the compact tile's button and the expanded one cannot drift —
+   * the optimism and the write have to happen together or the tile lies.
+   */
+  const toggleTimer = () => {
+    if (readOnly) return;
+    noteTimerIntent(accessory.id, !running);
+    repaint();
+    set(running ? 'idle' : 'active');
+  };
+
   const set = (v: unknown) => {
     if (readOnly) return;
     if (typeof v === 'number' && !onSetValue) onSlider(accessory.id, charType, v);
@@ -282,6 +295,11 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       // the alert the whole tile takes the finished palette — the glyph alone
       // was easy to miss from across a room.
       colorOverride={alerting ? TIMER_FINISHED_COLOR : undefined}
+      // Worth doing without opening the tile first — a switch gets its toggle
+      // here, and expanding to press one button is the same friction. Only when
+      // compact: at full size the control is already in the body, and two
+      // buttons doing one thing is one too many.
+      headerAction={compact && !readOnly ? renderCompactAction() : undefined}
       // Lighting the tile for the alert reuses the on-state tint, which is a
       // colour change only, so the glass survives it. WidgetWrapper fades tints
       // over 300ms, so it comes up and settles rather than blinking.
@@ -323,6 +341,93 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     </WidgetCard>
   );
 
+  /**
+   * The one-press version of this accessory, for a tile that hasn't been opened.
+   *
+   * Only what fits and what reads at a glance: a timer starts, a counter goes
+   * up and down, a mode with a handful of options offers them. Anything longer
+   * — text, a date, a mode with a real list — needs the room the expanded tile
+   * gives it, and a cramped version would be worse than opening it.
+   */
+  function renderCompactAction(): React.ReactNode {
+    const pill = 'flex h-7 items-center justify-center rounded-full px-2 text-[11px] font-medium transition-colors '
+      + (isDarkBackground
+        ? 'bg-white/20 text-white hover:bg-white/30'
+        : 'bg-black/10 text-slate-800 hover:bg-black/15');
+    const round = 'flex h-7 w-7 items-center justify-center rounded-full transition-colors '
+      + (isDarkBackground
+        ? 'bg-white/20 text-white hover:bg-white/30'
+        : 'bg-black/10 text-slate-800 hover:bg-black/15');
+    // The tile expands on click; none of these should.
+    const press = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
+
+    switch (charType) {
+      case 'virtual_timer':
+        return (
+          <button
+            type="button"
+            aria-label={running ? `Cancel ${accessory.name}` : `Start ${accessory.name}`}
+            className={round}
+            onClick={press(toggleTimer)}
+          >
+            {running ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          </button>
+        );
+
+      case 'virtual_count':
+        return (
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={`Decrease ${accessory.name}`}
+              className={round}
+              onClick={press(() => set(clamp(numeric - step, char)))}
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Increase ${accessory.name}`}
+              className={round}
+              onClick={press(() => set(clamp(numeric + step, char)))}
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </span>
+        );
+
+      case 'virtual_mode': {
+        // Three is the most that fits without the labels becoming stubs. Beyond
+        // that the list belongs in the expanded tile, where it can be read.
+        const options = definition?.type === 'input_select'
+          ? definition.options
+          : meta.virtualOptions;
+        if (!options || options.length === 0 || options.length > 3) return undefined;
+        return (
+          <span className="flex items-center gap-1">
+            {options.map(option => (
+              <button
+                key={option}
+                type="button"
+                aria-label={`Set ${accessory.name} to ${option}`}
+                aria-pressed={value === option}
+                className={pill + (value === option
+                  ? (isDarkBackground ? ' ring-1 ring-white/70' : ' ring-1 ring-slate-700/60')
+                  : ' opacity-70')}
+                onClick={press(() => set(option))}
+              >
+                {option}
+              </button>
+            ))}
+          </span>
+        );
+      }
+
+      default:
+        return undefined;
+    }
+  }
+
   function renderControl(): React.ReactNode {
     switch (charType) {
       case 'virtual_mode': {
@@ -355,24 +460,25 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         );
       }
 
-      case 'virtual_count':
       case 'virtual_number':
-        // A field where the author asked for one: clicking + forty times to
-        // reach 40 is not a control, it's a punishment.
-        if (charType === 'virtual_number' && meta.virtualControl === 'field') {
-          return (
-            <VirtualNumberField
-              label={accessory.name}
-              value={numeric}
-              min={char?.minValue}
-              max={char?.maxValue}
-              step={step}
-              onCommit={v => set(clamp(v, char))}
-              onDone={onFinishEditing}
-              className={FIELD_CLASS}
-            />
-          );
-        }
+        // Always a field. Nudging to a number you already know is a punishment
+        // — reaching 40 was forty presses — and a number helper exists to hold
+        // a value someone has in mind, not one they arrive at by degrees.
+        return (
+          <VirtualNumberField
+            label={accessory.name}
+            value={numeric}
+            min={char?.minValue}
+            max={char?.maxValue}
+            step={step}
+            onCommit={v => set(clamp(v, char))}
+            onDone={onFinishEditing}
+            className={FIELD_CLASS}
+          />
+        );
+
+      case 'virtual_count':
+        // A counter keeps its buttons: counting up and down IS the thing.
         return (
           <div className="flex items-center justify-between gap-2">
             <button
@@ -401,12 +507,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             type="button"
             aria-label={running ? `Cancel ${accessory.name}` : `Start ${accessory.name}`}
             className={`${BUTTON_CLASS} w-full`}
-            onClick={() => {
-              // Believe the press, then send it.
-              noteTimerIntent(accessory.id, !running);
-              repaint();
-              set(running ? 'idle' : 'active');
-            }}
+            onClick={toggleTimer}
           >
             {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {running ? 'Cancel' : 'Start'}
