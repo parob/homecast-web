@@ -516,7 +516,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               <Card
                 ref={ref}
                 onClick={handleCardClick}
-                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer tile-press' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
                 style={style}
               >
                 {cardInner}
@@ -617,7 +617,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           <Card
             ref={ref}
             onClick={handleCardClick}
-            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer tile-press' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
           >
             {cardInner}
           </Card>

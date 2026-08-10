@@ -38,6 +38,17 @@
   transform-origin: center;
 }
 
+/* A compact tile shrinks when you press it — but a control inside it is not
+   the tile. `:active` matches every ancestor of whatever is pressed, so
+   tapping a header switch or a timer's start button shrank the whole card and
+   made a one-press action look like it had opened the tile instead. JS cannot
+   fix this: stopPropagation stops the handler, not the selector.
+
+   So the tile only takes the press when nothing inside it has. */
+.tile-press:active:not(:has(button:active, [role="button"]:active, input:active, select:active, a:active)) {
+  transform: scale(0.97);
+}
+
 /* A finished timer holds the eye by pulsing, not by changing hue: the tile is
    already green, so a green pulse on the text was green on green and the words
    were the hardest part to read. Opacity only, and only on the text — animating

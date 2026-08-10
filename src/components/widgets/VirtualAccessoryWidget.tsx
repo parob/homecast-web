@@ -350,11 +350,11 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
    * gives it, and a cramped version would be worse than opening it.
    */
   function renderCompactAction(): React.ReactNode {
-    const pill = 'flex h-7 items-center justify-center rounded-full px-2 text-[11px] font-medium transition-colors '
+    const pill = 'flex h-7 items-center justify-center rounded-full px-2 text-[11px] font-medium transition active:scale-90 '
       + (isDarkBackground
         ? 'bg-white/20 text-white hover:bg-white/30'
         : 'bg-black/10 text-slate-800 hover:bg-black/15');
-    const round = 'flex h-7 w-7 items-center justify-center rounded-full transition-colors '
+    const round = 'flex h-7 w-7 items-center justify-center rounded-full transition active:scale-90 '
       + (isDarkBackground
         ? 'bg-white/20 text-white hover:bg-white/30'
         : 'bg-black/10 text-slate-800 hover:bg-black/15');
