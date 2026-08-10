@@ -115,6 +115,35 @@ const TOOLS = [
     annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   },
   {
+    name: 'query_history',
+    description:
+      'Bulk access to recorded history for pattern and behaviour analysis — YOU do the analysis, this hands ' +
+      'you the data flexibly and fast. Query any subset of accessories and characteristics over any date range ' +
+      'in one call. Control the level of detail with resolution: "hourly"/"daily" read precomputed summaries ' +
+      '(a month of data is a few hundred rows per series — use these for long ranges and rhythm/trend analysis; ' +
+      'each numeric bucket carries [time, min, avg, max], each on/off-or-mode bucket carries [time, transitions, ' +
+      'msInEachState]), "raw" returns every recorded change (short ranges, exact event times), "auto" picks for ' +
+      'you. Filter with accessories/characteristics (names, slugs, or characteristic types like ' +
+      'current_temperature, power_state, motion). Large pulls paginate: a truncated series includes ' +
+      'continue_from — repeat the call with start=continue_from. Recording is change-based, so gaps mean the ' +
+      'value simply held. History is OPT-IN and off by default: if nothing matches, the home owner has to turn ' +
+      'it on in Settings → History first — say so rather than retrying. Use get_history instead for a quick ' +
+      'single-accessory look.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        home: { type: 'string', description: 'Home name substring. Omit for the first home' },
+        accessories: { type: 'array', items: { type: 'string' }, description: 'Accessory name/slug/id substrings. Omit for all recorded accessories' },
+        characteristics: { type: 'array', items: { type: 'string' }, description: 'Characteristic types (e.g. current_temperature, power_state, motion). Omit for all' },
+        start: { type: 'string', description: 'ISO 8601 start. Default: 24h before end' },
+        end: { type: 'string', description: 'ISO 8601 end. Default: now' },
+        resolution: { type: 'string', enum: ['auto', 'raw', 'hourly', 'daily'], description: 'Level of detail. Default auto' },
+        max_points_per_series: { type: 'number', description: 'Per-series cap (default 500, max 2000). Response capped at 50k points total' },
+      },
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
+  },
+  {
     name: 'set_state',
     description:
       'Set accessory state using a flat list of updates. Each update has home/room/accessory path and settings. ' +
@@ -759,6 +788,19 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         characteristic: args.characteristic as string | undefined,
         hours: args.hours as number | undefined,
         max_points: args.max_points as number | undefined,
+      });
+    }
+
+    case 'query_history': {
+      const { handleQueryHistory } = await import('./local-rest');
+      return await handleQueryHistory({
+        home: args.home as string | undefined,
+        accessories: args.accessories as string[] | undefined,
+        characteristics: args.characteristics as string[] | undefined,
+        start: args.start as string | undefined,
+        end: args.end as string | undefined,
+        resolution: args.resolution as 'auto' | 'raw' | 'hourly' | 'daily' | undefined,
+        max_points_per_series: args.max_points_per_series as number | undefined,
       });
     }
 

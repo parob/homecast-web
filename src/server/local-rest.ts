@@ -706,3 +706,190 @@ export async function handleGetHistory(args: {
     },
   };
 }
+
+/**
+ * Bulk history access for the `query_history` MCP tool — the AI-analysis
+ * surface. Not an analysis endpoint: it hands the model the data flexibly
+ * and cheaply and lets it do its own reasoning. Any subset of accessories
+ * and characteristics, any date range, explicit resolution control (hourly/
+ * daily read the rollup tables — a month costs hundreds of rows per series,
+ * not hundreds of thousands of samples), many series per call, pagination
+ * via continue_from when a series is truncated. Matches the Cloud edition's
+ * HomesAPI.query_history output shape.
+ */
+export async function handleQueryHistory(args: {
+  home?: string;
+  accessories?: string[];
+  characteristics?: string[];
+  start?: string;
+  end?: string;
+  resolution?: 'auto' | 'raw' | 'hourly' | 'daily';
+  max_points_per_series?: number;
+}): Promise<Record<string, any>> {
+  const perSeriesCap = Math.min(Math.max(Number(args.max_points_per_series) || 500, 10), 2000);
+  const TOTAL_BUDGET = 50_000;
+  const SERIES_CAP = 100;
+
+  const endTs = args.end ? Date.parse(args.end) : Date.now();
+  const startTs = args.start ? Date.parse(args.start) : endTs - 24 * 3_600_000;
+  if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs <= startTs) {
+    return { error: 'start/end must be ISO 8601 datetimes with start < end' };
+  }
+  const resolution = args.resolution ?? 'auto';
+
+  const homesResult = await executeHomeKitAction('homes.list') as any;
+  let homes: any[] = homesResult?.homes || [];
+  if (args.home) {
+    const homeFilter = args.home.toLowerCase();
+    homes = homes.filter((h: any) =>
+      uniqueKey(h.name, h.id).includes(homeFilter) || h.name?.toLowerCase().includes(homeFilter));
+  }
+  const home = homes[0];
+  if (!home) {
+    return { error: args.home ? `No home matches "${args.home}"` : 'No homes found' };
+  }
+
+  const [{ canonicalHistoryType, seriesKey }, { queryHistorySeries }, historyDb] = await Promise.all([
+    import('@/history/keys'),
+    import('@/history/query'),
+    import('./local-db'),
+  ]);
+
+  const accessoriesResult = await executeHomeKitAction('accessories.list', { homeId: home.id, includeAll: true }) as any;
+  const accessoryInfo = new Map<string, { name: string; room: string | null; key: string }>();
+  for (const acc of accessoriesResult?.accessories || []) {
+    accessoryInfo.set((acc.id || '').toUpperCase(), {
+      name: acc.name || acc.id,
+      room: acc.roomName ?? null,
+      key: uniqueKey(acc.name || '', acc.id || ''),
+    });
+  }
+
+  // Filter recorded series by the requested accessory/characteristic subsets.
+  const accessoryFilters = (args.accessories ?? []).map(a => a.toLowerCase()).filter(Boolean);
+  const charFilters = (args.characteristics ?? []).map(c => canonicalHistoryType(c));
+  let rows = await historyDb.getHistorySeries(home.id);
+  if (accessoryFilters.length > 0) {
+    rows = rows.filter(row => {
+      const info = accessoryInfo.get(row.accessoryId.toUpperCase());
+      return accessoryFilters.some(f =>
+        row.accessoryId.toLowerCase() === f ||
+        (info && (info.key.includes(f) || info.name.toLowerCase().includes(f))));
+    });
+  }
+  if (charFilters.length > 0) {
+    rows = rows.filter(row => charFilters.includes(row.characteristicType));
+  }
+
+  const seriesMatched = rows.length;
+  rows = rows.slice(0, SERIES_CAP);
+
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const store = {
+    getSamples: async (sid: string, from: number, to: number) =>
+      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+    getLastSampleBefore: async (sid: string, ts: number) => {
+      const row = await historyDb.getLastHistorySampleBefore(sid, ts);
+      return row ? { ts: row.ts, v: row.v } : undefined;
+    },
+    getFirstSampleTs: async (sid: string) =>
+      (await historyDb.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
+    getRollups: (sid: string, tier: 'h' | 'd', from: number, to: number) =>
+      historyDb.getHistoryRollups(sid, tier, from, to),
+    getLastRollupBefore: (sid: string, tier: 'h' | 'd', bucket: number) =>
+      historyDb.getLastHistoryRollupBefore(sid, tier, bucket),
+  };
+
+  const series: Array<Record<string, any>> = [];
+  const truncated: string[] = [];
+  let pointsReturned = 0;
+
+  for (const row of rows) {
+    if (pointsReturned >= TOTAL_BUDGET) {
+      truncated.push(`response budget of ${TOTAL_BUDGET} points reached — ${rows.length - series.length} series omitted; narrow the range or filters`);
+      break;
+    }
+    const info = accessoryInfo.get(row.accessoryId.toUpperCase());
+    const label = {
+      accessory: info?.key ?? row.accessoryId.toLowerCase(),
+      accessoryName: info?.name ?? null,
+      room: info?.room ?? null,
+      characteristic: row.characteristicType,
+      kind: row.kind,
+      unit: row.unit ?? null,
+    };
+    const sid = seriesKey(home.id, row.accessoryId, row.characteristicType);
+    const budget = Math.min(perSeriesCap, TOTAL_BUDGET - pointsReturned);
+
+    if (resolution === 'raw') {
+      const samples = await historyDb.getHistorySamples(sid, startTs, endTs, budget + 1);
+      const page = samples.slice(0, budget);
+      const entry: Record<string, any> = { ...label, resolution: 'raw' };
+      if (row.kind === 'numeric') {
+        entry.values = page.map(s => [iso(s.ts), s.v]);
+      } else {
+        entry.transitions = page.map(s => [iso(s.ts), s.v]);
+      }
+      if (samples.length > budget) {
+        entry.continue_from = iso(page[page.length - 1].ts + 1);
+        truncated.push(`${label.accessory}/${row.characteristicType}: raw truncated at ${budget} points — resume with start=continue_from`);
+      }
+      pointsReturned += page.length;
+      series.push(entry);
+    } else if (resolution === 'hourly' || resolution === 'daily') {
+      const tier = resolution === 'hourly' ? 'h' : 'd';
+      const rollups = await historyDb.getHistoryRollups(sid, tier, startTs, endTs);
+      const page = rollups.slice(0, budget);
+      const entry: Record<string, any> = { ...label, resolution };
+      if (row.kind === 'numeric') {
+        entry.values = page.map(r => [iso(r.bucket), r.vMin, r.vAvg, r.vMax]);
+        entry.values_format = '[time, min, avg, max]';
+      } else {
+        entry.buckets = page.map(r => [iso(r.bucket), r.transitions ?? 0, r.stateMs ?? {}]);
+        entry.buckets_format = '[time, transitions, msInEachState]';
+      }
+      if (rollups.length > budget) {
+        entry.continue_from = iso(page[page.length - 1].bucket + 1);
+        truncated.push(`${label.accessory}/${row.characteristicType}: ${resolution} truncated at ${budget} buckets — resume with start=continue_from`);
+      }
+      pointsReturned += page.length;
+      series.push(entry);
+    } else {
+      // auto: the tier planner picks raw/hourly/daily to fit the budget.
+      const data = await queryHistorySeries(store, sid, row.kind, startTs, endTs, budget);
+      const entry: Record<string, any> = { ...label, resolution: data.resolution };
+      if (row.kind === 'numeric') {
+        entry.values = data.resolution === 'raw'
+          ? data.points.map(p => [iso(p.ts), p.avg])
+          : data.points.map(p => [iso(p.ts), p.min, p.avg, p.max]);
+        if (data.resolution !== 'raw') entry.values_format = '[time, min, avg, max]';
+        pointsReturned += data.points.length;
+      } else if (data.states.length > 0) {
+        entry.transitions = data.states.map(s => [iso(s.ts), s.value]);
+        if (data.prevValue !== null) entry.opening_value = data.prevValue;
+        pointsReturned += data.states.length;
+      } else {
+        entry.buckets = data.stateBuckets.map(b => [iso(b.ts), b.transitions, JSON.parse(b.stateMsJson || '{}')]);
+        entry.buckets_format = '[time, transitions, msInEachState]';
+        pointsReturned += data.stateBuckets.length;
+      }
+      series.push(entry);
+    }
+  }
+
+  return {
+    home: uniqueKey(home.name, home.id),
+    from: iso(startTs),
+    to: iso(endTs),
+    series,
+    _meta: {
+      series_returned: series.length,
+      series_matched: seriesMatched,
+      points_returned: pointsReturned,
+      ...(truncated.length > 0 ? { truncated } : {}),
+      message: seriesMatched > 0
+        ? `${series.length} of ${seriesMatched} matched series over ${((endTs - startTs) / 86_400_000).toFixed(1)} days`
+        : 'No recorded series match. History is opt-in: the home owner enables it in Settings → History.',
+    },
+  };
+}
