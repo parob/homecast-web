@@ -3,7 +3,7 @@ import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull 
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { VerticalSlider } from './shared';
-import { coveringMotion, coveringStatusText } from './shared/coveringStatus';
+import { coveringMotion, coveringStatusText, usesStandardPositionLogic } from './shared/coveringStatus';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
@@ -167,9 +167,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   const manufacturer = String(manufacturerChar?.value || '').toLowerCase();
   const model = String(modelChar?.value || '').toLowerCase();
 
-  // These manufacturers use standard HomeKit logic (0=closed, 100=open)
-  const usesStandardLogic = manufacturer.includes('lutron') || manufacturer.includes('hunter douglas') ||
-                            manufacturer.includes('eve') || model.includes('motionblinds');
+  const usesStandardLogic = usesStandardPositionLogic(manufacturer, model);
   const isInvertedBlinds = !usesStandardLogic;
 
   const rawCurrentPosition = toPositionNumber(currentPositionChar?.value);

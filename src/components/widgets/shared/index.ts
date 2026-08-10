@@ -7,4 +7,4 @@ export { CircleControl } from './CircleControl';
 export { ValueReadout } from './ValueReadout';
 export { VerticalToggle } from './VerticalToggle';
 export { mirrorMired, miredToKelvin, formatMirroredAsKelvin } from './colorTemp';
-export { coveringStatusText, isOpeningFromState } from './coveringStatus';
+export { coveringStatusText, coveringMotion, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from './coveringStatus';

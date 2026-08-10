@@ -50,3 +50,35 @@ export function coveringStatusText(isMoving: boolean, isOpening: boolean, openne
   if (openness >= 100) return 'Currently Fully Open';
   return 'Currently Partially Open';
 }
+
+/**
+ * Does this blind report position as openness, or as coverage?
+ *
+ * HomeKit says 0–100 and leaves the meaning to the manufacturer. Most roller
+ * blinds report coverage — how far down the blind is — so 100 means shut. A
+ * few report openness, the way the characteristic reads. There is no flag for
+ * it; the only signal is who made the thing.
+ */
+export function usesStandardPositionLogic(manufacturer: string, model: string): boolean {
+  const make = (manufacturer || '').toLowerCase();
+  const type = (model || '').toLowerCase();
+  return make.includes('lutron')
+    || make.includes('hunter douglas')
+    || make.includes('eve')
+    || type.includes('motionblinds');
+}
+
+/**
+ * Between the device's number and openness (0 closed → 100 open).
+ *
+ * The map is its own inverse, so one function would do — but a call site
+ * reading `toOpenness(raw)` says what it means, and a mistake here silently
+ * drives blinds the wrong way.
+ */
+export function toOpenness(rawPosition: number, standardLogic: boolean): number {
+  return standardLogic ? rawPosition : 100 - rawPosition;
+}
+
+export function fromOpenness(openness: number, standardLogic: boolean): number {
+  return standardLogic ? openness : 100 - openness;
+}

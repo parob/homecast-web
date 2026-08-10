@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { VerticalSlider } from '@/components/widgets/shared/VerticalSlider';
 import { ColorSwatchRow } from '@/components/widgets/shared/ColorSwatchRow';
 import { ColorControl } from '@/components/widgets/shared/ColorControl';
 import { mirrorMired, formatMirroredAsKelvin } from '@/components/widgets/shared/colorTemp';
+import { coveringMotion, coveringStatusText, usesStandardPositionLogic, toOpenness, fromOpenness } from '@/components/widgets/shared/coveringStatus';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 // Import directly from source files to avoid circular dependency with barrel export
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
@@ -232,18 +233,47 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     return count > 0 ? { value: Math.round(total / count), min: minTemp, max: maxTemp } : null;
   }, [accessories, getEffectiveValue]);
 
-  // Get average position for blinds
-  const getAveragePosition = useCallback(() => {
+  // Which way round each member counts. HomeKit's 0-100 means openness on some
+  // blinds and coverage on others, and a group can hold both; averaging the raw
+  // numbers mixed the two and the tile read backwards on ordinary hardware.
+  const standardLogicFor = useCallback((accessory: HomeKitAccessory) => {
+    let manufacturer = '';
+    let model = '';
+    for (const service of accessory.services || []) {
+      for (const char of service.characteristics || []) {
+        if (char.characteristicType === 'manufacturer') manufacturer = String(char.value ?? '');
+        if (char.characteristicType === 'model') model = String(char.value ?? '');
+      }
+    }
+    return usesStandardPositionLogic(manufacturer, model);
+  }, []);
+
+  // True when every member counts the same way, so one written value suits them
+  // all and the group can stay a single call.
+  const blindsShareConvention = useMemo(() => {
+    const conventions = new Set(accessories.filter(a =>
+      a.services?.some(sv => sv.serviceType === 'window_covering')).map(standardLogicFor));
+    return conventions.size <= 1;
+  }, [accessories, standardLogicFor]);
+
+  const blindsConvention = useMemo(() => {
+    const first = accessories.find(a => a.services?.some(sv => sv.serviceType === 'window_covering'));
+    return first ? standardLogicFor(first) : true;
+  }, [accessories, standardLogicFor]);
+
+  /** Average openness (0 closed → 100 open) across the group's blinds. */
+  const averageOpenness = useCallback((characteristicType: 'current_position' | 'target_position') => {
     let total = 0;
     let count = 0;
     for (const accessory of accessories) {
+      const standard = standardLogicFor(accessory);
       for (const service of accessory.services || []) {
         for (const char of service.characteristics || []) {
-          if (char.characteristicType === 'current_position') {
+          if (char.characteristicType === characteristicType) {
             const value = getEffectiveValue ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : char.value;
             const numValue = value !== null && value !== undefined ? Number(value) : null;
             if (numValue !== null && !isNaN(numValue)) {
-              total += numValue;
+              total += toOpenness(numValue, standard);
               count++;
             }
           }
@@ -251,7 +281,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       }
     }
     return count > 0 ? Math.round(total / count) : 0;
-  }, [accessories, getEffectiveValue]);
+  }, [accessories, getEffectiveValue, standardLogicFor]);
+
+  const getAveragePosition = useCallback(() => averageOpenness('current_position'), [averageOpenness]);
 
   // Count how many are on
   const getOnCount = useCallback(() => {
@@ -272,6 +304,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const brightness = isLightsGroup ? getAverageBrightness() : null;
   const colorTempInfo = hasColorTemp ? getColorTempInfo() : null;
   const position = isBlindsGroup ? getAveragePosition() : 0;
+  // Same vocabulary as a single blind. The group has no position_state of its
+  // own, so movement is read from the gap between where the members are and
+  // where they have been told to go.
+  const blindsTarget = isBlindsGroup ? averageOpenness('target_position') : 0;
+  const blindsMotion = coveringMotion(position, blindsTarget, null, true);
+  const blindsStatus = coveringStatusText(blindsMotion.isMoving, blindsMotion.isOpening, position);
   const onCount = getOnCount();
   const isPartiallyOn = !isBlindsGroup && onCount > 0 && onCount < accessories.length;
 
@@ -361,7 +399,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Compact subtitle text
   const compactSubtitle = allNoResponse
     ? 'No Response'
-    : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
+    : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
 
   const cardContent = (
     <Card className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} cursor-pointer`} onClick={handleCardClick}>
@@ -436,7 +474,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 <CardDescription className={`text-xs mt-0.5 flex items-center gap-1.5 `}>
                   {allNoResponse
                     ? 'No Response'
-                    : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                    : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
                   {locationSubtitle && <span className="opacity-60">{locationSubtitle}</span>}
                   {!allNoResponse && someNoResponse && (
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
@@ -483,7 +521,20 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               value={position}
               step={5}
               unit="%"
-              onCommit={(v) => onSlider('target_position', v)}
+              // The bar is openness; the devices are not, necessarily. When the
+              // members agree the group write carries one converted number, as
+              // before. When they disagree no single number can serve them, so
+              // each is written its own — correctness over one round trip.
+              onCommit={(v) => {
+                if (blindsShareConvention || !onAccessorySlider) {
+                  onSlider('target_position', fromOpenness(v, blindsConvention));
+                  return;
+                }
+                for (const acc of accessories) {
+                  if (!acc.services?.some(sv => sv.serviceType === 'window_covering')) continue;
+                  onAccessorySlider(acc.id, 'target_position', fromOpenness(v, standardLogicFor(acc)));
+                }
+              }}
               disabled={effectiveDisabled}
               trackBgClass="bg-muted/25"
             />
@@ -671,7 +722,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               <CardDescription className={`text-sm mt-0.5 flex items-center gap-1.5 `}>
                 {allNoResponse
                   ? 'No Response'
-                  : isBlindsGroup ? `${position}% open` : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                  : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
                 {!allNoResponse && someNoResponse && (
                   <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
                     {reachableCount}/{accessories.length} reachable

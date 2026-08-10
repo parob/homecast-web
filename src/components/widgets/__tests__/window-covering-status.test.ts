@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coveringMotion, coveringStatusText, isOpeningFromState } from '../shared/coveringStatus';
+import { coveringMotion, coveringStatusText, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
 
 // HomeKit's position_state values, of the RAW position.
 const DECREASING = 0;
@@ -75,5 +75,45 @@ describe('window covering motion', () => {
 
     const settled = coveringMotion(100, 100, STOPPED, true);
     expect(coveringStatusText(settled.isMoving, settled.isOpening, 100)).toBe('Currently Fully Open');
+  });
+});
+
+describe('position conventions', () => {
+  it('knows which makers report openness', () => {
+    expect(usesStandardPositionLogic('Eve Systems', 'Eve MotionBlinds 20CAA9901')).toBe(true);
+    expect(usesStandardPositionLogic('Lutron', 'Serena')).toBe(true);
+    expect(usesStandardPositionLogic('Hunter Douglas', 'PowerView')).toBe(true);
+    // The model alone is enough — some bridges report the maker differently.
+    expect(usesStandardPositionLogic('', 'MotionBlinds Roller')).toBe(true);
+    // Everything else reports coverage.
+    expect(usesStandardPositionLogic('Aqara', 'Curtain Driver E1')).toBe(false);
+    expect(usesStandardPositionLogic('', '')).toBe(false);
+  });
+
+  it('converts a coverage-reporting blind to openness and back', () => {
+    // 80 raw on a coverage blind means 80% covered — 20% open.
+    expect(toOpenness(80, false)).toBe(20);
+    expect(fromOpenness(20, false)).toBe(80);
+    // An openness-reporting blind passes straight through.
+    expect(toOpenness(80, true)).toBe(80);
+    expect(fromOpenness(20, true)).toBe(20);
+  });
+
+  it('round-trips whatever the convention', () => {
+    for (const standard of [true, false]) {
+      for (const raw of [0, 25, 60, 100]) {
+        expect(fromOpenness(toOpenness(raw, standard), standard)).toBe(raw);
+      }
+    }
+  });
+
+  it('averages a mixed group correctly once converted', () => {
+    // Two blinds both physically half open, reporting it oppositely.
+    const eve = toOpenness(50, true);    // openness-reporting
+    const aqara = toOpenness(50, false); // coverage-reporting
+    expect(Math.round((eve + aqara) / 2)).toBe(50);
+
+    // Both fully open: one says 100, the other says 0.
+    expect(Math.round((toOpenness(100, true) + toOpenness(0, false)) / 2)).toBe(100);
   });
 });
