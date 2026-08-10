@@ -7436,6 +7436,8 @@ const Dashboard = () => {
                             >
                               {/* Compact widget (always visible as layout anchor) */}
                               <AccessoryWidget
+                                // Enter in a text field means finished; collapse whatever is open.
+                                onFinishEditing={collapseExpandedWidget}
                                               homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
                                 onToggle={handleToggle}
@@ -7486,6 +7488,8 @@ const Dashboard = () => {
                             // Normal mode: show full widget directly
                             <div className="relative" style={undefined}>
                               <AccessoryWidget
+                                // Enter in a text field means finished; collapse whatever is open.
+                                onFinishEditing={collapseExpandedWidget}
                                               homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
                                 onToggle={handleToggle}
