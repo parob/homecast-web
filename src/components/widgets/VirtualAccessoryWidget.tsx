@@ -228,16 +228,16 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // Hook is called unconditionally — every other type simply never runs down,
   // so it reads false.
   const recentlyFinished = useRecentlyFinished(ranOutAt, TIMER_ALERT_MS);
-  // A finish instant outlives the run after it, so a timer started again within
-  // five seconds would otherwise still be shouting. Running wins.
+  // A finish instant outlives the run after it, so a timer started again inside
+  // the alert window would otherwise still be shouting. Running wins.
   const alerting = charType === 'virtual_timer' && !running && recentlyFinished;
   const display = charType === 'virtual_timer'
     ? (
       alerting
         // role=status so a screen reader hears it too — the animation says
-        // nothing to anyone who can't see it, and this is the whole point of
-        // the five seconds.
-        ? <span role="status">Time’s up</span>
+        // nothing to anyone who can't see it, and that is the whole point of
+        // the alert window.
+        ? <span role="status" className="timer-finished">Time’s up</span>
         : <TimerReadout
         accessoryId={accessory.id}
         running={running}
@@ -262,7 +262,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       // (or opacity) on an ancestor of a backdrop-filter element establishes a
       // new backdrop root, which switches the widget's glass off for as long as
       // it runs — see the entrance animation this was learned from.
-      icon={<Icon className={`h-4 w-4${alerting ? ' timer-alarm' : ''}`} />}
+      icon={<Icon className={`h-4 w-4${alerting ? ' timer-alarm timer-finished' : ''}`} />}
       // Lighting the tile for the alert reuses the on-state tint, which is a
       // colour change only, so the glass survives it. WidgetWrapper fades tints
       // over 300ms, so it comes up and settles rather than blinking.
@@ -456,7 +456,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 const localTimerStarts = new Map<string, number>();
 
 /** How long a timer shouts that it is up before settling into its finish time. */
-const TIMER_ALERT_MS = 5000;
+const TIMER_ALERT_MS = 10_000;
 
 /**
  * How close to zero a countdown has to have been for going idle to count as
@@ -488,7 +488,20 @@ function countdownTarget(
   // A locally-noted start is a guess — the moment a tile first saw the timer
   // running — so it is the last resort, never something that overrides what
   // the relay actually knows.
-  const needsGuess = running && startedAt === undefined && endsAt === undefined;
+  //
+  // Except when what the relay "knows" is the PREVIOUS run. The accessory
+  // carries the last start it was fetched with, and that fetch is minutes old,
+  // so pressing start on a timer that has run before pointed the countdown at
+  // an instant already in the past: the tile sat at 0:00 until the next poll
+  // replaced it, which read as the button doing nothing for ten seconds. A
+  // target that has already passed while the timer is running cannot be this
+  // run's, so it is treated as absent.
+  const reported = startedAt !== undefined && durationMs !== undefined
+    ? startedAt + durationMs
+    : endsAt;
+  const reportedIsStale = reported !== undefined && reported <= Date.now();
+  const needsGuess = running
+    && (reportedIsStale || (startedAt === undefined && endsAt === undefined));
   if (!running) {
     localTimerStarts.delete(accessoryId);
     return undefined;
@@ -499,8 +512,10 @@ function countdownTarget(
   // Start + duration in preference to endsAt: the duration is configuration
   // this browser already holds, so it stays right even when the relay's copy
   // is out of date. endsAt is the same arithmetic done by the relay.
-  const begin = startedAt ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
-  return begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt;
+  const begin = (reportedIsStale ? undefined : startedAt)
+    ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
+  if (begin !== undefined && durationMs !== undefined) return begin + durationMs;
+  return reportedIsStale ? undefined : endsAt;
 }
 
 /**
