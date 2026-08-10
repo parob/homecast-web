@@ -3,7 +3,7 @@ import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull 
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { VerticalSlider } from './shared';
-import { coveringStatusText, isOpeningFromState } from './shared/coveringStatus';
+import { coveringMotion, coveringStatusText } from './shared/coveringStatus';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
@@ -187,8 +187,12 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // ever.
   const positionState = positionStateChar ? toPositionNumber(positionStateChar.value) : 2;
 
-  const isMoving = positionState !== 2;
-  const isOpening = isOpeningFromState(positionState, usesStandardLogic);
+  const { isMoving, isOpening } = coveringMotion(
+    currentPosition,
+    targetPosition,
+    positionStateChar ? positionState : null,
+    usesStandardLogic,
+  );
   const isOpen = currentPosition > 0;
   const hasControls = targetPositionChar?.isWritable;
   // Show expanded controls when not compact and has controls and reachable
@@ -230,7 +234,11 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   const statusText = coveringStatusText(isMoving, isOpening, currentPosition);
 
   // How much of the window the blind covers — what you actually see of it.
-  const coverage = 100 - targetPosition;
+  // What the bar draws is where the blind actually is. Drawing the target made
+  // pressing Open snap the whole bar open before the blind had moved an inch,
+  // which is the one thing a slow device's control must not do.
+  const coverage = 100 - currentPosition;
+  const targetCoverage = 100 - targetPosition;
 
   const subtitle = (
     <span className="flex items-center gap-2">
@@ -285,6 +293,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
             // makes dragging down raise the value. Coverage rising as you drag
             // down is the same gesture as before: pull down to close.
             value={coverage}
+            targetValue={targetCoverage}
             invert
             min={0}
             max={100}

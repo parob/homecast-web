@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coveringStatusText, isOpeningFromState } from '../shared/coveringStatus';
+import { coveringMotion, coveringStatusText, isOpeningFromState } from '../shared/coveringStatus';
 
 // HomeKit's position_state values, of the RAW position.
 const DECREASING = 0;
@@ -39,5 +39,41 @@ describe('window covering status', () => {
   it('never calls a stopped blind opening', () => {
     expect(isOpeningFromState(STOPPED, true)).toBe(false);
     expect(isOpeningFromState(STOPPED, false)).toBe(false);
+  });
+});
+
+describe('window covering motion', () => {
+  // Pressing Open caches the target write immediately, so the target moves a
+  // beat before the device admits to moving. That gap is the whole point.
+  it('reports movement the moment a target differs, before the device agrees', () => {
+    const { isMoving, isOpening } = coveringMotion(0, 100, STOPPED, true);
+    expect(isMoving).toBe(true);
+    expect(isOpening).toBe(true);
+  });
+
+  it('takes the direction from the device once it is actually moving', () => {
+    // Device says Increasing on a coverage-reporting blind: it is closing, even
+    // though the target happens to sit above the current position.
+    expect(coveringMotion(50, 90, INCREASING, false).isOpening).toBe(false);
+    expect(coveringMotion(50, 90, DECREASING, false).isOpening).toBe(true);
+  });
+
+  it('falls back to the target when the blind publishes no state', () => {
+    expect(coveringMotion(20, 80, null, true)).toEqual({ isMoving: true, isOpening: true });
+    expect(coveringMotion(80, 20, null, true)).toEqual({ isMoving: true, isOpening: false });
+  });
+
+  it('is still once it has arrived, allowing for a blind that stops slightly off', () => {
+    expect(coveringMotion(100, 100, STOPPED, true).isMoving).toBe(false);
+    expect(coveringMotion(99, 100, STOPPED, true).isMoving).toBe(false);
+    expect(coveringMotion(97, 100, STOPPED, true).isMoving).toBe(true);
+  });
+
+  it('drives the wording end to end', () => {
+    const arriving = coveringMotion(60, 100, STOPPED, true);
+    expect(coveringStatusText(arriving.isMoving, arriving.isOpening, 60)).toBe('Opening');
+
+    const settled = coveringMotion(100, 100, STOPPED, true);
+    expect(coveringStatusText(settled.isMoving, settled.isOpening, 100)).toBe('Currently Fully Open');
   });
 });
