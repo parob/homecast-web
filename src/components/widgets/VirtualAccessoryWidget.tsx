@@ -97,6 +97,61 @@ const ModeSegmented: React.FC<{
   );
 };
 
+/**
+ * The same picker, shrunk into the header row of a collapsed tile.
+ *
+ * Separate from `ModeSegmented` because the two answer different questions.
+ * Expanded, the tile is already about this accessory and the row is a control.
+ * Collapsed, it sits among a wall of tiles and has to say which mode is on from
+ * across the room — so the selected option is filled in the accessory's own
+ * colour, exactly as the expanded picker fills it, rather than merely ringed.
+ * A ring on a translucent pill over a photo is close to invisible, which is
+ * what this replaced.
+ *
+ * It is its own component so it can read the widget's colour: `headerAction` is
+ * built in the parent's render, outside the card's provider, but the element it
+ * returns is mounted inside it.
+ */
+const CompactModePills: React.FC<{
+  options: string[];
+  value: unknown;
+  onSelect: (v: string) => void;
+  name: string;
+  dark: boolean;
+}> = ({ options, value, onSelect, name, dark }) => {
+  const { colors, iconStyle } = useWidgetColors();
+  const selected = iconStyle === 'colourful'
+    ? `${colors.accent} text-white ring-1 ring-inset ring-white/45`
+    : 'bg-primary text-primary-foreground ring-1 ring-inset ring-white/45';
+  const idle = dark
+    ? 'bg-white/15 text-white/75 hover:bg-white/30 hover:text-white'
+    : 'bg-black/10 text-slate-700 hover:bg-black/20 hover:text-slate-900';
+
+  return (
+    <span className="flex items-center gap-1" role="group" aria-label={`Set ${name}`}>
+      {options.map(option => {
+        const isActive = value === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-label={`Set ${name} to ${option}`}
+            aria-pressed={isActive}
+            // The mode it is already in is shown, not offered — and a disabled
+            // button swallows the press, so the tile doesn't expand either.
+            disabled={isActive}
+            className={'flex h-7 items-center justify-center rounded-full px-2.5 text-[11px] transition '
+              + (isActive ? `${selected} font-semibold cursor-default` : `${idle} font-medium active:scale-90`)}
+            onClick={e => { e.stopPropagation(); onSelect(option); }}
+          >
+            {option}
+          </button>
+        );
+      })}
+    </span>
+  );
+};
+
 function buttonClass(dark: boolean, large?: boolean): string {
   return `${large ? 'h-11' : 'h-9'} inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 `
     + 'text-sm transition-colors '
@@ -350,10 +405,6 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
    * gives it, and a cramped version would be worse than opening it.
    */
   function renderCompactAction(): React.ReactNode {
-    const pill = 'flex h-7 items-center justify-center rounded-full px-2 text-[11px] font-medium transition active:scale-90 '
-      + (isDarkBackground
-        ? 'bg-white/20 text-white hover:bg-white/30'
-        : 'bg-black/10 text-slate-800 hover:bg-black/15');
     const round = 'flex h-7 w-7 items-center justify-center rounded-full transition active:scale-90 '
       + (isDarkBackground
         ? 'bg-white/20 text-white hover:bg-white/30'
@@ -404,22 +455,13 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           : meta.virtualOptions;
         if (!options || options.length === 0 || options.length > 3) return undefined;
         return (
-          <span className="flex items-center gap-1">
-            {options.map(option => (
-              <button
-                key={option}
-                type="button"
-                aria-label={`Set ${accessory.name} to ${option}`}
-                aria-pressed={value === option}
-                className={pill + (value === option
-                  ? (isDarkBackground ? ' ring-1 ring-white/70' : ' ring-1 ring-slate-700/60')
-                  : ' opacity-70')}
-                onClick={press(() => set(option))}
-              >
-                {option}
-              </button>
-            ))}
-          </span>
+          <CompactModePills
+            options={options}
+            value={value}
+            onSelect={set}
+            name={accessory.name}
+            dark={isDarkBackground}
+          />
         );
       }
 

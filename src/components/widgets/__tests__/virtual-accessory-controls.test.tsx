@@ -1126,6 +1126,27 @@ describe('compact tile actions', () => {
     expect(writes).toEqual([['c-virtual_mode', 'virtual_mode', 'Away']]);
   });
 
+  it('fills in the mode it is already in rather than ringing it', () => {
+    cleanup();
+    const away = accessoryFor('virtual_mode', { virtualOptions: ['Home', 'Away'] });
+    away.services[0].characteristics[0].value = 'Away';
+    render(<VirtualAccessoryWidget {...{
+      ...compactProps('virtual_mode', { virtualOptions: ['Home', 'Away'] }, () => {}),
+      accessory: { ...away, id: 'c-mode-selected' },
+    }} />);
+
+    const selected = screen.getByRole('button', { name: 'Set Test Value to Away' });
+    const other = screen.getByRole('button', { name: 'Set Test Value to Home' });
+
+    // Filled, not merely outlined — a ring on a translucent pill over a photo
+    // is what this replaced.
+    expect(selected.className).toMatch(/bg-(blue|primary)/);
+    expect(selected.getAttribute('aria-pressed')).toBe('true');
+    // And it is shown, not offered: pressing it would also expand the tile.
+    expect((selected as HTMLButtonElement).disabled).toBe(true);
+    expect((other as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('leaves a long mode list to the expanded tile', () => {
     cleanup();
     render(<VirtualAccessoryWidget
