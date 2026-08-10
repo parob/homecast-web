@@ -217,7 +217,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.result.capabilities).toHaveProperty('tools');
   });
 
-  it('responds to tools/list with exactly 10 tools matching cloud', async () => {
+  it('responds to tools/list with exactly 17 tools matching cloud', async () => {
     const response = JSON.parse(await handleMCP(JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -227,21 +227,55 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.jsonrpc).toBe('2.0');
     expect(response.id).toBe(2);
     const tools = response.result.tools;
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(17);
 
     const toolNames = tools.map((t: any) => t.name).sort();
     expect(toolNames).toEqual([
       'create_automation',
+      'create_hc_automation',
       'create_scene',
+      'create_virtual_accessory',
       'delete_automation',
+      'delete_hc_automation',
       'delete_scene',
+      'delete_virtual_accessory',
       'get_automations',
+      'get_hc_automations',
       'get_state',
       'run_scene',
       'set_state',
       'update_automation',
+      'update_hc_automation',
       'update_scene',
+      'update_virtual_accessory',
     ]);
+  });
+
+  // The two engines are different products with different limits, and an agent
+  // that can't tell them apart will reach for HomeKit and report a threshold
+  // automation as impossible. The distinction lives in the tool descriptions,
+  // so it is asserted here rather than left to prose in the docs.
+  it('every automation tool says which engine it drives', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/list',
+    })));
+    const tools: any[] = response.result.tools;
+    const byName = (n: string) => tools.find((t) => t.name === n).description;
+
+    for (const name of ['create_automation', 'get_automations', 'update_automation', 'delete_automation']) {
+      expect(byName(name)).toMatch(/HomeKit/);
+    }
+    for (const name of ['create_hc_automation', 'get_hc_automations', 'update_hc_automation', 'delete_hc_automation']) {
+      expect(byName(name)).toMatch(/HOMECAST|Homecast/);
+    }
+
+    // The two dead ends that made the engine unreachable: a threshold request
+    // and a stateful one both have to name create_hc_automation as the way out.
+    expect(byName('create_automation')).toContain('create_hc_automation');
+    expect(byName('create_hc_automation')).toMatch(/above|below/);
+    expect(byName('create_virtual_accessory')).toContain('create_hc_automation');
   });
 
   it('delete_scene requires home/name and is destructive', async () => {
