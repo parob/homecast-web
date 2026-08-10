@@ -156,6 +156,9 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // accessories.list, which is minutes. Preferred wherever it has an answer —
   // a timer running out is exactly the moment the accessory has not heard about.
   const liveTimer = useVirtualTimerInfo(accessory?.id);
+  // Nothing else changes on press — the new value arrives seconds later — so
+  // the tile needs its own reason to repaint the moment the button is hit.
+  const [, repaint] = React.useReducer((n: number) => n + 1, 0);
   const FIELD_CLASS = fieldClass(isDarkBackground, expanded);
   const BUTTON_CLASS = buttonClass(isDarkBackground, expanded);
 
@@ -199,7 +202,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // minutes. Every other timer input below already prefers liveTimer; this one
   // did not, so a finished timer went on claiming it was running, its
   // countdown parked at 0:00, and the alert's running→idle moment never came.
-  const running = liveTimer ? liveTimer.state === 'active' : value === 'active';
+  const reportedRunning = liveTimer ? liveTimer.state === 'active' : value === 'active';
+  const running = charType === 'virtual_timer'
+    ? optimisticRunning(accessory.id, reportedRunning)
+    : reportedRunning;
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
   const configuredMs = definition?.type === 'timer' ? durationToMs(definition.duration) : undefined;
@@ -395,7 +401,12 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             type="button"
             aria-label={running ? `Cancel ${accessory.name}` : `Start ${accessory.name}`}
             className={`${BUTTON_CLASS} w-full`}
-            onClick={() => set(running ? 'idle' : 'active')}
+            onClick={() => {
+              // Believe the press, then send it.
+              noteTimerIntent(accessory.id, !running);
+              repaint();
+              set(running ? 'idle' : 'active');
+            }}
           >
             {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {running ? 'Cancel' : 'Start'}
@@ -477,6 +488,39 @@ const TIMER_ALERT_MS = 10_000;
  * this browser hearing it.
  */
 const RAN_OUT_TOLERANCE_MS = 1500;
+
+/**
+ * What the user just told a timer to do, until the relay says the same.
+ *
+ * Pressing start is the moment the user finds out whether the button works, and
+ * the answer used to take seconds: the value comes back through the accessory
+ * cache, and the tile did not move until it did. So the press is believed at
+ * once and the countdown starts from it — the happy path is overwhelmingly the
+ * common one, and a control that waits to be told what it already knows feels
+ * broken even when nothing is wrong.
+ *
+ * Held only until the truth agrees, or briefly: an intent that is never
+ * confirmed is a write that failed, and continuing to show it would be a lie
+ * rather than an optimism.
+ */
+const timerIntent = new Map<string, { want: boolean; at: number }>();
+
+/** How long a press is believed without confirmation. */
+const INTENT_MS = 15_000;
+
+function noteTimerIntent(accessoryId: string, want: boolean): void {
+  timerIntent.set(accessoryId, { want, at: Date.now() });
+}
+
+function optimisticRunning(accessoryId: string, reported: boolean): boolean {
+  const intent = timerIntent.get(accessoryId);
+  if (!intent) return reported;
+  if (reported === intent.want || Date.now() - intent.at > INTENT_MS) {
+    timerIntent.delete(accessoryId);
+    return reported;
+  }
+  return intent.want;
+}
 
 /** When a timer was last seen to reach zero here, by accessory id. */
 const localTimerFinishes = new Map<string, number>();

@@ -851,6 +851,62 @@ describe('virtual accessory controls', () => {
     }
   });
 
+  it('shows a timer as running the instant Start is pressed', () => {
+    cleanup();
+    // Its own id: the intent store is module-level and keyed by accessory, so
+    // sharing an id with another test would leak a press into it.
+    const saved = { ...accessoryFor('virtual_timer'), id: 't-intent-a' };
+    saved.services[0].characteristics[0].value = 'idle';
+
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: saved,
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          // Deliberately does NOT feed the new value back: that is the real
+          // situation, where it returns seconds later through the cache.
+          onSetValue: () => {},
+          onSlider: () => {}, onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start/i }));
+
+    // The press is believed at once, without waiting to be told what the tile
+    // already knows.
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
+  });
+
+  it('hands back to the reported value once it agrees', () => {
+    cleanup();
+    const saved = { ...accessoryFor('virtual_timer'), id: 't-intent-b' };
+    saved.services[0].characteristics[0].value = 'idle';
+    const props = (value: string) => ({
+      accessory: {
+        ...saved,
+        services: [{ ...saved.services[0],
+          characteristics: [{ ...saved.services[0].characteristics[0], value }] }],
+      },
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+    } as unknown as WidgetProps);
+
+    const view = render(<VirtualAccessoryWidget {...props('idle')} />);
+    fireEvent.click(screen.getByRole('button', { name: /start/i }));
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
+
+    // The relay confirms. From here the reported value is in charge again —
+    // the press has been believed and is no longer needed.
+    view.rerender(<VirtualAccessoryWidget {...props('active')} />);
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
+
+    // And a later stop is reflected, which it would not be if the press were
+    // still being held onto.
+    view.rerender(<VirtualAccessoryWidget {...props('idle')} />);
+    expect(screen.getByRole('button', { name: /start/i })).toBeTruthy();
+  });
+
   it('stays quiet when a timer is cancelled rather than run down', () => {
     cleanup();
     vi.useFakeTimers();
