@@ -463,9 +463,30 @@ function useRecentlyFinished(finishedAt: number | undefined, windowMs: number): 
  * finished timer answers is when it ended. The date comes along only when that
  * wasn't today, so the common case stays short.
  */
+/**
+ * Whether this browser's locale tells the time on a 12-hour clock.
+ *
+ * Asked once, of the same empty locale list the formatting uses, so the answer
+ * is whatever the platform would have chosen anyway.
+ */
+const PREFERS_12_HOUR = (() => {
+  try {
+    return new Intl.DateTimeFormat([], { hour: 'numeric' }).resolvedOptions().hour12 === true;
+  } catch {
+    return false;
+  }
+})();
+
 function formatFinished(at: number, now: number): string {
   const then = new Date(at);
-  const time = then.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // hour12 is stated rather than inferred. Left to itself WebKit can render a
+  // 12-hour time and drop the am/pm with it, so "4:42" gave no clue which 4:42
+  // a timer ran out at — the one thing this string exists to say. Naming it
+  // keeps the marker; 24-hour locales are untouched and stay unambiguous by
+  // construction.
+  const time = then.toLocaleTimeString([], PREFERS_12_HOUR
+    ? { hour: 'numeric', minute: '2-digit', hour12: true }
+    : { hour: '2-digit', minute: '2-digit', hour12: false });
   const sameDay = then.toDateString() === new Date(now).toDateString();
   return sameDay ? time : `${then.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`;
 }

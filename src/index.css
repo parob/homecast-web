@@ -19,6 +19,31 @@
   animation: wiggle 0.3s ease-in-out infinite;
 }
 
+/* A virtual timer announcing that it has run out.
+   Deliberately scoped to the icon: an animated transform — or opacity — on an
+   ancestor of a backdrop-filter element establishes a new backdrop root, which
+   switches the widget's glass off for as long as the animation runs. Attach
+   this to a glyph, never to a tile or anything containing one. */
+@keyframes timer-alarm {
+  0%, 55%, 100% { transform: rotate(0deg) scale(1); }
+  8%  { transform: rotate(-14deg) scale(1.14); }
+  18% { transform: rotate(12deg) scale(1.14); }
+  28% { transform: rotate(-9deg) scale(1.09); }
+  38% { transform: rotate(7deg) scale(1.05); }
+  47% { transform: rotate(-4deg) scale(1.02); }
+}
+
+.timer-alarm {
+  animation: timer-alarm 1.25s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* The words carry the message on their own; the shaking is the part that
+   doesn't survive a reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  .timer-alarm { animation: none; }
+}
+
 
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
