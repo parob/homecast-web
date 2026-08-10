@@ -240,6 +240,12 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   const coverage = 100 - currentPosition;
   const targetCoverage = 100 - targetPosition;
 
+  // Nothing left to ask for. Keyed on the target, not the current position, so
+  // Open also goes quiet while the blind is already on its way open — pressing
+  // it again would re-send a request that is already in flight.
+  const atFullyOpen = targetPosition >= 100;
+  const atFullyClosed = targetPosition <= 0;
+
   const subtitle = (
     <span className="flex items-center gap-2">
       <span className={isMoving ? 'text-primary' : 'text-muted-foreground'}>
@@ -369,8 +375,8 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className={`h-11 flex-1 ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            disabled={noResponse}
+            className={`h-11 flex-1 ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+            disabled={noResponse || atFullyOpen}
             onClick={(e) => {
               e.stopPropagation();
               if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
@@ -381,8 +387,8 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
           </Button>
           <Button
             variant="outline"
-            className={`h-11 flex-1 ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            disabled={noResponse}
+            className={`h-11 flex-1 ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+            disabled={noResponse || atFullyClosed}
             onClick={(e) => {
               e.stopPropagation();
               if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
@@ -420,8 +426,8 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 // Open fully (100% open = 0% coverage for inverted blinds)
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
               }}
-              disabled={noResponse}
-              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(targetPosition === 0)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              disabled={noResponse || atFullyOpen}
+              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
               <ChevronUp className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
             </Button>
@@ -433,8 +439,8 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
                 // Close fully (0% open = 100% coverage for inverted blinds)
                 if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
               }}
-              disabled={noResponse}
-              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(targetPosition === 100)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              disabled={noResponse || atFullyClosed}
+              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             >
               <ChevronDown className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
             </Button>
