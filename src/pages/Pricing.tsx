@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Laptop, Cloud, Check, Monitor, AlertTriangle, Heart, X } from 'lucide-react';
 import { FAQ, FAQItem } from '@/components/FAQ';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
@@ -47,29 +48,69 @@ function FeatureCell({ value }: { value: CellValue }) {
   return <span className="text-[11px] sm:text-sm text-muted-foreground">{value}</span>;
 }
 
-function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
-  const features: FeatureRow[] = [
-    { label: 'Price', community: 'Free', basic: 'Free', standard: `${pricing.standard.formatted}/mo`, cloud: `${pricing.cloud.formatted}/mo` },
-    { label: 'Accessories', community: 'Unlimited', basic: '10', standard: 'Unlimited', cloud: 'Unlimited' },
-    { label: 'Works without a Mac **', community: false, basic: false, standard: false, cloud: true },
-    { label: 'Account required', community: false, basic: true, standard: true, cloud: true },
-    { label: 'Remote access', community: 'X *', basic: true, standard: true, cloud: true },
-    { label: 'Sharing', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'REST & GraphQL API', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'MCP (AI assistants)', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'Webhooks', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'Custom MQTT Broker', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'Homecast MQTT Broker', community: false, basic: false, standard: true, cloud: true },
-    { label: 'Home Assistant', community: '✓ *', basic: true, standard: true, cloud: true },
-    { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
-    // Both run on the relay, in every edition. Virtual accessories are also
-    // exempt from the accessory limit — a value the engine owns is not a device
-    // anyone is being sold — so Basic gets them without spending its ten.
-    { label: 'Automations', community: true, basic: true, standard: true, cloud: true },
-    { label: 'Virtual Accessories', community: true, basic: true, standard: true, cloud: true },
+interface FeatureGroup {
+  title: string;
+  rows: FeatureRow[];
+}
 
-    { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
-    { label: 'Ad-free', community: true, basic: false, standard: true, cloud: true },
+// Features every tier has — shown in the "Every plan includes" strip rather
+// than as all-tick matrix rows. Automations and virtual accessories both run
+// on the relay in every edition; virtual accessories are also exempt from the
+// accessory limit — a value the engine owns is not a device anyone is being
+// sold — so Basic gets them without spending its ten.
+const INCLUDED_EVERYWHERE = [
+  'Automations',
+  'Virtual Accessories',
+  'Sharing',
+  'REST & GraphQL API',
+  'MCP (AI assistants)',
+  'Webhooks',
+  'Custom MQTT broker',
+  'Home Assistant',
+];
+
+function IncludedEverywhere() {
+  return (
+    <div className="rounded-2xl border border-border bg-muted/20 p-6 mt-10">
+      <h3 className="text-base font-semibold mb-4">Every plan includes</h3>
+      <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2.5">
+        {INCLUDED_EVERYWHERE.map((label) => (
+          <CheckItem key={label}>{label}</CheckItem>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground mt-4">
+        Community Edition: these work on your local network only — remote use requires Tailscale, Cloudflare Tunnel, or similar.
+      </p>
+    </div>
+  );
+}
+
+function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
+  const groups: FeatureGroup[] = [
+    {
+      title: 'Plan basics',
+      rows: [
+        { label: 'Price', community: 'Free', basic: 'Free', standard: `${pricing.standard.formatted}/mo`, cloud: `${pricing.cloud.formatted}/mo` },
+        { label: 'Accessories', community: 'Unlimited', basic: '10', standard: 'Unlimited', cloud: 'Unlimited' },
+        { label: 'Works without a Mac **', community: false, basic: false, standard: false, cloud: true },
+        { label: 'Account required', community: false, basic: true, standard: true, cloud: true },
+      ],
+    },
+    {
+      title: 'Connectivity & notifications',
+      rows: [
+        { label: 'Remote access', community: 'X *', basic: true, standard: true, cloud: true },
+        { label: 'Push notifications', community: false, basic: false, standard: true, cloud: true },
+        { label: 'Homecast MQTT Broker', community: false, basic: false, standard: true, cloud: true },
+      ],
+    },
+    {
+      title: 'Extras',
+      rows: [
+        { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
+        { label: 'Ad-free', community: true, basic: false, standard: true, cloud: true },
+      ],
+    },
   ];
 
   return (
@@ -102,22 +143,32 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
           </tr>
         </thead>
         <tbody>
-          {features.map((row) => (
-            <tr key={row.label} className="border-b border-border/50">
-              <td className="py-3 pr-2 sm:pr-4 text-xs sm:text-sm font-medium">{row.label}</td>
-              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.community} /></td>
-              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.basic} /></td>
-              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.standard} /></td>
-              <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.cloud} /></td>
-            </tr>
+          {groups.map((group) => (
+            <Fragment key={group.title}>
+              <tr>
+                <td colSpan={5} className="pt-6 pb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {group.title}
+                </td>
+              </tr>
+              {group.rows.map((row) => (
+                <tr key={row.label} className="border-b border-border/50">
+                  <td className="py-3 pr-2 sm:pr-4 text-xs sm:text-sm font-medium">{row.label}</td>
+                  <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.community} /></td>
+                  <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.basic} /></td>
+                  <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.standard} /></td>
+                  <td className="py-3 px-0.5 sm:px-3 text-center"><FeatureCell value={row.cloud} /></td>
+                </tr>
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
       <div className="text-xs text-muted-foreground mt-4 space-y-1">
-        <p>* Community Edition runs on your local network only. Remote access, sharing, API, MCP, and webhooks require Tailscale, Cloudflare Tunnel, or similar tools to work outside your home network.</p>
+        <p>* Community Edition works on your local network only — remote access requires Tailscale, Cloudflare Tunnel, or similar tools.</p>
         <p>** Community, Basic, and Standard require a Mac running the Homecast Relay app at all times.</p>
         <p>*** Smart Deals can be turned off in settings.</p>
       </div>
+      <IncludedEverywhere />
     </div>
   );
 }
