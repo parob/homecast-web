@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Tag,
   Bell,
+  LineChart,
   ExternalLink,
   Copy,
 } from 'lucide-react';
@@ -55,8 +56,9 @@ import { HomeDetailView } from './HomeDetailView';
 import { TabBarSection } from './TabBarSection';
 import { AccountSection } from './AccountSection';
 import { NotificationsSection } from './NotificationsSection';
+import { HistorySection } from './HistorySection';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'tab-bar' | 'account';
+export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'history' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'tab-bar' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -203,6 +205,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       items.push({ id: 'notifications', label: 'Notifications', group: 'General', icon: Bell });
     }
 
+    items.push({ id: 'history', label: 'History', group: 'General', icon: LineChart });
     items.push({ id: 'homes', label: 'Homes', group: 'General', icon: HomeIcon });
     items.push({ id: 'sharing', label: 'Sharing', group: 'General', icon: Share2 });
 
@@ -484,6 +487,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
         );
       case 'notifications':
         return <NotificationsSection />;
+      case 'history':
+        return <HistorySection homes={props.homes} />;
       case 'tab-bar':
         return (
           <TabBarSection

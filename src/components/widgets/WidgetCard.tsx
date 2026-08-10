@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,6 +20,7 @@ import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconCo
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
+import { useHistory } from '@/contexts/HistoryContext';
 import { WidgetWrapper } from './WidgetWrapper';
 
 // Context for passing widget colors to child components
@@ -530,8 +531,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // is how the last menu item ended up wired in exactly one place.
   const { isTracked, openPriceHistory } = useDeals();
   const canShowPrices = !!accessory && isTracked(accessory);
+  const { historyAvailable, openHistory } = useHistory();
+  const canShowHistory = !!accessory && historyAvailable(accessory);
 
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices;
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -594,6 +597,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 <ContextMenuItem onClick={onShare}>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share Accessory
+                </ContextMenuItem>
+              )}
+              {canShowHistory && accessory && (
+                <ContextMenuItem onClick={() => openHistory(accessory)}>
+                  <LineChart className="h-4 w-4 mr-2" />
+                  History
                 </ContextMenuItem>
               )}
               {canShowPrices && accessory && (

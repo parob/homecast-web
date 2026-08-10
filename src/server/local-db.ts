@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'homecast-local';
-const DB_VERSION = 8; // v8: added hc_virtual_accessories, hc_virtual_states
+const DB_VERSION = 9; // v9: added history_series, history_samples, history_rollups
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -115,6 +115,21 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('hc_virtual_states')) {
         db.createObjectStore('hc_virtual_states', { keyPath: 'id' });
+      }
+      // v9: Characteristic history (opt-in). Samples are keyed by
+      // [seriesKey, ts] so range reads and pruning are cursor walks over a
+      // contiguous key range — at history scale (tens of thousands of rows
+      // per series) getAll-and-sort is not an option.
+      if (!db.objectStoreNames.contains('history_series')) {
+        const seriesStore = db.createObjectStore('history_series', { keyPath: 'id' });
+        seriesStore.createIndex('homeId', 'homeId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('history_samples')) {
+        const sampleStore = db.createObjectStore('history_samples', { keyPath: ['sid', 'ts'] });
+        sampleStore.createIndex('ts', 'ts', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('history_rollups')) {
+        db.createObjectStore('history_rollups', { keyPath: ['sid', 'tier', 'bucket'] });
       }
     };
 
@@ -758,4 +773,331 @@ export async function saveCredential(cred: StoredCredential): Promise<void> {
 
 export async function deleteCredential(id: string): Promise<void> {
   await remove('credentials', id);
+}
+
+// --- Characteristic History ---
+//
+// Three stores, mirroring the cloud's history_series / history_sample /
+// history_rollup_* tables. The series row doubles as per-series recording
+// config: absence of an override field means the profile default applies
+// (see src/history/policy.ts). Samples and rollups are keyed by compound
+// keys so every access pattern — range read, prune, cascade delete — is a
+// cursor over one contiguous key range.
+
+export interface HistorySeriesRow {
+  /** seriesKey(): `HOMEID|ACCESSORYID|characteristic_type` (ids uppercase). */
+  id: string;
+  homeId: string;
+  accessoryId: string;
+  characteristicType: string;
+  kind: 'numeric' | 'bool' | 'enum';
+  unit?: string;
+  /** User override; undefined = profile default decides. */
+  enabled?: boolean;
+  minIntervalS?: number;
+  deadband?: number;
+  createdAt: string;
+}
+
+export interface HistorySampleRow {
+  /** Series id (HistorySeriesRow.id). */
+  sid: string;
+  /** Epoch ms. */
+  ts: number;
+  v: number;
+  /** 0 = device-reported, 1 = relay-write announcement. */
+  src: number;
+}
+
+export interface HistoryRollupRow {
+  sid: string;
+  tier: 'h' | 'd';
+  /** Bucket start, epoch ms (UTC-aligned). */
+  bucket: number;
+  vMin: number | null;
+  vMax: number | null;
+  vAvg: number | null;
+  vLast: number;
+  count: number;
+  stateMs: Record<string, number> | null;
+  transitions: number | null;
+}
+
+export async function getHistorySeries(homeId?: string): Promise<HistorySeriesRow[]> {
+  if (homeId === undefined) return getAll<HistorySeriesRow>('history_series');
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_series', 'readonly');
+    const req = tx.objectStore('history_series').index('homeId').getAll(homeId.toUpperCase());
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getHistorySeriesById(id: string): Promise<HistorySeriesRow | undefined> {
+  return getById<HistorySeriesRow>('history_series', id);
+}
+
+export async function putHistorySeries(row: HistorySeriesRow): Promise<void> {
+  await put('history_series', row);
+}
+
+/** One transaction for a whole flush batch; creates missing series rows too. */
+export async function putHistoryBatch(
+  samples: HistorySampleRow[],
+  newSeries: HistorySeriesRow[],
+): Promise<void> {
+  if (samples.length === 0 && newSeries.length === 0) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['history_samples', 'history_series'], 'readwrite');
+    const sampleStore = tx.objectStore('history_samples');
+    const seriesStore = tx.objectStore('history_series');
+    for (const row of newSeries) seriesStore.put(row);
+    for (const row of samples) sampleStore.put(row);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function putHistoryRollups(rows: HistoryRollupRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_rollups', 'readwrite');
+    const store = tx.objectStore('history_rollups');
+    for (const row of rows) store.put(row);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Samples in [fromTs, toTs), ascending. Cursor-chunked, never getAll-the-store. */
+export async function getHistorySamples(
+  sid: string,
+  fromTs: number,
+  toTs: number,
+  limit = 100_000,
+): Promise<HistorySampleRow[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_samples', 'readonly');
+    const range = IDBKeyRange.bound([sid, fromTs], [sid, toTs], false, true);
+    const req = tx.objectStore('history_samples').openCursor(range);
+    const out: HistorySampleRow[] = [];
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && out.length < limit) {
+        out.push(cursor.value as HistorySampleRow);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** The LOCF seed: last sample strictly before ts. */
+export async function getLastHistorySampleBefore(
+  sid: string,
+  ts: number,
+): Promise<HistorySampleRow | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_samples', 'readonly');
+    const range = IDBKeyRange.bound([sid, 0], [sid, ts], false, true);
+    const req = tx.objectStore('history_samples').openCursor(range, 'prev');
+    req.onsuccess = () => resolve((req.result?.value as HistorySampleRow) ?? undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** Rollup rows for one series/tier in [fromBucket, toBucket), ascending. */
+export async function getHistoryRollups(
+  sid: string,
+  tier: 'h' | 'd',
+  fromBucket: number,
+  toBucket: number,
+): Promise<HistoryRollupRow[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_rollups', 'readonly');
+    const range = IDBKeyRange.bound([sid, tier, fromBucket], [sid, tier, toBucket], false, true);
+    const req = tx.objectStore('history_rollups').openCursor(range);
+    const out: HistoryRollupRow[] = [];
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        out.push(cursor.value as HistoryRollupRow);
+        cursor.continue();
+      } else {
+        resolve(out);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getLastHistoryRollupBefore(
+  sid: string,
+  tier: 'h' | 'd',
+  bucket: number,
+): Promise<HistoryRollupRow | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_rollups', 'readonly');
+    const range = IDBKeyRange.bound([sid, tier, 0], [sid, tier, bucket], false, true);
+    const req = tx.objectStore('history_rollups').openCursor(range, 'prev');
+    req.onsuccess = () => resolve((req.result?.value as HistoryRollupRow) ?? undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Delete samples older than cutoff, in bounded chunks with an event-loop
+ * yield between transactions — a months-deep prune must not freeze the relay
+ * that is also serving live requests. Returns rows deleted.
+ */
+export async function pruneHistorySamples(
+  cutoffTs: number,
+  sid?: string,
+  chunkSize = 500,
+): Promise<number> {
+  const db = await openDB();
+  let deleted = 0;
+  for (;;) {
+    const batch: number = await new Promise((resolve, reject) => {
+      const tx = db.transaction('history_samples', 'readwrite');
+      const store = tx.objectStore('history_samples');
+      let n = 0;
+      const req = sid
+        ? store.openCursor(IDBKeyRange.bound([sid, 0], [sid, cutoffTs], false, true))
+        : store.index('ts').openCursor(IDBKeyRange.upperBound(cutoffTs, true));
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor && n < chunkSize) {
+          cursor.delete();
+          n++;
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve(n);
+      tx.onerror = () => reject(tx.error);
+    });
+    deleted += batch;
+    if (batch < chunkSize) return deleted;
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
+/** Cascade removal of one series: config row, samples, rollups. */
+export async function deleteHistorySeries(sid: string): Promise<void> {
+  await pruneHistorySamples(Number.MAX_SAFE_INTEGER, sid);
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['history_series', 'history_rollups'], 'readwrite');
+    tx.objectStore('history_series').delete(sid);
+    const range = IDBKeyRange.bound([sid, 'd', 0], [sid, 'h', Number.MAX_SAFE_INTEGER]);
+    const req = tx.objectStore('history_rollups').openCursor(range);
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function deleteHistoryForHome(homeId: string): Promise<void> {
+  const series = await getHistorySeries(homeId);
+  for (const row of series) {
+    await deleteHistorySeries(row.id);
+  }
+}
+
+export interface HistoryStorageStats {
+  seriesCount: number;
+  sampleRows: number;
+  rollupRows: number;
+  oldestSampleTs: number | null;
+}
+
+export async function getHistoryStorageStats(homeId?: string): Promise<HistoryStorageStats> {
+  const series = await getHistorySeries(homeId);
+  const sids = new Set(series.map((s) => s.id));
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['history_samples', 'history_rollups'], 'readonly');
+    let sampleRows = 0;
+    let rollupRows = 0;
+    let oldestSampleTs: number | null = null;
+
+    if (homeId === undefined) {
+      // Whole-store counts are O(1); per-home falls back to per-series counts.
+      const sampleCount = tx.objectStore('history_samples').count();
+      sampleCount.onsuccess = () => { sampleRows = sampleCount.result; };
+      const rollupCount = tx.objectStore('history_rollups').count();
+      rollupCount.onsuccess = () => { rollupRows = rollupCount.result; };
+      const oldest = tx.objectStore('history_samples').index('ts').openCursor();
+      oldest.onsuccess = () => {
+        if (oldest.result) oldestSampleTs = (oldest.result.value as HistorySampleRow).ts;
+      };
+    } else {
+      for (const sid of sids) {
+        const sc = tx.objectStore('history_samples')
+          .count(IDBKeyRange.bound([sid, 0], [sid, Number.MAX_SAFE_INTEGER]));
+        sc.onsuccess = () => { sampleRows += sc.result; };
+        const rc = tx.objectStore('history_rollups')
+          .count(IDBKeyRange.bound([sid, 'd', 0], [sid, 'h', Number.MAX_SAFE_INTEGER]));
+        rc.onsuccess = () => { rollupRows += rc.result; };
+        const oc = tx.objectStore('history_samples')
+          .openCursor(IDBKeyRange.bound([sid, 0], [sid, Number.MAX_SAFE_INTEGER]));
+        oc.onsuccess = () => {
+          const row = oc.result?.value as HistorySampleRow | undefined;
+          if (row && (oldestSampleTs === null || row.ts < oldestSampleTs)) oldestSampleTs = row.ts;
+        };
+      }
+    }
+
+    tx.oncomplete = () => resolve({ seriesCount: series.length, sampleRows, rollupRows, oldestSampleTs });
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Delete rollup rows before a bucket boundary (time-bounded purge). */
+export async function pruneHistoryRollups(sid: string, beforeBucket: number): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_rollups', 'readwrite');
+    const store = tx.objectStore('history_rollups');
+    for (const tier of ['d', 'h'] as const) {
+      const range = IDBKeyRange.bound([sid, tier, 0], [sid, tier, beforeBucket], false, true);
+      const req = store.openCursor(range);
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Sample count for one series — an index count, not a scan. */
+export async function countHistorySamples(sid: string): Promise<number> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history_samples', 'readonly');
+    const req = tx.objectStore('history_samples')
+      .count(IDBKeyRange.bound([sid, 0], [sid, Number.MAX_SAFE_INTEGER]));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }

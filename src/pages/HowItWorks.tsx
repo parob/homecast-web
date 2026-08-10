@@ -978,7 +978,10 @@ const HowItWorks = () => {
                   <li><strong>Webhook signatures:</strong> HMAC-SHA256 for payload verification</li>
                 </ul>
                 <p className="mt-2">
-                  Your HomeKit data is never transmitted in plain text, and we don't store your device states on our servers.
+                  Your HomeKit data is never transmitted in plain text, and we don't store your device
+                  states on our servers — unless you explicitly opt in to the History feature, which
+                  records the characteristics you choose so you can see charts, and can be deleted at
+                  any time.
                 </p>
               </FAQItem>
             </FAQ>

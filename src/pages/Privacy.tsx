@@ -10,7 +10,7 @@ const Privacy = () => {
         <section className="w-full py-16 px-6">
           <div className="mx-auto max-w-3xl">
             <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
-            <p className="text-muted-foreground mb-12">Last updated: March 2025</p>
+            <p className="text-muted-foreground mb-12">Last updated: August 2026</p>
 
             <div className="space-y-8">
               <div>
@@ -41,8 +41,9 @@ const Privacy = () => {
                 <h3 className="text-base font-medium mt-4 mb-2">HomeKit Data</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">
                   <strong className="text-foreground">Important:</strong> Homecast routes commands to your HomeKit devices but does not
-                  store your device states, sensor readings, or activity history on our servers. Your
-                  HomeKit data flows through our relay but is not persisted.
+                  store your device states, sensor readings, or activity history on our servers unless
+                  you explicitly turn on the optional History feature (below). Your HomeKit data flows
+                  through our relay but is not otherwise persisted.
                 </p>
                 <p className="text-muted-foreground leading-relaxed mb-2">We may temporarily process:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4">
@@ -50,6 +51,18 @@ const Privacy = () => {
                   <li>Room and home structure</li>
                   <li>Commands you send to devices</li>
                 </ul>
+
+                <h3 className="text-base font-medium mt-4 mb-2">Device History (opt-in)</h3>
+                <p className="text-muted-foreground leading-relaxed mb-2">
+                  History is off by default. If you turn it on for a home (Settings → History), we record
+                  how the characteristics you choose change over time — for example temperature readings
+                  or when a light switched on — so we can show you charts. Detailed samples are kept for
+                  the period you configure (30 days by default) and then reduced to hourly and daily
+                  summaries. You can exclude any device or characteristic, export your history, and
+                  delete all of it at any time from the same settings screen; deleting your account
+                  deletes it too. In the Community Edition, history never reaches our servers at all —
+                  it is stored only on your own Mac.
+                </p>
 
                 <h3 className="text-base font-medium mt-4 mb-2">Device Product Information</h3>
                 <p className="text-muted-foreground leading-relaxed">

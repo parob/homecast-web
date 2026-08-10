@@ -1,0 +1,147 @@
+{
+  "comment": "Shared behavioral fixtures for the history recording policy. Run by BOTH the TypeScript engine (policy.test.ts, vitest) and the Python engine (homecast-cloud test_history_policy.py, pytest). Each case replays events [tsMs, rawValue] through a fresh series state and asserts exactly which samples get recorded as [tsMs, normalizedValue]. Edit here, then re-vendor to homecast-cloud — the sync test compares bytes.",
+  "cases": [
+    {
+      "name": "first sight of a series always records",
+      "type": "current_temperature",
+      "events": [[0, 20.0]],
+      "recorded": [[0, 20.0]]
+    },
+    {
+      "name": "bool dedupe drops poll repeats, keeps transitions",
+      "type": "power_state",
+      "events": [[0, true], [60000, true], [120000, true], [180000, false], [240000, false]],
+      "recorded": [[0, 1], [180000, 0]]
+    },
+    {
+      "name": "double announcement of one write records once",
+      "type": "power_state",
+      "events": [[0, false], [5000, true], [5001, true]],
+      "recorded": [[0, 0], [5000, 1]]
+    },
+    {
+      "name": "numeric deadband absorbs jitter",
+      "type": "current_temperature",
+      "events": [[0, 20.0], [61000, 20.05], [122000, 20.2]],
+      "recorded": [[0, 20.0], [122000, 20.2]]
+    },
+    {
+      "name": "deadband compares against last RECORDED value, so slow drift eventually lands",
+      "type": "current_temperature",
+      "events": [[0, 20.0], [61000, 20.05], [122000, 20.09], [183000, 20.12]],
+      "recorded": [[0, 20.0], [183000, 20.12]]
+    },
+    {
+      "name": "min interval throttles even a large change",
+      "type": "current_temperature",
+      "events": [[0, 20.0], [30000, 25.0], [61000, 25.0]],
+      "recorded": [[0, 20.0], [61000, 25.0]]
+    },
+    {
+      "name": "percent deadband scales with the last recorded value",
+      "type": "current_ambient_light_level",
+      "events": [[0, 100], [301000, 105], [602000, 150], [903000, 151]],
+      "recorded": [[0, 100], [602000, 150]]
+    },
+    {
+      "name": "enum transitions record with no throttle",
+      "type": "lock_current_state",
+      "events": [[0, 1], [500, 0], [900, 1]],
+      "recorded": [[0, 1], [500, 0], [900, 1]]
+    },
+    {
+      "name": "air quality flapping is suppressed by its min interval",
+      "type": "air_quality",
+      "events": [[0, 2], [60000, 3], [400000, 3], [700000, 2]],
+      "recorded": [[0, 2], [400000, 3], [700000, 2]]
+    },
+    {
+      "name": "unprofiled characteristic never records",
+      "type": "lock_target_state",
+      "events": [[0, 1], [1000, 0]],
+      "recorded": []
+    },
+    {
+      "name": "metadata characteristic never records",
+      "type": "firmware_revision",
+      "events": [[0, "1.2.3"]],
+      "recorded": []
+    },
+    {
+      "name": "default-off profile records nothing without an override",
+      "type": "hue",
+      "events": [[0, 120], [61000, 240]],
+      "recorded": []
+    },
+    {
+      "name": "default-off profile records once opted in",
+      "type": "hue",
+      "override": { "enabled": true },
+      "events": [[0, 120], [61000, 240]],
+      "recorded": [[0, 120], [61000, 240]]
+    },
+    {
+      "name": "override can disable a default-on profile",
+      "type": "current_temperature",
+      "override": { "enabled": false },
+      "events": [[0, 20.0], [61000, 25.0]],
+      "recorded": []
+    },
+    {
+      "name": "override widens the deadband",
+      "type": "current_temperature",
+      "override": { "deadband": 1.0 },
+      "events": [[0, 20.0], [61000, 20.5], [122000, 21.5]],
+      "recorded": [[0, 20.0], [122000, 21.5]]
+    },
+    {
+      "name": "override tightens the interval",
+      "type": "current_temperature",
+      "override": { "minIntervalS": 10 },
+      "events": [[0, 20.0], [11000, 20.5], [22000, 21.0]],
+      "recorded": [[0, 20.0], [11000, 20.5], [22000, 21.0]]
+    },
+    {
+      "name": "string-encoded values parse",
+      "type": "power_state",
+      "events": [[0, "false"], [1000, "true"]],
+      "recorded": [[0, 0], [1000, 1]]
+    },
+    {
+      "name": "string-encoded numbers parse",
+      "type": "current_temperature",
+      "events": [[0, "20.5"], [61000, "21.5"]],
+      "recorded": [[0, 20.5], [61000, 21.5]]
+    },
+    {
+      "name": "unparsable value is dropped without touching state",
+      "type": "current_temperature",
+      "events": [[0, 20.0], [61000, "N/A"], [122000, 21.0]],
+      "recorded": [[0, 20.0], [122000, 21.0]]
+    },
+    {
+      "name": "inbound alias resolves to the canonical profile",
+      "type": "on",
+      "events": [[0, true], [1000, false]],
+      "recorded": [[0, 1], [1000, 0]]
+    },
+    {
+      "name": "legacy humidity variant resolves to the canonical profile",
+      "type": "current_relative_humidity",
+      "events": [[0, 54], [61000, 56]],
+      "recorded": [[0, 54], [61000, 56]]
+    },
+    {
+      "name": "numeric bool encodings collapse to 0 and 1",
+      "type": "motion_detected",
+      "events": [[0, 0], [1000, 1], [2000, true], [3000, 0]],
+      "recorded": [[0, 0], [1000, 1], [3000, 0]]
+    },
+    {
+      "name": "battery hourly throttle",
+      "type": "battery_level",
+      "events": [[0, 86], [1800000, 85], [3601000, 85]],
+      "recorded": [[0, 86], [3601000, 85]]
+    }
+  ]
+}

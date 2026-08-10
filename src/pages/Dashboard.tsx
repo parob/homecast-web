@@ -92,6 +92,8 @@ import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGr
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
+import { HistoryProvider } from '@/contexts/HistoryContext';
+import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
 import { DealBadge } from '@/components/widgets/DealBadge';
 import { PriceHistoryDialog, type PriceHistoryTarget } from '@/components/widgets/PriceHistoryDialog';
 import { findDealForAccessory } from '@/lib/deals';
@@ -1940,6 +1942,7 @@ const Dashboard = () => {
   // Debug accessory state (triggered via right-click menu for admins)
   const [debugAccessory, setDebugAccessory] = useState<HomeKitAccessory | null>(null);
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -5996,6 +5999,7 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
+    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7704,6 +7708,14 @@ const Dashboard = () => {
         onClose={() => setPriceHistoryTarget(null)}
       />
 
+      {/* Characteristic History — reachable from the widget context menu on
+          any accessory with recordable characteristics, once the home has
+          opted in (Settings → History) */}
+      <HistoryDialog
+        target={historyTarget}
+        onClose={() => setHistoryTarget(null)}
+      />
+
       {/* Debug Dialog for grouped accessories */}
       <Dialog open={!!debugAccessory} onOpenChange={(open) => !open && setDebugAccessory(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
@@ -8488,6 +8500,7 @@ const Dashboard = () => {
       </div>
     )}
     </BackgroundContext.Provider>
+    </HistoryProvider>
     </DealsProvider>
     </VirtualAccessoryEditProvider>
   );

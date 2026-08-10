@@ -161,6 +161,22 @@ function extractToken(authorization: string | undefined): string | null {
   return jwt && jwt !== 'community' ? jwt : null;
 }
 
+/** The history query layer over IndexedDB. */
+function idbHistoryStore(): import('../history/query').HistoryStore {
+  return {
+    getSamples: async (sid, from, to) =>
+      (await db.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+    getLastSampleBefore: async (sid, ts) => {
+      const row = await db.getLastHistorySampleBefore(sid, ts);
+      return row ? { ts: row.ts, v: row.v } : undefined;
+    },
+    getFirstSampleTs: async (sid) =>
+      (await db.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
+    getRollups: (sid, tier, from, to) => db.getHistoryRollups(sid, tier, from, to),
+    getLastRollupBefore: (sid, tier, bucket) => db.getLastHistoryRollupBefore(sid, tier, bucket),
+  };
+}
+
 async function resolveOperation(
   operationName: string | undefined,
   variables: Record<string, unknown>
@@ -1131,6 +1147,176 @@ async function resolveOperation(
       return { webhookEventTypes: [
         { eventType: 'state.changed', displayName: 'State Changed', description: 'Fired when a device characteristic changes', category: 'Device', __typename: 'WebhookEventTypeInfo' },
       ] };
+
+    // --- Characteristic History (opt-in) ---
+
+    case 'GetHistorySeries': {
+      const homeId = variables.homeId as string;
+      const [{ getProfile }, rows] = await Promise.all([
+        import('../history/policy'),
+        db.getHistorySeries(homeId),
+      ]);
+      const out = [];
+      for (const row of rows) {
+        const profile = getProfile(row.characteristicType);
+        const first = await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1);
+        const last = await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER);
+        out.push({
+          accessoryId: row.accessoryId,
+          characteristicType: row.characteristicType,
+          kind: row.kind,
+          unit: row.unit ?? null,
+          enabled: row.enabled ?? profile?.record ?? false,
+          minIntervalS: row.minIntervalS ?? profile?.minIntervalS ?? null,
+          deadband: row.deadband ?? profile?.deadband ?? null,
+          firstTs: first[0]?.ts ?? null,
+          lastTs: last?.ts ?? null,
+          sampleCount: await db.countHistorySamples(row.id),
+          __typename: 'HistorySeriesInfo',
+        });
+      }
+      return { historySeries: out };
+    }
+
+    case 'GetHistory': {
+      const homeId = variables.homeId as string;
+      const refs = (variables.series as Array<{ accessoryId: string; characteristicType: string }> | undefined) ?? [];
+      const from = Number(variables.fromTs);
+      const to = Number(variables.toTs);
+      const maxPoints = Math.min(Math.max(Number(variables.maxPoints) || 500, 10), 2000);
+      if (!Number.isFinite(from) || !Number.isFinite(to))
+
+        throw new Error('fromTs/toTs must be epoch milliseconds');
+      if (refs.length === 0 || refs.length > 6) {
+        throw new Error('history queries take 1-6 series');
+      }
+
+      const [{ seriesKey }, { queryHistorySeries }, { getProfile }] = await Promise.all([
+        import('../history/keys'),
+        import('../history/query'),
+        import('../history/policy'),
+      ]);
+      const store = idbHistoryStore();
+
+      const results = [];
+      for (const ref of refs) {
+        const sid = seriesKey(homeId, ref.accessoryId, ref.characteristicType);
+        const row = await db.getHistorySeriesById(sid);
+        const profile = getProfile(ref.characteristicType);
+        const kind = row?.kind ?? profile?.kind;
+        if (!kind) continue; // unrecordable characteristic — nothing to serve
+        const data = await queryHistorySeries(store, sid, kind, from, to, maxPoints);
+        results.push({
+          accessoryId: ref.accessoryId,
+          characteristicType: row?.characteristicType ?? ref.characteristicType,
+          kind,
+          unit: row?.unit ?? profile?.unit ?? null,
+          resolution: data.resolution,
+          prevValue: data.prevValue,
+          points: data.points.map(p => ({ ...p, __typename: 'HistoryPoint' })),
+          states: data.states.map(s => ({ ...s, __typename: 'HistoryStateSpan' })),
+          stateBuckets: data.stateBuckets.map(b => ({
+            ts: b.ts,
+            dominant: b.dominant,
+            stateMsJson: JSON.stringify(b.stateMs),
+            transitions: b.transitions,
+            __typename: 'HistoryStateBucket',
+          })),
+          __typename: 'HistorySeriesData',
+        });
+      }
+      return { history: results };
+    }
+
+    case 'GetHistoryStorageStats': {
+      const homeId = variables.homeId as string;
+      const [{ getHistoryHomeConfigs }, stats] = await Promise.all([
+        import('./local-history'),
+        db.getHistoryStorageStats(variables.homeId as string),
+      ]);
+      const config = (await getHistoryHomeConfigs())[homeId.toUpperCase()];
+      // Empirical CE row cost: a sample object with its two index entries
+      // lands around 120 bytes in WebKit's IndexedDB; rollups ~3×.
+      const estBytes = stats.sampleRows * 120 + stats.rollupRows * 360;
+      return {
+        historyStorageStats: {
+          enabled: config?.enabled ?? false,
+          rawRetentionDays: config?.rawRetentionDays ?? 30,
+          seriesCount: stats.seriesCount,
+          sampleRows: stats.sampleRows,
+          rollupRows: stats.rollupRows,
+          estBytes,
+          oldestTs: stats.oldestSampleTs,
+          __typename: 'HistoryStorageStats',
+        },
+      };
+    }
+
+    case 'SetHomeHistoryEnabled': {
+      const history = await import('./local-history');
+      const homeId = variables.homeId as string;
+      const existing = (await history.getHistoryHomeConfigs())[homeId.toUpperCase()];
+      await history.setHistoryHomeConfig(homeId, {
+        enabled: variables.enabled as boolean,
+        rawRetentionDays: existing?.rawRetentionDays ?? history.DEFAULT_RAW_RETENTION_DAYS,
+      });
+      return { setHomeHistoryEnabled: true };
+    }
+
+    case 'SetHomeHistoryRetention': {
+      const history = await import('./local-history');
+      const homeId = variables.homeId as string;
+      const days = Math.max(0, Math.min(Number(variables.rawRetentionDays) || 0, 3650));
+      const existing = (await history.getHistoryHomeConfigs())[homeId.toUpperCase()];
+      await history.setHistoryHomeConfig(homeId, {
+        enabled: existing?.enabled ?? false,
+        rawRetentionDays: days,
+      });
+      return { setHomeHistoryRetention: true };
+    }
+
+    case 'SetHistorySeriesConfig': {
+      const history = await import('./local-history');
+      const row = await history.setHistorySeriesOverride(
+        variables.homeId as string,
+        variables.accessoryId as string,
+        variables.characteristicType as string,
+        {
+          enabled: variables.enabled as boolean | undefined,
+          minIntervalS: variables.minIntervalS as number | undefined,
+          deadband: variables.deadband as number | undefined,
+        },
+      );
+      if (!row) throw new Error('Characteristic is not recordable');
+      return { setHistorySeriesConfig: true };
+    }
+
+    case 'PurgeHistory': {
+      const homeId = variables.homeId as string;
+      const accessoryId = variables.accessoryId as string | undefined;
+      const characteristicType = variables.characteristicType as string | undefined;
+      const before = variables.beforeTs as number | undefined;
+
+      if (accessoryId && characteristicType) {
+        const { seriesKey } = await import('../history/keys');
+        const sid = seriesKey(homeId, accessoryId, characteristicType);
+        if (before) {
+          await db.pruneHistorySamples(before, sid);
+          await db.pruneHistoryRollups(sid, before);
+        } else {
+          await db.deleteHistorySeries(sid);
+        }
+      } else if (before) {
+        const series = await db.getHistorySeries(homeId);
+        for (const row of series) {
+          await db.pruneHistorySamples(before, row.id);
+          await db.pruneHistoryRollups(row.id, before);
+        }
+      } else {
+        await db.deleteHistoryForHome(homeId);
+      }
+      return { purgeHistory: true };
+    }
 
     default:
       // Return empty data for unknown operations (prevents Apollo errors)

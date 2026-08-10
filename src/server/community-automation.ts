@@ -117,6 +117,11 @@ export async function initCommunityAutomationEngine(): Promise<void> {
           characteristicType: change.characteristicType,
           value: change.value,
         }));
+      // History recorder — relay-initiated writes are the changes HomeKit's
+      // observer never re-reports, so this is their only route into history.
+      // Announced post-success (see relay-write.ts), hence src=0: confirmed.
+      void import('./local-history').then((m) =>
+        m.recordHistoryEvent(change.homeId, change.accessoryId, change.characteristicType, change.value, 0));
     },
     serviceGroup: (groupId, characteristicType, value, homeId, affectedCount = 0) => {
       void import('./local-broadcast').then((m) =>
@@ -130,6 +135,13 @@ export async function initCommunityAutomationEngine(): Promise<void> {
           value,
           affectedCount,
         }));
+      // History: a group write is per-member state change; expand it the same
+      // way the automation engine does (notifyRelayGroupWrite).
+      void Promise.all([import('@/automation'), import('./local-history')]).then(([auto, history]) => {
+        for (const memberId of auto.getServiceGroupMembers(groupId)) {
+          history.recordHistoryEvent(homeId, memberId, characteristicType, value, 0);
+        }
+      });
     },
   });
 

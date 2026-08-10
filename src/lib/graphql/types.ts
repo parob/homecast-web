@@ -2294,3 +2294,68 @@ export interface SendTestNotificationResponse {
   sendTestNotification: boolean;
 }
 
+
+// --- Characteristic History ---
+
+export interface HistorySeriesInfo {
+  accessoryId: string;
+  characteristicType: string;
+  kind: 'numeric' | 'bool' | 'enum';
+  unit: string | null;
+  /** Effective recording state (override merged over profile default). */
+  enabled: boolean;
+  minIntervalS: number | null;
+  deadband: number | null;
+  firstTs: number | null;
+  lastTs: number | null;
+  sampleCount: number;
+}
+
+export interface HistoryPointData {
+  ts: number;
+  min: number;
+  avg: number;
+  max: number;
+  last: number;
+  count: number;
+}
+
+export interface HistoryStateSpanData {
+  ts: number;
+  value: number;
+}
+
+export interface HistoryStateBucketData {
+  ts: number;
+  dominant: number;
+  /** JSON: Record<stateCode, msInState> */
+  stateMsJson: string;
+  transitions: number;
+}
+
+export interface HistorySeriesData {
+  accessoryId: string;
+  characteristicType: string;
+  kind: 'numeric' | 'bool' | 'enum';
+  unit: string | null;
+  resolution: 'raw' | 'hourly' | 'daily';
+  prevValue: number | null;
+  points: HistoryPointData[];
+  states: HistoryStateSpanData[];
+  stateBuckets: HistoryStateBucketData[];
+}
+
+export interface HistoryStorageStatsData {
+  enabled: boolean;
+  rawRetentionDays: number;
+  seriesCount: number;
+  sampleRows: number;
+  rollupRows: number;
+  estBytes: number;
+  oldestTs: number | null;
+}
+
+export interface HistorySeriesRefInput {
+  accessoryId: string;
+  characteristicType: string;
+}

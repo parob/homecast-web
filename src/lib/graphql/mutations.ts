@@ -1034,3 +1034,28 @@ export const REMOVE_HOME_MQTT_BROKER = gql`
     removeHomeMqttBroker(homeId: $homeId, brokerId: $brokerId)
   }
 `;
+
+// Characteristic History (opt-in)
+export const SET_HOME_HISTORY_ENABLED = gql`
+  mutation SetHomeHistoryEnabled($homeId: String!, $enabled: Boolean!) {
+    setHomeHistoryEnabled(homeId: $homeId, enabled: $enabled)
+  }
+`;
+
+export const SET_HOME_HISTORY_RETENTION = gql`
+  mutation SetHomeHistoryRetention($homeId: String!, $rawRetentionDays: Int!) {
+    setHomeHistoryRetention(homeId: $homeId, rawRetentionDays: $rawRetentionDays)
+  }
+`;
+
+export const SET_HISTORY_SERIES_CONFIG = gql`
+  mutation SetHistorySeriesConfig($homeId: String!, $accessoryId: String!, $characteristicType: String!, $enabled: Boolean, $minIntervalS: Int, $deadband: Float) {
+    setHistorySeriesConfig(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType, enabled: $enabled, minIntervalS: $minIntervalS, deadband: $deadband)
+  }
+`;
+
+export const PURGE_HISTORY = gql`
+  mutation PurgeHistory($homeId: String!, $accessoryId: String, $characteristicType: String, $beforeTs: Float) {
+    purgeHistory(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType, beforeTs: $beforeTs)
+  }
+`;

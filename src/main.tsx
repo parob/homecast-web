@@ -63,9 +63,11 @@ import { initCloud } from "./lib/cloud";
 import { initLocalServer } from "./server/local-server";
 import { initLocalBroadcast } from "./server/local-broadcast";
 import { initWebhooks } from "./server/local-webhooks";
+import { initLocalHistory } from "./server/local-history";
 initLocalServer();
 initLocalBroadcast();
 initWebhooks();
+initLocalHistory();
 
 // Touch press feedback — JS-based because CSS :active is unreliable in iOS WKWebView
 // (isTextInteractionEnabled=false suppresses :active, Tailwind preflight kills tap-highlight)

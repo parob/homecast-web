@@ -6,6 +6,8 @@
 
 import { charLabel, formatValue } from './format';
 import { parseCharacteristicValue } from '@/components/widgets/types';
+import { getProfile as getHistoryProfile } from '@/history/policy';
+import { canonicalHistoryType } from '@/history/keys';
 import type { HomeKitAccessory, HomeKitCharacteristic } from '@/lib/graphql/types';
 
 /** Internal/metadata characteristics that shouldn't appear in trigger/condition/action pickers */
@@ -73,6 +75,8 @@ const CHAR_UNITS: Record<string, string> = {
   hue: '°', current_tilt_angle: '°', target_tilt_angle: '°',
   current_horizontal_tilt: '°', target_horizontal_tilt: '°',
   current_vertical_tilt: '°', target_vertical_tilt: '°',
+  current_ambient_light_level: 'lux', eve_air_pressure: 'hPa',
+  eve_energy_watt: 'W', eve_energy_kwh: 'kWh', eve_voltage: 'V', eve_ampere: 'A',
 };
 
 /**
@@ -172,6 +176,29 @@ export function getWritableCharacteristics(accessory: HomeKitAccessory | undefin
       if (!char.isWritable || isHiddenChar(char.characteristicType) || seen.has(char.characteristicType)) continue;
       seen.add(char.characteristicType);
       chars.push(toWritableChar(char));
+    }
+  }
+  return chars;
+}
+
+/**
+ * Every characteristic on an accessory that history can record — the
+ * read-only sibling of getWritableCharacteristics. History mostly wants
+ * exactly what that function filters out: sensors report, they don't accept
+ * writes. "Recordable" means "has a recording profile" (history/profiles.json
+ * is an allow-list), deduped by canonical name so `on` and `power_state`
+ * present as one entry.
+ */
+export function getRecordableCharacteristics(accessory: HomeKitAccessory | undefined): WritableChar[] {
+  if (!accessory) return [];
+  const chars: WritableChar[] = [];
+  const seen = new Set<string>();
+  for (const service of accessory.services ?? []) {
+    for (const char of service.characteristics ?? []) {
+      const canonical = canonicalHistoryType(char.characteristicType);
+      if (seen.has(canonical) || isHiddenChar(char.characteristicType) || !getHistoryProfile(canonical)) continue;
+      seen.add(canonical);
+      chars.push({ ...toWritableChar(char), type: canonical });
     }
   }
   return chars;

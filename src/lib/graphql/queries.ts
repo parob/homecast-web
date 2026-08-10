@@ -1048,3 +1048,68 @@ export const GET_NOTIFICATION_HISTORY = gql`
     }
   }
 `;
+
+// Characteristic History (opt-in). Timestamps on the history wire are epoch
+// milliseconds (Float) — charts consume them directly, and it keeps the CE
+// resolver and the cloud server trivially in agreement.
+export const GET_HISTORY_SERIES = gql`
+  query GetHistorySeries($homeId: String!) {
+    historySeries(homeId: $homeId) {
+      accessoryId
+      characteristicType
+      kind
+      unit
+      enabled
+      minIntervalS
+      deadband
+      firstTs
+      lastTs
+      sampleCount
+    }
+  }
+`;
+
+export const GET_HISTORY = gql`
+  query GetHistory($homeId: String!, $series: [HistorySeriesRefInput!]!, $fromTs: Float!, $toTs: Float!, $maxPoints: Int) {
+    history(homeId: $homeId, series: $series, fromTs: $fromTs, toTs: $toTs, maxPoints: $maxPoints) {
+      accessoryId
+      characteristicType
+      kind
+      unit
+      resolution
+      prevValue
+      points {
+        ts
+        min
+        avg
+        max
+        last
+        count
+      }
+      states {
+        ts
+        value
+      }
+      stateBuckets {
+        ts
+        dominant
+        stateMsJson
+        transitions
+      }
+    }
+  }
+`;
+
+export const GET_HISTORY_STORAGE_STATS = gql`
+  query GetHistoryStorageStats($homeId: String!) {
+    historyStorageStats(homeId: $homeId) {
+      enabled
+      rawRetentionDays
+      seriesCount
+      sampleRows
+      rollupRows
+      estBytes
+      oldestTs
+    }
+  }
+`;
