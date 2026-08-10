@@ -236,7 +236,6 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // pressing Open snap the whole bar open before the blind had moved an inch,
   // which is the one thing a slow device's control must not do.
   const coverage = 100 - currentPosition;
-  const targetCoverage = 100 - targetPosition;
 
   // Nothing left to ask for. Keyed on the target, not the current position, so
   // Open also goes quiet while the blind is already on its way open — pressing
@@ -297,7 +296,6 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
             // makes dragging down raise the value. Coverage rising as you drag
             // down is the same gesture as before: pull down to close.
             value={coverage}
-            targetValue={targetCoverage}
             invert
             min={0}
             max={100}

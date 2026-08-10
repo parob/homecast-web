@@ -24,15 +24,6 @@ interface VerticalSliderProps {
   className?: string;
   /** Inverts the fill so it grows downward — blinds close from the top. */
   invert?: boolean;
-  /**
-   * Where the device has been told to go, when that differs from where it is.
-   *
-   * Slow devices — blinds, garage doors — take seconds to travel, so the fill
-   * shows the real position and this marks the destination. Without it, pressing
-   * Open either lies (jump the fill to the target) or looks broken (nothing
-   * happens for two seconds).
-   */
-  targetValue?: number;
   /** Narrow bar (landscape, beside secondary controls) — shrinks the readout. */
   dense?: boolean;
   /**
@@ -68,7 +59,6 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   formatValue,
   className = '',
   invert = false,
-  targetValue,
   dense,
   fixedGradient = false,
 }) => {
@@ -123,12 +113,6 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
     });
   }, [disabled, onCommit]);
 
-  const targetPct = targetValue === undefined || max <= min
-    ? null
-    : Math.max(0, Math.min(100, ((targetValue - min) / (max - min)) * 100));
-  // Hidden while dragging: your finger is the destination then.
-  const showTarget = targetPct !== null && dragging === null && Math.abs(targetPct - clampedPct) > 1;
-
   const readout = formatValue ? formatValue(display) : `${Math.round(display)}%`;
 
   return (
@@ -172,18 +156,6 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
           ...fillStyle,
         }}
       />
-
-      {showTarget && (
-        <div
-          aria-hidden
-          className="absolute inset-x-0 h-[3px] rounded-full bg-current opacity-40 transition-[top,bottom] duration-base ease-standard"
-          // Held just inside the track: at 0 or 100 the line would sit on the
-          // edge, or past it, and a destination you cannot see is no use.
-          style={invert
-            ? { top: `calc(${Math.max(1, Math.min(99, targetPct!))}% - 1.5px)` }
-            : { bottom: `calc(${Math.max(1, Math.min(99, targetPct!))}% - 1.5px)` }}
-        />
-      )}
 
       {/* Readout sits above the fill line so it stays legible at any value. */}
       <div className={`relative flex h-full flex-col items-center justify-between pointer-events-none ${isDense ? 'py-3' : 'py-4'}`}>
