@@ -460,6 +460,99 @@ describe('virtual accessory controls', () => {
     expect(screen.queryByText('Idle')).toBeNull();
   });
 
+  // A virtual state change announces onto the engine's own trigger bus, not
+  // outward to clients, so the characteristic is only as fresh as the last
+  // accessories.list — minutes. The tile therefore has to believe the live
+  // poll about whether a timer is still running; otherwise a finished one goes
+  // on claiming it is, parks its countdown at 0:00, and never alerts.
+  it('believes the live poll over a stale characteristic', () => {
+    cleanup();
+    const stale = accessoryFor('virtual_timer');
+    stale.services[0].characteristics[0].value = 'active';
+    const accessory = { ...stale, id: 'timer-stale-char' };
+    const timer = { state: 'idle' as const, durationMs: 20_000, finishedAt: Date.now() - 1_000 };
+
+    render(
+      <VirtualAccessoryEditProvider
+        value={{
+          edit: () => undefined,
+          remove: () => undefined,
+          definition: () => undefined,
+          timer: () => timer,
+        }}
+      >
+        <VirtualAccessoryWidget
+          {...({
+            accessory,
+            getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+            onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+          } as unknown as WidgetProps)}
+        />
+      </VirtualAccessoryEditProvider>,
+    );
+
+    expect(screen.getByText('Time’s up')).toBeTruthy();
+  });
+
+  it('still alerts for a finish this tile was not mounted for', () => {
+    cleanup();
+    const done = accessoryFor('virtual_timer');
+    done.services[0].characteristics[0].value = 'idle';
+    const accessory = { ...done, id: 'timer-unwatched' };
+    // Nothing was watching when it ran out two seconds ago — only the report.
+    const timer = { state: 'idle' as const, durationMs: 20_000, finishedAt: Date.now() - 2_000 };
+
+    render(
+      <VirtualAccessoryEditProvider
+        value={{
+          edit: () => undefined,
+          remove: () => undefined,
+          definition: () => undefined,
+          timer: () => timer,
+        }}
+      >
+        <VirtualAccessoryWidget
+          {...({
+            accessory,
+            getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+            onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+          } as unknown as WidgetProps)}
+        />
+      </VirtualAccessoryEditProvider>,
+    );
+
+    expect(screen.getByText('Time’s up')).toBeTruthy();
+  });
+
+  it('stays quiet for a finish that is old news', () => {
+    cleanup();
+    const done = accessoryFor('virtual_timer');
+    done.services[0].characteristics[0].value = 'idle';
+    const accessory = { ...done, id: 'timer-old-news' };
+    const timer = { state: 'idle' as const, durationMs: 20_000, finishedAt: Date.now() - 60_000 };
+
+    render(
+      <VirtualAccessoryEditProvider
+        value={{
+          edit: () => undefined,
+          remove: () => undefined,
+          definition: () => undefined,
+          timer: () => timer,
+        }}
+      >
+        <VirtualAccessoryWidget
+          {...({
+            accessory,
+            getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+            onSetValue: () => {}, onSlider: () => {}, onToggle: () => {},
+          } as unknown as WidgetProps)}
+        />
+      </VirtualAccessoryEditProvider>,
+    );
+
+    expect(screen.queryByText('Time’s up')).toBeNull();
+  });
+
   it('still says Idle for a timer that has never run', () => {
     cleanup();
     const saved = accessoryFor('virtual_timer');

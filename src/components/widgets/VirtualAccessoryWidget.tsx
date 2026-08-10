@@ -190,7 +190,13 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
 
   const numeric = Number(value);
   const step = char?.stepValue ?? 1;
-  const running = value === 'active';
+  // From the live poll in preference to the characteristic. A virtual state
+  // change announces onto the engine's own trigger bus, not outward to
+  // clients, so `value` is only as fresh as the last accessories.list —
+  // minutes. Every other timer input below already prefers liveTimer; this one
+  // did not, so a finished timer went on claiming it was running, its
+  // countdown parked at 0:00, and the alert's running→idle moment never came.
+  const running = liveTimer ? liveTimer.state === 'active' : value === 'active';
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
   const configuredMs = definition?.type === 'timer' ? durationToMs(definition.duration) : undefined;
@@ -204,8 +210,18 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
     : undefined;
   // Watched here rather than taken from a reported instant, because every
   // reported one arrives on a 10s poll and the alert only lasts 5s.
-  const ranOutAt = charType === 'virtual_timer'
+  // Two ways to learn a timer ran out, and the later one wins. Watching the
+  // countdown locally catches it immediately; the reported instant catches the
+  // ones this tile wasn't mounted for — including a page opened seconds after
+  // it fired. Neither alone is enough.
+  const reportedFinish = charType === 'virtual_timer'
+    ? (liveTimer?.finishedAt ?? meta.virtualFinishedAt)
+    : undefined;
+  const watchedFinish = charType === 'virtual_timer'
     ? noteCountdown(accessory.id, running, timerTarget)
+    : undefined;
+  const ranOutAt = charType === 'virtual_timer'
+    ? mostRecent(watchedFinish, reportedFinish)
     : undefined;
   // Hook is called unconditionally — every other type simply never runs down,
   // so it reads false.
@@ -226,7 +242,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         startedAt={liveTimer?.startedAt ?? meta.virtualStartedAt}
         endsAt={liveTimer?.endsAt ?? meta.virtualEndsAt}
         durationMs={configuredMs ?? liveTimer?.durationMs ?? meta.virtualDurationMs}
-        finishedAt={liveTimer?.finishedAt ?? meta.virtualFinishedAt}
+        finishedAt={reportedFinish}
       />
     )
     : charType === 'virtual_datetime'
@@ -506,6 +522,13 @@ function countdownTarget(
  * expanded tiles are separate instances of this widget, and both have to agree
  * about whether this timer is currently shouting.
  */
+/** The later of two instants, or whichever one exists. */
+function mostRecent(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return Math.max(a, b);
+}
+
 function noteCountdown(accessoryId: string, running: boolean, target: number | undefined): number | undefined {
   const prev = lastCountdownSeen.get(accessoryId);
   if (prev?.running && !running && prev.target !== undefined
