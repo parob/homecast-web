@@ -825,6 +825,32 @@ describe('virtual accessory controls', () => {
     }
   });
 
+  it('does not restart the clock when a run reaches zero', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const at = { virtualStartedAt: startedAt, virtualDurationMs: 20_000 };
+      const view = render(<VirtualAccessoryWidget {...timerProps('t-once', 'active', at)} />);
+      expect(screen.getByText('0:20 left')).toBeTruthy();
+
+      // The countdown reaches zero. For a moment the tile still sees 'active',
+      // because the relay has not said otherwise yet — and that window used to
+      // look exactly like a stale start, so the clock began again and the timer
+      // visibly ran through twice.
+      // advanceTimersByTime, not setSystemTime: the readout only recomputes on
+      // its own interval, so moving the clock without firing it changes nothing.
+      act(() => { vi.advanceTimersByTime(20_500); });
+      view.rerender(<VirtualAccessoryWidget {...timerProps('t-once', 'active', at)} />);
+
+      // The regression signature is the clock jumping back to a full run.
+      expect(screen.queryByText('0:20 left')).toBeNull();
+      expect(document.body.textContent).toMatch(/0:0\d left/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('stays quiet when a timer is cancelled rather than run down', () => {
     cleanup();
     vi.useFakeTimers();

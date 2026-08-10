@@ -58,6 +58,15 @@ interface WidgetCardProps {
   icon: React.ReactNode;
   isOn?: boolean;
   isReachable?: boolean;
+  /**
+   * Replace the palette this card would pick from its serviceType.
+   *
+   * For a state the accessory's own colour cannot express — a timer that has
+   * just run out turns the whole tile green. Colour only: animating transform
+   * or opacity on an ancestor of a backdrop-filter element switches the glass
+   * off, so a tile can be recoloured but never animated.
+   */
+  colorOverride?: IconColor;
   headerAction?: React.ReactNode;
   children?: React.ReactNode;
   childrenVisible?: boolean;
@@ -141,6 +150,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   icon,
   isOn = false,
   isReachable = true,
+  colorOverride,
   headerAction,
   children,
   childrenVisible,
@@ -203,7 +213,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
   const useServiceColors = (iconStyle === 'standard' || iconStyle === 'colourful') && serviceType;
-  const widgetColors = useServiceColors ? getIconColor(serviceType) : DEFAULT_ICON_COLOR;
+  const widgetColors = colorOverride ?? (useServiceColors ? getIconColor(serviceType) : DEFAULT_ICON_COLOR);
 
   // The hero only earns its space in the expanded overlay; inline tiles keep
   // the compact stacked controls.
@@ -248,7 +258,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Determine icon background and text color classes based on icon style
   // 'standard' and 'colourful' both use service-type colors for icons
   // 'basic' uses primary/muted colors
-  const iconColor = useServiceColors ? getIconColor(serviceType) : null;
+  const iconColor = colorOverride ?? (useServiceColors ? getIconColor(serviceType) : null);
   const iconBgClass = iconColor
     ? (effectiveIsOn ? iconColor.bg : iconColor.bgOff)
     : (effectiveIsOn ? 'bg-primary' : 'bg-muted hover:bg-muted/80');

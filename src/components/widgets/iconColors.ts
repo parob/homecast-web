@@ -751,6 +751,33 @@ export const DEFAULT_ICON_COLOR: IconColor = {
 };
 
 // Get icon colors for a service type
+/**
+ * A timer that has just run out.
+ *
+ * The whole tile turns green rather than the glyph alone, because the point is
+ * to be noticed from across a room. Pastel deliberately: it replaces the
+ * accessory's own colour for ten seconds, and a saturated green beside a wall
+ * of glass tiles reads as an error rather than as a finished timer.
+ */
+export const TIMER_FINISHED_COLOR: IconColor = {
+  bg: 'bg-emerald-300 dark:bg-emerald-600',
+  bgOff: 'bg-emerald-200 dark:bg-emerald-800',
+  text: 'text-emerald-950 dark:text-white',
+  textOff: 'text-emerald-800 dark:text-emerald-100',
+  cardBg: 'bg-emerald-200/80 dark:bg-emerald-900/50',
+  cardBgHover: 'hover:bg-emerald-200/90 dark:hover:bg-emerald-900/60',
+  cardBorder: 'ring-emerald-400 dark:ring-emerald-700',
+  accent: 'bg-emerald-400 hover:bg-emerald-500',
+  accentHover: 'hover:bg-emerald-500',
+  accentMuted: 'bg-emerald-200 dark:bg-emerald-900',
+  accentMutedHover: 'hover:bg-emerald-300 dark:hover:bg-emerald-800',
+  sliderTrack: 'bg-emerald-400',
+  sliderThumb: 'bg-emerald-500',
+  switchBg: 'bg-emerald-400',
+  blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
+  blurBgOff: 'bg-emerald-200/60 dark:bg-emerald-500/40',
+};
+
 export const getIconColor = (serviceType: ServiceType | string | null): IconColor => {
   if (!serviceType) return DEFAULT_ICON_COLOR;
   return ICON_COLORS[serviceType] || DEFAULT_ICON_COLOR;

@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { TIMER_FINISHED_COLOR } from './iconColors';
 import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock } from 'lucide-react';
 import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
@@ -262,7 +263,11 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       // (or opacity) on an ancestor of a backdrop-filter element establishes a
       // new backdrop root, which switches the widget's glass off for as long as
       // it runs — see the entrance animation this was learned from.
-      icon={<Icon className={`h-4 w-4${alerting ? ' timer-alarm timer-finished' : ''}`} />}
+      icon={<Icon className={`h-4 w-4${alerting ? ' timer-alarm' : ''}`} />}
+      // The accessory's own colour cannot say "this just went off", so for
+      // the alert the whole tile takes the finished palette — the glyph alone
+      // was easy to miss from across a room.
+      colorOverride={alerting ? TIMER_FINISHED_COLOR : undefined}
       // Lighting the tile for the alert reuses the on-state tint, which is a
       // colour change only, so the glass survives it. WidgetWrapper fades tints
       // over 300ms, so it comes up and settles rather than blinking.
@@ -492,16 +497,25 @@ function countdownTarget(
   // Except when what the relay "knows" is the PREVIOUS run. The accessory
   // carries the last start it was fetched with, and that fetch is minutes old,
   // so pressing start on a timer that has run before pointed the countdown at
-  // an instant already in the past: the tile sat at 0:00 until the next poll
-  // replaced it, which read as the button doing nothing for ten seconds. A
-  // target that has already passed while the timer is running cannot be this
-  // run's, so it is treated as absent.
+  // an instant already in the past and the tile sat at 0:00 until the next
+  // poll replaced it — the button looked dead.
+  //
+  // Only at the transition into running, though. "Target has passed" is also
+  // true at the honest END of a run, for the moment between the countdown
+  // reaching zero and the relay saying so, and adopting a local start there
+  // restarted the clock: the timer visibly ran through a second time. What
+  // makes a reported start wrong is that it belongs to a run that is over,
+  // which is knowable only when this run begins.
   const reported = startedAt !== undefined && durationMs !== undefined
     ? startedAt + durationMs
     : endsAt;
-  const reportedIsStale = reported !== undefined && reported <= Date.now();
-  const needsGuess = running
-    && (reportedIsStale || (startedAt === undefined && endsAt === undefined));
+  const justStarted = running && !(lastCountdownSeen.get(accessoryId)?.running ?? false);
+  if (justStarted && reported !== undefined && reported <= Date.now()) {
+    localTimerStarts.set(accessoryId, Date.now());
+  }
+  const localStart = localTimerStarts.get(accessoryId);
+  const needsGuess = running && localStart === undefined
+    && startedAt === undefined && endsAt === undefined;
   if (!running) {
     localTimerStarts.delete(accessoryId);
     return undefined;
@@ -512,10 +526,11 @@ function countdownTarget(
   // Start + duration in preference to endsAt: the duration is configuration
   // this browser already holds, so it stays right even when the relay's copy
   // is out of date. endsAt is the same arithmetic done by the relay.
-  const begin = (reportedIsStale ? undefined : startedAt)
-    ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
+  // A local start, once taken for this run, is used for the whole of it — the
+  // reported one is known to be from a previous run and never improves.
+  const begin = localStart ?? startedAt;
   if (begin !== undefined && durationMs !== undefined) return begin + durationMs;
-  return reportedIsStale ? undefined : endsAt;
+  return localStart !== undefined ? undefined : endsAt;
 }
 
 /**
