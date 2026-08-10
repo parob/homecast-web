@@ -82,9 +82,11 @@ const ModeSegmented: React.FC<{
             key={o}
             type="button"
             aria-pressed={isActive}
+            // The mode it is already in is shown, not offered.
+            disabled={isActive}
             onClick={e => { e.stopPropagation(); onSelect(o); }}
             className={`flex-1 basis-[5.5rem] truncate rounded-lg px-2 transition-colors ${large ? 'h-11 text-[14px]' : 'h-9 text-xs'} `
-              + (isActive ? `${selected} font-semibold` : 'bg-black/15 hover:bg-black/25 font-normal')}
+              + (isActive ? `${selected} font-semibold cursor-default` : 'bg-black/15 hover:bg-black/25 font-normal')}
           >
             {o}
           </button>

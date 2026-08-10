@@ -146,10 +146,11 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
                   onClick={() => onSlider(accessory.id, 'target_humidifier_dehumidifier_state', index)}
                   className={`flex-1 ${expanded ? 'py-3 text-sm' : 'py-2 text-xs'} px-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1 ${
                     targetState === index
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-primary text-primary-foreground cursor-default'
                       : 'bg-muted hover:bg-muted/80'
                   }`}
-                  disabled={!accessory.isReachable}
+                  // Already in this mode: shown, not offered.
+                  disabled={!accessory.isReachable || targetState === index}
                 >
                   {index === 1 ? <CloudRain className={expanded ? 'h-4 w-4' : 'h-3 w-3'} /> : <Sun className={expanded ? 'h-4 w-4' : 'h-3 w-3'} />}
                   {index === 1 ? 'Humidify' : 'Dehumidify'}

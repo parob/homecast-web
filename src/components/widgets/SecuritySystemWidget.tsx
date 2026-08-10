@@ -133,9 +133,12 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
                   key={state.name}
                   variant="outline"
                   size="sm"
-                  className={`flex-1 h-auto ${expanded ? 'py-[14px] rounded-xl' : 'py-3'} ${getButtonClasses(isActive)}`}
+                  // The state it is already in is not a thing to press. Kept at
+                  // full colour while disabled — this row's selected button is
+                  // how the mode is shown, and the usual fade would erase it.
+                  className={`flex-1 h-auto ${expanded ? 'py-[14px] rounded-xl' : 'py-3'} ${getButtonClasses(isActive)} ${isActive ? 'disabled:opacity-100 cursor-default' : ''}`}
                   onClick={() => onSlider(accessory.id, 'security_system_target_state', index)}
-                  disabled={!accessory.isReachable}
+                  disabled={!accessory.isReachable || isActive}
                 >
                   <div className="flex flex-col items-center gap-1">
                     <Icon className={expanded ? 'h-[20px] w-[20px]' : 'h-4 w-4'} />

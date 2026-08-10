@@ -145,10 +145,11 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
                   onClick={() => onSlider(accessory.id, 'target_air_purifier_state', index)}
                   className={`flex-1 ${expanded ? 'py-3 text-sm' : 'py-2 text-xs'} px-3 rounded-lg font-medium transition-all ${
                     targetState === index
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-primary text-primary-foreground cursor-default'
                       : 'bg-muted hover:bg-muted/80'
                   }`}
-                  disabled={!accessory.isReachable}
+                  // Already in this mode: shown, not offered.
+                  disabled={!accessory.isReachable || targetState === index}
                 >
                   {mode}
                 </button>

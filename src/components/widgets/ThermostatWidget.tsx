@@ -52,8 +52,13 @@ const ModeButtons: React.FC<{
           variant="outline"
           size="sm"
           onClick={() => { if (!viewOnly) btn.onClick(); }}
-          className={`flex-1 min-w-0 ${useSmallFont ? 'rounded-md text-[10px] h-6 px-0.5' : (large ? 'rounded-xl text-[15px] font-medium h-[44px] px-2' : 'rounded-md text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${viewOnly ? 'cursor-not-allowed' : ''}`}
-          disabled={disabled}
+          // The mode it is already in is not a thing to press — Off stayed
+          // pressable on a unit that was already off. Disabled, but holding its
+          // full colour: the selected mode is the one piece of state this row
+          // carries, and the usual disabled fade would erase it. It reads as
+          // "this is the current mode", not "this mode is unavailable".
+          className={`flex-1 min-w-0 ${useSmallFont ? 'rounded-md text-[10px] h-6 px-0.5' : (large ? 'rounded-xl text-[15px] font-medium h-[44px] px-2' : 'rounded-md text-xs h-7 px-1')} ${getButtonClasses(btn.isSelected)} ${btn.isSelected ? 'disabled:opacity-100 cursor-default' : ''} ${viewOnly ? 'cursor-not-allowed' : ''}`}
+          disabled={disabled || btn.isSelected}
         >
           <span className="truncate">{btn.label}</span>
         </Button>
