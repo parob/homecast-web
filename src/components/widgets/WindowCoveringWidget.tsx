@@ -262,12 +262,20 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       compact={compact}
       expanded={expanded}
       heroShape="block"
+      // Open and Close are the only secondary controls, so standing the bar
+      // beside them left one short row at the top and a panel-height of nothing
+      // under it. Stacked, the bar is centred with the two buttons full width
+      // beneath — the same shape the thermostat takes.
+      heroStack
       hero={showHero ? (
         // The fill is openness, filling upward. Mimicking the blind descending
         // read better in theory and worse in practice: a fully closed blind
         // showed a completely full bar labelled "0% Open", so the picture and
         // the number contradicted each other. Full bar now means wide open.
-        <div className="h-[240px] w-[132px]">
+        //
+        // Wider than the beside-the-controls version was: centred in the panel
+        // a 132px bar reads as stranded, and this is the control you drag.
+        <div className="h-[240px] w-full max-w-[200px]">
           <VerticalSlider
             value={targetPosition}
             min={0}
