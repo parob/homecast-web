@@ -352,7 +352,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             <div className="p-[10px]">
               <div
                 ref={contentRef}
-                className={`relative max-w-[calc(100vw-2rem)] rounded-2xl overflow-visible cursor-pointer [&_*]:cursor-pointer transition-transform duration-fast ease-standard ${
+                // No blanket pointer cursor. The panel is a surface to work on,
+                // not a thing to click, and `[&_*]` painted every descendant —
+                // titles, readouts, the padding between controls — as though it
+                // were. Controls bring their own: buttons and sliders already
+                // set cursor-pointer, so the pointer now means something.
+                className={`relative max-w-[calc(100vw-2rem)] rounded-2xl overflow-visible cursor-default transition-transform duration-fast ease-standard ${
                   ready && !isClosing
                     ? 'scale-100'
                     : 'scale-90'
