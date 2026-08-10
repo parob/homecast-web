@@ -303,7 +303,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         {iconElement}
         {effectiveHeaderAction && (
           <div
-            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            // tile-control marks this as "not the tile": pressing anything in
+            // here must not run the tile's own press animation. See .tile-press.
+            className={`tile-control relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
