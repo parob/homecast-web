@@ -695,6 +695,16 @@ const Index = () => {
               image: '/images/features/webhooks.png', imageAlt: 'Webhooks management', reversed: true,
             },
             {
+              title: 'Device History & Charts',
+              description: 'Opt-in recording of how your home changes over time. Temperature, humidity, activity — charted per device or compared across a room.',
+              details: [
+                'Off by default: you choose every device and characteristic',
+                'Explorer view compares sensors and rooms on one graph',
+                'Export everything as CSV, delete everything in one tap',
+              ],
+              image: '/images/features/history.png', imageAlt: 'History Explorer comparing room sensors', reversed: false,
+            },
+            {
               title: 'Smart Deals',
               description: 'Automatic price tracking matched to your exact devices. See deals, price drops, and all-time lows right on your dashboard.',
               details: [
@@ -702,7 +712,7 @@ const Index = () => {
                 'Price history charts with deal quality tiers',
                 'Free with the free plan, optional on paid plans',
               ],
-              image: '/images/features/smart-deals.png', imageAlt: 'Smart Deal popover', reversed: false,
+              image: '/images/features/smart-deals.png', imageAlt: 'Smart Deal popover', reversed: true,
             },
             {
               title: 'Advanced Automations',
@@ -713,7 +723,7 @@ const Index = () => {
                 'Virtual modes, counters and timers your automations can remember',
                 'Runs on the relay — works even when your browser is closed',
               ],
-              image: '/images/features/automations.png', imageAlt: 'Automation flow editor', reversed: true,
+              image: '/images/features/automations.png', imageAlt: 'Automation flow editor', reversed: false,
             },
             {
               title: 'Home Assistant Integration',
@@ -723,7 +733,7 @@ const Index = () => {
                 'Lights, switches, thermostats, locks, blinds, sensors, and more',
                 'Combine HomeKit devices with Zigbee, Z-Wave, and other HA integrations',
               ],
-              image: '/images/features/home-assistant.png', imageAlt: 'Home Assistant dashboard showing Homecast devices', reversed: false, imageClass: 'max-w-[200px]',
+              image: '/images/features/home-assistant.png', imageAlt: 'Home Assistant dashboard showing Homecast devices', reversed: true, imageClass: 'max-w-[200px]',
             },
           ].map((feature) => (
             <div key={feature.title} className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 py-12 lg:py-16 items-center">

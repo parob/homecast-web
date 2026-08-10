@@ -34,6 +34,12 @@ const FEATURES: Feature[] = [
     imageAlt: 'Webhooks management with delivery stats',
   },
   {
+    title: 'Device History',
+    description: 'Opt-in charts of temperature, humidity, and activity. Compare sensors and rooms in the Explorer.',
+    image: '/images/features/history.png',
+    imageAlt: 'History Explorer comparing a room\'s sensors over time',
+  },
+  {
     title: 'Smart Deals',
     description: 'Automatic price tracking matched to your devices. See deals and price history on your widgets.',
     image: '/images/features/smart-deals.png',
