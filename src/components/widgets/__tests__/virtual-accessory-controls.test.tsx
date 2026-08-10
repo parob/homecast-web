@@ -1147,14 +1147,51 @@ describe('compact tile actions', () => {
     expect((other as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('leaves a long mode list to the expanded tile', () => {
+  it('offers a long mode list as a menu rather than four stubs', () => {
     cleanup();
     render(<VirtualAccessoryWidget
       {...compactProps('virtual_mode', { virtualOptions: ['A', 'B', 'C', 'D'] }, () => {})} />);
 
-    // Four labels cannot be read in a tile header; opening it is the honest
-    // answer rather than four stubs.
+    // Four pills cannot be read in a tile header — but changing the mode is the
+    // point of the tile, so it becomes a menu rather than nothing.
     expect(screen.queryByRole('button', { name: /^Set Test Value to/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Set Test Value' })).toBeTruthy();
+  });
+
+  it('measures the labels, not just how many there are', () => {
+    cleanup();
+    // Three options, same as the pill case above — but these are the words that
+    // ran off the edge of the header and left the last pill sliced in half.
+    const dryer = accessoryFor('virtual_mode', { virtualOptions: ['Idle', 'Running', 'Cancelled'] });
+    dryer.services[0].characteristics[0].value = 'Idle';
+    render(<VirtualAccessoryWidget {...{
+      ...compactProps('virtual_mode', { virtualOptions: ['Idle', 'Running', 'Cancelled'] }, () => {}),
+      accessory: { ...dryer, id: 'c-mode-long' },
+    }} />);
+
+    expect(screen.queryByRole('button', { name: 'Set Test Value to Running' })).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Set Test Value' });
+    // It still says which mode it is in — that is what the pills were for.
+    expect(trigger.textContent).toContain('Idle');
+  });
+
+  it('writes the mode picked from the menu', async () => {
+    cleanup();
+    const writes: unknown[][] = [];
+    render(<VirtualAccessoryWidget {...compactProps(
+      'virtual_mode',
+      { virtualOptions: ['Idle', 'Running', 'Cancelled'] },
+      (...a) => writes.push(a),
+    )} />);
+
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'Set Test Value' }),
+      { ctrlKey: false, button: 0 },
+    );
+    const item = await screen.findByRole('menuitem', { name: 'Running' });
+    fireEvent.click(item);
+
+    expect(writes).toEqual([['c-virtual_mode', 'virtual_mode', 'Running']]);
   });
 
   it('gives text no compact control — it needs the room', () => {

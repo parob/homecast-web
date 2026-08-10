@@ -78,12 +78,19 @@ describe('MQTT inspector controls', () => {
       'homecast/home-1111/porch-timer-2c12', 'timer', 'idle');
   });
 
-  it('selects a mode', () => {
+  it('selects a mode', async () => {
     const publish = open('homecast/home-1111/home-mode-80d9', '{"mode": "Home"}');
 
     // No options travel over MQTT, so the current value is the only one
-    // offered — enough to prove the write reaches the publish path.
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Home' } });
+    // offered — enough to prove the write reaches the publish path. It is a
+    // menu rather than a dropdown field since the mode picker stopped using a
+    // native select; a single-entry menu is as useful as a single-entry select
+    // was, which is to say the payload is the limit, not the control.
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'Set Home Mode' }),
+      { ctrlKey: false, button: 0 },
+    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Home' }));
 
     expect(publish).toHaveBeenCalledWith(
       'homecast/home-1111/home-mode-80d9', 'mode', 'Home');

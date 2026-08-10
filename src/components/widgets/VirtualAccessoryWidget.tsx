@@ -1,6 +1,12 @@
 import React, { memo } from 'react';
 import { TIMER_FINISHED_COLOR } from './iconColors';
-import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock } from 'lucide-react';
+import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock, ChevronDown, Check } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -59,6 +65,93 @@ function fieldClass(dark: boolean, large?: boolean): string {
  * tile, and at that length a dropdown is genuinely the better control.
  */
 const SEGMENTED_MAX_OPTIONS = 4;
+
+/**
+ * Whether a set of options can be laid out as a row of pills, or needs a menu.
+ *
+ * Counting options was never the real question — the labels are the author's
+ * own words, and three of them can be "On/Off/Auto" or "Idle/Running/
+ * Cancelled". The second set overran the header row and left the last pill
+ * sliced down the middle, because the only gate was `length > 3`.
+ *
+ * So both the count and the text are budgeted. The character budgets are
+ * approximations of the space available rather than measurements: at these
+ * font sizes a character averages a little over half its height in width, and
+ * the exact point where a pill row stops fitting depends on a tile width that
+ * changes with the grid. Erring small costs a menu where pills would just have
+ * fitted; erring large costs the clipped row this replaced.
+ */
+function fitsAsPills(options: string[], maxCount: number, maxChars: number, maxLabel: number): boolean {
+  if (options.length === 0 || options.length > maxCount) return false;
+  if (options.some(o => o.length > maxLabel)) return false;
+  return options.reduce((n, o) => n + o.length, 0) <= maxChars;
+}
+
+/**
+ * The alternate presentation: what the current mode is, and a menu to change it.
+ *
+ * Used wherever the options will not fit as pills — a long list, long labels,
+ * or the cramped header of a collapsed tile. It replaced a native `<select>`
+ * in the expanded panel too, which had been the long-list fallback and was the
+ * one control on the dashboard that still read as a form field on glass.
+ *
+ * Radix renders the menu in a portal, but React events propagate through the
+ * *component* tree rather than the DOM, so a click inside it still reaches the
+ * tile's own handlers — which would expand the tile and run its press
+ * animation. Hence the stopped propagation on the content as well as the
+ * trigger.
+ */
+const ModeMenu: React.FC<{
+  options: string[];
+  value: string;
+  onSelect: (v: string) => void;
+  label: string;
+  dark: boolean;
+  /** 'compact' is the header-row pill; 'panel' is the full-width control. */
+  variant: 'compact' | 'panel';
+  large?: boolean;
+}> = ({ options, value, onSelect, label, dark, variant, large }) => {
+  const compact = variant === 'compact';
+  const trigger = compact
+    ? `flex h-7 max-w-[9.5rem] items-center gap-1 rounded-full pl-2.5 pr-1.5 text-[11px] font-medium transition active:scale-95 `
+      + (dark ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-black/10 text-slate-800 hover:bg-black/15')
+    : `${large ? 'h-11 text-[14px]' : 'h-9 text-sm'} flex w-full items-center justify-between gap-2 rounded-lg px-3 font-medium transition-colors `
+      + (dark ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-black/10 text-slate-900 hover:bg-black/15');
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={trigger}
+          onClick={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+        >
+          <span className="truncate">{value || 'Select'}</span>
+          <ChevronDown className={compact ? 'h-3 w-3 shrink-0 opacity-70' : 'h-4 w-4 shrink-0 opacity-70'} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-64 overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+        onPointerDown={e => e.stopPropagation()}
+      >
+        {options.map(option => (
+          <DropdownMenuItem
+            key={option}
+            onSelect={() => onSelect(option)}
+            className={option === value ? 'font-semibold' : ''}
+          >
+            <Check className={`mr-2 h-4 w-4 ${option === value ? 'opacity-100' : 'opacity-0'}`} />
+            <span className="truncate">{option}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 const ModeSegmented: React.FC<{
   options: string[];
@@ -448,12 +541,26 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         );
 
       case 'virtual_mode': {
-        // Three is the most that fits without the labels becoming stubs. Beyond
-        // that the list belongs in the expanded tile, where it can be read.
+        // Three short words is the most a tile header holds. "Idle / Running /
+        // Cancelled" is also three, and it ran off the edge — so the labels are
+        // budgeted too, and anything longer becomes a menu rather than nothing:
+        // changing the mode is the whole point of the tile.
         const options = definition?.type === 'input_select'
           ? definition.options
           : meta.virtualOptions;
-        if (!options || options.length === 0 || options.length > 3) return undefined;
+        if (!options || options.length === 0) return undefined;
+        if (!fitsAsPills(options, 3, 16, 8)) {
+          return (
+            <ModeMenu
+              options={options}
+              value={typeof value === 'string' ? value : ''}
+              onSelect={set}
+              label={`Set ${accessory.name}`}
+              dark={isDarkBackground}
+              variant="compact"
+            />
+          );
+        }
         return (
           <CompactModePills
             options={options}
@@ -478,7 +585,10 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         // A value that is no longer an option still has to show, or the tile
         // would misrepresent the current mode.
         const shown = current && !options.includes(current) ? [current, ...options] : options;
-        if (shown.length > 1 && shown.length <= SEGMENTED_MAX_OPTIONS) {
+        // Wider budgets than the header row: this control has the tile's full
+        // width and is allowed to wrap onto a second line. What it must not do
+        // is truncate — a pill reading "Cancell…" tells you less than a menu.
+        if (shown.length > 1 && fitsAsPills(shown, SEGMENTED_MAX_OPTIONS, 40, 14)) {
           return (
             <ModeSegmented
               options={shown}
@@ -490,15 +600,15 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
           );
         }
         return (
-          <select
-            className={FIELD_CLASS}
-            aria-label={`Set ${accessory.name}`}
+          <ModeMenu
+            options={shown}
             value={current}
-            onClick={e => e.stopPropagation()}
-            onChange={e => set(e.target.value)}
-          >
-            {shown.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
+            onSelect={set}
+            label={`Set ${accessory.name}`}
+            dark={isDarkBackground}
+            variant="panel"
+            large={expanded}
+          />
         );
       }
 
