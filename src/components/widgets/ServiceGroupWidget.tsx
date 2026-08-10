@@ -310,6 +310,28 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const blindsTarget = isBlindsGroup ? averageOpenness('target_position') : 0;
   const blindsMotion = coveringMotion(position, blindsTarget, null, true);
   const blindsStatus = coveringStatusText(blindsMotion.isMoving, blindsMotion.isOpening, position);
+
+  /**
+   * Send an openness to the group's blinds, in whatever each one counts in.
+   * Both the compact slider and the expanded bar go through here — they used to
+   * carry their own copy, and only one of them got the conversion.
+   */
+  const commitBlindsOpenness = useCallback((openness: number) => {
+    if (blindsShareConvention || !onAccessorySlider) {
+      onSlider('target_position', fromOpenness(openness, blindsConvention));
+      return;
+    }
+    for (const acc of accessories) {
+      if (!acc.services?.some(sv => sv.serviceType === 'window_covering')) continue;
+      onAccessorySlider(acc.id, 'target_position', fromOpenness(openness, standardLogicFor(acc)));
+    }
+  }, [accessories, blindsShareConvention, blindsConvention, onAccessorySlider, onSlider, standardLogicFor]);
+
+  /** The blind drawn as itself: colour is material, hanging from the top. */
+  const blindsReadout = (coverageValue: number) => {
+    const open = Math.round(100 - coverageValue);
+    return open >= 100 ? 'Open' : open <= 0 ? 'Closed' : `${open}%`;
+  };
   const onCount = getOnCount();
   const isPartiallyOn = !isBlindsGroup && onCount > 0 && onCount < accessories.length;
 
@@ -525,16 +547,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               // members agree the group write carries one converted number, as
               // before. When they disagree no single number can serve them, so
               // each is written its own — correctness over one round trip.
-              onCommit={(v) => {
-                if (blindsShareConvention || !onAccessorySlider) {
-                  onSlider('target_position', fromOpenness(v, blindsConvention));
-                  return;
-                }
-                for (const acc of accessories) {
-                  if (!acc.services?.some(sv => sv.serviceType === 'window_covering')) continue;
-                  onAccessorySlider(acc.id, 'target_position', fromOpenness(v, standardLogicFor(acc)));
-                }
-              }}
+              onCommit={commitBlindsOpenness}
               disabled={effectiveDisabled}
               trackBgClass="bg-muted/25"
             />
@@ -768,12 +781,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             {isBlindsGroup && (
               <div className="h-[220px] w-[132px]">
                 <VerticalSlider
-                  value={position}
+                  // Coverage, filling from the top, exactly as a single blind
+                  // draws itself — this bar showed openness growing upward, so
+                  // a closed group read as an empty track labelled 0%.
+                  value={100 - position}
+                  invert
                   step={5}
-                  onCommit={(v) => onSlider('target_position', v)}
+                  onCommit={(v) => commitBlindsOpenness(100 - v)}
                   disabled={effectiveDisabled}
                   icon={Blinds}
-                  label="All Blinds"
+                  formatValue={blindsReadout}
                   fillClassName="bg-violet-400/80"
                   trackClassName="bg-black/10"
                   className="h-full text-slate-900"
