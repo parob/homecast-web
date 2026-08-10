@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, memo } from 'react';
+import React, { createContext, useContext, useEffect, memo, useState } from 'react';
 import { requestAccessoryRefresh } from '@/lib/accessoryRefresh';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
@@ -303,9 +303,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         {iconElement}
         {effectiveHeaderAction && (
           <div
-            // tile-control marks this as "not the tile": pressing anything in
-            // here must not run the tile's own press animation. See .tile-press.
-            className={`tile-control relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
@@ -396,6 +394,26 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Edit and Delete stay on the context menu, where a tile's actions live.
   const isVirtualAccessory = Boolean((accessory as { isVirtual?: boolean } | undefined)?.isVirtual);
   // Expanded state styling: just z-index, shadow is on ExpandedOverlay wrapper
+  // The press animation, driven from state rather than CSS `:active`.
+  //
+  // `:active` matches every ancestor of whatever is pressed, so a control
+  // inside the tile shrank the whole card and a one-press action looked like
+  // it had opened the tile. The CSS answer needs `:has()`, and an unsupported
+  // selector invalidates the whole rule — so on anything without it the
+  // animation disappeared altogether instead of degrading. This works
+  // everywhere.
+  //
+  // Controls never get here: the header-action wrapper stops pointerdown.
+  const [pressed, setPressed] = useState(false);
+  const pressHandlers = effectiveCompact ? {
+    onPointerDown: () => setPressed(true),
+    onPointerUp: () => setPressed(false),
+    // Released outside, cancelled by a scroll, or the pointer left mid-press:
+    // all of them end the press, and none of them fire pointerup here.
+    onPointerLeave: () => setPressed(false),
+    onPointerCancel: () => setPressed(false),
+  } : {};
+
   const expandedClass = expanded
     ? 'relative z-50'
     : '';
@@ -518,7 +536,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               <Card
                 ref={ref}
                 onClick={handleCardClick}
-                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer tile-press' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+                {...pressHandlers}
+                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} ${pressed ? 'scale-[0.97]' : ''} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
                 style={style}
               >
                 {cardInner}
@@ -619,7 +638,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           <Card
             ref={ref}
             onClick={handleCardClick}
-            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer tile-press' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+            {...pressHandlers}
+            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} ${pressed ? 'scale-[0.97]' : ''} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
           >
             {cardInner}
           </Card>
