@@ -194,9 +194,22 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // Declared before `control`: renderControl() reads it for the counter, and
   // calling it any earlier would hit the temporal dead zone.
   const configuredMs = definition?.type === 'timer' ? durationToMs(definition.duration) : undefined;
-  // Hook is called unconditionally — every other type simply has no finish
-  // instant, so it reads false.
-  const recentlyFinished = useRecentlyFinished(meta.virtualFinishedAt, TIMER_ALERT_MS);
+  const timerTarget = charType === 'virtual_timer'
+    ? countdownTarget(
+      accessory.id, running,
+      liveTimer?.startedAt ?? meta.virtualStartedAt,
+      liveTimer?.endsAt ?? meta.virtualEndsAt,
+      configuredMs ?? liveTimer?.durationMs ?? meta.virtualDurationMs,
+    )
+    : undefined;
+  // Watched here rather than taken from a reported instant, because every
+  // reported one arrives on a 10s poll and the alert only lasts 5s.
+  const ranOutAt = charType === 'virtual_timer'
+    ? noteCountdown(accessory.id, running, timerTarget)
+    : undefined;
+  // Hook is called unconditionally — every other type simply never runs down,
+  // so it reads false.
+  const recentlyFinished = useRecentlyFinished(ranOutAt, TIMER_ALERT_MS);
   // A finish instant outlives the run after it, so a timer started again within
   // five seconds would otherwise still be shouting. Running wins.
   const alerting = charType === 'virtual_timer' && !running && recentlyFinished;
@@ -428,6 +441,82 @@ const localTimerStarts = new Map<string, number>();
 const TIMER_ALERT_MS = 5000;
 
 /**
+ * How close to zero a countdown has to have been for going idle to count as
+ * having run out. Wide enough to cover the trip from the relay saying so to
+ * this browser hearing it.
+ */
+const RAN_OUT_TOLERANCE_MS = 1500;
+
+/** When a timer was last seen to reach zero here, by accessory id. */
+const localTimerFinishes = new Map<string, number>();
+
+/** What each countdown was last seen doing, so the run-down can be spotted. */
+const lastCountdownSeen = new Map<string, { running: boolean; target?: number }>();
+
+/**
+ * Where a running countdown is heading, or undefined if it isn't running.
+ *
+ * Shared by the tile and its readout so the two cannot disagree about when the
+ * timer ends — the tile needs it to tell a run-down from a cancellation, and
+ * the readout needs it to draw the clock.
+ */
+function countdownTarget(
+  accessoryId: string,
+  running: boolean,
+  startedAt?: number,
+  endsAt?: number,
+  durationMs?: number,
+): number | undefined {
+  // A locally-noted start is a guess — the moment a tile first saw the timer
+  // running — so it is the last resort, never something that overrides what
+  // the relay actually knows.
+  const needsGuess = running && startedAt === undefined && endsAt === undefined;
+  if (!running) {
+    localTimerStarts.delete(accessoryId);
+    return undefined;
+  }
+  if (needsGuess && !localTimerStarts.has(accessoryId)) {
+    localTimerStarts.set(accessoryId, Date.now());
+  }
+  // Start + duration in preference to endsAt: the duration is configuration
+  // this browser already holds, so it stays right even when the relay's copy
+  // is out of date. endsAt is the same arithmetic done by the relay.
+  const begin = startedAt ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
+  return begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt;
+}
+
+/**
+ * The instant this timer last ran out, watching the countdown itself.
+ *
+ * A reported finish instant cannot carry the alert on its own. Both
+ * `virtualFinishedAt` and the timer info behind it reach this browser by poll —
+ * `STATE_POLL_MS` is 10s against a 5s alert — so the news that a timer is up
+ * usually arrives after the window it was meant to open has already shut. The
+ * animation could hardly ever fire, whatever the CSS said.
+ *
+ * The countdown's end, by contrast, is arithmetic this browser already holds,
+ * so it knows the exact instant without asking anyone.
+ *
+ * So the run-down is spotted here instead, from running going false while the
+ * clock was at zero. Cancelling leaves time on it, which is the only thing
+ * separating the two by the time they reach this browser — both arrive as
+ * simply 'idle'.
+ *
+ * Module scope for the same reason localTimerStarts is: the compact and
+ * expanded tiles are separate instances of this widget, and both have to agree
+ * about whether this timer is currently shouting.
+ */
+function noteCountdown(accessoryId: string, running: boolean, target: number | undefined): number | undefined {
+  const prev = lastCountdownSeen.get(accessoryId);
+  if (prev?.running && !running && prev.target !== undefined
+      && Date.now() >= prev.target - RAN_OUT_TOLERANCE_MS) {
+    localTimerFinishes.set(accessoryId, Date.now());
+  }
+  lastCountdownSeen.set(accessoryId, { running, target });
+  return localTimerFinishes.get(accessoryId);
+}
+
+/**
  * True for `windowMs` after a timer last ran out.
  *
  * Keyed on the finish instant rather than on a running→idle transition. A tile
@@ -514,30 +603,31 @@ const TimerReadout: React.FC<{
 }> = ({ accessoryId, running, startedAt, endsAt, durationMs, finishedAt }) => {
   const [now, setNow] = React.useState(() => Date.now());
 
-  // A locally-noted start is a guess — the moment a tile first saw the timer
-  // running — so it is the last resort, never something that overrides what
-  // the relay actually knows.
-  const needsGuess = running && startedAt === undefined && endsAt === undefined;
-  if (!running) localTimerStarts.delete(accessoryId);
-  else if (needsGuess && !localTimerStarts.has(accessoryId)) {
-    localTimerStarts.set(accessoryId, Date.now());
-  }
-
-  // Start + duration in preference to endsAt: the duration is configuration
-  // this browser already holds, so it stays right even when the relay's copy
-  // is out of date. endsAt is the same arithmetic done by the relay.
-  const begin = startedAt ?? (needsGuess ? localTimerStarts.get(accessoryId) : undefined);
-  const target = !running
-    ? undefined
-    : (begin !== undefined && durationMs !== undefined ? begin + durationMs : endsAt);
+  const target = countdownTarget(accessoryId, running, startedAt, endsAt, durationMs);
 
   // Only a running countdown decays. A finish time is a fixed instant, so once
   // the timer stops there is nothing left to re-render for.
+  //
+  // Each tick is scheduled onto the countdown's own second boundary rather than
+  // onto a free-running 1s interval. setInterval fires at whatever phase it
+  // happens to start at and never sooner than its delay, so its sampling drifts
+  // against the instant the displayed number actually changes — and each time
+  // the drift crosses one, a second is skipped (21, then 19) or shown twice.
+  // Re-deriving the delay every tick also makes it self-correcting, so a busy
+  // main thread costs one late frame instead of a permanent offset.
   React.useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [running]);
+    if (!running || target === undefined) return;
+    let id: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const left = target - Date.now();
+      if (left <= 0) { setNow(Date.now()); return; }
+      // Time until the displayed second changes, plus a hair so we land just
+      // past the boundary rather than on it.
+      id = setTimeout(() => { setNow(Date.now()); schedule(); }, ((left - 1) % 1000) + 1 + 8);
+    };
+    schedule();
+    return () => clearTimeout(id);
+  }, [running, target]);
 
   // Idle says nothing about whether this timer has ever run. When we know it
   // has, say when — that is the whole question you ask about a timer you
@@ -545,7 +635,16 @@ const TimerReadout: React.FC<{
   if (!running) return <>{finishedAt !== undefined ? `Finished ${formatFinished(finishedAt, now)}` : 'Idle'}</>;
   if (target === undefined) return <>Running</>;
 
-  const total = Math.max(0, Math.round((target - now) / 1000));
+  // Clamped to the timer's own length: startedAt is stamped on the relay Mac
+  // and `now` read from this browser, and in cloud mode those are different
+  // machines. Half a second of clock skew is ordinary and used to render a five
+  // minute timer as 5:01 the moment it started.
+  const left = Math.max(0, Math.min(target - now, durationMs ?? Infinity));
+  // ceil, not round: "0:20" means up to twenty seconds are left, and every
+  // number holds the screen for a full second. Rounding changed the display on
+  // the half-second, so the first and last numbers each flashed by in half the
+  // time the others took.
+  const total = Math.ceil(left / 1000);
   const mm = Math.floor(total / 60);
   const ss = total % 60;
   return <>{mm}:{String(ss).padStart(2, '0')} left</>;

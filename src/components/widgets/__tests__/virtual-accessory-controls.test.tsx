@@ -735,14 +735,34 @@ describe('virtual accessory controls', () => {
     }
   });
 
-  // A timer that has run out has five seconds to say so, then goes back to
-  // answering the question you actually ask of a finished timer: when.
-  it('announces that a timer is up, then settles into its finish time', () => {
+  /** A timer tile, at a given state, for an id of its own. */
+  function timerProps(id: string, value: string, extra: Record<string, unknown> = {}) {
+    const a = accessoryFor('virtual_timer', { id, ...extra });
+    a.services[0].characteristics[0].value = value;
+    return {
+      accessory: a,
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      onSetValue: () => {},
+      onSlider: () => {},
+      onToggle: () => {},
+    } as unknown as WidgetProps;
+  }
+
+  // The alert is triggered by watching the countdown reach zero, not by a
+  // reported finish instant: every reported one arrives on a 10s poll, and the
+  // alert lasts 5s, so it would almost always land after the window had shut.
+  it('announces that a timer is up when its countdown runs out', () => {
     cleanup();
     vi.useFakeTimers();
     try {
-      const finishedAt = Date.now();
-      renderWidget('virtual_timer', { virtualFinishedAt: finishedAt });
+      const startedAt = Date.now();
+      const at = { virtualStartedAt: startedAt, virtualDurationMs: 20_000 };
+      const view = render(<VirtualAccessoryWidget {...timerProps('t-up', 'active', at)} />);
+      expect(screen.getByText('0:20 left')).toBeTruthy();
+
+      vi.setSystemTime(startedAt + 20_000);
+      view.rerender(<VirtualAccessoryWidget
+        {...timerProps('t-up', 'idle', { ...at, virtualFinishedAt: startedAt + 20_000 })} />);
       expect(screen.getByRole('status').textContent).toBe('Time’s up');
 
       act(() => { vi.advanceTimersByTime(5_100); });
@@ -753,14 +773,83 @@ describe('virtual accessory controls', () => {
     }
   });
 
-  // Opening the app a moment after it fired should still show the alert — the
-  // window is keyed on the finish instant, not on watching the transition.
-  it('still announces a timer that finished just before the tile mounted', () => {
+  // Cancelling leaves time on the clock. By the time either reaches this
+  // browser both are simply 'idle', so that gap is the only thing telling them
+  // apart — and a cancelled timer has nothing to announce.
+  it('stays quiet when a timer is cancelled rather than run down', () => {
     cleanup();
     vi.useFakeTimers();
     try {
-      renderWidget('virtual_timer', { virtualFinishedAt: Date.now() - 3_000 });
-      expect(screen.getByRole('status').textContent).toBe('Time’s up');
+      const startedAt = Date.now();
+      const at = { virtualStartedAt: startedAt, virtualDurationMs: 20_000 };
+      const view = render(<VirtualAccessoryWidget {...timerProps('t-cancel', 'active', at)} />);
+
+      vi.setSystemTime(startedAt + 5_000);
+      view.rerender(<VirtualAccessoryWidget {...timerProps('t-cancel', 'idle', at)} />);
+
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByText('Idle')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // startedAt is stamped on the relay Mac, `now` read from this browser, and in
+  // cloud mode those are different machines. Skew must not make a timer read
+  // longer than it is.
+  it('never shows more than the timer’s own length, whatever the clocks say', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      // Relay clock 600ms ahead of this browser's.
+      render(<VirtualAccessoryWidget {...timerProps('t-skew', 'active', {
+        virtualStartedAt: Date.now() + 600, virtualDurationMs: 20_000,
+      })} />);
+      expect(screen.getByText('0:20 left')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Every number holds the screen for a full second. Rounding changed the
+  // display on the half-second, so the first and last flashed by in half the
+  // time the rest took.
+  it('shows each second for its whole second', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const props = timerProps('t-ceil', 'active', {
+        virtualStartedAt: startedAt, virtualDurationMs: 20_000,
+      });
+      for (const [advance, expected] of [[0, '0:20'], [900, '0:20'], [1_000, '0:19'], [19_100, '0:01']] as const) {
+        cleanup();
+        vi.setSystemTime(startedAt + advance);
+        render(<VirtualAccessoryWidget {...props} />);
+        expect(screen.getByText(`${expected} left`)).toBeTruthy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Ticks land on the countdown's own second boundary. A free-running 1s
+  // interval samples at whatever phase it started at and drifts against that
+  // boundary, which is what skipped a second — 21, then 19.
+  it('updates on the second boundary rather than one second after mounting', () => {
+    cleanup();
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      // Mount 400ms in: 19.6s left, so the display changes in 600ms, not 1000.
+      vi.setSystemTime(startedAt + 400);
+      render(<VirtualAccessoryWidget {...timerProps('t-phase', 'active', {
+        virtualStartedAt: startedAt, virtualDurationMs: 20_000,
+      })} />);
+      expect(screen.getByText('0:20 left')).toBeTruthy();
+
+      act(() => { vi.advanceTimersByTime(650); });
+      expect(screen.getByText('0:19 left')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
