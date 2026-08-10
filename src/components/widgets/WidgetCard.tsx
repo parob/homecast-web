@@ -15,7 +15,7 @@ import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
-import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, ServiceType } from './types';
+import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, getAccessoryDisplayName, ServiceType } from './types';
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -229,7 +229,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     ? (removeLabel || 'Remove Accessory')
     : 'Delete Virtual Accessory';
 
-  const displayTitle = accessory ? getDisplayName(title, accessory.roomName) : title;
+  // Widgets pass accessory.name, but HomeKit's user-set name lives on the
+  // service — so prefer that. Guarded on the two matching, so a widget that
+  // deliberately titles itself something else (a group, say) keeps its title.
+  const namedTitle = accessory && title === accessory.name ? getAccessoryDisplayName(accessory) : title;
+  const displayTitle = accessory ? getDisplayName(namedTitle, accessory.roomName) : namedTitle;
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (effectiveDisabled) return;

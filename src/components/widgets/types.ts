@@ -342,6 +342,26 @@ export const getPrimaryServiceType = (accessory: HomeKitAccessory): ServiceType 
   return bestService;
 };
 
+/**
+ * The name the user actually set.
+ *
+ * HomeKit puts the name on the service, not the accessory. Renaming a blind in
+ * the Home app sets the window_covering service's name — "Bedroom 2 Blinds" —
+ * and leaves the accessory called whatever the manufacturer shipped, "Eve
+ * MotionBlinds 29BB". Tiles read accessory.name, so the user's own name never
+ * reached them. Apple Home shows the service name for a single-purpose
+ * accessory; this does the same, falling back when the service is unnamed.
+ */
+export const getAccessoryDisplayName = (accessory: HomeKitAccessory): string => {
+  const primary = getPrimaryServiceType(accessory);
+  if (primary) {
+    const service = getServiceByType(accessory, primary);
+    const name = service?.name?.trim();
+    if (name) return name;
+  }
+  return accessory.name;
+};
+
 // Get a specific service by type from an accessory
 export const getServiceByType = (accessory: HomeKitAccessory, type: ServiceType | string) => {
   for (const service of accessory.services || []) {
