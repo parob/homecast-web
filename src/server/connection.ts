@@ -195,13 +195,31 @@ export function setCommunityClientCount(count: number): void {
 }
 
 if (isCommunity && !isClientMode()) {
+  // Bounded, because the bridge either turns up while the app is starting or
+  // it is not coming. Rescheduling unconditionally meant a 20Hz poll for the
+  // life of the process on any relay whose HomeKit never initialised — and in
+  // a test it outlived the environment it was polling, which is how it was
+  // found: an unhandled error after teardown, in whichever file happened to
+  // import this module.
+  const GIVE_UP_AFTER_MS = 30_000;
+  const deadline = Date.now() + GIVE_UP_AFTER_MS;
+
   const checkBridge = () => {
-    if (isRelayCapable()) {
-      communityRelayConfirmed = true;
-      communityStartedAt = Date.now();
-    } else {
-      setTimeout(checkBridge, 50);
+    try {
+      if (isRelayCapable()) {
+        communityRelayConfirmed = true;
+        communityStartedAt = Date.now();
+        return;
+      }
+    } catch {
+      // The window this was asking about has gone. Nothing left to wait for.
+      return;
     }
+    if (Date.now() >= deadline) return;
+    const handle = setTimeout(checkBridge, 50);
+    // Node only: never hold the process — or a test environment — open just to
+    // keep asking a question whose answer stopped mattering.
+    (handle as unknown as { unref?: () => void }).unref?.();
   };
   checkBridge();
 }
