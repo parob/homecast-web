@@ -107,7 +107,7 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
     {
       title: 'Extras',
       rows: [
-        { label: 'Smart Deals', community: false, basic: true, standard: '✓ ***', cloud: '✓ ***' },
+        { label: 'Smart Deals', community: false, basic: 'Always on', standard: 'Optional', cloud: 'Optional' },
         { label: 'Ad-free', community: true, basic: false, standard: true, cloud: true },
       ],
     },
@@ -166,7 +166,6 @@ function FeatureMatrix({ pricing }: { pricing: PricingShape }) {
       <div className="text-xs text-muted-foreground mt-4 space-y-1">
         <p>* Community Edition works on your local network only — remote access requires Tailscale, Cloudflare Tunnel, or similar tools.</p>
         <p>** Community, Basic, and Standard require a Mac running the Homecast Relay app at all times.</p>
-        <p>*** Smart Deals can be turned off in settings.</p>
       </div>
       <IncludedEverywhere />
     </div>
