@@ -530,14 +530,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg} pressed={pressed}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <Card
                 ref={ref}
                 onClick={handleCardClick}
                 {...pressHandlers}
-                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} ${pressed ? 'scale-[0.97]' : ''} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
                 style={style}
               >
                 {cardInner}
@@ -634,12 +634,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   return (
     <WidgetColorContext.Provider value={colorContextValue}>
       <div className={wiggleClass} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg} pressed={pressed}>
           <Card
             ref={ref}
             onClick={handleCardClick}
             {...pressHandlers}
-            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} ${pressed ? 'scale-[0.97]' : ''} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
           >
             {cardInner}
           </Card>

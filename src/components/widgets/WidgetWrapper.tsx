@@ -23,6 +23,8 @@ interface WidgetWrapperProps {
   iconStyle?: IconStyle;
   /** Colourful mode accent color class (e.g., 'bg-yellow-300/50') */
   accentColorClass?: string;
+  /** Pressed — the whole tile shrinks, glass included. */
+  pressed?: boolean;
 }
 
 export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -31,6 +33,7 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   isOn = false,
   iconStyle = 'standard',
   accentColorClass,
+  pressed = false,
 }) => {
   const { isDarkBackground } = useBackgroundContext();
 
@@ -55,12 +58,22 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     ? `ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`
     : '';
 
+  // The press shrinks the glass and the content as two separate transforms
+  // rather than one on the wrapper. The wrapper is an ancestor of the
+  // backdrop-blur layer, and an animated transform on an ancestor of a
+  // backdrop-filter element makes it a new backdrop root — the glass switches
+  // off for as long as it runs. On the layer itself a transform is harmless.
+  //
+  // Scaling only the content, which is what happened before, left the rounded
+  // background sitting still while everything inside it moved.
+  const pressClass = `transition-transform duration-fast ease-standard ${pressed ? 'scale-[0.97]' : ''}`;
+
   return (
     <div className={`relative rounded-2xl h-fit ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
       {/* Blur layer - separate from content so it doesn't break during height animation */}
-      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu`} />
+      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu ${pressClass}`} />
       {/* Content */}
-      <div className="relative z-[1] transform-gpu">
+      <div className={`relative z-[1] transform-gpu ${pressClass}`}>
         {children}
       </div>
     </div>
