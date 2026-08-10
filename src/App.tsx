@@ -31,6 +31,7 @@ const DeleteAccount = lazy(() => import("./pages/DeleteAccount"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SharedEntityPage = lazy(() => import("./pages/SharedEntityPage"));
 const MQTTBrowser = lazy(() => import("./pages/MQTTBrowser"));
+const HistoryExplorer = lazy(() => import("./pages/HistoryExplorer"));
 const Diagnostics = lazy(() => import("./pages/Diagnostics"));
 
 // Cloud-only pages — lazy loaded from @homecast/cloud if available
@@ -83,6 +84,7 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
+              <Route path="/history" element={<HistoryExplorer />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               {devRoutes}
@@ -107,6 +109,7 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
+              <Route path="/history" element={<HistoryExplorer />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               {devRoutes}

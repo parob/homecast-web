@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Loader2, LineChart } from 'lucide-react';
+import { ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HISTORY, GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
@@ -184,7 +184,14 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         <DialogHeader>
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
-            {target?.accessory.name ?? 'History'}
+            <span className="flex-1 truncate">{target?.accessory.name ?? 'History'}</span>
+            <a
+              href={`/history?home=${encodeURIComponent(target?.homeId ?? '')}${isMockHistoryEnabled() ? '&mockHistory=1' : ''}`}
+              className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              title="Compare with other sensors in the History Explorer"
+            >
+              Explorer <ExternalLink className="h-3 w-3" />
+            </a>
           </DialogTitle>
         </DialogHeader>
 

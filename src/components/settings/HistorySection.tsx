@@ -351,7 +351,9 @@ export function HistorySection({ homes }: HistorySectionProps) {
 
       <p className="text-[10px] text-muted-foreground">
         Once a home is recording, open any device's context menu → History to
-        see its charts. Per-characteristic controls live there too.
+        see its charts, or the{' '}
+        <a href="/history" className="underline hover:text-foreground">History Explorer</a>{' '}
+        to compare sensors and rooms on one graph.
       </p>
     </div>
   );

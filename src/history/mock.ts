@@ -62,7 +62,9 @@ export function mockHistoryData(
       for (let i = 0; i < n; i++) {
         const ts = fromTs + i * stepMs;
         const dayPhase = ((ts % DAY_MS) / DAY_MS) * Math.PI * 2;
-        walk += (noise(seed, i) - 0.5) * amp * 0.08;
+        // Seed the walk by absolute day so compare-mode ghosts (the same
+        // series a day/week earlier) differ visibly from today.
+        walk += (noise(seed + Math.floor(ts / DAY_MS), i) - 0.5) * amp * 0.08;
         walk *= 0.98;
         const avg = base + Math.sin(dayPhase - Math.PI / 2) * amp * 0.5 + walk;
         const jitter = resolution === 'raw' ? 0 : amp * 0.15;
