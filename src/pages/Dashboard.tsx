@@ -62,9 +62,20 @@ import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccess
 /**
  * Bucket name for accessories that belong to the home rather than to a room.
  * Never shown — the group renders first and unlabelled — but it has to be a
- * name because rooms are grouped by name.
+ * name because rooms are grouped by name. The NUL prefix is what stops it
+ * colliding with a real room someone actually named "home-level", so it has to
+ * stay in memory: see HOME_LEVEL_CONTEXT_ID for the form that gets stored.
  */
 const HOME_LEVEL_ROOM = '\u0000home-level';
+
+/**
+ * The shelf's id for anything that persists — item order, hidden groups and
+ * hidden accessories. Room contexts are otherwise a room UUID or the literal
+ * 'all', so a plain slug cannot collide, and unlike HOME_LEVEL_ROOM it survives
+ * the trip to Postgres: text there rejects a NUL byte outright, which failed
+ * every save of this shelf in cloud mode.
+ */
+const HOME_LEVEL_CONTEXT_ID = 'home-level';
 
 /**
  * Ancestor crumbs in the title bar. They keep the dimmed weight of the plain
@@ -4485,7 +4496,7 @@ const Dashboard = () => {
         // record — so the two overwrote each other in the drag-container map
         // and whichever lost became undraggable, warning and all.
         const contextId = selectedRoomId || room?.id
-          || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_ROOM : 'all');
+          || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_CONTEXT_ID : 'all');
 
         // Sort by category first
         let sorted = [...accs].sort((a, b) => {
@@ -7313,7 +7324,7 @@ const Dashboard = () => {
                     // Pre-compute visible items to skip empty rooms
                     const room = rooms.find(r => r.name === roomName);
                     const contextId = selectedRoomId || room?.id
-                      || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_ROOM : 'all');
+                      || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_CONTEXT_ID : 'all');
                     const roomGroups = getGroupsForRoom(roomAccessories)
                       .filter(group => !selectedHomeId || !isGroupHidden(selectedHomeId, group.id, contextId));
                     const ungrouped = roomAccessories.filter(accessory => !groupedAccessoryIds.has(accessory.id));

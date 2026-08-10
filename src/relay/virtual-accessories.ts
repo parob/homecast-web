@@ -16,28 +16,10 @@ import type { VirtualAccessoryDefinition } from '../automation/types/automation'
 import { getAutomationEngine } from '../automation';
 import { uniqueKey } from '../lib/slug';
 
-/**
- * The characteristic each helper type carries.
- *
- * Switch and Number reuse names the rest of the stack already understands, so
- * they render, publish and script exactly like the real thing.
- *
- * The other types have no HomeKit analogue — HomeKit has no enum, no countdown
- * and no free text — so they carry their own names. Those are real
- * characteristics on a real accessory, not a side channel: a client that
- * understands `helper_mode` controls it, and one that doesn't still sees a
- * named value it can display, which is what it would do for any characteristic
- * it hasn't been taught.
- */
-export const VIRTUAL_CHARACTERISTIC: Record<string, string> = {
-  input_boolean: 'power_state',
-  input_number: 'virtual_number',
-  counter: 'virtual_count',
-  input_select: 'virtual_mode',
-  timer: 'virtual_timer',
-  input_text: 'virtual_text',
-  input_datetime: 'virtual_datetime',
-};
+// Defined in the automation layer — the engine announces a value change
+// under these names — and re-exported here for the relay's own callers.
+import { VIRTUAL_CHARACTERISTIC } from '../automation/types/automation';
+export { VIRTUAL_CHARACTERISTIC };
 
 /** HomeKit-ish category, so category-based sorting and icons have something. */
 const VIRTUAL_CATEGORY: Record<string, string> = {

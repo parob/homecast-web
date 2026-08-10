@@ -228,11 +228,81 @@ export function withCallReason<T>(reason: string, fn: () => T): T {
   }
 }
 
+/**
+ * Ceiling for a single native bridge call.
+ *
+ * A native call has no timeout of its own: `window.homekit.call()` settles when
+ * Swift answers, and if Swift never answers the promise never settles. That is
+ * not hypothetical — the relay has sat with its socket up and JavaScript running
+ * normally while every HomeKit-backed action hung, because the calls underneath
+ * them never came back. Pure-JS actions answered in 32ms throughout, so from the
+ * outside it looked like a healthy relay that had stopped doing its job.
+ *
+ * Bounding the wait does not un-wedge the bridge. What it buys is a failure that
+ * names itself: the request fails as BRIDGE_TIMEOUT against a known method,
+ * instead of the cloud reporting a generic 30s timeout with nothing to say about
+ * where the time went.
+ *
+ * Sits under the cloud's 30s request timeout so the relay is the one to give up,
+ * and above the 10s ceiling Swift already applies to characteristic writes so it
+ * never preempts a bounded write's real per-device result.
+ */
+const BRIDGE_CALL_TIMEOUT_MS = 20_000;
+
+/**
+ * Methods exempt from the ceiling because they block on a person, not a device.
+ * `notification.requestPermission` sits on the system permission prompt until
+ * it is answered, and taking longer than 20s to click it is not a fault.
+ */
+const UNBOUNDED_BRIDGE_METHODS = new Set(['notification.requestPermission']);
+
+/**
+ * Reject if the native side has not answered within the ceiling.
+ *
+ * The underlying call is deliberately left in flight — it cannot be cancelled,
+ * and it may still land. Bounding the *wait* is the point.
+ */
+function callWithTimeout<T>(
+  bridge: NativeBridge,
+  method: string,
+  payload?: Record<string, unknown>,
+): Promise<T> {
+  if (UNBOUNDED_BRIDGE_METHODS.has(method)) return bridge.call<T>(method, payload);
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(Object.assign(
+        new Error(`HomeKit bridge did not answer ${method} within ${BRIDGE_CALL_TIMEOUT_MS / 1000}s`),
+        { code: 'BRIDGE_TIMEOUT', method },
+      ));
+    }, BRIDGE_CALL_TIMEOUT_MS);
+
+    bridge.call<T>(method, payload).then(
+      (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function instrument(bridge: NativeBridge): NativeBridge {
   return {
     onEvent: (handler) => bridge.onEvent(handler),
     call<T>(method: string, payload?: Record<string, unknown>): Promise<T> {
-      if (!hasLocalActivityListeners()) return bridge.call<T>(method, payload);
+      const call = callWithTimeout<T>(bridge, method, payload);
+      if (!hasLocalActivityListeners()) return call;
 
       const startedAt = activityNow();
       const id = `native-${startedAt}-${++nativeCallSeq}`;
@@ -244,7 +314,7 @@ function instrument(bridge: NativeBridge): NativeBridge {
         request: payload, reason,
       });
 
-      return bridge.call<T>(method, payload).then(
+      return call.then(
         (result) => {
           emitLocalRelayActivity({
             lane: 'bridge', phase: 'ok', action: method, id, at: startedAt,

@@ -1498,9 +1498,9 @@ export function CollectionDetail({
         {/* Relay offline/stale banner — full or partial */}
         {allItemsOffline && payload.items.length > 0 ? (
           <ErrorWithTrace
-            title={hasStaleHomes ? "Home IDs changed" : "Relay offline"}
+            title={hasStaleHomes ? "Home not connected" : "Relay offline"}
             message={hasStaleHomes
-              ? "Some items reference homes whose IDs have changed. Reconnecting the relay will auto-repair them."
+              ? "These items belong to a home no connected relay is serving right now — switching between a self-hosted and a cloud relay does this. They come back on their own when that relay reconnects."
               : "The relay is not connected. Accessories will be available when the Mac comes back online."}
             className={isDarkBackground ? "bg-black/30 border-white/20" : ""}
             isDarkBackground={isDarkBackground}
@@ -1522,7 +1522,7 @@ export function CollectionDetail({
             <span className={`min-w-0 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
               {offlineItemCount} {offlineItemCount === 1 ? 'accessory' : 'accessories'} unavailable
               {hasStaleHomes
-                ? ' — home IDs changed, reconnect relay to repair'
+                ? ' — no connected relay serves that home right now'
                 : offlineHomeNames.length > 0
                   ? ` — ${offlineHomeNames.join(' and ')} ${offlineHomeNames.length === 1 ? 'relay' : 'relays'} offline`
                   : ' — relay offline'}
@@ -2028,9 +2028,11 @@ export function CollectionDetail({
               Remove {staleItemCount} unavailable {staleItemCount === 1 ? 'accessory' : 'accessories'}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {staleItemCount === 1 ? 'This item points' : 'These items point'} at a home ID that no longer exists,
-              so {staleItemCount === 1 ? 'it' : 'they'} can't be shown or controlled. Reconnecting the relay repairs
-              {staleItemCount === 1 ? ' it' : ' them'} automatically — once removed you'll have to add
+              {staleItemCount === 1 ? 'This item belongs' : 'These items belong'} to a home that no connected relay
+              is serving, so {staleItemCount === 1 ? 'it' : 'they'} can't be shown or controlled right now. If you
+              switched relays, {staleItemCount === 1 ? 'it comes' : 'they come'} back by
+              {staleItemCount === 1 ? 'itself' : ' themselves'} once that relay reconnects — removing
+              {staleItemCount === 1 ? ' it' : ' them'} is permanent and you'd have to add
               {staleItemCount === 1 ? ' it' : ' them'} back by hand.
             </AlertDialogDescription>
           </AlertDialogHeader>
