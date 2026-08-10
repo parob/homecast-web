@@ -3,10 +3,10 @@ import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull 
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { VerticalSlider } from './shared';
+import { coveringStatusText, isOpeningFromState } from './shared/coveringStatus';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
-const POSITION_STATES = ['Closing', 'Opening', 'Stopped'];
 
 // Convert position values to numbers, handling edge cases like boolean false or string "false"
 const toPositionNumber = (value: any): number => {
@@ -181,9 +181,14 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // Only skip inversion for manufacturers known to use standard logic
   const currentPosition = usesStandardLogic ? rawCurrentPosition : (100 - rawCurrentPosition);
   const targetPosition = usesStandardLogic ? rawTargetPosition : (100 - rawTargetPosition);
-  const positionState = toPositionNumber(positionStateChar?.value);
+  // 0 = Decreasing, 1 = Increasing, 2 = Stopped. Absent has to mean stopped:
+  // parsing a missing characteristic gave 0, which reads as Decreasing, so a
+  // blind that simply doesn't publish position_state claimed to be closing for
+  // ever.
+  const positionState = positionStateChar ? toPositionNumber(positionStateChar.value) : 2;
 
   const isMoving = positionState !== 2;
+  const isOpening = isOpeningFromState(positionState, usesStandardLogic);
   const isOpen = currentPosition > 0;
   const hasControls = targetPositionChar?.isWritable;
   // Show expanded controls when not compact and has controls and reachable
@@ -222,18 +227,12 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     ? (iconStyle === 'colourful' && widgetColors ? `${widgetColors.accent} hover:${widgetColors.accent}/90 text-white` : '')
     : 'bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-foreground';
 
-  // Build subtitle with status and battery
-  const getStatusText = () => {
-    if (isMoving) return POSITION_STATES[positionState];
-    if (currentPosition === 0) return 'Closed';
-    if (currentPosition === 100) return 'Open';
-    return `${currentPosition}% Open`;
-  };
+  const statusText = coveringStatusText(isMoving, isOpening, currentPosition);
 
   const subtitle = (
     <span className="flex items-center gap-2">
       <span className={isMoving ? 'text-primary' : 'text-muted-foreground'}>
-        {getStatusText()}
+        {statusText}
       </span>
       {hasBattery && (
         <span className={`flex items-center gap-0.5 ${isLowBattery ? 'text-red-500' : 'text-muted-foreground'}`}>
@@ -286,6 +285,9 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
             }}
             disabled={isViewOnly || noResponse}
             icon={Blinds}
+            // "Open" as the unit for the number above it — the state in words is
+            // the subtitle's job, and saying the same sentence twice in one
+            // small panel reads as a bug.
             label="Open"
             fillClassName="bg-violet-400/80"
             trackClassName="bg-black/10"
