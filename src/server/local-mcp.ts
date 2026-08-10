@@ -92,6 +92,29 @@ const TOOLS = [
     annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   },
   {
+    name: 'get_history',
+    description:
+      'Get recorded history for one accessory: how its characteristics changed over time. ' +
+      'Use it to answer questions like "what was the temperature last night?", "when did the door open?", ' +
+      '"how long was the heating on today?". Returns per-characteristic series — numeric ones as ' +
+      '[isoTime, value] pairs with a min/avg/max summary, on/off and mode ones as [isoTime, state] ' +
+      'transitions. History is OPT-IN and off by default: if nothing is recorded, the home owner has to ' +
+      'turn it on in Settings → History first — say so rather than retrying. Recording only captures ' +
+      'changes, so a flat line costs nothing and gaps mean the value simply held.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        accessory: { type: 'string', description: 'Accessory name substring, slug, or id (required)' },
+        home: { type: 'string', description: 'Home name substring — narrows the search when names repeat across homes' },
+        characteristic: { type: 'string', description: 'One characteristic (e.g. current_temperature, on, motion). Omit for all recordable ones (up to 6)' },
+        hours: { type: 'number', description: 'How far back to look, in hours (default 24, max 8784)' },
+        max_points: { type: 'number', description: 'Maximum points per series (default 200)' },
+      },
+      required: ['accessory'],
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
+  },
+  {
     name: 'set_state',
     description:
       'Set accessory state using a flat list of updates. Each update has home/room/accessory path and settings. ' +
@@ -725,6 +748,17 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         room: args.filter_by_room as string | undefined,
         type: args.filter_by_type as string | undefined,
         name: args.filter_by_name as string | undefined,
+      });
+    }
+
+    case 'get_history': {
+      const { handleGetHistory } = await import('./local-rest');
+      return await handleGetHistory({
+        home: args.home as string | undefined,
+        accessory: args.accessory as string,
+        characteristic: args.characteristic as string | undefined,
+        hours: args.hours as number | undefined,
+        max_points: args.max_points as number | undefined,
       });
     }
 

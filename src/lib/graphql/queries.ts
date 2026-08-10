@@ -1113,3 +1113,9 @@ export const GET_HISTORY_STORAGE_STATS = gql`
     }
   }
 `;
+
+export const EXPORT_HISTORY = gql`
+  query ExportHistory($homeId: String!, $accessoryId: String, $characteristicType: String) {
+    exportHistory(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType)
+  }
+`;

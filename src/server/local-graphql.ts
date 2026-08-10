@@ -1291,6 +1291,39 @@ async function resolveOperation(
       return { setHistorySeriesConfig: true };
     }
 
+    case 'ExportHistory': {
+      // Raw samples as CSV — the take-your-data-with-you half of the privacy
+      // story. Bounded: the raw window is retention-limited, and the row cap
+      // below turns a pathological export into a truncated file, not a hang.
+      const homeId = variables.homeId as string;
+      const accessoryId = variables.accessoryId as string | undefined;
+      const characteristicType = variables.characteristicType as string | undefined;
+      const { canonicalHistoryType } = await import('../history/keys');
+
+      let series = await db.getHistorySeries(homeId);
+      if (accessoryId) series = series.filter(s => s.accessoryId === accessoryId.toUpperCase());
+      if (characteristicType) {
+        const canonical = canonicalHistoryType(characteristicType);
+        series = series.filter(s => s.characteristicType === canonical);
+      }
+
+      const MAX_EXPORT_ROWS = 200_000;
+      const lines = ['timestamp,accessory_id,characteristic,value,source'];
+      let truncated = false;
+      for (const row of series) {
+        if (lines.length > MAX_EXPORT_ROWS) { truncated = true; break; }
+        const samples = await db.getHistorySamples(
+          row.id, 0, Number.MAX_SAFE_INTEGER, MAX_EXPORT_ROWS - lines.length + 1,
+        );
+        for (const s of samples) {
+          if (lines.length > MAX_EXPORT_ROWS) { truncated = true; break; }
+          lines.push(`${new Date(s.ts).toISOString()},${row.accessoryId},${row.characteristicType},${s.v},${s.src}`);
+        }
+      }
+      if (truncated) lines.push(`# truncated at ${MAX_EXPORT_ROWS} rows`);
+      return { exportHistory: lines.join('\n') };
+    }
+
     case 'PurgeHistory': {
       const homeId = variables.homeId as string;
       const accessoryId = variables.accessoryId as string | undefined;

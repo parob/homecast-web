@@ -110,6 +110,17 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         return { updated, failed, changes, errors, message: updated > 0 ? `Updated ${updated} accessor${updated === 1 ? 'y' : 'ies'}` : 'No updates' };
       }
 
+      // GET /rest/history?accessory=X&home=X&characteristic=X&hours=24&max_points=200
+      case method === 'GET' && route === '/history': {
+        return handleGetHistory({
+          home: params.get('home') || undefined,
+          accessory: params.get('accessory') || '',
+          characteristic: params.get('characteristic') || undefined,
+          hours: params.get('hours') ? Number(params.get('hours')) : undefined,
+          max_points: params.get('max_points') ? Number(params.get('max_points')) : undefined,
+        });
+      }
+
       // GET /rest/scenes?home=X
       case method === 'GET' && route === '/scenes': {
         const homeId = params.get('home');
@@ -550,4 +561,148 @@ export async function handleSetState(updates: Array<Record<string, unknown>>): P
   else message = `Updated ${updated} accessor${updated === 1 ? 'y' : 'ies'}, ${failed} failed`;
 
   return { updated, failed, changes, errors, message };
+}
+
+/**
+ * History query for MCP and REST (`get_history` / GET /rest/history).
+ * Matches the Cloud edition's HomesAPI.get_history interface and output
+ * shape: compact [iso, value] pairs plus a per-series summary — sized for an
+ * AI assistant answering "what was the temperature last night?", not for
+ * charting (the GraphQL surface serves the charts).
+ */
+export async function handleGetHistory(args: {
+  home?: string;
+  accessory: string;
+  characteristic?: string;
+  hours?: number;
+  max_points?: number;
+}): Promise<Record<string, any>> {
+  const hours = Math.min(Math.max(Number(args.hours) || 24, 0.25), 24 * 366);
+  const maxPoints = Math.min(Math.max(Number(args.max_points) || 200, 10), 1000);
+  if (!args.accessory) {
+    return { error: 'accessory is required (name substring, slug, or id)' };
+  }
+
+  const homesResult = await executeHomeKitAction('homes.list') as any;
+  let homes: any[] = homesResult?.homes || [];
+  if (args.home) {
+    const homeFilter = args.home.toLowerCase();
+    homes = homes.filter((h: any) =>
+      uniqueKey(h.name, h.id).includes(homeFilter) || h.name?.toLowerCase().includes(homeFilter));
+  }
+  if (homes.length === 0) {
+    return { error: args.home ? `No home matches "${args.home}"` : 'No homes found' };
+  }
+
+  // Find the accessory by slug, name substring, or raw id across the
+  // candidate homes — same matching the state tools use.
+  const wanted = args.accessory.toLowerCase();
+  let matchedHome: any = null;
+  let matchedAccessory: any = null;
+  for (const home of homes) {
+    const result = await executeHomeKitAction('accessories.list', { homeId: home.id, includeAll: true }) as any;
+    for (const acc of result?.accessories || []) {
+      if (
+        acc.id?.toLowerCase() === wanted ||
+        uniqueKey(acc.name || '', acc.id || '').includes(wanted) ||
+        acc.name?.toLowerCase().includes(wanted)
+      ) {
+        matchedHome = home;
+        matchedAccessory = acc;
+        break;
+      }
+    }
+    if (matchedAccessory) break;
+  }
+  if (!matchedAccessory) {
+    return { error: `No accessory matches "${args.accessory}"${args.home ? ` in home "${args.home}"` : ''}` };
+  }
+
+  const [{ getRecordableCharacteristics }, { canonicalHistoryType, seriesKey }, { queryHistorySeries }, historyDb, { getProfile }] =
+    await Promise.all([
+      import('@/components/automations/characteristics'),
+      import('@/history/keys'),
+      import('@/history/query'),
+      import('./local-db'),
+      import('@/history/policy'),
+    ]);
+
+  let recordable = getRecordableCharacteristics(matchedAccessory);
+  if (args.characteristic) {
+    const canonical = canonicalHistoryType(args.characteristic);
+    recordable = recordable.filter(c => c.type === canonical);
+    if (recordable.length === 0) {
+      return { error: `Characteristic "${args.characteristic}" is not recordable on ${matchedAccessory.name}` };
+    }
+  }
+  recordable = recordable.slice(0, 6);
+
+  const toTs = Date.now();
+  const fromTs = toTs - hours * 3_600_000;
+  const store = {
+    getSamples: async (sid: string, from: number, to: number) =>
+      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+    getLastSampleBefore: async (sid: string, ts: number) => {
+      const row = await historyDb.getLastHistorySampleBefore(sid, ts);
+      return row ? { ts: row.ts, v: row.v } : undefined;
+    },
+    getFirstSampleTs: async (sid: string) =>
+      (await historyDb.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
+    getRollups: (sid: string, tier: 'h' | 'd', from: number, to: number) =>
+      historyDb.getHistoryRollups(sid, tier, from, to),
+    getLastRollupBefore: (sid: string, tier: 'h' | 'd', bucket: number) =>
+      historyDb.getLastHistoryRollupBefore(sid, tier, bucket),
+  };
+
+  const series = [];
+  for (const char of recordable) {
+    const profile = getProfile(char.type);
+    if (!profile) continue;
+    const sid = seriesKey(matchedHome.id, matchedAccessory.id, char.type);
+    const data = await queryHistorySeries(store, sid, profile.kind, fromTs, toTs, maxPoints);
+    const iso = (ms: number) => new Date(ms).toISOString();
+
+    if (profile.kind === 'numeric') {
+      const values = data.points.map(p => [iso(p.ts), Math.round(p.avg * 100) / 100]);
+      let summary: Record<string, unknown> | null = null;
+      if (data.points.length > 0) {
+        summary = {
+          min: Math.min(...data.points.map(p => p.min)),
+          max: Math.max(...data.points.map(p => p.max)),
+          avg: Math.round((data.points.reduce((a, p) => a + p.avg, 0) / data.points.length) * 100) / 100,
+          latest: data.points[data.points.length - 1].last,
+        };
+      }
+      series.push({
+        characteristic: char.type, kind: profile.kind, unit: profile.unit ?? null,
+        resolution: data.resolution, values, summary,
+      });
+    } else {
+      const source = data.states.length > 0
+        ? data.states.map(s => [iso(s.ts), s.value])
+        : data.stateBuckets.map(b => [iso(b.ts), b.dominant]);
+      series.push({
+        characteristic: char.type, kind: profile.kind, unit: null,
+        resolution: data.resolution,
+        transitions: source,
+        openingValue: data.prevValue,
+      });
+    }
+  }
+
+  const recorded = series.filter(s =>
+    ('values' in s && (s as any).values.length > 0) ||
+    ('transitions' in s && (s as any).transitions.length > 0));
+  return {
+    home: uniqueKey(matchedHome.name, matchedHome.id),
+    accessory: { key: uniqueKey(matchedAccessory.name, matchedAccessory.id), name: matchedAccessory.name, id: matchedAccessory.id },
+    from: new Date(fromTs).toISOString(),
+    to: new Date(toTs).toISOString(),
+    series,
+    _meta: {
+      message: recorded.length > 0
+        ? `${recorded.length} of ${series.length} characteristics have recorded history in the last ${hours}h`
+        : 'No recorded history in this range. History is opt-in: the home owner enables it in Settings → History.',
+    },
+  };
 }

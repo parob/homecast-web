@@ -217,7 +217,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.result.capabilities).toHaveProperty('tools');
   });
 
-  it('responds to tools/list with exactly 17 tools matching cloud', async () => {
+  it('responds to tools/list with exactly 18 tools matching cloud', async () => {
     const response = JSON.parse(await handleMCP(JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -227,7 +227,7 @@ describe('MCP endpoint (handleMCP)', () => {
     expect(response.jsonrpc).toBe('2.0');
     expect(response.id).toBe(2);
     const tools = response.result.tools;
-    expect(tools).toHaveLength(17);
+    expect(tools).toHaveLength(18);
 
     const toolNames = tools.map((t: any) => t.name).sort();
     expect(toolNames).toEqual([
@@ -241,6 +241,7 @@ describe('MCP endpoint (handleMCP)', () => {
       'delete_virtual_accessory',
       'get_automations',
       'get_hc_automations',
+      'get_history',
       'get_state',
       'run_scene',
       'set_state',
