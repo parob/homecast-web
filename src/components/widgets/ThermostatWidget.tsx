@@ -91,12 +91,50 @@ const TemperatureDial: React.FC<{
 }> = ({ value, currentTemp, min, max, onChange, disabled, status, strokeColor, trackColor, size = 150, inline = false, dimmed = false }) => {
   const [dragging, setDragging] = useState<number | null>(null);
   const displayValue = dragging !== null ? dragging : value;
-  const isLarge = size > 150;
+
+  /**
+   * The floating dial is sized to the tile it hangs off, not to a constant.
+   *
+   * At a flat 150px it stood half again taller than a collapsed thermostat
+   * tile, so the arc broke out through the rounded top and bottom edges and
+   * read as a graphic pasted over the card rather than part of it. Overhanging
+   * the *right* edge is the intended look; overflowing vertically is not.
+   *
+   * Measured rather than derived, because a tile's height depends on what it
+   * is showing — a mode row, a status line, neither. `offsetParent` is the
+   * card itself, which the dial is positioned against; it cannot feed back
+   * into the measurement because an absolutely positioned element contributes
+   * nothing to its parent's height.
+   */
+  const floatRef = useRef<HTMLDivElement>(null);
+  const [fitted, setFitted] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (inline) return;
+    const el = floatRef.current;
+    const card = el?.offsetParent as HTMLElement | null;
+    if (!card) return;
+    const measure = () => {
+      const height = card.clientHeight;
+      if (!height) return;
+      // Never larger than asked for, and never so small the reading inside it
+      // stops being legible — below that the tile is better off without it.
+      setFitted(Math.min(size, Math.max(104, height - 8)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [inline, size]);
+
+  const effectiveSize = inline ? size : (fitted ?? size);
 
   return (
-    <div className={`${inline
+    <div
+      ref={floatRef}
+      className={`${inline
       ? "flex flex-col items-center justify-center"
-      : "absolute -right-[7px] top-1/2 -translate-y-[calc(40%+8px)] flex flex-col items-center justify-center z-20"} ${
+      : "absolute -right-[7px] top-1/2 -translate-y-1/2 flex flex-col items-center justify-center z-20"} ${
       dimmed ? 'opacity-60 transition-opacity duration-base ease-standard' : 'transition-opacity duration-base ease-standard'}`}>
       <div
         className="relative [&_svg]:cursor-pointer [&_svg_path]:cursor-pointer"
@@ -105,18 +143,21 @@ const TemperatureDial: React.FC<{
         // sits closer to the title and further from the mode row rather than
         // floating midway between them.
         style={{
-          width: size,
-          height: size,
-          marginTop: inline ? -size * 0.07 : 0,
-          marginBottom: inline ? -size * 0.07 : 0,
+          width: effectiveSize,
+          height: effectiveSize,
+          marginTop: inline ? -effectiveSize * 0.07 : 0,
+          marginBottom: inline ? -effectiveSize * 0.07 : 0,
         }}
       >
         <CircularSlider
-          size={size}
+          size={effectiveSize}
           // Proportional at every size. A fixed 14px ring was both thin to look
           // at and thin to grab on the inline dial, where it is the only way to
           // set a temperature.
-          trackWidth={Math.round(size * 0.125)}
+          // Thinner on the floating dial: it is small enough that a ring at
+          // the inline proportion crowds the reading it surrounds, and nobody
+          // drags this one — the mode row is the control on a collapsed tile.
+          trackWidth={Math.round(effectiveSize * (inline ? 0.125 : 0.1))}
           handleSize={0}
           minValue={min}
           maxValue={max}
@@ -140,17 +181,38 @@ const TemperatureDial: React.FC<{
           arcBackgroundColor={trackColor || "hsl(var(--muted))"}
           disabled={disabled}
         />
-        {/* Center temperature display - current and target */}
+        {/* Center temperature display - current and target.
+
+            On the floating dial the readout is sized from the dial, because
+            the dial is now sized from its tile: a constant 20px "21.0°" hung
+            out over both sides of a ring that had shrunk to fit. The expanded
+            panel keeps its original fixed sizes — its dial never changes
+            size, so scaling there would only have nudged the numbers. */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ cursor: 'default' }}>
           {currentTemp !== null && currentTemp !== undefined && (
             <>
-              <span className={`${isLarge ? 'text-[16px]' : 'text-sm'} font-bold text-muted-foreground`}>{Number(currentTemp).toFixed(1)}°</span>
-              <ChevronDown className="h-3 w-3 text-muted-foreground -my-0.5" />
+              <span
+                className="font-bold text-muted-foreground leading-none"
+                style={{ fontSize: inline ? 16 : Math.round(effectiveSize * 0.075) }}
+              >
+                {Number(currentTemp).toFixed(1)}°
+              </span>
+              <ChevronDown
+                className="text-muted-foreground"
+                style={{ width: inline ? 12 : effectiveSize * 0.075, height: inline ? 12 : effectiveSize * 0.075 }}
+              />
             </>
           )}
-          <span className={`${isLarge ? 'text-[26px]' : 'text-xl'} font-bold`}>{displayValue.toFixed(1)}°</span>
+          <span className="font-bold leading-none" style={{ fontSize: inline ? 26 : Math.round(effectiveSize * 0.115) }}>
+            {displayValue.toFixed(1)}°
+          </span>
           {status && (
-            <span className={`${isLarge ? "text-[11px]" : "text-[9px]"} font-medium text-muted-foreground mt-0.5`}>{status}</span>
+            <span
+              className="font-medium text-muted-foreground leading-none mt-0.5"
+              style={{ fontSize: inline ? 11 : Math.round(effectiveSize * 0.055) }}
+            >
+              {status}
+            </span>
           )}
         </div>
       </div>
