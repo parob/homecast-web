@@ -238,7 +238,15 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
         // role=status so a screen reader hears it too — the animation says
         // nothing to anyone who can't see it, and that is the whole point of
         // the alert window.
-        ? <span role="status" className="timer-finished">Time’s up</span>
+        ? <span
+            role="status"
+            // Dark on the pastel tile. The subtitle is muted by default,
+            // which on a green card left the one word that matters as the
+            // faintest thing on it — hence the override.
+            className="timer-finished !text-emerald-950 dark:!text-emerald-50 font-semibold"
+          >
+            Time’s up
+          </span>
         : <TimerReadout
         accessoryId={accessory.id}
         running={running}

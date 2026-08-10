@@ -760,22 +760,22 @@ export const DEFAULT_ICON_COLOR: IconColor = {
  * of glass tiles reads as an error rather than as a finished timer.
  */
 export const TIMER_FINISHED_COLOR: IconColor = {
-  bg: 'bg-emerald-300 dark:bg-emerald-600',
-  bgOff: 'bg-emerald-200 dark:bg-emerald-800',
-  text: 'text-emerald-950 dark:text-white',
+  bg: 'bg-emerald-200 dark:bg-emerald-800',
+  bgOff: 'bg-emerald-100 dark:bg-emerald-900',
+  text: 'text-emerald-900 dark:text-emerald-50',
   textOff: 'text-emerald-800 dark:text-emerald-100',
-  cardBg: 'bg-emerald-200/80 dark:bg-emerald-900/50',
-  cardBgHover: 'hover:bg-emerald-200/90 dark:hover:bg-emerald-900/60',
-  cardBorder: 'ring-emerald-400 dark:ring-emerald-700',
-  accent: 'bg-emerald-400 hover:bg-emerald-500',
-  accentHover: 'hover:bg-emerald-500',
-  accentMuted: 'bg-emerald-200 dark:bg-emerald-900',
-  accentMutedHover: 'hover:bg-emerald-300 dark:hover:bg-emerald-800',
-  sliderTrack: 'bg-emerald-400',
-  sliderThumb: 'bg-emerald-500',
-  switchBg: 'bg-emerald-400',
-  blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
-  blurBgOff: 'bg-emerald-200/60 dark:bg-emerald-500/40',
+  cardBg: 'bg-emerald-100/70 dark:bg-emerald-900/40',
+  cardBgHover: 'hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50',
+  cardBorder: 'ring-emerald-200 dark:ring-emerald-800',
+  accent: 'bg-emerald-300 hover:bg-emerald-400',
+  accentHover: 'hover:bg-emerald-400',
+  accentMuted: 'bg-emerald-100 dark:bg-emerald-900',
+  accentMutedHover: 'hover:bg-emerald-200 dark:hover:bg-emerald-800',
+  sliderTrack: 'bg-emerald-300',
+  sliderThumb: 'bg-emerald-400',
+  switchBg: 'bg-emerald-300',
+  blurBg: 'bg-emerald-100/70 dark:bg-emerald-400/30',
+  blurBgOff: 'bg-emerald-100/50 dark:bg-emerald-500/25',
 };
 
 export const getIconColor = (serviceType: ServiceType | string | null): IconColor => {
