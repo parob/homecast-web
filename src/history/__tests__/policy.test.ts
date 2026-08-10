@@ -24,7 +24,7 @@ interface FixtureCase {
 }
 
 describe('history policy fixtures (shared with Python)', () => {
-  for (const c of (cases as { cases: FixtureCase[] }).cases) {
+  for (const c of (cases as unknown as { cases: FixtureCase[] }).cases) {
     it(c.name, () => {
       let state: SeriesRecordState | undefined;
       const recorded: [number, number][] = [];

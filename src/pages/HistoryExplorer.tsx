@@ -347,12 +347,11 @@ export default function HistoryExplorer() {
     if (!view) return [];
     return view.series
       .filter(s => s.kind === 'numeric')
-      .map(s => {
+      .flatMap((s): ChartSeries[] => {
         const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
         const entry = seriesData.get(key);
-        return entry ? { key, label: s.label, unit: s.unit, data: entry.main, ghost: entry.ghost } : null;
-      })
-      .filter((s): s is ChartSeries => s !== null);
+        return entry ? [{ key, label: s.label, unit: s.unit, data: entry.main, ghost: entry.ghost }] : [];
+      });
   }, [view, seriesData]);
 
   const stateSeries = useMemo(() => {
