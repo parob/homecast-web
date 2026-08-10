@@ -357,10 +357,21 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                 // titles, readouts, the padding between controls — as though it
                 // were. Controls bring their own: buttons and sliders already
                 // set cursor-pointer, so the pointer now means something.
-                className={`relative max-w-[calc(100vw-2rem)] rounded-2xl overflow-visible cursor-default transition-transform duration-fast ease-standard ${
+                // The panel grows out of the tile it came from, anchored at the
+                // corner nearest it. It scaled before, but from 90% over 150ms
+                // — small enough and quick enough that it read as the contents
+                // arriving rather than the box opening. Starting smaller and
+                // taking a beat longer makes it legible as one movement.
+                //
+                // Deliberately still a transform on this container and not an
+                // animation of its width and height: laying the panel out
+                // repeatedly would reflow every control inside it on each
+                // frame, and the glass is already handled by fading its own
+                // layer separately (see below).
+                className={`relative max-w-[calc(100vw-2rem)] rounded-2xl overflow-visible cursor-default transition-transform duration-base ease-standard ${
                   ready && !isClosing
                     ? 'scale-100'
-                    : 'scale-90'
+                    : 'scale-[0.82]'
                 }`}
                 style={{ transformOrigin, width: effectiveWidth }}
                 onClick={(e) => {
