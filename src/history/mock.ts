@@ -340,7 +340,12 @@ export function mockHistoryData(
         kind,
         unit: profile?.unit ?? null,
         resolution,
-        prevValue: points[0]?.avg ?? null,
+        // prevValue is the reading the window OPENED with — LOCF's seed. An
+        // accessory that only started recording partway through the window
+        // has none, and handing back its first in-window reading instead made
+        // a flat line run back to the start of a 30d view: history the mock
+        // was inventing, and the exact thing the real server returns null for.
+        prevValue: seriesStart > fromTs ? null : (points[0]?.avg ?? null),
         points,
         states: [],
         stateBuckets: [],

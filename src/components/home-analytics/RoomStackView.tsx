@@ -52,6 +52,10 @@ export default function RoomStackView({
 }) {
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [hideUnusual, setHideUnusual] = useState(true);
+  // Shared across the stacked panels: pointing at "Underfloor Heating" in the
+  // Temperature legend picks it out of the Humidity panel too, which is the
+  // whole reason these panels are stacked.
+  const [highlightKeys, setHighlightKeys] = useState<string[] | null>(null);
 
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
@@ -139,12 +143,18 @@ export default function RoomStackView({
           height={panels.length > 1 ? 200 : 280}
           groupId={groupId}
           hideSlider={!isLastChart}
+          highlightKeys={highlightKeys}
+          onSeriesHover={(key) => setHighlightKeys(key ? [key] : null)}
         />
-        <ChartLegend entries={chartSeries.map((s, i) => ({
-          key: s.key, label: s.label, color: seriesColor(i),
-          group: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.accessoryName,
-          shortLabel: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.charLabel,
-        }))} />
+        <ChartLegend
+          entries={chartSeries.map((s, i) => ({
+            key: s.key, label: s.label, color: seriesColor(i),
+            group: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.accessoryName,
+            shortLabel: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.charLabel,
+          }))}
+          highlightKeys={highlightKeys}
+          onHighlight={setHighlightKeys}
+        />
       </AnalyticsPanel>
     );
   });

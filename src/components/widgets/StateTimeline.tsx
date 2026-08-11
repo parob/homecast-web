@@ -169,6 +169,7 @@ export default function StateTimeline({
     );
   }
 
+  const leadingGapPct = segments[0]?.leftPct ?? 0;
   const hoveredSegment = hover !== null ? segments[hover.index] : undefined;
   const hoverStart = hoveredSegment ? fromTs + (hoveredSegment.leftPct / 100) * span : 0;
   const hoverEnd = hoveredSegment ? hoverStart + (hoveredSegment.widthPct / 100) * span : 0;
@@ -215,6 +216,16 @@ export default function StateTimeline({
         }}
         onMouseLeave={() => setHover(null)}
       >
+      {leadingGapPct > 5 && (
+        // Same statement the charts make above: bare track at the left of a
+        // long window is not "off", it is "we weren't recording yet".
+        <div
+          className="absolute inset-y-0 left-0 z-10 flex items-center px-1.5"
+          style={{ width: `${leadingGapPct}%` }}
+        >
+          <span className="text-[10px] text-muted-foreground truncate">not recorded</span>
+        </div>
+      )}
       {hover && (
         // Crosshair: the same instant the charts above are being read at.
         <div

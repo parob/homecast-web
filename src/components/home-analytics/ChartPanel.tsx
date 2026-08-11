@@ -77,6 +77,9 @@ export default function ChartPanel({
 }: ChartPanelProps) {
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [normalize, setNormalize] = useState(false);
+  // Which series the pointer is on, wherever the pointer is: legend name,
+  // cluster name, or the line itself. One piece of state, both directions.
+  const [highlightKeys, setHighlightKeys] = useState<string[] | null>(null);
   const [compare, setCompare] = useState<'none' | 'day' | 'week'>('none');
   // Bogus-data cleanup — ON by default, always announced (see sanitize.ts).
   const [hideUnusual, setHideUnusual] = useState(true);
@@ -306,8 +309,14 @@ export default function ChartPanel({
                 fromTs={fromTs}
                 toTs={toTs}
                 normalize={normalize}
+                highlightKeys={highlightKeys}
+                onSeriesHover={(key) => setHighlightKeys(key ? [key] : null)}
               />
-              <ChartLegend entries={legendEntries} />
+              <ChartLegend
+                entries={legendEntries}
+                highlightKeys={highlightKeys}
+                onHighlight={setHighlightKeys}
+              />
             </div>
           )}
 

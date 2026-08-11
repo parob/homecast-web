@@ -21,6 +21,10 @@ interface ExplorerChartProps {
   /** Charts sharing a groupId share their crosshair (stacked panels). */
   groupId?: string;
   hideSlider?: boolean;
+  /** Series keys to pick out; everything else fades (legend hover). */
+  highlightKeys?: string[] | null;
+  /** The line under the pointer, so the legend can echo it. */
+  onSeriesHover?: (key: string | null) => void;
 }
 
 export default function ExplorerChart(props: ExplorerChartProps) {

@@ -2,6 +2,7 @@ import {
   Area,
   ComposedChart,
   CartesianGrid,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -62,6 +63,14 @@ export default function HistoryChart({
     ? [...points, { ...points[points.length - 1], ts: toTs }]
     : points;
 
+  // Blank chart on the left of a 30d view is ambiguous: is that flat nothing,
+  // a dead sensor, or a window that reaches back further than the recording?
+  // Shade the stretch before the first reading and say which. Only when it is
+  // worth saying — under a twentieth of the window is just the axis edge.
+  const recordingStart = windowed && points.length > 0 ? points[0].ts : null;
+  const showUnrecorded = !sparkline && recordingStart !== null
+    && recordingStart - fromTs! > spanMs * 0.05;
+
   return (
     <div className={`text-primary ${sparkline ? 'h-[60px]' : 'h-[200px]'} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
@@ -78,6 +87,22 @@ export default function HistoryChart({
             </linearGradient>
           </defs>
           {!sparkline && <CartesianGrid className="stroke-border" vertical={false} />}
+          {showUnrecorded && (
+            <ReferenceArea
+              x1={fromTs}
+              x2={recordingStart!}
+              className="fill-muted-foreground"
+              fillOpacity={0.07}
+              strokeOpacity={0}
+              ifOverflow="extendDomain"
+              label={{
+                value: 'not recorded',
+                position: 'insideTopLeft',
+                className: 'fill-muted-foreground',
+                fontSize: 10,
+              }}
+            />
+          )}
           {!sparkline && (
             <XAxis
               dataKey="ts"

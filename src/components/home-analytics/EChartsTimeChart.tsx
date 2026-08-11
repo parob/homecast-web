@@ -4,6 +4,7 @@ import { LineChart as EChartsLine } from 'echarts/charts';
 import {
   DataZoomComponent,
   GridComponent,
+  MarkAreaComponent,
   TooltipComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -14,7 +15,9 @@ import { seriesColor } from './chartColors';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { ChartSeries } from './chartColors';
 
-echarts.use([EChartsLine, GridComponent, TooltipComponent, DataZoomComponent, CanvasRenderer]);
+// Tree-shaken build: an unregistered component is silently a no-op, not an
+// error — MarkArea drew nothing at all until it was added here.
+echarts.use([EChartsLine, GridComponent, TooltipComponent, DataZoomComponent, MarkAreaComponent, CanvasRenderer]);
 
 /**
  * The chart engine behind every Analytics line chart — Apache ECharts.
@@ -62,13 +65,26 @@ export interface EChartsTimeChartProps {
   groupId?: string;
   /** Hide the zoom slider (stacked panels keep one slider on the last chart). */
   hideSlider?: boolean;
+  /**
+   * Series keys to pick out of the crowd — everything else fades. Driven by
+   * the legend, so pointing at a name answers "which line is that?" without
+   * counting colours. Null/empty means show them all equally.
+   */
+  highlightKeys?: string[] | null;
+  /** The reverse trip: the line under the pointer, so the legend can echo it. */
+  onSeriesHover?: (key: string | null) => void;
 }
 
 export default function EChartsTimeChart({
   series, band, bandLabel, fromTs, toTs, normalize, height = 320, groupId, hideSlider = false,
+  highlightKeys, onSeriesHover,
 }: EChartsTimeChartProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
+  // Latest callback/map without re-registering chart listeners on every render.
+  const hoverCbRef = useRef(onSeriesHover);
+  hoverCbRef.current = onSeriesHover;
+  const keyByIndexRef = useRef(new Map<number, string>());
 
   // Axis plan: units in appearance order; first → left, second → right;
   // more than two borrow the left axis (Normalize is the honest fix there).
@@ -80,7 +96,7 @@ export default function EChartsTimeChart({
     return seen.slice(0, 2);
   }, [series]);
 
-  const option = useMemo(() => {
+  const { option, indexByKey, keyByIndex } = useMemo(() => {
     const theme = hostRef.current ? readTheme(hostRef.current) : { text: '#333', faint: '#888', grid: '#e5e5e5' };
     const axisIndexFor = (unit: string | null) => (!normalize && units.length > 1 && units.indexOf(unit) === 1 ? 1 : 0);
 
@@ -105,6 +121,15 @@ export default function EChartsTimeChart({
     };
 
     const chartSeries: object[] = [];
+    // ECharts addresses series by index; the app addresses them by key. One
+    // map, built where the series are built, keeps the two from drifting.
+    const indexByKey = new Map<string, number[]>();
+    const keyByIndex = new Map<number, string>();
+    const claim = (key: string) => {
+      const idx = chartSeries.length;
+      indexByKey.set(key, [...(indexByKey.get(key) ?? []), idx]);
+      keyByIndex.set(idx, key);
+    };
 
     // Band: lower bound (invisible) + diff (filled) stacked, then bold avg.
     if (band && band.length > 0 && !normalize) {
@@ -131,7 +156,18 @@ export default function EChartsTimeChart({
       );
     }
 
+    // Nothing on the left of a long window is ambiguous — a dead sensor reads
+    // the same as a window reaching back past the recording. Shade the stretch
+    // before the EARLIEST reading any series has and name it. Earliest, not
+    // per-series: this is one shared time axis, and a per-series version would
+    // be a stack of overlapping greys.
+    const firstTs = Math.min(...series.map(s => s.data.points[0]?.ts ?? Infinity));
+    const unrecordedUntil = Number.isFinite(firstTs) && firstTs - fromTs > (toTs - fromTs) * 0.05
+      ? firstTs
+      : null;
+
     series.forEach((s, i) => {
+      claim(s.key);
       chartSeries.push({
         name: s.label, type: 'line', step: 'end',
         data: toPairs(s.data),
@@ -140,8 +176,15 @@ export default function EChartsTimeChart({
         itemStyle: { color: seriesColor(i) },
         symbol: 'none', z: 2,
         emphasis: { focus: 'series', lineStyle: { width: 2.5, opacity: 1 } },
+        // Explicit, because the default blur for a line is barely a change
+        // when the lines are already thin — "which one is that" needs the
+        // others to genuinely recede.
+        blur: { lineStyle: { opacity: 0.15 } },
       });
       if (s.ghost) {
+        // The ghost answers to its series' key too — highlighting a line
+        // should bring its own comparison with it, not orphan it.
+        claim(s.key);
         chartSeries.push({
           name: `${s.label} (previous)`, type: 'line', step: 'end',
           data: toPairs(s.ghost),
@@ -152,6 +195,17 @@ export default function EChartsTimeChart({
         });
       }
     });
+
+    if (unrecordedUntil !== null && chartSeries.length > 0) {
+      // A markArea rides on a series and is not drawn if that series has no
+      // data — so it goes on the first real line, not on a spacer.
+      (chartSeries[0] as { markArea?: unknown }).markArea = {
+        silent: true,
+        itemStyle: { color: theme.faint, opacity: 0.07 },
+        label: { show: true, position: 'insideTopLeft', color: theme.faint, fontSize: 10 },
+        data: [[{ name: 'not recorded', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
+      };
+    }
 
     const yAxes = (units.length > 1 && !normalize ? units : [units[0] ?? null]).map((unit, idx) => ({
       type: 'value' as const,
@@ -166,7 +220,7 @@ export default function EChartsTimeChart({
       splitLine: { show: idx === 0, lineStyle: { color: theme.grid } },
     }));
 
-    return {
+    const option = {
       animation: false,
       grid: {
         // Fixed gutters, not containLabel: state strips inset by the same
@@ -199,7 +253,23 @@ export default function EChartsTimeChart({
       ],
       tooltip: {
         trigger: 'axis' as const,
-        axisPointer: { type: 'cross' as const, label: { show: false } },
+        // snap: without it a value axis lets the crosshair float between
+        // readings, so the line you are pointing at and the number you are
+        // reading are from different instants. confine: the chart lives in a
+        // dialog that clips its overflow, and an unconfined tooltip near the
+        // right edge was drawn half outside it. triggerOn/hideDelay stop the
+        // panel flickering as the pointer crosses between stacked charts.
+        axisPointer: {
+          type: 'cross' as const,
+          snap: true,
+          label: { show: false },
+          crossStyle: { color: theme.faint },
+          lineStyle: { color: theme.faint },
+        },
+        confine: true,
+        triggerOn: 'mousemove' as const,
+        hideDelay: 40,
+        transitionDuration: 0,
         backgroundColor: document.documentElement.classList.contains('dark')
           ? 'rgba(24,24,27,0.96)'
           : 'rgba(255,255,255,0.96)',
@@ -236,6 +306,7 @@ export default function EChartsTimeChart({
       },
       series: chartSeries,
     };
+    return { option, indexByKey, keyByIndex };
   }, [series, band, bandLabel, fromTs, toTs, normalize, units, hideSlider]);
 
   useEffect(() => {
@@ -247,6 +318,14 @@ export default function EChartsTimeChart({
       chart.group = groupId;
       echarts.connect(groupId);
     }
+    // Pointing at a line tells the legend which name to light up. Read the
+    // key through a ref: re-registering these on every render would tear the
+    // listener down mid-hover.
+    chart.on('mouseover', (params: { seriesIndex?: number }) => {
+      const key = params.seriesIndex !== undefined ? keyByIndexRef.current.get(params.seriesIndex) : undefined;
+      if (key) hoverCbRef.current?.(key);
+    });
+    chart.on('mouseout', () => hoverCbRef.current?.(null));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(host);
     return () => {
@@ -258,8 +337,27 @@ export default function EChartsTimeChart({
   }, [groupId]);
 
   useEffect(() => {
+    keyByIndexRef.current = keyByIndex;
     chartRef.current?.setOption(option as never, { notMerge: true });
-  }, [option]);
+  }, [option, keyByIndex]);
+
+  // Legend → chart. `emphasis.focus: 'series'` on each line means emphasising
+  // one blurs the rest, so a single highlight action does both halves of
+  // "show me this one". Downplay first: highlights are additive.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    // escapeConnect: stacked panels are connected so their crosshairs move
+    // together, but connect() also relays actions — so each panel's own
+    // "downplay everything" was landing on its neighbours and wiping the
+    // highlight the legend had just asked for. Series indices are per-chart
+    // anyway; sharing them across panels was never meaningful.
+    chart.dispatchAction({ type: 'downplay', escapeConnect: true });
+    const indices = (highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []);
+    if (indices.length > 0) {
+      chart.dispatchAction({ type: 'highlight', seriesIndex: indices, escapeConnect: true });
+    }
+  }, [highlightKeys, indexByKey, option]);
 
   return <div ref={hostRef} style={{ width: '100%', height }} />;
 }
