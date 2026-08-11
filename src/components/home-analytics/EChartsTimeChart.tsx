@@ -159,7 +159,7 @@ export default function EChartsTimeChart({
     return seen.slice(0, 3);
   }, [series]);
 
-  const { option, indexByKey, keyByIndex, tracks } = useMemo(() => {
+  const { option, indexByKey, keyByIndex, tracks, styles } = useMemo(() => {
     const theme = hostRef.current ? readTheme(hostRef.current) : { text: '#333', faint: '#888', grid: '#e5e5e5' };
     // Units in appearance order get their own axis, up to three: two
     // complements sharing one axis meant lux being read against a % scale.
@@ -200,6 +200,10 @@ export default function EChartsTimeChart({
     };
 
     const chartSeries: object[] = [];
+    // Base stroke per drawn series, so the highlight can dim and restore by
+    // index without rebuilding anything. null = leave this one alone (the
+    // band's invisible bounds and its filled area are not lines you point at).
+    const styles: Array<{ opacity: number; width: number } | null> = [];
     // ECharts addresses series by index; the app addresses them by key. One
     // map, built where the series are built, keeps the two from drifting.
     const indexByKey = new Map<string, number[]>();
@@ -213,6 +217,7 @@ export default function EChartsTimeChart({
 
     // Band: lower bound (invisible) + diff (filled) stacked, then bold avg.
     if (band && band.length > 0 && !normalize) {
+      styles.push(null, null, null);
       chartSeries.push(
         {
           name: '__bandLow', type: 'line', step: 'end', silent: true,
@@ -253,6 +258,9 @@ export default function EChartsTimeChart({
       claim(s.key);
       const colour = s.color ?? seriesColor(i);
       tracks.push({ key: s.key, axisIndex: axisIndexFor(s.unit), pairs: toPairs(s.data) });
+      const width = s.dashed ? 1.25 : s.secondary ? 1.5 : (band ? 1 : 2);
+      const opacity = s.secondary ? 0.65 : (band && !s.dashed ? 0.5 : 1);
+      styles.push({ opacity, width });
       chartSeries.push({
         name: s.label, type: 'line', step: 'end',
         data: toPairs(s.data),
@@ -263,18 +271,23 @@ export default function EChartsTimeChart({
           // accessory was told to do), dotted is a borrowed measure from
           // another chart. Weight and opacity alone were not enough to tell
           // a faint solid line from a pale one.
-          width: s.dashed ? 1.25 : s.secondary ? 1.5 : (band ? 1 : 2),
+          width,
           color: colour,
-          opacity: s.secondary ? 0.65 : (band && !s.dashed ? 0.5 : 1),
+          opacity,
           type: s.dashed ? [5, 4] : s.secondary ? [2, 3] : 'solid',
         },
         itemStyle: { color: colour },
         symbol: 'none', z: s.dashed ? 1 : 2,
-        emphasis: { focus: 'series', lineStyle: { width: s.dashed ? 2 : 2.5, opacity: 1 } },
-        // Explicit, because the default blur for a line is barely a change
-        // when the lines are already thin — "which one is that" needs the
-        // others to genuinely recede.
-        blur: { lineStyle: { opacity: 0.15 } },
+        // Silent, and no emphasis/blur states at all. ECharts emphasises a
+        // series whenever the pointer is ON its stroke — a SECOND mechanism
+        // running beside the picker below, asking a different question
+        // ("within a pixel or two of this polyline?" rather than "nearest
+        // stroke, with hysteresis?"). The two disagreed constantly: drifting
+        // a few pixels off a line ended ECharts' emphasis and un-dimmed the
+        // whole chart while the picker still held that line, so the legend
+        // stayed lit and the chart did not. There is one mechanism now, and
+        // it paints the strokes itself.
+        silent: true,
       });
     });
 
@@ -409,7 +422,7 @@ export default function EChartsTimeChart({
       },
       series: chartSeries,
     };
-    return { option, indexByKey, keyByIndex, tracks };
+    return { option, indexByKey, keyByIndex, tracks, styles };
   }, [stableSeries, band, bandLabel, axisSig, fromTs, toTs, normalize, units, hideSlider]);
 
   useEffect(() => {
@@ -555,23 +568,30 @@ export default function EChartsTimeChart({
     chartRef.current?.setOption(option as never, { notMerge: true });
   }, [option, keyByIndex, tracks]);
 
-  // Legend → chart. `emphasis.focus: 'series'` on each line means emphasising
-  // one blurs the rest, so a single highlight action does both halves of
-  // "show me this one". Downplay first: highlights are additive.
+  // Legend/pointer → chart: paint the strokes.
+  //
+  // This used to dispatch ECharts' highlight/downplay and lean on
+  // `emphasis.focus: 'series'` to blur the rest. That put a second, invisible
+  // state machine in charge — one that ECharts also drives itself from raw
+  // element hover — and the two took turns. A merge setOption touching only
+  // lineStyle is both cheaper than an option rebuild and the only thing
+  // deciding how a line looks.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    // escapeConnect: stacked panels are connected so their crosshairs move
-    // together, but connect() also relays actions — so each panel's own
-    // "downplay everything" was landing on its neighbours and wiping the
-    // highlight the legend had just asked for. Series indices are per-chart
-    // anyway; sharing them across panels was never meaningful.
-    chart.dispatchAction({ type: 'downplay', escapeConnect: true });
-    const indices = (highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []);
-    if (indices.length > 0) {
-      chart.dispatchAction({ type: 'highlight', seriesIndex: indices, escapeConnect: true });
-    }
-  }, [highlightKeys, indexByKey, option]);
+    const lit = new Set((highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []));
+    chart.setOption({
+      series: styles.map((base, i) => {
+        if (!base) return {};
+        if (lit.size === 0) return { lineStyle: { opacity: base.opacity, width: base.width } };
+        return lit.has(i)
+          ? { lineStyle: { opacity: 1, width: base.width + 0.75 } }
+          // Enough to genuinely recede: the default blur is barely a change
+          // when the lines are already thin.
+          : { lineStyle: { opacity: 0.12, width: base.width } };
+      }),
+    });
+  }, [highlightKeys, indexByKey, styles]);
 
   return <div ref={hostRef} style={{ width: '100%', height }} />;
 }
