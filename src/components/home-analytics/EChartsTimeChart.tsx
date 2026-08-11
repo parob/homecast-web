@@ -137,6 +137,10 @@ export default function EChartsTimeChart({
   // Read by the tooltip formatter. A ref rather than a dep: the option must
   // not rebuild every time the highlight moves.
   const litRef = useRef<Array<{ key: string; label: string; color: string }>>([]);
+  // null = nothing is highlighted anywhere. An empty array = something IS,
+  // but not here. The two want opposite tooltips, and only the caller can
+  // tell them apart.
+  const highlightElsewhereRef = useRef(false);
 
   // The caller rebuilds its series array on every render, so pointing at a
   // line — which is a state change up there — handed this chart a brand new
@@ -419,6 +423,11 @@ export default function EChartsTimeChart({
           // Velux sensor and were told about the radiator. Read the value the
           // way the chart draws it — last value at or before this instant —
           // and the row is always the one you asked for.
+          // Something is highlighted and this panel has none of it: the
+          // stacked panels are read together, so volunteering unrelated
+          // numbers here is answering a question nobody asked — about the
+          // wrong accessory, next to the one they are pointing at.
+          if (highlightElsewhereRef.current) return '';
           const lit = litRef.current;
           const rows = lit.length > 0 && ts !== undefined
             ? lit.map(({ key, label, color }) => {
@@ -615,6 +624,7 @@ export default function EChartsTimeChart({
     const chart = chartRef.current;
     if (!chart) return;
     const lit = new Set((highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []));
+    highlightElsewhereRef.current = !!highlightKeys && highlightKeys.length === 0;
     litRef.current = [...lit]
       .map(i => keyByIndex.get(i))
       .filter((k): k is string => !!k)
