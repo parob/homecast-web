@@ -251,10 +251,10 @@ export default function StateTimeline({
         // Same statement the charts make above: bare track at the left of a
         // long window is not "off", it is "we weren't recording yet".
         <div
-          className="absolute inset-y-0 left-0 z-10 flex items-center px-1.5"
+          className="absolute inset-y-0 left-0 z-10 flex items-center justify-center px-1.5"
           style={{ width: `${leadingGapPct}%` }}
         >
-          <span className="text-[10px] text-muted-foreground truncate">No Data</span>
+          <span className="truncate text-[10px] text-muted-foreground">No data</span>
         </div>
       )}
       {hover && (

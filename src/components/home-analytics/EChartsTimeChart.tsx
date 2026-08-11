@@ -297,8 +297,10 @@ export default function EChartsTimeChart({
       (chartSeries[0] as { markArea?: unknown }).markArea = {
         silent: true,
         itemStyle: { color: theme.faint, opacity: 0.07 },
-        label: { show: true, position: 'insideTopLeft', color: theme.faint, fontSize: 10 },
-        data: [[{ name: 'No Data', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
+        // Centred: the label describes the whole shaded stretch, and in a
+        // corner it reads as a note about the axis instead.
+        label: { show: true, position: 'inside', color: theme.faint, fontSize: 10 },
+        data: [[{ name: 'No data', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
       };
     }
 

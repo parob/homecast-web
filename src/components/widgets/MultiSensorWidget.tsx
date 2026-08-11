@@ -8,6 +8,7 @@ import {
   BatteryWarning,
   Footprints,
   Droplets,
+  Wind,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -54,6 +55,9 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
   // Also check for the UUID version of light level
   const lightCharAlt = getCharacteristic(accessory, '0000006B-0000-1000-8000-0026BB765291');
   const humidityChar = getCharacteristic(accessory, 'relative_humidity');
+  // A VELUX/Netatmo sensor's whole point is the ppm, and the widget was
+  // reading everything on it EXCEPT that.
+  const co2Char = getCharacteristic(accessory, 'carbon_dioxide_level');
   const batteryLevelChar = getCharacteristic(accessory, 'battery_level');
   const lowBatteryChar = getCharacteristic(accessory, 'status_low_battery');
 
@@ -73,6 +77,10 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
   // Light level (check both standard and UUID characteristic)
   const lightValue = lightChar?.value ?? lightCharAlt?.value;
   const lightLevel = typeof lightValue === 'number' ? lightValue : (typeof lightValue === 'string' ? parseFloat(lightValue) : null);
+
+  // CO₂
+  const co2Raw = co2Char?.value;
+  const co2Level = typeof co2Raw === 'number' ? co2Raw : (typeof co2Raw === 'string' ? parseFloat(co2Raw) : null);
 
   // Humidity
   const humidity = humidityChar?.value;
@@ -122,6 +130,17 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
           )}
           {humidityValue !== null && !isNaN(humidityValue) && (
             <ValueReadout value={Math.round(humidityValue).toString()} unit="%" label="Humidity" icon={<Droplets />} />
+          )}
+          {co2Level !== null && !isNaN(co2Level) && (
+            <ValueReadout
+              value={Math.round(co2Level).toString()}
+              unit="ppm"
+              label="CO₂"
+              icon={<Wind />}
+              // Where a room stops being fresh: 1000ppm is the usual line for
+              // "open a window", 1400 for "this is why you have a headache".
+              tone={co2Level >= 1400 ? 'warning' : 'normal'}
+            />
           )}
           {lightLevel !== null && !isNaN(lightLevel) && (
             <ValueReadout value={Math.round(lightLevel).toString()} unit="lx" label="Light" icon={<Sun />} />
@@ -184,6 +203,17 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] text-muted-foreground">Temperature</p>
                 <p className="text-xs font-medium">{tempValue.toFixed(1)}°C</p>
+              </div>
+            </div>
+          )}
+
+          {/* CO₂ */}
+          {co2Level !== null && !isNaN(co2Level) && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2">
+              <Wind className="h-4 w-4 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-muted-foreground">CO₂</p>
+                <p className="text-xs font-medium">{Math.round(co2Level)} ppm</p>
               </div>
             </div>
           )}
