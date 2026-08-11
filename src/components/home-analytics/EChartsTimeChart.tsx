@@ -34,6 +34,28 @@ echarts.use([EChartsLine, GridComponent, TooltipComponent, DataZoomComponent, Ma
 
 const TOOLTIP_MAX_ROWS = 8;
 
+/** Distance from a point to a line segment, all in pixels. */
+function segmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / length2));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/**
+ * A value→pixel function for a linear axis, derived from two probes. Time and
+ * value axes are both linear, so this is exact — and it turns per-sample
+ * conversion (thousands of ECharts calls per mouse move) into arithmetic.
+ */
+function linearPix(probe: (v: number) => number, a: number, b: number): ((v: number) => number) | null {
+  const pa = probe(a);
+  const pb = probe(b);
+  if (!Number.isFinite(pa) || !Number.isFinite(pb) || a === b) return null;
+  const k = (pb - pa) / (b - a);
+  return (v: number) => pa + (v - a) * k;
+}
+
 interface ThemeColors {
   text: string;
   faint: string;
@@ -230,19 +252,6 @@ export default function EChartsTimeChart({
         // others to genuinely recede.
         blur: { lineStyle: { opacity: 0.15 } },
       });
-      if (s.ghost) {
-        // The ghost answers to its series' key too — highlighting a line
-        // should bring its own comparison with it, not orphan it.
-        claim(s.key);
-        chartSeries.push({
-          name: `${s.label} (previous)`, type: 'line', step: 'end',
-          data: toPairs(s.ghost),
-          yAxisIndex: axisIndexFor(s.unit),
-          lineStyle: { width: 1.5, color: colour, opacity: 0.45, type: [5, 4] },
-          itemStyle: { color: colour },
-          symbol: 'none', z: 2,
-        });
-      }
     });
 
     if (unrecordedUntil !== null && chartSeries.length > 0) {
@@ -391,33 +400,92 @@ export default function EChartsTimeChart({
     // the caller, every other panel showing that same accessory.
     //
     // ECharts' own mouseover only fires when the pointer is ON the stroke,
-    // which for a 2px line is a game of darts. This asks the same question
-    // the eye does: of the lines drawn here, which passes closest to the
-    // cursor right now? Nothing within 28px means nothing is being pointed at.
+    // which for a 2px line is a game of darts. This asks the question the eye
+    // asks: of the strokes drawn here, which passes closest to the cursor?
+    //
+    // Closest to the STROKE, in both directions. Measuring the vertical gap
+    // inside the cursor's own pixel column looked equivalent and is not: where
+    // lines climb, a stroke passing three pixels under the pointer lost to one
+    // twenty pixels away whose column value happened to be nearer, so sliding
+    // sideways along a rising line walked the highlight down through every
+    // line beneath it. Vertical gap ÷ nothing; true distance to the segment.
     const zr = chart.getZr();
-    const nearestTo = (e: { offsetX: number; offsetY: number }): string | null => {
-      const pointInGrid = chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY]);
-      if (!pointInGrid) return null;
-      const ts = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number;
-      let best: { key: string; distance: number } | null = null;
-      for (const track of tracksRef.current) {
-        if (track.pairs.length === 0) continue;
-        // LOCF: the value in force at the cursor's instant.
-        let value: number | null = null;
-        for (const [x, y] of track.pairs) {
-          if (x > ts) break;
-          value = y;
-        }
-        if (value === null) continue;
-        const py = chart.convertToPixel({ yAxisIndex: track.axisIndex }, value) as number;
-        const distance = Math.abs(py - e.offsetY);
-        if (!best || distance < best.distance) best = { key: track.key, distance };
+    const PICK = 24; // acquire a line within this
+    const HOLD = 64; // …and keep it until this far off
+    const MARGIN = 10; // a rival must beat the held line by this much
+
+    const distanceTo = (
+      track: { axisIndex: number; pairs: Array<[number, number]> },
+      cx: number,
+      cy: number,
+      xPix: (t: number) => number,
+      yPixOf: (axisIndex: number) => ((v: number) => number) | null,
+    ): number => {
+      const yPix = yPixOf(track.axisIndex);
+      if (!yPix || track.pairs.length === 0) return Infinity;
+      // Only the stretch of the line that could possibly be within HOLD.
+      const pairs = track.pairs;
+      let lo = 0;
+      let hi = pairs.length - 1;
+      const leftPx = cx - HOLD;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (xPix(pairs[mid][0]) < leftPx) lo = mid + 1; else hi = mid;
       }
-      return best && best.distance <= 28 ? best.key : null;
+      const start = Math.max(0, lo - 1);
+      let best = Infinity;
+      let px = xPix(pairs[start][0]);
+      let py = yPix(pairs[start][1]);
+      for (let i = start + 1; i < pairs.length; i++) {
+        const nx = xPix(pairs[i][0]);
+        const ny = yPix(pairs[i][1]);
+        // step: 'end' — the value holds to the next sample, then jumps. Two
+        // segments, drawn exactly as ECharts draws them.
+        best = Math.min(best, segmentDistance(cx, cy, px, py, nx, py), segmentDistance(cx, cy, nx, py, nx, ny));
+        px = nx;
+        py = ny;
+        if (nx > cx + HOLD) break;
+      }
+      return best;
+    };
+
+    const rank = (e: { offsetX: number; offsetY: number }): Array<{ key: string; distance: number }> => {
+      if (!chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])) return [];
+      // Time and value axes are linear here, so two conversions describe each
+      // one completely — cheaper by two orders of magnitude than converting
+      // every sample of every line on every mouse move.
+      const xPix = linearPix(v => chart.convertToPixel({ xAxisIndex: 0 }, v) as number, fromTs, toTs);
+      if (!xPix) return [];
+      const yCache = new Map<number, ((v: number) => number) | null>();
+      const yPixOf = (axisIndex: number) => {
+        if (!yCache.has(axisIndex)) {
+          yCache.set(axisIndex, linearPix(v => chart.convertToPixel({ yAxisIndex: axisIndex }, v) as number, 0, 100));
+        }
+        return yCache.get(axisIndex) ?? null;
+      };
+      return tracksRef.current
+        .map(track => ({ key: track.key, distance: distanceTo(track, e.offsetX, e.offsetY, xPix, yPixOf) }))
+        .filter(r => Number.isFinite(r.distance))
+        .sort((a, b) => a.distance - b.distance);
+    };
+
+    // Which line the pointer is on, with hysteresis: nudging the mouse while
+    // reading a line must not hand the highlight to its neighbour, so the one
+    // already held keeps it until the pointer is properly off it or another is
+    // clearly nearer.
+    const resolve = (e: { offsetX: number; offsetY: number }): string | null => {
+      const ranked = rank(e);
+      const best = ranked[0] ?? null;
+      const held = lastHoverRef.current;
+      if (held) {
+        const heldDistance = ranked.find(r => r.key === held)?.distance ?? Infinity;
+        if (heldDistance <= HOLD && (!best || best.distance > heldDistance - MARGIN)) return held;
+      }
+      return best && best.distance <= PICK ? best.key : null;
     };
 
     const onMove = (e: { offsetX: number; offsetY: number }) => {
-      const key = nearestTo(e);
+      const key = resolve(e);
       // Every pixel of movement would otherwise set state, re-render the view
       // and rebuild every chart in it — the mouse would drag the whole page
       // behind it. Speak only when the answer changes.
@@ -425,9 +493,10 @@ export default function EChartsTimeChart({
       lastHoverRef.current = key;
       hoverCbRef.current?.(key);
     };
-    // Clicking the same line again lets it go; clicking empty plot clears.
+    // Pins whatever is lit, so what you see highlighted is what you get;
+    // clicking it again lets it go, clicking empty plot clears.
     const onClick = (e: { offsetX: number; offsetY: number }) => {
-      selectCbRef.current?.(nearestTo(e));
+      selectCbRef.current?.(resolve(e));
     };
     zr.on('mousemove', onMove);
     zr.on('click', onClick);

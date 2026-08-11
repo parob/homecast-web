@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { getDisplayName } from '@/lib/graphql/types';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
-import type { ExplorerView } from './types';
 
 /**
  * Analytics is scoped to a PLACE, not to a data category.
@@ -19,8 +18,7 @@ export type AnalyticsScope =
   /** `room: null` is the roomless bucket (virtual accessories, Default Room). */
   | { level: 'room'; room: string | null }
   | { level: 'accessory'; accessoryId: string }
-  | { level: 'group'; groupId: string }
-  | { level: 'custom'; view: ExplorerView };
+  | { level: 'group'; groupId: string };
 
 export const RANGES = [
   { label: '6h', ms: 6 * 3_600_000 },
@@ -30,22 +28,18 @@ export const RANGES = [
   { label: '1y', ms: 365 * 86_400_000 },
 ] as const;
 
-export type CompareMode = 'none' | 'day' | 'week';
-
 /**
- * Range and comparison are properties of the LOOK, not of the
- * screen: picking 7d and then opening a room used to drop you back to 24h,
- * because each view owned its own copy. One object, held above the scope, so
- * moving around never silently changes what you are looking at.
+ * How you are looking, as opposed to what at: a property of the SESSION, not
+ * of the screen. Picking 7d and then opening a room used to drop you back to
+ * 24h, because each view owned its own copy. One object, held above the
+ * scope, so moving around never silently changes the window.
  */
 export interface AnalyticsSettings {
   rangeMs: number;
-  compare: CompareMode;
 }
 
 export const DEFAULT_SETTINGS: AnalyticsSettings = {
   rangeMs: 24 * 3_600_000,
-  compare: 'none',
 };
 
 export interface ScopeAccessory {
@@ -220,8 +214,6 @@ export function scopeCrumbs(
       const group = groups.find(g => g.id === scope.groupId);
       return [home, { label: group?.name ?? 'Group', scope }];
     }
-    case 'custom':
-      return [home, { label: scope.view.title || 'Custom view', scope }];
   }
 }
 
@@ -230,8 +222,6 @@ export interface AnalyticsScopeState {
   settings: AnalyticsSettings;
   setScope: (next: AnalyticsScope) => void;
   setSettings: (next: Partial<AnalyticsSettings>) => void;
-  /** Replace the current scope without pushing history (custom view edits). */
-  replaceScope: (next: AnalyticsScope) => void;
   back: () => void;
   canGoBack: boolean;
 }
@@ -242,9 +232,6 @@ export function useAnalyticsScope(initial?: AnalyticsScope): AnalyticsScopeState
 
   const setScope = useCallback((next: AnalyticsScope) => {
     setHistory(h => [...h, next]);
-  }, []);
-  const replaceScope = useCallback((next: AnalyticsScope) => {
-    setHistory(h => [...h.slice(0, -1), next]);
   }, []);
   const back = useCallback(() => {
     setHistory(h => (h.length > 1 ? h.slice(0, -1) : h));
@@ -258,8 +245,7 @@ export function useAnalyticsScope(initial?: AnalyticsScope): AnalyticsScopeState
     settings,
     setScope,
     setSettings,
-    replaceScope,
     back,
     canGoBack: history.length > 1,
-  }), [history, settings, setScope, setSettings, replaceScope, back]);
+  }), [history, settings, setScope, setSettings, back]);
 }

@@ -41,6 +41,15 @@ export function stateTotals(
       } catch { /* cell without detail */ }
     }
   }
+
+  // Nothing happened inside the window, so nothing was sampled inside it
+  // either — the value carried in from before held the whole way. A smoke
+  // alarm quiet since last month is the ordinary case, and without this it
+  // reported no time in any state at all: the strip drew the held bar, the
+  // caption underneath denied it.
+  if (totals.size === 0 && data.prevValue !== null) {
+    totals.set(keyOf(data.prevValue, data.prevValueText), toTs - fromTs);
+  }
   return {
     totals: [...totals.entries()].sort((a, b) => b[1] - a[1]),
     transitions,

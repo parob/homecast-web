@@ -18,10 +18,3 @@ export interface SeriesSel {
   unit: string | null;
   kind: 'numeric' | 'bool' | 'enum' | 'string';
 }
-
-/** A custom (user-assembled) view: any mix of series on one chart. */
-export interface ExplorerView {
-  title: string;
-  series: SeriesSel[];
-  aggregate: boolean;
-}

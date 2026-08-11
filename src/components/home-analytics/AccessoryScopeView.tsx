@@ -47,7 +47,7 @@ export default function AccessoryScopeView({
     () => ordered.map(type => ({ accessoryId, characteristicType: type })),
     [ordered, accessoryId],
   );
-  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock);
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, mock);
 
   if (loading && data.size === 0) return <ChartSkeleton panels={3} progress={progress} />;
 

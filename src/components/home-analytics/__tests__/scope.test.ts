@@ -144,11 +144,8 @@ describe('scopeCrumbs', () => {
     expect(crumbs.map(c => c.label)).toEqual(['George Street', 'Holiday Mode']);
   });
 
-  it('names a group and a custom view', () => {
+  it('names a group', () => {
     expect(scopeCrumbs({ level: 'group', groupId: 'g1' }, 'H', accessoryInfo, groups).map(c => c.label))
       .toEqual(['H', 'All Lights']);
-    expect(scopeCrumbs(
-      { level: 'custom', view: { title: '', series: [], aggregate: false } }, 'H', accessoryInfo, groups,
-    ).map(c => c.label)).toEqual(['H', 'Custom view']);
   });
 });

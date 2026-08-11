@@ -120,7 +120,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   );
 
   const { data: histMap, loading } = useMultiSeriesHistory(
-    target?.homeId ?? null, refs, fromTs, toTs, 0, mock,
+    target?.homeId ?? null, refs, fromTs, toTs, mock,
     { enabled: !!target && historyEnabled },
   );
 

@@ -2,12 +2,10 @@ import { useMemo } from 'react';
 import type { WritableChar } from '@/components/automations/characteristics';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import AccessoryScopeView from './AccessoryScopeView';
-import CustomView from './CustomView';
 import GroupHistorySections from './GroupHistorySections';
 import RoomStackView from './RoomStackView';
-import type { AnalyticsScope, AnalyticsSettings, ScopeTreeModel } from './scope';
-import type { ExplorerView } from './types';
-import type { HistorySeriesInfo, HomeKitAccessory } from '@/lib/graphql/types';
+import type { AnalyticsScope, AnalyticsSettings } from './scope';
+import type { HistorySeriesInfo } from '@/lib/graphql/types';
 
 /**
  * The detail pane: whatever the current scope is, rendered at the depth that
@@ -24,28 +22,20 @@ export default function ScopeDashboard({
   settings,
   homeId,
   mock,
-  tree,
   recorded,
   accessoryInfo,
   charByAccessory,
   groups,
-  accessories,
-  onSelect,
-  onReplace,
 }: {
   scope: AnalyticsScope;
   settings: AnalyticsSettings;
   homeId: string | null;
   mock: boolean;
-  tree: ScopeTreeModel;
   recorded: HistorySeriesInfo[];
   accessoryInfo: Map<string, AccessoryInfoEntry>;
   /** Per-accessory characteristic lookup, for enum labels and ordering. */
   charByAccessory: Map<string, Map<string, WritableChar>>;
   groups: Array<{ id: string; name: string; memberIds: string[] }>;
-  accessories: HomeKitAccessory[] | null;
-  onSelect: (scope: AnalyticsScope) => void;
-  onReplace: (scope: AnalyticsScope) => void;
 }) {
   const enabled = useMemo(() => recorded.filter(s => s.enabled !== false), [recorded]);
 
@@ -64,20 +54,6 @@ export default function ScopeDashboard({
         accessoryInfo={accessoryInfo}
         groups={groups}
         settings={settings}
-        onCustomize={(view: ExplorerView) => onSelect({ level: 'custom', view })}
-      />
-    );
-  }
-
-  if (scope.level === 'custom') {
-    return (
-      <CustomView
-        homeId={homeId}
-        mock={mock}
-        view={scope.view}
-        onViewChange={(view) => onReplace({ level: 'custom', view })}
-        accessories={accessories}
-        recorded={recorded}
       />
     );
   }
@@ -119,28 +95,21 @@ export default function ScopeDashboard({
   }
 
   // Room scope: this room's series across every category, one panel per
-  // measure — then the accessories in it, so the tree is not the only way down.
+  // measure. The tree on the left is how you go further in.
   const roomSeries = enabled.filter(s =>
     (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === scope.room);
 
+  if (roomSeries.length === 0) return <Empty>Nothing recorded in this room yet.</Empty>;
   return (
-    <div className="space-y-5">
-      {roomSeries.length === 0 ? (
-        <Empty>Nothing recorded in this room yet.</Empty>
-      ) : (
-        <RoomStackView
-          homeId={homeId}
-          mock={mock}
-          roomSeries={roomSeries}
-          room={scope.room}
-          accessoryInfo={accessoryInfo}
-          groups={groups}
-          settings={settings}
-          onCustomize={(view: ExplorerView) => onSelect({ level: 'custom', view })}
-        />
-      )}
-
-    </div>
+    <RoomStackView
+      homeId={homeId}
+      mock={mock}
+      roomSeries={roomSeries}
+      room={scope.room}
+      accessoryInfo={accessoryInfo}
+      groups={groups}
+      settings={settings}
+    />
   );
 }
 

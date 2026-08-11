@@ -93,7 +93,7 @@ export default function GroupHistorySections({
     return out;
   }, [sections, ownSeries]);
 
-  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, mock, {
     enabled: refs.length > 0,
   });
 

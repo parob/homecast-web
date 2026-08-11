@@ -53,11 +53,9 @@ export default function HomeAnalytics() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const nav = useAnalyticsScope(initialScopeFromParams(searchParams));
 
-  // Mirror the location to the URL so category views are linkable. Custom
-  // views aren't serialized (deferred) — they keep the current params.
+  // Mirror the location to the URL so every view is linkable.
   const current = nav.scope;
   useEffect(() => {
-    if (current.level === 'custom') return;
     const params: Record<string, string> = {};
     if (effectiveHomeId && !mock) params.home = effectiveHomeId;
     if (current.level === 'room' && current.room) params.room = current.room;

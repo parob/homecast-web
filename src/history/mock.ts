@@ -6,6 +6,7 @@
 // for a chart to fill. Deterministic by (seriesRef, range) so screenshots are
 // reproducible.
 
+import { restingState } from './quiet';
 import type {
   HistorySeriesData,
   HistoryPointData,
@@ -105,6 +106,21 @@ export const MOCK_SERVICE_GROUPS = [
 // battery at 4%. Bedroom 2 deliberately runs ~3° warm so the outlier insight
 // has something to find.
 
+/**
+ * Characteristics whose real-world answer is almost always "nothing to
+ * report". Modelling them as square waves made the mock's activity panel a
+ * wall of busy timelines while a real home's is a wall of Clear ones — the
+ * exact difference this fixture exists to catch.
+ */
+const ALWAYS_QUIET = new Set([
+  'smoke_detected',
+  'carbon_monoxide_detected',
+  'carbon_dioxide_detected',
+  'leak_detected',
+  'obstruction_detected',
+  'status_low_battery',
+]);
+
 const BIG_ROOMS = [
   'Annex', 'Bedroom 1', 'Bedroom 2', 'Bedroom 3', 'Living',
   'Kitchen', 'Study', 'Garden', 'Hallway',
@@ -181,11 +197,12 @@ function buildBigHome(): { accessories: MockAccessoryEntry[]; groups: Array<{ id
         },
       });
     }
-    // Smoke alarm per room: recordable, silent — 2 monitoring rows each.
+    // Smoke alarm per room. Recording, and — like every real alarm — with
+    // nothing to say: these are what the activity panel folds away.
     accessories.push({
       accessoryId: `BIG-${rs}-SMOKE`, name: `${room} Smoke Alarm`, room,
       recordable: ['smoke_detected', 'status_low_battery'],
-      recorded: [],
+      recorded: ['smoke_detected', 'status_low_battery'],
       values: { smoke_detected: 0, status_low_battery: 0 },
     });
 
@@ -436,6 +453,26 @@ export function mockHistoryData(
         points: [],
         states: [],
         stateBuckets,
+      };
+    }
+
+    // Alarms and health flags sit at rest for months at a time, and a mock
+    // whose every state series flips all day cannot show the thing a real
+    // home is full of — twelve smoke detectors each reporting Clear. One in
+    // seven gets a real excursion so the other path is exercised too.
+    const resting = restingState(canonical);
+    if (resting !== undefined && ALWAYS_QUIET.has(canonical) && noise(seed, 41) > 0.15) {
+      return {
+        accessoryId: ref.accessoryId,
+        characteristicType: canonical,
+        kind,
+        unit: null,
+        resolution,
+        // Carried in, not sampled: nothing has happened inside the window.
+        prevValue: resting,
+        points: [],
+        states: [],
+        stateBuckets: [],
       };
     }
 

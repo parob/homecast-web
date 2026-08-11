@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
 import { isSetpointType, measuresIn, MEASURE_COMPLEMENTS, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
@@ -19,9 +18,8 @@ import { seriesColor, type ChartSeries } from './chartColors';
 import { aggregateNumericSeries, aggregateToSeries } from '@/history/aggregate';
 import { buildSels, labelWithoutRoom } from './selBuilder';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
-import { Button } from '@/components/ui/button';
 import type { AnalyticsSettings } from './scope';
-import type { ExplorerView, SeriesSel } from './types';
+import type { SeriesSel } from './types';
 import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const PER_MEASURE_CAP = 10;
@@ -43,7 +41,6 @@ export default function RoomStackView({
   accessoryInfo,
   groups,
   settings,
-  onCustomize,
 }: {
   homeId: string | null;
   mock: boolean;
@@ -61,7 +58,6 @@ export default function RoomStackView({
   /** Service groups, so a room's lights read as one row rather than nine. */
   groups: ActivityGroup[];
   settings: AnalyticsSettings;
-  onCustomize: (view: ExplorerView) => void;
 }) {
   const { rangeMs } = settings;
   // Setpoints off by default: they are flat lines that never move, and drawn
@@ -188,7 +184,7 @@ export default function RoomStackView({
       return [{ accessoryId: s.accessoryId, characteristicType: s.characteristicType }];
     });
   }, [allSels]);
-  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, mock, {
     enabled: refs.length > 0,
   });
   // First load only: once there is data, a range change redraws from what is
@@ -410,17 +406,6 @@ export default function RoomStackView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onCustomize({ title: 'Custom view', series: allSels, aggregate: false })}
-        >
-          <SlidersHorizontal className="h-3 w-3 mr-1" /> Customize
-        </Button>
-      </div>
-
       {firstLoad ? (
         <ChartSkeleton progress={progress} />
       ) : chartPanels.length === 0 && stripEntries.length === 0 ? (
@@ -510,19 +495,15 @@ export default function RoomStackView({
             </AnalyticsPanel>
           )}
           {chartPanels}
-          {stripEntries.length > 0 && (
-            <AnalyticsPanel
-              title="Activity & states"
-              source={`${stripEntries.length} timeline${stripEntries.length === 1 ? '' : 's'}`}
-            >
-              <ActivityStrips
-                entries={stripEntries}
-                groups={groups}
-                fromTs={fromTs}
-                toTs={toTs}
-              />
-            </AnalyticsPanel>
-          )}
+          {/* Owns its own panel: how many timelines it ends up drawing is its
+              decision (see quiet.ts), so the count in the header has to be
+              made in the same place. */}
+          <ActivityStrips
+            entries={stripEntries}
+            groups={groups}
+            fromTs={fromTs}
+            toTs={toTs}
+          />
         </>
       )}
     </div>

@@ -6,22 +6,18 @@ import type { HistorySeriesData, HistorySeriesRefInput } from '@/lib/graphql/typ
 
 export interface MultiSeriesEntry {
   main: HistorySeriesData;
-  ghost?: HistorySeriesData;
 }
 
 /**
  * Chunked multi-series fetch: the wire caps GetHistory at 6 refs, so wider
- * views issue sequential chunks. `compareOffsetMs` fetches the same window
- * shifted back and re-stamps it onto the current axis (the "ghost" series).
- * Keyed by UPPERCASE accessory id + characteristic — the case-insensitive
- * UUID rule.
+ * views issue several queries. Keyed by UPPERCASE accessory id +
+ * characteristic — the case-insensitive UUID rule.
  */
 export function useMultiSeriesHistory(
   homeId: string | null,
   refs: HistorySeriesRefInput[],
   fromTs: number,
   toTs: number,
-  compareOffsetMs: number,
   mock: boolean,
   opts?: { maxPoints?: number; enabled?: boolean },
 ) {
@@ -44,7 +40,7 @@ export function useMultiSeriesHistory(
     }
     let cancelled = false;
 
-    const fetchAll = async (from: number, to: number, base = 0): Promise<HistorySeriesData[]> => {
+    const fetchAll = async (from: number, to: number): Promise<HistorySeriesData[]> => {
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
       const chunks: HistorySeriesRefInput[][] = [];
       for (let i = 0; i < refs.length; i += 6) chunks.push(refs.slice(i, i + 6));
@@ -68,41 +64,23 @@ export function useMultiSeriesHistory(
           });
           out.push(...(result.data?.history ?? []));
           done += chunk.length;
-          // base offsets the comparison pass, or its chunks would count from
-          // zero again and the bar would walk backwards halfway through.
-          if (!cancelled) setProgress(p => ({ ...p, done: Math.min(base + done, p.total) }));
+          if (!cancelled) setProgress(p => ({ ...p, done: Math.min(done, p.total) }));
         }
       };
       await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, worker));
       return out;
     };
 
-    // Both passes count: with a comparison on, the second fetch is half the
-    // wait and a bar that finished at the halfway point would be a lie.
-    setProgress({ done: 0, total: refs.length * (compareOffsetMs > 0 ? 2 : 1) });
+    setProgress({ done: 0, total: refs.length });
     setLoading(true);
     setError(null);
     void (async () => {
       try {
         const main = await fetchAll(fromTs, toTs);
-        const ghost = compareOffsetMs > 0
-          ? await fetchAll(fromTs - compareOffsetMs, toTs - compareOffsetMs, refs.length)
-          : [];
         if (cancelled) return;
         const map = new Map<string, MultiSeriesEntry>();
         for (const s of main) {
           map.set(`${s.accessoryId.toUpperCase()}|${s.characteristicType}`, { main: s });
-        }
-        for (const g of ghost) {
-          const entry = map.get(`${g.accessoryId.toUpperCase()}|${g.characteristicType}`);
-          if (entry) {
-            entry.ghost = {
-              ...g,
-              points: g.points.map(p => ({ ...p, ts: p.ts + compareOffsetMs })),
-              states: g.states.map(s2 => ({ ...s2, ts: s2.ts + compareOffsetMs })),
-              stateBuckets: g.stateBuckets.map(b => ({ ...b, ts: b.ts + compareOffsetMs })),
-            };
-          }
         }
         setData(map);
       } catch (e) {
@@ -114,7 +92,7 @@ export function useMultiSeriesHistory(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, homeId, refsKey, fromTs, toTs, compareOffsetMs, mock, client, retryNonce, maxPoints]);
+  }, [enabled, homeId, refsKey, fromTs, toTs, mock, client, retryNonce, maxPoints]);
 
   return { data, loading, error, progress, retry: () => setRetryNonce(n => n + 1) };
 }

@@ -28,6 +28,4 @@ export interface ChartSeries {
   label: string;
   unit: string | null;
   data: HistorySeriesData;
-  /** Ghost twin from compare mode, already time-shifted onto this range. */
-  ghost?: HistorySeriesData;
 }

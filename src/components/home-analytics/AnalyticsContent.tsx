@@ -203,14 +203,10 @@ export default function AnalyticsContent({
             settings={nav.settings}
             homeId={effectiveHomeId}
             mock={mock}
-            tree={tree}
             recorded={recorded}
             accessoryInfo={accessoryInfo}
             charByAccessory={charByAccessory}
             groups={groups}
-            accessories={accessories}
-            onSelect={nav.setScope}
-            onReplace={nav.replaceScope}
           />
         </div>
       </div>
