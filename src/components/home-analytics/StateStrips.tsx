@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
@@ -27,6 +28,7 @@ export default function StateStrips({
   toTs,
   groupByRoom = false,
   maxPerRoom,
+  onRemove,
 }: {
   entries: StateStripEntry[];
   fromTs: number;
@@ -34,6 +36,8 @@ export default function StateStrips({
   groupByRoom?: boolean;
   /** Cap strips per room heading; the rest sit behind "show more". */
   maxPerRoom?: number;
+  /** Custom view: a strip is a selected series too, so it can be taken out. */
+  onRemove?: (accessoryId: string, characteristicType: string) => void;
 }) {
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
   if (entries.length === 0) return null;
@@ -54,7 +58,19 @@ export default function StateStrips({
     const { totals, transitions } = stateTotals(data, fromTs, toTs);
     return (
       <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
-        <p className="text-[11px] text-muted-foreground">{omitRoom ? labelWithoutRoom(sel) : sel.label}</p>
+        <div className="flex items-center gap-1">
+          <p className="text-[11px] text-muted-foreground">{omitRoom ? labelWithoutRoom(sel) : sel.label}</p>
+          {onRemove && (
+            <button
+              type="button"
+              className="rounded-full p-0.5 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:opacity-100"
+              onClick={() => onRemove(sel.accessoryId, sel.characteristicType)}
+              aria-label={`Remove ${sel.fullLabel ?? sel.label}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
         <StateTimeline
           fromTs={fromTs}
           toTs={toTs}

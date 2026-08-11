@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { charLabel } from '@/components/automations/format';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { getProfile } from '@/history/policy';
@@ -8,7 +8,6 @@ import { CATEGORIES, categoryOf, type CategoryId } from '@/history/categories';
 import { stripRoomPrefix } from '@/history/labels';
 import { mockAccessories } from '@/history/mock';
 import ChartPanel from './ChartPanel';
-import { seriesColor } from './ExplorerChart';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
@@ -17,10 +16,14 @@ import type { ExplorerView, SeriesSel } from './types';
 import type { HistorySeriesInfo, HomeKitAccessory } from '@/lib/graphql/types';
 
 /**
- * The free-form view: any mix of series on one chart, edited via wrapping
- * chips. Add-series offers EVERY recordable characteristic in the home —
- * grouped by category, unrecorded entries marked "no data yet" — not just
- * what already has data (the old menu made silent sensors unfindable).
+ * The free-form view: any mix of series on one chart, edited THROUGH the
+ * chart's own key. The selection used to be a third copy of the same list —
+ * chips above the chart, a key below it, a stats table under that, all naming
+ * the same thirty series — so the key took the job and the chips went.
+ *
+ * Add-series offers EVERY recordable characteristic in the home — grouped by
+ * category, unrecorded entries marked "no data yet" — not just what already
+ * has data (the old menu made silent sensors unfindable).
  */
 
 interface AddableEntry {
@@ -129,106 +132,69 @@ export default function CustomView({
     onViewChange({ ...view, series: [...view.series, sel], aggregate: false });
   };
 
-  const numericIndex = (sel: SeriesSel) =>
-    view.series.filter(s => s.kind === 'numeric').findIndex(s => s === sel);
+  const addMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[11px] rounded-full px-2"
+          disabled={addable.length === 0}
+        >
+          <Plus className="h-3 w-3 mr-1" /> Add series
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="max-h-[320px] w-[300px] overflow-y-auto">
+        {[...byCategory.entries()].map(([categoryId, entries]) => (
+          <div key={categoryId}>
+            <DropdownMenuLabel className="text-xs">{CATEGORIES[categoryId].title}</DropdownMenuLabel>
+            {entries.map(entry => (
+              <DropdownMenuItem
+                key={`${entry.accessoryId}|${entry.characteristicType}`}
+                className="text-xs"
+                onClick={() => addSeries(entry)}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {entry.room ? `${entry.room} · ` : ''}{entry.accessoryName} · {charLabel(entry.characteristicType)}
+                </span>
+                {!entry.hasData && (
+                  <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">no data yet</span>
+                )}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, SeriesSel[]>();
-    for (const sel of view.series) {
-      const key = sel.accessoryName ?? '';
-      const list = map.get(key) ?? [];
-      list.push(sel);
-      map.set(key, list);
-    }
-    return map;
-  }, [view.series]);
+  const removeSeries = (accessoryId: string, characteristicType: string) => {
+    const id = accessoryId.toUpperCase();
+    const type = canonicalHistoryType(characteristicType);
+    onViewChange({
+      ...view,
+      series: view.series.filter(s =>
+        s.accessoryId.toUpperCase() !== id || canonicalHistoryType(s.characteristicType) !== type),
+    });
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-2">
-        {[...grouped.entries()].map(([groupName, sels]) => {
-          const clustered = !!groupName && sels.length > 1;
-          const chips = sels.map(sel => (
-            <span
-              key={`${sel.accessoryId}|${sel.characteristicType}`}
-              className="inline-flex items-center gap-1.5 text-[11px] border rounded-full pl-2 pr-1 py-0.5 bg-background"
-            >
-              <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{
-                  backgroundColor: sel.kind === 'numeric'
-                    ? seriesColor(numericIndex(sel))
-                    : 'hsl(var(--muted-foreground))',
-                }}
-              />
-              <span className="whitespace-normal break-words" title={sel.fullLabel ?? sel.label}>
-                {clustered ? (sel.charLabel ?? sel.label) : sel.label}
-              </span>
-              <button
-                className="p-0.5 rounded-full hover:bg-muted"
-                onClick={() => onViewChange({ ...view, series: view.series.filter(s => s !== sel) })}
-                aria-label={`Remove ${sel.fullLabel ?? sel.label}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ));
-          // One accessory, many characteristics: name it once and cluster
-          // its chips, instead of repeating the name on every chip.
-          return clustered ? (
-            <span key={groupName} className="inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-muted/60 px-2 py-1">
-              <span className="text-[11px] font-medium text-foreground/70">{groupName}</span>
-              {chips}
-            </span>
-          ) : (
-            <span key={groupName || sels[0].accessoryId} className="inline-flex flex-wrap items-center gap-1.5">
-              {chips}
-            </span>
-          );
-        })}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-6 text-[11px] rounded-full px-2" disabled={addable.length === 0}>
-              <Plus className="h-3 w-3 mr-1" /> Add series
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="max-h-[320px] w-[300px] overflow-y-auto">
-            {[...byCategory.entries()].map(([categoryId, entries]) => (
-              <div key={categoryId}>
-                <DropdownMenuLabel className="text-xs">{CATEGORIES[categoryId].title}</DropdownMenuLabel>
-                {entries.map(entry => (
-                  <DropdownMenuItem
-                    key={`${entry.accessoryId}|${entry.characteristicType}`}
-                    className="text-xs"
-                    onClick={() => addSeries(entry)}
-                  >
-                    <span className="min-w-0 flex-1 truncate">
-                      {entry.room ? `${entry.room} · ` : ''}{entry.accessoryName} · {charLabel(entry.characteristicType)}
-                    </span>
-                    {!entry.hasData && (
-                      <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">no data yet</span>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </div>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       {view.series.length > 0 ? (
         <ChartPanel
           homeId={homeId}
           mock={mock}
           series={view.series}
           aggregate={view.aggregate}
+          onRemoveSeries={removeSeries}
+          legendAddSlot={addMenu}
         />
       ) : (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
-            Add series to build a view — mix any accessories and characteristics
-            on one chart.
+            Mix any accessories and characteristics on one chart.
           </p>
+          <div className="mt-3 flex justify-center">{addMenu}</div>
         </div>
       )}
     </div>

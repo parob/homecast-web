@@ -229,7 +229,7 @@ export default function StateTimeline({
           className="absolute inset-y-0 left-0 z-10 flex items-center px-1.5"
           style={{ width: `${leadingGapPct}%` }}
         >
-          <span className="text-[10px] text-muted-foreground truncate">not recorded</span>
+          <span className="text-[10px] text-muted-foreground truncate">No Data</span>
         </div>
       )}
       {hover && (

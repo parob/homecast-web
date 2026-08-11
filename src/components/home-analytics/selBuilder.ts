@@ -36,6 +36,39 @@ export function buildSels(
 }
 
 /**
+ * Display name per accessory, unique WITHIN this view.
+ *
+ * The room gets stripped from an accessory's name because it usually repeats
+ * the heading — but in a view spanning rooms the room is the only thing
+ * telling six "Underfloor Heating" apart, and dropping it collapsed them into
+ * one group of identical chips. So: strip the room when the short name is
+ * unambiguous here, put it back when it isn't.
+ */
+export function accessoryDisplayNames(
+  sels: Array<{ accessoryId: string; room?: string | null; accessoryName?: string }>,
+): Map<string, string> {
+  const shortOf = new Map<string, { short: string; room: string | null }>();
+  for (const sel of sels) {
+    const id = sel.accessoryId.toUpperCase();
+    if (!shortOf.has(id)) {
+      shortOf.set(id, { short: sel.accessoryName ?? id.slice(0, 8), room: sel.room ?? null });
+    }
+  }
+  const owners = new Map<string, Set<string>>();
+  for (const [id, { short }] of shortOf) {
+    const set = owners.get(short) ?? new Set<string>();
+    set.add(id);
+    owners.set(short, set);
+  }
+  const out = new Map<string, string>();
+  for (const [id, { short, room }] of shortOf) {
+    const shared = (owners.get(short)?.size ?? 0) > 1;
+    out.set(id, shared && room ? `${room} · ${short}` : short);
+  }
+  return out;
+}
+
+/**
  * Label for a view that already names the room — a room-scoped page or a
  * strip list under a room heading. Repeating "Kitchen ·" on every row there
  * spends the widest part of the label on the one word that never varies.

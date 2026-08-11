@@ -210,7 +210,7 @@ export default function EChartsTimeChart({
         silent: true,
         itemStyle: { color: theme.faint, opacity: 0.07 },
         label: { show: true, position: 'insideTopLeft', color: theme.faint, fontSize: 10 },
-        data: [[{ name: 'not recorded', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
+        data: [[{ name: 'No Data', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
       };
     }
 

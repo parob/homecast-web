@@ -4,6 +4,7 @@ import { aggregateNumericSeries, aggregateToSeries, type AggregatePoint } from '
 import { findOutlierSeries, sanitizeSeriesData } from '@/history/sanitize';
 import { canonicalHistoryType } from '@/history/keys';
 import { compareSeries } from '@/history/comparison';
+import { accessoryDisplayNames } from './selBuilder';
 import ExplorerChart, { seriesColor, type ChartSeries } from './ExplorerChart';
 import ChartLegend from './ChartLegend';
 import ComparisonSummary from './ComparisonSummary';
@@ -73,11 +74,18 @@ export interface ChartPanelProps {
   roomAggregate?: boolean;
   /** Cap state strips per room heading (rest behind "show more"). */
   stripsMaxPerRoom?: number;
+  /**
+   * Makes the key the view's series editor (Custom view). Without it the key
+   * is read-only, which is right for views whose series are chosen for you.
+   */
+  onRemoveSeries?: (accessoryId: string, characteristicType: string) => void;
+  /** "Add series" control, rendered at the end of the key. */
+  legendAddSlot?: React.ReactNode;
 }
 
 export default function ChartPanel({
   homeId, mock, series, aggregate = false, groupStripsByRoom = false, extraControls, truncatedNote,
-  roomAggregate = false, stripsMaxPerRoom,
+  roomAggregate = false, stripsMaxPerRoom, onRemoveSeries, legendAddSlot,
 }: ChartPanelProps) {
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [normalize, setNormalize] = useState(false);
@@ -223,11 +231,24 @@ export default function ChartPanel({
     [compare, numericSeries],
   );
 
-  const legendEntries = useMemo(() => numericSeries.map((s, i) => ({
-    key: s.key, label: s.label, color: seriesColor(i),
-    group: cleaned.get(s.key)?.sel.accessoryName,
-    shortLabel: cleaned.get(s.key)?.sel.charLabel,
-  })), [numericSeries, cleaned]);
+  // Cluster by accessory IDENTITY and name it distinctly within this view:
+  // six rooms' worth of "Underfloor Heating" are six accessories, and keying
+  // on the room-stripped name merged them into one box of identical chips.
+  const displayNames = useMemo(
+    () => accessoryDisplayNames([...cleaned.values()].map(c => c.sel)),
+    [cleaned],
+  );
+  const legendEntries = useMemo(() => numericSeries.map((s, i) => {
+    const sel = cleaned.get(s.key)?.sel;
+    return {
+      key: s.key,
+      label: sel?.fullLabel ?? s.label,
+      color: seriesColor(i),
+      groupKey: sel?.accessoryId.toUpperCase(),
+      group: sel ? displayNames.get(sel.accessoryId.toUpperCase()) : undefined,
+      shortLabel: sel?.charLabel,
+    };
+  }), [numericSeries, cleaned, displayNames]);
 
   return (
     <div className="space-y-4">
@@ -340,6 +361,13 @@ export default function ChartPanel({
                 // The dashed lines were never named anywhere; a reader had to
                 // infer them from the control at the top of the page.
                 dashedNote={compare === 'none' ? undefined : compareOption.label.toLowerCase()}
+                onRemove={onRemoveSeries
+                  ? (key) => {
+                      const sel = cleaned.get(key)?.sel;
+                      if (sel) onRemoveSeries(sel.accessoryId, sel.characteristicType);
+                    }
+                  : undefined}
+                addSlot={legendAddSlot}
               />
             </div>
           )}
@@ -348,6 +376,7 @@ export default function ChartPanel({
             entries={stateSeries}
             fromTs={fromTs}
             toTs={toTs}
+            onRemove={onRemoveSeries}
             groupByRoom={groupStripsByRoom}
             maxPerRoom={stripsMaxPerRoom}
           />

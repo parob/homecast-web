@@ -109,7 +109,7 @@ export default function HistoryChart({
               strokeOpacity={0}
               ifOverflow="extendDomain"
               label={{
-                value: 'not recorded',
+                value: 'No Data',
                 position: 'insideTopLeft',
                 className: 'fill-muted-foreground',
                 fontSize: 10,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { disambiguateSeriesLabels, type LabelInput } from '../labels';
+import { disambiguateSeriesLabels, stripRoomPrefix, type LabelInput } from '../labels';
 
 const item = (key: string, room: string | null, accessoryName: string, charLabel: string): LabelInput =>
   ({ key, room, accessoryName, charLabel });
@@ -106,5 +106,16 @@ describe('stateValueLabel', () => {
     const { stateValueLabel } = await import('../labels');
     expect(stateValueLabel('contact_state', 1)).toBe('Open');
     expect(stateValueLabel('some_unmapped_enum', 3)).toBe('3');
+  });
+});
+
+describe('stripRoomPrefix — dangling word guard', () => {
+  it('strips the room when what remains reads as a name', () => {
+    expect(stripRoomPrefix('Bedroom 2 Underfloor Heating', 'Bedroom 2')).toBe('Underfloor Heating');
+  });
+
+  it('leaves the name alone when stripping would cut a phrase in half', () => {
+    // Room "Living" + "Living Room Thermostat" must not become "Room Thermostat".
+    expect(stripRoomPrefix('Living Room Thermostat', 'Living')).toBe('Living Room Thermostat');
   });
 });

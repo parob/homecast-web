@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSels, labelWithoutRoom, roundRobinByRoom } from '../selBuilder';
+import { accessoryDisplayNames, buildSels, labelWithoutRoom, roundRobinByRoom } from '../selBuilder';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
 
@@ -59,5 +59,38 @@ describe('roundRobinByRoom', () => {
     const { taken, dropped } = roundRobinByRoom(sels, 3);
     expect(taken.map(s => s.room)).toEqual(['A', 'B', 'C']);
     expect(dropped).toBe(2);
+  });
+});
+
+describe('accessoryDisplayNames', () => {
+  it('keeps the short name when it is unambiguous in this view', () => {
+    const names = accessoryDisplayNames([
+      { accessoryId: 'A1', room: 'Kitchen', accessoryName: 'Underfloor Heating' },
+      { accessoryId: 'A2', room: 'Study', accessoryName: 'Ensuite Radiator' },
+    ]);
+    expect(names.get('A1')).toBe('Underfloor Heating');
+    expect(names.get('A2')).toBe('Ensuite Radiator');
+  });
+
+  it('puts the room back when several accessories share a short name', () => {
+    // Six rooms' worth of "Underfloor Heating" are six accessories; grouping
+    // them by name collapsed them into one box of identical chips.
+    const names = accessoryDisplayNames([
+      { accessoryId: 'A1', room: 'Kitchen', accessoryName: 'Underfloor Heating' },
+      { accessoryId: 'A2', room: 'Study', accessoryName: 'Underfloor Heating' },
+      { accessoryId: 'A3', room: 'Hallway', accessoryName: 'Ensuite Radiator' },
+    ]);
+    expect(names.get('A1')).toBe('Kitchen · Underfloor Heating');
+    expect(names.get('A2')).toBe('Study · Underfloor Heating');
+    expect(names.get('A3')).toBe('Ensuite Radiator');
+  });
+
+  it('keys on identity, so one accessory with many characteristics stays one', () => {
+    const names = accessoryDisplayNames([
+      { accessoryId: 'A1', room: 'Kitchen', accessoryName: 'Underfloor Heating' },
+      { accessoryId: 'a1', room: 'Kitchen', accessoryName: 'Underfloor Heating' },
+    ]);
+    expect(names.size).toBe(1);
+    expect(names.get('A1')).toBe('Underfloor Heating');
   });
 });
