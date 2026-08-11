@@ -6,7 +6,7 @@ import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
-import { labelWithoutRoom } from './selBuilder';
+import { labelWithRoom, labelWithoutRoom } from './selBuilder';
 import type { SeriesSel } from './types';
 import type { HistorySeriesData } from '@/lib/graphql/types';
 
@@ -49,6 +49,16 @@ export default function ActivityStrips({
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Does this list span rooms? In a room's own view the heading already said
+  // which, and repeating it on nine rows spends the widest part of the label
+  // on the one word that never varies. Across a home it is the only word that
+  // does vary, and leaving it off made nine identical "Hue ambiance spot 3"
+  // rows with no way to tell which room any of them was in.
+  const spansRooms = useMemo(
+    () => new Set(entries.map(e => e.sel.room ?? null)).size > 1,
+    [entries],
+  );
+
   const { grouped, loose } = useMemo(() => {
     const claimed = new Set<string>();
     const grouped = groups.flatMap(group => {
@@ -60,7 +70,13 @@ export default function ActivityStrips({
       // thing with an extra layer to open.
       if (members.length < 2) return [];
       members.forEach(m => claimed.add(`${m.sel.accessoryId}|${m.sel.characteristicType}`));
-      return [{ group, members, strip: groupStrip(members.map(m => m.data), fromTs, toTs) }];
+      const rooms = new Set(members.map(m => m.sel.room ?? null));
+      return [{
+        group,
+        members,
+        groupRoom: rooms.size === 1 ? [...rooms][0] ?? 'Elsewhere' : null,
+        strip: groupStrip(members.map(m => m.data), fromTs, toTs),
+      }];
     });
     const loose = entries.filter(e => !claimed.has(`${e.sel.accessoryId}|${e.sel.characteristicType}`));
     return { grouped, loose };
@@ -77,7 +93,9 @@ export default function ActivityStrips({
     };
     return (
       <div key={`${sel.accessoryId}|${sel.characteristicType}`} className={`space-y-1 ${indent ? 'pl-4' : ''}`}>
-        <p className="text-[11px] text-muted-foreground">{labelWithoutRoom(sel)}</p>
+        <p className="text-[11px] text-muted-foreground">
+          {spansRooms ? labelWithRoom(sel) : labelWithoutRoom(sel)}
+        </p>
         <StateTimeline
           fromTs={fromTs}
           toTs={toTs}
@@ -101,7 +119,7 @@ export default function ActivityStrips({
 
   return (
     <div className="space-y-3">
-      {grouped.map(({ group, members, strip }) => {
+      {grouped.map(({ group, members, groupRoom, strip }) => {
         const open = expanded.has(group.id);
         return (
           <div key={group.id} className="space-y-1">
@@ -114,7 +132,15 @@ export default function ActivityStrips({
               })}
             >
               <ChevronRight className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
-              <span className="text-[11px] text-muted-foreground">{group.name}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {/* A group's own room, when it has one and the name does not
+                    already say it: "Living · Living Lights" says it twice.
+                    A group whose members span rooms belongs to none. */}
+                {spansRooms && groupRoom
+                  && !group.name.toLowerCase().startsWith(groupRoom.toLowerCase())
+                  ? `${groupRoom} · ${group.name}`
+                  : group.name}
+              </span>
               <span className="text-[10px] text-muted-foreground/70">
                 · {members.length} accessor{members.length === 1 ? 'y' : 'ies'}
               </span>

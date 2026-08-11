@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { accessoryDisplayNames, buildSels, labelWithoutRoom, roundRobinByRoom } from '../selBuilder';
+import { accessoryDisplayNames, buildSels, labelWithRoom, labelWithoutRoom, roundRobinByRoom } from '../selBuilder';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
 
@@ -92,5 +92,27 @@ describe('accessoryDisplayNames', () => {
     ]);
     expect(names.size).toBe(1);
     expect(names.get('A1')).toBe('Underfloor Heating');
+  });
+});
+
+describe('labelWithRoom', () => {
+  const sel = (accessoryName: string, room: string | null) =>
+    buildSels(
+      [info('A1', 'power_state')],
+      new Map([['A1', { name: accessoryName, room } as AccessoryInfoEntry]]),
+    )[0];
+
+  it('puts the room back for a list that spans rooms', () => {
+    expect(labelWithRoom(sel('Hue ambiance spot 3', 'Living'))).toBe('Living · Hue ambiance spot 3 · Power State');
+  });
+
+  it('does not say the room twice when the name already carries it', () => {
+    // HomeKit names are inconsistent; strip-then-re-add makes both shapes
+    // come out the same rather than "Living · Living Hue spot 3".
+    expect(labelWithRoom(sel('Living Hue spot 3', 'Living'))).toBe('Living · Hue spot 3 · Power State');
+  });
+
+  it('calls a roomless accessory Elsewhere, as the tree does', () => {
+    expect(labelWithRoom(sel('Holiday Mode', null))).toBe('Elsewhere · Holiday Mode · Power State');
   });
 });

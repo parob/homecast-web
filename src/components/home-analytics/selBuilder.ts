@@ -80,6 +80,21 @@ export function labelWithoutRoom(sel: SeriesSel): string {
 }
 
 /**
+ * The same label with the room put back in front — for a list that spans
+ * rooms, where the room is the only thing telling one "Hue ambiance spot 3"
+ * from another.
+ *
+ * Strip-then-re-add rather than trusting the raw name: HomeKit names are
+ * inconsistent, so a bulb called "Living Hue spot 3" would otherwise read
+ * "Living · Living Hue spot 3" while its neighbour reads correctly. Stripping
+ * first makes both come out as "Living · Hue spot 3".
+ */
+export function labelWithRoom(sel: SeriesSel): string {
+  const base = labelWithoutRoom(sel);
+  return `${sel.room ?? 'Elsewhere'} · ${base}`;
+}
+
+/**
  * Fair cap: one series per room, then a second per room, … until `cap` —
  * a big home loses depth per room, never whole rooms.
  */
