@@ -19,6 +19,7 @@ import { WidgetColorContext, WidgetInteractionContext } from '@/components/widge
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useHistory } from '@/contexts/HistoryContext';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -44,6 +45,7 @@ import {
   Trash2,
   Share2,
   Bug,
+  LineChart,
 } from 'lucide-react';
 
 export interface ServiceGroupWidgetProps {
@@ -385,6 +387,10 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   };
 
   const isDragging = dragHandle?.isDragging ?? false;
+  // Read from context, not props — same reasoning as WidgetCard's menu items.
+  const { historyAvailable, openGroupHistory } = useHistory();
+  const canShowHistory = accessories.some(a => historyAvailable(a));
+
   const hasContextMenu = !disableTooltip && !isDragging;
 
 
@@ -988,6 +994,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 </div>
               )}
               <ContextMenuSeparator />
+              {canShowHistory && (
+                <ContextMenuItem onClick={() => openGroupHistory(group, accessories)}>
+                  <LineChart className="h-4 w-4 mr-2" />
+                  History
+                </ContextMenuItem>
+              )}
               {onShare && (
                 <ContextMenuItem onClick={onShare}>
                   <Share2 className="h-4 w-4 mr-2" />

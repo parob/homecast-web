@@ -95,6 +95,14 @@ import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { HistoryProvider } from '@/contexts/HistoryContext';
 import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
 const HistoryExplorerContent = React.lazy(() => import('@/components/history-explorer/HistoryExplorerContent'));
+import type { ExplorerView, SeriesSel as ExplorerSeriesSel } from '@/components/history-explorer/HistoryExplorerContent';
+import { getRecordableCharacteristics } from '@/components/automations/characteristics';
+import { getProfile as getHistoryProfile } from '@/history/policy';
+
+/** Profile kind for a canonical characteristic (numeric fallback is safe). */
+function getHistoryProfileKind(type: string): 'numeric' | 'bool' | 'enum' {
+  return getHistoryProfile(type)?.kind ?? 'numeric';
+}
 import { DealBadge } from '@/components/widgets/DealBadge';
 import { PriceHistoryDialog, type PriceHistoryTarget } from '@/components/widgets/PriceHistoryDialog';
 import { findDealForAccessory } from '@/lib/deals';
@@ -1945,6 +1953,38 @@ const Dashboard = () => {
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(false);
+  const [explorerInitialView, setExplorerInitialView] = useState<ExplorerView | null>(null);
+
+  // A service group's History = the Explorer pre-loaded with the group's own
+  // series (group writes record under the group id) plus each member's
+  // primary recorded characteristic.
+  const openGroupHistory = useCallback((group: HomeKitServiceGroup, members: HomeKitAccessory[]) => {
+    const series: ExplorerSeriesSel[] = [];
+    const first = members.length > 0 ? getRecordableCharacteristics(members[0])[0] : undefined;
+    if (first) {
+      series.push({
+        accessoryId: group.id,
+        characteristicType: first.type,
+        label: `${group.name} · Group`,
+        unit: first.unit ?? null,
+        kind: getHistoryProfileKind(first.type),
+      });
+    }
+    for (const member of members.slice(0, 12)) {
+      const char = getRecordableCharacteristics(member)[0];
+      if (!char) continue;
+      series.push({
+        accessoryId: member.id,
+        characteristicType: char.type,
+        label: member.name,
+        unit: char.unit ?? null,
+        kind: getHistoryProfileKind(char.type),
+      });
+    }
+    if (series.length === 0) return;
+    setExplorerInitialView({ title: group.name, series, aggregate: false });
+    setExplorerOpen(true);
+  }, []);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -6001,7 +6041,7 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
-    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenExplorer={() => setExplorerOpen(true)}>
+    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenExplorer={() => { setExplorerInitialView(null); setExplorerOpen(true); }} onOpenGroupHistory={openGroupHistory}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7721,7 +7761,7 @@ const Dashboard = () => {
       {/* History Explorer — the multi-sensor comparison surface, as a
           dialog over the dashboard so it reuses the already-loaded homes
           and accessories (no cold relay round-trips). */}
-      <Dialog open={explorerOpen} onOpenChange={setExplorerOpen}>
+      <Dialog open={explorerOpen} onOpenChange={(open) => { setExplorerOpen(open); if (!open) setExplorerInitialView(null); }}>
         {/* Nearly full screen, same treatment as the admin panel dialog */}
         <DialogContent
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
@@ -7739,6 +7779,7 @@ const Dashboard = () => {
                 <HistoryExplorerContent
                   homeId={selectedHomeId}
                   accessories={allAccessoriesData || null}
+                  initialView={explorerInitialView}
                 />
               </React.Suspense>
             )}

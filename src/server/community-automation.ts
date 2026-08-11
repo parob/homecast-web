@@ -136,8 +136,12 @@ export async function initCommunityAutomationEngine(): Promise<void> {
           affectedCount,
         }));
       // History: a group write is per-member state change; expand it the same
-      // way the automation engine does (notifyRelayGroupWrite).
+      // way the automation engine does (notifyRelayGroupWrite). The group id
+      // also records as its own series, so group tiles have history of their
+      // own — matching the cloud recorder, whose echo hook only sees the
+      // group id.
       void Promise.all([import('@/automation'), import('./local-history')]).then(([auto, history]) => {
+        history.recordHistoryEvent(homeId, groupId, characteristicType, value, 0);
         for (const memberId of auto.getServiceGroupMembers(groupId)) {
           history.recordHistoryEvent(homeId, memberId, characteristicType, value, 0);
         }

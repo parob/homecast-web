@@ -59,7 +59,7 @@ const COMPARE_OPTIONS = [
   { value: 'week', label: 'Previous week', offsetMs: 7 * 86_400_000 },
 ] as const;
 
-interface SeriesSel {
+export interface SeriesSel {
   accessoryId: string;
   characteristicType: string;
   label: string;
@@ -67,7 +67,7 @@ interface SeriesSel {
   kind: 'numeric' | 'bool' | 'enum';
 }
 
-interface ExplorerView {
+export interface ExplorerView {
   title: string;
   series: SeriesSel[];
   aggregate: boolean;
@@ -207,12 +207,14 @@ export interface HistoryExplorerContentProps {
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
   initialPresetId?: string | null;
+  /** A ready-made view to open with (e.g. a service group's members). */
+  initialView?: ExplorerView | null;
   /** Fired when the active view changes; the page host mirrors it to the URL. */
   onViewChange?: (presetId: string | null) => void;
 }
 
 export default function HistoryExplorerContent({
-  homeId, accessories, initialPresetId, onViewChange,
+  homeId, accessories, initialPresetId, initialView, onViewChange,
 }: HistoryExplorerContentProps) {
   const mock = isMockHistoryEnabled();
   const effectiveHomeId = mock ? 'MOCK-HOME' : homeId;
@@ -330,7 +332,11 @@ export default function HistoryExplorerContent({
     return out;
   }, [recorded, accessoryInfo, toSel]);
 
-  // Deep link / initial preset once data is ready.
+  // Ready-made view (service group) applies immediately; a preset deep link
+  // waits for the recorded-series data the presets are built from.
+  useEffect(() => {
+    if (initialView && !view) setView(null, initialView);
+  }, [initialView, view, setView]);
   useEffect(() => {
     if (initialPresetId && !view && presets.length > 0) {
       const preset = presets.find(p => p.id === initialPresetId);

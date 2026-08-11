@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled } from '@/history/mock';
-import type { HomeKitAccessory, HistoryStorageStatsData } from '@/lib/graphql/types';
+import type { HomeKitAccessory, HomeKitServiceGroup, HistoryStorageStatsData } from '@/lib/graphql/types';
 import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
 
 /**
@@ -19,22 +19,26 @@ interface HistoryContextValue {
   openHistory: (accessory: HomeKitAccessory) => void;
   /** Open the Explorer dialog (multi-sensor comparison). */
   openExplorer: () => void;
+  /** Open the Explorer pre-loaded with a service group's members. */
+  openGroupHistory: (group: HomeKitServiceGroup, members: HomeKitAccessory[]) => void;
 }
 
 const HistoryContext = createContext<HistoryContextValue>({
   historyAvailable: () => false,
   openHistory: () => {},
   openExplorer: () => {},
+  openGroupHistory: () => {},
 });
 
 interface HistoryProviderProps {
   homeId: string | null;
   onOpenHistory?: (target: HistoryTarget) => void;
   onOpenExplorer?: () => void;
+  onOpenGroupHistory?: (group: HomeKitServiceGroup, members: HomeKitAccessory[]) => void;
   children: React.ReactNode;
 }
 
-export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, children }: HistoryProviderProps) {
+export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, onOpenGroupHistory, children }: HistoryProviderProps) {
   const mock = isMockHistoryEnabled();
 
   const { data } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
@@ -63,9 +67,14 @@ export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, childre
     onOpenExplorer?.();
   }, [onOpenExplorer]);
 
+  const openGroupHistory = useCallback((group: HomeKitServiceGroup, members: HomeKitAccessory[]) => {
+    if (!enabled) return;
+    onOpenGroupHistory?.(group, members);
+  }, [enabled, onOpenGroupHistory]);
+
   const value = useMemo(
-    () => ({ historyAvailable, openHistory, openExplorer }),
-    [historyAvailable, openHistory, openExplorer],
+    () => ({ historyAvailable, openHistory, openExplorer, openGroupHistory }),
+    [historyAvailable, openHistory, openExplorer, openGroupHistory],
   );
 
   return (
