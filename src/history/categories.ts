@@ -149,8 +149,10 @@ export const MEASURES: MeasureMeta[] = [
   { id: 'brightness', title: 'Brightness', unit: '%', types: ['brightness'] },
   { id: 'color', title: 'Color', unit: null, types: ['hue', 'saturation', 'color_temperature'] },
   // "Position" is the HomeKit characteristic's name, not a thing anyone in a
-  // house says. What reports it is blinds, shades and sliding doors.
-  { id: 'position', title: 'Blinds & doors', unit: '%', types: ['current_position'] },
+  // house says. What reports it is blinds, shades, doors and windows — named
+  // in full rather than as "openings", which is the correct term and no
+  // help to anyone.
+  { id: 'position', title: 'Blinds, doors & windows', unit: '%', types: ['current_position'] },
   { id: 'tilt', title: 'Tilt', unit: '°', types: ['current_tilt_angle'] },
   { id: 'speed', title: 'Speed', unit: '%', types: ['rotation_speed'] },
   { id: 'volume', title: 'Volume', unit: '%', types: ['volume'] },
