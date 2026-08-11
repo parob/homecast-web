@@ -50,6 +50,8 @@ function mockWidgetType(recordable: string[], isVirtual?: boolean): string {
 }
 
 export default function AnalyticsContent({
+  title,
+  onBack,
   homeId,
   homeName = 'Home',
   homes,
@@ -59,6 +61,10 @@ export default function AnalyticsContent({
   serviceGroups,
   nav,
 }: {
+  /** The screen's name, leading the header row (the host used to own a bar of its own). */
+  title?: string;
+  /** Where the host's back arrow goes, if it has anywhere. */
+  onBack?: () => void;
   homeId: string | null;
   /** Names the root of the breadcrumb and the top of the tree. */
   homeName?: string;
@@ -177,6 +183,8 @@ export default function AnalyticsContent({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <ScopeHeader
+        title={title}
+        onBack={onBack}
         crumbs={crumbs}
         settings={nav.settings}
         onSettings={nav.setSettings}

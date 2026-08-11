@@ -7,6 +7,8 @@
 // distinguishes — and never truncating what remains: chips wrap, legends
 // show full names, tooltips carry the complete path.
 
+import { getDisplayName } from '@/lib/graphql/types';
+
 /**
  * Boolean characteristics read better in their own vocabulary — "the door
  * was On" helps nobody. Shared by the History dialog and the Analytics
@@ -75,17 +77,14 @@ export interface LabelInput {
  * the prefix outright.
  */
 export function stripRoomPrefix(accessoryName: string, room: string | null | undefined): string {
-  if (!room) return accessoryName;
-  const name = accessoryName.trim();
-  if (!name.toLowerCase().startsWith(room.trim().toLowerCase())) return name;
-  const stripped = name.slice(room.trim().length).replace(/^[\s·:,-]+/, '').trim();
-  if (stripped.length === 0) return name;
-  // A room called "Living" holding "Living Room Thermostat" is not an
-  // accessory called "Room Thermostat": the room's name was part of a longer
-  // phrase, and cutting it mid-phrase leaves a dangling word. Only strip when
-  // what remains reads as a name in its own right.
-  if (/^room\b/i.test(stripped)) return name;
-  return stripped;
+  // The dashboard's rule, not a second one. This used to guard against
+  // cutting a phrase in half — a room called "Living" holding "Living Room
+  // Thermostat" kept its full name rather than becoming "Room Thermostat" —
+  // and the guard was defensible in isolation and wrong in context: the tree
+  // beside the chart, the sidebar and every widget all name that accessory by
+  // getDisplayName, so analytics was the one place still saying the room
+  // twice. One name per accessory beats a better name in one panel.
+  return getDisplayName(accessoryName.trim(), room?.trim() || undefined);
 }
 
 export interface SeriesLabel {

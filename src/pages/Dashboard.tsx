@@ -100,7 +100,6 @@ import type { SeriesSel as ExplorerSeriesSel } from '@/components/home-analytics
 import { getRecordableCharacteristics, sortByHistoryImportance } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { getProfile as getHistoryProfile } from '@/history/policy';
-import { stripRoomPrefix } from '@/history/labels';
 
 /** Profile kind for a canonical characteristic (numeric fallback is safe). */
 function getHistoryProfileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
@@ -7806,15 +7805,14 @@ const Dashboard = () => {
             maxHeight: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
           }}
         >
-          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-            <DialogTitle className="text-base flex items-center gap-2">
-              {/* No back arrow: the breadcrumb below walks up, the tree
-                  jumps anywhere, and the ✕ closes. A fourth way out of a
-                  dialog is just another thing in the corner. */}
-              Analytics
-            </DialogTitle>
+          {/* No bar of its own: the title leads the breadcrumb row inside,
+              so the screen opens on content rather than on two rules and a
+              gap. No back arrow either — the breadcrumb walks up, the tree
+              jumps anywhere, and the ✕ closes. */}
+          <DialogHeader className="sr-only">
+            <DialogTitle>Analytics</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden p-4">
+          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 pt-3">
             {analyticsOpen && (() => {
               const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
               const homeMatches = (id: string | undefined) =>
@@ -7828,6 +7826,7 @@ const Dashboard = () => {
               return (
                 <React.Suspense fallback={<div className="h-[300px]" />}>
                   <AnalyticsContent
+                    title="Analytics"
                     homeId={effectiveAnalyticsHome}
                     homeName={homes.find(h => h.id === effectiveAnalyticsHome)?.name ?? 'Home'}
                     // Only homes that record: an entry that opens on "nothing

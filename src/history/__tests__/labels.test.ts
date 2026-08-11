@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { disambiguateSeriesLabels, stripRoomPrefix, type LabelInput } from '../labels';
+import { getDisplayName } from '@/lib/graphql/types';
 
 const item = (key: string, room: string | null, accessoryName: string, charLabel: string): LabelInput =>
   ({ key, room, accessoryName, charLabel });
@@ -109,13 +110,18 @@ describe('stateValueLabel', () => {
   });
 });
 
-describe('stripRoomPrefix — dangling word guard', () => {
+describe('stripRoomPrefix — the dashboard\'s rule, and only that rule', () => {
   it('strips the room when what remains reads as a name', () => {
     expect(stripRoomPrefix('Bedroom 2 Underfloor Heating', 'Bedroom 2')).toBe('Underfloor Heating');
   });
 
-  it('leaves the name alone when stripping would cut a phrase in half', () => {
-    // Room "Living" + "Living Room Thermostat" must not become "Room Thermostat".
-    expect(stripRoomPrefix('Living Room Thermostat', 'Living')).toBe('Living Room Thermostat');
+  it('strips a partial room name exactly as the sidebar does', () => {
+    // Room "Living" + "Living Room Thermostat" reads "Room Thermostat" here
+    // because that is what it reads everywhere else. Analytics used to keep
+    // the whole name instead, which made it the one place still saying the
+    // room twice — and matching the rest of the app is worth more than a
+    // better answer in one panel.
+    expect(stripRoomPrefix('Living Room Thermostat', 'Living')).toBe('Room Thermostat');
+    expect(getDisplayName('Living Room Thermostat', 'Living')).toBe('Room Thermostat');
   });
 });

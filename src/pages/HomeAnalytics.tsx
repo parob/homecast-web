@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LineChart as LineChartIcon, ArrowLeft } from 'lucide-react';
 import { useHomes, useAccessoriesForHomes, useServiceGroups } from '@/hooks/useHomeKitData';
 import { isMockHistoryEnabled, mockHistoryVariant } from '@/history/mock';
 import AnalyticsContent from '@/components/home-analytics/AnalyticsContent';
@@ -69,22 +68,10 @@ export default function HomeAnalytics() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b px-4 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            className="p-1 rounded hover:bg-muted"
-            onClick={() => (nav.canGoBack ? nav.back() : navigate('/portal'))}
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <LineChartIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <h1 className="text-sm font-semibold truncate">Analytics</h1>
-        </div>
-      </header>
-
-      <main className="mx-auto flex h-[calc(100vh-53px)] max-w-6xl flex-col p-4">
+      <main className="mx-auto flex h-screen max-w-6xl flex-col p-4">
         <AnalyticsContent
+          title="Analytics"
+          onBack={() => (nav.canGoBack ? nav.back() : navigate('/portal'))}
           homeId={effectiveHomeId}
           homeName={(homes ?? []).find(h => h.id === effectiveHomeId)?.name ?? 'Home'}
           homes={(homes ?? []).map(h => ({ id: h.id, name: h.name }))}
