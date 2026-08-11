@@ -134,6 +134,7 @@ export default function ScopeDashboard({
           roomSeries={roomSeries}
           room={scope.room}
           accessoryInfo={accessoryInfo}
+          groups={groups}
           settings={settings}
           onCustomize={(view: ExplorerView) => onSelect({ level: 'custom', view })}
         />

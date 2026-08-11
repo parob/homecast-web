@@ -88,7 +88,11 @@ export function coalesce(segments: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const seg of segments) {
     const prev = out[out.length - 1];
-    const sameState = prev && prev.value === seg.value && (prev.text ?? null) === (seg.text ?? null);
+    const sameState = prev && prev.value === seg.value && (prev.text ?? null) === (seg.text ?? null)
+      // Same state but a different FILL is a different reading: a group strip
+      // shades by how many members are on, and averaging those together drew
+      // a whole day as one flat block.
+      && Math.abs(prev.fraction - seg.fraction) < 0.005;
     // Only join pieces that actually touch — a gap between them is recorded
     // silence, and closing it would invent history.
     const contiguous = prev && Math.abs(prev.leftPct + prev.widthPct - seg.leftPct) < 0.001;

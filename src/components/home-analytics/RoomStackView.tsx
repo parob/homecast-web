@@ -8,6 +8,7 @@ import { formatStateDuration, stateTotals } from '@/history/stateSummary';
 import { lightingSeries, lightingSummary, smoothCounts, smoothIntensity, type LightingInput } from '@/history/lighting';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
+import ActivityStrips, { type ActivityEntry, type ActivityGroup } from './ActivityStrips';
 import AnalyticsPanel from './AnalyticsPanel';
 import ChartLegend from './ChartLegend';
 import EChartsTimeChart from './EChartsTimeChart';
@@ -35,6 +36,7 @@ export default function RoomStackView({
   roomSeries,
   room,
   accessoryInfo,
+  groups,
   settings,
   onCustomize,
 }: {
@@ -44,6 +46,8 @@ export default function RoomStackView({
   roomSeries: HistorySeriesInfo[];
   room: string | null;
   accessoryInfo: Map<string, AccessoryInfoEntry>;
+  /** Service groups, so a room's lights read as one row rather than nine. */
+  groups: ActivityGroup[];
   settings: AnalyticsSettings;
   onCustomize: (view: ExplorerView) => void;
 }) {
@@ -115,7 +119,9 @@ export default function RoomStackView({
   const stripSels = useMemo(() => {
     const infos = roomSeries.filter(s =>
       s.kind !== 'numeric' && !SETPOINT_STATE_TYPES.has(canonicalHistoryType(s.characteristicType)));
-    return buildSels(infos.slice(0, 8), accessoryInfo);
+    // No tight cap here: grouping collapses a room's nine bulbs into one row,
+    // so truncating first would hide members from their own group.
+    return buildSels(infos.slice(0, 40), accessoryInfo);
   }, [roomSeries, accessoryInfo]);
 
   // What the lighting line can borrow — lux from the room's own sensors.
@@ -298,39 +304,11 @@ export default function RoomStackView({
     );
   });
 
-  const strips = stripSels.flatMap(sel => {
+  const stripEntries = useMemo<ActivityEntry[]>(() => stripSels.flatMap(sel => {
     const main = entryFor(sel);
-    if (!main) return [];
-    const type = canonicalHistoryType(sel.characteristicType);
-    const { totals, transitions } = stateTotals(main, fromTs, toTs);
-    const labelForKey = (key: string) => {
-      const parsed = Number(key);
-      return Number.isFinite(parsed) && key.trim() !== '' ? stateValueLabel(type, parsed) : key;
-    };
-    return [(
-      <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
-        {/* This whole view is one room — the heading already said which. */}
-        <p className="text-[11px] text-muted-foreground">{labelWithoutRoom(sel)}</p>
-        <StateTimeline
-          fromTs={fromTs}
-          toTs={toTs}
-          padLeft={PLOT_LEFT}
-          padRight={PLOT_RIGHT}
-          prevValue={main.prevValue}
-          prevValueText={main.prevValueText}
-          states={main.states}
-          stateBuckets={main.stateBuckets}
-          labelFor={(v, text) => text ?? stateValueLabel(type, v)}
-        />
-        {totals.length > 0 && (
-          <p className="text-[10px] text-muted-foreground">
-            {totals.slice(0, 3).map(([key, ms]) => `${labelForKey(key)} ${formatStateDuration(ms)}`).join(' · ')}
-            {transitions > 0 && ` · ${transitions} change${transitions === 1 ? '' : 's'}`}
-          </p>
-        )}
-      </div>
-    )];
-  });
+    return main ? [{ sel, data: main }] : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [stripSels, data, hideUnusual]);
 
   return (
     <div className="space-y-3">
@@ -345,7 +323,7 @@ export default function RoomStackView({
         </Button>
       </div>
 
-      {chartPanels.length === 0 && strips.length === 0 ? (
+      {chartPanels.length === 0 && stripEntries.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
             Nothing recorded here yet — charts build as accessories report changes.
@@ -418,9 +396,17 @@ export default function RoomStackView({
             </AnalyticsPanel>
           )}
           {chartPanels}
-          {strips.length > 0 && (
-            <AnalyticsPanel title="Activity & states" source={`${strips.length} timeline${strips.length === 1 ? '' : 's'}`}>
-              <div className="space-y-2">{strips}</div>
+          {stripEntries.length > 0 && (
+            <AnalyticsPanel
+              title="Activity & states"
+              source={`${stripEntries.length} timeline${stripEntries.length === 1 ? '' : 's'}`}
+            >
+              <ActivityStrips
+                entries={stripEntries}
+                groups={groups}
+                fromTs={fromTs}
+                toTs={toTs}
+              />
             </AnalyticsPanel>
           )}
         </>

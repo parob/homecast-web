@@ -38,10 +38,18 @@ describe('coalesce', () => {
     expect(out).toHaveLength(2);
   });
 
-  it('width-weights bucket shading so a merged run is as pale as its parts', () => {
+  it('keeps buckets with different fills apart', () => {
+    // Merging them and averaging the fill was how a group strip — whose fill
+    // means "how many members are on" — drew a whole day as one flat block.
     const out = coalesce([seg(0, 10, 1, { fraction: 1 }), seg(10, 30, 1, { fraction: 0.2 })]);
+    expect(out).toHaveLength(2);
+    expect(out.map(s => s.fraction)).toEqual([1, 0.2]);
+  });
+
+  it('still merges buckets that are identical in state AND fill', () => {
+    const out = coalesce([seg(0, 10, 1, { fraction: 0.5 }), seg(10, 30, 1, { fraction: 0.5 })]);
     expect(out).toHaveLength(1);
-    expect(out[0].fraction).toBeCloseTo((1 * 10 + 0.2 * 30) / 40);
+    expect(out[0]).toMatchObject({ widthPct: 40, fraction: 0.5 });
   });
 
   it('leaves the input array untouched', () => {
