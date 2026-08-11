@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
+import { getAccessoryDisplayName } from '@/components/widgets/types';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
 import ScopeDashboard from './ScopeDashboard';
@@ -97,7 +98,12 @@ export default function AnalyticsContent({
     } else {
       for (const acc of accessories ?? []) {
         map.set(acc.id.toUpperCase(), {
-          name: acc.name,
+          // The name a person set in Apple Home lives on the SERVICE, not on
+          // the accessory — a VELUX sensor the dashboard calls "Velux Sensor"
+          // is "Sensor switch" at accessory level. Every widget already reads
+          // it this way; analytics was the one screen still showing the name
+          // underneath.
+          name: getAccessoryDisplayName(acc),
           widgetType: resolveWidgetType({
             category: acc.category ?? undefined,
             serviceTypes: (acc.services ?? []).map(svc => svc.serviceType),

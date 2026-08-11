@@ -153,7 +153,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
 
   return (
     <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
