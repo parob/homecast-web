@@ -17,6 +17,12 @@
     "eve_energy_watt": { "kind": "numeric", "record": true, "minIntervalS": 60, "deadband": 1, "unit": "W" },
     "eve_energy_kwh": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 0.01, "unit": "kWh" },
     "eve_air_pressure": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 1, "unit": "hPa" },
+    "carbon_monoxide_level": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 1, "unit": "ppm" },
+    "carbon_dioxide_level": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 25, "unit": "ppm" },
+    "carbon_dioxide_peak_level": { "kind": "numeric", "record": true, "minIntervalS": 900, "deadband": 25, "unit": "ppm" },
+    "pm2_5_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 2, "unit": "µg/m³" },
+    "pm10_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 2, "unit": "µg/m³" },
+    "voc_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 10, "unit": "µg/m³" },
     "eve_voltage": { "kind": "numeric", "record": false, "minIntervalS": 300, "deadband": 1, "unit": "V" },
     "eve_ampere": { "kind": "numeric", "record": false, "minIntervalS": 300, "deadband": 0.1, "unit": "A" },
 
