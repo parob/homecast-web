@@ -1,11 +1,14 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
-import { ExternalLink, Loader2, LineChart } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
-import { GET_HISTORY, GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
-import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
+import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
+import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
-import { isMockHistoryEnabled, mockHistoryData } from '@/history/mock';
+import { isMockHistoryEnabled } from '@/history/mock';
+import { BOOL_STATE_LABELS } from '@/history/labels';
 import { useHistory } from '@/contexts/HistoryContext';
+import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
+import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import type {
   HomeKitAccessory,
   HistorySeriesData,
@@ -31,25 +34,11 @@ const RANGES = [
   { label: 'All', ms: 2 * 365 * 86_400_000 },
 ] as const;
 
-/**
- * Boolean characteristics read better in their own vocabulary — "the door
- * was On" helps nobody. Enum labels come from the characteristic's own
- * options (ENUM_LABELS); these cover the bool sensors.
- */
-const BOOL_LABELS: Record<string, [string, string]> = {
-  contact_state: ['Closed', 'Open'],
-  motion_detected: ['Clear', 'Detected'],
-  occupancy_detected: ['Empty', 'Occupied'],
-  smoke_detected: ['Clear', 'Smoke'],
-  carbon_monoxide_detected: ['Clear', 'CO detected'],
-  carbon_dioxide_detected: ['Normal', 'CO₂ high'],
-  leak_detected: ['Dry', 'Leak'],
-  status_low_battery: ['OK', 'Low'],
-  obstruction_detected: ['Clear', 'Obstructed'],
-};
-
+// Bool vocabulary is shared with the Analytics strips (history/labels);
+// enum labels enrich from the characteristic's own options here, where the
+// accessory's WritableChar is at hand.
 function labelForValue(char: WritableChar | undefined, type: string, value: number): string {
-  const bool = BOOL_LABELS[type];
+  const bool = BOOL_STATE_LABELS[type];
   if (bool) return bool[value === 0 ? 0 : 1];
   const option = char?.options?.find(o => o.value === value);
   if (option) return option.label;
@@ -129,8 +118,10 @@ function stateStats(
 }
 
 export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialogProps) {
-  const { openExplorer } = useHistory();
+  const { openAnalytics } = useHistory();
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setShowAll(false); }, [target]);
   const mock = isMockHistoryEnabled();
 
   // Snapshot "now" per open+range so the query key is stable while the dialog
@@ -139,7 +130,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   const fromTs = toTs - rangeMs;
 
   const recordable = useMemo(
-    () => (target ? getRecordableCharacteristics(target.accessory) : []),
+    () => (target ? sortByHistoryImportance(getRecordableCharacteristics(target.accessory)) : []),
     [target],
   );
   const charByType = useMemo(() => {
@@ -148,10 +139,11 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     return map;
   }, [recordable]);
 
-  // The wire caps a query at 6 series; an accessory with more gets its
-  // first six (sensors and primary controls sort first in service order).
+  // EVERY recordable characteristic, importance-ordered — the chunked fetch
+  // handles the 6-refs-per-query wire cap (the old first-6 cap hid lux and
+  // air quality on multi-sensor devices).
   const refs = useMemo<HistorySeriesRefInput[]>(
-    () => recordable.slice(0, 6).map(c => ({
+    () => recordable.map(c => ({
       accessoryId: target!.accessory.id,
       characteristicType: c.type,
     })),
@@ -164,21 +156,83 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   );
   const historyEnabled = mock || (statsData?.historyStorageStats?.enabled ?? true);
 
-  const { data, loading } = useQuery<{ history: HistorySeriesData[] }>(GET_HISTORY, {
-    variables: { homeId: target?.homeId, series: refs, fromTs, toTs, maxPoints: 500 },
-    skip: !target || refs.length === 0 || mock || !historyEnabled,
-    fetchPolicy: 'cache-and-network',
-  });
+  const { data: histMap, loading } = useMultiSeriesHistory(
+    target?.homeId ?? null, refs, fromTs, toTs, 0, mock,
+    { enabled: !!target && historyEnabled },
+  );
 
   const series: HistorySeriesData[] = useMemo(() => {
     if (!target) return [];
-    if (mock) return mockHistoryData(refs, fromTs, toTs);
-    return data?.history ?? [];
-  }, [target, mock, refs, fromTs, toTs, data]);
+    const accessoryKey = target.accessory.id.toUpperCase();
+    return recordable.flatMap(c => {
+      const entry = histMap.get(`${accessoryKey}|${c.type}`);
+      return entry ? [entry.main] : [];
+    });
+  }, [target, recordable, histMap]);
 
   const hasAnyData = series.some(
     s => s.points.length > 0 || s.states.length > 0 || s.stateBuckets.length > 0,
   );
+
+  const renderSeriesRow = (s: HistorySeriesData) => {
+    const char = charByType.get(s.characteristicType);
+    const isNumeric = s.kind === 'numeric';
+    const stats = isNumeric ? numericStats(s) : null;
+    const states = !isNumeric ? stateStats(s, fromTs, toTs) : null;
+    const empty = s.points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0;
+    const unit = s.unit ?? '';
+    return (
+      <div key={s.characteristicType} className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs font-medium">{charLabel(s.characteristicType)}</span>
+          {s.resolution !== 'raw' && (
+            <span className="text-[10px] text-muted-foreground">{s.resolution} averages</span>
+          )}
+        </div>
+        {empty ? (
+          <div className="h-12 rounded-md border border-dashed flex items-center justify-center">
+            <span className="text-xs text-muted-foreground">
+              {isNumeric ? 'No data in this range' : 'Monitoring — no events in this range'}
+            </span>
+          </div>
+        ) : isNumeric ? (
+          <>
+            <Suspense fallback={<div className="h-[200px] w-full" />}>
+              <HistoryChart
+                points={s.points}
+                unit={s.unit}
+                gradientId={`hist-${target?.accessory.id}-${s.characteristicType}`}
+              />
+            </Suspense>
+            {stats && (
+              <p className="text-[11px] text-muted-foreground">
+                min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <StateTimeline
+              fromTs={fromTs}
+              toTs={toTs}
+              prevValue={s.prevValue}
+              states={s.states}
+              stateBuckets={s.stateBuckets}
+              labelFor={(v) => labelForValue(char, s.characteristicType, v)}
+            />
+            {states && states.totals.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                {states.totals.slice(0, 3).map(([v, ms]) =>
+                  `${labelForValue(char, s.characteristicType, v)} ${formatDuration(ms)}`,
+                ).join(' · ')}
+                {states.transitions > 0 && ` · ${states.transitions} changes`}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
@@ -188,11 +242,11 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <LineChart className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1 truncate">{target?.accessory.name ?? 'History'}</span>
             <button
-              onClick={() => { onClose(); openExplorer(); }}
+              onClick={() => { const accessory = target?.accessory; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory } : undefined); }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              title="Compare with other sensors in the History Explorer"
+              title="Compare with other sensors in Home Analytics"
             >
-              Explorer <ExternalLink className="h-3 w-3" />
+              Analytics <ExternalLink className="h-3 w-3" />
             </button>
           </DialogTitle>
         </DialogHeader>
@@ -235,67 +289,20 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
           </p>
         ) : (
           <div className="space-y-5">
-            {series.map(s => {
-              const char = charByType.get(s.characteristicType);
-              const isNumeric = s.kind === 'numeric';
-              const stats = isNumeric ? numericStats(s) : null;
-              const states = !isNumeric ? stateStats(s, fromTs, toTs) : null;
-              const empty = s.points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0;
-              const unit = s.unit ?? '';
-              return (
-                <div key={s.characteristicType} className="space-y-1.5">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-xs font-medium">{charLabel(s.characteristicType)}</span>
-                    {s.resolution !== 'raw' && (
-                      <span className="text-[10px] text-muted-foreground">{s.resolution} averages</span>
-                    )}
-                  </div>
-                  {empty ? (
-                    <div className="h-12 rounded-md border border-dashed flex items-center justify-center">
-                      <span className="text-xs text-muted-foreground">No data in this range</span>
-                    </div>
-                  ) : isNumeric ? (
-                    <>
-                      <Suspense fallback={<div className="h-[200px] w-full" />}>
-                        <HistoryChart
-                          points={s.points}
-                          unit={s.unit}
-                          gradientId={`hist-${target?.accessory.id}-${s.characteristicType}`}
-                        />
-                      </Suspense>
-                      {stats && (
-                        <p className="text-[11px] text-muted-foreground">
-                          min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <StateTimeline
-                        fromTs={fromTs}
-                        toTs={toTs}
-                        prevValue={s.prevValue}
-                        states={s.states}
-                        stateBuckets={s.stateBuckets}
-                        labelFor={(v) => labelForValue(char, s.characteristicType, v)}
-                      />
-                      {states && states.totals.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground">
-                          {states.totals.slice(0, 3).map(([v, ms]) =>
-                            `${labelForValue(char, s.characteristicType, v)} ${formatDuration(ms)}`,
-                          ).join(' · ')}
-                          {states.transitions > 0 && ` · ${states.transitions} changes`}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-            {recordable.length > 6 && (
-              <p className="text-[10px] text-muted-foreground">
-                Showing the first 6 of {recordable.length} recordable characteristics.
-              </p>
+            {series.slice(0, 6).map(renderSeriesRow)}
+            {series.length > 6 && (
+              <>
+                <AnimatedCollapse open={showAll}>
+                  <div className="space-y-5 pb-1">{series.slice(6).map(renderSeriesRow)}</div>
+                </AnimatedCollapse>
+                <button
+                  className="w-full text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1 py-1"
+                  onClick={() => setShowAll(v => !v)}
+                >
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showAll ? 'rotate-180' : ''}`} />
+                  {showAll ? 'Show fewer' : `Show ${series.length - 6} more`}
+                </button>
+              </>
             )}
           </div>
         )}

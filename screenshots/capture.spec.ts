@@ -402,25 +402,26 @@ test.describe('Dashboard screenshots', () => {
 // Runs entirely on ?mockHistory=1 (deterministic fake series) — no relay
 // fixtures needed, and reruns produce identical charts.
 
-test.describe('History Explorer screenshots', () => {
+test.describe('Home Analytics screenshots', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
     await page.addInitScript(() => localStorage.setItem('cookie-consent', 'granted'));
   });
 
-  test('history explorer — room climate view', async ({ page }) => {
-    await page.goto('/history?preset=climate%3ALiving%20Room&mockHistory=1');
-    await page.getByText('Living Room climate').first().waitFor({ timeout: 15000 });
+  test('home analytics — climate category, one room', async ({ page }) => {
+    await page.goto('/analytics?category=climate&room=Living%20Room&mockHistory=1');
+    await page.getByText('Climate · Living Room').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(1200); // charts settle
-    await page.screenshot({ path: img('history-explorer.png') });
-    fs.copyFileSync(img('history-explorer.png'), featureImg('history.png'));
+    await page.screenshot({ path: img('analytics-category.png') });
+    // The marketing feature image keeps its name — the pages reference it.
+    fs.copyFileSync(img('analytics-category.png'), featureImg('history.png'));
   });
 
-  test('history explorer — suggested views landing', async ({ page }) => {
-    await page.goto('/history?mockHistory=1');
-    await page.getByText('Suggested views').waitFor({ timeout: 15000 });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: img('history-presets.png') });
+  test('home analytics — category overview tiles', async ({ page }) => {
+    await page.goto('/analytics?mockHistory=1');
+    await page.getByText('Climate').first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1200); // sparklines settle
+    await page.screenshot({ path: img('analytics-overview.png') });
   });
 });
 

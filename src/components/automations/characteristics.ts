@@ -204,6 +204,40 @@ export function getRecordableCharacteristics(accessory: HomeKitAccessory | undef
   return chars;
 }
 
+/**
+ * Importance order for HISTORY display — what a person opens the chart for,
+ * first. Environment readings and levels lead, control states follow,
+ * battery housekeeping last. Types not listed keep their service order
+ * after everything listed.
+ */
+export const HISTORY_CHAR_ORDER = [
+  // Environment readings — the reason most history exists.
+  'current_temperature', 'relative_humidity', 'current_ambient_light_level',
+  'carbon_dioxide_level', 'carbon_monoxide_level', 'pm2_5_density', 'pm10_density', 'voc_density',
+  'air_quality', 'eve_air_pressure', 'water_level',
+  // Power and energy levels.
+  'eve_energy_watt', 'eve_energy_kwh', 'eve_voltage', 'eve_ampere',
+  // Setpoints and HVAC state.
+  'target_temperature', 'heating_cooling_current', 'heating_cooling_target',
+  // Activity events.
+  'motion_detected', 'occupancy_detected', 'contact_state', 'current_door_state',
+  'lock_current_state', 'obstruction_detected',
+  // Safety events.
+  'smoke_detected', 'carbon_monoxide_detected', 'carbon_dioxide_detected', 'leak_detected',
+  // Control states and levels.
+  'power_state', 'brightness', 'active', 'in_use', 'outlet_in_use',
+  'rotation_speed', 'current_position',
+  // Battery housekeeping.
+  'battery_level', 'status_low_battery', 'charging_state',
+];
+
+/** Stable sort by HISTORY_CHAR_ORDER; unlisted types keep service order after. */
+export function sortByHistoryImportance(chars: WritableChar[]): WritableChar[] {
+  const rank = new Map(HISTORY_CHAR_ORDER.map((type, i) => [type, i]));
+  return [...chars].sort((a, b) =>
+    (rank.get(a.type) ?? HISTORY_CHAR_ORDER.length) - (rank.get(b.type) ?? HISTORY_CHAR_ORDER.length));
+}
+
 /** The characteristic a device should default to when it joins a scene. */
 export function primaryWritableChar(chars: WritableChar[]): WritableChar | undefined {
   for (const type of PRIMARY_CHAR_ORDER) {

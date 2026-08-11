@@ -12,6 +12,7 @@ import type {
   HistoryStateSpanData,
   HistoryStateBucketData,
   HistorySeriesRefInput,
+  HistorySeriesInfo,
 } from '@/lib/graphql/types';
 import { getProfile } from './policy';
 import { canonicalHistoryType } from './keys';
@@ -37,6 +38,72 @@ export function isMockHistoryEnabled(): boolean {
   return new URLSearchParams(window.location.search).has('mockHistory');
 }
 
+export interface MockAccessoryEntry {
+  accessoryId: string;
+  name: string;
+  room: string | null;
+  isVirtual?: boolean;
+  /** Profiled characteristics this accessory carries. */
+  recordable: string[];
+  /** Subset of `recordable` that has recorded data (rest = monitoring). */
+  recorded: string[];
+}
+
+/**
+ * The mock home: five rooms, safety devices with recordable-but-silent
+ * characteristics (a quiet smoke alarm must read as monitoring), energy,
+ * battery, a virtual accessory, and a service group. Deterministic — this
+ * is what the screenshots and every ?mockHistory=1 session see.
+ */
+export const MOCK_ACCESSORIES: MockAccessoryEntry[] = [
+  { accessoryId: 'MOCK-LR-SENSOR', name: 'Living Room Sensor', room: 'Living Room', recordable: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'] },
+  { accessoryId: 'MOCK-LR-SENSOR2', name: 'Bookshelf Sensor', room: 'Living Room', recordable: ['current_temperature', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'motion_detected', 'battery_level'] },
+  { accessoryId: 'MOCK-BED-SENSOR', name: 'Bedroom Sensor', room: 'Bedroom', recordable: ['current_temperature', 'relative_humidity', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'battery_level'] },
+  { accessoryId: 'MOCK-KITCHEN-TH', name: 'Kitchen Thermostat', room: 'Kitchen', recordable: ['current_temperature', 'target_temperature', 'heating_cooling_current'], recorded: ['current_temperature', 'target_temperature', 'heating_cooling_current'] },
+  { accessoryId: 'MOCK-STUDY-SENSOR', name: 'Study Sensor', room: 'Study', recordable: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], recorded: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'] },
+  { accessoryId: 'MOCK-DOOR', name: 'Front Door', room: 'Hallway', recordable: ['contact_state', 'battery_level'], recorded: ['contact_state', 'battery_level'] },
+  { accessoryId: 'MOCK-SMOKE', name: 'Hall Smoke Alarm', room: 'Hallway', recordable: ['smoke_detected', 'status_low_battery'], recorded: [] },
+  { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'] },
+  { accessoryId: 'MOCK-OUTLET', name: 'Desk Outlet', room: 'Study', recordable: ['power_state', 'eve_energy_watt'], recorded: ['power_state', 'eve_energy_watt'] },
+  { accessoryId: 'MOCK-LAMP', name: 'Reading Lamp', room: 'Bedroom', recordable: ['power_state', 'brightness'], recorded: ['power_state', 'brightness'] },
+  { accessoryId: 'MOCK-VIRT-MODE', name: 'House Mode', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'] },
+];
+
+export const MOCK_SERVICE_GROUPS = [
+  { id: 'MOCK-GROUP-1', name: 'Kitchen Lights', memberIds: ['MOCK-LAMP', 'MOCK-OUTLET'] },
+];
+
+/** Recorded-series listing shaped like GetHistorySeries responses. */
+export function mockRecordedSeries(): HistorySeriesInfo[] {
+  const out: HistorySeriesInfo[] = [];
+  for (const acc of MOCK_ACCESSORIES) {
+    for (const type of acc.recorded) {
+      const canonical = canonicalHistoryType(type);
+      const profile = getProfile(canonical);
+      out.push({
+        accessoryId: acc.accessoryId,
+        characteristicType: canonical,
+        // Unprofiled types (virtual_count until P3) default numeric — the
+        // same fallback mockHistoryData uses, so listing and data agree.
+        kind: profile?.kind ?? 'numeric',
+        unit: profile?.unit ?? null,
+        enabled: true,
+        minIntervalS: profile?.minIntervalS ?? null,
+        deadband: profile?.deadband ?? null,
+        firstTs: null,
+        lastTs: null,
+        sampleCount: 1000,
+      });
+    }
+  }
+  // The group's own series (group writes record under the group id).
+  out.push({
+    accessoryId: 'MOCK-GROUP-1', characteristicType: 'power_state', kind: 'bool', unit: null,
+    enabled: true, minIntervalS: 0, deadband: null, firstTs: null, lastTs: null, sampleCount: 200,
+  });
+  return out;
+}
+
 export function mockHistoryData(
   refs: HistorySeriesRefInput[],
   fromTs: number,
@@ -55,8 +122,20 @@ export function mockHistoryData(
       const n = Math.min(maxPoints, 200);
       const stepMs = span / n;
       // Base level + daily sine + slow random walk: reads like a room sensor.
-      const base = canonical.includes('temp') ? 20 : canonical.includes('humid') ? 52 : 60;
-      const amp = canonical.includes('temp') ? 3 : canonical.includes('humid') ? 8 : 35;
+      // Per-type presets keep the mock believable (spiky watts, slow battery
+      // decline, CO2 rising with occupancy).
+      const base = canonical.includes('watt') ? 45
+        : canonical === 'battery_level' ? 82
+        : canonical === 'carbon_dioxide_level' ? 650
+        : canonical === 'carbon_monoxide_level' ? 2
+        : canonical === 'virtual_count' ? 12
+        : canonical.includes('temp') ? 20 : canonical.includes('humid') ? 52 : 60;
+      const amp = canonical.includes('watt') ? 60
+        : canonical === 'battery_level' ? 4
+        : canonical === 'carbon_dioxide_level' ? 350
+        : canonical === 'carbon_monoxide_level' ? 2
+        : canonical === 'virtual_count' ? 6
+        : canonical.includes('temp') ? 3 : canonical.includes('humid') ? 8 : 35;
       let walk = 0;
       const points: HistoryPointData[] = [];
       for (let i = 0; i < n; i++) {

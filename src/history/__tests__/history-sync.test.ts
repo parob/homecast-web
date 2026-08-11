@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Keep in step with homecast-cloud/server/tests/test_history_policy.py
-const PROFILES_SHA256 = 'fd22335747ffb8011719f8fee7129cf011a354c241a811f587390f13855b7ee2';
+const PROFILES_SHA256 = '9e945b461e754af808afcdb3ab7a25b6502aa7afffc21f1770f4d5064a6eebb4';
 const CASES_SHA256 = 'e85d9b2038fc12f4509c3ccb38444d9fd7aaf8a77c8b0f7cd47a0065a7bfaec3';
 
 const sha256 = (rel: string) =>

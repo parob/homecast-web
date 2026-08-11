@@ -106,7 +106,7 @@ const TOOLS = [
       properties: {
         accessory: { type: 'string', description: 'Accessory name substring, slug, or id (required)' },
         home: { type: 'string', description: 'Home name substring — narrows the search when names repeat across homes' },
-        characteristic: { type: 'string', description: 'One characteristic (e.g. current_temperature, on, motion). Omit for all recordable ones (up to 6)' },
+        characteristic: { type: 'string', description: 'One characteristic (e.g. current_temperature, on, motion). Omit for all recorded ones (up to 24, most informative first)' },
         hours: { type: 'number', description: 'How far back to look, in hours (default 24, max 8784)' },
         max_points: { type: 'number', description: 'Maximum points per series (default 200)' },
       },

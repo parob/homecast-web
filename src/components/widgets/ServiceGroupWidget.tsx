@@ -388,7 +388,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   const isDragging = dragHandle?.isDragging ?? false;
   // Read from context, not props — same reasoning as WidgetCard's menu items.
-  const { historyAvailable, openGroupHistory } = useHistory();
+  const { historyAvailable, openAnalytics } = useHistory();
   const canShowHistory = accessories.some(a => historyAvailable(a));
 
   const hasContextMenu = !disableTooltip && !isDragging;
@@ -995,9 +995,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               )}
               <ContextMenuSeparator />
               {canShowHistory && (
-                <ContextMenuItem onClick={() => openGroupHistory(group, accessories)}>
+                <ContextMenuItem onClick={() => openAnalytics({ level: 'group', groupId: group.id })}>
                   <LineChart className="h-4 w-4 mr-2" />
-                  History
+                  Analytics
                 </ContextMenuItem>
               )}
               {onShare && (

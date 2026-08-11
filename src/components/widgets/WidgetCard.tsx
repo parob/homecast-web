@@ -9,7 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart, ChartColumn } from 'lucide-react';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -531,7 +531,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // is how the last menu item ended up wired in exactly one place.
   const { isTracked, openPriceHistory } = useDeals();
   const canShowPrices = !!accessory && isTracked(accessory);
-  const { historyAvailable, openHistory } = useHistory();
+  const { historyAvailable, openHistory, openAnalytics } = useHistory();
   const canShowHistory = !!accessory && historyAvailable(accessory);
 
   const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory;
@@ -603,6 +603,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 <ContextMenuItem onClick={() => openHistory(accessory)}>
                   <LineChart className="h-4 w-4 mr-2" />
                   History
+                </ContextMenuItem>
+              )}
+              {canShowHistory && accessory && (
+                <ContextMenuItem onClick={() => openAnalytics({ level: 'accessory', accessory })}>
+                  <ChartColumn className="h-4 w-4 mr-2" />
+                  Analytics
                 </ContextMenuItem>
               )}
               {canShowPrices && accessory && (

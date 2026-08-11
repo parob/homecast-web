@@ -695,14 +695,14 @@ const Index = () => {
               image: '/images/features/webhooks.png', imageAlt: 'Webhooks management', reversed: true,
             },
             {
-              title: 'Device History & Charts',
+              title: 'Device History & Analytics',
               description: 'Opt-in recording of how your home changes over time. Temperature, humidity, activity — charted per device or compared across a room.',
               details: [
                 'Off by default: you choose every device and characteristic',
-                'Explorer view compares sensors and rooms on one graph',
+                'Home Analytics compares sensors and rooms on one graph',
                 'Export everything as CSV, delete everything in one tap',
               ],
-              image: '/images/features/history.png', imageAlt: 'History Explorer comparing room sensors', reversed: false,
+              image: '/images/features/history.png', imageAlt: 'Home Analytics comparing room sensors', reversed: false,
             },
             {
               title: 'Smart Deals',

@@ -283,7 +283,7 @@ function HomeHistoryRow({ home }: { home: HomeKitHome }) {
 }
 
 export function HistorySection({ homes }: HistorySectionProps) {
-  const { openExplorer } = useHistory();
+  const { openAnalytics } = useHistory();
   return (
     <div className="space-y-4">
       <div>
@@ -309,8 +309,8 @@ export function HistorySection({ homes }: HistorySectionProps) {
 
       <p className="text-[10px] text-muted-foreground">
         Once a home is recording, open any device's context menu → History to
-        see its charts, or the{' '}
-        <button className="underline hover:text-foreground" onClick={() => openExplorer()}>History Explorer</button>{' '}
+        see its charts, or{' '}
+        <button className="underline hover:text-foreground" onClick={() => openAnalytics()}>Home Analytics</button>{' '}
         to compare sensors and rooms on one graph.
       </p>
     </div>

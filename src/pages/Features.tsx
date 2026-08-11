@@ -35,9 +35,9 @@ const FEATURES: Feature[] = [
   },
   {
     title: 'Device History',
-    description: 'Opt-in charts of temperature, humidity, and activity. Compare sensors and rooms in the Explorer.',
+    description: 'Opt-in charts of temperature, humidity, and activity. Compare sensors and rooms in Home Analytics.',
     image: '/images/features/history.png',
-    imageAlt: 'History Explorer comparing a room\'s sensors over time',
+    imageAlt: 'Home Analytics comparing a room\'s sensors over time',
   },
   {
     title: 'Smart Deals',

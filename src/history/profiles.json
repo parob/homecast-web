@@ -19,6 +19,7 @@
     "eve_air_pressure": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 1, "unit": "hPa" },
     "carbon_monoxide_level": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 1, "unit": "ppm" },
     "carbon_dioxide_level": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 25, "unit": "ppm" },
+    "carbon_monoxide_peak_level": { "kind": "numeric", "record": true, "minIntervalS": 900, "deadband": 1, "unit": "ppm" },
     "carbon_dioxide_peak_level": { "kind": "numeric", "record": true, "minIntervalS": 900, "deadband": 25, "unit": "ppm" },
     "pm2_5_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 2, "unit": "µg/m³" },
     "pm10_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 2, "unit": "µg/m³" },

@@ -3,7 +3,8 @@ import { useQuery } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled } from '@/history/mock';
-import type { HomeKitAccessory, HomeKitServiceGroup, HistoryStorageStatsData } from '@/lib/graphql/types';
+import type { CategoryId } from '@/history/categories';
+import type { HomeKitAccessory, HistoryStorageStatsData } from '@/lib/graphql/types';
 import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
 
 /**
@@ -12,33 +13,44 @@ import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
  * them is how a previous menu item ended up wired in exactly one place
  * (see the comment above useDeals in WidgetCard).
  */
+
+/**
+ * Where Home Analytics opens. Every context menu passes the scope it knows:
+ * an accessory menu passes the accessory, a group menu its group, a room
+ * menu its room — the surface opens already looking at the right thing.
+ */
+export type AnalyticsScope =
+  | { level: 'home' }
+  | { level: 'category'; category: CategoryId; room?: string | null }
+  | { level: 'group'; groupId: string }
+  | { level: 'accessory'; accessory: HomeKitAccessory };
+
 interface HistoryContextValue {
-  /** Gates the menu entry: home opted in + accessory has recordable series. */
+  /** Gates the menu entries: home opted in + accessory has recordable series. */
   historyAvailable: (accessory: HomeKitAccessory) => boolean;
+  /** True when the home records history — gates room/home Analytics entries. */
+  analyticsAvailable: boolean;
   /** Open the History screen. No-op outside the dashboard. */
   openHistory: (accessory: HomeKitAccessory) => void;
-  /** Open the Explorer dialog (multi-sensor comparison). */
-  openExplorer: () => void;
-  /** Open the Explorer pre-loaded with a service group's members. */
-  openGroupHistory: (group: HomeKitServiceGroup, members: HomeKitAccessory[]) => void;
+  /** Open Home Analytics, scoped. Defaults to the overview. */
+  openAnalytics: (scope?: AnalyticsScope) => void;
 }
 
 const HistoryContext = createContext<HistoryContextValue>({
   historyAvailable: () => false,
+  analyticsAvailable: false,
   openHistory: () => {},
-  openExplorer: () => {},
-  openGroupHistory: () => {},
+  openAnalytics: () => {},
 });
 
 interface HistoryProviderProps {
   homeId: string | null;
   onOpenHistory?: (target: HistoryTarget) => void;
-  onOpenExplorer?: () => void;
-  onOpenGroupHistory?: (group: HomeKitServiceGroup, members: HomeKitAccessory[]) => void;
+  onOpenAnalytics?: (scope: AnalyticsScope) => void;
   children: React.ReactNode;
 }
 
-export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, onOpenGroupHistory, children }: HistoryProviderProps) {
+export function HistoryProvider({ homeId, onOpenHistory, onOpenAnalytics, children }: HistoryProviderProps) {
   const mock = isMockHistoryEnabled();
 
   const { data } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
@@ -63,18 +75,13 @@ export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, onOpenG
     onOpenHistory({ homeId, accessory });
   }, [homeId, onOpenHistory]);
 
-  const openExplorer = useCallback(() => {
-    onOpenExplorer?.();
-  }, [onOpenExplorer]);
-
-  const openGroupHistory = useCallback((group: HomeKitServiceGroup, members: HomeKitAccessory[]) => {
-    if (!enabled) return;
-    onOpenGroupHistory?.(group, members);
-  }, [enabled, onOpenGroupHistory]);
+  const openAnalytics = useCallback((scope?: AnalyticsScope) => {
+    onOpenAnalytics?.(scope ?? { level: 'home' });
+  }, [onOpenAnalytics]);
 
   const value = useMemo(
-    () => ({ historyAvailable, openHistory, openExplorer, openGroupHistory }),
-    [historyAvailable, openHistory, openExplorer, openGroupHistory],
+    () => ({ historyAvailable, analyticsAvailable: enabled, openHistory, openAnalytics }),
+    [historyAvailable, enabled, openHistory, openAnalytics],
   );
 
   return (

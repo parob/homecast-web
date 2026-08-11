@@ -618,7 +618,7 @@ export async function handleGetHistory(args: {
     return { error: `No accessory matches "${args.accessory}"${args.home ? ` in home "${args.home}"` : ''}` };
   }
 
-  const [{ getRecordableCharacteristics }, { canonicalHistoryType, seriesKey }, { queryHistorySeries }, historyDb, { getProfile }] =
+  const [{ getRecordableCharacteristics, sortByHistoryImportance }, { canonicalHistoryType, seriesKey }, { queryHistorySeries }, historyDb, { getProfile }] =
     await Promise.all([
       import('@/components/automations/characteristics'),
       import('@/history/keys'),
@@ -635,7 +635,9 @@ export async function handleGetHistory(args: {
       return { error: `Characteristic "${args.characteristic}" is not recordable on ${matchedAccessory.name}` };
     }
   }
-  recordable = recordable.slice(0, 6);
+  // Most informative first, then cap — mirrors the cloud tool ([:24] over
+  // HISTORY_CHAR_ORDER; the old flat 6 hid lux/air quality on multi-sensors).
+  recordable = sortByHistoryImportance(recordable).slice(0, 24);
 
   const toTs = Date.now();
   const fromTs = toTs - hours * 3_600_000;

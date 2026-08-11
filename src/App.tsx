@@ -31,7 +31,13 @@ const DeleteAccount = lazy(() => import("./pages/DeleteAccount"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SharedEntityPage = lazy(() => import("./pages/SharedEntityPage"));
 const MQTTBrowser = lazy(() => import("./pages/MQTTBrowser"));
-const HistoryExplorer = lazy(() => import("./pages/HistoryExplorer"));
+const HomeAnalytics = lazy(() => import("./pages/HomeAnalytics"));
+
+/** Legacy /history deep links land on /analytics with their query intact
+ *  (?preset= is translated by the page itself). */
+const HistoryRedirect = () => (
+  <Navigate to={{ pathname: "/analytics", search: window.location.search }} replace />
+);
 const Diagnostics = lazy(() => import("./pages/Diagnostics"));
 
 // Cloud-only pages — lazy loaded from @homecast/cloud if available
@@ -84,7 +90,8 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
-              <Route path="/history" element={<HistoryExplorer />} />
+              <Route path="/analytics" element={<HomeAnalytics />} />
+              <Route path="/history" element={<HistoryRedirect />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               {devRoutes}
@@ -109,7 +116,8 @@ const MainRoutes = () => (
               <Route path="/portal" element={<Dashboard />} />
               <Route path="/portal/admin/*" element={<Dashboard />} />
               <Route path="/mqtt" element={<MQTTBrowser />} />
-              <Route path="/history" element={<HistoryExplorer />} />
+              <Route path="/analytics" element={<HomeAnalytics />} />
+              <Route path="/history" element={<HistoryRedirect />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
               {devRoutes}

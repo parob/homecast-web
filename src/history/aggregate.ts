@@ -1,4 +1,4 @@
-// Client-side cross-series aggregation for the History Explorer.
+// Client-side cross-series aggregation for Home Analytics.
 //
 // "Living Room temperature" is usually several sensors (every Hue motion
 // sensor carries a thermometer). Charting 19 thin lines says less than one

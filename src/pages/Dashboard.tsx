@@ -92,11 +92,13 @@ import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGr
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
-import { HistoryProvider } from '@/contexts/HistoryContext';
+import { HistoryProvider, useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
 import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
-const HistoryExplorerContent = React.lazy(() => import('@/components/history-explorer/HistoryExplorerContent'));
-import type { ExplorerView, SeriesSel as ExplorerSeriesSel } from '@/components/history-explorer/HistoryExplorerContent';
+const AnalyticsContent = React.lazy(() => import('@/components/home-analytics/AnalyticsContent'));
+import { useAnalyticsNav } from '@/components/home-analytics/useAnalyticsNav';
+import type { SeriesSel as ExplorerSeriesSel } from '@/components/home-analytics/types';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
+import { charLabel } from '@/components/automations/format';
 import { getProfile as getHistoryProfile } from '@/history/policy';
 
 /** Profile kind for a canonical characteristic (numeric fallback is safe). */
@@ -155,7 +157,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, ArrowLeft, LineChart} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -359,6 +361,9 @@ interface SortableRoomItemProps {
 }
 
 const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+  // Rendered inside HistoryProvider — context, not props (28 forwarding
+  // components is how menu items end up wired in exactly one place).
+  const { analyticsAvailable, openAnalytics } = useHistory();
   const {
     attributes,
     listeners,
@@ -416,6 +421,12 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           <ContextMenuItem onClick={onShare}>
             <Share2 className="h-4 w-4 mr-2" />
             Share Room
+          </ContextMenuItem>
+        )}
+        {analyticsAvailable && (
+          <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name })}>
+            <LineChart className="h-4 w-4 mr-2" />
+            Analytics
           </ContextMenuItem>
         )}
         {/* A room can't contain a room group, but it can contain a helper
@@ -729,6 +740,7 @@ interface SortableHomeItemProps {
 }
 
 const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
+  const { analyticsAvailable, openAnalytics } = useHistory();
   const {
     attributes,
     listeners,
@@ -813,6 +825,12 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
             <ContextMenuItem data-tour="sidebar-home-share-item" onClick={onShare}>
               <Share2 className="h-4 w-4 mr-2" />
               Share Home
+            </ContextMenuItem>
+          )}
+          {analyticsAvailable && (
+            <ContextMenuItem onClick={() => openAnalytics({ level: 'home' })}>
+              <LineChart className="h-4 w-4 mr-2" />
+              Home Analytics
             </ContextMenuItem>
           )}
           {onCreateRoomGroup && (
@@ -1952,39 +1970,35 @@ const Dashboard = () => {
   const [debugAccessory, setDebugAccessory] = useState<HomeKitAccessory | null>(null);
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
-  const [explorerOpen, setExplorerOpen] = useState(false);
-  const [explorerInitialView, setExplorerInitialView] = useState<ExplorerView | null>(null);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const analyticsNav = useAnalyticsNav();
+  const { reset: analyticsReset } = analyticsNav;
 
-  // A service group's History = the Explorer pre-loaded with the group's own
-  // series (group writes record under the group id) plus each member's
-  // primary recorded characteristic.
-  const openGroupHistory = useCallback((group: HomeKitServiceGroup, members: HomeKitAccessory[]) => {
-    const series: ExplorerSeriesSel[] = [];
-    const first = members.length > 0 ? getRecordableCharacteristics(members[0])[0] : undefined;
-    if (first) {
-      series.push({
-        accessoryId: group.id,
-        characteristicType: first.type,
-        label: `${group.name} · Group`,
-        unit: first.unit ?? null,
-        kind: getHistoryProfileKind(first.type),
-      });
-    }
-    for (const member of members.slice(0, 12)) {
-      const char = getRecordableCharacteristics(member)[0];
-      if (!char) continue;
-      series.push({
-        accessoryId: member.id,
+  // Scope → initial navigation level. Every menu passes the scope it knows
+  // (accessory menus their accessory, group menus their group, room menus
+  // their room) and the dialog opens already looking at the right thing.
+  const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
+    if (scope.level === 'accessory') {
+      const acc = scope.accessory;
+      const series: ExplorerSeriesSel[] = getRecordableCharacteristics(acc).map(char => ({
+        accessoryId: acc.id,
         characteristicType: char.type,
-        label: member.name,
+        label: `${acc.name} · ${charLabel(char.type)}`,
+        fullLabel: [acc.roomName, acc.name, charLabel(char.type)].filter(Boolean).join(' · '),
+        room: acc.roomName ?? null,
         unit: char.unit ?? null,
         kind: getHistoryProfileKind(char.type),
-      });
+      }));
+      analyticsReset({ level: 'custom', view: { title: acc.name, series, aggregate: false } });
+    } else if (scope.level === 'group') {
+      analyticsReset({ level: 'category', category: 'groups', groupId: scope.groupId });
+    } else if (scope.level === 'category') {
+      analyticsReset({ level: 'category', category: scope.category, room: scope.room ?? null });
+    } else {
+      analyticsReset();
     }
-    if (series.length === 0) return;
-    setExplorerInitialView({ title: group.name, series, aggregate: false });
-    setExplorerOpen(true);
-  }, []);
+    setAnalyticsOpen(true);
+  }, [analyticsReset]);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -5835,6 +5849,13 @@ const Dashboard = () => {
               <Blocks className="h-4 w-4 mr-2" />
               New Virtual Accessory
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const room = rooms.find(r => r.id === selectedRoomId);
+              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null });
+            }}>
+              <LineChart className="h-4 w-4 mr-2" />
+              Analytics
+            </DropdownMenuItem>
           </div>
         ) : selectedHomeId && hasContentAccess ? (
           <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
@@ -5965,6 +5986,12 @@ const Dashboard = () => {
             {editMode ? 'Done Editing' : 'Edit Layout'}
           </DropdownMenuItem>
         )}
+        {hasContentAccess && (
+          <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home' })}>
+            <LineChart className="h-4 w-4 mr-2" />
+            Home Analytics
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
           <Settings className="h-4 w-4 mr-2" />
           Settings
@@ -6041,7 +6068,7 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
-    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenExplorer={() => { setExplorerInitialView(null); setExplorerOpen(true); }} onOpenGroupHistory={openGroupHistory}>
+    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7758,10 +7785,12 @@ const Dashboard = () => {
         onClose={() => setHistoryTarget(null)}
       />
 
-      {/* History Explorer — the multi-sensor comparison surface, as a
+      {/* Home Analytics — categories, room filters, custom views — as a
           dialog over the dashboard so it reuses the already-loaded homes
-          and accessories (no cold relay round-trips). */}
-      <Dialog open={explorerOpen} onOpenChange={(open) => { setExplorerOpen(open); if (!open) setExplorerInitialView(null); }}>
+          and accessories (no cold relay round-trips). The title IS the
+          location: current level's name with an embedded back button, the
+          SettingsDialog drill-down convention. */}
+      <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) analyticsReset(); }}>
         {/* Nearly full screen, same treatment as the admin panel dialog */}
         <DialogContent
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
@@ -7771,15 +7800,27 @@ const Dashboard = () => {
           }}
         >
           <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-            <DialogTitle className="text-base">History Explorer</DialogTitle>
+            <DialogTitle className="text-base flex items-center gap-2">
+              {analyticsNav.depth > 0 && (
+                <button
+                  className="p-1 -ml-1 rounded hover:bg-muted"
+                  onClick={analyticsNav.back}
+                  aria-label="Back"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+              {analyticsNav.title}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-4">
-            {explorerOpen && (
+            {analyticsOpen && (
               <React.Suspense fallback={<div className="h-[300px]" />}>
-                <HistoryExplorerContent
+                <AnalyticsContent
                   homeId={selectedHomeId}
                   accessories={allAccessoriesData || null}
-                  initialView={explorerInitialView}
+                  serviceGroups={relayServiceGroupsData ?? null}
+                  nav={analyticsNav}
                 />
               </React.Suspense>
             )}
