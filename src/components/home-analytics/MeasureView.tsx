@@ -3,6 +3,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry, type OrganizedCategory } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import ChartPanel from './ChartPanel';
+import RoomStackView from './RoomStackView';
 import { buildSels, roundRobinByRoom } from './selBuilder';
 import { Button } from '@/components/ui/button';
 import type { ExplorerView } from './types';
@@ -50,26 +51,6 @@ export default function MeasureView({
     const typeSet = new Set(activeMeasure.types);
     const inMeasure = category.series.filter(s => typeSet.has(canonicalHistoryType(s.characteristicType)));
 
-    if (room) {
-      const roomInfos = inMeasure.filter(s =>
-        (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === (room === 'Elsewhere' ? null : room));
-      // Room drill-down: individual sensors, plus the room's state strips
-      // (HVAC mode and friends) under the chart.
-      const stateInfos = category.series.filter(s =>
-        s.kind !== 'numeric'
-        && !SETPOINT_STATE_TYPES.has(canonicalHistoryType(s.characteristicType))
-        && (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === (room === 'Elsewhere' ? null : room));
-      const numericSels = buildSels(roomInfos.slice(0, ROOM_CAP), accessoryInfo);
-      const stateSels = buildSels(stateInfos.slice(0, 6), accessoryInfo);
-      return {
-        sels: [...numericSels, ...stateSels],
-        provenance: `${numericSels.length} sensor${numericSels.length === 1 ? '' : 's'} in ${room}`,
-        truncatedNote: roomInfos.length > ROOM_CAP
-          ? `Showing ${ROOM_CAP} of ${roomInfos.length} sensors`
-          : undefined,
-      };
-    }
-
     const all = buildSels(inMeasure, accessoryInfo);
     const { taken, dropped } = roundRobinByRoom(all, ALL_ROOMS_CAP);
     const roomCount = new Set(taken.map(s => s.room ?? 'Elsewhere')).size;
@@ -83,6 +64,44 @@ export default function MeasureView({
   }, [activeMeasure, category.series, room, accessoryInfo]);
 
   if (measures.length === 0) return null;
+
+  if (room) {
+    // Drill-down: the room's whole story stacked on one time axis —
+    // measure tabs make no sense when every measure is visible at once.
+    return (
+      <div className="space-y-4">
+        {rooms.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => onRoomChange(null)}
+              className="text-[11px] px-2.5 py-1 rounded-full border transition-colors text-muted-foreground hover:bg-muted"
+            >
+              All rooms
+            </button>
+            {rooms.map(r => (
+              <button
+                key={r}
+                onClick={() => onRoomChange(r)}
+                className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                  room === r ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+        <RoomStackView
+          homeId={homeId}
+          mock={mock}
+          category={category}
+          room={room}
+          accessoryInfo={accessoryInfo}
+          onCustomize={onCustomize}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
