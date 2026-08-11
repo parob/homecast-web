@@ -182,7 +182,11 @@ export function recordHistoryEvent(
   const ts = tsMs > lastTs ? tsMs : lastTs + 1;
   lastTsPerSeries.set(sid, ts);
 
-  pendingSamples.push({ sid, ts, v: decision.value, src });
+  pendingSamples.push(
+    decision.valueText !== undefined
+      ? { sid, ts, v: decision.value, vt: decision.valueText, src }
+      : { sid, ts, v: decision.value, src },
+  );
 
   if (!knownSeries.has(sid) && !pendingNewSeries.has(sid)) {
     const canonical = canonicalHistoryType(characteristicType);
@@ -261,12 +265,14 @@ export async function runHistoryMaintenance(now = Date.now()): Promise<void> {
         if (samples.length === 0) continue;
         const carry = await db.getLastHistorySampleBefore(series.id, hourWatermark);
         const buckets = rollupBuckets(
-          series.kind, samples.map(s => ({ ts: s.ts, v: s.v })),
+          series.kind, samples.map(s => ({ ts: s.ts, v: s.v, vt: s.vt })),
           carry?.v ?? null, HOUR_MS, hourWatermark, hourTarget,
+          carry?.vt ?? null,
         );
         await db.putHistoryRollups(buckets.map(b => ({
           sid: series.id, tier: 'h' as const, bucket: b.bucket,
           vMin: b.vMin, vMax: b.vMax, vAvg: b.vAvg, vLast: b.vLast,
+          vtLast: b.vtLast ?? null,
           count: b.count, stateMs: b.stateMs, transitions: b.transitions,
         })));
       } catch (e) {
@@ -294,6 +300,7 @@ export async function runHistoryMaintenance(now = Date.now()): Promise<void> {
         await db.putHistoryRollups(days.map(b => ({
           sid: series.id, tier: 'd' as const, bucket: b.bucket,
           vMin: b.vMin, vMax: b.vMax, vAvg: b.vAvg, vLast: b.vLast,
+          vtLast: b.vtLast ?? null,
           count: b.count, stateMs: b.stateMs, transitions: b.transitions,
         })));
       } catch (e) {

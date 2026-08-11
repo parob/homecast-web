@@ -12,7 +12,7 @@ export interface SeriesSel {
   /** Room, when known — lets state strips group by room. */
   room?: string | null;
   unit: string | null;
-  kind: 'numeric' | 'bool' | 'enum';
+  kind: 'numeric' | 'bool' | 'enum' | 'string';
 }
 
 /** A custom (user-assembled) view: any mix of series on one chart. */

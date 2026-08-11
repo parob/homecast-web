@@ -20,18 +20,19 @@ interface FixtureCase {
   type: string;
   override?: SeriesOverride;
   events: [number, unknown][];
-  recorded: [number, number][];
+  /** string-kind cases record the text; every other kind the number. */
+  recorded: [number, number | string][];
 }
 
 describe('history policy fixtures (shared with Python)', () => {
   for (const c of (cases as unknown as { cases: FixtureCase[] }).cases) {
     it(c.name, () => {
       let state: SeriesRecordState | undefined;
-      const recorded: [number, number][] = [];
+      const recorded: [number, number | string][] = [];
       for (const [tsMs, rawValue] of c.events) {
         const decision = evaluate(c.type, c.override, state, rawValue, tsMs);
         if (decision.record) {
-          recorded.push([tsMs, decision.value]);
+          recorded.push([tsMs, decision.valueText ?? decision.value]);
           state = decision.state;
         }
       }
@@ -52,7 +53,7 @@ describe('profiles', () => {
   it('every profile has a valid kind and sane thresholds', () => {
     for (const type of profiledTypes()) {
       const profile = getProfile(type)!;
-      expect(['numeric', 'bool', 'enum']).toContain(profile.kind);
+      expect(['numeric', 'bool', 'enum', 'string']).toContain(profile.kind);
       expect(profile.minIntervalS).toBeGreaterThanOrEqual(0);
       if (profile.deadband !== undefined) expect(profile.deadband).toBeGreaterThanOrEqual(0);
       if (profile.deadbandPct !== undefined) expect(profile.deadbandPct).toBeGreaterThan(0);

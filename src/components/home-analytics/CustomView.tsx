@@ -28,12 +28,12 @@ interface AddableEntry {
   room: string | null;
   characteristicType: string;
   unit: string | null;
-  kind: 'numeric' | 'bool' | 'enum';
+  kind: 'numeric' | 'bool' | 'enum' | 'string';
   category: CategoryId;
   hasData: boolean;
 }
 
-function profileKind(type: string): 'numeric' | 'bool' | 'enum' {
+function profileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
   return getProfile(canonicalHistoryType(type))?.kind ?? 'numeric';
 }
 

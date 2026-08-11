@@ -131,6 +131,41 @@ describe('history GraphQL operations', () => {
     expect(tooMany.errors?.[0].message).toMatch(/1-6 series/);
   });
 
+  it('serves string series with text through the wire shape', async () => {
+    await gql('SetHomeHistoryEnabled', { homeId: HOME, enabled: true });
+    await reloadHistoryConfig();
+
+    recordHistoryEvent(HOME, 'VIRT-1', 'virtual_mode', 'Home', 0, T0 + 60_000);
+    recordHistoryEvent(HOME, 'VIRT-1', 'virtual_mode', 'Movie Night', 0, T0 + 120_000);
+    await flushHistoryBuffer();
+
+    const history = await gql('GetHistory', {
+      homeId: HOME,
+      series: [{ accessoryId: 'VIRT-1', characteristicType: 'virtual_mode' }],
+      fromTs: T0, toTs: T0 + HOUR_MS, maxPoints: 500,
+    });
+    const [data] = history.history as Array<Record<string, any>>;
+    expect(data.kind).toBe('string');
+    expect(data.resolution).toBe('raw');
+    expect(data.states.map((st: any) => [st.value, st.valueText]))
+      .toEqual([[0, 'Home'], [0, 'Movie Night']]);
+
+    // Rolled: the stateMs keys ARE the texts, dominantText the winner.
+    const now = T0 + 72 * HOUR_MS;
+    await runHistoryMaintenance(now);
+    const rolled = await gql('GetHistory', {
+      homeId: HOME,
+      series: [{ accessoryId: 'VIRT-1', characteristicType: 'virtual_mode' }],
+      fromTs: T0, toTs: now, maxPoints: 60,
+    });
+    const [rolledData] = rolled.history as Array<Record<string, any>>;
+    expect(rolledData.resolution).toBe('hourly');
+    const bucket = rolledData.stateBuckets[0];
+    expect(bucket.dominantText).toBe('Movie Night');
+    const parsed = JSON.parse(bucket.stateMsJson) as Record<string, number>;
+    expect(Object.keys(parsed).sort()).toEqual(['Home', 'Movie Night']);
+  });
+
   it('serves rolled tiers through the wire shape', async () => {
     await gql('SetHomeHistoryEnabled', { homeId: HOME, enabled: true });
     await reloadHistoryConfig();

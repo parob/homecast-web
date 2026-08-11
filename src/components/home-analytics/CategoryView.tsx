@@ -20,7 +20,7 @@ import type { HistorySeriesInfo, HomeKitAccessory } from '@/lib/graphql/types';
 
 const MAX_SERIES = 20;
 
-function profileKind(type: string): 'numeric' | 'bool' | 'enum' {
+function profileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
   return getProfile(canonicalHistoryType(type))?.kind ?? 'numeric';
 }
 

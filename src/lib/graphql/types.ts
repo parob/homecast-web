@@ -2300,7 +2300,7 @@ export interface SendTestNotificationResponse {
 export interface HistorySeriesInfo {
   accessoryId: string;
   characteristicType: string;
-  kind: 'numeric' | 'bool' | 'enum';
+  kind: 'numeric' | 'bool' | 'enum' | 'string';
   unit: string | null;
   /** Effective recording state (override merged over profile default). */
   enabled: boolean;
@@ -2323,12 +2323,16 @@ export interface HistoryPointData {
 export interface HistoryStateSpanData {
   ts: number;
   value: number;
+  /** string kind: the state's text (value is the 0 sentinel). */
+  valueText?: string | null;
 }
 
 export interface HistoryStateBucketData {
   ts: number;
   dominant: number;
-  /** JSON: Record<stateCode, msInState> */
+  /** string kind: the dominant state's text (dominant is the 0 sentinel). */
+  dominantText?: string | null;
+  /** JSON: Record<stateKey, msInState> — key is the raw string for string kind. */
   stateMsJson: string;
   transitions: number;
 }
@@ -2336,10 +2340,12 @@ export interface HistoryStateBucketData {
 export interface HistorySeriesData {
   accessoryId: string;
   characteristicType: string;
-  kind: 'numeric' | 'bool' | 'enum';
+  kind: 'numeric' | 'bool' | 'enum' | 'string';
   unit: string | null;
   resolution: 'raw' | 'hourly' | 'daily';
   prevValue: number | null;
+  /** string kind: the LOCF seed's text. */
+  prevValueText?: string | null;
   points: HistoryPointData[];
   states: HistoryStateSpanData[];
   stateBuckets: HistoryStateBucketData[];

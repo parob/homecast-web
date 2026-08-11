@@ -112,10 +112,11 @@ export const CATEGORY_OF: Record<string, Exclude<CategoryId, 'groups' | 'other'>
   status_low_battery: 'battery',
   charging_state: 'battery',
 
-  // Virtual (engine-owned helpers). virtual_mode / virtual_timer join when
-  // the string kind lands (P4) — the totality test enforces it.
+  // Virtual (engine-owned helpers).
   virtual_number: 'virtual',
   virtual_count: 'virtual',
+  virtual_mode: 'virtual',
+  virtual_timer: 'virtual',
 };
 
 export type SeriesViz = 'line' | 'strip';

@@ -37,11 +37,15 @@ export interface HistoryPoint {
 export interface HistoryStateSpan {
   ts: number;
   value: number;
+  /** string kind: the state's text (value is the 0 sentinel). */
+  valueText?: string | null;
 }
 
 export interface HistoryStateBucket {
   ts: number;
   dominant: number;
+  /** string kind: the dominant state's text (dominant is the 0 sentinel). */
+  dominantText?: string | null;
   stateMs: Record<string, number>;
   transitions: number;
 }
@@ -51,6 +55,8 @@ export interface HistorySeriesData {
   resolution: HistoryTier;
   /** LOCF seed: the value the series held as the range opened. */
   prevValue: number | null;
+  /** string kind: the LOCF seed's text. */
+  prevValueText?: string | null;
   /** Numeric kinds. Raw tier: min=avg=max=last, count=1 — one chart code path. */
   points: HistoryPoint[];
   /** bool/enum, raw tier: the transition list. */
@@ -111,17 +117,33 @@ function pointFromBucket(b: RollupBucket): HistoryPoint {
   };
 }
 
-function stateBucketFromBucket(b: RollupBucket): HistoryStateBucket {
+function stateBucketFromBucket(kind: HistoryKind, b: RollupBucket): HistoryStateBucket {
   const stateMs = b.stateMs ?? {};
-  let dominant = b.vLast;
+  // stateMs keys ARE the state identity: the raw string for the string kind,
+  // String(code) otherwise — dominant is derived per kind from the winner.
+  let bestKey: string | null = null;
   let best = -1;
   for (const [key, ms] of Object.entries(stateMs)) {
     if (ms > best) {
       best = ms;
-      dominant = Number(key);
+      bestKey = key;
     }
   }
-  return { ts: b.bucket, dominant, stateMs, transitions: b.transitions ?? 0 };
+  if (kind === 'string') {
+    return {
+      ts: b.bucket,
+      dominant: 0,
+      dominantText: bestKey ?? b.vtLast ?? null,
+      stateMs,
+      transitions: b.transitions ?? 0,
+    };
+  }
+  return {
+    ts: b.bucket,
+    dominant: bestKey !== null ? Number(bestKey) : b.vLast,
+    stateMs,
+    transitions: b.transitions ?? 0,
+  };
 }
 
 /**
@@ -138,7 +160,7 @@ export async function queryHistorySeries(
   nowTs = Date.now(),
 ): Promise<HistorySeriesData> {
   const empty: HistorySeriesData = {
-    kind, resolution: 'raw', prevValue: null, points: [], states: [], stateBuckets: [],
+    kind, resolution: 'raw', prevValue: null, prevValueText: null, points: [], states: [], stateBuckets: [],
   };
   if (toTs <= fromTs) return empty;
 
@@ -158,11 +180,12 @@ export async function queryHistorySeries(
     const samples = await store.getSamples(sid, fromTs, toTs);
     const carry = await store.getLastSampleBefore(sid, fromTs);
     const prevValue = carry?.v ?? null;
+    const prevValueText = carry?.vt ?? null;
 
     if (kind === 'numeric') {
       if (samples.length <= maxPoints) {
         return {
-          kind, resolution: 'raw', prevValue,
+          kind, resolution: 'raw', prevValue, prevValueText,
           points: samples.map(s => ({ ts: s.ts, min: s.v, avg: s.v, max: s.v, last: s.v, count: 1 })),
           states: [], stateBuckets: [],
         };
@@ -171,7 +194,7 @@ export async function queryHistorySeries(
       const bucketMs = Math.max(1000, Math.ceil((toTs - fromTs) / maxPoints / 1000) * 1000);
       const buckets = rollupBuckets(kind, samples, prevValue, bucketMs, fromTs, toTs);
       return {
-        kind, resolution: 'raw', prevValue,
+        kind, resolution: 'raw', prevValue, prevValueText,
         points: buckets.map(pointFromBucket), states: [], stateBuckets: [],
       };
     }
@@ -180,9 +203,9 @@ export async function queryHistorySeries(
     // range is too wide for a raw timeline anyway and the caller should have
     // planned a rolled tier — clamp rather than flood.
     return {
-      kind, resolution: 'raw', prevValue,
+      kind, resolution: 'raw', prevValue, prevValueText,
       points: [],
-      states: samples.slice(0, maxPoints * 4).map(s => ({ ts: s.ts, value: s.v })),
+      states: samples.slice(0, maxPoints * 4).map(s => ({ ts: s.ts, value: s.v, valueText: s.vt ?? null })),
       stateBuckets: [],
     };
   }
@@ -194,6 +217,7 @@ export async function queryHistorySeries(
   let rows = await store.getRollups(sid, tierKey, alignedFrom, toTs);
   const carryRow = await store.getLastRollupBefore(sid, tierKey, alignedFrom);
   const prevValue = carryRow?.vLast ?? null;
+  const prevValueText = carryRow?.vtLast ?? null;
 
   // Top-up: the open bucket at the head of the range, aggregated from raw.
   const lastClosed = rows.length > 0 ? rows[rows.length - 1].bucket + tierMs : alignedFrom;
@@ -205,6 +229,7 @@ export async function queryHistorySeries(
       const partial = rollupBuckets(
         kind, tail, tailCarry?.v ?? prevValue, tierMs,
         Math.floor(topUpFrom / tierMs) * tierMs, toTs,
+        tailCarry ? (tailCarry.vt ?? null) : prevValueText,
       );
       rows = rows.concat(partial);
     }
@@ -216,13 +241,13 @@ export async function queryHistorySeries(
 
   if (kind === 'numeric') {
     return {
-      kind, resolution: plan.tier, prevValue,
+      kind, resolution: plan.tier, prevValue, prevValueText,
       points: rows.map(pointFromBucket), states: [], stateBuckets: [],
     };
   }
   return {
-    kind, resolution: plan.tier, prevValue,
+    kind, resolution: plan.tier, prevValue, prevValueText,
     points: [], states: [],
-    stateBuckets: rows.map(stateBucketFromBucket),
+    stateBuckets: rows.map(b => stateBucketFromBucket(kind, b)),
   };
 }

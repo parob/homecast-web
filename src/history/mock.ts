@@ -66,7 +66,8 @@ export const MOCK_ACCESSORIES: MockAccessoryEntry[] = [
   { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'] },
   { accessoryId: 'MOCK-OUTLET', name: 'Desk Outlet', room: 'Study', recordable: ['power_state', 'eve_energy_watt'], recorded: ['power_state', 'eve_energy_watt'] },
   { accessoryId: 'MOCK-LAMP', name: 'Reading Lamp', room: 'Bedroom', recordable: ['power_state', 'brightness'], recorded: ['power_state', 'brightness'] },
-  { accessoryId: 'MOCK-VIRT-MODE', name: 'House Mode', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'] },
+  { accessoryId: 'MOCK-VIRT-COUNT', name: 'Coffee Counter', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'] },
+  { accessoryId: 'MOCK-VIRT-MODE', name: 'House Mode', room: null, isVirtual: true, recordable: ['virtual_mode'], recorded: ['virtual_mode'] },
 ];
 
 export const MOCK_SERVICE_GROUPS = [
@@ -166,6 +167,63 @@ export function mockHistoryData(
         points,
         states: [],
         stateBuckets: [],
+      };
+    }
+
+    // string kind: seeded rotation through a text vocabulary.
+    if (kind === 'string') {
+      const vocab = canonical === 'virtual_timer'
+        ? ['idle', 'active', 'paused']
+        : ['Home', 'Away', 'Movie Night', 'Night'];
+      if (resolution === 'raw') {
+        const states: HistoryStateSpanData[] = [];
+        let t = fromTs;
+        let idx = Math.floor(noise(seed, 0) * vocab.length);
+        let step = 0;
+        while (t < toTs && states.length < 60) {
+          idx = (idx + 1 + Math.floor(noise(seed, step) * (vocab.length - 1))) % vocab.length;
+          states.push({ ts: t, value: 0, valueText: vocab[idx] });
+          t += span * (0.05 + noise(seed, step + 500) * 0.2);
+          step++;
+        }
+        return {
+          accessoryId: ref.accessoryId,
+          characteristicType: canonical,
+          kind,
+          unit: null,
+          resolution,
+          prevValue: 0,
+          prevValueText: vocab[(idx + 1) % vocab.length],
+          points: [],
+          states,
+          stateBuckets: [],
+        };
+      }
+      const bucketMs = resolution === 'hourly' ? HOUR_MS : DAY_MS;
+      const stateBuckets: HistoryStateBucketData[] = [];
+      for (let t = fromTs, i = 0; t < toTs; t += bucketMs, i++) {
+        const a = vocab[i % vocab.length];
+        const b = vocab[(i + 1) % vocab.length];
+        const aMs = Math.round(bucketMs * (0.3 + noise(seed, i) * 0.6));
+        stateBuckets.push({
+          ts: t,
+          dominant: 0,
+          dominantText: aMs > bucketMs / 2 ? a : b,
+          stateMsJson: JSON.stringify({ [a]: aMs, [b]: bucketMs - aMs }),
+          transitions: 1 + Math.floor(noise(seed, i + 700) * 3),
+        });
+      }
+      return {
+        accessoryId: ref.accessoryId,
+        characteristicType: canonical,
+        kind,
+        unit: null,
+        resolution,
+        prevValue: 0,
+        prevValueText: vocab[0],
+        points: [],
+        states: [],
+        stateBuckets,
       };
     }
 

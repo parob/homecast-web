@@ -12,8 +12,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Keep in step with homecast-cloud/server/tests/test_history_policy.py
-const PROFILES_SHA256 = '3568030cc6ed2440acf8be6faaaaaaa29a74dcde6078169aecf8bb0429548b70';
-const CASES_SHA256 = '48cef8539447a2e21a4f645192f454624ef06b29b98bf13d1b5943303590ee47';
+const PROFILES_SHA256 = '93456ab115933e8159683e629c51ef919096a48340c7fb78e922d2a8e962f973';
+const CASES_SHA256 = '58150d964b915d20bd299a4c01e6e212aa4184a01cca81eda1de88c498d7bf43';
 
 const sha256 = (rel: string) =>
   createHash('sha256').update(readFileSync(join(__dirname, rel))).digest('hex');

@@ -10,10 +10,9 @@
 //
 // The policy is an allow-list: a characteristic with no profile is never
 // recorded, which is what keeps names, firmware revisions and the Eve
-// history-protocol blobs out of storage by construction. Numeric CO₂/PM
-// densities have no canonical snake_case name in CharacteristicMapper.swift
-// yet, so they cannot be profiled — add the mapper entry first, then the
-// profile.
+// history-protocol blobs out of storage by construction. A HomeKit-sourced
+// type needs its CharacteristicMapper.swift entry before a profile can ever
+// see events (the swift-mapper-pin test enforces the pairing).
 //
 // Measured context (production, 2026-08): relays report ~300 updates per
 // accessory per day, dominated by bridge polls re-reporting unchanged sensor
@@ -23,7 +22,7 @@
 import profilesJson from './profiles.json';
 import { canonicalHistoryType } from './keys';
 
-export type HistoryKind = 'numeric' | 'bool' | 'enum';
+export type HistoryKind = 'numeric' | 'bool' | 'enum' | 'string';
 
 export interface CharacteristicProfile {
   kind: HistoryKind;
@@ -52,6 +51,8 @@ export interface SeriesOverride {
 export interface SeriesRecordState {
   lastRecordedValue: number;
   lastRecordedTsMs: number;
+  /** string kind: the recorded text (lastRecordedValue is the 0 sentinel). */
+  lastRecordedText?: string;
 }
 
 export type DropReason =
@@ -63,7 +64,7 @@ export type DropReason =
   | 'deadband';
 
 export type RecordDecision =
-  | { record: true; value: number; state: SeriesRecordState }
+  | { record: true; value: number; valueText?: string; state: SeriesRecordState }
   | { record: false; reason: DropReason };
 
 const PROFILES: Record<string, CharacteristicProfile> =
@@ -85,6 +86,17 @@ export function profiledTypes(): string[] {
  * numeric axis history stores: bool → 0/1, enum → its HomeKit code, numeric →
  * float. Returns null when no numeric reading exists.
  */
+/**
+ * The string kind's normalizer: trim, refuse empties. Numbers and booleans
+ * stringify — a mode select fed 3 stores "3", which is at least honest.
+ */
+export function normalizeText(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'object') return null;
+  const text = String(raw).trim();
+  return text === '' ? null : text;
+}
+
 export function normalizeValue(kind: HistoryKind, raw: unknown): number | null {
   let value = raw;
   if (typeof value === 'string') {
@@ -120,6 +132,28 @@ export function evaluate(
 
   const enabled = override?.enabled ?? profile.record;
   if (!enabled) return { record: false, reason: 'disabled' };
+
+  // string kind: dedupe by text equality, throttle as usual, no deadband.
+  // The numeric slot carries a 0 sentinel so storage stays one shape.
+  if (profile.kind === 'string') {
+    const text = normalizeText(rawValue);
+    if (text === null) return { record: false, reason: 'unparsable' };
+    if (state === undefined) {
+      return {
+        record: true, value: 0, valueText: text,
+        state: { lastRecordedValue: 0, lastRecordedTsMs: tsMs, lastRecordedText: text },
+      };
+    }
+    if (text === state.lastRecordedText) return { record: false, reason: 'unchanged' };
+    const stringMinIntervalS = override?.minIntervalS ?? profile.minIntervalS;
+    if (stringMinIntervalS > 0 && tsMs - state.lastRecordedTsMs < stringMinIntervalS * 1000) {
+      return { record: false, reason: 'throttled' };
+    }
+    return {
+      record: true, value: 0, valueText: text,
+      state: { lastRecordedValue: 0, lastRecordedTsMs: tsMs, lastRecordedText: text },
+    };
+  }
 
   const value = normalizeValue(profile.kind, rawValue);
   if (value === null) return { record: false, reason: 'unparsable' };

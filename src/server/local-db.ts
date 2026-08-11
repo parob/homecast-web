@@ -790,7 +790,7 @@ export interface HistorySeriesRow {
   homeId: string;
   accessoryId: string;
   characteristicType: string;
-  kind: 'numeric' | 'bool' | 'enum';
+  kind: 'numeric' | 'bool' | 'enum' | 'string';
   unit?: string;
   /** User override; undefined = profile default decides. */
   enabled?: boolean;
@@ -805,6 +805,8 @@ export interface HistorySampleRow {
   /** Epoch ms. */
   ts: number;
   v: number;
+  /** string kind: the recorded text (v is the 0 sentinel). */
+  vt?: string;
   /** 0 = device-reported, 1 = relay-write announcement. */
   src: number;
 }
@@ -818,6 +820,8 @@ export interface HistoryRollupRow {
   vMax: number | null;
   vAvg: number | null;
   vLast: number;
+  /** string kind: text at bucket close (vLast is the 0 sentinel). */
+  vtLast?: string | null;
   count: number;
   stateMs: Record<string, number> | null;
   transitions: number | null;

@@ -237,17 +237,40 @@ describe('virtual accessory recording (community-automation tap)', () => {
     recordHistoryEvent(HOME, 'VIRT-2', VIRTUAL_CHARACTERISTIC['input_number'], 21.5, 0, NOW);
     // input_boolean rides power_state.
     recordHistoryEvent(HOME, 'VIRT-3', VIRTUAL_CHARACTERISTIC['input_boolean'], true, 0, NOW);
-    // input_select → virtual_mode: no profile yet (string kind is P4), the
-    // policy gate refuses — the map stays total, policy stays the arbiter.
+    // input_select → virtual_mode: string kind — the text rides `vt`, the
+    // numeric slot carries the 0 sentinel.
     recordHistoryEvent(HOME, 'VIRT-4', VIRTUAL_CHARACTERISTIC['input_select'], 'Movie Night', 0, NOW);
     await flushHistoryBuffer();
 
     const series = await db.getHistorySeries(HOME);
     expect(series.map(s => s.characteristicType).sort()).toEqual(
-      ['power_state', 'virtual_count', 'virtual_number'],
+      ['power_state', 'virtual_count', 'virtual_mode', 'virtual_number'],
     );
     const count = series.find(s => s.characteristicType === 'virtual_count');
     const samples = await db.getHistorySamples(count!.id, 0, Number.MAX_SAFE_INTEGER);
     expect(samples.map(s => s.v)).toEqual([3, 4]);
+    const mode = series.find(s => s.characteristicType === 'virtual_mode');
+    const modeSamples = await db.getHistorySamples(mode!.id, 0, Number.MAX_SAFE_INTEGER);
+    expect(modeSamples.map(s => [s.v, s.vt])).toEqual([[0, 'Movie Night']]);
+  });
+
+  it('rolls string samples into text-keyed buckets and serves them back', async () => {
+    await setHistoryHomeConfig(HOME, { enabled: true, rawRetentionDays: 30 });
+    // A mode change mid-hour, rolled at the hour boundary.
+    recordHistoryEvent(HOME, 'VIRT-4', 'virtual_mode', 'Home', 0, T0 + 10 * 60_000);
+    recordHistoryEvent(HOME, 'VIRT-4', 'virtual_mode', 'Movie Night', 0, T0 + 40 * 60_000);
+    await flushHistoryBuffer();
+    await runHistoryMaintenance(T0 + 2 * HOUR_MS);
+
+    const series = await db.getHistorySeries(HOME);
+    const mode = series.find(s => s.characteristicType === 'virtual_mode')!;
+    const rollups = await db.getHistoryRollups(mode.id, 'h', 0, Number.MAX_SAFE_INTEGER);
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0].vtLast).toBe('Movie Night');
+    expect(rollups[0].stateMs).toEqual({
+      Home: 30 * 60_000,
+      'Movie Night': 20 * 60_000,
+    });
+    expect(rollups[0].transitions).toBe(1);
   });
 });

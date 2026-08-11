@@ -20,6 +20,8 @@ export interface RawSample {
   /** Epoch ms. */
   ts: number;
   v: number;
+  /** string kind: the recorded text (v is the 0 sentinel). */
+  vt?: string;
 }
 
 export interface RollupBucket {
@@ -32,6 +34,8 @@ export interface RollupBucket {
   vAvg: number | null;
   /** Value at bucket close — the next bucket's carry. All kinds. */
   vLast: number;
+  /** string kind: text at bucket close (vLast is the 0 sentinel). */
+  vtLast?: string | null;
   /** Samples recorded in this bucket. */
   count: number;
   /** bool/enum: ms spent in each value. Keys are String(value). */
@@ -58,12 +62,15 @@ export function rollupBuckets(
   bucketMs: number,
   rangeStart: number,
   rangeEnd: number,
+  /** string kind: the text at rangeStart (pairs with `carry`'s sentinel). */
+  carryText: string | null = null,
 ): RollupBucket[] {
   const buckets: RollupBucket[] = [];
   if (samples.length === 0) return buckets;
 
   let i = 0;
   let carryValue = carry;
+  let carryTextValue = carryText;
 
   for (let bucketStart = alignToBucket(samples[0].ts, bucketMs); bucketStart < rangeEnd; bucketStart += bucketMs) {
     const bucketEnd = Math.min(bucketStart + bucketMs, rangeEnd);
@@ -79,8 +86,9 @@ export function rollupBuckets(
       continue;
     }
 
-    buckets.push(rollOneBucket(kind, inBucket, carryValue, bucketStart, bucketEnd));
+    buckets.push(rollOneBucket(kind, inBucket, carryValue, carryTextValue, bucketStart, bucketEnd));
     carryValue = inBucket[inBucket.length - 1].v;
+    carryTextValue = inBucket[inBucket.length - 1].vt ?? null;
     if (i >= samples.length) break;
   }
   return buckets;
@@ -90,14 +98,21 @@ function alignToBucket(ts: number, bucketMs: number): number {
   return Math.floor(ts / bucketMs) * bucketMs;
 }
 
+/** The state identity of a sample/carry: text for the string kind. */
+function stateKeyOf(v: number, vt?: string | null): string {
+  return vt ?? String(v);
+}
+
 function rollOneBucket(
   kind: HistoryKind,
   samples: RawSample[],
   carry: number | null,
+  carryText: string | null,
   bucketStart: number,
   bucketEnd: number,
 ): RollupBucket {
   const vLast = samples[samples.length - 1].v;
+  const vtLast = samples[samples.length - 1].vt ?? null;
 
   if (kind === 'numeric') {
     // The trace inside the bucket: carry holds from bucketStart to the first
@@ -132,29 +147,31 @@ function rollOneBucket(
       vMax: max,
       vAvg: weightedSpan > 0 ? weighted / weightedSpan : vLast,
       vLast,
+      vtLast: null,
       count: samples.length,
       stateMs: null,
       transitions: null,
     };
   }
 
-  // bool/enum: time-in-state plus transition count.
+  // bool/enum/string: time-in-state plus transition count. State identity is
+  // the KEY — the raw string for the string kind, String(code) otherwise —
+  // so the whole branch is one algebra.
   const stateMs: Record<string, number> = {};
   let transitions = 0;
-  let prevValue = carry;
+  let prevKey = carry !== null ? stateKeyOf(carry, carryText) : null;
   let prevTs = bucketStart;
   for (const s of samples) {
-    if (prevValue !== null && s.ts > prevTs) {
-      const key = String(prevValue);
-      stateMs[key] = (stateMs[key] ?? 0) + (s.ts - prevTs);
+    const key = stateKeyOf(s.v, s.vt);
+    if (prevKey !== null && s.ts > prevTs) {
+      stateMs[prevKey] = (stateMs[prevKey] ?? 0) + (s.ts - prevTs);
     }
-    if (prevValue !== null && s.v !== prevValue) transitions++;
-    prevValue = s.v;
+    if (prevKey !== null && key !== prevKey) transitions++;
+    prevKey = key;
     prevTs = s.ts;
   }
-  if (prevValue !== null && bucketEnd > prevTs) {
-    const key = String(prevValue);
-    stateMs[key] = (stateMs[key] ?? 0) + (bucketEnd - prevTs);
+  if (prevKey !== null && bucketEnd > prevTs) {
+    stateMs[prevKey] = (stateMs[prevKey] ?? 0) + (bucketEnd - prevTs);
   }
 
   return {
@@ -163,6 +180,7 @@ function rollOneBucket(
     vMax: null,
     vAvg: null,
     vLast,
+    vtLast,
     count: samples.length,
     stateMs,
     transitions,
@@ -189,6 +207,7 @@ export function mergeBuckets(
 
   let i = 0;
   let carryValue: number | null = carry ? carry.vLast : null;
+  let carryKey: string | null = carry ? stateKeyOf(carry.vLast, carry.vtLast) : null;
 
   for (let wideStart = alignToBucket(rows[0].bucket, wideMs); wideStart < rangeEnd; wideStart += wideMs) {
     const wideEnd = Math.min(wideStart + wideMs, rangeEnd);
@@ -203,6 +222,7 @@ export function mergeBuckets(
     }
 
     const vLast = inWide[inWide.length - 1].vLast;
+    const vtLast = inWide[inWide.length - 1].vtLast ?? null;
     const count = inWide.reduce((n, r) => n + r.count, 0);
 
     if (kind === 'numeric') {
@@ -244,6 +264,7 @@ export function mergeBuckets(
         vMax: max === -Infinity ? null : max,
         vAvg: weightedSpan > 0 ? weighted / weightedSpan : vLast,
         vLast,
+        vtLast: null,
         count,
         stateMs: null,
         transitions: null,
@@ -252,24 +273,22 @@ export function mergeBuckets(
       const stateMs: Record<string, number> = {};
       let transitions = 0;
 
-      let cursorValue = carryValue;
+      let cursorKey = carryKey;
       let cursorTs = wideStart;
       for (const row of inWide) {
-        if (cursorValue !== null && row.bucket > cursorTs) {
-          const key = String(cursorValue);
-          stateMs[key] = (stateMs[key] ?? 0) + (row.bucket - cursorTs);
+        if (cursorKey !== null && row.bucket > cursorTs) {
+          stateMs[cursorKey] = (stateMs[cursorKey] ?? 0) + (row.bucket - cursorTs);
         }
         for (const [key, ms] of Object.entries(row.stateMs ?? {})) {
           stateMs[key] = (stateMs[key] ?? 0) + ms;
         }
         transitions += row.transitions ?? 0;
         const span = Math.min(fineMs, wideEnd - row.bucket);
-        cursorValue = row.vLast;
+        cursorKey = stateKeyOf(row.vLast, row.vtLast);
         cursorTs = row.bucket + span;
       }
-      if (cursorValue !== null && wideEnd > cursorTs) {
-        const key = String(cursorValue);
-        stateMs[key] = (stateMs[key] ?? 0) + (wideEnd - cursorTs);
+      if (cursorKey !== null && wideEnd > cursorTs) {
+        stateMs[cursorKey] = (stateMs[cursorKey] ?? 0) + (wideEnd - cursorTs);
       }
 
       out.push({
@@ -278,6 +297,7 @@ export function mergeBuckets(
         vMax: null,
         vAvg: null,
         vLast,
+        vtLast,
         count,
         stateMs,
         transitions,
@@ -285,6 +305,7 @@ export function mergeBuckets(
     }
 
     carryValue = vLast;
+    carryKey = stateKeyOf(vLast, vtLast);
     if (i >= rows.length) break;
   }
   return out;

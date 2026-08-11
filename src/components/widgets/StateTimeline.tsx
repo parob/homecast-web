@@ -28,25 +28,42 @@ export function stateColor(value: number): string {
   return STATE_COLORS[idx];
 }
 
+// String states have no numeric identity — colour by a stable hash of the
+// text so "Movie Night" keeps its accent across ranges. Rest-y vocabulary
+// reads as idle gray, matching value-0 semantics.
+const IDLE_TEXT = new Set(['idle', 'off', 'none', 'inactive']);
+
+export function stateColorForText(text: string): string {
+  if (IDLE_TEXT.has(text.toLowerCase())) return STATE_COLORS[0];
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return STATE_COLORS[1 + (h % (STATE_COLORS.length - 1))];
+}
+
 export interface StateTimelineProps {
   fromTs: number;
   toTs: number;
   prevValue: number | null;
+  /** string kind: the LOCF seed's text. */
+  prevValueText?: string | null;
   states?: HistoryStateSpanData[];
   stateBuckets?: HistoryStateBucketData[];
-  /** Human name for a state code (from ENUM_LABELS / boolean semantics). */
-  labelFor: (value: number) => string;
+  /** Human name for a state (code from ENUM_LABELS / boolean semantics;
+   *  string-kind segments pass their text as the second argument). */
+  labelFor: (value: number, text?: string | null) => string;
 }
 
 interface Segment {
   leftPct: number;
   widthPct: number;
   value: number;
+  /** string kind: the state's text (value is the 0 sentinel). */
+  text?: string | null;
   fraction: number; // bool buckets: on-fraction; spans: 1
 }
 
 export default function StateTimeline({
-  fromTs, toTs, prevValue, states, stateBuckets, labelFor,
+  fromTs, toTs, prevValue, prevValueText, states, stateBuckets, labelFor,
 }: StateTimelineProps) {
   const span = Math.max(toTs - fromTs, 1);
 
@@ -60,6 +77,7 @@ export default function StateTimeline({
           leftPct: 0,
           widthPct: ((states[0].ts - fromTs) / span) * 100,
           value: opening,
+          text: prevValueText ?? null,
           fraction: 1,
         });
       }
@@ -71,6 +89,7 @@ export default function StateTimeline({
           leftPct: ((start - fromTs) / span) * 100,
           widthPct: ((end - start) / span) * 100,
           value: states[i].value,
+          text: states[i].valueText ?? null,
           fraction: 1,
         });
       }
@@ -90,12 +109,13 @@ export default function StateTimeline({
           leftPct: ((b.ts - fromTs) / span) * 100,
           widthPct: ((end - b.ts) / span) * 100,
           value: b.dominant,
+          text: b.dominantText ?? null,
           fraction,
         };
       });
     }
     return [];
-  }, [states, stateBuckets, prevValue, fromTs, toTs, span]);
+  }, [states, stateBuckets, prevValue, prevValueText, fromTs, toTs, span]);
 
   if (segments.length === 0) {
     return (
@@ -112,11 +132,15 @@ export default function StateTimeline({
         // much of the bucket was spent in a non-idle state, coloured by the
         // dominant one — a heat strip, not a bar chart.
         const isSpan = seg.fraction === 1 && states && states.length > 0;
-        const idle = isSpan ? seg.value === 0 : seg.fraction === 0;
-        const color = idle
-          ? stateColor(0)
-          : stateColor(seg.value === 0 ? 1 : seg.value);
-        const opacity = isSpan || idle ? 1 : Math.max(seg.fraction, 0.12);
+        const idle = seg.text != null
+          ? IDLE_TEXT.has(seg.text.toLowerCase())
+          : isSpan ? seg.value === 0 : seg.fraction === 0;
+        const color = seg.text != null
+          ? stateColorForText(seg.text)
+          : idle
+            ? stateColor(0)
+            : stateColor(seg.value === 0 ? 1 : seg.value);
+        const opacity = isSpan || idle || seg.text != null ? 1 : Math.max(seg.fraction, 0.12);
         return (
           <div
             key={i}
@@ -127,7 +151,7 @@ export default function StateTimeline({
               backgroundColor: color,
               opacity,
             }}
-            title={`${labelFor(seg.value)} — ${new Date(fromTs + (seg.leftPct / 100) * span).toLocaleString(undefined, {
+            title={`${labelFor(seg.value, seg.text)} — ${new Date(fromTs + (seg.leftPct / 100) * span).toLocaleString(undefined, {
               month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
             })}`}
           />

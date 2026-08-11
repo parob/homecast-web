@@ -643,10 +643,10 @@ export async function handleGetHistory(args: {
   const fromTs = toTs - hours * 3_600_000;
   const store = {
     getSamples: async (sid: string, from: number, to: number) =>
-      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v, vt: r.vt })),
     getLastSampleBefore: async (sid: string, ts: number) => {
       const row = await historyDb.getLastHistorySampleBefore(sid, ts);
-      return row ? { ts: row.ts, v: row.v } : undefined;
+      return row ? { ts: row.ts, v: row.v, vt: row.vt } : undefined;
     },
     getFirstSampleTs: async (sid: string) =>
       (await historyDb.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
@@ -680,14 +680,15 @@ export async function handleGetHistory(args: {
         resolution: data.resolution, values, summary,
       });
     } else {
+      // string kind: the text IS the state — emit it, not the 0 sentinel.
       const source = data.states.length > 0
-        ? data.states.map(s => [iso(s.ts), s.value])
-        : data.stateBuckets.map(b => [iso(b.ts), b.dominant]);
+        ? data.states.map(s => [iso(s.ts), s.valueText ?? s.value])
+        : data.stateBuckets.map(b => [iso(b.ts), b.dominantText ?? b.dominant]);
       series.push({
         characteristic: char.type, kind: profile.kind, unit: null,
         resolution: data.resolution,
         transitions: source,
-        openingValue: data.prevValue,
+        openingValue: data.prevValueText ?? data.prevValue,
       });
     }
   }
@@ -789,10 +790,10 @@ export async function handleQueryHistory(args: {
   const iso = (ms: number) => new Date(ms).toISOString();
   const store = {
     getSamples: async (sid: string, from: number, to: number) =>
-      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+      (await historyDb.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v, vt: r.vt })),
     getLastSampleBefore: async (sid: string, ts: number) => {
       const row = await historyDb.getLastHistorySampleBefore(sid, ts);
-      return row ? { ts: row.ts, v: row.v } : undefined;
+      return row ? { ts: row.ts, v: row.v, vt: row.vt } : undefined;
     },
     getFirstSampleTs: async (sid: string) =>
       (await historyDb.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
@@ -830,7 +831,8 @@ export async function handleQueryHistory(args: {
       if (row.kind === 'numeric') {
         entry.values = page.map(s => [iso(s.ts), s.v]);
       } else {
-        entry.transitions = page.map(s => [iso(s.ts), s.v]);
+        // string kind: the text IS the state — emit it, not the 0 sentinel.
+        entry.transitions = page.map(s => [iso(s.ts), s.vt ?? s.v]);
       }
       if (samples.length > budget) {
         entry.continue_from = iso(page[page.length - 1].ts + 1);
@@ -867,8 +869,9 @@ export async function handleQueryHistory(args: {
         if (data.resolution !== 'raw') entry.values_format = '[time, min, avg, max]';
         pointsReturned += data.points.length;
       } else if (data.states.length > 0) {
-        entry.transitions = data.states.map(s => [iso(s.ts), s.value]);
-        if (data.prevValue !== null) entry.opening_value = data.prevValue;
+        // string kind: the text IS the state — emit it, not the 0 sentinel.
+        entry.transitions = data.states.map(s => [iso(s.ts), s.valueText ?? s.value]);
+        if (data.prevValue !== null) entry.opening_value = data.prevValueText ?? data.prevValue;
         pointsReturned += data.states.length;
       } else {
         entry.buckets = data.stateBuckets.map(b => [iso(b.ts), b.transitions, b.stateMs]);

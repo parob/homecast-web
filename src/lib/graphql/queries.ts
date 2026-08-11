@@ -1078,6 +1078,7 @@ export const GET_HISTORY = gql`
       unit
       resolution
       prevValue
+      prevValueText
       points {
         ts
         min
@@ -1089,10 +1090,12 @@ export const GET_HISTORY = gql`
       states {
         ts
         value
+        valueText
       }
       stateBuckets {
         ts
         dominant
+        dominantText
         stateMsJson
         transitions
       }

@@ -102,7 +102,7 @@ import { charLabel } from '@/components/automations/format';
 import { getProfile as getHistoryProfile } from '@/history/policy';
 
 /** Profile kind for a canonical characteristic (numeric fallback is safe). */
-function getHistoryProfileKind(type: string): 'numeric' | 'bool' | 'enum' {
+function getHistoryProfileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
   return getHistoryProfile(type)?.kind ?? 'numeric';
 }
 import { DealBadge } from '@/components/widgets/DealBadge';

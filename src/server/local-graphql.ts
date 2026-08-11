@@ -165,10 +165,10 @@ function extractToken(authorization: string | undefined): string | null {
 function idbHistoryStore(): import('../history/query').HistoryStore {
   return {
     getSamples: async (sid, from, to) =>
-      (await db.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v })),
+      (await db.getHistorySamples(sid, from, to)).map(r => ({ ts: r.ts, v: r.v, vt: r.vt })),
     getLastSampleBefore: async (sid, ts) => {
       const row = await db.getLastHistorySampleBefore(sid, ts);
-      return row ? { ts: row.ts, v: row.v } : undefined;
+      return row ? { ts: row.ts, v: row.v, vt: row.vt } : undefined;
     },
     getFirstSampleTs: async (sid) =>
       (await db.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER, 1))[0]?.ts ?? null,
@@ -1213,11 +1213,13 @@ async function resolveOperation(
           unit: row?.unit ?? profile?.unit ?? null,
           resolution: data.resolution,
           prevValue: data.prevValue,
+          prevValueText: data.prevValueText ?? null,
           points: data.points.map(p => ({ ...p, __typename: 'HistoryPoint' })),
-          states: data.states.map(s => ({ ...s, __typename: 'HistoryStateSpan' })),
+          states: data.states.map(s => ({ ...s, valueText: s.valueText ?? null, __typename: 'HistoryStateSpan' })),
           stateBuckets: data.stateBuckets.map(b => ({
             ts: b.ts,
             dominant: b.dominant,
+            dominantText: b.dominantText ?? null,
             stateMsJson: JSON.stringify(b.stateMs),
             transitions: b.transitions,
             __typename: 'HistoryStateBucket',
@@ -1296,8 +1298,11 @@ async function resolveOperation(
       }
 
       const MAX_EXPORT_ROWS = 200_000;
-      const lines = ['timestamp,accessory_id,characteristic,value,source'];
+      // value_text: the string kind's payload (value holds its 0 sentinel).
+      const lines = ['timestamp,accessory_id,characteristic,value,value_text,source'];
       let truncated = false;
+      const csvText = (vt: string | undefined) =>
+        vt === undefined ? '' : `"${vt.replace(/"/g, '""')}"`;
       for (const row of series) {
         if (lines.length > MAX_EXPORT_ROWS) { truncated = true; break; }
         const samples = await db.getHistorySamples(
@@ -1305,7 +1310,7 @@ async function resolveOperation(
         );
         for (const s of samples) {
           if (lines.length > MAX_EXPORT_ROWS) { truncated = true; break; }
-          lines.push(`${new Date(s.ts).toISOString()},${row.accessoryId},${row.characteristicType},${s.v},${s.src}`);
+          lines.push(`${new Date(s.ts).toISOString()},${row.accessoryId},${row.characteristicType},${s.v},${csvText(s.vt)},${s.src}`);
         }
       }
       if (truncated) lines.push(`# truncated at ${MAX_EXPORT_ROWS} rows`);

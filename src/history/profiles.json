@@ -26,6 +26,8 @@
     "voc_density": { "kind": "numeric", "record": true, "minIntervalS": 300, "deadband": 10, "unit": "µg/m³" },
     "virtual_number": { "kind": "numeric", "record": true, "minIntervalS": 0 },
     "virtual_count": { "kind": "numeric", "record": true, "minIntervalS": 0 },
+    "virtual_mode": { "kind": "string", "record": true, "minIntervalS": 0 },
+    "virtual_timer": { "kind": "string", "record": true, "minIntervalS": 0 },
     "eve_voltage": { "kind": "numeric", "record": false, "minIntervalS": 300, "deadband": 1, "unit": "V" },
     "eve_ampere": { "kind": "numeric", "record": false, "minIntervalS": 300, "deadband": 0.1, "unit": "A" },
 

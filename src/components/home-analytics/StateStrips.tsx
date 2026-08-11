@@ -37,9 +37,10 @@ export default function StateStrips({
         fromTs={fromTs}
         toTs={toTs}
         prevValue={data.prevValue}
+        prevValueText={data.prevValueText}
         states={data.states}
         stateBuckets={data.stateBuckets}
-        labelFor={(v) => stateValueLabel(canonicalHistoryType(sel.characteristicType), v)}
+        labelFor={(v, text) => text ?? stateValueLabel(canonicalHistoryType(sel.characteristicType), v)}
       />
     </div>
   );

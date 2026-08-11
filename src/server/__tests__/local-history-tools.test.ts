@@ -101,10 +101,10 @@ describe('ExportHistory', () => {
       variables: { homeId: HOME },
     })) as { data: { exportHistory: string } };
     const lines = res.data.exportHistory.split('\n');
-    expect(lines[0]).toBe('timestamp,accessory_id,characteristic,value,source');
+    expect(lines[0]).toBe('timestamp,accessory_id,characteristic,value,value_text,source');
     expect(lines).toHaveLength(4); // header + 3 samples
     expect(lines[1]).toContain('current_temperature');
-    expect(lines[1]).toContain(',20,0');
+    expect(lines[1]).toContain(',20,,0'); // empty value_text column for numeric kinds
   });
 
   it('filters by characteristic', async () => {

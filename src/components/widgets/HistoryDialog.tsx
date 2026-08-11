@@ -37,12 +37,22 @@ const RANGES = [
 // Bool vocabulary is shared with the Analytics strips (history/labels);
 // enum labels enrich from the characteristic's own options here, where the
 // accessory's WritableChar is at hand.
-function labelForValue(char: WritableChar | undefined, type: string, value: number): string {
+function labelForValue(
+  char: WritableChar | undefined, type: string, value: number, text?: string | null,
+): string {
+  if (text != null) return text; // string kind: the text IS the label
   const bool = BOOL_STATE_LABELS[type];
   if (bool) return bool[value === 0 ? 0 : 1];
   const option = char?.options?.find(o => o.value === value);
   if (option) return option.label;
   return value === 0 ? 'Off' : value === 1 ? 'On' : String(value);
+}
+
+/** Rolled stateMs keys: numeric codes for bool/enum, the raw text for string. */
+function labelForKey(char: WritableChar | undefined, type: string, key: string): string {
+  const parsed = Number(key);
+  if (Number.isFinite(parsed) && key.trim() !== '') return labelForValue(char, type, parsed);
+  return key;
 }
 
 function formatDuration(ms: number): string {
@@ -84,29 +94,32 @@ function stateStats(
   data: HistorySeriesData,
   fromTs: number,
   toTs: number,
-): { totals: Array<[number, number]>; transitions: number } {
-  const totals = new Map<number, number>();
+): { totals: Array<[string, number]>; transitions: number } {
+  // Keyed by state IDENTITY — String(code) for bool/enum, the raw text for
+  // the string kind — the same convention the rollup stateMs uses.
+  const totals = new Map<string, number>();
   let transitions = 0;
+  const keyOf = (v: number, vt?: string | null) => vt ?? String(v);
 
   if (data.states.length > 0) {
     let prevTs = fromTs;
-    let prevValue = data.prevValue;
+    let prevKey = data.prevValue !== null ? keyOf(data.prevValue, data.prevValueText) : null;
     for (const s of data.states) {
-      if (prevValue !== null) totals.set(prevValue, (totals.get(prevValue) ?? 0) + (s.ts - prevTs));
-      if (prevValue !== null && s.value !== prevValue) transitions++;
-      else if (prevValue === null) transitions++;
+      const key = keyOf(s.value, s.valueText);
+      if (prevKey !== null) totals.set(prevKey, (totals.get(prevKey) ?? 0) + (s.ts - prevTs));
+      if (prevKey !== null && key !== prevKey) transitions++;
+      else if (prevKey === null) transitions++;
       prevTs = s.ts;
-      prevValue = s.value;
+      prevKey = key;
     }
-    if (prevValue !== null) totals.set(prevValue, (totals.get(prevValue) ?? 0) + (toTs - prevTs));
+    if (prevKey !== null) totals.set(prevKey, (totals.get(prevKey) ?? 0) + (toTs - prevTs));
   } else {
     for (const b of data.stateBuckets) {
       transitions += b.transitions;
       try {
         const stateMs = JSON.parse(b.stateMsJson) as Record<string, number>;
         for (const [key, ms] of Object.entries(stateMs)) {
-          const v = Number(key);
-          totals.set(v, (totals.get(v) ?? 0) + ms);
+          totals.set(key, (totals.get(key) ?? 0) + ms);
         }
       } catch { /* cell without detail */ }
     }
@@ -216,14 +229,15 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               fromTs={fromTs}
               toTs={toTs}
               prevValue={s.prevValue}
+              prevValueText={s.prevValueText}
               states={s.states}
               stateBuckets={s.stateBuckets}
-              labelFor={(v) => labelForValue(char, s.characteristicType, v)}
+              labelFor={(v, text) => labelForValue(char, s.characteristicType, v, text)}
             />
             {states && states.totals.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
-                {states.totals.slice(0, 3).map(([v, ms]) =>
-                  `${labelForValue(char, s.characteristicType, v)} ${formatDuration(ms)}`,
+                {states.totals.slice(0, 3).map(([key, ms]) =>
+                  `${labelForKey(char, s.characteristicType, key)} ${formatDuration(ms)}`,
                 ).join(' · ')}
                 {states.transitions > 0 && ` · ${states.transitions} changes`}
               </p>
