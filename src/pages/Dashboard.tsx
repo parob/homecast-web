@@ -158,7 +158,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, ArrowLeft, LineChart} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7808,17 +7808,9 @@ const Dashboard = () => {
         >
           <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
             <DialogTitle className="text-base flex items-center gap-2">
-              {analyticsNav.canGoBack && (
-                <button
-                  className="p-1 -ml-1 rounded hover:bg-muted"
-                  onClick={analyticsNav.back}
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-              )}
-              {/* The breadcrumb below names the home and the place; the title
-                  only has to say what this dialog is. */}
+              {/* No back arrow: the breadcrumb below walks up, the tree
+                  jumps anywhere, and the ✕ closes. A fourth way out of a
+                  dialog is just another thing in the corner. */}
               Analytics
             </DialogTitle>
           </DialogHeader>

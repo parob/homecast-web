@@ -81,21 +81,26 @@ export interface EChartsTimeChartProps {
   highlightKeys?: string[] | null;
   /** The reverse trip: the line under the pointer, so the legend can echo it. */
   onSeriesHover?: (key: string | null) => void;
+  /** Clicking a line pins it — the same highlight, but it stays. */
+  onSeriesSelect?: (key: string | null) => void;
 }
 
 export default function EChartsTimeChart({
   series, band, bandLabel, axis, fromTs, toTs, normalize, height = 320, groupId, hideSlider = false,
-  highlightKeys, onSeriesHover,
+  highlightKeys, onSeriesHover, onSeriesSelect,
 }: EChartsTimeChartProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   // Latest callback/map without re-registering chart listeners on every render.
   const hoverCbRef = useRef(onSeriesHover);
   hoverCbRef.current = onSeriesHover;
+  const selectCbRef = useRef(onSeriesSelect);
+  selectCbRef.current = onSeriesSelect;
   const keyByIndexRef = useRef(new Map<number, string>());
   // Enough to answer "which line is the pointer nearest?" without asking
   // ECharts, which only reports a hover when you are exactly on the stroke.
   const tracksRef = useRef<Array<{ key: string; axisIndex: number; pairs: Array<[number, number]> }>>([]);
+  const lastHoverRef = useRef<string | null>(null);
 
   // Axis plan: units in appearance order. Without a pinned axis the first
   // goes left, the second right, and any more borrow the left (Normalize is
@@ -390,9 +395,9 @@ export default function EChartsTimeChart({
     // the eye does: of the lines drawn here, which passes closest to the
     // cursor right now? Nothing within 28px means nothing is being pointed at.
     const zr = chart.getZr();
-    const onMove = (e: { offsetX: number; offsetY: number }) => {
+    const nearestTo = (e: { offsetX: number; offsetY: number }): string | null => {
       const pointInGrid = chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY]);
-      if (!pointInGrid) { hoverCbRef.current?.(null); return; }
+      if (!pointInGrid) return null;
       const ts = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number;
       let best: { key: string; distance: number } | null = null;
       for (const track of tracksRef.current) {
@@ -408,15 +413,35 @@ export default function EChartsTimeChart({
         const distance = Math.abs(py - e.offsetY);
         if (!best || distance < best.distance) best = { key: track.key, distance };
       }
-      hoverCbRef.current?.(best && best.distance <= 28 ? best.key : null);
+      return best && best.distance <= 28 ? best.key : null;
+    };
+
+    const onMove = (e: { offsetX: number; offsetY: number }) => {
+      const key = nearestTo(e);
+      // Every pixel of movement would otherwise set state, re-render the view
+      // and rebuild every chart in it — the mouse would drag the whole page
+      // behind it. Speak only when the answer changes.
+      if (key === lastHoverRef.current) return;
+      lastHoverRef.current = key;
+      hoverCbRef.current?.(key);
+    };
+    // Clicking the same line again lets it go; clicking empty plot clears.
+    const onClick = (e: { offsetX: number; offsetY: number }) => {
+      selectCbRef.current?.(nearestTo(e));
     };
     zr.on('mousemove', onMove);
-    zr.on('globalout', () => hoverCbRef.current?.(null));
+    zr.on('click', onClick);
+    zr.on('globalout', () => {
+      if (lastHoverRef.current === null) return;
+      lastHoverRef.current = null;
+      hoverCbRef.current?.(null);
+    });
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(host);
     return () => {
       observer.disconnect();
       zr.off('mousemove', onMove);
+      zr.off('click', onClick);
       chart.dispose();
       chartRef.current = null;
     };

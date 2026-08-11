@@ -83,7 +83,11 @@ export default function RoomStackView({
   // temperature must also pick out its humidity in the panel below, and those
   // are different series. Identity is the accessory — or the room, when the
   // whole view is per-room averages.
-  const [highlight, setHighlight] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  // Clicking a line pins it: the same highlight, except it survives the mouse
+  // leaving, so you can look at the numbers underneath without losing it.
+  const [pinned, setPinned] = useState<string | null>(null);
+  const highlight = hovered ?? pinned;
 
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
@@ -97,7 +101,15 @@ export default function RoomStackView({
     [roomSeries, accessoryInfo],
   );
   const powerSels = useMemo(
-    () => buildSels(roomSeries.filter(s => canonicalHistoryType(s.characteristicType) === 'power_state'), accessoryInfo),
+    () => buildSels(
+      roomSeries.filter(s =>
+        canonicalHistoryType(s.characteristicType) === 'power_state'
+        // Lightbulbs only. Every outlet, switch and fan also reports power,
+        // and counting those made a home of nine bulbs claim twenty-one
+        // lights — while fetching every one of their histories to do it.
+        && accessoryInfo.get(s.accessoryId.toUpperCase())?.widgetType === 'lightbulb'),
+      accessoryInfo,
+    ),
     [roomSeries, accessoryInfo],
   );
 
@@ -149,17 +161,33 @@ export default function RoomStackView({
     return found.length > 0 ? [{ complement, sels: buildSels(found, accessoryInfo) }] : [];
   }), [roomSeries, accessoryInfo]);
 
+  // Everything on screen, and nothing else. Complements used to be fetched
+  // whether or not their tick was on, which on a whole home meant hundreds of
+  // series nobody had asked to see — and the fetch is sequential, so each one
+  // cost real seconds.
   const allSels = useMemo(
     () => [
-      ...panels.flatMap(p => [...p.sels, ...p.offers.flatMap(o => o.sels)]),
-      ...stripSels, ...lightSels, ...powerSels, ...lightingOffers.flatMap(o => o.sels),
+      ...panels.flatMap(p => [
+        ...p.sels,
+        ...p.offers.filter(o => isOn(p.measure.id, o.complement.id)).flatMap(o => o.sels),
+      ]),
+      ...stripSels, ...lightSels, ...powerSels,
+      ...lightingOffers.filter(o => isOn('lighting', o.complement.id)).flatMap(o => o.sels),
     ],
-    [panels, stripSels, lightSels, powerSels, lightingOffers],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [panels, stripSels, lightSels, powerSels, lightingOffers, complements],
   );
-  const refs = useMemo<HistorySeriesRefInput[]>(
-    () => allSels.map(s => ({ accessoryId: s.accessoryId, characteristicType: s.characteristicType })),
-    [allSels],
-  );
+  const refs = useMemo<HistorySeriesRefInput[]>(() => {
+    // One accessory's power state can be both a strip and a light; asking for
+    // it twice is a whole extra round trip for a duplicate.
+    const seen = new Set<string>();
+    return allSels.flatMap(s => {
+      const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ accessoryId: s.accessoryId, characteristicType: s.characteristicType }];
+    });
+  }, [allSels]);
   const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
     enabled: refs.length > 0,
   });
@@ -345,7 +373,11 @@ export default function RoomStackView({
           groupId={groupId}
           hideSlider={!isLastChart}
           highlightKeys={litKeys}
-          onSeriesHover={(key) => setHighlight(key ? identityOfKey(key) : null)}
+          onSeriesHover={(key) => setHovered(key ? identityOfKey(key) : null)}
+          onSeriesSelect={(key) => {
+            const id = key ? identityOfKey(key) : null;
+            setPinned(prev => (id && prev === id ? null : id));
+          }}
         />
         <ChartLegend
           entries={chartSeries.map(s => {
@@ -364,7 +396,7 @@ export default function RoomStackView({
             };
           })}
           highlightKeys={litKeys}
-          onHighlight={(keys) => setHighlight(keys && keys.length > 0 ? identityOfKey(keys[0]) : null)}
+          onHighlight={(keys) => setHovered(keys && keys.length > 0 ? identityOfKey(keys[0]) : null)}
         />
       </AnalyticsPanel>
     );

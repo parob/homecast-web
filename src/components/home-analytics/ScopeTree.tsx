@@ -111,27 +111,32 @@ export default function ScopeTree({
       </div>
 
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
-        {/* Other homes sit above this one's rooms, collapsed: only the home
-            you are in has its tree built, so switching is a click rather than
-            a fetch of everything. */}
-        {homes.filter(h => h.id !== homeId).map(home => (
-          <button
-            key={home.id}
-            className={`${rowBase} ${plain}`}
-            onClick={() => onSelectHome?.(home.id)}
-          >
-            <Home className="h-3.5 w-3.5 shrink-0 opacity-60" />
-            <span className="truncate">{home.name}</span>
-          </button>
-        ))}
-        <button
-          className={`${rowBase} ${scope.level === 'home' ? selected : plain}`}
-          onClick={() => onSelect({ level: 'home' })}
-        >
-          <Home className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{homeName}</span>
-        </button>
-
+        {(homes.length > 0 ? homes : [{ id: homeId ?? '', name: homeName }]).map(home => {
+          const isCurrent = home.id === homeId || homes.length === 0;
+          return (
+            <div key={home.id || 'home'}>
+              {/* A home expands like a room, and expanding another one IS
+                  switching to it — only the home you are in has its tree
+                  built, so there is nothing to show until you go there. This
+                  is how the main navigation behaves too. */}
+              <div className={`${rowBase} ${isCurrent && scope.level === 'home' ? selected : plain}`}>
+                <button
+                  className="rounded p-0.5 hover:bg-muted"
+                  onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
+                  aria-label={isCurrent ? `Collapse ${home.name}` : `Expand ${home.name}`}
+                >
+                  <ChevronRight className={`h-3 w-3 transition-transform ${isCurrent ? 'rotate-90' : ''}`} />
+                </button>
+                <Home className="h-3.5 w-3.5 shrink-0" />
+                <button
+                  className="min-w-0 flex-1 truncate text-left"
+                  onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
+                >
+                  {home.name}
+                </button>
+              </div>
+              {isCurrent && (
+                <div className="pl-2">
         {rooms.map(room => {
           const open = isOpen(room.room);
           const isRoomScope = scope.level === 'room' && scope.room === room.room;
@@ -209,6 +214,11 @@ export default function ScopeTree({
                   </button>
                 );
               })}
+            </div>
+          );
+        })}
+                </div>
+              )}
             </div>
           );
         })}

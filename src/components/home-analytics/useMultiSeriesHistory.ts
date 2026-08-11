@@ -46,19 +46,34 @@ export function useMultiSeriesHistory(
 
     const fetchAll = async (from: number, to: number, base = 0): Promise<HistorySeriesData[]> => {
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
+      const chunks: HistorySeriesRefInput[][] = [];
+      for (let i = 0; i < refs.length; i += 6) chunks.push(refs.slice(i, i + 6));
+
+      // Sequentially, a home of 688 series is 115 round trips end to end —
+      // half a minute of waiting for a relay that could have answered several
+      // at once. Six in flight keeps it well inside what a relay and the
+      // browser's connection limit will take.
       const out: HistorySeriesData[] = [];
-      for (let i = 0; i < refs.length; i += 6) {
-        const chunk = refs.slice(i, i + 6);
-        const result = await client.query<{ history: HistorySeriesData[] }>({
-          query: GET_HISTORY,
-          variables: { homeId, series: chunk, fromTs: from, toTs: to, maxPoints },
-          fetchPolicy: 'network-only',
-        });
-        out.push(...(result.data?.history ?? []));
-        // base offsets the comparison pass, or its chunks would count from
-        // zero again and the bar would walk backwards halfway through.
-        if (!cancelled) setProgress(p => ({ ...p, done: Math.min(base + i + chunk.length, p.total) }));
-      }
+      let done = 0;
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const index = next++;
+          if (index >= chunks.length || cancelled) return;
+          const chunk = chunks[index];
+          const result = await client.query<{ history: HistorySeriesData[] }>({
+            query: GET_HISTORY,
+            variables: { homeId, series: chunk, fromTs: from, toTs: to, maxPoints },
+            fetchPolicy: 'network-only',
+          });
+          out.push(...(result.data?.history ?? []));
+          done += chunk.length;
+          // base offsets the comparison pass, or its chunks would count from
+          // zero again and the bar would walk backwards halfway through.
+          if (!cancelled) setProgress(p => ({ ...p, done: Math.min(base + done, p.total) }));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, worker));
       return out;
     };
 
