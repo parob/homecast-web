@@ -238,7 +238,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         <DialogHeader>
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 truncate">{target?.accessory?.name ?? target?.group?.name ?? 'History'}</span>
+            <span className="flex-1 truncate">{target?.accessory?.name ?? target?.group?.name ?? 'Analytics'}</span>
             <button
               onClick={() => {
                 const accessory = target?.accessory;
@@ -275,7 +275,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         {!historyEnabled ? (
           <div className="py-8 text-center space-y-2">
             <p className="text-sm text-muted-foreground">
-              History is off for this home. Nothing is being recorded.
+              Analytics is off for this home. Nothing is being recorded.
             </p>
             {onOpenSettings && (
               <button className="text-sm text-primary underline" onClick={onOpenSettings}>
@@ -300,7 +300,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
           </div>
         ) : !hasAnyData ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No history recorded for this range yet — charts fill in as the
+            Nothing recorded for this range yet — charts fill in as the
             accessory reports changes.
           </p>
         ) : (

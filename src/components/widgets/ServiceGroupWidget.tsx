@@ -20,6 +20,7 @@ import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useHistory } from '@/contexts/HistoryContext';
+import ExpandedAnalyticsBar from './ExpandedAnalyticsBar';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -935,6 +936,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               className="absolute inset-0 z-50 pointer-events-auto cursor-default"
               onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
             />
+          )}
+          {canShowHistory && (
+            <ExpandedAnalyticsBar onClick={() => openGroupHistory(group)} />
           )}
         </CardContent>
       </AnimatedCollapse>

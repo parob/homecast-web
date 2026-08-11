@@ -695,14 +695,14 @@ const Index = () => {
               image: '/images/features/webhooks.png', imageAlt: 'Webhooks management', reversed: true,
             },
             {
-              title: 'Accessory History & Analytics',
-              description: 'Opt-in recording of how your home changes over time. Temperature, humidity, activity — charted per accessory or compared across a room.',
+              title: 'Home Analytics',
+              description: 'Opt-in recording of how your home changes over time, turned into insights: which room runs warm, what is busier than usual, which batteries are about to die.',
               details: [
-                'Off by default: you choose every accessory and characteristic',
-                'Home Analytics compares sensors and rooms on one graph',
+                'Off by default, on or off per home — nothing recorded until you say so',
+                'Highlights surface what changed; charts compare rooms and accessories',
                 'Export everything as CSV, delete everything in one tap',
               ],
-              image: '/images/features/history.png', imageAlt: 'Home Analytics comparing room sensors', reversed: false,
+              image: '/images/features/history.png', imageAlt: 'Home Analytics highlights and category cards', reversed: false,
             },
             {
               title: 'Smart Deals',

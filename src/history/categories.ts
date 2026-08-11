@@ -219,6 +219,19 @@ export function categoryOf(type: string, opts?: { isVirtualAccessory?: boolean }
   return CATEGORY_OF[canonicalHistoryType(type)] ?? 'other';
 }
 
+/**
+ * HomeKit's "Default Room" is where unassigned accessories land — it is a
+ * bucket, not a place, and its readings (a boiler cupboard, a spare sensor
+ * in a drawer) skew the room picture. Analytics treats it as roomless
+ * everywhere: no chip, no room-average line, no entry in the warmest/
+ * coolest summary.
+ */
+export const HIDDEN_ROOM_NAMES = new Set(['default room']);
+
+export function isHiddenRoom(room: string | null | undefined): boolean {
+  return !!room && HIDDEN_ROOM_NAMES.has(room.trim().toLowerCase());
+}
+
 export interface AccessoryInfoEntry {
   name: string;
   room: string | null;
@@ -286,7 +299,7 @@ export function organizeRecorded(
     const info = accessoryInfo.get(accessoryKey);
     const cat = ensure(categoryOf(s.characteristicType, { isVirtualAccessory: info?.isVirtual }));
     cat.series.push(s);
-    const room = info?.room ?? null;
+    const room = isHiddenRoom(info?.room) ? null : (info?.room ?? null);
     const list = cat.byRoom.get(room) ?? [];
     list.push(s);
     cat.byRoom.set(room, list);
@@ -307,7 +320,7 @@ export function organizeRecorded(
         cat.monitoring.push({
           accessoryId,
           accessoryName: info?.name ?? accessoryId,
-          room: info?.room ?? null,
+          room: isHiddenRoom(info?.room) ? null : (info?.room ?? null),
           characteristicType: canonical,
         });
       }

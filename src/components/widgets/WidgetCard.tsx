@@ -22,6 +22,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
 import { WidgetWrapper } from './WidgetWrapper';
+import ExpandedAnalyticsBar from './ExpandedAnalyticsBar';
 
 // Context for passing widget colors to child components
 export interface WidgetColorContextType {
@@ -467,18 +468,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             >
               {headerContent}
             </div>
-            {expanded && canShowHistory && accessory && (
-              // The expanded panel is where you study a device — history is
-              // one tap away instead of a trip through the context menu.
-              <button
-                className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                onClick={(e) => { e.stopPropagation(); openHistory(accessory); }}
-                aria-label="Analytics"
-                title="Analytics"
-              >
-                <LineChart className="h-4 w-4" />
-              </button>
-            )}
             {effectiveHeaderAction && (
               <div
                 className={`relative shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
@@ -496,6 +485,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </div>
         )}
       </CardHeader>
+      {expanded && canShowHistory && accessory && !children && !showHero && (
+        // Content-less widgets (a sensor tile) still deserve the affordance.
+        <div className="px-5 pb-5 -mt-2">
+          <ExpandedAnalyticsBar onClick={() => openHistory(accessory)} />
+        </div>
+      )}
       {(children || showHero) && (
         <AnimatedCollapse open={!effectiveCompact && showChildren}>
           <CardContent
@@ -529,6 +524,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 />
               )}
             </div>
+            {expanded && canShowHistory && accessory && (
+              // Footer, not a header icon: the top-right slot belongs to the
+              // widget's own control.
+              <ExpandedAnalyticsBar onClick={() => openHistory(accessory)} />
+            )}
           </CardContent>
         </AnimatedCollapse>
       )}

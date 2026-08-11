@@ -52,16 +52,15 @@ const Privacy = () => {
                   <li>Commands you send to accessories</li>
                 </ul>
 
-                <h3 className="text-base font-medium mt-4 mb-2">Accessory History (opt-in)</h3>
+                <h3 className="text-base font-medium mt-4 mb-2">Analytics (opt-in)</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">
-                  History is off by default. If you turn it on for a home (Settings → Homes → the home), we record
+                  Analytics is off by default. If you turn it on for a home (Settings → Homes → the home), we record
                   how the characteristics you choose change over time — for example temperature readings
                   or when a light switched on — so we can show you charts. Recorded samples are kept
                   indefinitely, alongside hourly and daily summaries that keep long-range charts fast.
-                  You can exclude any accessory or characteristic, export your history, and
-                  delete all of it at any time from the same settings screen; deleting your account
-                  deletes it too. In the Community Edition, history never reaches our servers at all —
-                  it is stored only on your own Mac.
+                  You can export your recorded data or delete all of it at any time from the same
+                  settings screen; deleting your account deletes it too. In the Community Edition,
+                  recorded data never reaches our servers at all — it is stored only on your own Mac.
                 </p>
 
                 <h3 className="text-base font-medium mt-4 mb-2">Device Product Information</h3>

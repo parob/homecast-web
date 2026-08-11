@@ -293,14 +293,14 @@ export default function ChartPanel({
               {band && (
                 <p className="text-[11px] text-muted-foreground mb-1">
                   {roomAggregate
-                    ? 'Bold line = home average · shaded = min–max across rooms · thin lines = room averages'
+                    ? 'Bold line = Home Average · shaded = min–max across rooms · thin lines = room averages'
                     : 'Bold line = average across sensors · shaded = min–max range · thin lines = individual sensors'}
                 </p>
               )}
               <ExplorerChart
                 series={numericSeries}
                 band={band}
-                bandLabel={roomAggregate ? 'home average' : 'average'}
+                bandLabel={roomAggregate ? 'Home Average' : 'Average'}
                 fromTs={fromTs}
                 toTs={toTs}
                 normalize={normalize}

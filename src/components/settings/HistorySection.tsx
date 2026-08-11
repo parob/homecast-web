@@ -6,15 +6,17 @@ import { SET_HOME_HISTORY_ENABLED, PURGE_HISTORY } from '@/lib/graphql/mutations
 import { isCommunity } from '@/lib/config';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { saveTextFile } from '@/lib/saveFile';
+import { toast } from '@/hooks/use-toast';
 import type { HistoryStorageStatsData } from '@/lib/graphql/types';
 
 /**
- * Per-home History settings — ONE toggle, storage figures, export and the
+ * Per-home Analytics settings — ONE toggle, storage figures, export and the
  * delete-everything button the privacy story requires. Lives on the home's
  * own settings page (Settings → Homes → home), where a per-home switch
- * belongs. The old standalone History tab listed every accessory and
- * characteristic with its own switch — hundreds of rows on a real home;
- * per-characteristic control remains available through the API.
+ * belongs. "History" survives only in the API and storage layer (get_history,
+ * historyStorageStats, history_sample) — everything a person reads says
+ * Analytics.
  */
 
 function formatBytes(bytes: number): string {
@@ -43,16 +45,25 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
     try {
       const result = await exportHistory({ variables: { homeId: home.id } });
       const csv = result.data?.exportHistory;
-      if (!csv) return;
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `homecast-history-${home.name.toLowerCase().replace(/\s+/g, '-')}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (!csv) {
+        toast({ title: 'Nothing to export', description: 'No data recorded for this home yet.' });
+        return;
+      }
+      const filename = `homecast-analytics-${home.name.toLowerCase().replace(/\s+/g, '-')}.csv`;
+      // A blob download silently does nothing in the Mac app's WebView —
+      // the helper picks a path that actually works there.
+      const outcome = await saveTextFile(filename, csv, 'text/csv');
+      if (outcome === 'copied') {
+        toast({
+          title: 'Copied to clipboard',
+          description: 'This app build can\'t save files directly — paste into a spreadsheet or text file.',
+        });
+      } else if (outcome === 'failed') {
+        toast({ title: 'Export failed', description: 'Could not save or copy the data.', variant: 'destructive' });
+      }
     } catch (e) {
       console.error('[HomeHistorySettings] export failed', e);
+      toast({ title: 'Export failed', description: String(e), variant: 'destructive' });
     }
   };
 
@@ -70,7 +81,7 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">History</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Analytics</p>
 
       {!stats ? (
         <div className="py-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -80,13 +91,14 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
         <>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm">Record history</p>
+              <p className="text-sm">Analytics</p>
               <p className="text-xs text-muted-foreground">
+                Record how accessories change over time to chart and analyse.{' '}
                 {stats.enabled
-                  ? `${stats.seriesCount} characteristics · ${stats.sampleRows.toLocaleString()} samples · ~${formatBytes(stats.estBytes)}`
+                  ? `${stats.seriesCount} characteristics · ${stats.sampleRows.toLocaleString()} readings · ~${formatBytes(stats.estBytes)}`
                   : isCommunity
-                    ? 'Off. When on, recordings stay on this Mac and never leave your home.'
-                    : 'Off. When on, recordings are stored in your Homecast Cloud account.'}
+                    ? 'Recordings stay on this Mac and never leave your home.'
+                    : 'Recordings are stored in your Homecast Cloud account.'}
               </p>
             </div>
             <Switch
@@ -124,7 +136,7 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
                       })
                     }
                   >
-                    Delete all history
+                    Delete all data
                   </Button>
                   <Button
                     variant="outline"
@@ -144,7 +156,7 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
                   disabled={busy}
                   onClick={() => setConfirmDelete(true)}
                 >
-                  Delete history…
+                  Delete data…
                 </Button>
               )}
             </div>

@@ -8,6 +8,7 @@
 // LiveAccessory shape so the mock and the real dashboard feed the same code.
 
 import { canonicalHistoryType } from './keys';
+import { isHiddenRoom } from './categories';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 
 export interface LiveAccessory {
@@ -74,7 +75,7 @@ export function climateSummary(live: LiveAccessory[]): ClimateSummary {
     if (temp === null) continue;
     sum += temp;
     n++;
-    const room = acc.room ?? 'Elsewhere';
+    const room = isHiddenRoom(acc.room) ? 'Elsewhere' : (acc.room ?? 'Elsewhere');
     const entry = byRoom.get(room) ?? { sum: 0, n: 0 };
     entry.sum += temp;
     entry.n++;

@@ -723,6 +723,30 @@ export const HomeKit = {
     return bridge.call('notification.requestPermission');
   },
 
+  // ---- Files ----
+
+  /**
+   * Whether the running app build can save a file natively. Older builds
+   * answer with an error, which is the honest "no" — callers fall back.
+   */
+  async canSaveFile(): Promise<boolean> {
+    const bridge = getNativeBridge();
+    if (!bridge) return false;
+    try {
+      const result = await bridge.call('file.canSave') as { canSave?: boolean } | undefined;
+      return Boolean(result?.canSave);
+    } catch {
+      return false;
+    }
+  },
+
+  /** Save text through the native export sheet. */
+  async saveFile(filename: string, contents: string, mimeType: string): Promise<{ success: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('file.save', { filename, contents, mimeType });
+  },
+
   /**
    * Get the APNs device token (null if not registered)
    */

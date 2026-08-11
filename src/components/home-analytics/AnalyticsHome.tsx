@@ -141,7 +141,7 @@ export default function AnalyticsHome({
       category: 'climate',
       title: 'Climate',
       headline: `${climate.avgTemp!.toFixed(1)}°`,
-      headlineSuffix: 'home average',
+      headlineSuffix: 'Home Average',
       sub: climate.rooms.length >= 2
         ? `warmest: ${climate.warmest!.room} (${climate.warmest!.temp.toFixed(1)}°) · coolest: ${climate.coldest!.room} (${climate.coldest!.temp.toFixed(1)}°)`
         : `${climate.sensorCount} sensor${climate.sensorCount === 1 ? '' : 's'}`,
@@ -153,7 +153,7 @@ export default function AnalyticsHome({
       category: 'activity',
       title: 'Activity',
       headline: String(activityToday.total),
-      headlineSuffix: 'events today',
+      headlineSuffix: 'Events Today',
       sub: activityToday.busiest
         ? `busiest: ${activityToday.busiest.room} (${activityToday.busiest.events})`
         : 'quiet so far today',
@@ -164,7 +164,7 @@ export default function AnalyticsHome({
       category: 'energy',
       title: 'Energy & Usage',
       headline: energy.watts !== null ? `${Math.round(energy.watts)}W` : String(energy.onCount),
-      headlineSuffix: energy.watts !== null ? 'right now' : 'on now',
+      headlineSuffix: energy.watts !== null ? 'Right Now' : 'On Now',
       sub: `${energy.onCount} of ${energy.switchedCount} switched accessories on`,
       spark: wattsSpark,
     });
@@ -174,7 +174,7 @@ export default function AnalyticsHome({
       category: 'battery',
       title: 'Battery',
       headline: `${Math.round(battery.lowest!.level)}%`,
-      headlineSuffix: `lowest — ${battery.lowest!.name}`,
+      headlineSuffix: `Lowest — ${battery.lowest!.name}`,
       sub: battery.lowCount > 0
         ? `${battery.lowCount} below 20%`
         : `${battery.count} batteries · all healthy`,
@@ -244,8 +244,8 @@ export default function AnalyticsHome({
       )}
 
       <p className="text-[10px] text-muted-foreground">
-        Computed from what your home records — opt-in, per accessory
-        (Settings → Homes → your home). Headlines are live values; trends are today's
+        Computed from what your home records — opt-in per home (Settings →
+        Homes → your home). Headlines are live values; trends are today's
         recordings.
       </p>
     </div>

@@ -34,10 +34,10 @@ const FEATURES: Feature[] = [
     imageAlt: 'Webhooks management with delivery stats',
   },
   {
-    title: 'Accessory History',
-    description: 'Opt-in charts of temperature, humidity, and activity. Compare sensors and rooms in Home Analytics.',
+    title: 'Home Analytics',
+    description: 'Opt-in recording turned into insights — outlier rooms, unusual activity, dying batteries — with charts per room and accessory.',
     image: '/images/features/history.png',
-    imageAlt: 'Home Analytics comparing a room\'s sensors over time',
+    imageAlt: 'Home Analytics highlights and category cards',
   },
   {
     title: 'Smart Deals',

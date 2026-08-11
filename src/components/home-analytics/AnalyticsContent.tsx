@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
-import { organizeRecorded, type AccessoryInfoEntry } from '@/history/categories';
+import { isHiddenRoom, organizeRecorded, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
 import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
 import ActivityView from './ActivityView';
@@ -55,13 +55,17 @@ export default function AnalyticsContent({
     const map = new Map<string, AccessoryInfoEntry>();
     if (mock) {
       for (const m of mockAccessories()) {
-        map.set(m.accessoryId.toUpperCase(), { name: m.name, room: m.room, isVirtual: m.isVirtual });
+        map.set(m.accessoryId.toUpperCase(), {
+          name: m.name, room: isHiddenRoom(m.room) ? null : m.room, isVirtual: m.isVirtual,
+        });
       }
     } else {
       for (const acc of accessories ?? []) {
         map.set(acc.id.toUpperCase(), {
           name: acc.name,
-          room: acc.roomName ?? null,
+          // Default Room is a bucket, not a place — analytics treats it as
+          // roomless so it never becomes a chip or a room-average line.
+          room: isHiddenRoom(acc.roomName) ? null : (acc.roomName ?? null),
           isVirtual: Boolean((acc as { isVirtual?: boolean }).isVirtual),
         });
       }
@@ -95,7 +99,9 @@ export default function AnalyticsContent({
         id: m.accessoryId, name: m.name, room: m.room, isVirtual: m.isVirtual, values: m.values ?? {},
       }));
     }
-    return liveFromHomeKit(accessories ?? []);
+    return liveFromHomeKit(accessories ?? []).map(a => (
+      isHiddenRoom(a.room) ? { ...a, room: null } : a
+    ));
   }, [accessories, mock]);
 
   const organized = useMemo(
