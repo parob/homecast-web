@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
@@ -60,10 +60,18 @@ interface HistoryProviderProps {
   homeIds?: string[];
   onOpenHistory?: (target: HistoryTarget) => void;
   onOpenAnalytics?: (scope: AnalyticsScope) => void;
+  /**
+   * The homes that record, as the poll learns them. The Analytics tree lists
+   * them so you can switch home without leaving the screen, and the host owns
+   * that dialog — it cannot consume the provider it renders.
+   */
+  onRecordingHomesChange?: (homeIds: string[]) => void;
   children: React.ReactNode;
 }
 
-export function HistoryProvider({ homeId, homeIds, onOpenHistory, onOpenAnalytics, children }: HistoryProviderProps) {
+export function HistoryProvider({
+  homeId, homeIds, onOpenHistory, onOpenAnalytics, onRecordingHomesChange, children,
+}: HistoryProviderProps) {
   const mock = isMockHistoryEnabled();
   const client = useApolloClient();
 
@@ -94,6 +102,16 @@ export function HistoryProvider({ homeId, homeIds, onOpenHistory, onOpenAnalytic
     const timer = setInterval(() => void load(), 300_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [client, homeIdsKey, mock]);
+
+  const notifyRef = useRef(onRecordingHomesChange);
+  notifyRef.current = onRecordingHomesChange;
+  useEffect(() => {
+    if (mock) {
+      notifyRef.current?.(homeIdsKey ? homeIdsKey.split(',') : []);
+      return;
+    }
+    notifyRef.current?.([...enabledByHome.entries()].filter(([, on]) => on).map(([id]) => id));
+  }, [enabledByHome, mock, homeIdsKey]);
 
   const analyticsAvailableFor = useCallback((forHomeId: string | undefined | null) => {
     if (mock) return true;

@@ -1,12 +1,10 @@
 import { useMemo } from 'react';
-import { ChevronRight } from 'lucide-react';
 import type { WritableChar } from '@/components/automations/characteristics';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { LiveAccessory } from '@/history/summaries';
 import AccessoryScopeView from './AccessoryScopeView';
 import CustomView from './CustomView';
 import GroupHistorySections from './GroupHistorySections';
-import HomeOverview from './HomeOverview';
 import RoomStackView from './RoomStackView';
 import type { AnalyticsScope, AnalyticsSettings, ScopeTreeModel } from './scope';
 import type { ExplorerView } from './types';
@@ -55,34 +53,22 @@ export default function ScopeDashboard({
   const enabled = useMemo(() => recorded.filter(s => s.enabled !== false), [recorded]);
 
   if (scope.level === 'home') {
-    // The same view a room gets, aggregated: one line per room per measure,
-    // the home's lights as one line, its groups as one strip each. Then the
-    // highlights and the room list, which are the ways further in.
+    // Exactly the view a room gets, aggregated: one line per room per
+    // measure, the home's lights as one line, its groups as one strip each.
+    // The tree on the left is how you go further in.
+    if (enabled.length === 0) return <Empty>Nothing recorded in this home yet.</Empty>;
     return (
-      <div className="space-y-5">
-        {enabled.length > 0 && (
-          <RoomStackView
-            homeId={homeId}
-            mock={mock}
-            roomSeries={enabled}
-            room={null}
-            byRoom
-            accessoryInfo={accessoryInfo}
-            groups={groups}
-            settings={settings}
-            onCustomize={(view: ExplorerView) => onSelect({ level: 'custom', view })}
-          />
-        )}
-        <HomeOverview
-          homeId={homeId}
-          mock={mock}
-          tree={tree}
-          live={live}
-          recorded={recorded}
-          accessoryInfo={accessoryInfo}
-          onSelect={onSelect}
-        />
-      </div>
+      <RoomStackView
+        homeId={homeId}
+        mock={mock}
+        roomSeries={enabled}
+        room={null}
+        byRoom
+        accessoryInfo={accessoryInfo}
+        groups={groups}
+        settings={settings}
+        onCustomize={(view: ExplorerView) => onSelect({ level: 'custom', view })}
+      />
     );
   }
 
@@ -139,7 +125,6 @@ export default function ScopeDashboard({
   // measure — then the accessories in it, so the tree is not the only way down.
   const roomSeries = enabled.filter(s =>
     (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === scope.room);
-  const roomNode = tree.rooms.find(r => r.room === scope.room);
 
   return (
     <div className="space-y-5">
@@ -158,38 +143,6 @@ export default function ScopeDashboard({
         />
       )}
 
-      {roomNode && (roomNode.accessories.length > 0 || roomNode.groups.length > 0) && (
-        // Folded away: the tree on the left is the primary way down, and a
-        // list repeating it under every room pushed the charts up the page.
-        <details className="group rounded-lg border">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
-            <ChevronRight className="mr-1 inline h-3 w-3 transition-transform group-open:rotate-90" />
-            {roomNode.total} accessor{roomNode.total === 1 ? 'y' : 'ies'} recording here
-          </summary>
-          <div className="divide-y border-t">
-            {[
-              ...roomNode.groups.map(g => ({
-                key: g.id, name: g.name, note: `${g.memberCount} accessories`,
-                scope: { level: 'group' as const, groupId: g.id },
-              })),
-              ...roomNode.accessories.map(a => ({
-                key: a.id, name: a.name, note: `${a.seriesCount} recording`,
-                scope: { level: 'accessory' as const, accessoryId: a.id },
-              })),
-            ].map(row => (
-              <button
-                key={row.key}
-                className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
-                onClick={() => onSelect(row.scope)}
-              >
-                <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{row.note}</span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-              </button>
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }

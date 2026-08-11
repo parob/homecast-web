@@ -296,6 +296,8 @@ export interface AccessoryInfoEntry {
   name: string;
   room: string | null;
   isVirtual?: boolean;
+  /** resolveWidgetType's answer — what KIND of thing this is, for its icon. */
+  widgetType?: string;
 }
 
 export interface MonitoringEntry {

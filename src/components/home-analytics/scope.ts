@@ -53,6 +53,8 @@ export interface ScopeAccessory {
   name: string;
   /** Recorded characteristic count — what the tree can promise is there. */
   seriesCount: number;
+  /** What kind of thing it is, for the row's icon. */
+  widgetType?: string;
 }
 
 export interface ScopeGroupNode {
@@ -107,7 +109,12 @@ export function buildScopeTree(
     // getDisplayName, not our own stripper: an accessory is named the same
     // here as it is on the dashboard, by the same rule.
     return info && seriesCount
-      ? { id, name: getDisplayName(info.name, info.room ?? undefined), seriesCount }
+      ? {
+        id,
+        name: getDisplayName(info.name, info.room ?? undefined),
+        seriesCount,
+        widgetType: info.widgetType,
+      }
       : null;
   };
   const roomOf = (id: string) => accessoryInfo.get(id)?.room ?? null;

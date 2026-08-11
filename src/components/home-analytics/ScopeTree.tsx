@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, Home, Layers, Search } from 'lucide-react';
+import { accessoryIcon } from './accessoryIcons';
 import type { AnalyticsScope, ScopeTreeModel } from './scope';
 
 /**
@@ -15,23 +16,37 @@ export default function ScopeTree({
   tree,
   scope,
   homeName,
+  homes = [],
+  homeId,
+  onSelectHome,
   onSelect,
 }: {
   tree: ScopeTreeModel;
   scope: AnalyticsScope;
   homeName: string;
+  /** Every home with Analytics on — switchable without leaving the screen. */
+  homes?: Array<{ id: string; name: string }>;
+  homeId: string | null;
+  onSelectHome?: (id: string) => void;
   onSelect: (scope: AnalyticsScope) => void;
 }) {
-  const openRoom = scope.level === 'room' ? scope.room : null;
+  // undefined, not null, when the scope is not a room: null is a real room
+  // here (the roomless bucket) and would match it.
+  const openRoom = scope.level === 'room' ? scope.room : undefined;
   const activeAccessory = scope.level === 'accessory' ? scope.accessoryId.toUpperCase() : null;
-  // The room that owns the selected accessory opens too, so the tree always
-  // shows where you are rather than making you re-find it.
+  const activeGroup = scope.level === 'group' ? scope.groupId : null;
+  // Whatever you are standing in, its room opens — an accessory's room, and a
+  // GROUP's room too, or picking a room's lights folded that room away under
+  // your feet.
   const roomOfActive = useMemo(() => {
+    if (activeGroup) {
+      return tree.rooms.find(r => r.groups.some(g => g.id === activeGroup))?.room;
+    }
     if (!activeAccessory) return undefined;
     return tree.rooms.find(r =>
       r.accessories.some(a => a.id === activeAccessory)
       || r.groups.some(g => g.members.some(m => m.id === activeAccessory)))?.room;
-  }, [tree.rooms, activeAccessory]);
+  }, [tree.rooms, activeAccessory, activeGroup]);
 
   // Expansion is tracked in BOTH directions. A room that opened because you
   // are standing in it must still close when you press its chevron — a Set of
@@ -96,6 +111,19 @@ export default function ScopeTree({
       </div>
 
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
+        {/* Other homes sit above this one's rooms, collapsed: only the home
+            you are in has its tree built, so switching is a click rather than
+            a fetch of everything. */}
+        {homes.filter(h => h.id !== homeId).map(home => (
+          <button
+            key={home.id}
+            className={`${rowBase} ${plain}`}
+            onClick={() => onSelectHome?.(home.id)}
+          >
+            <Home className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span className="truncate">{home.name}</span>
+          </button>
+        ))}
         <button
           className={`${rowBase} ${scope.level === 'home' ? selected : plain}`}
           onClick={() => onSelect({ level: 'home' })}
@@ -150,29 +178,37 @@ export default function ScopeTree({
                       </button>
                       <span className="shrink-0 text-[10px] opacity-60">{group.memberCount}</span>
                     </div>
-                    {groupOpen && group.members.map(member => (
+                    {groupOpen && group.members.map(member => {
+                      const MemberIcon = accessoryIcon(member.widgetType);
+                      return (
                       <button
                         key={member.id}
                         className={`${rowBase} pl-11 ${activeAccessory === member.id ? selected : plain}`}
                         onClick={() => onSelect({ level: 'accessory', accessoryId: member.id })}
                       >
+                        <MemberIcon className="h-3 w-3 shrink-0 opacity-70" />
                         <span className="min-w-0 flex-1 truncate">{member.name}</span>
                         <span className="shrink-0 text-[10px] opacity-60">{member.seriesCount}</span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })}
-              {open && room.accessories.map(acc => (
-                <button
-                  key={acc.id}
-                  className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
-                  onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
-                >
-                  <span className="min-w-0 flex-1 truncate">{acc.name}</span>
-                  <span className="shrink-0 text-[10px] opacity-60">{acc.seriesCount}</span>
-                </button>
-              ))}
+              {open && room.accessories.map(acc => {
+                const AccIcon = accessoryIcon(acc.widgetType);
+                return (
+                  <button
+                    key={acc.id}
+                    className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
+                    onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
+                  >
+                    <AccIcon className="h-3 w-3 shrink-0 opacity-70" />
+                    <span className="min-w-0 flex-1 truncate">{acc.name}</span>
+                    <span className="shrink-0 text-[10px] opacity-60">{acc.seriesCount}</span>
+                  </button>
+                );
+              })}
             </div>
           );
         })}

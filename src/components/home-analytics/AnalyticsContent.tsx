@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
+import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
 import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
@@ -28,9 +29,32 @@ import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types'
  * host can render the current title with an embedded back button in its own
  * chrome — the SettingsDialog drill-down convention.
  */
+/**
+ * The mock has recordable characteristics rather than HomeKit services, so
+ * its kind is inferred from what it records. Only the tree's icon depends on
+ * this; getting it wrong costs a wrong glyph, not wrong data.
+ */
+function mockWidgetType(recordable: string[], isVirtual?: boolean): string {
+  const has = (type: string) => recordable.includes(type);
+  if (isVirtual) return 'virtual';
+  if (has('brightness')) return 'lightbulb';
+  if (has('lock_current_state')) return 'lock';
+  if (has('rotation_speed')) return 'fan';
+  if (has('eve_energy_watt')) return 'outlet';
+  if (has('target_temperature') || has('heating_threshold')) return 'thermostat';
+  if (has('motion_detected')) return 'motion_sensor';
+  if (has('contact_state')) return 'contact_sensor';
+  if (has('smoke_detected') || has('carbon_monoxide_level')) return 'smoke_alarm';
+  if (has('current_temperature')) return 'thermostat';
+  if (has('power_state')) return 'switch';
+  return 'sensor';
+}
+
 export default function AnalyticsContent({
   homeId,
   homeName = 'Home',
+  homes,
+  onSelectHome,
   accessories,
   serviceGroups,
   nav,
@@ -38,6 +62,9 @@ export default function AnalyticsContent({
   homeId: string | null;
   /** Names the root of the breadcrumb and the top of the tree. */
   homeName?: string;
+  /** Homes with Analytics on, so the tree can switch between them. */
+  homes?: Array<{ id: string; name: string }>;
+  onSelectHome?: (id: string) => void;
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
   serviceGroups?: HomeKitServiceGroup[] | null;
@@ -53,12 +80,17 @@ export default function AnalyticsContent({
       for (const m of mockAccessories()) {
         map.set(m.accessoryId.toUpperCase(), {
           name: m.name, room: isHiddenRoom(m.room) ? null : m.room, isVirtual: m.isVirtual,
+          widgetType: mockWidgetType(m.recordable, m.isVirtual),
         });
       }
     } else {
       for (const acc of accessories ?? []) {
         map.set(acc.id.toUpperCase(), {
           name: acc.name,
+          widgetType: resolveWidgetType({
+            category: acc.category ?? undefined,
+            serviceTypes: (acc.services ?? []).map(svc => svc.serviceType),
+          }).widgetType,
           // Default Room is a bucket, not a place — analytics treats it as
           // roomless so it never becomes a chip or a room-average line.
           room: isHiddenRoom(acc.roomName) ? null : (acc.roomName ?? null),
@@ -163,7 +195,15 @@ export default function AnalyticsContent({
             in-scope lists are the way around, and a permanent sidebar would
             eat the width the charts need. */}
         <div className="hidden w-52 shrink-0 md:block">
-          <ScopeTree tree={tree} scope={nav.scope} homeName={homeName} onSelect={nav.setScope} />
+          <ScopeTree
+            tree={tree}
+            scope={nav.scope}
+            homeName={homeName}
+            homes={homes}
+            homeId={homeId}
+            onSelectHome={onSelectHome}
+            onSelect={nav.setScope}
+          />
         </div>
         <div className="min-w-0 flex-1 overflow-y-auto pr-1">
           <ScopeDashboard

@@ -83,24 +83,14 @@ export default function HomeAnalytics() {
           <LineChartIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <h1 className="text-sm font-semibold truncate">Analytics</h1>
         </div>
-        {!mock && (homes?.length ?? 0) > 1 && (
-          <Select value={effectiveHomeId ?? ''} onValueChange={(v) => setHomeId(v)}>
-            <SelectTrigger className="w-[180px] h-8 text-xs">
-              <SelectValue placeholder="Home" />
-            </SelectTrigger>
-            <SelectContent>
-              {(homes ?? []).map(h => (
-                <SelectItem key={h.id} value={h.id} className="text-xs">{h.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
       </header>
 
       <main className="mx-auto flex h-[calc(100vh-53px)] max-w-6xl flex-col p-4">
         <AnalyticsContent
           homeId={effectiveHomeId}
           homeName={(homes ?? []).find(h => h.id === effectiveHomeId)?.name ?? 'Home'}
+          homes={(homes ?? []).map(h => ({ id: h.id, name: h.name }))}
+          onSelectHome={(id) => { setHomeId(id); nav.setScope({ level: 'home' }); }}
           accessories={accessories ?? null}
           serviceGroups={serviceGroups ?? null}
           nav={nav}

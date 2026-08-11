@@ -1977,6 +1977,10 @@ const Dashboard = () => {
   // The home the dialog is scoped to — a right-click on another home's
   // sidebar item must open THAT home's analytics, and the title must say so.
   const [analyticsHomeId, setAnalyticsHomeId] = useState<string | null>(null);
+  // Which homes record — the provider learns this and hands it back, because
+  // the dialog that lists them is rendered by the same component that renders
+  // the provider and so cannot consume it.
+  const [recordingHomeIds, setRecordingHomeIds] = useState<string[]>([]);
   const analyticsNav = useAnalyticsScope();
   const { setScope: analyticsGoTo } = analyticsNav;
 
@@ -6068,7 +6072,8 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
-    <HistoryProvider homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
+    <HistoryProvider
+        onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7833,6 +7838,12 @@ const Dashboard = () => {
                   <AnalyticsContent
                     homeId={effectiveAnalyticsHome}
                     homeName={homes.find(h => h.id === effectiveAnalyticsHome)?.name ?? 'Home'}
+                    // Only homes that record: an entry that opens on "nothing
+                    // recorded yet" is not a place to switch to.
+                    homes={homes
+                      .filter(h => recordingHomeIds.some(id => id.toUpperCase() === h.id.toUpperCase()))
+                      .map(h => ({ id: h.id, name: h.name }))}
+                    onSelectHome={(id) => { setAnalyticsHomeId(id); analyticsGoTo({ level: 'home' }); }}
                     accessories={scopedAccessories}
                     serviceGroups={scopedGroups}
                     nav={analyticsNav}

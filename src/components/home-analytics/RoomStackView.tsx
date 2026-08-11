@@ -158,9 +158,12 @@ export default function RoomStackView({
     () => allSels.map(s => ({ accessoryId: s.accessoryId, characteristicType: s.characteristicType })),
     [allSels],
   );
-  const { data } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
+  const { data, loading } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
     enabled: refs.length > 0,
   });
+  // First load only: once there is data, a range change redraws from what is
+  // already on screen rather than blanking it.
+  const firstLoad = loading && data.size === 0;
 
   const entryFor = (sel: SeriesSel) => {
     const entry = data.get(`${sel.accessoryId.toUpperCase()}|${canonicalHistoryType(sel.characteristicType)}`);
@@ -347,7 +350,19 @@ export default function RoomStackView({
         </Button>
       </div>
 
-      {chartPanels.length === 0 && stripEntries.length === 0 ? (
+      {firstLoad ? (
+        // A panel-shaped skeleton, not a spinner in space: the page keeps its
+        // height, so nothing jumps when the charts arrive.
+        <div className="space-y-3">
+          {[0, 1].map(i => (
+            <div key={i} className="space-y-2 rounded-lg border p-3">
+              <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+              <div className="h-[200px] animate-pulse rounded bg-muted/50" />
+              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+            </div>
+          ))}
+        </div>
+      ) : chartPanels.length === 0 && stripEntries.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
             Nothing recorded here yet — charts build as accessories report changes.
