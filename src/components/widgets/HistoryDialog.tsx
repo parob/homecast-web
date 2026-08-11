@@ -214,6 +214,12 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
                 points={s.points}
                 unit={s.unit}
                 gradientId={`hist-${target?.accessory?.id}-${s.characteristicType}`}
+                // Every panel in this dialog must span the SAME window, or a
+                // vertical read means nothing: each chart was fitting its own
+                // data extent, so Temperature ran to 14:38 while Fan Speed
+                // stopped at 13:06 — stacked, aligned-looking, and lying.
+                fromTs={fromTs}
+                toTs={toTs}
               />
             </Suspense>
             {stats && (

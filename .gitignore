@@ -23,7 +23,10 @@ logs
 node_modules
 npm-debug.log*
 pnpm-debug.log*
-screenshots/test-results/.last-run 2.json
+# Playwright run artifacts — a failed run leaves a trace directory behind, and
+# they kept arriving in commits as noise.
+screenshots/test-results/
+test-results/
 src/cloud/
 src/pages/ForgotPassword.tsx
 src/pages/managed-relay/

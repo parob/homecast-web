@@ -61,13 +61,46 @@ export interface StateTimelineProps {
   labelFor: (value: number, text?: string | null) => string;
 }
 
-interface Segment {
+export interface Segment {
   leftPct: number;
   widthPct: number;
   value: number;
   /** string kind: the state's text (value is the 0 sentinel). */
   text?: string | null;
   fraction: number; // bool buckets: on-fraction; spans: 1
+}
+
+/**
+ * Join neighbouring segments that hold the SAME state into one run.
+ *
+ * A state series is not one row per state change: a device re-reporting the
+ * value it already had writes another span, and a rolled tier emits one
+ * bucket per hour whether or not anything happened. Either way a single
+ * unbroken stretch of Cool — or On, or Locked — arrived as a dozen
+ * neighbouring pieces. Identical fill made that invisible until you hovered
+ * and were told "Cool · 1h" about a run that had lasted all afternoon.
+ *
+ * Applies to every categorical characteristic, not just booleans: segments
+ * merge on value (or text, for the string kind). Bucket shading survives as
+ * a width-weighted mean, so a merged run is as pale as its parts were.
+ */
+export function coalesce(segments: Segment[]): Segment[] {
+  const out: Segment[] = [];
+  for (const seg of segments) {
+    const prev = out[out.length - 1];
+    const sameState = prev && prev.value === seg.value && (prev.text ?? null) === (seg.text ?? null);
+    // Only join pieces that actually touch — a gap between them is recorded
+    // silence, and closing it would invent history.
+    const contiguous = prev && Math.abs(prev.leftPct + prev.widthPct - seg.leftPct) < 0.001;
+    if (sameState && contiguous) {
+      const total = prev.widthPct + seg.widthPct;
+      prev.fraction = (prev.fraction * prev.widthPct + seg.fraction * seg.widthPct) / total;
+      prev.widthPct = total;
+    } else {
+      out.push({ ...seg });
+    }
+  }
+  return out;
 }
 
 export default function StateTimeline({
@@ -104,10 +137,10 @@ export default function StateTimeline({
           fraction: 1,
         });
       }
-      return out;
+      return coalesce(out);
     }
     if (stateBuckets && stateBuckets.length > 0) {
-      return stateBuckets.map((b, i) => {
+      return coalesce(stateBuckets.map((b, i) => {
         const end = i + 1 < stateBuckets.length ? stateBuckets[i + 1].ts : toTs;
         let fraction = 1;
         try {
@@ -123,7 +156,7 @@ export default function StateTimeline({
           text: b.dominantText ?? null,
           fraction,
         };
-      });
+      }));
     }
     return [];
   }, [states, stateBuckets, prevValue, prevValueText, fromTs, toTs, span]);
