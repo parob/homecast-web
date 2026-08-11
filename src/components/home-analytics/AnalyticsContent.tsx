@@ -126,7 +126,7 @@ export default function AnalyticsContent({
       return (
         <div className="py-16 text-center">
           <p className="text-sm text-muted-foreground">
-            Nothing recorded in this category yet — charts build as devices
+            Nothing recorded in this category yet — charts build as accessories
             report changes.
           </p>
         </div>
@@ -152,7 +152,7 @@ export default function AnalyticsContent({
       <div className="py-16 text-center">
         <p className="text-sm text-muted-foreground">
           Nothing recorded yet. Turn on History in Settings → History and
-          Analytics will build as your devices report changes.
+          Analytics will build as your accessories report changes.
         </p>
       </div>
     );

@@ -196,7 +196,7 @@ export default function CustomView({
       ) : (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
-            Add series to build a view — mix any devices and characteristics
+            Add series to build a view — mix any accessories and characteristics
             on one chart.
           </p>
         </div>

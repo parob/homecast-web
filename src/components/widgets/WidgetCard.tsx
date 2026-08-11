@@ -602,7 +602,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               {canShowHistory && accessory && (
                 <ContextMenuItem onClick={() => openHistory(accessory)}>
                   <LineChart className="h-4 w-4 mr-2" />
-                  Device Analytics
+                  Accessory Analytics
                 </ContextMenuItem>
               )}
               {canShowPrices && accessory && (

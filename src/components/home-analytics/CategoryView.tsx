@@ -169,7 +169,7 @@ export default function CategoryView({
       ) : (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
-            Nothing recorded here yet — charts build as devices report changes.
+            Nothing recorded here yet — charts build as accessories report changes.
           </p>
         </div>
       )}

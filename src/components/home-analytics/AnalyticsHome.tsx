@@ -22,7 +22,7 @@ export default function AnalyticsHome({
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Everything your home records, grouped by what it tells you. Open a
-        category to compare rooms and devices, or build a custom view from
+        category to compare rooms and accessories, or build a custom view from
         any category with Customize.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">

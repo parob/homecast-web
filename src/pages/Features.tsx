@@ -34,14 +34,14 @@ const FEATURES: Feature[] = [
     imageAlt: 'Webhooks management with delivery stats',
   },
   {
-    title: 'Device History',
+    title: 'Accessory History',
     description: 'Opt-in charts of temperature, humidity, and activity. Compare sensors and rooms in Home Analytics.',
     image: '/images/features/history.png',
     imageAlt: 'Home Analytics comparing a room\'s sensors over time',
   },
   {
     title: 'Smart Deals',
-    description: 'Automatic price tracking matched to your devices. See deals and price history on your widgets.',
+    description: 'Automatic price tracking matched to your accessories. See deals and price history on your widgets.',
     image: '/images/features/smart-deals.png',
     imageAlt: 'Smart Deal popover with price history chart',
   },

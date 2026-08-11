@@ -40,25 +40,25 @@ const Privacy = () => {
 
                 <h3 className="text-base font-medium mt-4 mb-2">HomeKit Data</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">
-                  <strong className="text-foreground">Important:</strong> Homecast routes commands to your HomeKit devices but does not
-                  store your device states, sensor readings, or activity history on our servers unless
+                  <strong className="text-foreground">Important:</strong> Homecast routes commands to your HomeKit accessories but does not
+                  store your accessory states, sensor readings, or activity history on our servers unless
                   you explicitly turn on the optional History feature (below). Your HomeKit data flows
                   through our relay but is not otherwise persisted.
                 </p>
                 <p className="text-muted-foreground leading-relaxed mb-2">We may temporarily process:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4">
-                  <li>Device names and types (for display in the dashboard)</li>
+                  <li>Accessory names and types (for display in the dashboard)</li>
                   <li>Room and home structure</li>
-                  <li>Commands you send to devices</li>
+                  <li>Commands you send to accessories</li>
                 </ul>
 
-                <h3 className="text-base font-medium mt-4 mb-2">Device History (opt-in)</h3>
+                <h3 className="text-base font-medium mt-4 mb-2">Accessory History (opt-in)</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">
                   History is off by default. If you turn it on for a home (Settings → History), we record
                   how the characteristics you choose change over time — for example temperature readings
-                  or when a light switched on — so we can show you charts. Detailed samples are kept for
-                  the period you configure (30 days by default) and then reduced to hourly and daily
-                  summaries. You can exclude any device or characteristic, export your history, and
+                  or when a light switched on — so we can show you charts. Recorded samples are kept
+                  indefinitely, alongside hourly and daily summaries that keep long-range charts fast.
+                  You can exclude any accessory or characteristic, export your history, and
                   delete all of it at any time from the same settings screen; deleting your account
                   deletes it too. In the Community Edition, history never reaches our servers at all —
                   it is stored only on your own Mac.
@@ -70,7 +70,7 @@ const Privacy = () => {
                   model identifier of your HomeKit accessories (for example, "Signify" and "LCA001"). This
                   information is stored in aggregate form and is not linked to your account. We use it to
                   identify relevant deals on accessories compatible with your home. We do not store the
-                  names you have given to your devices.
+                  names you have given to your accessories.
                 </p>
 
                 <h3 className="text-base font-medium mt-4 mb-2">Usage Data</h3>
@@ -120,7 +120,7 @@ const Privacy = () => {
                 <h2 className="text-xl font-semibold mb-3">5. Smart Deals</h2>
                 <p className="text-muted-foreground leading-relaxed mb-3">
                   The free tier includes Smart Deals — a feature that identifies price drops and deals on
-                  smart home accessories compatible with your devices. This feature uses the manufacturer
+                  smart home accessories compatible with yours. This feature uses the manufacturer
                   and model information from your HomeKit accessories (in aggregate, not linked to your
                   account) to match relevant products.
                 </p>
@@ -138,7 +138,7 @@ const Privacy = () => {
               <div>
                 <h2 className="text-xl font-semibold mb-3">6. Home Sharing</h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  When you share access to your home via Homecast, the recipient can see the devices and
+                  When you share access to your home via Homecast, the recipient can see the accessories and
                   rooms you've shared. Share links may include passcodes you set. You control what is
                   shared and can revoke access at any time.
                 </p>

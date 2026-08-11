@@ -258,7 +258,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <button
               onClick={() => { const accessory = target?.accessory; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory } : undefined); }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              title="Open full-screen and compare with other devices"
+              title="Open full-screen and compare with other accessories"
             >
               Expand <ExternalLink className="h-3 w-3" />
             </button>
@@ -299,7 +299,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         ) : !hasAnyData ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             No history recorded for this range yet — charts fill in as the
-            device reports changes.
+            accessory reports changes.
           </p>
         ) : (
           <div className="space-y-5">

@@ -68,14 +68,14 @@ function DeviceSeriesList({ home, onChanged }: { home: HomeKitHome; onChanged: (
   if (byAccessory.length === 0) {
     return (
       <p className="text-xs text-muted-foreground py-2">
-        No characteristics recorded yet — devices appear here as they report changes.
+        No characteristics recorded yet — accessories appear here as they report changes.
       </p>
     );
   }
 
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-1">Devices</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-1">Accessories</p>
       {byAccessory.map(([accessoryId, seriesList]) => {
         const isOpen = expanded.has(accessoryId);
         const recording = seriesList.filter(s => s.enabled).length;
@@ -287,9 +287,9 @@ export function HistorySection({ homes }: HistorySectionProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-medium mb-1">Device History</h3>
+        <h3 className="text-sm font-medium mb-1">Accessory History</h3>
         <p className="text-xs text-muted-foreground">
-          Record how your devices change over time and see charts of
+          Record how your accessories change over time and see charts of
           temperature, humidity, activity and more. Off unless you turn it
           on.{' '}
           {isCommunity
@@ -308,8 +308,8 @@ export function HistorySection({ homes }: HistorySectionProps) {
       </div>
 
       <p className="text-[10px] text-muted-foreground">
-        Once a home is recording, open any device's context menu → Device
-        Analytics for its charts, or{' '}
+        Once a home is recording, open any accessory's context menu →
+        Accessory Analytics for its charts, or{' '}
         <button className="underline hover:text-foreground" onClick={() => openAnalytics()}>Home Analytics</button>{' '}
         to compare sensors and rooms on one graph.
       </p>

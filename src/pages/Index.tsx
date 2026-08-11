@@ -580,7 +580,7 @@ const Index = () => {
               <h3 className="text-xl font-bold">Homecast for Android</h3>
             </div>
             <p className="text-sm text-muted-foreground mb-3">
-              The Android app is a remote control for your Apple Home — it doesn't talk to HomeKit on its own. To reach your devices it needs <strong className="text-foreground">one of</strong>:
+              The Android app is a remote control for your Apple Home — it doesn't talk to HomeKit on its own. To reach your accessories it needs <strong className="text-foreground">one of</strong>:
             </p>
             <ul className="text-sm text-muted-foreground mb-6 space-y-1.5 list-disc pl-5">
               <li>The <strong className="text-foreground">Homecast Mac app</strong> running on a Mac at home, acting as your relay, or</li>
@@ -695,10 +695,10 @@ const Index = () => {
               image: '/images/features/webhooks.png', imageAlt: 'Webhooks management', reversed: true,
             },
             {
-              title: 'Device History & Analytics',
-              description: 'Opt-in recording of how your home changes over time. Temperature, humidity, activity — charted per device or compared across a room.',
+              title: 'Accessory History & Analytics',
+              description: 'Opt-in recording of how your home changes over time. Temperature, humidity, activity — charted per accessory or compared across a room.',
               details: [
-                'Off by default: you choose every device and characteristic',
+                'Off by default: you choose every accessory and characteristic',
                 'Home Analytics compares sensors and rooms on one graph',
                 'Export everything as CSV, delete everything in one tap',
               ],

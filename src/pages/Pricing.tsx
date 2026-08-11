@@ -348,7 +348,7 @@ const Pricing = () => {
               </FAQItem>
               <FAQItem question="Do shared users need a subscription?">
                 No. Only the account running the Homecast relay app needs a subscription.
-                Users you invite via Home Sharing can view and control your devices for free.
+                Users you invite via Home Sharing can view and control your accessories for free.
               </FAQItem>
               <FAQItem question="Will the Basic plan have ads?">
                 The Basic plan is ad-supported and includes Smart Deals — personalised deal badges on your device widgets.
