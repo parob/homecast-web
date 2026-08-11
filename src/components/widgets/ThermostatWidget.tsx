@@ -3,6 +3,8 @@ import { Thermometer, Flame, Snowflake, Power, Fan, AirVent, CheckCircle2, Chevr
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WidgetCard, useWidgetColors } from './WidgetCard';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { UNSELECTED_CHIP } from './VirtualAccessoryWidget';
 import { SliderControl, ColoredSwitch } from './shared';
 import { WidgetProps, getCharacteristic, hasServiceType, ServiceType } from './types';
 import { getIconColor } from './iconColors';
@@ -628,6 +630,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
   // second control for the same thing. It stays hidden in both states — the
   // header must not gain a control when the unit stops.
   const hideHeaderSwitch = expanded && hasModeControls;
+  const { isDarkBackground } = useBackgroundContext();
 
   // One source for the mode colour so the selected pill and the dial arc agree —
   // a blue Cool arc under an orange Cool button read as two different states.
@@ -635,7 +638,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     if (iconStyle !== 'colourful') {
       return isSelected
         ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-        : 'bg-primary/20 hover:bg-primary/30 border-transparent';
+        : `${UNSELECTED_CHIP(isDarkBackground)} border-transparent`;
     }
     // Stopped, the row goes neutral. effectiveMode still reports the mode the
     // unit would resume in, which left a switched-off air conditioner painting
@@ -647,7 +650,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       // colour flips with the background and the fill follows it.
       return isSelected
         ? 'bg-slate-600 hover:bg-slate-700 text-white border-transparent'
-        : 'bg-black/15 hover:bg-black/25 border-transparent';
+        : `${UNSELECTED_CHIP(isDarkBackground)} border-transparent`;
     }
     const selectedBg = effectiveMode === 'cool' ? 'bg-sky-500 hover:bg-sky-600'
       : effectiveMode === 'heat' ? 'bg-orange-500 hover:bg-orange-600'

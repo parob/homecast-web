@@ -2,6 +2,8 @@ import React, { memo } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, ShieldOff, Home, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { UNSELECTED_CHIP } from './VirtualAccessoryWidget';
 import { WidgetProps, getCharacteristic } from './types';
 import { getIconColor } from './iconColors';
 
@@ -69,6 +71,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
 
   // Get widget colors for theming
   const widgetColors = getIconColor('security_system');
+  const { isDarkBackground } = useBackgroundContext();
 
   // Get button classes based on iconStyle and state
   const getButtonClasses = (isActive: boolean) => {
@@ -77,7 +80,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
     // which put white text on pale pink. This flips with the background, so it
     // stays readable either way. The selected mode is solid and ringed — pale
     // versus slightly-less-pale did not read as a choice.
-    const unselected = 'bg-black/15 hover:bg-black/25 border-transparent font-normal';
+    const unselected = `${UNSELECTED_CHIP(isDarkBackground)} border-transparent font-normal`;
     if (iconStyle === 'colourful') {
       return isActive
         ? `${widgetColors.accent} text-white border-transparent font-semibold ring-2 ring-inset ring-white/45`

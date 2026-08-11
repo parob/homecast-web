@@ -64,6 +64,17 @@ function fieldClass(dark: boolean, large?: boolean): string {
  * Long lists keep the select: a dozen pills wrap into a block that buries the
  * tile, and at that length a dropdown is genuinely the better control.
  */
+/**
+ * The unselected state of any pill/chip sitting on a widget's translucent
+ * tile. Must set its own text colour: the tile is dark when the wallpaper
+ * behind it is, and the theme foreground has no idea.
+ */
+export function UNSELECTED_CHIP(dark: boolean): string {
+  return dark
+    ? 'bg-white/15 hover:bg-white/25 text-white'
+    : 'bg-black/10 hover:bg-black/20 text-slate-900';
+}
+
 const SEGMENTED_MAX_OPTIONS = 4;
 
 /**
@@ -161,6 +172,12 @@ const ModeSegmented: React.FC<{
   large?: boolean;
 }> = ({ options, value, onSelect, label, large }) => {
   const { colors, iconStyle } = useWidgetColors();
+  // Unselected pills carried a translucent black fill and NO text colour, so
+  // they inherited the theme's dark foreground — black-on-dark, unreadable
+  // over a photo background. Colour comes from isDarkBackground like every
+  // other control here; Tailwind's dark: variant knows nothing about the
+  // wallpaper.
+  const { isDarkBackground } = useBackgroundContext();
   const selected = iconStyle === 'colourful'
     ? `${colors.accent} text-white ring-2 ring-inset ring-white/45`
     : 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-inset ring-white/45';
@@ -180,7 +197,9 @@ const ModeSegmented: React.FC<{
             disabled={isActive}
             onClick={e => { e.stopPropagation(); onSelect(o); }}
             className={`flex-1 basis-[5.5rem] truncate rounded-lg px-2 transition-colors ${large ? 'h-11 text-[14px]' : 'h-9 text-xs'} `
-              + (isActive ? `${selected} font-semibold cursor-default` : 'bg-black/15 hover:bg-black/25 font-normal')}
+              + (isActive
+                ? `${selected} font-semibold cursor-default`
+                : `${UNSELECTED_CHIP(isDarkBackground)} font-normal`)}
           >
             {o}
           </button>
