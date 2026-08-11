@@ -287,9 +287,13 @@ export function mockHistoryData(
 
     // A recently-added accessory has no history before it existed — the
     // window still shows its full extent, the data just starts late.
+    // Anchored to the clock, not to the requested window: measured from the
+    // window's own end, every window — including the shifted one a comparison
+    // asks for — got its own private 16 hours of history, so "previous week"
+    // always had data and the no-comparison-data path could never be seen.
     const recordingHours = mockAccessories().find(a => a.accessoryId === ref.accessoryId)?.recordingHours;
     const seriesStart = recordingHours !== undefined
-      ? Math.max(fromTs, toTs - recordingHours * HOUR_MS)
+      ? Math.max(fromTs, Date.now() - recordingHours * HOUR_MS)
       : fromTs;
 
     if (kind === 'numeric') {

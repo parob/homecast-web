@@ -32,6 +32,11 @@ export interface ChartLegendProps {
   highlightKeys?: string[] | null;
   /** Hovering a name or a cluster; null on leave. */
   onHighlight?: (keys: string[] | null) => void;
+  /**
+   * Names the dashed overlay ("previous day"). Not an entry: it stands for
+   * every series' comparison at once, so there is nothing to highlight.
+   */
+  dashedNote?: string;
 }
 
 function Dot({
@@ -64,8 +69,25 @@ function Dot({
   );
 }
 
-export default function ChartLegend({ entries, highlightKeys, onHighlight }: ChartLegendProps) {
-  if (entries.length < 2) return null;
+function DashedNote({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="inline-block h-0 w-3 shrink-0 border-t-[1.5px] border-dashed border-current opacity-70" />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+export default function ChartLegend({ entries, highlightKeys, onHighlight, dashedNote }: ChartLegendProps) {
+  // One series still needs the note when a comparison is on — the dashed line
+  // beside it is otherwise unexplained.
+  if (entries.length < 2) {
+    return dashedNote ? (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground pt-1">
+        <DashedNote label={dashedNote} />
+      </div>
+    ) : null;
+  }
   // Past 8 entries a legend stops being a key and becomes a second dataset —
   // cap it and point at the stats table, which lists everything.
   const shown = entries.slice(0, MAX_LEGEND);
@@ -90,6 +112,7 @@ export default function ChartLegend({ entries, highlightKeys, onHighlight }: Cha
           <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} onHighlight={onHighlight} />
         ))}
         {hidden > 0 && <span>+{hidden} more — full list below</span>}
+        {dashedNote && <DashedNote label={dashedNote} />}
       </div>
     );
   }
@@ -126,6 +149,7 @@ export default function ChartLegend({ entries, highlightKeys, onHighlight }: Cha
         )
       ))}
       {hidden > 0 && <span>+{hidden} more — full list below</span>}
+      {dashedNote && <DashedNote label={dashedNote} />}
     </div>
   );
 }

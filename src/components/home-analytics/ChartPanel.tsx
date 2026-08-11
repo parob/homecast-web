@@ -3,8 +3,10 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 import { aggregateNumericSeries, aggregateToSeries, type AggregatePoint } from '@/history/aggregate';
 import { findOutlierSeries, sanitizeSeriesData } from '@/history/sanitize';
 import { canonicalHistoryType } from '@/history/keys';
+import { compareSeries } from '@/history/comparison';
 import ExplorerChart, { seriesColor, type ChartSeries } from './ExplorerChart';
 import ChartLegend from './ChartLegend';
+import ComparisonSummary from './ComparisonSummary';
 import StateStrips, { type StateStripEntry } from './StateStrips';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { Button } from '@/components/ui/button';
@@ -31,9 +33,11 @@ const RANGES = [
 ] as const;
 
 const COMPARE_OPTIONS = [
-  { value: 'none', label: 'No comparison', offsetMs: 0 },
-  { value: 'day', label: 'Previous day', offsetMs: 86_400_000 },
-  { value: 'week', label: 'Previous week', offsetMs: 7 * 86_400_000 },
+  // `name` reads inside a sentence ("warmer than yesterday"); `label` is the
+  // control's own wording.
+  { value: 'none', label: 'No comparison', offsetMs: 0, name: '' },
+  { value: 'day', label: 'Previous day', offsetMs: 86_400_000, name: 'yesterday' },
+  { value: 'week', label: 'Previous week', offsetMs: 7 * 86_400_000, name: 'last week' },
 ] as const;
 
 const TEMP_TYPES = new Set(['current_temperature']);
@@ -213,6 +217,12 @@ export default function ChartPanel({
     };
   }), [numericSeries, cleaned]);
 
+  const compareOption = COMPARE_OPTIONS.find(c => c.value === compare) ?? COMPARE_OPTIONS[0];
+  const compareRows = useMemo(
+    () => (compare === 'none' ? [] : compareSeries(numericSeries, seriesColor)),
+    [compare, numericSeries],
+  );
+
   const legendEntries = useMemo(() => numericSeries.map((s, i) => ({
     key: s.key, label: s.label, color: seriesColor(i),
     group: cleaned.get(s.key)?.sel.accessoryName,
@@ -293,6 +303,17 @@ export default function ChartPanel({
         </div>
       ) : (
         <>
+          {compare !== 'none' && compareRows.length > 0 && (
+            <ComparisonSummary
+              rows={compareRows}
+              fromTs={fromTs}
+              toTs={toTs}
+              now={toTs}
+              offsetMs={compareOffsetMs}
+              comparisonName={compareOption.name}
+            />
+          )}
+
           {numericSeries.length > 0 && (
             <div className="border rounded-lg p-3">
               {band && (
@@ -316,6 +337,9 @@ export default function ChartPanel({
                 entries={legendEntries}
                 highlightKeys={highlightKeys}
                 onHighlight={setHighlightKeys}
+                // The dashed lines were never named anywhere; a reader had to
+                // infer them from the control at the top of the page.
+                dashedNote={compare === 'none' ? undefined : compareOption.label.toLowerCase()}
               />
             </div>
           )}
