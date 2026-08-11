@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { aggregateNumericSeries, aggregateToSeries, type AggregatePoint } from '@/history/aggregate';
+import { findOutlierSeries, sanitizeSeriesData } from '@/history/sanitize';
 import { canonicalHistoryType } from '@/history/keys';
 import ExplorerChart, { seriesColor, type ChartSeries } from './ExplorerChart';
 import ChartLegend from './ChartLegend';
@@ -77,6 +78,8 @@ export default function ChartPanel({
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [normalize, setNormalize] = useState(false);
   const [compare, setCompare] = useState<'none' | 'day' | 'week'>('none');
+  // Bogus-data cleanup — ON by default, always announced (see sanitize.ts).
+  const [hideUnusual, setHideUnusual] = useState(true);
 
   const seriesKey = series.map(s => `${s.accessoryId}|${s.characteristicType}`).join(',');
   const toTs = useMemo(() => Date.now(), [seriesKey, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -92,27 +95,56 @@ export default function ChartPanel({
     homeId, refs, fromTs, toTs, compareOffsetMs, mock,
   );
 
-  const numericSeries = useMemo<ChartSeries[]>(() => {
+  // Cleaned per-sensor data + what the cleanup did (for the notice).
+  const { cleaned, droppedReadings, hiddenSensors } = useMemo(() => {
     const numericSels = series.filter(s => s.kind === 'numeric');
-    if (!roomAggregate) {
-      return numericSels.flatMap((s): ChartSeries[] => {
-        const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
-        const entry = seriesData.get(key);
-        return entry ? [{ key, label: s.label, unit: s.unit, data: entry.main, ghost: entry.ghost }] : [];
-      });
-    }
-    // Rooms-first: every room's sensors become one time-weighted average
-    // line. Sensor-level lines live one tap away in the room drill-down.
-    const unit = numericSels[0]?.unit ?? null;
-    const byRoom = new Map<string, { mains: HistorySeriesData[]; ghosts: HistorySeriesData[] }>();
+    const map = new Map<string, { sel: SeriesSel; main: HistorySeriesData; ghost?: HistorySeriesData }>();
+    let dropped = 0;
     for (const s of numericSels) {
       const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
       const entry = seriesData.get(key);
       if (!entry) continue;
-      const room = s.room ?? 'Elsewhere';
+      if (!hideUnusual) {
+        map.set(key, { sel: s, main: entry.main, ghost: entry.ghost });
+        continue;
+      }
+      const main = sanitizeSeriesData(entry.main);
+      const ghost = entry.ghost ? sanitizeSeriesData(entry.ghost) : undefined;
+      dropped += main.droppedPoints + (ghost?.droppedPoints ?? 0);
+      map.set(key, { sel: s, main: main.data, ghost: ghost?.data });
+    }
+    // Series rule: sensors whose average sits far outside the home's
+    // typical band leave the AGGREGATE picture (named below, reversible).
+    let hidden: Array<{ key: string; label: string; mean: number }> = [];
+    if (hideUnusual && roomAggregate) {
+      const inputs = [...map.entries()].flatMap(([key, { sel, main }]) => {
+        if (main.points.length === 0) return [];
+        const mean = main.points.reduce((a, p) => a + p.avg, 0) / main.points.length;
+        return [{ key, label: sel.label, characteristicType: sel.characteristicType, mean }];
+      });
+      const verdict = findOutlierSeries(inputs);
+      hidden = verdict.hidden;
+      for (const key of verdict.hiddenKeys) map.delete(key);
+    }
+    return { cleaned: map, droppedReadings: dropped, hiddenSensors: hidden };
+  }, [series, seriesData, hideUnusual, roomAggregate]);
+
+  const numericSeries = useMemo<ChartSeries[]>(() => {
+    if (!roomAggregate) {
+      return [...cleaned.entries()].map(([key, { sel, main, ghost }]): ChartSeries => (
+        { key, label: sel.label, unit: sel.unit, data: main, ghost }
+      ));
+    }
+    // Rooms-first: every room's sensors become one time-weighted average
+    // line. Sensor-level lines live one tap away in the room drill-down.
+    const first = [...cleaned.values()][0];
+    const unit = first?.sel.unit ?? null;
+    const byRoom = new Map<string, { mains: HistorySeriesData[]; ghosts: HistorySeriesData[] }>();
+    for (const { sel, main, ghost } of cleaned.values()) {
+      const room = sel.room ?? 'Elsewhere';
       const bucket = byRoom.get(room) ?? { mains: [], ghosts: [] };
-      bucket.mains.push(entry.main);
-      if (entry.ghost) bucket.ghosts.push(entry.ghost);
+      bucket.mains.push(main);
+      if (ghost) bucket.ghosts.push(ghost);
       byRoom.set(room, bucket);
     }
     return [...byRoom.entries()]
@@ -134,7 +166,7 @@ export default function ChartPanel({
             )
           : undefined,
       }));
-  }, [series, seriesData, roomAggregate, fromTs, toTs]);
+  }, [cleaned, roomAggregate, fromTs, toTs]);
 
   const stateSeries = useMemo<StateStripEntry[]>(() => series
     .filter(s => s.kind !== 'numeric')
@@ -158,7 +190,7 @@ export default function ChartPanel({
   }, [aggregate, roomAggregate, numericSeries, fromTs, toTs]);
 
   const stats = useMemo(() => numericSeries.map((s, i) => {
-    const sel = series.find(x => `${x.accessoryId.toUpperCase()}|${canonicalHistoryType(x.characteristicType)}` === s.key);
+    const sel = cleaned.get(s.key)?.sel;
     const label = sel?.fullLabel ?? s.label;
     const points = s.data.points;
     if (points.length === 0) return { label, color: seriesColor(i), empty: true as const };
@@ -176,7 +208,7 @@ export default function ChartPanel({
       now: points[points.length - 1].last,
       unit: s.unit ?? '',
     };
-  }), [numericSeries, series]);
+  }), [numericSeries, cleaned]);
 
   const legendEntries = useMemo(() => numericSeries.map((s, i) => ({
     key: s.key, label: s.label, color: seriesColor(i),
@@ -220,11 +252,36 @@ export default function ChartPanel({
           />
           Normalize
         </label>
+        <label
+          className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+          title="Drop implausible readings (a -40° radio fault, a pegged sensor) and leave far-outlier sensors out of averages"
+        >
+          <input
+            type="checkbox"
+            checked={hideUnusual}
+            onChange={(e) => setHideUnusual(e.target.checked)}
+            className="accent-current"
+          />
+          Hide unusual data
+        </label>
         {extraControls}
       </div>
 
       {truncatedNote && (
         <p className="text-[11px] text-muted-foreground -mt-2">{truncatedNote}</p>
+      )}
+
+      {hideUnusual && (droppedReadings > 0 || hiddenSensors.length > 0) && (
+        <p className="text-[11px] text-muted-foreground -mt-2">
+          {droppedReadings > 0 && `${droppedReadings} implausible reading${droppedReadings === 1 ? '' : 's'} hidden`}
+          {droppedReadings > 0 && hiddenSensors.length > 0 && ' · '}
+          {hiddenSensors.length > 0 && (
+            `${hiddenSensors.length} unusual sensor${hiddenSensors.length === 1 ? '' : 's'} left out of averages: ${
+              hiddenSensors.slice(0, 3).map(h => `${h.label} (${h.mean.toFixed(1)})`).join(', ')
+            }${hiddenSensors.length > 3 ? '…' : ''}`
+          )}
+          {' — untick "Hide unusual data" to show'}
+        </p>
       )}
 
       {error ? (

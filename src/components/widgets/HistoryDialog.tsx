@@ -6,6 +6,7 @@ import { getRecordableCharacteristics, sortByHistoryImportance, type WritableCha
 import { charLabel } from '@/components/automations/format';
 import { isMockHistoryEnabled } from '@/history/mock';
 import { BOOL_STATE_LABELS } from '@/history/labels';
+import { sanitizeSeriesData } from '@/history/sanitize';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -187,9 +188,12 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     s => s.points.length > 0 || s.states.length > 0 || s.stateBuckets.length > 0,
   );
 
-  const renderSeriesRow = (s: HistorySeriesData) => {
-    const char = charByType.get(s.characteristicType);
-    const isNumeric = s.kind === 'numeric';
+  const renderSeriesRow = (raw: HistorySeriesData) => {
+    const char = charByType.get(raw.characteristicType);
+    const isNumeric = raw.kind === 'numeric';
+    // Radio-fault sentinels (-40°) would stretch this little chart flat.
+    const sanitized = isNumeric ? sanitizeSeriesData(raw) : { data: raw, droppedPoints: 0 };
+    const s = sanitized.data;
     const stats = isNumeric ? numericStats(s) : null;
     const states = !isNumeric ? stateStats(s, fromTs, toTs) : null;
     const empty = s.points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0;
@@ -220,6 +224,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             {stats && (
               <p className="text-[11px] text-muted-foreground">
                 min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
+                {sanitized.droppedPoints > 0 && ` · ${sanitized.droppedPoints} implausible hidden`}
               </p>
             )}
           </>

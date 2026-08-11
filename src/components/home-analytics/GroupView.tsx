@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { aggregateNumericSeries, stateToNumericSeries } from '@/history/aggregate';
+import { sanitizeSeriesData } from '@/history/sanitize';
 import { HISTORY_CHAR_ORDER } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { canonicalHistoryType } from '@/history/keys';
@@ -172,7 +173,10 @@ export default function GroupView({
             if (section.kind === 'numeric') {
               // Average across members with the min–max envelope — the same
               // chart the accessory view draws, fed by the whole group.
-              const points: HistoryPointData[] = aggregateNumericSeries(entries, fromTs, toTs)
+              // Implausible readings (radio-fault sentinels) never reach the
+              // aggregate — one -40° would drag the whole group average.
+              const sane = entries.map(e => sanitizeSeriesData(e).data);
+              const points: HistoryPointData[] = aggregateNumericSeries(sane, fromTs, toTs)
                 .map(p => ({ ts: p.ts, min: p.min, avg: p.avg, max: p.max, last: p.avg, count: p.count }));
               if (points.length === 0) return null;
               let min = Infinity;
