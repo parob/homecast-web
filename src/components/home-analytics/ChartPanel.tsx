@@ -212,7 +212,9 @@ export default function ChartPanel({
 
   const legendEntries = useMemo(() => numericSeries.map((s, i) => ({
     key: s.key, label: s.label, color: seriesColor(i),
-  })), [numericSeries]);
+    group: cleaned.get(s.key)?.sel.accessoryName,
+    shortLabel: cleaned.get(s.key)?.sel.charLabel,
+  })), [numericSeries, cleaned]);
 
   return (
     <div className="space-y-4">

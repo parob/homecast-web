@@ -10,6 +10,7 @@ import { SETPOINT_STATE_TYPES } from '@/history/categories';
 import HistoryChart from '@/components/widgets/HistoryChart';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
+import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { HistoryPointData, HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const MAX_REFS = 36;
@@ -210,6 +211,8 @@ export default function GroupHistorySections({
             <StateTimeline
               fromTs={fromTs}
               toTs={toTs}
+              padLeft={PLOT_LEFT}
+              padRight={PLOT_RIGHT}
               prevValue={ownData.prevValue}
               prevValueText={ownData.prevValueText}
               states={ownData.states}

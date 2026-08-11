@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { HistoryPointData } from '@/lib/graphql/types';
+import { PLOT_LEFT, PLOT_RIGHT } from '@/components/home-analytics/chartGeometry';
 
 /**
  * Numeric characteristic history: a stepAfter line of the (time-weighted)
@@ -68,7 +69,7 @@ export default function HistoryChart({
           data={data}
           margin={sparkline
             ? { top: 2, right: 2, bottom: 2, left: 2 }
-            : { top: 8, right: 8, bottom: 4, left: 0 }}
+            : { top: 8, right: PLOT_RIGHT, bottom: 4, left: 0 }}
         >
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -95,7 +96,7 @@ export default function HistoryChart({
             hide={sparkline}
             tick={{ fontSize: 11, fill: 'currentColor' }}
             className="stroke-border text-muted-foreground"
-            width={44}
+            width={PLOT_LEFT}
             tickFormatter={(v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${suffix === '%' ? '%' : ''}`}
           />
           {!sparkline && (

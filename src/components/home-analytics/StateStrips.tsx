@@ -3,6 +3,8 @@ import StateTimeline from '@/components/widgets/StateTimeline';
 import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
 import { canonicalHistoryType } from '@/history/keys';
+import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
+import { labelWithoutRoom } from './selBuilder';
 import type { SeriesSel } from './types';
 import type { HistorySeriesData } from '@/lib/graphql/types';
 
@@ -36,6 +38,11 @@ export default function StateStrips({
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
   if (entries.length === 0) return null;
 
+  // The room is either this view's own scope (every strip in one room) or a
+  // heading directly above these strips — either way the label needn't say it.
+  const rooms = new Set(entries.map(e => e.room ?? e.sel.room ?? null));
+  const omitRoom = groupByRoom || rooms.size <= 1;
+
   const renderStrip = ({ sel, data }: StateStripEntry) => {
     const type = canonicalHistoryType(sel.characteristicType);
     const labelForKey = (key: string) => {
@@ -47,10 +54,12 @@ export default function StateStrips({
     const { totals, transitions } = stateTotals(data, fromTs, toTs);
     return (
       <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
-        <p className="text-[11px] text-muted-foreground">{sel.label}</p>
+        <p className="text-[11px] text-muted-foreground">{omitRoom ? labelWithoutRoom(sel) : sel.label}</p>
         <StateTimeline
           fromTs={fromTs}
           toTs={toTs}
+          padLeft={PLOT_LEFT}
+          padRight={PLOT_RIGHT}
           prevValue={data.prevValue}
           prevValueText={data.prevValueText}
           states={data.states}

@@ -8,6 +8,7 @@ import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
 import { BOOL_STATE_LABELS } from '@/history/labels';
 import { stateTotals } from '@/history/stateSummary';
 import { sanitizeSeriesData } from '@/history/sanitize';
+import { PLOT_LEFT, PLOT_RIGHT } from '@/components/home-analytics/chartGeometry';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -227,6 +228,8 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <StateTimeline
               fromTs={fromTs}
               toTs={toTs}
+              padLeft={PLOT_LEFT}
+              padRight={PLOT_RIGHT}
               prevValue={s.prevValue}
               prevValueText={s.prevValueText}
               states={s.states}

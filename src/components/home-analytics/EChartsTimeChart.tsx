@@ -11,6 +11,7 @@ import type { HistorySeriesData } from '@/lib/graphql/types';
 import type { AggregatePoint } from '@/history/aggregate';
 import { normalizeValue } from '@/history/aggregate';
 import { seriesColor } from './chartColors';
+import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { ChartSeries } from './chartColors';
 
 echarts.use([EChartsLine, GridComponent, TooltipComponent, DataZoomComponent, CanvasRenderer]);
@@ -168,9 +169,13 @@ export default function EChartsTimeChart({
     return {
       animation: false,
       grid: {
-        left: 8, right: 8, top: 12,
+        // Fixed gutters, not containLabel: state strips inset by the same
+        // numbers so a vertical read lines up across stacked panels.
+        left: PLOT_LEFT,
+        right: yAxes.length > 1 ? PLOT_LEFT : PLOT_RIGHT,
+        top: 12,
         bottom: hideSlider ? 24 : 48,
-        containLabel: true,
+        containLabel: false,
       },
       xAxis: {
         type: 'time' as const,

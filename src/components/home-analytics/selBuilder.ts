@@ -1,5 +1,5 @@
 import { charLabel } from '@/components/automations/format';
-import { disambiguateSeriesLabels } from '@/history/labels';
+import { disambiguateSeriesLabels, stripRoomPrefix } from '@/history/labels';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
 import type { SeriesSel } from './types';
@@ -20,15 +20,30 @@ export function buildSels(
     };
   });
   const labels = disambiguateSeriesLabels(items);
-  return items.map(({ key, series: s, room }): SeriesSel => ({
+  return items.map(({ key, series: s, room, accessoryName, charLabel: char }): SeriesSel => ({
     accessoryId: s.accessoryId,
     characteristicType: s.characteristicType,
     label: labels.get(key)?.short ?? key,
     fullLabel: labels.get(key)?.full,
     room,
+    // The room is already the view's heading, so the cluster names the
+    // accessory without repeating it.
+    accessoryName: stripRoomPrefix(accessoryName, room),
+    charLabel: char,
     unit: s.unit,
     kind: s.kind,
   }));
+}
+
+/**
+ * Label for a view that already names the room — a room-scoped page or a
+ * strip list under a room heading. Repeating "Kitchen ·" on every row there
+ * spends the widest part of the label on the one word that never varies.
+ */
+export function labelWithoutRoom(sel: SeriesSel): string {
+  return sel.accessoryName && sel.charLabel
+    ? `${sel.accessoryName} · ${sel.charLabel}`
+    : sel.label;
 }
 
 /**

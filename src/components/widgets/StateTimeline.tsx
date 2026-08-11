@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { HistoryStateSpanData, HistoryStateBucketData } from '@/lib/graphql/types';
 
 /**
@@ -43,6 +43,14 @@ export function stateColorForText(text: string): string {
 export interface StateTimelineProps {
   fromTs: number;
   toTs: number;
+  /**
+   * Insets matching the chart's plot area above, so a vertical read at one
+   * instant lines up across every panel. A strip that spans the full card
+   * while the chart above it starts after a Y-axis gutter cannot be
+   * compared by eye, which is the whole point of stacking them.
+   */
+  padLeft?: number;
+  padRight?: number;
   prevValue: number | null;
   /** string kind: the LOCF seed's text. */
   prevValueText?: string | null;
@@ -64,8 +72,11 @@ interface Segment {
 
 export default function StateTimeline({
   fromTs, toTs, prevValue, prevValueText, states, stateBuckets, labelFor,
+  padLeft = 0, padRight = 0,
 }: StateTimelineProps) {
   const span = Math.max(toTs - fromTs, 1);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<{ xPct: number; index: number } | null>(null);
 
   const segments = useMemo((): Segment[] => {
     if (states && states.length > 0) {
@@ -125,8 +136,59 @@ export default function StateTimeline({
     );
   }
 
+  const hoveredSegment = hover !== null ? segments[hover.index] : undefined;
+  const hoverStart = hoveredSegment ? fromTs + (hoveredSegment.leftPct / 100) * span : 0;
+  const hoverEnd = hoveredSegment ? hoverStart + (hoveredSegment.widthPct / 100) * span : 0;
+  const timeAt = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const durationOf = (ms: number) => {
+    const minutes = Math.round(ms / 60_000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) return `${hours}h ${minutes % 60}m`;
+    return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  };
+
   return (
-    <div className="relative h-8 rounded-md overflow-hidden bg-muted/40">
+    <div className="relative" style={{ paddingLeft: padLeft, paddingRight: padRight }}>
+      {/* Readout above the strip: which state, for how long, when. The
+          native title attribute took a second to appear and said none of
+          the duration, which is the question people actually have. */}
+      {hoveredSegment && (
+        <div
+          className="pointer-events-none absolute -top-7 z-20 whitespace-nowrap rounded-md border bg-background/95 px-2 py-1 text-[11px] shadow-sm backdrop-blur"
+          style={{
+            // Percent of the TRACK, not of the padded container — the two
+            // differ by the axis gutter and the label would drift right.
+            left: `calc(${padLeft}px + (100% - ${padLeft + padRight}px) * ${hover!.xPct / 100})`,
+            transform: `translateX(${hover!.xPct > 70 ? '-100%' : hover!.xPct < 8 ? '0' : '-50%'})`,
+          }}
+        >
+          <span className="font-medium">{labelFor(hoveredSegment.value, hoveredSegment.text)}</span>
+          <span className="text-muted-foreground">
+            {' · '}{durationOf(hoverEnd - hoverStart)}{' · '}{timeAt(hoverStart)}–{timeAt(hoverEnd)}
+          </span>
+        </div>
+      )}
+      <div
+        ref={trackRef}
+        data-testid="state-timeline"
+        className="relative h-8 rounded-md overflow-hidden bg-muted/40"
+        onMouseMove={(e) => {
+          const rect = trackRef.current?.getBoundingClientRect();
+          if (!rect || rect.width === 0) return;
+          const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+          const index = segments.findIndex(seg => xPct >= seg.leftPct && xPct < seg.leftPct + seg.widthPct);
+          setHover(index >= 0 ? { xPct, index } : null);
+        }}
+        onMouseLeave={() => setHover(null)}
+      >
+      {hover && (
+        // Crosshair: the same instant the charts above are being read at.
+        <div
+          className="absolute inset-y-0 z-10 w-px bg-foreground/40"
+          style={{ left: `${hover.xPct}%` }}
+        />
+      )}
       {segments.map((seg, i) => {
         // Raw spans state their value outright. Rolled cells shade by how
         // much of the bucket was spent in a non-idle state, coloured by the
@@ -151,12 +213,10 @@ export default function StateTimeline({
               backgroundColor: color,
               opacity,
             }}
-            title={`${labelFor(seg.value, seg.text)} — ${new Date(fromTs + (seg.leftPct / 100) * span).toLocaleString(undefined, {
-              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-            })}`}
           />
         );
       })}
+      </div>
     </div>
   );
 }

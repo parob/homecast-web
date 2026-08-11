@@ -25,10 +25,38 @@ export const BOOL_STATE_LABELS: Record<string, [string, string]> = {
   obstruction_detected: ['Clear', 'Obstructed'],
 };
 
+/**
+ * HomeKit enum vocabularies. The strips have no access to an accessory's
+ * WritableChar options (they render from stored series), so a mode read
+ * "2 17h 26m" — a raw protocol code presented as if it were a word.
+ */
+export const ENUM_STATE_LABELS: Record<string, string[]> = {
+  heating_cooling_current: ['Off', 'Heating', 'Cooling'],
+  heating_cooling_target: ['Off', 'Heat', 'Cool', 'Auto'],
+  current_heater_cooler_state: ['Inactive', 'Idle', 'Heating', 'Cooling'],
+  target_heater_cooler_state: ['Auto', 'Heat', 'Cool'],
+  current_humidifier_dehumidifier_state: ['Inactive', 'Idle', 'Humidifying', 'Dehumidifying'],
+  current_door_state: ['Open', 'Closed', 'Opening', 'Closing', 'Stopped'],
+  target_door_state: ['Open', 'Closed'],
+  lock_current_state: ['Unsecured', 'Secured', 'Jammed', 'Unknown'],
+  security_system_current_state: ['Home', 'Away', 'Night', 'Off', 'Triggered'],
+  security_system_target_state: ['Home', 'Away', 'Night', 'Off'],
+  air_quality: ['Unknown', 'Excellent', 'Good', 'Fair', 'Inferior', 'Poor'],
+  charging_state: ['Not charging', 'Charging', 'Not chargeable'],
+  current_fan_state: ['Inactive', 'Idle', 'Blowing'],
+  current_air_purifier_state: ['Inactive', 'Idle', 'Purifying'],
+  current_position: [],
+};
+
 /** Best-effort state label without the accessory's enum options. */
 export function stateValueLabel(type: string, value: number): string {
   const bool = BOOL_STATE_LABELS[type];
   if (bool) return bool[value === 0 ? 0 : 1];
+  const enumLabels = ENUM_STATE_LABELS[type];
+  if (enumLabels && enumLabels.length > 0) {
+    const label = enumLabels[Math.round(value)];
+    if (label) return label;
+  }
   return value === 0 ? 'Off' : value === 1 ? 'On' : String(value);
 }
 

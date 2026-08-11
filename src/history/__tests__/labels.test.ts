@@ -91,3 +91,20 @@ describe('stripRoomPrefix', () => {
     expect(labels.get('a')!.full).toBe('Bedroom 2 · Underfloor Heating · Humidity');
   });
 });
+
+describe('stateValueLabel', () => {
+  it('names HomeKit enum states instead of printing protocol codes', async () => {
+    const { stateValueLabel } = await import('../labels');
+    // "2 17h 26m" in a caption was heating_cooling_target's raw code.
+    expect(stateValueLabel('heating_cooling_target', 2)).toBe('Cool');
+    expect(stateValueLabel('heating_cooling_current', 1)).toBe('Heating');
+    expect(stateValueLabel('lock_current_state', 1)).toBe('Secured');
+    expect(stateValueLabel('air_quality', 5)).toBe('Poor');
+  });
+
+  it('keeps bool vocabulary and falls back for unknown types', async () => {
+    const { stateValueLabel } = await import('../labels');
+    expect(stateValueLabel('contact_state', 1)).toBe('Open');
+    expect(stateValueLabel('some_unmapped_enum', 3)).toBe('3');
+  });
+});

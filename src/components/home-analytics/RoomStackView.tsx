@@ -5,12 +5,13 @@ import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
+import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import AnalyticsPanel from './AnalyticsPanel';
 import ChartLegend from './ChartLegend';
 import EChartsTimeChart from './EChartsTimeChart';
 import { seriesColor, type ChartSeries } from './chartColors';
-import { buildSels } from './selBuilder';
+import { buildSels, labelWithoutRoom } from './selBuilder';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { Button } from '@/components/ui/button';
 import type { ExplorerView, SeriesSel } from './types';
@@ -139,7 +140,11 @@ export default function RoomStackView({
           groupId={groupId}
           hideSlider={!isLastChart}
         />
-        <ChartLegend entries={chartSeries.map((s, i) => ({ key: s.key, label: s.label, color: seriesColor(i) }))} />
+        <ChartLegend entries={chartSeries.map((s, i) => ({
+          key: s.key, label: s.label, color: seriesColor(i),
+          group: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.accessoryName,
+          shortLabel: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.charLabel,
+        }))} />
       </AnalyticsPanel>
     );
   });
@@ -155,10 +160,13 @@ export default function RoomStackView({
     };
     return [(
       <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
-        <p className="text-[11px] text-muted-foreground">{sel.label}</p>
+        {/* This whole view is one room — the heading already said which. */}
+        <p className="text-[11px] text-muted-foreground">{labelWithoutRoom(sel)}</p>
         <StateTimeline
           fromTs={fromTs}
           toTs={toTs}
+          padLeft={PLOT_LEFT}
+          padRight={PLOT_RIGHT}
           prevValue={main.prevValue}
           prevValueText={main.prevValueText}
           states={main.states}

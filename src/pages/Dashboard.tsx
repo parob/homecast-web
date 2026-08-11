@@ -1988,12 +1988,16 @@ const Dashboard = () => {
     if (scope.level === 'accessory') {
       const acc = scope.accessory;
       const shortName = stripRoomPrefix(acc.name, acc.roomName ?? null);
+      // Every series here belongs to ONE accessory, so its name is a heading
+      // (chips and legends group under it), not a prefix repeated six times.
       const series: ExplorerSeriesSel[] = sortByHistoryImportance(getRecordableCharacteristics(acc)).map(char => ({
         accessoryId: acc.id,
         characteristicType: char.type,
-        label: `${shortName} · ${charLabel(char.type)}`,
+        label: charLabel(char.type),
+        charLabel: charLabel(char.type),
         fullLabel: [acc.roomName, shortName, charLabel(char.type)].filter(Boolean).join(' · '),
         room: acc.roomName ?? null,
+        accessoryName: shortName,
         unit: char.unit ?? null,
         kind: getHistoryProfileKind(char.type),
       }));

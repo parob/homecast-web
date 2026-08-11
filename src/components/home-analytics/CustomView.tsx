@@ -132,32 +132,60 @@ export default function CustomView({
   const numericIndex = (sel: SeriesSel) =>
     view.series.filter(s => s.kind === 'numeric').findIndex(s => s === sel);
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, SeriesSel[]>();
+    for (const sel of view.series) {
+      const key = sel.accessoryName ?? '';
+      const list = map.get(key) ?? [];
+      list.push(sel);
+      map.set(key, list);
+    }
+    return map;
+  }, [view.series]);
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {view.series.map((sel) => (
-          <span
-            key={`${sel.accessoryId}|${sel.characteristicType}`}
-            className="inline-flex items-center gap-1.5 text-[11px] border rounded-full pl-2 pr-1 py-0.5"
-          >
+      <div className="flex flex-wrap items-start gap-2">
+        {[...grouped.entries()].map(([groupName, sels]) => {
+          const clustered = !!groupName && sels.length > 1;
+          const chips = sels.map(sel => (
             <span
-              className="h-2 w-2 rounded-full shrink-0"
-              style={{
-                backgroundColor: sel.kind === 'numeric'
-                  ? seriesColor(numericIndex(sel))
-                  : 'hsl(var(--muted-foreground))',
-              }}
-            />
-            <span className="whitespace-normal break-words" title={sel.fullLabel ?? sel.label}>{sel.label}</span>
-            <button
-              className="p-0.5 rounded-full hover:bg-muted"
-              onClick={() => onViewChange({ ...view, series: view.series.filter(s => s !== sel) })}
-              aria-label={`Remove ${sel.label}`}
+              key={`${sel.accessoryId}|${sel.characteristicType}`}
+              className="inline-flex items-center gap-1.5 text-[11px] border rounded-full pl-2 pr-1 py-0.5 bg-background"
             >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{
+                  backgroundColor: sel.kind === 'numeric'
+                    ? seriesColor(numericIndex(sel))
+                    : 'hsl(var(--muted-foreground))',
+                }}
+              />
+              <span className="whitespace-normal break-words" title={sel.fullLabel ?? sel.label}>
+                {clustered ? (sel.charLabel ?? sel.label) : sel.label}
+              </span>
+              <button
+                className="p-0.5 rounded-full hover:bg-muted"
+                onClick={() => onViewChange({ ...view, series: view.series.filter(s => s !== sel) })}
+                aria-label={`Remove ${sel.fullLabel ?? sel.label}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ));
+          // One accessory, many characteristics: name it once and cluster
+          // its chips, instead of repeating the name on every chip.
+          return clustered ? (
+            <span key={groupName} className="inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-muted/60 px-2 py-1">
+              <span className="text-[11px] font-medium text-foreground/70">{groupName}</span>
+              {chips}
+            </span>
+          ) : (
+            <span key={groupName || sels[0].accessoryId} className="inline-flex flex-wrap items-center gap-1.5">
+              {chips}
+            </span>
+          );
+        })}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-6 text-[11px] rounded-full px-2" disabled={addable.length === 0}>

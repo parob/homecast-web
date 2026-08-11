@@ -11,6 +11,10 @@ export interface SeriesSel {
   fullLabel?: string;
   /** Room, when known — lets state strips group by room. */
   room?: string | null;
+  /** Accessory name — lets chips and legends group under it, written once. */
+  accessoryName?: string;
+  /** Characteristic alone — what a chip shows INSIDE its accessory cluster. */
+  charLabel?: string;
   unit: string | null;
   kind: 'numeric' | 'bool' | 'enum' | 'string';
 }
