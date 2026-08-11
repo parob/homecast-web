@@ -556,7 +556,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   // beside: a lone rocker pinned left left two thirds of the
                   // panel empty. Centre it — the same thing portrait already did.
                   <div className={`flex gap-4 ${children && !heroChildrenEmpty ? '' : 'justify-center'}`}>
-                    <div ref={heroRef} className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
+                    {/* shrink-0 is for the ROCKER — a fixed 84px bar that must
+                        not be squeezed. A block hero is a row of readings that
+                        already knows how to wrap, and refusing to shrink it
+                        sized this column to all of them side by side, shoving
+                        the panel beside it clean off the right edge of the
+                        card. Let it shrink and its own flex-wrap does the job. */}
+                    <div ref={heroRef} className={heroShape === 'block' ? 'min-w-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
                     {children && (
                       <div
                         ref={heroChildrenRef}

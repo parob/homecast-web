@@ -448,9 +448,13 @@ export default function EChartsTimeChart({
     // sideways along a rising line walked the highlight down through every
     // line beneath it. Vertical gap ÷ nothing; true distance to the segment.
     const zr = chart.getZr();
-    const PICK = 36; // acquire a line within this
-    const HOLD = 64; // …and keep it until this far off
-    const MARGIN = 10; // a rival must beat the held line by this much
+    // Deliberately tight. Measuring true distance to the STROKE (rather than
+    // the value in the cursor's column) made a wide radius unnecessary and
+    // then actively wrong: a chart of eight lines has one within 36px of
+    // almost anywhere, so the highlight was answering before it was asked.
+    const PICK = 12; // acquire a line within this
+    const HOLD = 24; // …and keep it until this far off
+    const MARGIN = 6; // a rival must beat the held line by this much
 
     const distanceTo = (
       track: { axisIndex: number; pairs: Array<[number, number]> },
