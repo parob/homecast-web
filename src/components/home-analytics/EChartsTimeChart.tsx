@@ -136,7 +136,7 @@ export default function EChartsTimeChart({
   const lastHoverRef = useRef<string | null>(null);
   // Read by the tooltip formatter. A ref rather than a dep: the option must
   // not rebuild every time the highlight moves.
-  const litLabelsRef = useRef<Set<string> | null>(null);
+  const litRef = useRef<Array<{ key: string; label: string; color: string }>>([]);
 
   // The caller rebuilds its series array on every render, so pointing at a
   // line — which is a state change up there — handed this chart a brand new
@@ -402,31 +402,45 @@ export default function EChartsTimeChart({
           const items = (Array.isArray(params) ? params : [params]) as Array<{
             seriesName?: string; value?: [number, number]; color?: string;
           }>;
-          const lit = litLabelsRef.current;
           const all = items
             .filter(p => p.seriesName && !p.seriesName.startsWith('__band')
               && Array.isArray(p.value) && Number.isFinite(p.value[1]))
             .map(p => ({ name: p.seriesName!, value: (p.value as [number, number])[1], color: String(p.color ?? '#888') }));
-          // Pointing at one line is a question about that line. Answering it
-          // with all nine, and leaving you to find the right row, is the wall
-          // this tooltip was capped to avoid in the first place.
-          //
-          // Unless that line has nothing to say here: a series with no sample
-          // at this instant is not in `items` at all, so filtering to it left
-          // no rows and an empty formatter result HIDES the tooltip. Falling
-          // back to the full list keeps it on screen — losing the reading you
-          // asked for is one thing, losing the tooltip is another.
-          const focused = lit && lit.size > 0 ? all.filter(r => lit.has(r.name)) : all;
-          const rows = focused.length > 0 ? focused : all;
-          if (rows.length === 0) return '';
-          rows.sort((a, b) => b.value - a.value);
           const ts = (items[0]?.value as [number, number] | undefined)?.[0];
+
+          // Pointing at one line is a question about that line — so answer it
+          // from the line itself, not from what ECharts happened to hand over.
+          //
+          // Sensors sample at their own instants. The axis pointer snaps to
+          // ONE series' datum, and `items` holds only the series that have a
+          // point exactly there — so the highlighted line is frequently
+          // missing from it. Filtering to it then emptied the list, and the
+          // fallback printed every other line instead: you pointed at the
+          // Velux sensor and were told about the radiator. Read the value the
+          // way the chart draws it — last value at or before this instant —
+          // and the row is always the one you asked for.
+          const lit = litRef.current;
+          const rows = lit.length > 0 && ts !== undefined
+            ? lit.map(({ key, label, color }) => {
+              const pairs = tracksRef.current.find(t => t.key === key)?.pairs ?? [];
+              let value: number | null = null;
+              for (const [x, y] of pairs) {
+                if (x > ts) break;
+                value = y;
+              }
+              return { name: label, value, color };
+            })
+            : all;
+          if (rows.length === 0) return '';
+          rows.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
           const header = ts !== undefined
             ? `<div style="font-weight:600;margin-bottom:4px">${new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>`
             : '';
           const shown = rows.slice(0, TOOLTIP_MAX_ROWS);
           const hidden = rows.length - shown.length;
-          const fmt = (v: number) => (normalize ? `${v.toFixed(0)}%` : v.toFixed(1));
+          // A highlighted line with nothing recorded yet still names itself:
+          // "which line am I on" is the question, and a dash answers the rest.
+          const fmt = (v: number | null) => (v === null ? '—' : normalize ? `${v.toFixed(0)}%` : v.toFixed(1));
           const lines = shown.map(r =>
             `<div style="display:flex;align-items:center;gap:6px">`
             + `<span style="width:8px;height:8px;border-radius:50%;background:${r.color};flex:none"></span>`
@@ -601,11 +615,15 @@ export default function EChartsTimeChart({
     const chart = chartRef.current;
     if (!chart) return;
     const lit = new Set((highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []));
-    litLabelsRef.current = new Set(
-      [...lit].map(i => keyByIndex.get(i)).filter((k): k is string => !!k)
-        .map(key => stableSeries.find(x => x.key === key)?.label)
-        .filter((l): l is string => !!l),
-    );
+    litRef.current = [...lit]
+      .map(i => keyByIndex.get(i))
+      .filter((k): k is string => !!k)
+      .flatMap(key => {
+        const at = stableSeries.findIndex(x => x.key === key);
+        if (at < 0) return [];
+        const entry = stableSeries[at];
+        return [{ key, label: entry.label, color: entry.color ?? seriesColor(at) }];
+      });
     chart.setOption({
       series: styles.map((base, i) => {
         if (!base) return {};
