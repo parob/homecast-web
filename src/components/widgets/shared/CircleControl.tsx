@@ -6,9 +6,9 @@ interface CircleControlProps {
   icon: LucideIcon;
   /** Drives the filled vs hollow treatment. */
   isActive: boolean;
-  /** State in words, under the circle: "Locked", "Open", "Running". */
+  /** State in words: "Locked", "Open", "Running". The accessible name. */
   label: string;
-  /** Secondary line — battery, "Closing…", whatever the device is doing. */
+  /** Secondary line — battery, time remaining: what the subtitle doesn't say. */
   detail?: string;
   onPress: () => void;
   disabled?: boolean;
@@ -20,7 +20,13 @@ interface CircleControlProps {
 
 /**
  * The big round press-target Apple Home gives a lock or a garage door: one
- * thing to hit, its state written underneath.
+ * thing to hit.
+ *
+ * The state is NOT written underneath: all three widgets that use this put the
+ * same words in their subtitle — "Locked", "Open", "Running", jammed and
+ * mid-move states included — so the panel said it twice in a space the size of
+ * a playing card. `detail` stays, because battery and time-remaining are the
+ * parts the subtitle doesn't carry.
  *
  * Sized in px rather than rem — the expanded panel has a fixed width, so its
  * controls must not scale with the text-size preference.
@@ -33,7 +39,7 @@ export const CircleControl: React.FC<CircleControlProps> = ({
   onPress,
   disabled = false,
   activeClassName = 'bg-primary text-primary-foreground',
-  size = 132,
+  size = 148,
 }) => (
   <div className="flex flex-col items-center justify-center gap-[10px]">
     <button
@@ -49,9 +55,6 @@ export const CircleControl: React.FC<CircleControlProps> = ({
     >
       <Icon style={{ width: size * 0.36, height: size * 0.36 }} strokeWidth={1.75} />
     </button>
-    <div className="text-center">
-      <div className="text-[16px] font-medium leading-tight">{label}</div>
-      {detail && <div className="text-[12px] opacity-70 mt-0.5">{detail}</div>}
-    </div>
+    {detail && <div className="text-[12px] opacity-70 text-center">{detail}</div>}
   </div>
 );

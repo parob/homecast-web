@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, memo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, memo, useState } from 'react';
 import { requestAccessoryRefresh } from '@/lib/accessoryRefresh';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
@@ -444,6 +444,27 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     heroDense: showHero && !heroPortrait,
   };
 
+  // A widget can pass children that render nothing: a fan whose only secondary
+  // control is the speed slider the hero already replaced hands over a div with
+  // two false branches in it. The prop is truthy, so the flex-1 column beside
+  // the hero still claimed two thirds of the panel and left the control pinned
+  // to the edge with a void next to it. The prop can't answer this — measure.
+  const heroRef = useRef<HTMLDivElement>(null);
+  const heroChildrenRef = useRef<HTMLDivElement>(null);
+  const [heroChildrenEmpty, setHeroChildrenEmpty] = useState(false);
+  useLayoutEffect(() => {
+    if (!showHero || heroPortrait || !children) return;
+    // A zero-height hero means the subtree isn't laid out (collapsed panel);
+    // trusting that reading would centre a row that does have content.
+    const heroBox = heroRef.current?.getBoundingClientRect();
+    if (!heroBox || heroBox.height === 0) return;
+    // Measure the contents, not the column: a flex item stretches to the row,
+    // so an empty column reports the hero's own height back at you.
+    const inner = Array.from(heroChildrenRef.current?.children ?? []);
+    const empty = inner.every(el => el.getBoundingClientRect().height === 0);
+    setHeroChildrenEmpty(prev => (prev === empty ? prev : empty));
+  });
+
   // Get drag handle from SortableItem context (if inside a sortable)
   const dragHandle = useDragHandle();
   const isDragging = dragHandle?.isDragging ?? false;
@@ -531,9 +552,19 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                     {children && <div className="space-y-3">{children}</div>}
                   </div>
                 ) : (
-                  <div className="flex gap-4">
-                    <div className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
-                    {children && <div className="min-w-0 flex-1 space-y-3">{children}</div>}
+                  // With no secondary controls there is nothing to stand
+                  // beside: a lone rocker pinned left left two thirds of the
+                  // panel empty. Centre it — the same thing portrait already did.
+                  <div className={`flex gap-4 ${children && !heroChildrenEmpty ? '' : 'justify-center'}`}>
+                    <div ref={heroRef} className={heroShape === 'block' ? 'shrink-0' : 'h-[190px] w-[84px] shrink-0'}>{hero}</div>
+                    {children && (
+                      <div
+                        ref={heroChildrenRef}
+                        className={`min-w-0 space-y-3 ${heroChildrenEmpty ? '' : 'flex-1'}`}
+                      >
+                        {children}
+                      </div>
+                    )}
                   </div>
                 )
               ) : (

@@ -36,9 +36,12 @@ export default function ExpandedActionBar({
   onDark: boolean;
 }) {
   if (actions.length === 0) return null;
+  // Glass, not a grey disc: the tile is a translucent panel, and a flat
+  // black-alpha circle on it read as a dead placeholder rather than a
+  // control. A light fill plus a hairline ring sits on the surface.
   const tone = onDark
-    ? 'bg-white/15 hover:bg-white/25 text-white'
-    : 'bg-black/10 hover:bg-black/20 text-slate-900';
+    ? 'bg-white/15 hover:bg-white/25 text-white ring-white/15'
+    : 'bg-white/55 hover:bg-white/80 text-slate-900/80 hover:text-slate-900 ring-black/[0.06]';
 
   return (
     <div className="mt-3 flex items-center justify-end gap-1.5">
@@ -47,7 +50,7 @@ export default function ExpandedActionBar({
         return (
           <button
             key={action.key}
-            className={`h-8 w-8 rounded-full flex items-center justify-center transition-colors ${tone}`}
+            className={`h-7 w-7 rounded-full flex items-center justify-center ring-1 shadow-sm backdrop-blur-sm transition-colors ${tone}`}
             onClick={(e) => { e.stopPropagation(); action.onClick(); }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={action.label}

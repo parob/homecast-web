@@ -1,6 +1,5 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 interface VerticalToggleProps {
   checked: boolean;
@@ -16,12 +15,17 @@ interface VerticalToggleProps {
 }
 
 /**
- * A big vertical rocker for devices that are simply on or off.
+ * A big vertical rocker for accessories that are simply on or off.
  *
  * A plain switch has nothing to drag, so it gets a switch rather than a slider:
  * the knob rides to the top when on and the bottom when off, and the whole
  * track is the hit target. Sized in px — the expanded panel has a fixed width
  * and must not scale with the text-size preference.
+ *
+ * No label under it: every widget that uses this puts On/Off in its subtitle,
+ * two lines above, so the word appeared twice in one small panel. The state is
+ * legible from the knob's position and the track's fill; the words go to the
+ * accessible name.
  */
 export const VerticalToggle: React.FC<VerticalToggleProps> = ({
   checked,
@@ -31,19 +35,14 @@ export const VerticalToggle: React.FC<VerticalToggleProps> = ({
   onLabel = 'On',
   offLabel = 'Off',
   activeClassName = 'bg-primary',
-  width = 88,
-  height = 174,
+  width = 96,
+  height = 200,
 }) => {
-  // Off over a dark background the tile goes dark, and this label is a div —
-  // so WidgetWrapper's rule that whitens spans skips it and it stayed near
-  // black on near black.
-  const { isDarkBackground } = useBackgroundContext();
-  const labelDark = !checked && isDarkBackground;
   const pad = 8;
   const knob = width - pad * 2;
 
   return (
-    <div className="flex flex-col items-center gap-[10px]">
+    <div className="flex flex-col items-center">
       <button
         type="button"
         role="switch"
@@ -75,9 +74,6 @@ export const VerticalToggle: React.FC<VerticalToggleProps> = ({
           )}
         </span>
       </button>
-      <div className={`text-[16px] font-medium ${labelDark ? 'text-white' : ''}`}>
-        {checked ? onLabel : offLabel}
-      </div>
     </div>
   );
 };
