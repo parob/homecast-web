@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lightingSeries, lightingSummary, smoothCounts, smoothIntensity } from '../lighting';
+import { lightingSeries, lightingSummary } from '../lighting';
 import type { HistorySeriesData } from '@/lib/graphql/types';
 
 const FROM = 0;
@@ -99,35 +99,5 @@ describe('lightingSummary', () => {
   it('has nothing to say about a room that was never lit', () => {
     const points = lightingSeries([{ power: power(0) }], FROM, TO, 4);
     expect(lightingSummary(points, TO)).toMatchObject({ onMs: 0, peak: 0, meanLit: null });
-  });
-});
-
-describe('smoothing for display', () => {
-  const spiky = [
-    { ts: 0, onCount: 0, litBrightness: null },
-    { ts: 1, onCount: 4, litBrightness: 100 },
-    { ts: 2, onCount: 0, litBrightness: null },
-    { ts: 3, onCount: 4, litBrightness: 20 },
-  ];
-
-  it('eases the count so ten bulbs switching do not draw a staircase', () => {
-    const out = smoothCounts(spiky, 1);
-    expect(out[0].onCount).toBeCloseTo(2);      // (0+4)/2
-    expect(out[1].onCount).toBeCloseTo(4 / 3);  // (0+4+0)/3
-    expect(out.every(p => p.onCount >= 0)).toBe(true);
-  });
-
-  it('averages intensity only across instants that were lit', () => {
-    // Folding the dark ones in would thin the stroke every time a lamp
-    // elsewhere went off.
-    const out = smoothIntensity(spiky, 1);
-    expect(out[1].litBrightness).toBe(100);
-    expect(out[3].litBrightness).toBe(20);
-    expect(out[0].litBrightness).toBeNull();
-  });
-
-  it('leaves the points alone when asked for no window', () => {
-    expect(smoothCounts(spiky, 0)).toBe(spiky);
-    expect(smoothIntensity(spiky, 0)).toBe(spiky);
   });
 });

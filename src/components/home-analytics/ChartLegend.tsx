@@ -23,7 +23,10 @@ export interface LegendEntry {
   key: string;
   label: string;
   color: string;
+  /** Setpoint — hollow with a dashed edge, matching its stroke. */
   dashed?: boolean;
+  /** Borrowed from another measure — hollow with a dotted edge. */
+  dotted?: boolean;
   /** Accessory this belongs to — the identity, for grouping. */
   groupKey?: string;
   /** What to call that accessory here (room-qualified only if it must be). */
@@ -78,8 +81,10 @@ function Dot({
       <span
         className="inline-block h-2 w-2 rounded-full shrink-0"
         style={{
-          backgroundColor: entry.dashed ? 'transparent' : entry.color,
-          border: entry.dashed ? `1.5px dashed ${entry.color}` : undefined,
+          backgroundColor: entry.dashed || entry.dotted ? 'transparent' : entry.color,
+          border: entry.dashed
+            ? `1.5px dashed ${entry.color}`
+            : entry.dotted ? `1.5px dotted ${entry.color}` : undefined,
         }}
       />
       <span className="whitespace-normal break-words">

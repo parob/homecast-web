@@ -1,5 +1,4 @@
-// Lighting as ONE line: how many lights are on, drawn at a thickness that
-// swells with how bright they are.
+// Lighting as a line: how many of a room's lights are on.
 //
 // A room of nine bulbs charted as nine brightness lines said nothing —
 // HomeKit keeps reporting a bulb's last brightness while it is OFF, so the
@@ -114,53 +113,7 @@ export interface LightingSummary {
   meanLit: number | null;
 }
 
-/**
- * Ease the intensity, not the count.
- *
- * How many lights are on is a step function — a bulb is on or it is not, and
- * rounding that into a ramp would draw switches that never happened. How
- * bright they are is continuous, so a moving average over its neighbours
- * lets the stroke swell and thin gradually instead of stepping between
- * sample buckets.
- */
-export function smoothIntensity(points: LightingPoint[], window = 4): LightingPoint[] {
-  if (points.length === 0 || window < 1) return points;
-  return points.map((p, i) => {
-    if (p.litBrightness === null) return p;
-    let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, i - window); j <= Math.min(points.length - 1, i + window); j++) {
-      const v = points[j].litBrightness;
-      // Only average over instants that were lit: folding in the dark ones
-      // would thin the stroke every time a lamp went off elsewhere.
-      if (v !== null) { sum += v; n++; }
-    }
-    return n > 0 ? { ...p, litBrightness: sum / n } : p;
-  });
-}
 
-/**
- * Ease the count as well, for DISPLAY only.
- *
- * Ten bulbs switching independently make a staircase that hides the thing
- * the panel is for — the rhythm of a room's lighting over an evening. A
- * moving average turns "exactly six on at this instant" into "about six on
- * around now", which is what an overview is claiming anyway. The summary
- * line underneath is always computed from the RAW points, so the peak it
- * quotes is a real peak and not a smoothed one.
- */
-export function smoothCounts(points: LightingPoint[], window = 4): LightingPoint[] {
-  if (points.length === 0 || window < 1) return points;
-  return points.map((p, i) => {
-    let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, i - window); j <= Math.min(points.length - 1, i + window); j++) {
-      sum += points[j].onCount;
-      n++;
-    }
-    return { ...p, onCount: sum / n };
-  });
-}
 
 export function lightingSummary(points: LightingPoint[], toTs: number): LightingSummary {
   if (points.length === 0) return { onMs: 0, peak: 0, peakTs: null, meanLit: null };
@@ -184,4 +137,44 @@ export function lightingSummary(points: LightingPoint[], toTs: number): Lighting
     }
   }
   return { onMs, peak, peakTs, meanLit: litMs > 0 ? litSum / litMs : null };
+}
+
+/**
+ * Package the count as a normal series, so the lighting chart is an ordinary
+ * chart: same axis handling, same tooltip, same legend, same everything.
+ */
+export function lightingCountSeries(points: LightingPoint[]): HistorySeriesData {
+  return {
+    accessoryId: 'room:lighting',
+    characteristicType: 'lights_on',
+    kind: 'numeric',
+    unit: null,
+    resolution: 'raw',
+    prevValue: null,
+    points: points.map(p => ({ ts: p.ts, min: p.onCount, avg: p.onCount, max: p.onCount, last: p.onCount, count: 1 })),
+    states: [],
+    stateBuckets: [],
+  } as unknown as HistorySeriesData;
+}
+
+/**
+ * Mean brightness of whatever was lit, as its own series. Instants with
+ * nothing on contribute no point — a dark room has no brightness, and
+ * plotting zero would claim the lights were on and dimmed to nothing.
+ */
+export function lightingBrightnessSeries(points: LightingPoint[]): HistorySeriesData {
+  const lit = points.flatMap(p => (p.litBrightness === null ? [] : [{
+    ts: p.ts, min: p.litBrightness, avg: p.litBrightness, max: p.litBrightness, last: p.litBrightness, count: 1,
+  }]));
+  return {
+    accessoryId: 'room:lighting',
+    characteristicType: 'brightness',
+    kind: 'numeric',
+    unit: '%',
+    resolution: 'raw',
+    prevValue: null,
+    points: lit,
+    states: [],
+    stateBuckets: [],
+  } as unknown as HistorySeriesData;
 }

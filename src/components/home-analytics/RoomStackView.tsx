@@ -5,7 +5,9 @@ import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
-import { lightingSeries, lightingSummary, smoothCounts, smoothIntensity, type LightingInput } from '@/history/lighting';
+import {
+  lightingBrightnessSeries, lightingCountSeries, lightingSeries, lightingSummary, type LightingInput,
+} from '@/history/lighting';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import ActivityStrips, { type ActivityEntry, type ActivityGroup } from './ActivityStrips';
@@ -64,10 +66,9 @@ export default function RoomStackView({
     return { ...prev, [measureId]: next };
   });
   const isOn = (measureId: string, complementId: string) => !!complements[measureId]?.has(complementId);
-  // The swelling stroke is the point of the lighting line, so it is on by
-  // default — but a room where every bulb sits at full has nothing to say
-  // with it, and a plain line is easier to read a count off.
-  const [showIntensity, setShowIntensity] = useState(true);
+  // Brightness is a complement like any other: the lighting chart is about
+  // how many lights are on, and how bright they were is a second question.
+  const [showBrightness, setShowBrightness] = useState(false);
   // Shared across the stacked panels: pointing at "Underfloor Heating" in the
   // Temperature legend picks it out of the Humidity panel too, which is the
   // whole reason these panels are stacked.
@@ -165,32 +166,16 @@ export default function RoomStackView({
       return [{ power, brightness: brightnessSel ? entryFor(brightnessSel) : undefined }];
     });
     if (lights.length === 0 || lightSels.length === 0) return null;
-    const raw = lightingSeries(lights, fromTs, toTs, 400);
-    if (raw.length === 0) return null;
-    // Draw the eased shape, quote the real numbers: the summary below is
-    // computed from `raw`, so its peak is a peak that actually happened.
-    const points = smoothCounts(smoothIntensity(raw, 6), 6);
-    const maxHalf = Math.max(lights.length * 0.075, 0.2);
-    // Never vanishes: a stroke of zero width at 0% brightness would read as
-    // missing data rather than as "on, but barely".
-    const minHalf = maxHalf * 0.16;
-    const evenHalf = maxHalf * 0.42; // plain line, when intensity is off
+    const points = lightingSeries(lights, fromTs, toTs, 400);
+    if (points.length === 0) return null;
     return {
       count: lights.length,
-      summary: lightingSummary(raw, toTs),
-      ribbon: {
-        label: 'Lights on',
-        points: points.map(p => ({
-          ts: p.ts,
-          value: p.onCount,
-          half: showIntensity
-            ? minHalf + ((p.litBrightness ?? 0) / 100) * (maxHalf - minHalf)
-            : evenHalf,
-        })),
-      },
+      summary: lightingSummary(points, toTs),
+      countSeries: lightingCountSeries(points),
+      brightnessSeries: lightingBrightnessSeries(points),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [powerSels, lightSels, data, fromTs, toTs, hideUnusual, showIntensity]);
+  }, [powerSels, lightSels, data, fromTs, toTs, hideUnusual]);
 
   const groupId = `room-stack-${roomKey ?? 'elsewhere'}`;
   const chartPanels = panels.map((panel, panelIndex) => {
@@ -292,6 +277,7 @@ export default function RoomStackView({
               label: s.label,
               color: s.color ?? seriesColor(0),
               dashed: s.dashed,
+              dotted: s.secondary,
               groupKey: sel?.accessoryId.toUpperCase(),
               group: sel?.accessoryName,
               shortLabel: sel?.charLabel,
@@ -334,14 +320,14 @@ export default function RoomStackView({
           {lighting && (
             <AnalyticsPanel
               title="Lighting"
-              source={`${lighting.count} light${lighting.count === 1 ? '' : 's'}${showIntensity ? ' · thickness = brightness' : ''}`}
+              source={`${lighting.count} light${lighting.count === 1 ? '' : 's'}`}
               actions={(
                 <span className="flex items-center gap-2">
                   <label className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
                     <input
                       type="checkbox"
-                      checked={showIntensity}
-                      onChange={(e) => setShowIntensity(e.target.checked)}
+                      checked={showBrightness}
+                      onChange={(e) => setShowBrightness(e.target.checked)}
                       className="accent-current"
                     />
                     Brightness
@@ -368,21 +354,35 @@ export default function RoomStackView({
                 : 'nothing on in this range'}
             >
               <EChartsTimeChart
-                series={lightingOffers.flatMap(({ complement, sels }) => (
-                  isOn('lighting', complement.id)
-                    ? sels.flatMap(sel => {
-                      const main = entryFor(sel);
-                      return main ? [{
-                        key: `${sel.accessoryId}|${sel.characteristicType}`,
-                        label: sel.label,
-                        unit: sel.unit,
-                        data: main,
-                        secondary: true,
-                      }] : [];
-                    })
-                    : []
-                ))}
-                ribbon={lighting.ribbon}
+                series={[
+                  {
+                    key: 'lights-on',
+                    label: 'Lights on',
+                    unit: null,
+                    data: lighting.countSeries,
+                  },
+                  ...(showBrightness ? [{
+                    key: 'lights-brightness',
+                    label: 'Brightness of those lit',
+                    unit: '%',
+                    data: lighting.brightnessSeries,
+                    secondary: true,
+                  }] : []),
+                  ...lightingOffers.flatMap(({ complement, sels }) => (
+                    isOn('lighting', complement.id)
+                      ? sels.flatMap(sel => {
+                        const main = entryFor(sel);
+                        return main ? [{
+                          key: `${sel.accessoryId}|${sel.characteristicType}`,
+                          label: sel.label,
+                          unit: sel.unit,
+                          data: main,
+                          secondary: true,
+                        }] : [];
+                      })
+                      : []
+                  )),
+                ]}
                 // Whole lights only, and the axis always spans the room's
                 // full set so two rooms can be compared by eye.
                 axis={{ min: 0, max: lighting.count, minInterval: 1 }}
