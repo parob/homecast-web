@@ -60,6 +60,20 @@ function labelForKey(char: WritableChar | undefined, type: string, key: string):
   return key;
 }
 
+/**
+ * When the window reaches back further than the recording does, say so —
+ * otherwise an empty left half of a 30d chart reads as a bug rather than as
+ * "this accessory has only been recording since Tuesday".
+ */
+function recordedFrom(data: HistorySeriesData, fromTs: number, toTs: number): string {
+  const first = data.points[0]?.ts ?? data.states[0]?.ts ?? data.stateBuckets[0]?.ts;
+  if (first === undefined) return '';
+  if (first - fromTs < (toTs - fromTs) * 0.05) return '';
+  return ` · recorded from ${new Date(first).toLocaleDateString(undefined, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  })}`;
+}
+
 function formatDuration(ms: number): string {
   const minutes = Math.round(ms / 60_000);
   if (minutes < 60) return `${minutes}m`;
@@ -204,6 +218,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             {stats && (
               <p className="text-[11px] text-muted-foreground">
                 min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
+                {recordedFrom(s, fromTs, toTs)}
               </p>
             )}
           </>
@@ -224,6 +239,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
                   `${labelForKey(char, s.characteristicType, key)} ${formatDuration(ms)}`,
                 ).join(' · ')}
                 {states.transitions > 0 && ` · ${states.transitions} changes`}
+                {recordedFrom(s, fromTs, toTs)}
               </p>
             )}
           </>

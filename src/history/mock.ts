@@ -62,6 +62,12 @@ export interface MockAccessoryEntry {
   recorded: string[];
   /** Current values by characteristic — the mock's "live" accessory state. */
   values?: Record<string, number | string>;
+  /**
+   * Hours of history this accessory has — a recently-added accessory has
+   * less than the window you pick, which is the case that showed 16 hours
+   * of data stretched across a 30-day chart.
+   */
+  recordingHours?: number;
 }
 
 /**
@@ -78,7 +84,7 @@ export const MOCK_ACCESSORIES: MockAccessoryEntry[] = [
   { accessoryId: 'MOCK-STUDY-SENSOR', name: 'Study Sensor', room: 'Study', recordable: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], recorded: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], values: { current_temperature: 21.7, relative_humidity: 49, carbon_dioxide_level: 720 } },
   { accessoryId: 'MOCK-DOOR', name: 'Front Door', room: 'Hallway', recordable: ['contact_state', 'battery_level'], recorded: ['contact_state', 'battery_level'], values: { contact_state: 0, battery_level: 17 } },
   { accessoryId: 'MOCK-SMOKE', name: 'Hall Smoke Alarm', room: 'Hallway', recordable: ['smoke_detected', 'status_low_battery'], recorded: [], values: { smoke_detected: 0, status_low_battery: 0 } },
-  { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'], values: { carbon_monoxide_detected: 0, carbon_monoxide_level: 2 } },
+  { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'], values: { carbon_monoxide_detected: 0, carbon_monoxide_level: 2 }, recordingHours: 16 },
   { accessoryId: 'MOCK-OUTLET', name: 'Desk Outlet', room: 'Study', recordable: ['power_state', 'eve_energy_watt'], recorded: ['power_state', 'eve_energy_watt'], values: { power_state: 1, eve_energy_watt: 62 } },
   { accessoryId: 'MOCK-LAMP', name: 'Reading Lamp', room: 'Bedroom', recordable: ['power_state', 'brightness'], recorded: ['power_state', 'brightness'], values: { power_state: 1, brightness: 40 } },
   { accessoryId: 'MOCK-VIRT-COUNT', name: 'Coffee Counter', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'], values: { virtual_count: 14 } },
@@ -141,6 +147,8 @@ function buildBigHome(): { accessories: MockAccessoryEntry[]; groups: Array<{ id
         recordable: ['current_temperature', 'active', 'rotation_speed'],
         recorded: ['current_temperature'],
         values: { current_temperature: 21.0 + temp, active: 0, rotation_speed: 0 },
+        // Added recently: less history than a wide window asks for.
+        recordingHours: 16,
       });
     }
     // Motion sensor (recorded) — activity data.
@@ -277,6 +285,13 @@ export function mockHistoryData(
     const span = toTs - fromTs;
     const resolution = span <= 48 * HOUR_MS ? 'raw' : span <= 60 * DAY_MS ? 'hourly' : 'daily';
 
+    // A recently-added accessory has no history before it existed — the
+    // window still shows its full extent, the data just starts late.
+    const recordingHours = mockAccessories().find(a => a.accessoryId === ref.accessoryId)?.recordingHours;
+    const seriesStart = recordingHours !== undefined
+      ? Math.max(fromTs, toTs - recordingHours * HOUR_MS)
+      : fromTs;
+
     if (kind === 'numeric') {
       const n = Math.min(maxPoints, 200);
       const stepMs = span / n;
@@ -302,6 +317,7 @@ export function mockHistoryData(
       const points: HistoryPointData[] = [];
       for (let i = 0; i < n; i++) {
         const ts = fromTs + i * stepMs;
+        if (ts < seriesStart) continue;
         const dayPhase = ((ts % DAY_MS) / DAY_MS) * Math.PI * 2;
         // Seed the walk by absolute day so compare-mode ghosts (the same
         // series a day/week earlier) differ visibly from today.
@@ -392,7 +408,7 @@ export function mockHistoryData(
     const values = kind === 'bool' ? [0, 1] : [0, 1, 2];
     if (resolution === 'raw') {
       const states: HistoryStateSpanData[] = [];
-      let t = fromTs;
+      let t = seriesStart;
       let idx = Math.floor(noise(seed, 0) * values.length);
       let step = 0;
       while (t < toTs && states.length < 300) {
@@ -416,7 +432,7 @@ export function mockHistoryData(
 
     const bucketMs = resolution === 'hourly' ? HOUR_MS : DAY_MS;
     const stateBuckets: HistoryStateBucketData[] = [];
-    for (let t = fromTs, i = 0; t < toTs; t += bucketMs, i++) {
+    for (let t = seriesStart, i = 0; t < toTs; t += bucketMs, i++) {
       const onMs = Math.round(bucketMs * noise(seed, i));
       const dominant = onMs > bucketMs / 2 ? values[values.length - 1] : 0;
       stateBuckets.push({

@@ -151,7 +151,13 @@ export default function GroupHistorySections({
                   average of {entries.length} member{entries.length === 1 ? '' : 's'} · shaded = spread
                 </span>
               </div>
-              <HistoryChart points={points} unit={section.unit} gradientId={`group-${group.id}-${section.type}`} />
+              <HistoryChart
+                points={points}
+                unit={section.unit}
+                gradientId={`group-${group.id}-${section.type}`}
+                fromTs={fromTs}
+                toTs={toTs}
+              />
               <p className="text-[11px] text-muted-foreground">
                 min {min.toFixed(1)}{unit} · avg {(sum / points.length).toFixed(1)}{unit} · max {max.toFixed(1)}{unit}
               </p>
@@ -178,7 +184,13 @@ export default function GroupHistorySections({
                 how many of {entries.length} are on
               </span>
             </div>
-            <HistoryChart points={points} unit={null} gradientId={`group-${group.id}-${section.type}`} />
+            <HistoryChart
+              points={points}
+              unit={null}
+              gradientId={`group-${group.id}-${section.type}`}
+              fromTs={fromTs}
+              toTs={toTs}
+            />
             <p className="text-[11px] text-muted-foreground">
               combined on-time {formatDuration(totalOnMs)} · {changes} change{changes === 1 ? '' : 's'}
             </p>

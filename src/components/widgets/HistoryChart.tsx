@@ -24,6 +24,16 @@ export interface HistoryChartProps {
   gradientId: string;
   /** Bare sparkline (no axes/grid/tooltip) at 60px. */
   sparkline?: boolean;
+  /**
+   * The window the user asked for. Without it the axis fits itself to the
+   * DATA extent, so picking 30d on an accessory with 16 hours of recording
+   * drew those 16 hours stretched across the panel and labelled 21:00–13:00
+   * — the chart claimed a month it did not have. With it, the data sits in
+   * its true slice and the rest of the window reads as what it is: no
+   * recording yet.
+   */
+  fromTs?: number;
+  toTs?: number;
 }
 
 function formatTick(ts: number, spanMs: number): string {
@@ -34,16 +44,28 @@ function formatTick(ts: number, spanMs: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export default function HistoryChart({ points, unit, gradientId, sparkline = false }: HistoryChartProps) {
-  const spanMs = points.length > 1 ? points[points.length - 1].ts - points[0].ts : 0;
+export default function HistoryChart({
+  points, unit, gradientId, sparkline = false, fromTs, toTs,
+}: HistoryChartProps) {
+  const windowed = fromTs !== undefined && toTs !== undefined;
+  const spanMs = windowed
+    ? toTs - fromTs
+    : (points.length > 1 ? points[points.length - 1].ts - points[0].ts : 0);
   const hasBand = points.some(p => p.max > p.min);
   const suffix = unit ?? '';
+
+  // Hold the last reading to the edge of the window — the value did not stop
+  // existing when recording paused, and a line ending mid-panel reads as a
+  // rendering bug rather than as "now".
+  const data = windowed && points.length > 0 && points[points.length - 1].ts < toTs
+    ? [...points, { ...points[points.length - 1], ts: toTs }]
+    : points;
 
   return (
     <div className={`text-primary ${sparkline ? 'h-[60px]' : 'h-[200px]'} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-          data={points}
+          data={data}
           margin={sparkline
             ? { top: 2, right: 2, bottom: 2, left: 2 }
             : { top: 8, right: 8, bottom: 4, left: 0 }}
@@ -60,7 +82,8 @@ export default function HistoryChart({ points, unit, gradientId, sparkline = fal
               dataKey="ts"
               type="number"
               scale="time"
-              domain={['dataMin', 'dataMax']}
+              domain={windowed ? [fromTs, toTs] : ['dataMin', 'dataMax']}
+              allowDataOverflow
               tickFormatter={(ts: number) => formatTick(ts, spanMs)}
               tick={{ fontSize: 11, fill: 'currentColor' }}
               className="stroke-border text-muted-foreground"
