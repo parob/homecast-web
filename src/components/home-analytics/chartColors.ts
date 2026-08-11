@@ -18,6 +18,10 @@ export function seriesColor(index: number): string {
 }
 
 export interface ChartSeries {
+  /** Override the palette slot — a setpoint borrows its accessory's colour. */
+  color?: string;
+  /** Drawn dashed and thin: a commanded value, not a measured one. */
+  dashed?: boolean;
   key: string;
   label: string;
   unit: string | null;

@@ -175,14 +175,22 @@ export default function EChartsTimeChart({
 
     series.forEach((s, i) => {
       claim(s.key);
+      const colour = s.color ?? seriesColor(i);
       chartSeries.push({
         name: s.label, type: 'line', step: 'end',
         data: toPairs(s.data),
         yAxisIndex: axisIndexFor(s.unit),
-        lineStyle: { width: band ? 1 : 2, color: seriesColor(i), opacity: band ? 0.5 : 1 },
-        itemStyle: { color: seriesColor(i) },
-        symbol: 'none', z: 2,
-        emphasis: { focus: 'series', lineStyle: { width: 2.5, opacity: 1 } },
+        lineStyle: {
+          // A setpoint is thinner and dashed in its accessory's own colour:
+          // same device, different kind of claim.
+          width: s.dashed ? 1.25 : (band ? 1 : 2),
+          color: colour,
+          opacity: band && !s.dashed ? 0.5 : 1,
+          type: s.dashed ? [5, 4] : 'solid',
+        },
+        itemStyle: { color: colour },
+        symbol: 'none', z: s.dashed ? 1 : 2,
+        emphasis: { focus: 'series', lineStyle: { width: s.dashed ? 2 : 2.5, opacity: 1 } },
         // Explicit, because the default blur for a line is barely a change
         // when the lines are already thin — "which one is that" needs the
         // others to genuinely recede.
@@ -196,8 +204,8 @@ export default function EChartsTimeChart({
           name: `${s.label} (previous)`, type: 'line', step: 'end',
           data: toPairs(s.ghost),
           yAxisIndex: axisIndexFor(s.unit),
-          lineStyle: { width: 1.5, color: seriesColor(i), opacity: 0.45, type: [5, 4] },
-          itemStyle: { color: seriesColor(i) },
+          lineStyle: { width: 1.5, color: colour, opacity: 0.45, type: [5, 4] },
+          itemStyle: { color: colour },
           symbol: 'none', z: 2,
         });
       }

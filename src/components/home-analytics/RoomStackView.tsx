@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
+import { isSetpointType, measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateValueLabel } from '@/history/labels';
@@ -47,6 +47,10 @@ export default function RoomStackView({
   onCustomize: (view: ExplorerView) => void;
 }) {
   const { rangeMs, hideUnusual } = settings;
+  // Setpoints off by default: they are flat lines that never move, and drawn
+  // as peers they turned a three-sensor Temperature panel into seven
+  // competing colours. One tick puts the intent back beside the reading.
+  const [showTargets, setShowTargets] = useState(false);
   // Shared across the stacked panels: pointing at "Underfloor Heating" in the
   // Temperature legend picks it out of the Humidity panel too, which is the
   // whole reason these panels are stacked.
@@ -62,8 +66,17 @@ export default function RoomStackView({
   const panels = useMemo(() => measures.map(measure => {
     const typeSet = new Set(measure.types);
     const infos = roomSeries.filter(s => s.kind === 'numeric' && typeSet.has(canonicalHistoryType(s.characteristicType)));
-    return { measure, sels: buildSels(infos.slice(0, PER_MEASURE_CAP), accessoryInfo), total: infos.length };
-  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo]);
+    const readings = infos.filter(s => !isSetpointType(canonicalHistoryType(s.characteristicType)));
+    const targets = infos.filter(s => isSetpointType(canonicalHistoryType(s.characteristicType)));
+    return {
+      measure,
+      // The cap applies to readings; a target rides along with its accessory
+      // rather than competing for one of the slots.
+      sels: buildSels(readings.slice(0, PER_MEASURE_CAP), accessoryInfo),
+      targetSels: buildSels(targets, accessoryInfo),
+      total: readings.length,
+    };
+  }).filter(p => p.sels.length > 0 || p.targetSels.length > 0), [measures, roomSeries, accessoryInfo]);
 
   const stripSels = useMemo(() => {
     const infos = roomSeries.filter(s =>
@@ -72,7 +85,7 @@ export default function RoomStackView({
   }, [roomSeries, accessoryInfo]);
 
   const allSels = useMemo(
-    () => [...panels.flatMap(p => p.sels), ...stripSels],
+    () => [...panels.flatMap(p => [...p.sels, ...p.targetSels]), ...stripSels],
     [panels, stripSels],
   );
   const refs = useMemo<HistorySeriesRefInput[]>(
@@ -91,22 +104,42 @@ export default function RoomStackView({
 
   const groupId = `room-stack-${roomKey ?? 'elsewhere'}`;
   const chartPanels = panels.map((panel, panelIndex) => {
-    const chartSeries: ChartSeries[] = panel.sels.flatMap(sel => {
+    // Colour belongs to the ACCESSORY, so its target inherits the colour of
+    // its own reading and reads as the same device's intention.
+    const colourOf = new Map<string, string>();
+    panel.sels.forEach((sel, i) => colourOf.set(sel.accessoryId.toUpperCase(), seriesColor(i)));
+
+    const readingSeries: ChartSeries[] = panel.sels.flatMap((sel, i) => {
       const main = entryFor(sel);
       return main ? [{
         key: `${sel.accessoryId}|${sel.characteristicType}`,
         label: sel.label,
         unit: sel.unit,
         data: main,
+        color: seriesColor(i),
       }] : [];
     });
+    const targetSeries: ChartSeries[] = showTargets ? panel.targetSels.flatMap(sel => {
+      const main = entryFor(sel);
+      return main ? [{
+        key: `${sel.accessoryId}|${sel.characteristicType}`,
+        label: sel.label,
+        unit: sel.unit,
+        data: main,
+        // An accessory with a target but no reading in this panel still needs
+        // a colour; fall back to the palette by its position.
+        color: colourOf.get(sel.accessoryId.toUpperCase()) ?? seriesColor(panel.sels.length),
+        dashed: true,
+      }] : [];
+    }) : [];
+    const chartSeries = [...readingSeries, ...targetSeries];
     if (chartSeries.length === 0) return null;
 
     let min = Infinity;
     let max = -Infinity;
     let sum = 0;
     let n = 0;
-    for (const s of chartSeries) {
+    for (const s of readingSeries) {
       for (const p of s.data.points) {
         min = Math.min(min, p.min);
         max = Math.max(max, p.max);
@@ -122,7 +155,18 @@ export default function RoomStackView({
       <AnalyticsPanel
         key={panel.measure.id}
         title={panel.measure.title}
-        source={`${chartSeries.length} sensor${chartSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
+        source={`${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
+        actions={panel.targetSels.length > 0 ? (
+          <label className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showTargets}
+              onChange={(e) => setShowTargets(e.target.checked)}
+              className="accent-current"
+            />
+            Targets
+          </label>
+        ) : undefined}
         caption={n > 0 ? `min ${min.toFixed(1)}${unit} · avg ${(sum / n).toFixed(1)}${unit} · max ${max.toFixed(1)}${unit}` : undefined}
       >
         <EChartsTimeChart
@@ -137,11 +181,19 @@ export default function RoomStackView({
           onSeriesHover={(key) => setHighlightKeys(key ? [key] : null)}
         />
         <ChartLegend
-          entries={chartSeries.map((s, i) => ({
-            key: s.key, label: s.label, color: seriesColor(i),
-            group: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.accessoryName,
-            shortLabel: panel.sels.find(sel => `${sel.accessoryId}|${sel.characteristicType}` === s.key)?.charLabel,
-          }))}
+          entries={chartSeries.map(s => {
+            const sel = [...panel.sels, ...panel.targetSels]
+              .find(x => `${x.accessoryId}|${x.characteristicType}` === s.key);
+            return {
+              key: s.key,
+              label: s.label,
+              color: s.color ?? seriesColor(0),
+              dashed: s.dashed,
+              groupKey: sel?.accessoryId.toUpperCase(),
+              group: sel?.accessoryName,
+              shortLabel: sel?.charLabel,
+            };
+          })}
           highlightKeys={highlightKeys}
           onHighlight={setHighlightKeys}
         />

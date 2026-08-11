@@ -201,6 +201,24 @@ export const SETPOINT_STATE_TYPES = new Set([
   'security_system_target_state',
 ]);
 
+/**
+ * Numeric setpoints — what the accessory was TOLD to aim for, as opposed to
+ * what it measured. They belong on the same axis as the reading (a target of
+ * 22° means nothing on a humidity scale) but not with the same weight: they
+ * are flat step lines that never move, and drawn as peers they turned a
+ * three-sensor Temperature panel into seven competing colours.
+ */
+export const SETPOINT_NUMERIC_TYPES = new Set([
+  'target_temperature',
+  'heating_threshold',
+  'cooling_threshold',
+  'target_relative_humidity',
+]);
+
+export function isSetpointType(type: string): boolean {
+  return SETPOINT_NUMERIC_TYPES.has(type) || SETPOINT_STATE_TYPES.has(type);
+}
+
 export type SeriesViz = 'line' | 'strip';
 
 /** How a series draws: numeric kinds as lines, state kinds as strips. */
