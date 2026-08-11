@@ -426,7 +426,13 @@ export default function HistoryExplorerContent({
     }
     return (
       <div className="space-y-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested views</p>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested views</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pick a view of what's recorded — every view can be edited once open
+            (add or remove any series, change the range, compare periods).
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {presets.map(p => (
             <button
@@ -448,14 +454,16 @@ export default function HistoryExplorerContent({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button
-          className="p-1 rounded hover:bg-muted"
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs shrink-0"
           onClick={() => setView(null, null)}
-          aria-label="Back to suggested views"
         >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+          <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+          All views
+        </Button>
         <h2 className="text-sm font-semibold truncate flex-1">{view.title}</h2>
       </div>
 
