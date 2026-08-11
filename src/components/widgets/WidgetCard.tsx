@@ -191,6 +191,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 }, ref) => {
   // Read interaction context (provided by shared views for view-only mode)
   const interactionCtx = useContext(WidgetInteractionContext);
+  const { historyAvailable, openHistory } = useHistory();
+  const canShowHistory = !!accessory && historyAvailable(accessory);
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
@@ -465,6 +467,18 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             >
               {headerContent}
             </div>
+            {expanded && canShowHistory && accessory && (
+              // The expanded panel is where you study a device — history is
+              // one tap away instead of a trip through the context menu.
+              <button
+                className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={(e) => { e.stopPropagation(); openHistory(accessory); }}
+                aria-label="Accessory analytics"
+                title="Accessory analytics"
+              >
+                <LineChart className="h-4 w-4" />
+              </button>
+            )}
             {effectiveHeaderAction && (
               <div
                 className={`relative shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
@@ -531,8 +545,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // is how the last menu item ended up wired in exactly one place.
   const { isTracked, openPriceHistory } = useDeals();
   const canShowPrices = !!accessory && isTracked(accessory);
-  const { historyAvailable, openHistory } = useHistory();
-  const canShowHistory = !!accessory && historyAvailable(accessory);
 
   const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {

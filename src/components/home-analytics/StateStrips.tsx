@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { stateValueLabel } from '@/history/labels';
+import { formatStateDuration, stateTotals } from '@/history/stateSummary';
 import { canonicalHistoryType } from '@/history/keys';
 import type { SeriesSel } from './types';
 import type { HistorySeriesData } from '@/lib/graphql/types';
@@ -35,20 +36,36 @@ export default function StateStrips({
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
   if (entries.length === 0) return null;
 
-  const renderStrip = ({ sel, data }: StateStripEntry) => (
-    <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
-      <p className="text-[11px] text-muted-foreground">{sel.label}</p>
-      <StateTimeline
-        fromTs={fromTs}
-        toTs={toTs}
-        prevValue={data.prevValue}
-        prevValueText={data.prevValueText}
-        states={data.states}
-        stateBuckets={data.stateBuckets}
-        labelFor={(v, text) => text ?? stateValueLabel(canonicalHistoryType(sel.characteristicType), v)}
-      />
-    </div>
-  );
+  const renderStrip = ({ sel, data }: StateStripEntry) => {
+    const type = canonicalHistoryType(sel.characteristicType);
+    const labelForKey = (key: string) => {
+      const parsed = Number(key);
+      return Number.isFinite(parsed) && key.trim() !== '' ? stateValueLabel(type, parsed) : key;
+    };
+    // The caption is what makes a solid bar readable: which state, for how
+    // long, how often it changed — the same summary the accessory popup has.
+    const { totals, transitions } = stateTotals(data, fromTs, toTs);
+    return (
+      <div key={`${sel.accessoryId}|${sel.characteristicType}`} className="space-y-1">
+        <p className="text-[11px] text-muted-foreground">{sel.label}</p>
+        <StateTimeline
+          fromTs={fromTs}
+          toTs={toTs}
+          prevValue={data.prevValue}
+          prevValueText={data.prevValueText}
+          states={data.states}
+          stateBuckets={data.stateBuckets}
+          labelFor={(v, text) => text ?? stateValueLabel(type, v)}
+        />
+        {totals.length > 0 && (
+          <p className="text-[10px] text-muted-foreground">
+            {totals.slice(0, 3).map(([key, ms]) => `${labelForKey(key)} ${formatStateDuration(ms)}`).join(' · ')}
+            {transitions > 0 && ` · ${transitions} change${transitions === 1 ? '' : 's'}`}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   if (!groupByRoom) {
     return (

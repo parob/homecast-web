@@ -188,6 +188,19 @@ export function measuresIn(series: HistorySeriesInfo[]): MeasureMeta[] {
     (order.get(a.id) ?? MEASURES.length) - (order.get(b.id) ?? MEASURES.length));
 }
 
+/**
+ * Setpoint/config states — "set to heat mode" — hidden from analytics
+ * strips by default: they change when a person changes a setting, so a
+ * day's strip is one solid bar saying nothing. What people ask is whether
+ * the device WAS heating (heating_cooling_current). Still reachable via
+ * Customize → Add series.
+ */
+export const SETPOINT_STATE_TYPES = new Set([
+  'heating_cooling_target',
+  'target_heater_cooler_state',
+  'security_system_target_state',
+]);
+
 export type SeriesViz = 'line' | 'strip';
 
 /** How a series draws: numeric kinds as lines, state kinds as strips. */

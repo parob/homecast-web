@@ -271,15 +271,11 @@ export default function ChartPanel({
         <p className="text-[11px] text-muted-foreground -mt-2">{truncatedNote}</p>
       )}
 
-      {hideUnusual && (droppedReadings > 0 || hiddenSensors.length > 0) && (
+      {hideUnusual && hiddenSensors.length > 0 && (
         <p className="text-[11px] text-muted-foreground -mt-2">
-          {droppedReadings > 0 && `${droppedReadings} implausible reading${droppedReadings === 1 ? '' : 's'} hidden`}
-          {droppedReadings > 0 && hiddenSensors.length > 0 && ' · '}
-          {hiddenSensors.length > 0 && (
-            `${hiddenSensors.length} unusual sensor${hiddenSensors.length === 1 ? '' : 's'} left out of averages: ${
-              hiddenSensors.slice(0, 3).map(h => `${h.label} (${h.mean.toFixed(1)})`).join(', ')
-            }${hiddenSensors.length > 3 ? '…' : ''}`
-          )}
+          {`${hiddenSensors.length} unusual sensor${hiddenSensors.length === 1 ? '' : 's'} left out of averages: ${
+            hiddenSensors.slice(0, 3).map(h => `${h.label} (${h.mean.toFixed(1)})`).join(', ')
+          }${hiddenSensors.length > 3 ? '…' : ''}`}
           {' — untick "Hide unusual data" to show'}
         </p>
       )}

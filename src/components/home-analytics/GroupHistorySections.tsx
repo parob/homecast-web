@@ -6,6 +6,7 @@ import { charLabel } from '@/components/automations/format';
 import { canonicalHistoryType } from '@/history/keys';
 import { stateValueLabel } from '@/history/labels';
 import { onMs, eventCount } from '@/history/insights';
+import { SETPOINT_STATE_TYPES } from '@/history/categories';
 import HistoryChart from '@/components/widgets/HistoryChart';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
@@ -59,6 +60,7 @@ export default function GroupHistorySections({
     for (const s of recorded) {
       if (!s.enabled || !memberIds.has(s.accessoryId.toUpperCase())) continue;
       const canonical = canonicalHistoryType(s.characteristicType);
+      if (SETPOINT_STATE_TYPES.has(canonical)) continue; // config, not behavior
       const list = byType.get(canonical) ?? [];
       list.push(s);
       byType.set(canonical, list);

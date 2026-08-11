@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { measuresIn, type AccessoryInfoEntry, type OrganizedCategory } from '@/history/categories';
+import { measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry, type OrganizedCategory } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import ChartPanel from './ChartPanel';
 import { buildSels, roundRobinByRoom } from './selBuilder';
@@ -57,6 +57,7 @@ export default function MeasureView({
       // (HVAC mode and friends) under the chart.
       const stateInfos = category.series.filter(s =>
         s.kind !== 'numeric'
+        && !SETPOINT_STATE_TYPES.has(canonicalHistoryType(s.characteristicType))
         && (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === (room === 'Elsewhere' ? null : room));
       const numericSels = buildSels(roomInfos.slice(0, ROOM_CAP), accessoryInfo);
       const stateSels = buildSels(stateInfos.slice(0, 6), accessoryInfo);

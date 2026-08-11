@@ -6,6 +6,7 @@ import { getRecordableCharacteristics, sortByHistoryImportance, type WritableCha
 import { charLabel } from '@/components/automations/format';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
 import { BOOL_STATE_LABELS } from '@/history/labels';
+import { stateTotals } from '@/history/stateSummary';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
@@ -97,45 +98,7 @@ function numericStats(data: HistorySeriesData): { min: number; avg: number; max:
 }
 
 /** Time-in-state totals + transition count across the served range. */
-function stateStats(
-  data: HistorySeriesData,
-  fromTs: number,
-  toTs: number,
-): { totals: Array<[string, number]>; transitions: number } {
-  // Keyed by state IDENTITY — String(code) for bool/enum, the raw text for
-  // the string kind — the same convention the rollup stateMs uses.
-  const totals = new Map<string, number>();
-  let transitions = 0;
-  const keyOf = (v: number, vt?: string | null) => vt ?? String(v);
 
-  if (data.states.length > 0) {
-    let prevTs = fromTs;
-    let prevKey = data.prevValue !== null ? keyOf(data.prevValue, data.prevValueText) : null;
-    for (const s of data.states) {
-      const key = keyOf(s.value, s.valueText);
-      if (prevKey !== null) totals.set(prevKey, (totals.get(prevKey) ?? 0) + (s.ts - prevTs));
-      if (prevKey !== null && key !== prevKey) transitions++;
-      else if (prevKey === null) transitions++;
-      prevTs = s.ts;
-      prevKey = key;
-    }
-    if (prevKey !== null) totals.set(prevKey, (totals.get(prevKey) ?? 0) + (toTs - prevTs));
-  } else {
-    for (const b of data.stateBuckets) {
-      transitions += b.transitions;
-      try {
-        const stateMs = JSON.parse(b.stateMsJson) as Record<string, number>;
-        for (const [key, ms] of Object.entries(stateMs)) {
-          totals.set(key, (totals.get(key) ?? 0) + ms);
-        }
-      } catch { /* cell without detail */ }
-    }
-  }
-  return {
-    totals: [...totals.entries()].sort((a, b) => b[1] - a[1]),
-    transitions,
-  };
-}
 
 export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialogProps) {
   const { openAnalytics } = useHistory();
@@ -212,7 +175,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     const sanitized = isNumeric ? sanitizeSeriesData(raw) : { data: raw, droppedPoints: 0 };
     const s = sanitized.data;
     const stats = isNumeric ? numericStats(s) : null;
-    const states = !isNumeric ? stateStats(s, fromTs, toTs) : null;
+    const states = !isNumeric ? stateTotals(s, fromTs, toTs) : null;
     const empty = s.points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0;
     const unit = s.unit ?? '';
     return (
@@ -241,7 +204,6 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             {stats && (
               <p className="text-[11px] text-muted-foreground">
                 min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
-                {sanitized.droppedPoints > 0 && ` · ${sanitized.droppedPoints} implausible hidden`}
               </p>
             )}
           </>
