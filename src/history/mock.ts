@@ -319,7 +319,13 @@ export function mockHistoryData(
         : canonical.includes('temp') ? 3 : canonical.includes('humid') ? 8 : 35;
       let walk = 0;
       const points: HistoryPointData[] = [];
-      for (let i = 0; i < n; i++) {
+      // A real series records on CHANGE, so its first in-window sample lands
+      // somewhere after the window opens — the mock was starting one exactly
+      // at fromTs, which is the one shape that never occurs and the reason a
+      // whole class of carry-in bugs was invisible here. Deterministic per
+      // series, up to ~7% of the window.
+      const firstSample = seed % 14;
+      for (let i = firstSample; i < n; i++) {
         const ts = fromTs + i * stepMs;
         if (ts < seriesStart) continue;
         const dayPhase = ((ts % DAY_MS) / DAY_MS) * Math.PI * 2;

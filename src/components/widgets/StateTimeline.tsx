@@ -139,6 +139,12 @@ export default function StateTimeline({
       }
       return coalesce(out);
     }
+    if ((!stateBuckets || stateBuckets.length === 0) && prevValue !== null) {
+      // Nothing changed in this window — but the state was known throughout.
+      // Drawing nothing said "no recorded activity", which is a different
+      // claim entirely.
+      return [{ leftPct: 0, widthPct: 100, value: prevValue, text: prevValueText ?? null, fraction: 1 }];
+    }
     if (stateBuckets && stateBuckets.length > 0) {
       return coalesce(stateBuckets.map((b, i) => {
         const end = i + 1 < stateBuckets.length ? stateBuckets[i + 1].ts : toTs;

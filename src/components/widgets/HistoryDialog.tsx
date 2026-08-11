@@ -8,12 +8,14 @@ import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
 import { BOOL_STATE_LABELS } from '@/history/labels';
 import { stateTotals } from '@/history/stateSummary';
 import { sanitizeSeriesData } from '@/history/sanitize';
+import { coverageStart, withCarryIn } from '@/history/carry';
 import { PLOT_LEFT, PLOT_RIGHT } from '@/components/home-analytics/chartGeometry';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import type {
   HomeKitAccessory,
+  HistoryPointData,
   HistorySeriesData,
   HistorySeriesInfo,
   HistoryStorageStatsData,
@@ -67,8 +69,11 @@ function labelForKey(char: WritableChar | undefined, type: string, key: string):
  * "this accessory has only been recording since Tuesday".
  */
 function recordedFrom(data: HistorySeriesData, fromTs: number, toTs: number): string {
-  const first = data.points[0]?.ts ?? data.states[0]?.ts ?? data.stateBuckets[0]?.ts;
-  if (first === undefined) return '';
+  // coverageStart, not the first sample: a window that opened with a carried
+  // value was covered from its start, and saying "recorded from 12:03" of a
+  // 6h window that has data back to yesterday is simply false.
+  const first = coverageStart(data, fromTs);
+  if (!Number.isFinite(first)) return '';
   if (first - fromTs < (toTs - fromTs) * 0.05) return '';
   return ` · recorded from ${new Date(first).toLocaleDateString(undefined, {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -99,17 +104,17 @@ interface HistoryDialogProps {
 }
 
 /** Numeric range stats from the served points. */
-function numericStats(data: HistorySeriesData): { min: number; avg: number; max: number } | null {
-  if (data.points.length === 0) return null;
+function numericStats(points: HistoryPointData[]): { min: number; avg: number; max: number } | null {
+  if (points.length === 0) return null;
   let min = Infinity;
   let max = -Infinity;
   let sum = 0;
-  for (const p of data.points) {
+  for (const p of points) {
     min = Math.min(min, p.min);
     max = Math.max(max, p.max);
     sum += p.avg;
   }
-  return { min, avg: sum / data.points.length, max };
+  return { min, avg: sum / points.length, max };
 }
 
 /** Time-in-state totals + transition count across the served range. */
@@ -189,9 +194,14 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     // Radio-fault sentinels (-40°) would stretch this little chart flat.
     const sanitized = isNumeric ? sanitizeSeriesData(raw) : { data: raw, droppedPoints: 0 };
     const s = sanitized.data;
-    const stats = isNumeric ? numericStats(s) : null;
+    // The window's opening value counts: it is what the accessory read for
+    // the stretch before its first in-window sample, so the chart, the stats
+    // and the "is there anything here" test must all see it.
+    const points = isNumeric ? withCarryIn(s, fromTs) : s.points;
+    const stats = isNumeric ? numericStats(points) : null;
     const states = !isNumeric ? stateTotals(s, fromTs, toTs) : null;
-    const empty = s.points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0;
+    const empty = points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0
+      && s.prevValue === null;
     const unit = s.unit ?? '';
     return (
       <div key={s.characteristicType} className="space-y-1.5">
@@ -212,6 +222,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <Suspense fallback={<div className="h-[200px] w-full" />}>
               <HistoryChart
                 points={s.points}
+                carriedValue={s.prevValue}
                 unit={s.unit}
                 gradientId={`hist-${target?.accessory?.id}-${s.characteristicType}`}
                 // Every panel in this dialog must span the SAME window, or a

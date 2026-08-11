@@ -24,6 +24,14 @@ export interface HistoryChartProps {
   points: HistoryPointData[];
   unit: string | null;
   gradientId: string;
+  /**
+   * The reading the window opened with (`HistorySeriesData.prevValue`). The
+   * line is drawn from `fromTs` at this value: a series records on change, so
+   * the first in-window sample is normally later than the window start, and
+   * starting the line there both loses a known stretch and makes the space in
+   * front of it look unrecorded when it isn't.
+   */
+  carriedValue?: number | null;
   /** Bare sparkline (no axes/grid/tooltip) at 60px. */
   sparkline?: boolean;
   /**
@@ -47,9 +55,14 @@ function formatTick(ts: number, spanMs: number): string {
 }
 
 export default function HistoryChart({
-  points, unit, gradientId, sparkline = false, fromTs, toTs,
+  points: rawPoints, unit, gradientId, sparkline = false, fromTs, toTs, carriedValue,
 }: HistoryChartProps) {
   const windowed = fromTs !== undefined && toTs !== undefined;
+  const carried = windowed && carriedValue !== null && carriedValue !== undefined
+    && (rawPoints.length === 0 || rawPoints[0].ts > fromTs);
+  const points = carried
+    ? [{ ts: fromTs!, min: carriedValue!, avg: carriedValue!, max: carriedValue!, last: carriedValue!, count: 0 }, ...rawPoints]
+    : rawPoints;
   const spanMs = windowed
     ? toTs - fromTs
     : (points.length > 1 ? points[points.length - 1].ts - points[0].ts : 0);
@@ -65,9 +78,9 @@ export default function HistoryChart({
 
   // Blank chart on the left of a 30d view is ambiguous: is that flat nothing,
   // a dead sensor, or a window that reaches back further than the recording?
-  // Shade the stretch before the first reading and say which. Only when it is
-  // worth saying — under a twentieth of the window is just the axis edge.
-  const recordingStart = windowed && points.length > 0 ? points[0].ts : null;
+  // Shade the stretch before anything was KNOWN — which is not the same as
+  // before the first sample: a carried value covers the window from its start.
+  const recordingStart = windowed && !carried && points.length > 0 ? points[0].ts : null;
   const showUnrecorded = !sparkline && recordingStart !== null
     && recordingStart - fromTs! > spanMs * 0.05;
 

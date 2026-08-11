@@ -11,6 +11,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import type { HistorySeriesData } from '@/lib/graphql/types';
 import type { AggregatePoint } from '@/history/aggregate';
 import { normalizeValue } from '@/history/aggregate';
+import { coverageStart, withCarryIn } from '@/history/carry';
 import { seriesColor } from './chartColors';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { ChartSeries } from './chartColors';
@@ -112,7 +113,10 @@ export default function EChartsTimeChart({
         return { min, max };
       })();
       const value = (v: number) => (range ? normalizeValue(v, range.min, range.max) : v);
-      const pairs: Array<[number, number]> = data.points.map(p => [p.ts, value(p.avg)]);
+      // withCarryIn: a series records on change, so its first in-window sample
+      // is normally later than the window start. Drawing from that sample lost
+      // a stretch whose value was perfectly well known.
+      const pairs: Array<[number, number]> = withCarryIn(data, fromTs).map(p => [p.ts, value(p.avg)]);
       // Hold the last value to the range edge — LOCF is the data's meaning.
       if (pairs.length > 0 && pairs[pairs.length - 1][0] < toTs) {
         pairs.push([toTs, pairs[pairs.length - 1][1]]);
@@ -158,10 +162,13 @@ export default function EChartsTimeChart({
 
     // Nothing on the left of a long window is ambiguous — a dead sensor reads
     // the same as a window reaching back past the recording. Shade the stretch
-    // before the EARLIEST reading any series has and name it. Earliest, not
-    // per-series: this is one shared time axis, and a per-series version would
-    // be a stack of overlapping greys.
-    const firstTs = Math.min(...series.map(s => s.data.points[0]?.ts ?? Infinity));
+    // before anything was KNOWN and name it.
+    //
+    // Known, not sampled: a series whose window opened with a carried value is
+    // covered from the very start even if its first reading lands an hour in.
+    // And earliest across the series, not per-series: one shared time axis,
+    // and a per-series version would be a stack of overlapping greys.
+    const firstTs = Math.min(...series.map(s => coverageStart(s.data, fromTs)));
     const unrecordedUntil = Number.isFinite(firstTs) && firstTs - fromTs > (toTs - fromTs) * 0.05
       ? firstTs
       : null;
