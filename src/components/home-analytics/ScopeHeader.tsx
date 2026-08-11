@@ -34,13 +34,15 @@ export default function ScopeHeader({
   onSelect: (scope: AnalyticsScope) => void;
 }) {
   return (
-    // Sized and padded to line up with the dialog's ✕, which floats over this
-    // row's top right corner rather than sitting in it. That button is 32px
-    // tall at top-[16px], so its centre is 32px down; the dialog opens its
-    // body at pt-3, so a 40px row centres its contents on exactly that line.
-    // pr-9 keeps the range control out from under it.
-    <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-2 border-b pr-9">
-      <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm">
+    // Sized to line up with the dialog's ✕, which floats over this row's top
+    // right corner rather than sitting in it. That button is 32px tall at
+    // top-[16px], so its centre is 32px down; the dialog opens its body at
+    // pt-1, so a 56px row centres its contents on exactly that line — and
+    // being centred is what gives the text equal air above and below rather
+    // than sitting tight against the rule. pr-9 keeps the range control out
+    // from under the ✕.
+    <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b pr-9">
+      <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
         {onBack && (
           <button
             className="-ml-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -50,7 +52,7 @@ export default function ScopeHeader({
             <ArrowLeft className="h-4 w-4" />
           </button>
         )}
-        {title && <span className="shrink-0 text-base font-semibold">{title}</span>}
+        {title && <span className="shrink-0 text-base font-semibold leading-6">{title}</span>}
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
           return (

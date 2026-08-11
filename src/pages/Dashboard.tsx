@@ -7812,7 +7812,7 @@ const Dashboard = () => {
           <DialogHeader className="sr-only">
             <DialogTitle>Analytics</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 pt-3">
+          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 pt-1">
             {analyticsOpen && (() => {
               const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
               const homeMatches = (id: string | undefined) =>
