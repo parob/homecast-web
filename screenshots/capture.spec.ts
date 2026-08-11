@@ -408,19 +408,21 @@ test.describe('Home Analytics screenshots', () => {
     await page.addInitScript(() => localStorage.setItem('cookie-consent', 'granted'));
   });
 
-  test('home analytics — climate category, one room', async ({ page }) => {
-    await page.goto('/analytics?category=climate&room=Living%20Room&mockHistory=1');
-    await page.getByText('Climate · Living Room').first().waitFor({ timeout: 15000 });
-    await page.waitForTimeout(1200); // charts settle
+  test('home analytics — climate, rooms-first', async ({ page }) => {
+    // The BIG mock: 9 rooms collapsing into readable room-average lines is
+    // the whole story of the redesign.
+    await page.goto('/analytics?category=climate&mockHistory=big');
+    await page.getByText('averaged from').first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1500); // charts settle
     await page.screenshot({ path: img('analytics-category.png') });
     // The marketing feature image keeps its name — the pages reference it.
     fs.copyFileSync(img('analytics-category.png'), featureImg('history.png'));
   });
 
-  test('home analytics — category overview tiles', async ({ page }) => {
-    await page.goto('/analytics?mockHistory=1');
-    await page.getByText('Climate').first().waitFor({ timeout: 15000 });
-    await page.waitForTimeout(1200); // sparklines settle
+  test('home analytics — insights overview', async ({ page }) => {
+    await page.goto('/analytics?mockHistory=big');
+    await page.getByText('Highlights').first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(2000); // sparklines + insights settle
     await page.screenshot({ path: img('analytics-overview.png') });
   });
 });

@@ -71,3 +71,26 @@ export function normalizeValue(value: number, min: number, max: number): number 
   if (max <= min) return 50;
   return ((value - min) / (max - min)) * 100;
 }
+
+/**
+ * Package an aggregate back into the HistorySeriesData shape so the chart
+ * pipeline treats a per-room average exactly like a fetched series — one
+ * "Bedroom 2" line instead of that room's four sensors.
+ */
+export function aggregateToSeries(
+  points: AggregatePoint[],
+  template: { accessoryId: string; characteristicType: string; unit: string | null },
+  resolution: HistorySeriesData['resolution'] = 'raw',
+): HistorySeriesData {
+  return {
+    accessoryId: template.accessoryId,
+    characteristicType: template.characteristicType,
+    kind: 'numeric',
+    unit: template.unit,
+    resolution,
+    prevValue: points[0]?.avg ?? null,
+    points: points.map(p => ({ ts: p.ts, min: p.min, avg: p.avg, max: p.max, last: p.avg, count: p.count })),
+    states: [],
+    stateBuckets: [],
+  };
+}

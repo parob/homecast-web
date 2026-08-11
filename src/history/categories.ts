@@ -119,6 +119,75 @@ export const CATEGORY_OF: Record<string, Exclude<CategoryId, 'groups' | 'other'>
   virtual_timer: 'virtual',
 };
 
+// ── Measures ────────────────────────────────────────────────────────────────
+//
+// A measure is what a chart may mix: one physical quantity, one unit. The
+// category views tab by measure ("Temperature | Humidity | Light") instead
+// of drawing 89 mixed series on two axes. Registry groups the multi-type
+// quantities; anything numeric and unlisted becomes its own singleton
+// measure, so the mapping is total by construction (test-enforced).
+
+export interface MeasureMeta {
+  id: string;
+  title: string;
+  unit: string | null;
+  types: string[];
+}
+
+export const MEASURES: MeasureMeta[] = [
+  { id: 'temperature', title: 'Temperature', unit: '°', types: ['current_temperature', 'target_temperature', 'heating_threshold', 'cooling_threshold'] },
+  { id: 'humidity', title: 'Humidity', unit: '%', types: ['relative_humidity', 'target_humidity'] },
+  { id: 'light', title: 'Light', unit: 'lux', types: ['current_ambient_light_level'] },
+  { id: 'co2', title: 'CO₂', unit: 'ppm', types: ['carbon_dioxide_level', 'carbon_dioxide_peak_level'] },
+  { id: 'co', title: 'CO', unit: 'ppm', types: ['carbon_monoxide_level', 'carbon_monoxide_peak_level'] },
+  { id: 'particulates', title: 'Air particles', unit: 'µg/m³', types: ['pm2_5_density', 'pm10_density', 'voc_density'] },
+  { id: 'pressure', title: 'Pressure', unit: 'hPa', types: ['eve_air_pressure'] },
+  { id: 'power', title: 'Power', unit: 'W', types: ['eve_energy_watt'] },
+  { id: 'energy', title: 'Energy', unit: 'kWh', types: ['eve_energy_kwh'] },
+  { id: 'voltage', title: 'Voltage', unit: 'V', types: ['eve_voltage'] },
+  { id: 'current', title: 'Current', unit: 'A', types: ['eve_ampere'] },
+  { id: 'brightness', title: 'Brightness', unit: '%', types: ['brightness'] },
+  { id: 'color', title: 'Color', unit: null, types: ['hue', 'saturation', 'color_temperature'] },
+  { id: 'position', title: 'Position', unit: '%', types: ['current_position'] },
+  { id: 'tilt', title: 'Tilt', unit: '°', types: ['current_tilt_angle'] },
+  { id: 'speed', title: 'Speed', unit: '%', types: ['rotation_speed'] },
+  { id: 'volume', title: 'Volume', unit: '%', types: ['volume'] },
+  { id: 'water', title: 'Water level', unit: '%', types: ['water_level'] },
+  { id: 'battery', title: 'Battery', unit: '%', types: ['battery_level'] },
+  { id: 'value', title: 'Value', unit: null, types: ['virtual_number'] },
+  { id: 'count', title: 'Count', unit: null, types: ['virtual_count'] },
+];
+
+const MEASURE_BY_TYPE: Map<string, MeasureMeta> = new Map(
+  MEASURES.flatMap(m => m.types.map(t => [t, m] as const)),
+);
+
+function prettify(type: string): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+/** The measure a numeric type charts under — total over numeric profiles. */
+export function measureOf(type: string): MeasureMeta {
+  const canonical = canonicalHistoryType(type);
+  const hit = MEASURE_BY_TYPE.get(canonical);
+  if (hit) return hit;
+  const profile = getProfile(canonical);
+  return { id: canonical, title: prettify(canonical), unit: profile?.unit ?? null, types: [canonical] };
+}
+
+/** Distinct measures present among a set of series, registry order first. */
+export function measuresIn(series: HistorySeriesInfo[]): MeasureMeta[] {
+  const seen = new Map<string, MeasureMeta>();
+  for (const s of series) {
+    if (s.kind !== 'numeric') continue;
+    const m = measureOf(s.characteristicType);
+    if (!seen.has(m.id)) seen.set(m.id, m);
+  }
+  const order = new Map(MEASURES.map((m, i) => [m.id, i]));
+  return [...seen.values()].sort((a, b) =>
+    (order.get(a.id) ?? MEASURES.length) - (order.get(b.id) ?? MEASURES.length));
+}
+
 export type SeriesViz = 'line' | 'strip';
 
 /** How a series draws: numeric kinds as lines, state kinds as strips. */

@@ -128,3 +128,33 @@ describe('organizeRecorded', () => {
     expect(energy.series.map(s => s.accessoryId)).toEqual(['ACC-LR']);
   });
 });
+
+describe('MEASURES', () => {
+  it('every numeric profiled type maps to exactly one measure', async () => {
+    const { MEASURES, measureOf, profiledTypes } = await import('../categories');
+    const { getProfile } = await import('../policy');
+    const listed = MEASURES.flatMap(m => m.types);
+    expect(new Set(listed).size).toBe(listed.length); // no type in two measures
+    for (const type of profiledTypes()) {
+      if (getProfile(type)!.kind !== 'numeric') continue;
+      const measure = measureOf(type);
+      expect(measure.id).toBeTruthy();
+      expect(measure.types).toContain(type);
+    }
+  });
+
+  it('measuresIn returns distinct measures in registry order', async () => {
+    const { measuresIn } = await import('../categories');
+    const info = (accessoryId: string, characteristicType: string, kind = 'numeric' as const) => ({
+      accessoryId, characteristicType, kind, unit: null, enabled: true,
+      minIntervalS: null, deadband: null, firstTs: null, lastTs: null, sampleCount: 1,
+    });
+    const measures = measuresIn([
+      info('A', 'relative_humidity'),
+      info('B', 'current_temperature'),
+      info('C', 'target_temperature'),
+      info('D', 'motion_detected', 'bool' as never),
+    ]);
+    expect(measures.map(m => m.id)).toEqual(['temperature', 'humidity']);
+  });
+});

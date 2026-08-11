@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { aggregateNumericSeries, type AggregatePoint } from '@/history/aggregate';
+import { aggregateNumericSeries, aggregateToSeries, type AggregatePoint } from '@/history/aggregate';
 import { canonicalHistoryType } from '@/history/keys';
 import ExplorerChart, { seriesColor, type ChartSeries } from './ExplorerChart';
 import ChartLegend from './ChartLegend';
@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import type { SeriesSel } from './types';
+import type { HistorySeriesData } from '@/lib/graphql/types';
 import type { HistorySeriesRefInput } from '@/lib/graphql/types';
 
 /**
@@ -62,10 +63,16 @@ export interface ChartPanelProps {
   extraControls?: React.ReactNode;
   /** Shown when the caller capped the series list ("Showing 20 of 89 …"). */
   truncatedNote?: string;
+  /** Collapse each room's sensors into ONE averaged line (the all-rooms
+   *  default) with a home-wide band behind — the core de-noising move. */
+  roomAggregate?: boolean;
+  /** Cap state strips per room heading (rest behind "show more"). */
+  stripsMaxPerRoom?: number;
 }
 
 export default function ChartPanel({
   homeId, mock, series, aggregate = false, groupStripsByRoom = false, extraControls, truncatedNote,
+  roomAggregate = false, stripsMaxPerRoom,
 }: ChartPanelProps) {
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [normalize, setNormalize] = useState(false);
@@ -85,13 +92,49 @@ export default function ChartPanel({
     homeId, refs, fromTs, toTs, compareOffsetMs, mock,
   );
 
-  const numericSeries = useMemo<ChartSeries[]>(() => series
-    .filter(s => s.kind === 'numeric')
-    .flatMap((s): ChartSeries[] => {
+  const numericSeries = useMemo<ChartSeries[]>(() => {
+    const numericSels = series.filter(s => s.kind === 'numeric');
+    if (!roomAggregate) {
+      return numericSels.flatMap((s): ChartSeries[] => {
+        const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
+        const entry = seriesData.get(key);
+        return entry ? [{ key, label: s.label, unit: s.unit, data: entry.main, ghost: entry.ghost }] : [];
+      });
+    }
+    // Rooms-first: every room's sensors become one time-weighted average
+    // line. Sensor-level lines live one tap away in the room drill-down.
+    const unit = numericSels[0]?.unit ?? null;
+    const byRoom = new Map<string, { mains: HistorySeriesData[]; ghosts: HistorySeriesData[] }>();
+    for (const s of numericSels) {
       const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
       const entry = seriesData.get(key);
-      return entry ? [{ key, label: s.label, unit: s.unit, data: entry.main, ghost: entry.ghost }] : [];
-    }), [series, seriesData]);
+      if (!entry) continue;
+      const room = s.room ?? 'Elsewhere';
+      const bucket = byRoom.get(room) ?? { mains: [], ghosts: [] };
+      bucket.mains.push(entry.main);
+      if (entry.ghost) bucket.ghosts.push(entry.ghost);
+      byRoom.set(room, bucket);
+    }
+    return [...byRoom.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([room, { mains, ghosts }]): ChartSeries => ({
+        key: `room:${room}`,
+        label: room,
+        unit,
+        data: aggregateToSeries(
+          aggregateNumericSeries(mains, fromTs, toTs),
+          { accessoryId: `room:${room}`, characteristicType: 'room_average', unit },
+          mains[0]?.resolution ?? 'raw',
+        ),
+        ghost: ghosts.length > 0
+          ? aggregateToSeries(
+              aggregateNumericSeries(ghosts, fromTs, toTs),
+              { accessoryId: `room:${room}::ghost`, characteristicType: 'room_average', unit },
+              ghosts[0]?.resolution ?? 'raw',
+            )
+          : undefined,
+      }));
+  }, [series, seriesData, roomAggregate, fromTs, toTs]);
 
   const stateSeries = useMemo<StateStripEntry[]>(() => series
     .filter(s => s.kind !== 'numeric')
@@ -102,11 +145,17 @@ export default function ChartPanel({
     }), [series, seriesData]);
 
   const band: AggregatePoint[] | null = useMemo(() => {
+    // Rooms-first mode: the band is the HOME envelope behind the room lines
+    // (one measure per chart, so every line is band-compatible).
+    if (roomAggregate) {
+      if (numericSeries.length < 2) return null;
+      return aggregateNumericSeries(numericSeries.map(s => s.data), fromTs, toTs);
+    }
     if (!aggregate) return null;
     const temps = numericSeries.filter(s => TEMP_TYPES.has(canonicalHistoryType(s.data.characteristicType)));
     if (temps.length < 3) return null;
     return aggregateNumericSeries(temps.map(s => s.data), fromTs, toTs);
-  }, [aggregate, numericSeries, fromTs, toTs]);
+  }, [aggregate, roomAggregate, numericSeries, fromTs, toTs]);
 
   const stats = useMemo(() => numericSeries.map((s, i) => {
     const sel = series.find(x => `${x.accessoryId.toUpperCase()}|${canonicalHistoryType(x.characteristicType)}` === s.key);
@@ -190,13 +239,15 @@ export default function ChartPanel({
             <div className="border rounded-lg p-3">
               {band && (
                 <p className="text-[11px] text-muted-foreground mb-1">
-                  Bold line = average across sensors · shaded = min–max range · thin lines = individual sensors
+                  {roomAggregate
+                    ? 'Bold line = home average · shaded = min–max across rooms · thin lines = room averages'
+                    : 'Bold line = average across sensors · shaded = min–max range · thin lines = individual sensors'}
                 </p>
               )}
               <ExplorerChart
                 series={numericSeries}
                 band={band}
-                bandLabel="average"
+                bandLabel={roomAggregate ? 'home average' : 'average'}
                 fromTs={fromTs}
                 toTs={toTs}
                 normalize={normalize}
@@ -210,6 +261,7 @@ export default function ChartPanel({
             fromTs={fromTs}
             toTs={toTs}
             groupByRoom={groupStripsByRoom}
+            maxPerRoom={stripsMaxPerRoom}
           />
 
           {stats.length > 0 && (

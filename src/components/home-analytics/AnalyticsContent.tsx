@@ -4,13 +4,19 @@ import { getRecordableCharacteristics } from '@/components/automations/character
 import { organizeRecorded, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
 import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
+import ActivityView from './ActivityView';
 import AnalyticsHome from './AnalyticsHome';
+import BatteryView from './BatteryView';
 import CategoryView from './CategoryView';
 import CustomView from './CustomView';
+import MeasureView from './MeasureView';
+import SafetyView from './SafetyView';
+import UsageTable from './UsageTable';
 import { useRecordedSeries } from './useRecordedSeries';
 import { Button } from '@/components/ui/button';
 import type { AnalyticsNav } from './useAnalyticsNav';
 import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types';
+import type { ExplorerView } from './types';
 
 /**
  * Home Analytics — the whole surface behind one orchestrator, so it renders
@@ -144,19 +150,65 @@ export default function AnalyticsContent({
         </div>
       );
     }
-    return (
-      <CategoryView
-        homeId={effectiveHomeId}
-        mock={mock}
-        category={category}
-        room={current.room}
-        groupId={current.groupId}
-        accessoryInfo={accessoryInfo}
-        onRoomChange={(room) => nav.replace({ ...current, room })}
-        onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
-        onCustomize={(view) => nav.push({ level: 'custom', view })}
-      />
-    );
+    const onRoomChange = (room: string | null) => nav.replace({ ...current, room });
+    const onCustomize = (view: ExplorerView) => nav.push({ level: 'custom', view });
+
+    // Each category renders the way its data reads best: measures for
+    // continuous quantities, timelines for activity, a ranked list for
+    // batteries, a status board for safety.
+    switch (category.id) {
+      case 'climate':
+        return (
+          <MeasureView
+            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
+            accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
+          />
+        );
+      case 'activity':
+        return (
+          <ActivityView
+            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
+            accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
+          />
+        );
+      case 'energy':
+        return (
+          <div className="space-y-4">
+            <MeasureView
+              homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
+              accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
+            />
+            <UsageTable
+              homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
+              accessoryInfo={accessoryInfo}
+            />
+          </div>
+        );
+      case 'battery':
+        return <BatteryView category={category} live={live} onCustomize={onCustomize} />;
+      case 'safety':
+        return (
+          <SafetyView
+            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
+            live={live} accessoryInfo={accessoryInfo}
+            onRoomChange={onRoomChange} onCustomize={onCustomize}
+          />
+        );
+      default:
+        return (
+          <CategoryView
+            homeId={effectiveHomeId}
+            mock={mock}
+            category={category}
+            room={current.room}
+            groupId={current.groupId}
+            accessoryInfo={accessoryInfo}
+            onRoomChange={onRoomChange}
+            onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
+            onCustomize={onCustomize}
+          />
+        );
+    }
   }
 
   if (organized.length === 0) {
