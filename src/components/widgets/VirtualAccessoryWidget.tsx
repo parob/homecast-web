@@ -66,11 +66,13 @@ function fieldClass(dark: boolean, large?: boolean): string {
  */
 /**
  * The unselected state of any pill/chip sitting on a widget's translucent
- * tile. Must set its own text colour: the tile is dark when the wallpaper
- * behind it is, and the theme foreground has no idea.
+ * tile. Must set its own text colour, and `onDark` must be WidgetWrapper's
+ * rule — `!isOn && isDarkBackground` — not isDarkBackground alone: an ON
+ * tile takes a pale accent fill (a lights group goes yellow) where white
+ * ink disappears.
  */
-export function UNSELECTED_CHIP(dark: boolean): string {
-  return dark
+export function UNSELECTED_CHIP(onDark: boolean): string {
+  return onDark
     ? 'bg-white/15 hover:bg-white/25 text-white'
     : 'bg-black/10 hover:bg-black/20 text-slate-900';
 }
@@ -171,13 +173,12 @@ const ModeSegmented: React.FC<{
   label: string;
   large?: boolean;
 }> = ({ options, value, onSelect, label, large }) => {
-  const { colors, iconStyle } = useWidgetColors();
+  const { colors, iconStyle, isOn } = useWidgetColors();
   // Unselected pills carried a translucent black fill and NO text colour, so
-  // they inherited the theme's dark foreground — black-on-dark, unreadable
-  // over a photo background. Colour comes from isDarkBackground like every
-  // other control here; Tailwind's dark: variant knows nothing about the
-  // wallpaper.
+  // they inherited the theme's dark foreground. Colour follows the tile:
+  // white only when the tile is OFF over a dark wallpaper.
   const { isDarkBackground } = useBackgroundContext();
+  const onDark = !isOn && isDarkBackground;
   const selected = iconStyle === 'colourful'
     ? `${colors.accent} text-white ring-2 ring-inset ring-white/45`
     : 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-inset ring-white/45';
@@ -199,7 +200,7 @@ const ModeSegmented: React.FC<{
             className={`flex-1 basis-[5.5rem] truncate rounded-lg px-2 transition-colors ${large ? 'h-11 text-[14px]' : 'h-9 text-xs'} `
               + (isActive
                 ? `${selected} font-semibold cursor-default`
-                : `${UNSELECTED_CHIP(isDarkBackground)} font-normal`)}
+                : `${UNSELECTED_CHIP(onDark)} font-normal`)}
           >
             {o}
           </button>

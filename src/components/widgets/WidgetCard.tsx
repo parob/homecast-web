@@ -22,7 +22,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
 import { WidgetWrapper } from './WidgetWrapper';
-import ExpandedAnalyticsBar from './ExpandedAnalyticsBar';
+import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 // Context for passing widget colors to child components
 export interface WidgetColorContextType {
@@ -194,6 +195,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const interactionCtx = useContext(WidgetInteractionContext);
   const { historyAvailable, openHistory } = useHistory();
   const canShowHistory = !!accessory && historyAvailable(accessory);
+  // WidgetWrapper's own rule: an ON tile takes a pale accent fill and needs
+  // dark ink; only an OFF tile over a dark wallpaper goes white.
+  const { isDarkBackground: tileOnDarkWallpaper } = useBackgroundContext();
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
@@ -227,7 +231,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const effectiveHeaderAction = editModeType ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
-  const showChildren = childrenVisible ?? !!children;
+  // `|| showHero` matters: a hero-only widget (a switch's big rocker) has no
+  // children, so without it the collapse stayed shut and the expanded panel
+  // showed a title and nothing else — no rocker, no actions. Regressed in
+  // f56ec90b; restored here with the hero-only case covered by a test.
+  const showChildren = childrenVisible ?? (!!children || showHero);
   const characteristics = accessory ? getAllCharacteristics(accessory) : [];
   const hasCharacteristics = characteristics.length > 0;
 
@@ -446,6 +454,19 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     : undefined;
   const wiggleClass = editMode ? 'wiggle' : '';
 
+  // Actions offered in the expanded panel: what the context menu already
+  // offers, surfaced where a person is actually studying the accessory.
+  const expandedActions: ExpandedAction[] = [];
+  if (canShowHistory && accessory) {
+    expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });
+  }
+  if (effectiveOnEdit) {
+    expandedActions.push({ key: 'edit', icon: 'edit', label: editLabel || 'Edit', onClick: effectiveOnEdit });
+  }
+  if (onShare) {
+    expandedActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
+  }
+
   const cardInner = (
     <>
       <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
@@ -485,10 +506,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </div>
         )}
       </CardHeader>
-      {expanded && canShowHistory && accessory && !children && !showHero && (
-        // Content-less widgets (a sensor tile) still deserve the affordance.
+      {expanded && expandedActions.length > 0 && !children && !showHero && (
+        // Content-less widgets (a plain switch, a sensor tile) render no
+        // CardContent at all — they still get their actions.
         <div className="px-5 pb-5 -mt-2">
-          <ExpandedAnalyticsBar onClick={() => openHistory(accessory)} />
+          <ExpandedActionBar actions={expandedActions} onDark={!isOn && tileOnDarkWallpaper} />
         </div>
       )}
       {(children || showHero) && (
@@ -524,10 +546,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 />
               )}
             </div>
-            {expanded && canShowHistory && accessory && (
-              // Footer, not a header icon: the top-right slot belongs to the
-              // widget's own control.
-              <ExpandedAnalyticsBar onClick={() => openHistory(accessory)} />
+            {expanded && expandedActions.length > 0 && (
+              // Corner cluster, not a header icon: the top-right slot belongs
+              // to the widget's own control.
+              <ExpandedActionBar actions={expandedActions} onDark={!isOn && tileOnDarkWallpaper} />
             )}
           </CardContent>
         </AnimatedCollapse>

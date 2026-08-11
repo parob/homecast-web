@@ -80,7 +80,7 @@ export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
     // which put white text on pale pink. This flips with the background, so it
     // stays readable either way. The selected mode is solid and ringed — pale
     // versus slightly-less-pale did not read as a choice.
-    const unselected = `${UNSELECTED_CHIP(isDarkBackground)} border-transparent font-normal`;
+    const unselected = `${UNSELECTED_CHIP(!isArmed && isDarkBackground)} border-transparent font-normal`;
     if (iconStyle === 'colourful') {
       return isActive
         ? `${widgetColors.accent} text-white border-transparent font-semibold ring-2 ring-inset ring-white/45`

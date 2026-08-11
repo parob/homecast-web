@@ -638,7 +638,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
     if (iconStyle !== 'colourful') {
       return isSelected
         ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-transparent'
-        : `${UNSELECTED_CHIP(isDarkBackground)} border-transparent`;
+        : `${UNSELECTED_CHIP(!isRunning && isDarkBackground)} border-transparent`;
     }
     // Stopped, the row goes neutral. effectiveMode still reports the mode the
     // unit would resume in, which left a switched-off air conditioner painting
@@ -650,7 +650,7 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       // colour flips with the background and the fill follows it.
       return isSelected
         ? 'bg-slate-600 hover:bg-slate-700 text-white border-transparent'
-        : `${UNSELECTED_CHIP(isDarkBackground)} border-transparent`;
+        : `${UNSELECTED_CHIP(!isRunning && isDarkBackground)} border-transparent`;
     }
     const selectedBg = effectiveMode === 'cool' ? 'bg-sky-500 hover:bg-sky-600'
       : effectiveMode === 'heat' ? 'bg-orange-500 hover:bg-orange-600'

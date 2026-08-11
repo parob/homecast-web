@@ -20,7 +20,7 @@ import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useHistory } from '@/contexts/HistoryContext';
-import ExpandedAnalyticsBar from './ExpandedAnalyticsBar';
+import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -724,6 +724,15 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   }, []);
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
+  // Group panels carry the same corner cluster as accessory panels.
+  const groupActions: ExpandedAction[] = [];
+  if (canShowHistory) {
+    groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group) });
+  }
+  if (onShare) {
+    groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
+  }
+
   const expandedCardContent = (
     <Card className={`relative ${expandedCardBgClass} ${noResponseClass} cursor-pointer`} onClick={handleExpandedCardClick}>
       <CardHeader className={`p-5 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-5'}`}>
@@ -937,9 +946,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
             />
           )}
-          {canShowHistory && (
-            <ExpandedAnalyticsBar onClick={() => openGroupHistory(group)} />
-          )}
+          <ExpandedActionBar actions={groupActions} onDark={!groupOn && isDarkBackground} />
         </CardContent>
       </AnimatedCollapse>
     </Card>
