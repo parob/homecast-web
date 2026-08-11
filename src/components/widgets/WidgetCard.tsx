@@ -473,8 +473,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               <button
                 className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 onClick={(e) => { e.stopPropagation(); openHistory(accessory); }}
-                aria-label="Accessory analytics"
-                title="Accessory analytics"
+                aria-label="Analytics"
+                title="Analytics"
               >
                 <LineChart className="h-4 w-4" />
               </button>
@@ -614,7 +614,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               {canShowHistory && accessory && (
                 <ContextMenuItem onClick={() => openHistory(accessory)}>
                   <LineChart className="h-4 w-4 mr-2" />
-                  Accessory Analytics
+                  Analytics
                 </ContextMenuItem>
               )}
               {canShowPrices && accessory && (

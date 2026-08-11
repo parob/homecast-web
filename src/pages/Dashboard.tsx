@@ -429,7 +429,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {analyticsAvailableFor(homeId) && (
           <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name, homeId })}>
             <LineChart className="h-4 w-4 mr-2" />
-            Room Analytics
+            Analytics
           </ContextMenuItem>
         )}
         {/* A room can't contain a room group, but it can contain a helper
@@ -833,7 +833,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {analyticsAvailableFor(home.id) && (
             <ContextMenuItem onClick={() => openAnalytics({ level: 'home', homeId: home.id })}>
               <LineChart className="h-4 w-4 mr-2" />
-              Home Analytics
+              Analytics
             </ContextMenuItem>
           )}
           {onCreateRoomGroup && (
@@ -5787,7 +5787,7 @@ const Dashboard = () => {
               openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
             }}>
               <LineChart className="h-4 w-4 mr-2" />
-              Room Analytics
+              Analytics
             </DropdownMenuItem>
             {isMobile && (
             <DropdownMenuItem
@@ -5889,7 +5889,7 @@ const Dashboard = () => {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined })}>
               <LineChart className="h-4 w-4 mr-2" />
-              Home Analytics
+              Analytics
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
