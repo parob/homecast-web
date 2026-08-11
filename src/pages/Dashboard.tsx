@@ -100,6 +100,7 @@ import type { SeriesSel as ExplorerSeriesSel } from '@/components/home-analytics
 import { getRecordableCharacteristics, sortByHistoryImportance } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { getProfile as getHistoryProfile } from '@/history/policy';
+import { stripRoomPrefix } from '@/history/labels';
 
 /** Profile kind for a canonical characteristic (numeric fallback is safe). */
 function getHistoryProfileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
@@ -1980,11 +1981,12 @@ const Dashboard = () => {
   const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
     if (scope.level === 'accessory') {
       const acc = scope.accessory;
+      const shortName = stripRoomPrefix(acc.name, acc.roomName ?? null);
       const series: ExplorerSeriesSel[] = sortByHistoryImportance(getRecordableCharacteristics(acc)).map(char => ({
         accessoryId: acc.id,
         characteristicType: char.type,
-        label: `${acc.name} · ${charLabel(char.type)}`,
-        fullLabel: [acc.roomName, acc.name, charLabel(char.type)].filter(Boolean).join(' · '),
+        label: `${shortName} · ${charLabel(char.type)}`,
+        fullLabel: [acc.roomName, shortName, charLabel(char.type)].filter(Boolean).join(' · '),
         room: acc.roomName ?? null,
         unit: char.unit ?? null,
         kind: getHistoryProfileKind(char.type),

@@ -5,7 +5,8 @@ import { getRecordableCharacteristics } from '@/components/automations/character
 import { getProfile } from '@/history/policy';
 import { canonicalHistoryType } from '@/history/keys';
 import { CATEGORIES, categoryOf, type CategoryId } from '@/history/categories';
-import { MOCK_ACCESSORIES } from '@/history/mock';
+import { stripRoomPrefix } from '@/history/labels';
+import { mockAccessories } from '@/history/mock';
 import ChartPanel from './ChartPanel';
 import { seriesColor } from './ExplorerChart';
 import { Button } from '@/components/ui/button';
@@ -59,7 +60,7 @@ export default function CustomView({
     const out: AddableEntry[] = [];
 
     if (mock) {
-      for (const acc of MOCK_ACCESSORIES) {
+      for (const acc of mockAccessories()) {
         for (const type of acc.recordable) {
           const canonical = canonicalHistoryType(type);
           const key = `${acc.accessoryId.toUpperCase()}|${canonical}`;
@@ -115,11 +116,12 @@ export default function CustomView({
   }, [addable]);
 
   const addSeries = (entry: AddableEntry) => {
+    const shortName = stripRoomPrefix(entry.accessoryName, entry.room);
     const sel: SeriesSel = {
       accessoryId: entry.accessoryId,
       characteristicType: entry.characteristicType,
-      label: `${entry.accessoryName} · ${charLabel(entry.characteristicType)}`,
-      fullLabel: [entry.room, entry.accessoryName, charLabel(entry.characteristicType)].filter(Boolean).join(' · '),
+      label: `${shortName} · ${charLabel(entry.characteristicType)}`,
+      fullLabel: [entry.room, shortName, charLabel(entry.characteristicType)].filter(Boolean).join(' · '),
       room: entry.room,
       unit: entry.unit,
       kind: entry.kind,

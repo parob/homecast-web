@@ -10,10 +10,11 @@ describe('disambiguateSeriesLabels', () => {
       item('a', 'Living Room', 'Living Room Sensor', 'Temperature'),
       item('b', 'Living Room', 'Bookshelf Sensor', 'Temperature'),
     ]);
-    // Room and shared words drop; "Sensor" and "Temperature" are shared too.
-    expect(labels.get('a')!.short).toBe('Living Room');
+    // Room prefix strips first ("Living Room Sensor" → "Sensor"), then
+    // shared words drop; what survives is what distinguishes.
+    expect(labels.get('a')!.short).toBe('Sensor');
     expect(labels.get('b')!.short).toBe('Bookshelf');
-    expect(labels.get('a')!.full).toBe('Living Room · Living Room Sensor · Temperature');
+    expect(labels.get('a')!.full).toBe('Living Room · Sensor · Temperature');
   });
 
   it('one characteristic across rooms → rooms survive', () => {
@@ -61,5 +62,32 @@ describe('disambiguateSeriesLabels', () => {
     for (const label of labels.values()) {
       expect(label.short.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('stripRoomPrefix', () => {
+  it('drops the room when the accessory is named after it', async () => {
+    const { stripRoomPrefix } = await import('../labels');
+    expect(stripRoomPrefix('Bedroom 2 Underfloor Heating', 'Bedroom 2')).toBe('Underfloor Heating');
+    expect(stripRoomPrefix('Kitchen Thermostat', 'Kitchen')).toBe('Thermostat');
+    expect(stripRoomPrefix('Living Room Sensor', 'Living Room')).toBe('Sensor');
+  });
+
+  it('leaves names that are not room-prefixed (or nothing but the room)', async () => {
+    const { stripRoomPrefix } = await import('../labels');
+    expect(stripRoomPrefix('Hue outdoor motion sensor', 'Garden')).toBe('Hue outdoor motion sensor');
+    expect(stripRoomPrefix('Kitchen', 'Kitchen')).toBe('Kitchen'); // nothing left → keep
+    expect(stripRoomPrefix('Bookshelf Sensor', null)).toBe('Bookshelf Sensor');
+  });
+
+  it('collapses the screenshot case inside disambiguation', async () => {
+    const { disambiguateSeriesLabels } = await import('../labels');
+    // The real-home failure: "Bedroom 2 · Bedroom 2 Underfloor Heating · Humidity"
+    const labels = disambiguateSeriesLabels([
+      { key: 'a', room: 'Bedroom 2', accessoryName: 'Bedroom 2 Underfloor Heating', charLabel: 'Humidity' },
+      { key: 'b', room: 'Bedroom 3', accessoryName: 'Bedroom 3 Underfloor Heating', charLabel: 'Humidity' },
+    ]);
+    expect(labels.get('a')!.short).toBe('Bedroom 2');
+    expect(labels.get('a')!.full).toBe('Bedroom 2 · Underfloor Heating · Humidity');
   });
 });

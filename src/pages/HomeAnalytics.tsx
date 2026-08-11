@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LineChart as LineChartIcon, ArrowLeft } from 'lucide-react';
 import { useHomes, useAccessoriesForHomes, useServiceGroups } from '@/hooks/useHomeKitData';
-import { isMockHistoryEnabled } from '@/history/mock';
+import { isMockHistoryEnabled, mockHistoryVariant } from '@/history/mock';
 import { CATEGORIES, type CategoryId } from '@/history/categories';
 import AnalyticsContent from '@/components/home-analytics/AnalyticsContent';
 import { useAnalyticsNav, type AnalyticsLevel } from '@/components/home-analytics/useAnalyticsNav';
@@ -64,7 +64,9 @@ export default function HomeAnalytics() {
       params.category = current.category;
       if (current.room) params.room = current.room;
     }
-    if (mock) params.mockHistory = '1';
+    // Preserve the variant — rewriting ?mockHistory=big to =1 flipped the
+    // catalogue to the small home mid-session and orphaned every lookup.
+    if (mock) params.mockHistory = mockHistoryVariant() === 'big' ? 'big' : '1';
     setSearchParams(params, { replace: true });
   }, [current, effectiveHomeId, mock, setSearchParams]);
 

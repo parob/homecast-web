@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { organizeRecorded, type AccessoryInfoEntry } from '@/history/categories';
-import { isMockHistoryEnabled, MOCK_ACCESSORIES, MOCK_SERVICE_GROUPS } from '@/history/mock';
+import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
+import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
 import AnalyticsHome from './AnalyticsHome';
 import CategoryView from './CategoryView';
 import CustomView from './CustomView';
@@ -46,7 +47,7 @@ export default function AnalyticsContent({
   const accessoryInfo = useMemo(() => {
     const map = new Map<string, AccessoryInfoEntry>();
     if (mock) {
-      for (const m of MOCK_ACCESSORIES) {
+      for (const m of mockAccessories()) {
         map.set(m.accessoryId.toUpperCase(), { name: m.name, room: m.room, isVirtual: m.isVirtual });
       }
     } else {
@@ -64,7 +65,7 @@ export default function AnalyticsContent({
   const recordableByAccessory = useMemo(() => {
     const map = new Map<string, string[]>();
     if (mock) {
-      for (const m of MOCK_ACCESSORIES) map.set(m.accessoryId, m.recordable);
+      for (const m of mockAccessories()) map.set(m.accessoryId, m.recordable);
     } else {
       for (const acc of accessories ?? []) {
         const types = getRecordableCharacteristics(acc).map(c => c.type);
@@ -75,9 +76,20 @@ export default function AnalyticsContent({
   }, [accessories, mock]);
 
   const groups = useMemo(() => {
-    if (mock) return MOCK_SERVICE_GROUPS;
+    if (mock) return mockServiceGroups();
     return (serviceGroups ?? []).map(g => ({ id: g.id, name: g.name, memberIds: g.accessoryIds }));
   }, [serviceGroups, mock]);
+
+  // Live accessory state — the overview's headlines and safety board read
+  // current values, not history.
+  const live = useMemo<LiveAccessory[]>(() => {
+    if (mock) {
+      return mockAccessories().map(m => ({
+        id: m.accessoryId, name: m.name, room: m.room, isVirtual: m.isVirtual, values: m.values ?? {},
+      }));
+    }
+    return liveFromHomeKit(accessories ?? []);
+  }, [accessories, mock]);
 
   const organized = useMemo(
     () => organizeRecorded(recorded, accessoryInfo, groups, recordableByAccessory),
@@ -163,7 +175,10 @@ export default function AnalyticsContent({
       homeId={effectiveHomeId}
       mock={mock}
       organized={organized}
-      onOpenCategory={(cat) => nav.push({ level: 'category', category: cat.id })}
+      live={live}
+      recorded={recorded}
+      accessoryInfo={accessoryInfo}
+      onOpenCategory={(category, room) => nav.push({ level: 'category', category, room: room ?? null })}
     />
   );
 }

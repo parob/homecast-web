@@ -39,6 +39,21 @@ export interface LabelInput {
   charLabel: string;
 }
 
+/**
+ * "Bedroom 2 Underfloor Heating" in room "Bedroom 2" is just "Underfloor
+ * Heating" — accessories are routinely named after their room, and repeating
+ * it is what made every label read twice as long as it is. Token-based
+ * dedupe can't see this (the room is one token, the name is many), so strip
+ * the prefix outright.
+ */
+export function stripRoomPrefix(accessoryName: string, room: string | null | undefined): string {
+  if (!room) return accessoryName;
+  const name = accessoryName.trim();
+  if (!name.toLowerCase().startsWith(room.trim().toLowerCase())) return name;
+  const stripped = name.slice(room.trim().length).replace(/^[\s·:,-]+/, '').trim();
+  return stripped.length > 0 ? stripped : name;
+}
+
 export interface SeriesLabel {
   /** Shortest distinguishing form — chips, chart legend entries. */
   short: string;
@@ -57,9 +72,15 @@ function tokensOf(item: LabelInput): string[] {
  * Compute a {short, full} label per series such that shorts are unique and
  * carry only what distinguishes each series within THIS view.
  */
-export function disambiguateSeriesLabels(items: LabelInput[]): Map<string, SeriesLabel> {
+export function disambiguateSeriesLabels(rawItems: LabelInput[]): Map<string, SeriesLabel> {
   const out = new Map<string, SeriesLabel>();
-  if (items.length === 0) return out;
+  if (rawItems.length === 0) return out;
+
+  // Room-prefixed accessory names collapse before anything else.
+  const items = rawItems.map(item => ({
+    ...item,
+    accessoryName: stripRoomPrefix(item.accessoryName, item.room),
+  }));
 
   const full = (item: LabelInput) =>
     [item.room, item.accessoryName, item.charLabel].filter(Boolean).join(' · ');

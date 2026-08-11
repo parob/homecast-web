@@ -60,7 +60,7 @@ export default function CategoryView({
   // record under the group id). A per-member fan-out led with brightness
   // and read as a wall of 100% lines; members chart under their own rooms
   // and device analytics instead.
-  const scoped = useMemo<SeriesSel[]>(() => {
+  const scoped = useMemo<{ sels: SeriesSel[]; total: number }>(() => {
     let infos: HistorySeriesInfo[];
     if (isGroups) {
       infos = activeGroup?.series ?? [];
@@ -98,13 +98,14 @@ export default function CategoryView({
     }));
 
     sels.sort((a, b) => (a.kind === 'numeric' ? 0 : 1) - (b.kind === 'numeric' ? 0 : 1));
-    return sels.slice(0, MAX_SERIES);
+    return { sels: sels.slice(0, MAX_SERIES), total: sels.length };
   }, [isGroups, activeGroup, room, category, accessoryInfo]);
+  const { sels: scopedSels, total: scopedTotal } = scoped;
 
   // The climate band rule: ≥4 temperature sensors in scope collapse into a
   // min–max envelope with a bold average.
   const aggregate = category.id === 'climate'
-    && scoped.filter(s => canonicalHistoryType(s.characteristicType) === 'current_temperature').length >= 4;
+    && scopedSels.filter(s => canonicalHistoryType(s.characteristicType) === 'current_temperature').length >= 4;
 
   const monitoring = useMemo(() => category.monitoring.filter(m =>
     !room || (room === 'Elsewhere' ? m.room === null : m.room === room),
@@ -144,13 +145,16 @@ export default function CategoryView({
         </div>
       )}
 
-      {scoped.length > 0 ? (
+      {scopedSels.length > 0 ? (
         <ChartPanel
           homeId={homeId}
           mock={mock}
-          series={scoped}
+          series={scopedSels}
           aggregate={aggregate}
           groupStripsByRoom={!isGroups && !room}
+          truncatedNote={scopedTotal > scopedSels.length
+            ? `Showing ${scopedSels.length} of ${scopedTotal} series — pick a room to see the rest`
+            : undefined}
           extraControls={
             <Button
               variant="outline"
@@ -158,7 +162,7 @@ export default function CategoryView({
               className="h-7 text-xs"
               onClick={() => onCustomize({
                 title: 'Custom view',
-                series: scoped,
+                series: scopedSels,
                 aggregate: false,
               })}
             >

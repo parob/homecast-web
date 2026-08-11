@@ -60,10 +60,12 @@ export interface ChartPanelProps {
   groupStripsByRoom?: boolean;
   /** Rendered at the right end of the controls row (Customize, Add series). */
   extraControls?: React.ReactNode;
+  /** Shown when the caller capped the series list ("Showing 20 of 89 …"). */
+  truncatedNote?: string;
 }
 
 export default function ChartPanel({
-  homeId, mock, series, aggregate = false, groupStripsByRoom = false, extraControls,
+  homeId, mock, series, aggregate = false, groupStripsByRoom = false, extraControls, truncatedNote,
 }: ChartPanelProps) {
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [normalize, setNormalize] = useState(false);
@@ -171,6 +173,10 @@ export default function ChartPanel({
         </label>
         {extraControls}
       </div>
+
+      {truncatedNote && (
+        <p className="text-[11px] text-muted-foreground -mt-2">{truncatedNote}</p>
+      )}
 
       {error ? (
         <ErrorBanner message={`Couldn't load history: ${error}`} onRetry={retry} />

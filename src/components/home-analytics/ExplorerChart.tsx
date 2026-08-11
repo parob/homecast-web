@@ -154,6 +154,82 @@ function formatTick(ts: number, spanMs: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+interface TooltipRow {
+  key: string;
+  name: string;
+  value: number;
+  color: string;
+  ghost: boolean;
+}
+
+/**
+ * Custom tooltip: the default recharts one rendered every series (a 20-row
+ * wall on a big home) and leaked the internal __bandRange key. This one
+ * skips internals, caps at 8 rows sorted by value, and says how many more
+ * there are — a reading, not a table dump.
+ */
+function ChartTooltipContent({
+  active, payload, label, normalize, bandLabel,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey?: string | number; name?: string | number; value?: unknown; stroke?: string; color?: string }>;
+  label?: number;
+  normalize: boolean;
+  bandLabel?: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const rows: TooltipRow[] = [];
+  for (const item of payload) {
+    const key = String(item.dataKey ?? '');
+    if (key === '__bandRange' || key === '__band') continue;
+    if (typeof item.value !== 'number' || !Number.isFinite(item.value)) continue;
+    const ghost = key.endsWith('::ghost');
+    rows.push({
+      key,
+      name: key === '__bandAvg' ? (bandLabel ?? 'average') : String(item.name ?? key).replace('::ghost', ''),
+      value: item.value,
+      color: key === '__bandAvg' ? 'hsl(var(--primary))' : (item.stroke ?? item.color ?? 'currentColor'),
+      ghost,
+    });
+  }
+  rows.sort((a, b) => b.value - a.value);
+  const shown = rows.slice(0, 8);
+  const hidden = rows.length - shown.length;
+  const fmt = (v: number) => (normalize ? `${v.toFixed(0)}%` : v.toFixed(1));
+
+  return (
+    <div className="rounded-lg border bg-background/95 backdrop-blur px-3 py-2 text-xs shadow-md max-w-[280px]">
+      {label !== undefined && (
+        <p className="font-medium mb-1">
+          {new Date(label).toLocaleString(undefined, {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          })}
+        </p>
+      )}
+      <div className="space-y-0.5">
+        {shown.map(row => (
+          <div key={row.key} className="flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: row.ghost ? 'transparent' : row.color,
+                border: row.ghost ? `1.5px dashed ${row.color}` : undefined,
+              }}
+            />
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {row.name}{row.ghost ? ' (previous)' : ''}
+            </span>
+            <span className="tabular-nums font-medium">{fmt(row.value)}</span>
+          </div>
+        ))}
+      </div>
+      {hidden > 0 && (
+        <p className="text-muted-foreground mt-1">+{hidden} more</p>
+      )}
+    </div>
+  );
+}
+
 export default function ExplorerChart({
   series, band, bandLabel, fromTs, toTs, normalize, height = 320,
 }: ExplorerChartProps) {
@@ -216,17 +292,8 @@ export default function ExplorerChart({
             />
           )}
           <Tooltip
-            contentStyle={{ fontSize: 12, borderRadius: 8 }}
-            labelFormatter={(ts: number) => new Date(ts).toLocaleString(undefined, {
-              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-            })}
-            formatter={(value: number | number[], name: string) => {
-              if (name === '__bandRange') return null;
-              if (Array.isArray(value)) return null;
-              if (value === null || value === undefined) return null;
-              const label = name === '__bandAvg' ? (bandLabel ?? 'average') : name.replace('::ghost', ' (previous)');
-              return [normalize ? `${value.toFixed(0)}%` : value.toFixed(1), label];
-            }}
+            content={<ChartTooltipContent normalize={normalize} bandLabel={bandLabel} />}
+            isAnimationActive={false}
           />
           {band && !normalize && (
             <Area

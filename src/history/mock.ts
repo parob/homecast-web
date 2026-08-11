@@ -38,6 +38,19 @@ export function isMockHistoryEnabled(): boolean {
   return new URLSearchParams(window.location.search).has('mockHistory');
 }
 
+export type MockVariant = 'small' | 'big';
+
+/**
+ * `?mockHistory=1` = the cozy five-room home (widget shots, docs).
+ * `?mockHistory=big` = a real-scale home — 9 rooms, ~90 climate series,
+ * hundreds of energy-category series, 16 groups — the configuration that
+ * exposed the data-overload failures the small mock could never show.
+ */
+export function mockHistoryVariant(): MockVariant {
+  if (typeof window === 'undefined') return 'small';
+  return new URLSearchParams(window.location.search).get('mockHistory') === 'big' ? 'big' : 'small';
+}
+
 export interface MockAccessoryEntry {
   accessoryId: string;
   name: string;
@@ -47,6 +60,8 @@ export interface MockAccessoryEntry {
   recordable: string[];
   /** Subset of `recordable` that has recorded data (rest = monitoring). */
   recorded: string[];
+  /** Current values by characteristic — the mock's "live" accessory state. */
+  values?: Record<string, number | string>;
 }
 
 /**
@@ -56,28 +71,165 @@ export interface MockAccessoryEntry {
  * is what the screenshots and every ?mockHistory=1 session see.
  */
 export const MOCK_ACCESSORIES: MockAccessoryEntry[] = [
-  { accessoryId: 'MOCK-LR-SENSOR', name: 'Living Room Sensor', room: 'Living Room', recordable: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'] },
-  { accessoryId: 'MOCK-LR-SENSOR2', name: 'Bookshelf Sensor', room: 'Living Room', recordable: ['current_temperature', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'motion_detected', 'battery_level'] },
-  { accessoryId: 'MOCK-BED-SENSOR', name: 'Bedroom Sensor', room: 'Bedroom', recordable: ['current_temperature', 'relative_humidity', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'battery_level'] },
-  { accessoryId: 'MOCK-KITCHEN-TH', name: 'Kitchen Thermostat', room: 'Kitchen', recordable: ['current_temperature', 'target_temperature', 'heating_cooling_current'], recorded: ['current_temperature', 'target_temperature', 'heating_cooling_current'] },
-  { accessoryId: 'MOCK-STUDY-SENSOR', name: 'Study Sensor', room: 'Study', recordable: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], recorded: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'] },
-  { accessoryId: 'MOCK-DOOR', name: 'Front Door', room: 'Hallway', recordable: ['contact_state', 'battery_level'], recorded: ['contact_state', 'battery_level'] },
-  { accessoryId: 'MOCK-SMOKE', name: 'Hall Smoke Alarm', room: 'Hallway', recordable: ['smoke_detected', 'status_low_battery'], recorded: [] },
-  { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'] },
-  { accessoryId: 'MOCK-OUTLET', name: 'Desk Outlet', room: 'Study', recordable: ['power_state', 'eve_energy_watt'], recorded: ['power_state', 'eve_energy_watt'] },
-  { accessoryId: 'MOCK-LAMP', name: 'Reading Lamp', room: 'Bedroom', recordable: ['power_state', 'brightness'], recorded: ['power_state', 'brightness'] },
-  { accessoryId: 'MOCK-VIRT-COUNT', name: 'Coffee Counter', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'] },
-  { accessoryId: 'MOCK-VIRT-MODE', name: 'House Mode', room: null, isVirtual: true, recordable: ['virtual_mode'], recorded: ['virtual_mode'] },
+  { accessoryId: 'MOCK-LR-SENSOR', name: 'Living Room Sensor', room: 'Living Room', recordable: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'current_ambient_light_level', 'motion_detected', 'battery_level'], values: { current_temperature: 21.2, relative_humidity: 52, current_ambient_light_level: 64, motion_detected: 0, battery_level: 84 } },
+  { accessoryId: 'MOCK-LR-SENSOR2', name: 'Bookshelf Sensor', room: 'Living Room', recordable: ['current_temperature', 'motion_detected', 'battery_level'], recorded: ['current_temperature', 'motion_detected', 'battery_level'], values: { current_temperature: 20.8, motion_detected: 0, battery_level: 91 } },
+  { accessoryId: 'MOCK-BED-SENSOR', name: 'Bedroom Sensor', room: 'Bedroom', recordable: ['current_temperature', 'relative_humidity', 'battery_level'], recorded: ['current_temperature', 'relative_humidity', 'battery_level'], values: { current_temperature: 19.4, relative_humidity: 55, battery_level: 66 } },
+  { accessoryId: 'MOCK-KITCHEN-TH', name: 'Kitchen Thermostat', room: 'Kitchen', recordable: ['current_temperature', 'target_temperature', 'heating_cooling_current'], recorded: ['current_temperature', 'target_temperature', 'heating_cooling_current'], values: { current_temperature: 22.1, target_temperature: 21.0, heating_cooling_current: 0 } },
+  { accessoryId: 'MOCK-STUDY-SENSOR', name: 'Study Sensor', room: 'Study', recordable: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], recorded: ['current_temperature', 'relative_humidity', 'carbon_dioxide_level'], values: { current_temperature: 21.7, relative_humidity: 49, carbon_dioxide_level: 720 } },
+  { accessoryId: 'MOCK-DOOR', name: 'Front Door', room: 'Hallway', recordable: ['contact_state', 'battery_level'], recorded: ['contact_state', 'battery_level'], values: { contact_state: 0, battery_level: 17 } },
+  { accessoryId: 'MOCK-SMOKE', name: 'Hall Smoke Alarm', room: 'Hallway', recordable: ['smoke_detected', 'status_low_battery'], recorded: [], values: { smoke_detected: 0, status_low_battery: 0 } },
+  { accessoryId: 'MOCK-CO', name: 'Boiler CO Sensor', room: 'Kitchen', recordable: ['carbon_monoxide_detected', 'carbon_monoxide_level'], recorded: ['carbon_monoxide_level'], values: { carbon_monoxide_detected: 0, carbon_monoxide_level: 2 } },
+  { accessoryId: 'MOCK-OUTLET', name: 'Desk Outlet', room: 'Study', recordable: ['power_state', 'eve_energy_watt'], recorded: ['power_state', 'eve_energy_watt'], values: { power_state: 1, eve_energy_watt: 62 } },
+  { accessoryId: 'MOCK-LAMP', name: 'Reading Lamp', room: 'Bedroom', recordable: ['power_state', 'brightness'], recorded: ['power_state', 'brightness'], values: { power_state: 1, brightness: 40 } },
+  { accessoryId: 'MOCK-VIRT-COUNT', name: 'Coffee Counter', room: null, isVirtual: true, recordable: ['virtual_count'], recorded: ['virtual_count'], values: { virtual_count: 14 } },
+  { accessoryId: 'MOCK-VIRT-MODE', name: 'House Mode', room: null, isVirtual: true, recordable: ['virtual_mode'], recorded: ['virtual_mode'], values: { virtual_mode: 'Home' } },
 ];
 
 export const MOCK_SERVICE_GROUPS = [
   { id: 'MOCK-GROUP-1', name: 'Kitchen Lights', memberIds: ['MOCK-LAMP', 'MOCK-OUTLET'] },
 ];
 
+// ── The big home ───────────────────────────────────────────────────────────
+//
+// Modeled on the production home that exposed the data-overload failures:
+// every room has an underfloor-heating thermostat AND a radiator valve (both
+// reporting temperature + humidity), most have an air-conditioner and a
+// standalone sensor, three lights each (whose colour channels are recordable
+// but unrecorded — the "1293 monitoring" wall), 16 mostly-silent groups, a
+// battery at 4%. Bedroom 2 deliberately runs ~3° warm so the outlier insight
+// has something to find.
+
+const BIG_ROOMS = [
+  'Annex', 'Bedroom 1', 'Bedroom 2', 'Bedroom 3', 'Living',
+  'Kitchen', 'Study', 'Garden', 'Hallway',
+] as const;
+
+/** Deterministic per-room personality: temp offset, humidity offset. */
+function roomProfile(room: string): { temp: number; hum: number } {
+  if (room === 'Bedroom 2') return { temp: 3.1, hum: -4 }; // the outlier
+  const seed = hash(room);
+  return { temp: (noise(seed, 1) - 0.5) * 2.4, hum: (noise(seed, 2) - 0.5) * 14 };
+}
+
+function buildBigHome(): { accessories: MockAccessoryEntry[]; groups: Array<{ id: string; name: string; memberIds: string[] }> } {
+  const accessories: MockAccessoryEntry[] = [];
+  const groups: Array<{ id: string; name: string; memberIds: string[] }> = [];
+  const slug = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '-');
+
+  BIG_ROOMS.forEach((room, roomIdx) => {
+    const { temp, hum } = roomProfile(room);
+    const rs = slug(room);
+
+    // Underfloor heating: temp + humidity + setpoint, all recorded.
+    accessories.push({
+      accessoryId: `BIG-${rs}-UFH`, name: `${room} Underfloor Heating`, room,
+      recordable: ['current_temperature', 'relative_humidity', 'target_temperature', 'heating_cooling_current'],
+      recorded: ['current_temperature', 'relative_humidity', 'target_temperature'],
+      values: { current_temperature: 20.6 + temp, relative_humidity: 58 + hum, target_temperature: 21, heating_cooling_current: 0 },
+    });
+    // Ensuite radiator valve: temp + humidity recorded.
+    accessories.push({
+      accessoryId: `BIG-${rs}-RAD`, name: `${room} Ensuite Radiator`, room,
+      recordable: ['current_temperature', 'relative_humidity', 'battery_level'],
+      recorded: ['current_temperature', 'relative_humidity'],
+      values: { current_temperature: 20.1 + temp, relative_humidity: 60 + hum, battery_level: roomIdx === 3 ? 4 : 40 + Math.round(noise(hash(room), 5) * 55) },
+    });
+    // Air conditioner in half the rooms.
+    if (roomIdx % 2 === 0) {
+      accessories.push({
+        accessoryId: `BIG-${rs}-AC`, name: `${room} Air Conditioner`, room,
+        recordable: ['current_temperature', 'active', 'rotation_speed'],
+        recorded: ['current_temperature'],
+        values: { current_temperature: 21.0 + temp, active: 0, rotation_speed: 0 },
+      });
+    }
+    // Motion sensor (recorded) — activity data.
+    accessories.push({
+      accessoryId: `BIG-${rs}-MOTION`, name: `${room} Motion Sensor`, room,
+      recordable: ['motion_detected', 'current_ambient_light_level', 'battery_level'],
+      recorded: roomIdx < 5 ? ['motion_detected', 'current_ambient_light_level'] : ['motion_detected'],
+      values: { motion_detected: 0, current_ambient_light_level: 40 + roomIdx * 9, battery_level: 55 + roomIdx * 4 },
+    });
+    // Three lights: power/brightness recorded on the first, the colour
+    // channels recordable-but-silent everywhere — the monitoring wall.
+    for (let l = 1; l <= 3; l++) {
+      accessories.push({
+        accessoryId: `BIG-${rs}-LIGHT${l}`, name: `${room} Light ${l}`, room,
+        recordable: ['power_state', 'brightness', 'hue', 'saturation', 'color_temperature'],
+        recorded: l === 1 ? ['power_state', 'brightness'] : [],
+        values: { power_state: l === 1 && roomIdx % 3 === 0 ? 1 : 0, brightness: l === 1 ? 70 : 0, hue: 30, saturation: 20, color_temperature: 300 },
+      });
+    }
+    // Smoke alarm per room: recordable, silent — 2 monitoring rows each.
+    accessories.push({
+      accessoryId: `BIG-${rs}-SMOKE`, name: `${room} Smoke Alarm`, room,
+      recordable: ['smoke_detected', 'status_low_battery'],
+      recorded: [],
+      values: { smoke_detected: 0, status_low_battery: 0 },
+    });
+
+    // Room light groups (mostly silent) + a couple of zone groups.
+    groups.push({ id: `BIG-GROUP-${rs}`, name: `${room} Lights`, memberIds: [1, 2, 3].map(l => `BIG-${rs}-LIGHT${l}`) });
+  });
+
+  // Extra groups to reach the real home's 16.
+  groups.push(
+    { id: 'BIG-GROUP-DOWN', name: 'Downstairs Lights', memberIds: ['BIG-LIVING-LIGHT1', 'BIG-KITCHEN-LIGHT1'] },
+    { id: 'BIG-GROUP-UP', name: 'Upstairs Lights', memberIds: ['BIG-BEDROOM-1-LIGHT1', 'BIG-BEDROOM-2-LIGHT1'] },
+    { id: 'BIG-GROUP-OUT', name: 'Outdoor', memberIds: ['BIG-GARDEN-LIGHT1'] },
+    { id: 'BIG-GROUP-HALL', name: 'Hall & Landing', memberIds: ['BIG-HALLWAY-LIGHT1'] },
+    { id: 'BIG-GROUP-EVE', name: 'Evening Scene Lights', memberIds: ['BIG-LIVING-LIGHT2'] },
+    { id: 'BIG-GROUP-ALL', name: 'All Lights', memberIds: BIG_ROOMS.map(r => `BIG-${slug(r)}-LIGHT1`) },
+    { id: 'BIG-GROUP-ACC', name: 'Accent Lights', memberIds: ['BIG-LIVING-LIGHT3', 'BIG-STUDY-LIGHT3'] },
+  );
+
+  // Front door + outdoor sensor + a couple of outlets with power metering.
+  accessories.push(
+    {
+      accessoryId: 'BIG-FRONT-DOOR', name: 'Front Door', room: 'Hallway',
+      recordable: ['contact_state', 'battery_level'], recorded: ['contact_state'],
+      values: { contact_state: 0, battery_level: 12 },
+    },
+    {
+      accessoryId: 'BIG-GARDEN-SENSOR', name: 'Hue outdoor motion sensor', room: 'Garden',
+      recordable: ['current_temperature', 'current_ambient_light_level', 'motion_detected', 'battery_level'],
+      recorded: ['current_temperature', 'current_ambient_light_level', 'motion_detected'],
+      values: { current_temperature: 17.2, current_ambient_light_level: 2100, motion_detected: 0, battery_level: 74 },
+    },
+    {
+      accessoryId: 'BIG-STUDY-OUTLET', name: 'Study Outlet', room: 'Study',
+      recordable: ['power_state', 'eve_energy_watt', 'eve_energy_kwh'],
+      recorded: ['power_state', 'eve_energy_watt'],
+      values: { power_state: 1, eve_energy_watt: 145 },
+    },
+    {
+      accessoryId: 'BIG-TV-OUTLET', name: 'TV Outlet', room: 'Living',
+      recordable: ['power_state', 'eve_energy_watt', 'eve_energy_kwh'],
+      recorded: ['power_state', 'eve_energy_watt'],
+      values: { power_state: 1, eve_energy_watt: 195 },
+    },
+  );
+
+  return { accessories, groups };
+}
+
+const BIG_HOME = buildBigHome();
+export const MOCK_ACCESSORIES_BIG: MockAccessoryEntry[] = BIG_HOME.accessories;
+export const MOCK_SERVICE_GROUPS_BIG = BIG_HOME.groups;
+
+/** The active variant's catalogue. */
+export function mockAccessories(variant: MockVariant = mockHistoryVariant()): MockAccessoryEntry[] {
+  return variant === 'big' ? MOCK_ACCESSORIES_BIG : MOCK_ACCESSORIES;
+}
+
+export function mockServiceGroups(variant: MockVariant = mockHistoryVariant()) {
+  return variant === 'big' ? MOCK_SERVICE_GROUPS_BIG : MOCK_SERVICE_GROUPS;
+}
+
 /** Recorded-series listing shaped like GetHistorySeries responses. */
-export function mockRecordedSeries(): HistorySeriesInfo[] {
+export function mockRecordedSeries(variant: MockVariant = mockHistoryVariant()): HistorySeriesInfo[] {
   const out: HistorySeriesInfo[] = [];
-  for (const acc of MOCK_ACCESSORIES) {
+  for (const acc of mockAccessories(variant)) {
     for (const type of acc.recorded) {
       const canonical = canonicalHistoryType(type);
       const profile = getProfile(canonical);
@@ -97,11 +249,17 @@ export function mockRecordedSeries(): HistorySeriesInfo[] {
       });
     }
   }
-  // The group's own series (group writes record under the group id).
-  out.push({
-    accessoryId: 'MOCK-GROUP-1', characteristicType: 'power_state', kind: 'bool', unit: null,
-    enabled: true, minIntervalS: 0, deadband: null, firstTs: null, lastTs: null, sampleCount: 200,
-  });
+  // Group-id series (group writes record under the group id). Most big-home
+  // groups are silent — the real home's Groups tile read "monitoring".
+  const groupIds = variant === 'big'
+    ? ['BIG-GROUP-ALL', 'BIG-GROUP-DOWN']
+    : ['MOCK-GROUP-1'];
+  for (const id of groupIds) {
+    out.push({
+      accessoryId: id, characteristicType: 'power_state', kind: 'bool', unit: null,
+      enabled: true, minIntervalS: 0, deadband: null, firstTs: null, lastTs: null, sampleCount: 200,
+    });
+  }
   return out;
 }
 
@@ -123,14 +281,17 @@ export function mockHistoryData(
       const n = Math.min(maxPoints, 200);
       const stepMs = span / n;
       // Base level + daily sine + slow random walk: reads like a room sensor.
-      // Per-type presets keep the mock believable (spiky watts, slow battery
-      // decline, CO2 rising with occupancy).
-      const base = canonical.includes('watt') ? 45
+      // The catalogue's live value anchors the base when present, so per-room
+      // personalities (Bedroom 2 runs hot) show in charts AND live headlines;
+      // per-type presets fill in for anything uncatalogued.
+      const catalogued = mockAccessories().find(a => a.accessoryId === ref.accessoryId)?.values?.[canonical];
+      const liveBase = typeof catalogued === 'number' ? catalogued : undefined;
+      const base = liveBase ?? (canonical.includes('watt') ? 45
         : canonical === 'battery_level' ? 82
         : canonical === 'carbon_dioxide_level' ? 650
         : canonical === 'carbon_monoxide_level' ? 2
         : canonical === 'virtual_count' ? 12
-        : canonical.includes('temp') ? 20 : canonical.includes('humid') ? 52 : 60;
+        : canonical.includes('temp') ? 20 : canonical.includes('humid') ? 52 : 60);
       const amp = canonical.includes('watt') ? 60
         : canonical === 'battery_level' ? 4
         : canonical === 'carbon_dioxide_level' ? 350
