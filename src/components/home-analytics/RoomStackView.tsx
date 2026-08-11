@@ -119,6 +119,15 @@ export default function RoomStackView({
     if (measure.id === 'brightness' || measure.id === 'speed') {
       return { measure, sels: [], offers: [], total: 0 };
     }
+    // A virtual accessory's counter or number is that accessory's own
+    // bookkeeping — the automation engine's tally of something. It is not a
+    // property of a place, so a whole-home panel drawing "Count · 1 room ·
+    // averaged from 1 sensor" was averaging a single counter with itself and
+    // calling the answer a fact about the house. It keeps its panel wherever
+    // it IS the subject: its own page, and the roomless list it lives in.
+    if (byRoom && (measure.id === 'value' || measure.id === 'count')) {
+      return { measure, sels: [], offers: [], total: 0 };
+    }
     const infos = roomSeries.filter(s => s.kind === 'numeric' && typeSet.has(canonicalHistoryType(s.characteristicType)));
     const readings = infos.filter(s => !isSetpointType(canonicalHistoryType(s.characteristicType)));
     // Anything this panel can OFFER to borrow, and only what the room
@@ -139,7 +148,7 @@ export default function RoomStackView({
       offers,
       total: readings.length,
     };
-  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo]);
+  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo, byRoom]);
 
   const stripSels = useMemo(() => {
     const infos = roomSeries.filter(s =>

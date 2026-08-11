@@ -410,7 +410,7 @@ export default function EChartsTimeChart({
     // sideways along a rising line walked the highlight down through every
     // line beneath it. Vertical gap ÷ nothing; true distance to the segment.
     const zr = chart.getZr();
-    const PICK = 24; // acquire a line within this
+    const PICK = 36; // acquire a line within this
     const HOLD = 64; // …and keep it until this far off
     const MARGIN = 10; // a rival must beat the held line by this much
 

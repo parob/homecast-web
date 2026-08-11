@@ -4,7 +4,7 @@ import { canonicalHistoryType } from '@/history/keys';
 import { groupStrip } from '@/history/groupStrip';
 import { stateValueLabel } from '@/history/labels';
 import { isQuietRange, quietSummary, type QuietItem } from '@/history/quiet';
-import { formatStateDuration, stateTotals } from '@/history/stateSummary';
+import { stateTotals } from '@/history/stateSummary';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import AnalyticsPanel from './AnalyticsPanel';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
@@ -119,7 +119,7 @@ export default function ActivityStrips({
 
   type LooseRow = typeof loose[number];
 
-  const renderStrip = ({ entry: { sel, data }, type, totals, transitions }: LooseRow, indent = false) => (
+  const renderStrip = ({ entry: { sel, data }, type }: LooseRow, indent = false) => (
     <div key={`${sel.accessoryId}|${sel.characteristicType}`} className={`space-y-1 ${indent ? 'pl-4' : ''}`}>
       <p className="text-[11px] text-muted-foreground">
         {spansRooms ? labelWithRoom(sel) : labelWithoutRoom(sel)}
@@ -135,12 +135,6 @@ export default function ActivityStrips({
         stateBuckets={data.stateBuckets}
         labelFor={(v, text) => text ?? stateValueLabel(type, v)}
       />
-      {totals.length > 0 && (
-        <p className="text-[10px] text-muted-foreground">
-          {totals.slice(0, 3).map(([key, ms]) => `${stateKeyLabel(type, key)} ${formatStateDuration(ms)}`).join(' · ')}
-          {transitions > 0 && ` · ${transitions} change${transitions === 1 ? '' : 's'}`}
-        </p>
-      )}
     </div>
   );
 
@@ -181,14 +175,6 @@ export default function ActivityStrips({
           // claiming a single on/off the group never had.
           labelFor={() => 'On'}
         />
-        <p className="text-[10px] text-muted-foreground">
-          {[
-            strip.allOnMs > 0 ? `all on ${formatStateDuration(strip.allOnMs)}` : null,
-            strip.someOnMs > 0 ? `some on ${formatStateDuration(strip.someOnMs)}` : null,
-            strip.offMs > 0 ? `off ${formatStateDuration(strip.offMs)}` : null,
-            strip.peak > 0 ? `peak ${strip.peak} of ${strip.members}` : null,
-          ].filter(Boolean).join(' · ')}
-        </p>
         {open && (
           <div className="space-y-2 pt-1">
             {members.map(m => {
