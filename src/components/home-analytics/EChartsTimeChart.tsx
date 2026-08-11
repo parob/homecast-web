@@ -403,14 +403,21 @@ export default function EChartsTimeChart({
             seriesName?: string; value?: [number, number]; color?: string;
           }>;
           const lit = litLabelsRef.current;
-          const rows = items
+          const all = items
             .filter(p => p.seriesName && !p.seriesName.startsWith('__band')
               && Array.isArray(p.value) && Number.isFinite(p.value[1]))
-            // Pointing at one line is a question about that line. Answering it
-            // with all eight, and leaving you to find the right row, is the
-            // wall this tooltip was capped to avoid in the first place.
-            .filter(p => !lit || lit.size === 0 || lit.has(p.seriesName!))
             .map(p => ({ name: p.seriesName!, value: (p.value as [number, number])[1], color: String(p.color ?? '#888') }));
+          // Pointing at one line is a question about that line. Answering it
+          // with all nine, and leaving you to find the right row, is the wall
+          // this tooltip was capped to avoid in the first place.
+          //
+          // Unless that line has nothing to say here: a series with no sample
+          // at this instant is not in `items` at all, so filtering to it left
+          // no rows and an empty formatter result HIDES the tooltip. Falling
+          // back to the full list keeps it on screen — losing the reading you
+          // asked for is one thing, losing the tooltip is another.
+          const focused = lit && lit.size > 0 ? all.filter(r => lit.has(r.name)) : all;
+          const rows = focused.length > 0 ? focused : all;
           if (rows.length === 0) return '';
           rows.sort((a, b) => b.value - a.value);
           const ts = (items[0]?.value as [number, number] | undefined)?.[0];
