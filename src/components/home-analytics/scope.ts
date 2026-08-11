@@ -186,7 +186,14 @@ export function buildScopeTree(
     .map(n => n.node)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return { rooms, groups: crossRoom, accessoryCount: counts.size };
+  // Resolved, not recorded: an id whose accessory has not arrived yet cannot
+  // be placed in a room, and counting it made an empty tree look populated —
+  // which is how the sidebar came to say Nothing matches "" with no filter.
+  const placed = rooms.reduce(
+    (n, r) => n + r.accessories.length + r.groups.reduce((m, g) => m + g.members.length, 0),
+    0,
+  );
+  return { rooms, groups: crossRoom, accessoryCount: placed };
 }
 
 /** Where you are, in words — the header's breadcrumb. */

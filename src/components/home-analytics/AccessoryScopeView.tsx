@@ -47,9 +47,9 @@ export default function AccessoryScopeView({
     () => ordered.map(type => ({ accessoryId, characteristicType: type })),
     [ordered, accessoryId],
   );
-  const { data, loading } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock);
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock);
 
-  if (loading && data.size === 0) return <ChartSkeleton panels={3} />;
+  if (loading && data.size === 0) return <ChartSkeleton panels={3} progress={progress} />;
 
   const sections = ordered.flatMap(type => {
     const entry = data.get(`${accessoryId.toUpperCase()}|${type}`);

@@ -152,7 +152,9 @@ export default function AnalyticsContent({
       </div>
     );
   }
-  if (seriesLoading && recorded.length === 0) {
+  // Accessories arrive from the host; until they do, series ids resolve to
+  // nothing and every list would be empty for reasons that are not the user's.
+  if ((seriesLoading && recorded.length === 0) || (!mock && accessories === null)) {
     return (
       <div className="py-16 flex justify-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />

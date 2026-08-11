@@ -59,11 +59,12 @@ export interface EChartsTimeChartProps {
   band?: AggregatePoint[] | null;
   bandLabel?: string;
   /**
-   * Pin the LEFT value axis. A count of lights has no half and no negative,
+   * Pin the LEFT value axis: a count of lights has no half and no negative,
    * and two rooms are only comparable when both axes span the same set.
-   * Series carrying a unit go to the right-hand axis when this is set.
+   * `labels` names particular values — a blind's 0% and 100% mean Closed and
+   * Open, which a bare percentage never says.
    */
-  axis?: { min?: number; max?: number; minInterval?: number };
+  axis?: { min?: number; max?: number; minInterval?: number; labels?: Record<number, string> };
   fromTs: number;
   toTs: number;
   normalize: boolean;
@@ -92,6 +93,9 @@ export default function EChartsTimeChart({
   const hoverCbRef = useRef(onSeriesHover);
   hoverCbRef.current = onSeriesHover;
   const keyByIndexRef = useRef(new Map<number, string>());
+  // Enough to answer "which line is the pointer nearest?" without asking
+  // ECharts, which only reports a hover when you are exactly on the stroke.
+  const tracksRef = useRef<Array<{ key: string; axisIndex: number; pairs: Array<[number, number]> }>>([]);
 
   // Axis plan: units in appearance order. Without a pinned axis the first
   // goes left, the second right, and any more borrow the left (Normalize is
@@ -105,18 +109,17 @@ export default function EChartsTimeChart({
     return seen.slice(0, 3);
   }, [series]);
 
-  const { option, indexByKey, keyByIndex } = useMemo(() => {
+  const { option, indexByKey, keyByIndex, tracks } = useMemo(() => {
     const theme = hostRef.current ? readTheme(hostRef.current) : { text: '#333', faint: '#888', grid: '#e5e5e5' };
     // Units in appearance order get their own axis, up to three: two
     // complements sharing one axis meant lux being read against a % scale.
-    const rightUnits = units.filter((u): u is string => u !== null).slice(0, 2);
+    // The pin applies to the FIRST unit's axis, whatever that unit is — the
+    // lighting count (unitless) or a blind's percentage.
+    const pinnedUnits = units.slice(0, 3);
     const axisIndexFor = (unit: string | null) => {
       if (axis) {
-        // The pinned axis belongs to the unitless series that asked for it
-        // (the lights-on count); each unit that joins brings its own.
-        if (unit === null) return 0;
-        const at = rightUnits.indexOf(unit);
-        return at >= 0 ? at + 1 : 1;
+        const at = pinnedUnits.indexOf(unit);
+        return at >= 0 ? at : 0;
       }
       const legacy = units.slice(0, 2);
       return !normalize && legacy.length > 1 && legacy.indexOf(unit) === 1 ? 1 : 0;
@@ -150,6 +153,7 @@ export default function EChartsTimeChart({
     // map, built where the series are built, keeps the two from drifting.
     const indexByKey = new Map<string, number[]>();
     const keyByIndex = new Map<number, string>();
+    const tracks: Array<{ key: string; axisIndex: number; pairs: Array<[number, number]> }> = [];
     const claim = (key: string) => {
       const idx = chartSeries.length;
       indexByKey.set(key, [...(indexByKey.get(key) ?? []), idx]);
@@ -197,6 +201,7 @@ export default function EChartsTimeChart({
     series.forEach((s, i) => {
       claim(s.key);
       const colour = s.color ?? seriesColor(i);
+      tracks.push({ key: s.key, axisIndex: axisIndexFor(s.unit), pairs: toPairs(s.data) });
       chartSeries.push({
         name: s.label, type: 'line', step: 'end',
         data: toPairs(s.data),
@@ -247,7 +252,7 @@ export default function EChartsTimeChart({
     }
 
     const axisUnits = axis
-      ? [null, ...rightUnits]
+      ? pinnedUnits
       : (units.length > 1 && !normalize ? units.slice(0, 2) : [units[0] ?? null]);
     const yAxes = axisUnits.map((unit, idx) => ({
       type: 'value' as const,
@@ -260,7 +265,13 @@ export default function EChartsTimeChart({
       scale: !(idx === 0 && axis),
       axisLabel: {
         color: theme.faint, fontSize: 11,
-        formatter: (v: number) => (normalize ? `${Math.round(v)}%` : `${Number.isInteger(v) ? v : v.toFixed(1)}${unit ?? ''}`),
+        formatter: (v: number) => {
+          if (normalize) return `${Math.round(v)}%`;
+          // A named value wins: "Closed" says what 0% means on a blind.
+          const named = idx === 0 ? axis?.labels?.[v] : undefined;
+          if (named) return named;
+          return `${Number.isInteger(v) ? v : v.toFixed(1)}${unit ?? ''}`;
+        },
       },
       splitLine: { show: idx === 0, lineStyle: { color: theme.grid } },
     }));
@@ -359,7 +370,7 @@ export default function EChartsTimeChart({
       },
       series: chartSeries,
     };
-    return { option, indexByKey, keyByIndex };
+    return { option, indexByKey, keyByIndex, tracks };
   }, [series, band, bandLabel, axis, fromTs, toTs, normalize, units, hideSlider]);
 
   useEffect(() => {
@@ -371,18 +382,41 @@ export default function EChartsTimeChart({
       chart.group = groupId;
       echarts.connect(groupId);
     }
-    // Pointing at a line tells the legend which name to light up. Read the
-    // key through a ref: re-registering these on every render would tear the
-    // listener down mid-hover.
-    chart.on('mouseover', (params: { seriesIndex?: number }) => {
-      const key = params.seriesIndex !== undefined ? keyByIndexRef.current.get(params.seriesIndex) : undefined;
-      if (key) hoverCbRef.current?.(key);
-    });
-    chart.on('mouseout', () => hoverCbRef.current?.(null));
+    // Pointing at a line tells the legend which name to light up — and, via
+    // the caller, every other panel showing that same accessory.
+    //
+    // ECharts' own mouseover only fires when the pointer is ON the stroke,
+    // which for a 2px line is a game of darts. This asks the same question
+    // the eye does: of the lines drawn here, which passes closest to the
+    // cursor right now? Nothing within 28px means nothing is being pointed at.
+    const zr = chart.getZr();
+    const onMove = (e: { offsetX: number; offsetY: number }) => {
+      const pointInGrid = chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY]);
+      if (!pointInGrid) { hoverCbRef.current?.(null); return; }
+      const ts = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number;
+      let best: { key: string; distance: number } | null = null;
+      for (const track of tracksRef.current) {
+        if (track.pairs.length === 0) continue;
+        // LOCF: the value in force at the cursor's instant.
+        let value: number | null = null;
+        for (const [x, y] of track.pairs) {
+          if (x > ts) break;
+          value = y;
+        }
+        if (value === null) continue;
+        const py = chart.convertToPixel({ yAxisIndex: track.axisIndex }, value) as number;
+        const distance = Math.abs(py - e.offsetY);
+        if (!best || distance < best.distance) best = { key: track.key, distance };
+      }
+      hoverCbRef.current?.(best && best.distance <= 28 ? best.key : null);
+    };
+    zr.on('mousemove', onMove);
+    zr.on('globalout', () => hoverCbRef.current?.(null));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(host);
     return () => {
       observer.disconnect();
+      zr.off('mousemove', onMove);
       chart.dispose();
       chartRef.current = null;
     };
@@ -391,8 +425,9 @@ export default function EChartsTimeChart({
 
   useEffect(() => {
     keyByIndexRef.current = keyByIndex;
+    tracksRef.current = tracks;
     chartRef.current?.setOption(option as never, { notMerge: true });
-  }, [option, keyByIndex]);
+  }, [option, keyByIndex, tracks]);
 
   // Legend → chart. `emphasis.focus: 'series'` on each line means emphasising
   // one blurs the rest, so a single highlight action does both halves of

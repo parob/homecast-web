@@ -232,7 +232,7 @@ export default function ScopeTree({
           </>
         )}
 
-        {rooms.length === 0 && groups.length === 0 && (
+        {rooms.length === 0 && groups.length === 0 && needle && (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing matches “{filter}”.</p>
         )}
       </div>

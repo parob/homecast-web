@@ -93,7 +93,7 @@ export default function GroupHistorySections({
     return out;
   }, [sections, ownSeries]);
 
-  const { data, loading } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
     enabled: refs.length > 0,
   });
 
@@ -110,7 +110,7 @@ export default function GroupHistorySections({
       </div>
     );
   }
-  if (loading && data.size === 0) return <ChartSkeleton />;
+  if (loading && data.size === 0) return <ChartSkeleton progress={progress} />;
 
   return (
     <div className="space-y-5">

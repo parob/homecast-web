@@ -30,6 +30,9 @@ export function useMultiSeriesHistory(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
+  // Real progress, not a guessed ETA: the wire caps a query at 6 series, so a
+  // wide view is a known number of sequential chunks and "18 of 30" is a fact.
+  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const refsKey = refs.map(r => `${r.accessoryId}|${r.characteristicType}`).join(',');
   const maxPoints = opts?.maxPoints ?? 500;
   const enabled = opts?.enabled ?? true;
@@ -41,7 +44,7 @@ export function useMultiSeriesHistory(
     }
     let cancelled = false;
 
-    const fetchAll = async (from: number, to: number): Promise<HistorySeriesData[]> => {
+    const fetchAll = async (from: number, to: number, base = 0): Promise<HistorySeriesData[]> => {
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
       const out: HistorySeriesData[] = [];
       for (let i = 0; i < refs.length; i += 6) {
@@ -52,17 +55,23 @@ export function useMultiSeriesHistory(
           fetchPolicy: 'network-only',
         });
         out.push(...(result.data?.history ?? []));
+        // base offsets the comparison pass, or its chunks would count from
+        // zero again and the bar would walk backwards halfway through.
+        if (!cancelled) setProgress(p => ({ ...p, done: Math.min(base + i + chunk.length, p.total) }));
       }
       return out;
     };
 
+    // Both passes count: with a comparison on, the second fetch is half the
+    // wait and a bar that finished at the halfway point would be a lie.
+    setProgress({ done: 0, total: refs.length * (compareOffsetMs > 0 ? 2 : 1) });
     setLoading(true);
     setError(null);
     void (async () => {
       try {
         const main = await fetchAll(fromTs, toTs);
         const ghost = compareOffsetMs > 0
-          ? await fetchAll(fromTs - compareOffsetMs, toTs - compareOffsetMs)
+          ? await fetchAll(fromTs - compareOffsetMs, toTs - compareOffsetMs, refs.length)
           : [];
         if (cancelled) return;
         const map = new Map<string, MultiSeriesEntry>();
@@ -92,5 +101,5 @@ export function useMultiSeriesHistory(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, homeId, refsKey, fromTs, toTs, compareOffsetMs, mock, client, retryNonce, maxPoints]);
 
-  return { data, loading, error, retry: () => setRetryNonce(n => n + 1) };
+  return { data, loading, error, progress, retry: () => setRetryNonce(n => n + 1) };
 }

@@ -79,10 +79,11 @@ export default function RoomStackView({
   // Brightness is a complement like any other: the lighting chart is about
   // how many lights are on, and how bright they were is a second question.
   const [showBrightness, setShowBrightness] = useState(false);
-  // Shared across the stacked panels: pointing at "Underfloor Heating" in the
-  // Temperature legend picks it out of the Humidity panel too, which is the
-  // whole reason these panels are stacked.
-  const [highlightKeys, setHighlightKeys] = useState<string[] | null>(null);
+  // Highlighting is by THING, not by series: pointing at Underfloor Heating's
+  // temperature must also pick out its humidity in the panel below, and those
+  // are different series. Identity is the accessory — or the room, when the
+  // whole view is per-room averages.
+  const [highlight, setHighlight] = useState<string | null>(null);
 
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
@@ -159,7 +160,7 @@ export default function RoomStackView({
     () => allSels.map(s => ({ accessoryId: s.accessoryId, characteristicType: s.characteristicType })),
     [allSels],
   );
-  const { data, loading } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
+  const { data, loading, progress } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock, {
     enabled: refs.length > 0,
   });
   // First load only: once there is data, a range change redraws from what is
@@ -197,12 +198,29 @@ export default function RoomStackView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [powerSels, lightSels, data, fromTs, toTs]);
 
+  const identityOf = (sel: SeriesSel) => (byRoom ? (sel.room ?? 'Elsewhere') : sel.accessoryId.toUpperCase());
+
+  // One colour per thing, fixed for the whole view. Colour was a per-panel
+  // index, so Kitchen could be green in Temperature and orange in Humidity —
+  // the two panels are stacked precisely so they can be read together.
+  const colourIndex = useMemo(() => {
+    const order: string[] = [];
+    const add = (id: string) => { if (!order.includes(id)) order.push(id); };
+    for (const panel of panels) {
+      for (const sel of panel.sels) add(identityOf(sel));
+    }
+    for (const sel of stripSels) add(identityOf(sel));
+    return new Map(order.map((id, i) => [id, i]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panels, stripSels, byRoom]);
+  const colourFor = (id: string) => seriesColor(colourIndex.get(id) ?? 0);
+
   const groupId = `room-stack-${roomKey ?? 'elsewhere'}`;
   const chartPanels = panels.map((panel, panelIndex) => {
-    // Colour belongs to the ACCESSORY, so its target inherits the colour of
-    // its own reading and reads as the same device's intention.
+    // Colour belongs to the thing, so a target inherits the colour of its own
+    // reading and reads as the same device's intention.
     const colourOf = new Map<string, string>();
-    panel.sels.forEach((sel, i) => colourOf.set(sel.accessoryId.toUpperCase(), seriesColor(i)));
+    panel.sels.forEach(sel => colourOf.set(sel.accessoryId.toUpperCase(), colourFor(identityOf(sel))));
 
     const perAccessory: Array<{ sel: SeriesSel; main: HistorySeriesData }> = panel.sels.flatMap(sel => {
       const main = entryFor(sel);
@@ -215,7 +233,7 @@ export default function RoomStackView({
           return acc;
         }, new Map<string, HistorySeriesData[]>())]
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([roomName, mains], i) => ({
+        .map(([roomName, mains]) => ({
           key: `room:${roomName}`,
           label: roomName,
           unit: panel.measure.unit,
@@ -224,14 +242,14 @@ export default function RoomStackView({
             { accessoryId: `room:${roomName}`, characteristicType: 'room_average', unit: panel.measure.unit },
             mains[0]?.resolution ?? 'raw',
           ),
-          color: seriesColor(i),
+          color: colourFor(roomName),
         }))
-      : perAccessory.map(({ sel, main }, i) => ({
+      : perAccessory.map(({ sel, main }) => ({
           key: `${sel.accessoryId}|${sel.characteristicType}`,
           label: sel.label,
           unit: sel.unit,
           data: main,
-          color: seriesColor(i),
+          color: colourFor(identityOf(sel)),
         }));
     const borrowed: ChartSeries[] = panel.offers.flatMap(({ complement, sels }) => (
       isOn(panel.measure.id, complement.id)
@@ -245,7 +263,7 @@ export default function RoomStackView({
             // Colour always belongs to the ACCESSORY: this room's underfloor
             // heating is one blue whether you are looking at its temperature,
             // its target or its humidity. Weight says which is which.
-            color: colourOf.get(sel.accessoryId.toUpperCase()) ?? seriesColor(panel.sels.length),
+            color: colourOf.get(sel.accessoryId.toUpperCase()) ?? colourFor(identityOf(sel)),
             dashed: complement.setpoint,
             secondary: !complement.setpoint,
           }] : [];
@@ -254,6 +272,20 @@ export default function RoomStackView({
     ));
     const chartSeries = [...readingSeries, ...borrowed];
     if (chartSeries.length === 0) return null;
+
+    // A chart speaks in series keys; the view thinks in things. This panel's
+    // keys for whatever is currently lit — which may be none of them, and
+    // that is how a highlight in one panel dims a neighbour that has nothing
+    // of that accessory.
+    const identityOfKey = (key: string) => {
+      if (key.startsWith('room:')) return key.slice('room:'.length);
+      const sel = [...panel.sels, ...panel.offers.flatMap(o => o.sels)]
+        .find(x => `${x.accessoryId}|${x.characteristicType}` === key);
+      return sel ? identityOf(sel) : key;
+    };
+    const litKeys = highlight
+      ? chartSeries.filter(cs => identityOfKey(cs.key) === highlight).map(cs => cs.key)
+      : null;
 
     let min = Infinity;
     let max = -Infinity;
@@ -300,14 +332,20 @@ export default function RoomStackView({
       >
         <EChartsTimeChart
           series={chartSeries}
+          // A blind's percentage is meaningless without its ends named, and
+          // 40% of a window is not comparable to 40% of another unless both
+          // axes span the whole travel.
+          axis={panel.measure.id === 'position'
+            ? { min: 0, max: 100, minInterval: 25, labels: { 0: 'Closed', 100: 'Open' } }
+            : undefined}
           fromTs={fromTs}
           toTs={toTs}
           normalize={false}
           height={panels.length > 1 ? 200 : 280}
           groupId={groupId}
           hideSlider={!isLastChart}
-          highlightKeys={highlightKeys}
-          onSeriesHover={(key) => setHighlightKeys(key ? [key] : null)}
+          highlightKeys={litKeys}
+          onSeriesHover={(key) => setHighlight(key ? identityOfKey(key) : null)}
         />
         <ChartLegend
           entries={chartSeries.map(s => {
@@ -325,8 +363,8 @@ export default function RoomStackView({
               shortLabel: byRoom ? undefined : sel?.charLabel,
             };
           })}
-          highlightKeys={highlightKeys}
-          onHighlight={setHighlightKeys}
+          highlightKeys={litKeys}
+          onHighlight={(keys) => setHighlight(keys && keys.length > 0 ? identityOfKey(keys[0]) : null)}
         />
       </AnalyticsPanel>
     );
@@ -352,7 +390,7 @@ export default function RoomStackView({
       </div>
 
       {firstLoad ? (
-        <ChartSkeleton />
+        <ChartSkeleton progress={progress} />
       ) : chartPanels.length === 0 && stripEntries.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">
