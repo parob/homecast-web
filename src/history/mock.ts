@@ -158,14 +158,27 @@ function buildBigHome(): { accessories: MockAccessoryEntry[]; groups: Array<{ id
       recorded: roomIdx < 5 ? ['motion_detected', 'current_ambient_light_level'] : ['motion_detected'],
       values: { motion_detected: 0, current_ambient_light_level: 40 + roomIdx * 9, battery_level: 55 + roomIdx * 4 },
     });
-    // Three lights: power/brightness recorded on the first, the colour
-    // channels recordable-but-silent everywhere — the monitoring wall.
-    for (let l = 1; l <= 3; l++) {
+    // Lights: three per room, power/brightness recorded on the first, the
+    // colour channels recordable-but-silent everywhere — the monitoring wall.
+    //
+    // Except one room, which is a ceiling of nine downlights all recording,
+    // because that is the shape that broke the old Brightness panel: ten
+    // bulbs reporting 100% forever and eight identical timelines beneath.
+    const downlightRoom = room === 'Living';
+    const lightCount = downlightRoom ? 9 : 3;
+    for (let l = 1; l <= lightCount; l++) {
+      const records = downlightRoom || l === 1;
       accessories.push({
-        accessoryId: `BIG-${rs}-LIGHT${l}`, name: `${room} Light ${l}`, room,
+        accessoryId: `BIG-${rs}-LIGHT${l}`,
+        name: downlightRoom ? `Hue ambiance spot ${l}` : `${room} Light ${l}`,
+        room,
         recordable: ['power_state', 'brightness', 'hue', 'saturation', 'color_temperature'],
-        recorded: l === 1 ? ['power_state', 'brightness'] : [],
-        values: { power_state: l === 1 && roomIdx % 3 === 0 ? 1 : 0, brightness: l === 1 ? 70 : 0, hue: 30, saturation: 20, color_temperature: 300 },
+        recorded: records ? ['power_state', 'brightness'] : [],
+        values: {
+          power_state: records && (downlightRoom ? l % 3 !== 0 : roomIdx % 3 === 0) ? 1 : 0,
+          brightness: records ? 55 + ((l * 13) % 45) : 0,
+          hue: 30, saturation: 20, color_temperature: 300,
+        },
       });
     }
     // Smoke alarm per room: recordable, silent — 2 monitoring rows each.
@@ -177,7 +190,10 @@ function buildBigHome(): { accessories: MockAccessoryEntry[]; groups: Array<{ id
     });
 
     // Room light groups (mostly silent) + a couple of zone groups.
-    groups.push({ id: `BIG-GROUP-${rs}`, name: `${room} Lights`, memberIds: [1, 2, 3].map(l => `BIG-${rs}-LIGHT${l}`) });
+    groups.push({
+      id: `BIG-GROUP-${rs}`, name: `${room} Lights`,
+      memberIds: Array.from({ length: lightCount }, (_, i) => `BIG-${rs}-LIGHT${i + 1}`),
+    });
   });
 
   // Extra groups to reach the real home's 16.
@@ -316,6 +332,10 @@ export function mockHistoryData(
         : canonical === 'carbon_dioxide_level' ? 350
         : canonical === 'carbon_monoxide_level' ? 2
         : canonical === 'virtual_count' ? 6
+        // Brightness swings hard on purpose: a ceiling of downlights that
+        // is full in the evening and dimmed late is the behaviour the
+        // lighting line exists to show, and a flat 70% would hide it.
+        : canonical === 'brightness' ? 45
         : canonical.includes('temp') ? 3 : canonical.includes('humid') ? 8 : 35;
       let walk = 0;
       const points: HistoryPointData[] = [];

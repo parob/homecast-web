@@ -58,6 +58,18 @@ export interface EChartsTimeChartProps {
   /** Cross-sensor envelope rendered behind everything. */
   band?: AggregatePoint[] | null;
   bandLabel?: string;
+  /**
+   * A line whose STROKE carries a second variable.
+   *
+   * ECharts sets line width per series, not per point, so a swelling stroke
+   * is drawn as a filled envelope around the centre — value ± half — with a
+   * hairline down the middle so it stays readable where the stroke thins to
+   * nothing. Lighting uses it: the centre is how many lights are on, the
+   * thickness is how bright they are.
+   */
+  ribbon?: { points: Array<{ ts: number; value: number; half: number }>; label: string } | null;
+  /** Pin the value axis — a count of lights has no half. */
+  axis?: { min?: number; max?: number; minInterval?: number };
   fromTs: number;
   toTs: number;
   normalize: boolean;
@@ -77,7 +89,7 @@ export interface EChartsTimeChartProps {
 }
 
 export default function EChartsTimeChart({
-  series, band, bandLabel, fromTs, toTs, normalize, height = 320, groupId, hideSlider = false,
+  series, band, bandLabel, ribbon, axis, fromTs, toTs, normalize, height = 320, groupId, hideSlider = false,
   highlightKeys, onSeriesHover,
 }: EChartsTimeChartProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -99,7 +111,10 @@ export default function EChartsTimeChart({
 
   const { option, indexByKey, keyByIndex } = useMemo(() => {
     const theme = hostRef.current ? readTheme(hostRef.current) : { text: '#333', faint: '#888', grid: '#e5e5e5' };
-    const axisIndexFor = (unit: string | null) => (!normalize && units.length > 1 && units.indexOf(unit) === 1 ? 1 : 0);
+    const axisIndexFor = (unit: string | null) => {
+      if (ribbon && ribbon.points.length > 0) return 1; // the ribbon owns axis 0
+      return !normalize && units.length > 1 && units.indexOf(unit) === 1 ? 1 : 0;
+    };
 
     const toPairs = (data: HistorySeriesData): Array<[number, number]> => {
       const range = (() => {
@@ -160,6 +175,38 @@ export default function EChartsTimeChart({
       );
     }
 
+    if (ribbon && ribbon.points.length > 0) {
+      const colour = seriesColor(0);
+      chartSeries.push(
+        {
+          // Curved, not stepped: the stroke is an eased shape (see
+          // lighting.ts), and stepping its edges would put the staircase back.
+          name: '__ribbonLow', type: 'line', smooth: 0.35, silent: true,
+          data: ribbon.points.map(p => [p.ts, Math.max(p.value - p.half, 0)]),
+          lineStyle: { opacity: 0 }, symbol: 'none', stack: '__ribbon', z: 1,
+          tooltip: { show: false },
+        },
+        {
+          // The stroke itself: one solid band, full opacity, no outline. A
+          // paler fill under a darker centre line read as two marks — a line
+          // with a halo — when the whole idea is a single swelling stroke.
+          name: '__ribbonThickness', type: 'line', smooth: 0.35, silent: true,
+          data: ribbon.points.map(p => [p.ts, p.half * 2]),
+          lineStyle: { opacity: 0 }, symbol: 'none', stack: '__ribbon',
+          areaStyle: { color: colour, opacity: 1 }, z: 2,
+          tooltip: { show: false },
+        },
+        {
+          // Invisible, and only here so the axis tooltip has a value to
+          // report: the stroke above carries the whole visual.
+          name: ribbon.label, type: 'line', smooth: 0.35,
+          data: ribbon.points.map(p => [p.ts, p.value]),
+          lineStyle: { opacity: 0 }, symbol: 'none',
+          itemStyle: { color: colour }, z: 3,
+        },
+      );
+    }
+
     // Nothing on the left of a long window is ambiguous — a dead sensor reads
     // the same as a window reaching back past the recording. Shade the stretch
     // before anything was KNOWN and name it.
@@ -182,10 +229,11 @@ export default function EChartsTimeChart({
         yAxisIndex: axisIndexFor(s.unit),
         lineStyle: {
           // A setpoint is thinner and dashed in its accessory's own colour:
-          // same device, different kind of claim.
-          width: s.dashed ? 1.25 : (band ? 1 : 2),
+          // same device, different kind of claim. A borrowed measure is
+          // solid but recedes — it is context, not the subject.
+          width: s.dashed ? 1.25 : s.secondary ? 1.5 : (band ? 1 : 2),
           color: colour,
-          opacity: band && !s.dashed ? 0.5 : 1,
+          opacity: s.secondary ? 0.5 : (band && !s.dashed ? 0.5 : 1),
           type: s.dashed ? [5, 4] : 'solid',
         },
         itemStyle: { color: colour },
@@ -222,12 +270,18 @@ export default function EChartsTimeChart({
       };
     }
 
-    const yAxes = (units.length > 1 && !normalize ? units : [units[0] ?? null]).map((unit, idx) => ({
+    const ribbonAxis = ribbon && ribbon.points.length > 0;
+    const axisUnits = ribbonAxis
+      // The ribbon's axis counts lights; a borrowed measure cannot share it.
+      ? [null, ...(units[0] !== undefined ? [units[0]] : [])]
+      : (units.length > 1 && !normalize ? units : [units[0] ?? null]);
+    const yAxes = axisUnits.map((unit, idx) => ({
       type: 'value' as const,
       position: idx === 0 ? 'left' as const : 'right' as const,
-      min: normalize ? 0 : undefined,
-      max: normalize ? 100 : undefined,
-      scale: true,
+      min: normalize ? 0 : (idx === 0 ? axis?.min : undefined),
+      max: normalize ? 100 : (idx === 0 ? axis?.max : undefined),
+      minInterval: idx === 0 ? axis?.minInterval : undefined,
+      scale: !(idx === 0 && axis),
       axisLabel: {
         color: theme.faint, fontSize: 11,
         formatter: (v: number) => (normalize ? `${Math.round(v)}%` : `${Number.isInteger(v) ? v : v.toFixed(1)}${unit ?? ''}`),
@@ -298,7 +352,8 @@ export default function EChartsTimeChart({
             seriesName?: string; value?: [number, number]; color?: string;
           }>;
           const rows = items
-            .filter(p => p.seriesName && !p.seriesName.startsWith('__band') && Array.isArray(p.value) && Number.isFinite(p.value[1]))
+            .filter(p => p.seriesName && !p.seriesName.startsWith('__band') && !p.seriesName.startsWith('__ribbon')
+              && Array.isArray(p.value) && Number.isFinite(p.value[1]))
             .map(p => ({ name: p.seriesName!, value: (p.value as [number, number])[1], color: String(p.color ?? '#888') }));
           if (rows.length === 0) return '';
           rows.sort((a, b) => b.value - a.value);
@@ -322,7 +377,7 @@ export default function EChartsTimeChart({
       series: chartSeries,
     };
     return { option, indexByKey, keyByIndex };
-  }, [series, band, bandLabel, fromTs, toTs, normalize, units, hideSlider]);
+  }, [series, band, bandLabel, ribbon, axis, fromTs, toTs, normalize, units, hideSlider]);
 
   useEffect(() => {
     const host = hostRef.current;

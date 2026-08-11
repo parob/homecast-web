@@ -22,6 +22,8 @@ export interface ChartSeries {
   color?: string;
   /** Drawn dashed and thin: a commanded value, not a measured one. */
   dashed?: boolean;
+  /** A complementary measure borrowed onto this chart — drawn to recede. */
+  secondary?: boolean;
   key: string;
   label: string;
   unit: string | null;

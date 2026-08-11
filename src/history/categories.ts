@@ -219,6 +219,48 @@ export function isSetpointType(type: string): boolean {
   return SETPOINT_NUMERIC_TYPES.has(type) || SETPOINT_STATE_TYPES.has(type);
 }
 
+/**
+ * What a chart may OFFER to draw alongside its own measure.
+ *
+ * A temperature chart is about temperature; that is why it opens with three
+ * lines and not seven. But the question behind a lot of temperature charts is
+ * about something else — is the heating chasing a target it can't reach, is
+ * the room damp when it's cold, did the lights come on because it got dark.
+ * Each of those is one tick, off by default, so the core measure keeps the
+ * chart and the context is a decision rather than an ambush.
+ */
+export interface MeasureComplement {
+  id: string;
+  label: string;
+  /** Canonical characteristic types to overlay. */
+  types: string[];
+  /** Setpoints draw dashed in their accessory's colour; others go secondary. */
+  setpoint?: boolean;
+}
+
+export const MEASURE_COMPLEMENTS: Record<string, MeasureComplement[]> = {
+  temperature: [
+    { id: 'targets', label: 'Targets', types: ['target_temperature', 'heating_threshold', 'cooling_threshold'], setpoint: true },
+    { id: 'humidity', label: 'Humidity', types: ['relative_humidity'] },
+  ],
+  humidity: [
+    { id: 'targets', label: 'Targets', types: ['target_humidity'], setpoint: true },
+    { id: 'temperature', label: 'Temperature', types: ['current_temperature'] },
+  ],
+  light: [
+    { id: 'lighting', label: 'Lights on', types: ['brightness'] },
+  ],
+  co2: [
+    { id: 'humidity', label: 'Humidity', types: ['relative_humidity'] },
+  ],
+  power: [
+    { id: 'energy', label: 'Energy', types: ['eve_energy_kwh'] },
+  ],
+  lighting: [
+    { id: 'lux', label: 'Lux', types: ['current_ambient_light_level'] },
+  ],
+};
+
 export type SeriesViz = 'line' | 'strip';
 
 /** How a series draws: numeric kinds as lines, state kinds as strips. */

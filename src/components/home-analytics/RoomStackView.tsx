@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { isSetpointType, measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
+import { isSetpointType, measuresIn, MEASURE_COMPLEMENTS, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateValueLabel } from '@/history/labels';
 import { formatStateDuration, stateTotals } from '@/history/stateSummary';
+import { lightingSeries, lightingSummary, smoothCounts, smoothIntensity, type LightingInput } from '@/history/lighting';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import AnalyticsPanel from './AnalyticsPanel';
@@ -50,7 +51,19 @@ export default function RoomStackView({
   // Setpoints off by default: they are flat lines that never move, and drawn
   // as peers they turned a three-sensor Temperature panel into seven
   // competing colours. One tick puts the intent back beside the reading.
-  const [showTargets, setShowTargets] = useState(false);
+  // Which complementary measures each panel is currently borrowing. Off by
+  // default everywhere: the panel is about its own measure.
+  const [complements, setComplements] = useState<Record<string, Set<string>>>({});
+  const toggleComplement = (measureId: string, complementId: string) => setComplements(prev => {
+    const next = new Set(prev[measureId] ?? []);
+    if (next.has(complementId)) next.delete(complementId); else next.add(complementId);
+    return { ...prev, [measureId]: next };
+  });
+  const isOn = (measureId: string, complementId: string) => !!complements[measureId]?.has(complementId);
+  // The swelling stroke is the point of the lighting line, so it is on by
+  // default — but a room where every bulb sits at full has nothing to say
+  // with it, and a plain line is easier to read a count off.
+  const [showIntensity, setShowIntensity] = useState(true);
   // Shared across the stacked panels: pointing at "Underfloor Heating" in the
   // Temperature legend picks it out of the Humidity panel too, which is the
   // whole reason these panels are stacked.
@@ -61,22 +74,43 @@ export default function RoomStackView({
 
   const roomKey = room;
 
+  // Lights are their own question: see lighting.ts. Brightness leaves the
+  // measure panels entirely — it was ten flat lines at 100%.
+  const lightSels = useMemo(
+    () => buildSels(roomSeries.filter(s => canonicalHistoryType(s.characteristicType) === 'brightness'), accessoryInfo),
+    [roomSeries, accessoryInfo],
+  );
+  const powerSels = useMemo(
+    () => buildSels(roomSeries.filter(s => canonicalHistoryType(s.characteristicType) === 'power_state'), accessoryInfo),
+    [roomSeries, accessoryInfo],
+  );
+
   // One panel per measure present in this room, importance-ordered.
   const measures = useMemo(() => measuresIn(roomSeries), [roomSeries]);
   const panels = useMemo(() => measures.map(measure => {
     const typeSet = new Set(measure.types);
+    if (measure.id === 'brightness') return { measure, sels: [], targetSels: [], total: 0 };
     const infos = roomSeries.filter(s => s.kind === 'numeric' && typeSet.has(canonicalHistoryType(s.characteristicType)));
     const readings = infos.filter(s => !isSetpointType(canonicalHistoryType(s.characteristicType)));
-    const targets = infos.filter(s => isSetpointType(canonicalHistoryType(s.characteristicType)));
+    // Anything this panel can OFFER to borrow, and only what the room
+    // actually records — a tick for data that isn't there is a dead control.
+    const offers = (MEASURE_COMPLEMENTS[measure.id] ?? []).flatMap(complement => {
+      const types = new Set(complement.types);
+      const found = roomSeries.filter(s =>
+        s.kind === 'numeric' && types.has(canonicalHistoryType(s.characteristicType)));
+      return found.length > 0
+        ? [{ complement, sels: buildSels(found, accessoryInfo) }]
+        : [];
+    });
     return {
       measure,
-      // The cap applies to readings; a target rides along with its accessory
-      // rather than competing for one of the slots.
+      // The cap applies to readings; borrowed series ride along rather than
+      // competing for one of the slots.
       sels: buildSels(readings.slice(0, PER_MEASURE_CAP), accessoryInfo),
-      targetSels: buildSels(targets, accessoryInfo),
+      offers,
       total: readings.length,
     };
-  }).filter(p => p.sels.length > 0 || p.targetSels.length > 0), [measures, roomSeries, accessoryInfo]);
+  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo]);
 
   const stripSels = useMemo(() => {
     const infos = roomSeries.filter(s =>
@@ -84,9 +118,20 @@ export default function RoomStackView({
     return buildSels(infos.slice(0, 8), accessoryInfo);
   }, [roomSeries, accessoryInfo]);
 
+  // What the lighting line can borrow — lux from the room's own sensors.
+  const lightingOffers = useMemo(() => (MEASURE_COMPLEMENTS.lighting ?? []).flatMap(complement => {
+    const types = new Set(complement.types);
+    const found = roomSeries.filter(s =>
+      s.kind === 'numeric' && types.has(canonicalHistoryType(s.characteristicType)));
+    return found.length > 0 ? [{ complement, sels: buildSels(found, accessoryInfo) }] : [];
+  }), [roomSeries, accessoryInfo]);
+
   const allSels = useMemo(
-    () => [...panels.flatMap(p => [...p.sels, ...p.targetSels]), ...stripSels],
-    [panels, stripSels],
+    () => [
+      ...panels.flatMap(p => [...p.sels, ...p.offers.flatMap(o => o.sels)]),
+      ...stripSels, ...lightSels, ...powerSels, ...lightingOffers.flatMap(o => o.sels),
+    ],
+    [panels, stripSels, lightSels, powerSels, lightingOffers],
   );
   const refs = useMemo<HistorySeriesRefInput[]>(
     () => allSels.map(s => ({ accessoryId: s.accessoryId, characteristicType: s.characteristicType })),
@@ -101,6 +146,45 @@ export default function RoomStackView({
     if (!entry) return undefined;
     return hideUnusual ? sanitizeSeriesData(entry.main).data : entry.main;
   };
+
+  // The lighting line: centre = lights on, stroke thickness = how bright
+  // they are. Half-width is in axis units (the axis counts lights), so the
+  // stroke reads the same whether the room has three bulbs or nine.
+  const lighting = useMemo(() => {
+    const lights: LightingInput[] = powerSels.flatMap(powerSel => {
+      const power = entryFor(powerSel);
+      if (!power) return [];
+      const brightnessSel = lightSels.find(b =>
+        b.accessoryId.toUpperCase() === powerSel.accessoryId.toUpperCase());
+      return [{ power, brightness: brightnessSel ? entryFor(brightnessSel) : undefined }];
+    });
+    if (lights.length === 0 || lightSels.length === 0) return null;
+    const raw = lightingSeries(lights, fromTs, toTs, 400);
+    if (raw.length === 0) return null;
+    // Draw the eased shape, quote the real numbers: the summary below is
+    // computed from `raw`, so its peak is a peak that actually happened.
+    const points = smoothCounts(smoothIntensity(raw, 6), 6);
+    const maxHalf = Math.max(lights.length * 0.075, 0.2);
+    // Never vanishes: a stroke of zero width at 0% brightness would read as
+    // missing data rather than as "on, but barely".
+    const minHalf = maxHalf * 0.16;
+    const evenHalf = maxHalf * 0.42; // plain line, when intensity is off
+    return {
+      count: lights.length,
+      summary: lightingSummary(raw, toTs),
+      ribbon: {
+        label: 'Lights on',
+        points: points.map(p => ({
+          ts: p.ts,
+          value: p.onCount,
+          half: showIntensity
+            ? minHalf + ((p.litBrightness ?? 0) / 100) * (maxHalf - minHalf)
+            : evenHalf,
+        })),
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [powerSels, lightSels, data, fromTs, toTs, hideUnusual, showIntensity]);
 
   const groupId = `room-stack-${roomKey ?? 'elsewhere'}`;
   const chartPanels = panels.map((panel, panelIndex) => {
@@ -119,20 +203,26 @@ export default function RoomStackView({
         color: seriesColor(i),
       }] : [];
     });
-    const targetSeries: ChartSeries[] = showTargets ? panel.targetSels.flatMap(sel => {
-      const main = entryFor(sel);
-      return main ? [{
-        key: `${sel.accessoryId}|${sel.characteristicType}`,
-        label: sel.label,
-        unit: sel.unit,
-        data: main,
-        // An accessory with a target but no reading in this panel still needs
-        // a colour; fall back to the palette by its position.
-        color: colourOf.get(sel.accessoryId.toUpperCase()) ?? seriesColor(panel.sels.length),
-        dashed: true,
-      }] : [];
-    }) : [];
-    const chartSeries = [...readingSeries, ...targetSeries];
+    const borrowed: ChartSeries[] = panel.offers.flatMap(({ complement, sels }) => (
+      isOn(panel.measure.id, complement.id)
+        ? sels.flatMap(sel => {
+          const main = entryFor(sel);
+          return main ? [{
+            key: `${sel.accessoryId}|${sel.characteristicType}`,
+            label: sel.label,
+            unit: sel.unit,
+            data: main,
+            // Colour always belongs to the ACCESSORY: this room's underfloor
+            // heating is one blue whether you are looking at its temperature,
+            // its target or its humidity. Weight says which is which.
+            color: colourOf.get(sel.accessoryId.toUpperCase()) ?? seriesColor(panel.sels.length),
+            dashed: complement.setpoint,
+            secondary: !complement.setpoint,
+          }] : [];
+        })
+        : []
+    ));
+    const chartSeries = [...readingSeries, ...borrowed];
     if (chartSeries.length === 0) return null;
 
     let min = Infinity;
@@ -156,16 +246,23 @@ export default function RoomStackView({
         key={panel.measure.id}
         title={panel.measure.title}
         source={`${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
-        actions={panel.targetSels.length > 0 ? (
-          <label className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showTargets}
-              onChange={(e) => setShowTargets(e.target.checked)}
-              className="accent-current"
-            />
-            Targets
-          </label>
+        actions={panel.offers.length > 0 ? (
+          <span className="flex items-center gap-2">
+            {panel.offers.map(({ complement }) => (
+              <label
+                key={complement.id}
+                className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground"
+              >
+                <input
+                  type="checkbox"
+                  checked={isOn(panel.measure.id, complement.id)}
+                  onChange={() => toggleComplement(panel.measure.id, complement.id)}
+                  className="accent-current"
+                />
+                {complement.label}
+              </label>
+            ))}
+          </span>
         ) : undefined}
         caption={n > 0 ? `min ${min.toFixed(1)}${unit} · avg ${(sum / n).toFixed(1)}${unit} · max ${max.toFixed(1)}${unit}` : undefined}
       >
@@ -182,7 +279,7 @@ export default function RoomStackView({
         />
         <ChartLegend
           entries={chartSeries.map(s => {
-            const sel = [...panel.sels, ...panel.targetSels]
+            const sel = [...panel.sels, ...panel.offers.flatMap(o => o.sels)]
               .find(x => `${x.accessoryId}|${x.characteristicType}` === s.key);
             return {
               key: s.key,
@@ -256,6 +353,70 @@ export default function RoomStackView({
         </div>
       ) : (
         <>
+          {lighting && (
+            <AnalyticsPanel
+              title="Lighting"
+              source={`${lighting.count} light${lighting.count === 1 ? '' : 's'}${showIntensity ? ' · thickness = brightness' : ''}`}
+              actions={(
+                <span className="flex items-center gap-2">
+                  <label className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={showIntensity}
+                      onChange={(e) => setShowIntensity(e.target.checked)}
+                      className="accent-current"
+                    />
+                    Brightness
+                  </label>
+                  {lightingOffers.map(({ complement }) => (
+                    <label
+                      key={complement.id}
+                      className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isOn('lighting', complement.id)}
+                        onChange={() => toggleComplement('lighting', complement.id)}
+                        className="accent-current"
+                      />
+                      {complement.label}
+                    </label>
+                  ))}
+                </span>
+              )}
+              caption={lighting.summary.onMs > 0
+                ? `lit ${formatStateDuration(lighting.summary.onMs)} · peak ${lighting.summary.peak} of ${lighting.count}${
+                    lighting.summary.meanLit !== null ? ` · averaging ${Math.round(lighting.summary.meanLit)}%` : ''}`
+                : 'nothing on in this range'}
+            >
+              <EChartsTimeChart
+                series={lightingOffers.flatMap(({ complement, sels }) => (
+                  isOn('lighting', complement.id)
+                    ? sels.flatMap(sel => {
+                      const main = entryFor(sel);
+                      return main ? [{
+                        key: `${sel.accessoryId}|${sel.characteristicType}`,
+                        label: sel.label,
+                        unit: sel.unit,
+                        data: main,
+                        secondary: true,
+                      }] : [];
+                    })
+                    : []
+                ))}
+                ribbon={lighting.ribbon}
+                // Whole lights only, and the axis always spans the room's
+                // full set so two rooms can be compared by eye.
+                axis={{ min: 0, max: lighting.count, minInterval: 1 }}
+                fromTs={fromTs}
+                toTs={toTs}
+                normalize={false}
+                height={180}
+                groupId={groupId}
+                hideSlider
+              />
+            </AnalyticsPanel>
+          )}
           {chartPanels}
           {strips.length > 0 && (
             <AnalyticsPanel title="Activity & states" source={`${strips.length} timeline${strips.length === 1 ? '' : 's'}`}>
