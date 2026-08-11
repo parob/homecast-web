@@ -21,10 +21,12 @@ import {
 import { createHomeKitBridgeAdapter } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
 import { resolveHomeLocation } from '../automation/location';
+import { VIRTUAL_CHARACTERISTIC } from '../automation/types/automation';
 import type { Automation, VirtualAccessoryDefinition } from '../automation/types/automation';
 import type { ExecutionTrace } from '../automation/types/execution';
 import { HomeKit } from '../native/homekit-bridge';
 import * as db from './local-db';
+import { recordHistoryEvent } from './local-history';
 
 let resolver: HomeKitServiceGroupResolver | null = null;
 let starting: Promise<void> | null = null;
@@ -166,6 +168,15 @@ export async function initCommunityAutomationEngine(): Promise<void> {
       onTraceComplete: (trace) => { void persistTrace(trace); },
       onVirtualStateChange: (accessoryId, state) => {
         void db.saveVirtualAccessoryState(accessoryId, state).catch(() => {});
+        // History tap: every origin funnels through pushState — client
+        // writes, automation actions, timer ticks — so this one hook records
+        // them all. Engine-origin writes are `silent` on the relay bus and
+        // bypass the two HomeKit recorder taps; without this line virtual
+        // accessories never chart. String-valued types (mode, timer) drop as
+        // no-profile until the string kind lands.
+        const def = getAutomationEngine()?.getVirtualAccessory(accessoryId);
+        const char = def ? VIRTUAL_CHARACTERISTIC[def.type] : undefined;
+        if (def && char) recordHistoryEvent(def.homeId, accessoryId, char, state, 0);
       },
     });
 

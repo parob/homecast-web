@@ -71,6 +71,12 @@ const CHAR_LABELS: Record<string, string> = {
   // Doors
   current_door_state: 'Door State',
   target_door_state: 'Target Door State',
+  // Virtual accessories ("Virtual Number" reads like an error; label what
+  // the helper holds)
+  virtual_number: 'Value',
+  virtual_count: 'Count',
+  virtual_mode: 'Mode',
+  virtual_timer: 'Timer',
   // Other
   configured_name: 'Name',
   name: 'Name',

@@ -13,6 +13,7 @@ const engine = {
   loadAutomations: vi.fn(),
   loadVirtualAccessories: vi.fn(),
   setLocation: vi.fn(),
+  getVirtualAccessory: vi.fn(),
 };
 
 const initAutomationEngine = vi.fn(async () => engine);
@@ -54,6 +55,13 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock('@/server/local-db', () => db);
 
+// local-history pulls lib/config at module load (window deref under node) —
+// and mocking it also lets the virtual-tap test assert the call.
+const recordHistoryEvent = vi.fn();
+vi.mock('@/server/local-history', () => ({
+  recordHistoryEvent: (...a: unknown[]) => recordHistoryEvent(...(a as [])),
+}));
+
 import {
   initCommunityAutomationEngine,
   reloadCommunityAutomations,
@@ -67,6 +75,7 @@ const automationRow = (id: string, name: string) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  engine.getVirtualAccessory.mockReturnValue(undefined);
   currentEngine = engine;
   db.getHcAutomations.mockResolvedValue([]);
   db.getVirtualAccessories.mockResolvedValue([]);
@@ -115,6 +124,26 @@ describe('initCommunityAutomationEngine', () => {
     await initCommunityAutomationEngine();
 
     expect(engine.loadAutomations).toHaveBeenCalledWith([expect.objectContaining({ id: 'a1' })]);
+  });
+
+  it('records virtual state changes to history via the pushState funnel', async () => {
+    await initCommunityAutomationEngine();
+
+    const options = (initAutomationEngine.mock.calls[0] as unknown[])[0] as {
+      onVirtualStateChange: (id: string, state: unknown) => void;
+    };
+    engine.getVirtualAccessory.mockReturnValue({ id: 'h1', type: 'counter', homeId: 'home-1' });
+    options.onVirtualStateChange('h1', 5);
+
+    // Persisted AND recorded — one hook, both sinks.
+    expect(db.saveVirtualAccessoryState).toHaveBeenCalledWith('h1', 5);
+    expect(recordHistoryEvent).toHaveBeenCalledWith('home-1', 'h1', 'virtual_count', 5, 0);
+
+    // Unknown accessory: persist still happens, history quietly skips.
+    recordHistoryEvent.mockClear();
+    engine.getVirtualAccessory.mockReturnValue(undefined);
+    options.onVirtualStateChange('ghost', 1);
+    expect(recordHistoryEvent).not.toHaveBeenCalled();
   });
 
   it('skips a corrupt helper row', async () => {

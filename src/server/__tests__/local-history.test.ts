@@ -225,3 +225,29 @@ describe('storage stats', () => {
     expect(stats.oldestSampleTs).toBe(T0);
   });
 });
+
+describe('virtual accessory recording (community-automation tap)', () => {
+  it('records profiled virtual characteristics and drops string-valued ones', async () => {
+    const { VIRTUAL_CHARACTERISTIC } = await import('../../automation/types/automation');
+    await setHistoryHomeConfig(HOME, { enabled: true, rawRetentionDays: 30 });
+
+    // counter / input_number: numeric, minIntervalS 0 — every change records.
+    recordHistoryEvent(HOME, 'VIRT-1', VIRTUAL_CHARACTERISTIC['counter'], 3, 0, NOW);
+    recordHistoryEvent(HOME, 'VIRT-1', VIRTUAL_CHARACTERISTIC['counter'], 4, 0, NOW + 500);
+    recordHistoryEvent(HOME, 'VIRT-2', VIRTUAL_CHARACTERISTIC['input_number'], 21.5, 0, NOW);
+    // input_boolean rides power_state.
+    recordHistoryEvent(HOME, 'VIRT-3', VIRTUAL_CHARACTERISTIC['input_boolean'], true, 0, NOW);
+    // input_select → virtual_mode: no profile yet (string kind is P4), the
+    // policy gate refuses — the map stays total, policy stays the arbiter.
+    recordHistoryEvent(HOME, 'VIRT-4', VIRTUAL_CHARACTERISTIC['input_select'], 'Movie Night', 0, NOW);
+    await flushHistoryBuffer();
+
+    const series = await db.getHistorySeries(HOME);
+    expect(series.map(s => s.characteristicType).sort()).toEqual(
+      ['power_state', 'virtual_count', 'virtual_number'],
+    );
+    const count = series.find(s => s.characteristicType === 'virtual_count');
+    const samples = await db.getHistorySamples(count!.id, 0, Number.MAX_SAFE_INTEGER);
+    expect(samples.map(s => s.v)).toEqual([3, 4]);
+  });
+});

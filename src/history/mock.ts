@@ -83,8 +83,8 @@ export function mockRecordedSeries(): HistorySeriesInfo[] {
       out.push({
         accessoryId: acc.accessoryId,
         characteristicType: canonical,
-        // Unprofiled types (virtual_count until P3) default numeric — the
-        // same fallback mockHistoryData uses, so listing and data agree.
+        // Unprofiled types default numeric — the same fallback
+        // mockHistoryData uses, so listing and data agree.
         kind: profile?.kind ?? 'numeric',
         unit: profile?.unit ?? null,
         enabled: true,
