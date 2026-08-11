@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useMemo } from 'react';
-import { useQuery } from '@apollo/client/react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useApolloClient } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled } from '@/history/mock';
@@ -19,17 +19,24 @@ import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
  * an accessory menu passes the accessory, a group menu its group, a room
  * menu its room — the surface opens already looking at the right thing.
  */
-export type AnalyticsScope =
+export type AnalyticsScope = (
   | { level: 'home' }
   | { level: 'category'; category: CategoryId; room?: string | null }
   | { level: 'group'; groupId: string }
-  | { level: 'accessory'; accessory: HomeKitAccessory };
+  | { level: 'accessory'; accessory: HomeKitAccessory }
+) & {
+  /** The home this scope belongs to; defaults to the selected home. */
+  homeId?: string;
+};
 
 interface HistoryContextValue {
   /** Gates the menu entries: home opted in + accessory has recordable series. */
   historyAvailable: (accessory: HomeKitAccessory) => boolean;
-  /** True when the home records history — gates room/home Analytics entries. */
+  /** True when the SELECTED home records history. */
   analyticsAvailable: boolean;
+  /** Per-home gate — sidebar items belong to homes other than the selected
+   *  one, and a home with history off must not offer Analytics at all. */
+  analyticsAvailableFor: (homeId: string | undefined | null) => boolean;
   /** Open the History screen. No-op outside the dashboard. */
   openHistory: (accessory: HomeKitAccessory) => void;
   /** Open Home Analytics, scoped. Defaults to the overview. */
@@ -39,36 +46,64 @@ interface HistoryContextValue {
 const HistoryContext = createContext<HistoryContextValue>({
   historyAvailable: () => false,
   analyticsAvailable: false,
+  analyticsAvailableFor: () => false,
   openHistory: () => {},
   openAnalytics: () => {},
 });
 
 interface HistoryProviderProps {
   homeId: string | null;
+  /** Every home the dashboard shows — the per-home opt-in map covers all. */
+  homeIds?: string[];
   onOpenHistory?: (target: HistoryTarget) => void;
   onOpenAnalytics?: (scope: AnalyticsScope) => void;
   children: React.ReactNode;
 }
 
-export function HistoryProvider({ homeId, onOpenHistory, onOpenAnalytics, children }: HistoryProviderProps) {
+export function HistoryProvider({ homeId, homeIds, onOpenHistory, onOpenAnalytics, children }: HistoryProviderProps) {
   const mock = isMockHistoryEnabled();
+  const client = useApolloClient();
 
-  const { data } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
-    GET_HISTORY_STORAGE_STATS,
-    {
-      variables: { homeId },
-      skip: !homeId || mock,
-      // The flag changes only from Settings; a slow poll keeps other devices
-      // in sync without chatter.
-      pollInterval: 300_000,
-    },
-  );
-  const enabled = mock || (data?.historyStorageStats?.enabled ?? false);
+  // Per-home opt-in map. The flag changes only from Settings; a slow poll
+  // keeps other devices in sync without chatter.
+  const [enabledByHome, setEnabledByHome] = useState<Map<string, boolean>>(new Map());
+  const homeIdsKey = (homeIds ?? (homeId ? [homeId] : [])).join(',');
+  useEffect(() => {
+    if (mock) return;
+    const ids = homeIdsKey ? homeIdsKey.split(',') : [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const load = async () => {
+      const next = new Map<string, boolean>();
+      for (const id of ids) {
+        try {
+          const result = await client.query<{ historyStorageStats: HistoryStorageStatsData }>({
+            query: GET_HISTORY_STORAGE_STATS,
+            variables: { homeId: id },
+            fetchPolicy: 'network-only',
+          });
+          next.set(id.toUpperCase(), result.data?.historyStorageStats?.enabled ?? false);
+        } catch { /* home unreachable — treat as off */ }
+      }
+      if (!cancelled) setEnabledByHome(next);
+    };
+    void load();
+    const timer = setInterval(() => void load(), 300_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [client, homeIdsKey, mock]);
+
+  const analyticsAvailableFor = useCallback((forHomeId: string | undefined | null) => {
+    if (mock) return true;
+    if (!forHomeId) return false;
+    return enabledByHome.get(forHomeId.toUpperCase()) ?? false;
+  }, [mock, enabledByHome]);
+
+  const enabled = analyticsAvailableFor(homeId);
 
   const historyAvailable = useCallback((accessory: HomeKitAccessory) => {
-    if (!enabled) return false;
+    if (!analyticsAvailableFor(accessory.homeId ?? homeId)) return false;
     return getRecordableCharacteristics(accessory).length > 0;
-  }, [enabled]);
+  }, [analyticsAvailableFor, homeId]);
 
   const openHistory = useCallback((accessory: HomeKitAccessory) => {
     if (!homeId || !onOpenHistory) return;
@@ -80,8 +115,8 @@ export function HistoryProvider({ homeId, onOpenHistory, onOpenAnalytics, childr
   }, [onOpenAnalytics]);
 
   const value = useMemo(
-    () => ({ historyAvailable, analyticsAvailable: enabled, openHistory, openAnalytics }),
-    [historyAvailable, enabled, openHistory, openAnalytics],
+    () => ({ historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor, openHistory, openAnalytics }),
+    [historyAvailable, enabled, analyticsAvailableFor, openHistory, openAnalytics],
   );
 
   return (

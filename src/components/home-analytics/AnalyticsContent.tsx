@@ -9,6 +9,7 @@ import AnalyticsHome from './AnalyticsHome';
 import BatteryView from './BatteryView';
 import CategoryView from './CategoryView';
 import CustomView from './CustomView';
+import GroupView from './GroupView';
 import MeasureView from './MeasureView';
 import SafetyView from './SafetyView';
 import UsageTable from './UsageTable';
@@ -192,6 +193,14 @@ export default function AnalyticsContent({
             homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
             live={live} accessoryInfo={accessoryInfo}
             onRoomChange={onRoomChange} onCustomize={onCustomize}
+          />
+        );
+      case 'groups':
+        return (
+          <GroupView
+            homeId={effectiveHomeId} mock={mock} category={category} groupId={current.groupId}
+            accessoryInfo={accessoryInfo} recorded={recorded}
+            onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
           />
         );
       default:

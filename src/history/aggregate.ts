@@ -94,3 +94,42 @@ export function aggregateToSeries(
     stateBuckets: [],
   };
 }
+
+/**
+ * A bool/enum series as 0/1 numeric so it can join an aggregation — the
+ * "how many of the group are on" chart is the sum of these. Raw spans map
+ * directly; rolled buckets contribute their on-fraction (time-weighted
+ * truth, not a guess).
+ */
+export function stateToNumericSeries(data: HistorySeriesData): HistorySeriesData {
+  if (data.states.length > 0 || data.stateBuckets.length === 0) {
+    return {
+      ...data,
+      kind: 'numeric',
+      points: data.states.map(s => {
+        const v = s.value === 0 ? 0 : 1;
+        return { ts: s.ts, min: v, avg: v, max: v, last: v, count: 1 };
+      }),
+      prevValue: data.prevValue === null ? null : (data.prevValue === 0 ? 0 : 1),
+      states: [],
+      stateBuckets: [],
+    };
+  }
+  return {
+    ...data,
+    kind: 'numeric',
+    points: data.stateBuckets.map(b => {
+      let fraction = b.dominant === 0 ? 0 : 1;
+      try {
+        const stateMs = JSON.parse(b.stateMsJson) as Record<string, number>;
+        const total = Object.values(stateMs).reduce((a, x) => a + x, 0);
+        if (total > 0) fraction = (total - (stateMs['0'] ?? 0)) / total;
+      } catch { /* dominant-only cell */ }
+      return { ts: b.ts, min: fraction, avg: fraction, max: fraction, last: fraction, count: 1 };
+    }),
+    prevValue: data.prevValue === null ? null : (data.prevValue === 0 ? 0 : 1),
+    states: [],
+    stateBuckets: [],
+  };
+}
+

@@ -343,6 +343,8 @@ const DropIndicatorLine: React.FC<{ isInGroup?: boolean }> = ({ isInGroup }) => 
 interface SortableRoomItemProps {
   onCreateHelper?: () => void;
   room: HomeKitRoom;
+  /** The home this room belongs to — gates + scopes its Analytics entry. */
+  homeId?: string;
   isSelected: boolean;
   hideAccessoryCounts: boolean;
   onSelect: () => void;
@@ -361,10 +363,10 @@ interface SortableRoomItemProps {
   editMode?: boolean;
 }
 
-const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
   // Rendered inside HistoryProvider — context, not props (28 forwarding
   // components is how menu items end up wired in exactly one place).
-  const { analyticsAvailable, openAnalytics } = useHistory();
+  const { analyticsAvailableFor, openAnalytics } = useHistory();
   const {
     attributes,
     listeners,
@@ -424,8 +426,8 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
             Share Room
           </ContextMenuItem>
         )}
-        {analyticsAvailable && (
-          <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name })}>
+        {analyticsAvailableFor(homeId) && (
+          <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name, homeId })}>
             <LineChart className="h-4 w-4 mr-2" />
             Room Analytics
           </ContextMenuItem>
@@ -741,7 +743,7 @@ interface SortableHomeItemProps {
 }
 
 const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
-  const { analyticsAvailable, openAnalytics } = useHistory();
+  const { analyticsAvailableFor, openAnalytics } = useHistory();
   const {
     attributes,
     listeners,
@@ -828,8 +830,8 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
               Share Home
             </ContextMenuItem>
           )}
-          {analyticsAvailable && (
-            <ContextMenuItem onClick={() => openAnalytics({ level: 'home' })}>
+          {analyticsAvailableFor(home.id) && (
+            <ContextMenuItem onClick={() => openAnalytics({ level: 'home', homeId: home.id })}>
               <LineChart className="h-4 w-4 mr-2" />
               Home Analytics
             </ContextMenuItem>
@@ -1972,6 +1974,9 @@ const Dashboard = () => {
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  // The home the dialog is scoped to — a right-click on another home's
+  // sidebar item must open THAT home's analytics, and the title must say so.
+  const [analyticsHomeId, setAnalyticsHomeId] = useState<string | null>(null);
   const analyticsNav = useAnalyticsNav();
   const { reset: analyticsReset } = analyticsNav;
 
@@ -1979,6 +1984,7 @@ const Dashboard = () => {
   // (accessory menus their accessory, group menus their group, room menus
   // their room) and the dialog opens already looking at the right thing.
   const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
+    setAnalyticsHomeId(scope.homeId ?? null);
     if (scope.level === 'accessory') {
       const acc = scope.accessory;
       const shortName = stripRoomPrefix(acc.name, acc.roomName ?? null);
@@ -5778,7 +5784,7 @@ const Dashboard = () => {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const room = rooms.find(r => r.id === selectedRoomId);
-              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null });
+              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
             }}>
               <LineChart className="h-4 w-4 mr-2" />
               Room Analytics
@@ -5881,7 +5887,7 @@ const Dashboard = () => {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home' })}>
+            <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined })}>
               <LineChart className="h-4 w-4 mr-2" />
               Home Analytics
             </DropdownMenuItem>
@@ -6069,7 +6075,7 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
-    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
+    <HistoryProvider homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -6313,6 +6319,7 @@ const Dashboard = () => {
                                                     <SortableRoomItem
                                                     onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                       room={room}
+                                                      homeId={home.id}
                                                       isSelected={selectedRoomId === room.id}
                                                       hideAccessoryCounts={hideAccessoryCounts}
                                                       onSelect={() => {
@@ -6780,6 +6787,7 @@ const Dashboard = () => {
                                               <SortableRoomItem
                                                     onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                 room={room}
+                                                homeId={home.id}
                                                 isSelected={selectedRoomId === room.id}
                                                 hideAccessoryCounts={hideAccessoryCounts}
                                                 onSelect={() => handleSelectRoom(room.id)}
@@ -7791,7 +7799,7 @@ const Dashboard = () => {
           and accessories (no cold relay round-trips). The title IS the
           location: current level's name with an embedded back button, the
           SettingsDialog drill-down convention. */}
-      <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) analyticsReset(); }}>
+      <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) { analyticsReset(); setAnalyticsHomeId(null); } }}>
         {/* Nearly full screen, same treatment as the admin panel dialog */}
         <DialogContent
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
@@ -7812,19 +7820,38 @@ const Dashboard = () => {
                 </button>
               )}
               {analyticsNav.title}
+              {(() => {
+                // Say WHICH home when there is more than one to confuse.
+                const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
+                const home = homes.find(h => h.id === effectiveAnalyticsHome);
+                return homes.length > 1 && home ? (
+                  <span className="text-sm font-normal text-muted-foreground">· {home.name}</span>
+                ) : null;
+              })()}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-4">
-            {analyticsOpen && (
-              <React.Suspense fallback={<div className="h-[300px]" />}>
-                <AnalyticsContent
-                  homeId={selectedHomeId}
-                  accessories={allAccessoriesData || null}
-                  serviceGroups={relayServiceGroupsData ?? null}
-                  nav={analyticsNav}
-                />
-              </React.Suspense>
-            )}
+            {analyticsOpen && (() => {
+              const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
+              const homeMatches = (id: string | undefined) =>
+                !effectiveAnalyticsHome || !id || id.toUpperCase() === effectiveAnalyticsHome.toUpperCase();
+              // Scope everything to the analytics home — allAccessoriesData
+              // spans every home, and an unfiltered pass fed other homes'
+              // temperatures into this home's averages.
+              const scopedAccessories = (allAccessoriesData || []).filter(a => homeMatches(a.homeId));
+              const scopedGroups = (allServiceGroupsData ?? relayServiceGroupsData ?? [])
+                .filter(g => homeMatches(g.homeId));
+              return (
+                <React.Suspense fallback={<div className="h-[300px]" />}>
+                  <AnalyticsContent
+                    homeId={effectiveAnalyticsHome}
+                    accessories={scopedAccessories}
+                    serviceGroups={scopedGroups}
+                    nav={analyticsNav}
+                  />
+                </React.Suspense>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>

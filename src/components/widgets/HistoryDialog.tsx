@@ -256,7 +256,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <LineChart className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1 truncate">{target?.accessory.name ?? 'History'}</span>
             <button
-              onClick={() => { const accessory = target?.accessory; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory } : undefined); }}
+              onClick={() => { const accessory = target?.accessory; const homeId = target?.homeId; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined); }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
               title="Open full-screen and compare with other accessories"
             >
