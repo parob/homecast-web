@@ -158,16 +158,30 @@ export default function AnalyticsContent({
       </div>
     );
   }
-  // Accessories arrive from the host; until they do, series ids resolve to
-  // nothing and every list would be empty for reasons that are not the user's.
-  if ((seriesLoading && recorded.length === 0) || (!mock && accessories === null)) {
+  // Two different nothings, and only one of them is the user's to act on.
+  //
+  // "No series at all, and we have finished asking" is the message below.
+  // "Series exist but no accessory has arrived to hang them on" is a page
+  // still loading — and telling someone to go and switch on a feature they
+  // demonstrably already have on, because their accessories are two hundred
+  // milliseconds behind, is worse than showing them a spinner.
+  const nothingPlaced = tree.accessoryCount === 0;
+  const stillArriving = seriesLoading
+    || !effectiveHomeId
+    || (!mock && accessories === null)
+    // Series came back but no accessory has, so nothing can be placed yet.
+    // Bounded by "and we have no accessories at all": if they HAVE arrived and
+    // simply do not match, the series are orphans of deleted accessories, and
+    // a spinner that never stops would be a worse answer than the message.
+    || (nothingPlaced && recorded.length > 0 && (accessories?.length ?? 0) === 0);
+  if (stillArriving && nothingPlaced) {
     return (
       <div className="py-16 flex justify-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
   }
-  if (tree.accessoryCount === 0) {
+  if (nothingPlaced) {
     return (
       <div className="py-16 text-center">
         <p className="text-sm text-muted-foreground">

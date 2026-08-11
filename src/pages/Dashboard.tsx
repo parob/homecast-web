@@ -7820,7 +7820,12 @@ const Dashboard = () => {
               // Scope everything to the analytics home — allAccessoriesData
               // spans every home, and an unfiltered pass fed other homes'
               // temperatures into this home's averages.
-              const scopedAccessories = (allAccessoriesData || []).filter(a => homeMatches(a.homeId));
+              // null, not [], while they are still arriving: an empty array is
+              // indistinguishable from a home with nothing in it, and the
+              // analytics screen answers those two very differently.
+              const scopedAccessories = allAccessoriesData
+                ? allAccessoriesData.filter(a => homeMatches(a.homeId))
+                : null;
               const scopedGroups = (allServiceGroupsData ?? relayServiceGroupsData ?? [])
                 .filter(g => homeMatches(g.homeId));
               return (

@@ -56,9 +56,17 @@ export interface StateTimelineProps {
   prevValueText?: string | null;
   states?: HistoryStateSpanData[];
   stateBuckets?: HistoryStateBucketData[];
-  /** Human name for a state (code from ENUM_LABELS / boolean semantics;
-   *  string-kind segments pass their text as the second argument). */
-  labelFor: (value: number, text?: string | null) => string;
+  /**
+   * Human name for a state (code from ENUM_LABELS / boolean semantics;
+   * string-kind segments pass their text as the second argument).
+   *
+   * `fraction` is how full the segment is drawn — how much of a rolled bucket
+   * was spent active, or, for a group strip, how many of its members were on.
+   * A caller whose fill means something must be able to say what: the group
+   * strip reported "On" over a bar with nothing in it, because the shading
+   * carried the answer and the readout could not see it.
+   */
+  labelFor: (value: number, text?: string | null, fraction?: number) => string;
 }
 
 export interface Segment {
@@ -219,7 +227,7 @@ export default function StateTimeline({
         >
           <div className="font-medium">{stampAt(hoverTs)}</div>
           <div>
-            <span className="font-medium">{labelFor(hoveredSegment.value, hoveredSegment.text)}</span>
+            <span className="font-medium">{labelFor(hoveredSegment.value, hoveredSegment.text, hoveredSegment.fraction)}</span>
             <span className="text-muted-foreground">
               {' · '}{durationOf(hoverEnd - hoverStart)}{' · '}{timeAt(hoverStart)}–{timeAt(hoverEnd)}
             </span>

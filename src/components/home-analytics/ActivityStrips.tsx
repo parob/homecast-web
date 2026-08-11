@@ -162,9 +162,14 @@ export default function ActivityStrips({
           padRight={PLOT_RIGHT}
           prevValue={null}
           stateBuckets={strip.buckets}
-          // The fill IS the share, so the readout names it rather than
-          // claiming a single on/off the group never had.
-          labelFor={() => 'On'}
+          // The fill IS the share, so the readout counts it. Saying "On" over
+          // a bar with nothing in it was the strip contradicting itself.
+          labelFor={(_v, _t, fraction) => {
+            const on = Math.round((fraction ?? 0) * strip.members);
+            if (on === 0) return 'All off';
+            if (on >= strip.members) return `All ${strip.members} on`;
+            return `${on} of ${strip.members} on`;
+          }}
         />
         {open && (
           <div className="space-y-2 pt-1">
