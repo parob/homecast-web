@@ -34,9 +34,12 @@ export default function ScopeHeader({
   onSelect: (scope: AnalyticsScope) => void;
 }) {
   return (
-    // pr-9: a dialog's ✕ floats over this row's top right corner, and the
-    // range control is what sits under it.
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b pb-2 pr-9">
+    // Sized and padded to line up with the dialog's ✕, which floats over this
+    // row's top right corner rather than sitting in it. That button is 32px
+    // tall at top-[16px], so its centre is 32px down; the dialog opens its
+    // body at pt-3, so a 40px row centres its contents on exactly that line.
+    // pr-9 keeps the range control out from under it.
+    <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-2 border-b pr-9">
       <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm">
         {onBack && (
           <button

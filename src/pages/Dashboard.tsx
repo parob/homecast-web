@@ -7847,6 +7847,8 @@ const Dashboard = () => {
                     onSelectHome={(id) => { setAnalyticsHomeId(id); analyticsGoTo({ level: 'home' }); }}
                     accessories={scopedAccessories}
                     serviceGroups={scopedGroups}
+                    recordingEnabled={!!effectiveAnalyticsHome && recordingHomeIds.some(
+                      id => id.toUpperCase() === effectiveAnalyticsHome.toUpperCase())}
                     nav={analyticsNav}
                   />
                 </React.Suspense>

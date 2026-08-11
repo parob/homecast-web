@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
@@ -59,6 +59,7 @@ export default function AnalyticsContent({
   onSelectHome,
   accessories,
   serviceGroups,
+  recordingEnabled,
   nav,
 }: {
   /** The screen's name, leading the header row (the host used to own a bar of its own). */
@@ -76,6 +77,8 @@ export default function AnalyticsContent({
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
   serviceGroups?: HomeKitServiceGroup[] | null;
+  /** Does this home have recording switched on? undefined = the host cannot say. */
+  recordingEnabled?: boolean;
   nav: AnalyticsScopeState;
 }) {
   const mock = isMockHistoryEnabled();
@@ -183,11 +186,21 @@ export default function AnalyticsContent({
   }
   if (nothingPlaced) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-sm text-muted-foreground">
-          Nothing recorded yet. Turn on Analytics in Settings → Homes → your
-          home, and it will build as your accessories report changes.
+      <div className="py-16 text-center space-y-3">
+        <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+          {/* Only send someone to a setting when we know it is the one at
+              fault. Recording being ON with nothing stored yet is the
+              ordinary state of a home that just switched it on, and telling
+              them to go and switch on what they are already running reads as
+              the screen being broken — which, when it appeared mid-load, it
+              was. */}
+          {recordingEnabled === false
+            ? 'Analytics is off for this home. Turn it on in Settings → Homes → your home.'
+            : 'Nothing recorded here yet — charts build as your accessories report changes.'}
         </p>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => void refetch()}>
+          <RefreshCw className="mr-1 h-3 w-3" /> Check again
+        </Button>
       </div>
     );
   }

@@ -64,3 +64,80 @@ describe.skipIf(!hasMapper)('Swift CharacteristicMapper pins', () => {
     expect(overrides).toContain('map["E863F10D-079E-48FF-8F27-9C2605A29F52"] = "eve_energy_watt"');
   });
 });
+
+// Naming a characteristic is only half of delivering it. HomeKitManager
+// subscribes to HAP notifications, and periodically re-reads, exactly the
+// types in `keyCharacteristicTypes` — so a profiled type missing from that set
+// never fires an event and never gets re-read. It changes only when the whole
+// accessory list reloads, which for history means it effectively never
+// changes. That is why a Nest Protect reported its low-battery flag (in the
+// set) and nothing about smoke or CO (not in the set) for months.
+const MANAGER_PATH = join(
+  __dirname, '..', '..', '..', '..',
+  'app-ios-macos', 'Sources', 'HomeKit', 'HomeKitManager.swift',
+);
+
+const hasManager = existsSync(MANAGER_PATH);
+
+describe.skipIf(!hasManager)('Swift HomeKitManager subscription pins', () => {
+  const source = hasManager ? readFileSync(MANAGER_PATH, 'utf8') : '';
+
+  /** Both halves of the set: the HM constants and the names added by mapper lookup. */
+  const subscribed = (() => {
+    // Ends at the literal's own closing bracket — `indexOf(']')` would stop
+    // at the `]` inside `[String]` and slice away the whole list.
+    const sliceList = (marker: string) => {
+      const start = source.indexOf(marker);
+      return start < 0 ? '' : source.slice(start, source.indexOf('\n    ]', start));
+    };
+    const derived = sliceList('historyBackedTypes: [String] = [');
+    const base = sliceList('baseKeyCharacteristicTypes: [String] = [');
+    return { derived, base };
+  })();
+
+  // The HM constant that carries each type the base list names by constant.
+  const HM_CONSTANTS: Record<string, string> = {
+    power_state: 'HMCharacteristicTypePowerState',
+    brightness: 'HMCharacteristicTypeBrightness',
+    hue: 'HMCharacteristicTypeHue',
+    saturation: 'HMCharacteristicTypeSaturation',
+    color_temperature: 'HMCharacteristicTypeColorTemperature',
+    current_temperature: 'HMCharacteristicTypeCurrentTemperature',
+    target_temperature: 'HMCharacteristicTypeTargetTemperature',
+    relative_humidity: 'HMCharacteristicTypeCurrentRelativeHumidity',
+    target_humidity: 'HMCharacteristicTypeTargetRelativeHumidity',
+    current_position: 'HMCharacteristicTypeCurrentPosition',
+    current_door_state: 'HMCharacteristicTypeCurrentDoorState',
+    active: 'HMCharacteristicTypeActive',
+    in_use: 'HMCharacteristicTypeInUse',
+    rotation_speed: 'HMCharacteristicTypeRotationSpeed',
+    heating_cooling_current: 'HMCharacteristicTypeCurrentHeatingCooling',
+    heating_cooling_target: 'HMCharacteristicTypeTargetHeatingCooling',
+    heating_threshold: 'HMCharacteristicTypeHeatingThreshold',
+    cooling_threshold: 'HMCharacteristicTypeCoolingThreshold',
+    target_heater_cooler_state: '000000B2-0000-1000-8000-0026BB765291',
+    contact_state: 'HMCharacteristicTypeContactState',
+    motion_detected: 'HMCharacteristicTypeMotionDetected',
+    occupancy_detected: 'HMCharacteristicTypeOccupancyDetected',
+    battery_level: 'HMCharacteristicTypeBatteryLevel',
+    status_low_battery: 'HMCharacteristicTypeStatusLowBattery',
+    outlet_in_use: 'HMCharacteristicTypeOutletInUse',
+  };
+
+  it('subscribes to every characteristic history can record', () => {
+    const missing = profiledTypes()
+      .filter(type => !type.startsWith('virtual_'))
+      .filter(type => {
+        if (subscribed.derived.includes(`"${type}"`)) return false;
+        const constant = HM_CONSTANTS[type];
+        return !(constant && subscribed.base.includes(constant));
+      });
+    expect(missing).toEqual([]);
+  });
+
+  it('keeps the alarm sensors in the set — the Nest Protect case', () => {
+    for (const type of ['smoke_detected', 'carbon_monoxide_detected', 'carbon_dioxide_detected', 'leak_detected']) {
+      expect(subscribed.derived).toContain(`"${type}"`);
+    }
+  });
+});
