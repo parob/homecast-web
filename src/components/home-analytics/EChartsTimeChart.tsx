@@ -43,6 +43,17 @@ function segmentDistance(px: number, py: number, x1: number, y1: number, x2: num
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
+/** Is this the same set of lines, drawn the same way, over the same data? */
+function sameSeries(a: ChartSeries[], b: ChartSeries[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return x.key === y.key && x.label === y.label && x.unit === y.unit && x.color === y.color
+      && !!x.dashed === !!y.dashed && !!x.secondary === !!y.secondary && x.data === y.data;
+  });
+}
+
 /**
  * A value→pixel function for a linear axis, derived from two probes. Time and
  * value axes are both linear, so this is exact — and it turns per-sample
@@ -124,6 +135,18 @@ export default function EChartsTimeChart({
   const tracksRef = useRef<Array<{ key: string; axisIndex: number; pairs: Array<[number, number]> }>>([]);
   const lastHoverRef = useRef<string | null>(null);
 
+  // The caller rebuilds its series array on every render, so pointing at a
+  // line — which is a state change up there — handed this chart a brand new
+  // `series` identity, rebuilt the whole option and replaced every drawn
+  // series, on every mouse move that changed the answer. On a home of several
+  // hundred series that is the difference between a highlight and a stutter.
+  // Nothing about the array actually changed, so hold the old reference.
+  const seriesRef = useRef(series);
+  if (!sameSeries(seriesRef.current, series)) seriesRef.current = series;
+  const stableSeries = seriesRef.current;
+  // Same story for the axis pin, which is written as an object literal.
+  const axisSig = JSON.stringify(axis ?? null);
+
   // Axis plan: units in appearance order. Without a pinned axis the first
   // goes left, the second right, and any more borrow the left (Normalize is
   // the honest fix there). With one — the lights-on count — each unit that
@@ -152,6 +175,7 @@ export default function EChartsTimeChart({
       return !normalize && legacy.length > 1 && legacy.indexOf(unit) === 1 ? 1 : 0;
     };
 
+    const series = stableSeries;
     const toPairs = (data: HistorySeriesData): Array<[number, number]> => {
       const range = (() => {
         if (!normalize) return null;
@@ -311,14 +335,10 @@ export default function EChartsTimeChart({
       },
       yAxis: yAxes,
       dataZoom: [
-        {
-          type: 'inside' as const, xAxisIndex: 0, filterMode: 'none' as const,
-          // The wheel belongs to the page. A chart that swallows it zooms
-          // itself every time you try to scroll past — use the slider, drag
-          // the plot, or pinch. (Touch pinch is unaffected by these.)
-          zoomOnMouseWheel: false,
-          moveOnMouseWheel: false,
-        },
+        // No 'inside' zoom. It is the only thing that binds wheel and drag on
+        // the plot itself, and a chart that holds the wheel is a chart you
+        // cannot scroll past — which, in a page that is a column of charts, is
+        // most of the page. Zooming lives on the slider, where it can be seen.
         ...(hideSlider ? [] : [{
           type: 'slider' as const, xAxisIndex: 0, height: 18, bottom: 6,
           borderColor: 'transparent', backgroundColor: 'transparent',
@@ -385,7 +405,7 @@ export default function EChartsTimeChart({
       series: chartSeries,
     };
     return { option, indexByKey, keyByIndex, tracks };
-  }, [series, band, bandLabel, axis, fromTs, toTs, normalize, units, hideSlider]);
+  }, [stableSeries, band, bandLabel, axisSig, fromTs, toTs, normalize, units, hideSlider]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -449,13 +469,19 @@ export default function EChartsTimeChart({
       return best;
     };
 
-    const rank = (e: { offsetX: number; offsetY: number }): Array<{ key: string; distance: number }> => {
+    // null = could not measure (the chart is mid-rebuild, or the axes cannot
+    // answer yet). That is NOT the same as "no line near the pointer", and
+    // conflating them let a transient drop the highlight the moment the view
+    // re-rendered — after which, with the mouse now still, nothing arrived to
+    // put it back.
+    const rank = (e: { offsetX: number; offsetY: number }): Array<{ key: string; distance: number }> | null => {
       if (!chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])) return [];
       // Time and value axes are linear here, so two conversions describe each
       // one completely — cheaper by two orders of magnitude than converting
       // every sample of every line on every mouse move.
       const xPix = linearPix(v => chart.convertToPixel({ xAxisIndex: 0 }, v) as number, fromTs, toTs);
-      if (!xPix) return [];
+      if (!xPix) return null;
+      if (tracksRef.current.length === 0) return null;
       const yCache = new Map<number, ((v: number) => number) | null>();
       const yPixOf = (axisIndex: number) => {
         if (!yCache.has(axisIndex)) {
@@ -475,6 +501,7 @@ export default function EChartsTimeChart({
     // clearly nearer.
     const resolve = (e: { offsetX: number; offsetY: number }): string | null => {
       const ranked = rank(e);
+      if (ranked === null) return lastHoverRef.current;
       const best = ranked[0] ?? null;
       const held = lastHoverRef.current;
       if (held) {

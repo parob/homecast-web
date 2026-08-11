@@ -39,6 +39,16 @@ export default function ScopeDashboard({
 }) {
   const enabled = useMemo(() => recorded.filter(s => s.enabled !== false), [recorded]);
 
+  // Each scope gets its own first load. Without this the view is one long-lived
+  // component: switching home or room kept the PREVIOUS scope's fetched data,
+  // so "have we loaded yet" answered yes, the skeleton never appeared, and a
+  // scope whose fetch had not landed rendered "Nothing recorded here yet" over
+  // the top of a request still in flight.
+  const scopeKey = `${homeId ?? ''}|${scope.level}|${
+    scope.level === 'room' ? scope.room ?? ''
+      : scope.level === 'accessory' ? scope.accessoryId
+        : scope.level === 'group' ? scope.groupId : ''}`;
+
   if (scope.level === 'home') {
     // Exactly the view a room gets, aggregated: one line per room per
     // measure, the home's lights as one line, its groups as one strip each.
@@ -46,6 +56,7 @@ export default function ScopeDashboard({
     if (enabled.length === 0) return <Empty>Nothing recorded in this home yet.</Empty>;
     return (
       <RoomStackView
+        key={scopeKey}
         homeId={homeId}
         mock={mock}
         roomSeries={enabled}
@@ -64,6 +75,7 @@ export default function ScopeDashboard({
     const toTs = Date.now();
     return (
       <GroupHistorySections
+        key={scopeKey}
         homeId={homeId}
         mock={mock}
         group={group}
@@ -83,6 +95,7 @@ export default function ScopeDashboard({
     if (types.length === 0) return <Empty>Nothing recorded for this accessory yet.</Empty>;
     return (
       <AccessoryScopeView
+        key={scopeKey}
         homeId={homeId}
         mock={mock}
         accessoryId={scope.accessoryId}
@@ -102,6 +115,7 @@ export default function ScopeDashboard({
   if (roomSeries.length === 0) return <Empty>Nothing recorded in this room yet.</Empty>;
   return (
     <RoomStackView
+      key={scopeKey}
       homeId={homeId}
       mock={mock}
       roomSeries={roomSeries}

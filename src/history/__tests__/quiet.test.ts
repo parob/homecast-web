@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isQuietRange, quietSummary, restingState } from '../quiet';
+import { isQuietRange, restingState } from '../quiet';
 
 describe('isQuietRange', () => {
   it('folds a flag that held its resting state the whole range', () => {
@@ -47,30 +47,5 @@ describe('isQuietRange', () => {
 
   it('canonicalises the type before looking it up', () => {
     expect(isQuietRange('contact_sensor_state', [['0', 86_400_000]])).toBe(true);
-  });
-});
-
-describe('quietSummary', () => {
-  it('counts by what the rows say, not by naming each one', () => {
-    expect(quietSummary([
-      { charLabel: 'Low Battery', held: 'OK' },
-      { charLabel: 'Low Battery', held: 'OK' },
-      { charLabel: 'Power State', held: 'Off' },
-    ])).toBe('Low Battery OK (2) · Power State Off (1)');
-  });
-
-  it('says when nothing was recorded rather than inventing a state', () => {
-    expect(quietSummary([{ charLabel: 'Motion', held: null }])).toBe('Motion not recorded (1)');
-  });
-
-  it('caps the kinds it lists and says how many it did not', () => {
-    const summary = quietSummary([
-      { charLabel: 'A', held: 'Off' },
-      { charLabel: 'B', held: 'Off' },
-      { charLabel: 'C', held: 'Off' },
-      { charLabel: 'D', held: 'Off' },
-      { charLabel: 'E', held: 'Off' },
-    ]);
-    expect(summary).toBe('A Off (1) · B Off (1) · C Off (1) · +2 more');
   });
 });

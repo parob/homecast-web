@@ -79,28 +79,3 @@ export function isQuietRange(type: string, totals: Array<[string, number]>): boo
   const value = Number(key);
   return Number.isFinite(value) && Math.round(value) === resting;
 }
-
-export interface QuietItem {
-  /** What the row would have been titled ("Low Battery"). */
-  charLabel: string;
-  /** The state it held all range ("OK"), or null when nothing was recorded. */
-  held: string | null;
-}
-
-/**
- * The one line that replaces the folded rows — "Low Battery OK (8) · Power
- * State Off (4)". Counted by what they say rather than listed by name: eight
- * batteries all reading OK is one fact eight times over, and naming each one
- * would rebuild the wall this exists to remove.
- */
-export function quietSummary(items: QuietItem[], max = 3): string {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const phrase = item.held ? `${item.charLabel} ${item.held}` : `${item.charLabel} not recorded`;
-    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
-  }
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const shown = sorted.slice(0, max).map(([phrase, n]) => `${phrase} (${n})`);
-  const rest = sorted.length - shown.length;
-  return [...shown, rest > 0 ? `+${rest} more` : null].filter(Boolean).join(' · ');
-}

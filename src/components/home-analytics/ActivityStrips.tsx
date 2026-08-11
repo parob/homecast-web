@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import { canonicalHistoryType } from '@/history/keys';
 import { groupStrip } from '@/history/groupStrip';
 import { stateValueLabel } from '@/history/labels';
-import { isQuietRange, quietSummary, type QuietItem } from '@/history/quiet';
+import { isQuietRange } from '@/history/quiet';
 import { stateTotals } from '@/history/stateSummary';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import AnalyticsPanel from './AnalyticsPanel';
@@ -107,14 +107,6 @@ export default function ActivityStrips({
   const quietLoose = loose.filter(r => r.quiet);
   const quietCount = quietGroups.length + quietLoose.length;
 
-  const quietItems: QuietItem[] = [
-    ...quietGroups.map(g => ({ charLabel: g.members[0].sel.charLabel, held: 'Off' })),
-    ...quietLoose.map(r => ({
-      charLabel: r.entry.sel.charLabel,
-      held: r.totals.length > 0 ? stateKeyLabel(r.type, r.totals[0][0]) : null,
-    })),
-  ];
-
   if (grouped.length === 0 && loose.length === 0) return null;
 
   type LooseRow = typeof loose[number];
@@ -192,7 +184,7 @@ export default function ActivityStrips({
 
   return (
     <AnalyticsPanel
-      title="Activity & states"
+      title="Activity"
       source={shown > 0 ? `${shown} timeline${shown === 1 ? '' : 's'}` : undefined}
     >
       <div className="space-y-3">
@@ -209,9 +201,7 @@ export default function ActivityStrips({
               onClick={() => setShowQuiet(v => !v)}
             >
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${showQuiet ? 'rotate-90' : ''}`} />
-              <span className="min-w-0 truncate">
-                Quiet all range · {quietSummary(quietItems)}
-              </span>
+              <span className="min-w-0 truncate">No activity</span>
             </button>
             {showQuiet && (
               <div className="space-y-3 pt-2">
