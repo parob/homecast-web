@@ -7722,18 +7722,27 @@ const Dashboard = () => {
           dialog over the dashboard so it reuses the already-loaded homes
           and accessories (no cold relay round-trips). */}
       <Dialog open={explorerOpen} onOpenChange={setExplorerOpen}>
-        <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        {/* Nearly full screen, same treatment as the admin panel dialog */}
+        <DialogContent
+          className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
+          style={{
+            height: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
+            maxHeight: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
+          }}
+        >
+          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
             <DialogTitle className="text-base">History Explorer</DialogTitle>
           </DialogHeader>
-          {explorerOpen && (
-            <React.Suspense fallback={<div className="h-[300px]" />}>
-              <HistoryExplorerContent
-                homeId={selectedHomeId}
-                accessories={allAccessoriesData || null}
-              />
-            </React.Suspense>
-          )}
+          <div className="flex-1 overflow-y-auto p-4">
+            {explorerOpen && (
+              <React.Suspense fallback={<div className="h-[300px]" />}>
+                <HistoryExplorerContent
+                  homeId={selectedHomeId}
+                  accessories={allAccessoriesData || null}
+                />
+              </React.Suspense>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
