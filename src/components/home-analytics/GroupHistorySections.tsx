@@ -6,6 +6,7 @@ import { charLabel } from '@/components/automations/format';
 import { canonicalHistoryType } from '@/history/keys';
 import { stateValueLabel } from '@/history/labels';
 import { onMs, eventCount } from '@/history/insights';
+import ChartSkeleton from './ChartSkeleton';
 import { SETPOINT_STATE_TYPES } from '@/history/categories';
 import HistoryChart from '@/components/widgets/HistoryChart';
 import StateTimeline from '@/components/widgets/StateTimeline';
@@ -109,13 +110,7 @@ export default function GroupHistorySections({
       </div>
     );
   }
-  if (loading && data.size === 0) {
-    return (
-      <div className="py-10 flex justify-center text-muted-foreground">
-        <span className="text-xs">Loading…</span>
-      </div>
-    );
-  }
+  if (loading && data.size === 0) return <ChartSkeleton />;
 
   return (
     <div className="space-y-5">

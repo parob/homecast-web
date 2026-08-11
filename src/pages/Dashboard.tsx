@@ -7840,9 +7840,14 @@ const Dashboard = () => {
                     homeName={homes.find(h => h.id === effectiveAnalyticsHome)?.name ?? 'Home'}
                     // Only homes that record: an entry that opens on "nothing
                     // recorded yet" is not a place to switch to.
-                    homes={homes
+                    // sortedHomes/sortedRooms, not the raw lists: the tree
+                    // must read in the order the sidebar reads.
+                    homes={sortedHomes
                       .filter(h => recordingHomeIds.some(id => id.toUpperCase() === h.id.toUpperCase()))
                       .map(h => ({ id: h.id, name: h.name }))}
+                    roomOrder={effectiveAnalyticsHome === selectedHomeId
+                      ? sortedRooms.map(r => r.name)
+                      : undefined}
                     onSelectHome={(id) => { setAnalyticsHomeId(id); analyticsGoTo({ level: 'home' }); }}
                     accessories={scopedAccessories}
                     serviceGroups={scopedGroups}

@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { WritableChar } from '@/components/automations/characteristics';
 import type { AccessoryInfoEntry } from '@/history/categories';
-import type { LiveAccessory } from '@/history/summaries';
 import AccessoryScopeView from './AccessoryScopeView';
 import CustomView from './CustomView';
 import GroupHistorySections from './GroupHistorySections';
@@ -26,7 +25,6 @@ export default function ScopeDashboard({
   homeId,
   mock,
   tree,
-  live,
   recorded,
   accessoryInfo,
   charByAccessory,
@@ -40,7 +38,6 @@ export default function ScopeDashboard({
   homeId: string | null;
   mock: boolean;
   tree: ScopeTreeModel;
-  live: LiveAccessory[];
   recorded: HistorySeriesInfo[];
   accessoryInfo: Map<string, AccessoryInfoEntry>;
   /** Per-accessory characteristic lookup, for enum labels and ordering. */

@@ -12,6 +12,7 @@ import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import ActivityStrips, { type ActivityEntry, type ActivityGroup } from './ActivityStrips';
 import AnalyticsPanel from './AnalyticsPanel';
+import ChartSkeleton from './ChartSkeleton';
 import ChartLegend from './ChartLegend';
 import EChartsTimeChart from './EChartsTimeChart';
 import { seriesColor, type ChartSeries } from './chartColors';
@@ -351,17 +352,7 @@ export default function RoomStackView({
       </div>
 
       {firstLoad ? (
-        // A panel-shaped skeleton, not a spinner in space: the page keeps its
-        // height, so nothing jumps when the charts arrive.
-        <div className="space-y-3">
-          {[0, 1].map(i => (
-            <div key={i} className="space-y-2 rounded-lg border p-3">
-              <div className="h-3 w-28 animate-pulse rounded bg-muted" />
-              <div className="h-[200px] animate-pulse rounded bg-muted/50" />
-              <div className="h-3 w-48 animate-pulse rounded bg-muted" />
-            </div>
-          ))}
-        </div>
+        <ChartSkeleton />
       ) : chartPanels.length === 0 && stripEntries.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">

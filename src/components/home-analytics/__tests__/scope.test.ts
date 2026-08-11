@@ -100,6 +100,22 @@ describe('buildScopeTree', () => {
     expect(tree.rooms[0].accessories.map(a => a.id)).toEqual(['A1']);
   });
 
+  it('follows the main navigation’s room order, roomless still last', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A3', 'current_temperature'), series('A4', 'virtual_switch')],
+      accessoryInfo, [], ['Kitchen', 'Bedroom 2'],
+    );
+    expect(tree.rooms.map(r => r.label)).toEqual(['Kitchen', 'Bedroom 2', 'Elsewhere']);
+  });
+
+  it('falls back to alphabetical for rooms that order does not name', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo, [], ['Kitchen'],
+    );
+    expect(tree.rooms.map(r => r.label)).toEqual(['Kitchen', 'Bedroom 2']);
+  });
+
   it('names accessories the way the dashboard does', () => {
     const tree = buildScopeTree(
       [series('A1', 'current_temperature')],

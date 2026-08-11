@@ -95,6 +95,8 @@ export function buildScopeTree(
   recorded: HistorySeriesInfo[],
   accessoryInfo: Map<string, AccessoryInfoEntry>,
   groups: Array<{ id: string; name: string; memberIds: string[] }>,
+  /** Room names in the order the main navigation shows them. */
+  roomOrder: string[] = [],
 ): ScopeTreeModel {
   const counts = new Map<string, number>();
   for (const series of recorded) {
@@ -165,8 +167,19 @@ export function buildScopeTree(
       accessories: (byRoom.get(key) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
       total: totals.get(key) ?? 0,
     }))
-    // Roomless last: it is a leftovers bucket, not a place in the house.
-    .sort((a, b) => (a.room === null ? 1 : b.room === null ? -1 : a.label.localeCompare(b.label)));
+    // The order the sidebar uses, so the two navigations agree; rooms it
+    // doesn't know fall in alphabetically after. Roomless last either way:
+    // it is a leftovers bucket, not a place in the house.
+    .sort((a, b) => {
+      if (a.room === null) return 1;
+      if (b.room === null) return -1;
+      const ai = roomOrder.indexOf(a.label);
+      const bi = roomOrder.indexOf(b.label);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.label.localeCompare(b.label);
+    });
 
   const crossRoom = nodes
     .filter(n => n.room === undefined)

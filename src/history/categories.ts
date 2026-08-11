@@ -148,7 +148,9 @@ export const MEASURES: MeasureMeta[] = [
   { id: 'current', title: 'Current', unit: 'A', types: ['eve_ampere'] },
   { id: 'brightness', title: 'Brightness', unit: '%', types: ['brightness'] },
   { id: 'color', title: 'Color', unit: null, types: ['hue', 'saturation', 'color_temperature'] },
-  { id: 'position', title: 'Position', unit: '%', types: ['current_position'] },
+  // "Position" is the HomeKit characteristic's name, not a thing anyone in a
+  // house says. What reports it is blinds, shades and sliding doors.
+  { id: 'position', title: 'Blinds & doors', unit: '%', types: ['current_position'] },
   { id: 'tilt', title: 'Tilt', unit: '°', types: ['current_tilt_angle'] },
   { id: 'speed', title: 'Speed', unit: '%', types: ['rotation_speed'] },
   { id: 'volume', title: 'Volume', unit: '%', types: ['volume'] },

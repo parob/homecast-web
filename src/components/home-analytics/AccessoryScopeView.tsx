@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { Loader2 } from 'lucide-react';
 import { sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { AccessorySeriesSection } from './AccessorySections';
+import ChartSkeleton from './ChartSkeleton';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import type { AnalyticsSettings } from './scope';
 import type { HistorySeriesRefInput } from '@/lib/graphql/types';
@@ -49,13 +49,7 @@ export default function AccessoryScopeView({
   );
   const { data, loading } = useMultiSeriesHistory(homeId, refs, fromTs, toTs, 0, mock);
 
-  if (loading && data.size === 0) {
-    return (
-      <div className="flex justify-center py-16 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-      </div>
-    );
-  }
+  if (loading && data.size === 0) return <ChartSkeleton panels={3} />;
 
   const sections = ordered.flatMap(type => {
     const entry = data.get(`${accessoryId.toUpperCase()}|${type}`);

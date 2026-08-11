@@ -4,7 +4,6 @@ import { getRecordableCharacteristics, type WritableChar } from '@/components/au
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
-import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
 import ScopeDashboard from './ScopeDashboard';
 import ScopeHeader from './ScopeHeader';
 import ScopeTree from './ScopeTree';
@@ -54,6 +53,7 @@ export default function AnalyticsContent({
   homeId,
   homeName = 'Home',
   homes,
+  roomOrder,
   onSelectHome,
   accessories,
   serviceGroups,
@@ -64,6 +64,8 @@ export default function AnalyticsContent({
   homeName?: string;
   /** Homes with Analytics on, so the tree can switch between them. */
   homes?: Array<{ id: string; name: string }>;
+  /** Room names in the main navigation's order, so the two agree. */
+  roomOrder?: string[];
   onSelectHome?: (id: string) => void;
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
@@ -131,22 +133,10 @@ export default function AnalyticsContent({
     return (serviceGroups ?? []).map(g => ({ id: g.id, name: g.name, memberIds: g.accessoryIds }));
   }, [serviceGroups, mock]);
 
-  // Live accessory state — the overview's headlines and safety board read
-  // current values, not history.
-  const live = useMemo<LiveAccessory[]>(() => {
-    if (mock) {
-      return mockAccessories().map(m => ({
-        id: m.accessoryId, name: m.name, room: m.room, isVirtual: m.isVirtual, values: m.values ?? {},
-      }));
-    }
-    return liveFromHomeKit(accessories ?? []).map(a => (
-      isHiddenRoom(a.room) ? { ...a, room: null } : a
-    ));
-  }, [accessories, mock]);
-
+  const roomOrderKey = (roomOrder ?? []).join('\u0000');
   const tree = useMemo(
-    () => buildScopeTree(recorded, accessoryInfo, groups),
-    [recorded, accessoryInfo, groups],
+    () => buildScopeTree(recorded, accessoryInfo, groups, roomOrderKey ? roomOrderKey.split('\u0000') : []),
+    [recorded, accessoryInfo, groups, roomOrderKey],
   );
 
   if (seriesError) {
@@ -212,7 +202,6 @@ export default function AnalyticsContent({
             homeId={effectiveHomeId}
             mock={mock}
             tree={tree}
-            live={live}
             recorded={recorded}
             accessoryInfo={accessoryInfo}
             charByAccessory={charByAccessory}
