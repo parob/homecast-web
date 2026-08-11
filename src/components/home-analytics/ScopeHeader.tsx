@@ -13,7 +13,7 @@ const COMPARE_OPTIONS: Array<{ value: CompareMode; label: string }> = [
 /**
  * Where you are and how you are looking at it — once, above everything.
  *
- * Range, comparison and cleanup used to be re-declared by each view, so
+ * Range and comparison used to be re-declared by each view, so
  * moving from a category to a room quietly reset 7d back to 24h. They belong
  * to the session, not the screen. The breadcrumb is the way back up: every
  * step is a scope you can click, which is also how an accessory reaches its
@@ -80,18 +80,6 @@ export default function ScopeHeader({
         </SelectContent>
       </Select>
 
-      <label
-        className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
-        title="Drop implausible readings (a -40° radio fault, a pegged sensor) and leave far-outlier sensors out of averages"
-      >
-        <input
-          type="checkbox"
-          checked={settings.hideUnusual}
-          onChange={(e) => onSettings({ hideUnusual: e.target.checked })}
-          className="accent-current"
-        />
-        Hide unusual data
-      </label>
     </div>
   );
 }

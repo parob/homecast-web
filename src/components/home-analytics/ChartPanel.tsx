@@ -93,8 +93,7 @@ export default function ChartPanel({
   // cluster name, or the line itself. One piece of state, both directions.
   const [highlightKeys, setHighlightKeys] = useState<string[] | null>(null);
   const [compare, setCompare] = useState<'none' | 'day' | 'week'>('none');
-  // Bogus-data cleanup — ON by default, always announced (see sanitize.ts).
-  const [hideUnusual, setHideUnusual] = useState(true);
+
 
   const seriesKey = series.map(s => `${s.accessoryId}|${s.characteristicType}`).join(',');
   const toTs = useMemo(() => Date.now(), [seriesKey, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,10 +118,9 @@ export default function ChartPanel({
       const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
       const entry = seriesData.get(key);
       if (!entry) continue;
-      if (!hideUnusual) {
-        map.set(key, { sel: s, main: entry.main, ghost: entry.ghost });
-        continue;
-      }
+      // Always cleaned: a -40° radio fault or a pegged sensor is not a
+      // reading, and nobody ever wanted the version with it in. What the
+      // cleanup DID is still announced below.
       const main = sanitizeSeriesData(entry.main);
       const ghost = entry.ghost ? sanitizeSeriesData(entry.ghost) : undefined;
       dropped += main.droppedPoints + (ghost?.droppedPoints ?? 0);
@@ -131,7 +129,7 @@ export default function ChartPanel({
     // Series rule: sensors whose average sits far outside the home's
     // typical band leave the AGGREGATE picture (named below, reversible).
     let hidden: Array<{ key: string; label: string; mean: number }> = [];
-    if (hideUnusual && roomAggregate) {
+    if (roomAggregate) {
       const inputs = [...map.entries()].flatMap(([key, { sel, main }]) => {
         if (main.points.length === 0) return [];
         const mean = main.points.reduce((a, p) => a + p.avg, 0) / main.points.length;
@@ -142,7 +140,7 @@ export default function ChartPanel({
       for (const key of verdict.hiddenKeys) map.delete(key);
     }
     return { cleaned: map, droppedReadings: dropped, hiddenSensors: hidden };
-  }, [series, seriesData, hideUnusual, roomAggregate]);
+  }, [series, seriesData, roomAggregate]);
 
   const numericSeries = useMemo<ChartSeries[]>(() => {
     if (!roomAggregate) {
@@ -288,18 +286,6 @@ export default function ChartPanel({
           />
           Normalize
         </label>
-        <label
-          className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-          title="Drop implausible readings (a -40° radio fault, a pegged sensor) and leave far-outlier sensors out of averages"
-        >
-          <input
-            type="checkbox"
-            checked={hideUnusual}
-            onChange={(e) => setHideUnusual(e.target.checked)}
-            className="accent-current"
-          />
-          Hide unusual data
-        </label>
         {extraControls}
       </div>
 
@@ -307,12 +293,12 @@ export default function ChartPanel({
         <p className="text-[11px] text-muted-foreground -mt-2">{truncatedNote}</p>
       )}
 
-      {hideUnusual && hiddenSensors.length > 0 && (
+      {hiddenSensors.length > 0 && (
         <p className="text-[11px] text-muted-foreground -mt-2">
           {`${hiddenSensors.length} unusual sensor${hiddenSensors.length === 1 ? '' : 's'} left out of averages: ${
             hiddenSensors.slice(0, 3).map(h => `${h.label} (${h.mean.toFixed(1)})`).join(', ')
           }${hiddenSensors.length > 3 ? '…' : ''}`}
-          {' — untick "Hide unusual data" to show'}
+          {' — add it back from Add series'}
         </p>
       )}
 

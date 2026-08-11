@@ -61,16 +61,52 @@ describe('buildScopeTree', () => {
     expect(tree.rooms[1].room).toBeNull();
   });
 
-  it('keeps only groups with recorded members, counting just those', () => {
+  it('puts a group under its room, and stops listing its members separately', () => {
+    // A room of nine downlights is one row, not nine — the same rule the
+    // activity strips follow.
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A2', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo,
+      [{ id: 'g1', name: 'Heating', memberIds: ['A1', 'A2'] }],
+    );
+    const bedroom = tree.rooms.find(r => r.label === 'Bedroom 2')!;
+    expect(bedroom.groups.map(g => g.name)).toEqual(['Heating']);
+    expect(bedroom.groups[0].members.map(m => m.name)).toEqual(['Ensuite Radiator', 'Underfloor Heating']);
+    expect(bedroom.accessories).toEqual([]); // both are reachable via the group
+    expect(bedroom.total).toBe(2);
+    expect(tree.groups).toEqual([]); // it belongs to a room, not to the home
+  });
+
+  it('keeps a group that spans rooms at the top level', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo,
+      [{ id: 'g1', name: 'All Heating', memberIds: ['A1', 'A3'] }],
+    );
+    expect(tree.groups.map(g => g.name)).toEqual(['All Heating']);
+    // …and its members still appear under their own rooms.
+    expect(tree.rooms.flatMap(r => r.accessories.map(a => a.id)).sort()).toEqual(['A1', 'A3']);
+  });
+
+  it('ignores a group with fewer than two recorded members', () => {
+    // One member is just that accessory with an extra layer to open.
     const tree = buildScopeTree(
       [series('A1', 'current_temperature')],
       accessoryInfo,
-      [
-        { id: 'g1', name: 'Heating', memberIds: ['A1', 'A2'] },
-        { id: 'g2', name: 'Silent', memberIds: ['A2'] },
-      ],
+      [{ id: 'g1', name: 'Heating', memberIds: ['A1', 'A2'] }],
     );
-    expect(tree.groups).toEqual([{ id: 'g1', name: 'Heating', memberCount: 1 }]);
+    expect(tree.groups).toEqual([]);
+    expect(tree.rooms[0].groups).toEqual([]);
+    expect(tree.rooms[0].accessories.map(a => a.id)).toEqual(['A1']);
+  });
+
+  it('names accessories the way the dashboard does', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature')],
+      info([['A1', 'Bedroom 2 Underfloor Heating', 'Bedroom 2']]),
+      [],
+    );
+    expect(tree.rooms[0].accessories[0].name).toBe('Underfloor Heating');
   });
 });
 

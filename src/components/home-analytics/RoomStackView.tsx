@@ -15,12 +15,13 @@ import AnalyticsPanel from './AnalyticsPanel';
 import ChartLegend from './ChartLegend';
 import EChartsTimeChart from './EChartsTimeChart';
 import { seriesColor, type ChartSeries } from './chartColors';
+import { aggregateNumericSeries, aggregateToSeries } from '@/history/aggregate';
 import { buildSels, labelWithoutRoom } from './selBuilder';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { Button } from '@/components/ui/button';
 import type { AnalyticsSettings } from './scope';
 import type { ExplorerView, SeriesSel } from './types';
-import type { HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
+import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const PER_MEASURE_CAP = 10;
 
@@ -37,6 +38,7 @@ export default function RoomStackView({
   mock,
   roomSeries,
   room,
+  byRoom = false,
   accessoryInfo,
   groups,
   settings,
@@ -44,16 +46,23 @@ export default function RoomStackView({
 }: {
   homeId: string | null;
   mock: boolean;
-  /** Every recorded series in this room, across all categories. */
+  /** Every recorded series in scope, across all categories. */
   roomSeries: HistorySeriesInfo[];
   room: string | null;
+  /**
+   * Whole-home scope: collapse each room's sensors into ONE line per room,
+   * so the home reads as nine rooms rather than ninety sensors. The panels,
+   * the toggles and the strips are otherwise identical — a home is just a
+   * bigger room.
+   */
+  byRoom?: boolean;
   accessoryInfo: Map<string, AccessoryInfoEntry>;
   /** Service groups, so a room's lights read as one row rather than nine. */
   groups: ActivityGroup[];
   settings: AnalyticsSettings;
   onCustomize: (view: ExplorerView) => void;
 }) {
-  const { rangeMs, hideUnusual } = settings;
+  const { rangeMs } = settings;
   // Setpoints off by default: they are flat lines that never move, and drawn
   // as peers they turned a three-sensor Temperature panel into seven
   // competing colours. One tick puts the intent back beside the reading.
@@ -94,7 +103,12 @@ export default function RoomStackView({
   const measures = useMemo(() => measuresIn(roomSeries), [roomSeries]);
   const panels = useMemo(() => measures.map(measure => {
     const typeSet = new Set(measure.types);
-    if (measure.id === 'brightness') return { measure, sels: [], targetSels: [], total: 0 };
+    // Brightness has the Lighting panel; a fan's speed belongs to that fan.
+    // Neither says anything as a room-wide line, and both crowded out the
+    // measures that do.
+    if (measure.id === 'brightness' || measure.id === 'speed') {
+      return { measure, sels: [], offers: [], total: 0 };
+    }
     const infos = roomSeries.filter(s => s.kind === 'numeric' && typeSet.has(canonicalHistoryType(s.characteristicType)));
     const readings = infos.filter(s => !isSetpointType(canonicalHistoryType(s.characteristicType)));
     // Anything this panel can OFFER to borrow, and only what the room
@@ -111,7 +125,7 @@ export default function RoomStackView({
       measure,
       // The cap applies to readings; borrowed series ride along rather than
       // competing for one of the slots.
-      sels: buildSels(readings.slice(0, PER_MEASURE_CAP), accessoryInfo),
+      sels: buildSels(byRoom ? readings : readings.slice(0, PER_MEASURE_CAP), accessoryInfo),
       offers,
       total: readings.length,
     };
@@ -151,7 +165,9 @@ export default function RoomStackView({
   const entryFor = (sel: SeriesSel) => {
     const entry = data.get(`${sel.accessoryId.toUpperCase()}|${canonicalHistoryType(sel.characteristicType)}`);
     if (!entry) return undefined;
-    return hideUnusual ? sanitizeSeriesData(entry.main).data : entry.main;
+    // Always: a -40° radio fault or a pegged sensor is not a reading, and
+    // nobody ever wanted the version of the chart with it in.
+    return sanitizeSeriesData(entry.main).data;
   };
 
   // The lighting line: centre = lights on, stroke thickness = how bright
@@ -175,7 +191,7 @@ export default function RoomStackView({
       brightnessSeries: lightingBrightnessSeries(points),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [powerSels, lightSels, data, fromTs, toTs, hideUnusual]);
+  }, [powerSels, lightSels, data, fromTs, toTs]);
 
   const groupId = `room-stack-${roomKey ?? 'elsewhere'}`;
   const chartPanels = panels.map((panel, panelIndex) => {
@@ -184,16 +200,35 @@ export default function RoomStackView({
     const colourOf = new Map<string, string>();
     panel.sels.forEach((sel, i) => colourOf.set(sel.accessoryId.toUpperCase(), seriesColor(i)));
 
-    const readingSeries: ChartSeries[] = panel.sels.flatMap((sel, i) => {
+    const perAccessory: Array<{ sel: SeriesSel; main: HistorySeriesData }> = panel.sels.flatMap(sel => {
       const main = entryFor(sel);
-      return main ? [{
-        key: `${sel.accessoryId}|${sel.characteristicType}`,
-        label: sel.label,
-        unit: sel.unit,
-        data: main,
-        color: seriesColor(i),
-      }] : [];
+      return main ? [{ sel, main }] : [];
     });
+    const readingSeries: ChartSeries[] = byRoom
+      ? [...perAccessory.reduce((acc, { sel, main }) => {
+          const key = sel.room ?? 'Elsewhere';
+          acc.set(key, [...(acc.get(key) ?? []), main]);
+          return acc;
+        }, new Map<string, HistorySeriesData[]>())]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([roomName, mains], i) => ({
+          key: `room:${roomName}`,
+          label: roomName,
+          unit: panel.measure.unit,
+          data: aggregateToSeries(
+            aggregateNumericSeries(mains, fromTs, toTs),
+            { accessoryId: `room:${roomName}`, characteristicType: 'room_average', unit: panel.measure.unit },
+            mains[0]?.resolution ?? 'raw',
+          ),
+          color: seriesColor(i),
+        }))
+      : perAccessory.map(({ sel, main }, i) => ({
+          key: `${sel.accessoryId}|${sel.characteristicType}`,
+          label: sel.label,
+          unit: sel.unit,
+          data: main,
+          color: seriesColor(i),
+        }));
     const borrowed: ChartSeries[] = panel.offers.flatMap(({ complement, sels }) => (
       isOn(panel.measure.id, complement.id)
         ? sels.flatMap(sel => {
@@ -236,7 +271,9 @@ export default function RoomStackView({
       <AnalyticsPanel
         key={panel.measure.id}
         title={panel.measure.title}
-        source={`${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
+        source={byRoom
+          ? `${readingSeries.length} room${readingSeries.length === 1 ? '' : 's'} · averaged from ${perAccessory.length} sensor${perAccessory.length === 1 ? '' : 's'}`
+          : `${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
         actions={panel.offers.length > 0 ? (
           <span className="flex items-center gap-2">
             {panel.offers.map(({ complement }) => (
@@ -278,9 +315,10 @@ export default function RoomStackView({
               color: s.color ?? seriesColor(0),
               dashed: s.dashed,
               dotted: s.secondary,
-              groupKey: sel?.accessoryId.toUpperCase(),
-              group: sel?.accessoryName,
-              shortLabel: sel?.charLabel,
+              // Room averages have no accessory to cluster under.
+              groupKey: byRoom ? undefined : sel?.accessoryId.toUpperCase(),
+              group: byRoom ? undefined : sel?.accessoryName,
+              shortLabel: byRoom ? undefined : sel?.charLabel,
             };
           })}
           highlightKeys={highlightKeys}
@@ -294,7 +332,7 @@ export default function RoomStackView({
     const main = entryFor(sel);
     return main ? [{ sel, data: main }] : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [stripSels, data, hideUnusual]);
+  }), [stripSels, data]);
 
   return (
     <div className="space-y-3">
