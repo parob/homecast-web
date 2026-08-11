@@ -29,8 +29,6 @@ export interface LegendEntry {
   shortLabel?: string;
 }
 
-const MAX_LEGEND = 8;
-
 export interface ChartLegendProps {
   entries: LegendEntry[];
   /** Series keys currently lit — from this legend or from the chart. */
@@ -80,9 +78,10 @@ export default function ChartLegend({
   // A key for one series is noise: the panel title already named it.
   if (entries.length < 2) return null;
 
-  // Past 8 entries a key stops being a key and becomes a second dataset.
-  const shown = entries.slice(0, MAX_LEGEND);
-  const hidden = entries.length - shown.length;
+  // Every line gets its name. A capped key is worse than a long one: the
+  // entries it dropped are still drawn on the chart, so the reader is left
+  // matching a colour against a list that does not contain it. Chips wrap.
+  const shown = entries;
 
   const lit = new Set(highlightKeys ?? []);
   const dimmed = (key: string) => lit.size > 0 && !lit.has(key);
@@ -132,10 +131,5 @@ export default function ChartLegend({
       )
     ));
 
-  return (
-    <div className={`${row} pt-1`}>
-      {content}
-      {hidden > 0 && <span>+{hidden} more</span>}
-    </div>
-  );
+  return <div className={`${row} pt-1`}>{content}</div>;
 }

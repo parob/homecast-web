@@ -134,6 +134,9 @@ export default function EChartsTimeChart({
   // ECharts, which only reports a hover when you are exactly on the stroke.
   const tracksRef = useRef<Array<{ key: string; axisIndex: number; pairs: Array<[number, number]> }>>([]);
   const lastHoverRef = useRef<string | null>(null);
+  // Read by the tooltip formatter. A ref rather than a dep: the option must
+  // not rebuild every time the highlight moves.
+  const litLabelsRef = useRef<Set<string> | null>(null);
 
   // The caller rebuilds its series array on every render, so pointing at a
   // line — which is a state change up there — handed this chart a brand new
@@ -399,9 +402,14 @@ export default function EChartsTimeChart({
           const items = (Array.isArray(params) ? params : [params]) as Array<{
             seriesName?: string; value?: [number, number]; color?: string;
           }>;
+          const lit = litLabelsRef.current;
           const rows = items
             .filter(p => p.seriesName && !p.seriesName.startsWith('__band')
               && Array.isArray(p.value) && Number.isFinite(p.value[1]))
+            // Pointing at one line is a question about that line. Answering it
+            // with all eight, and leaving you to find the right row, is the
+            // wall this tooltip was capped to avoid in the first place.
+            .filter(p => !lit || lit.size === 0 || lit.has(p.seriesName!))
             .map(p => ({ name: p.seriesName!, value: (p.value as [number, number])[1], color: String(p.color ?? '#888') }));
           if (rows.length === 0) return '';
           rows.sort((a, b) => b.value - a.value);
@@ -586,6 +594,11 @@ export default function EChartsTimeChart({
     const chart = chartRef.current;
     if (!chart) return;
     const lit = new Set((highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []));
+    litLabelsRef.current = new Set(
+      [...lit].map(i => keyByIndex.get(i)).filter((k): k is string => !!k)
+        .map(key => stableSeries.find(x => x.key === key)?.label)
+        .filter((l): l is string => !!l),
+    );
     chart.setOption({
       series: styles.map((base, i) => {
         if (!base) return {};
@@ -597,7 +610,7 @@ export default function EChartsTimeChart({
           : { lineStyle: { opacity: 0.12, width: base.width } };
       }),
     });
-  }, [highlightKeys, indexByKey, styles]);
+  }, [highlightKeys, indexByKey, keyByIndex, styles, stableSeries]);
 
   return <div ref={hostRef} style={{ width: '100%', height }} />;
 }

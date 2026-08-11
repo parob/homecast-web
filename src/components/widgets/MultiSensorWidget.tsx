@@ -177,7 +177,12 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
       locationSubtitle={locationSubtitle}
     >
       <div className="space-y-3">
-        {/* Sensor readings grid */}
+        {/* Sensor readings grid. Hidden behind the hero: expanded, the hero
+            says all of this at a size you can read across the room, and the
+            tiles were the SAME readings again in a column squeezed to nothing
+            beside it — which is how they ended up half-visible past the card's
+            right edge. Battery keeps its own row below either way. */}
+        {!(expanded && !compact) && (
         <div className="grid grid-cols-2 gap-2">
           {/* Motion/Occupancy */}
           {(hasMotion || hasOccupancy) && (
@@ -240,6 +245,7 @@ export const MultiSensorWidget: React.FC<WidgetProps> = memo(({
             </div>
           )}
         </div>
+        )}
 
         {/* Battery indicator */}
         {hasBattery && (
