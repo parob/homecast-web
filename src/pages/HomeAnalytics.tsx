@@ -3,9 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LineChart as LineChartIcon, ArrowLeft } from 'lucide-react';
 import { useHomes, useAccessoriesForHomes, useServiceGroups } from '@/hooks/useHomeKitData';
 import { isMockHistoryEnabled, mockHistoryVariant } from '@/history/mock';
-import { CATEGORIES, type CategoryId } from '@/history/categories';
 import AnalyticsContent from '@/components/home-analytics/AnalyticsContent';
-import { useAnalyticsNav, type AnalyticsLevel } from '@/components/home-analytics/useAnalyticsNav';
+import { useAnalyticsScope, type AnalyticsScope } from '@/components/home-analytics/scope';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -18,21 +17,22 @@ import {
  * accessories and groups for the standalone case.
  */
 
-/** ?category=&room= (plus legacy ?preset= links) → initial level. */
-function initialLevelFromParams(params: URLSearchParams): AnalyticsLevel | undefined {
-  const category = params.get('category');
-  if (category && category in CATEGORIES) {
-    return { level: 'category', category: category as CategoryId, room: params.get('room') };
-  }
+/**
+ * ?room= / ?accessory= / ?group= → where to open.
+ *
+ * Legacy ?category= and ?preset= links land on the room they named, or on the
+ * home: the category level no longer exists, and a link is better honoured
+ * approximately than 404'd.
+ */
+function initialScopeFromParams(params: URLSearchParams): AnalyticsScope | undefined {
+  const accessory = params.get('accessory');
+  if (accessory) return { level: 'accessory', accessoryId: accessory };
+  const group = params.get('group');
+  if (group) return { level: 'group', groupId: group };
+  const room = params.get('room');
+  if (room) return { level: 'room', room };
   const preset = params.get('preset');
-  if (preset) {
-    if (preset.startsWith('climate:')) {
-      return { level: 'category', category: 'climate', room: preset.slice('climate:'.length) };
-    }
-    if (preset === 'home-temp') return { level: 'category', category: 'climate' };
-    if (preset === 'motion') return { level: 'category', category: 'activity' };
-    if (preset === 'battery') return { level: 'category', category: 'battery' };
-  }
+  if (preset?.startsWith('climate:')) return { level: 'room', room: preset.slice('climate:'.length) };
   return undefined;
 }
 
@@ -51,19 +51,18 @@ export default function HomeAnalytics() {
   const { data: serviceGroups } = useServiceGroups(mock ? null : effectiveHomeId, { skip: mock });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const nav = useAnalyticsNav(initialLevelFromParams(searchParams));
+  const nav = useAnalyticsScope(initialScopeFromParams(searchParams));
 
   // Mirror the location to the URL so category views are linkable. Custom
   // views aren't serialized (deferred) — they keep the current params.
-  const current = nav.current;
+  const current = nav.scope;
   useEffect(() => {
     if (current.level === 'custom') return;
     const params: Record<string, string> = {};
     if (effectiveHomeId && !mock) params.home = effectiveHomeId;
-    if (current.level === 'category') {
-      params.category = current.category;
-      if (current.room) params.room = current.room;
-    }
+    if (current.level === 'room' && current.room) params.room = current.room;
+    if (current.level === 'accessory') params.accessory = current.accessoryId;
+    if (current.level === 'group') params.group = current.groupId;
     // Preserve the variant — rewriting ?mockHistory=big to =1 flipped the
     // catalogue to the small home mid-session and orphaned every lookup.
     if (mock) params.mockHistory = mockHistoryVariant() === 'big' ? 'big' : '1';
@@ -76,13 +75,13 @@ export default function HomeAnalytics() {
         <div className="flex items-center gap-2 min-w-0">
           <button
             className="p-1 rounded hover:bg-muted"
-            onClick={() => (nav.depth > 0 ? nav.back() : navigate('/portal'))}
+            onClick={() => (nav.canGoBack ? nav.back() : navigate('/portal'))}
             aria-label="Back"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <LineChartIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <h1 className="text-sm font-semibold truncate">{nav.title}</h1>
+          <h1 className="text-sm font-semibold truncate">Analytics</h1>
         </div>
         {!mock && (homes?.length ?? 0) > 1 && (
           <Select value={effectiveHomeId ?? ''} onValueChange={(v) => setHomeId(v)}>
@@ -98,9 +97,10 @@ export default function HomeAnalytics() {
         )}
       </header>
 
-      <main className="p-4 max-w-6xl mx-auto">
+      <main className="mx-auto flex h-[calc(100vh-53px)] max-w-6xl flex-col p-4">
         <AnalyticsContent
           homeId={effectiveHomeId}
+          homeName={(homes ?? []).find(h => h.id === effectiveHomeId)?.name ?? 'Home'}
           accessories={accessories ?? null}
           serviceGroups={serviceGroups ?? null}
           nav={nav}

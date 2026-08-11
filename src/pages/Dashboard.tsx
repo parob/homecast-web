@@ -95,7 +95,7 @@ import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { HistoryProvider, useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
 import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
 const AnalyticsContent = React.lazy(() => import('@/components/home-analytics/AnalyticsContent'));
-import { useAnalyticsNav } from '@/components/home-analytics/useAnalyticsNav';
+import { useAnalyticsScope } from '@/components/home-analytics/scope';
 import type { SeriesSel as ExplorerSeriesSel } from '@/components/home-analytics/types';
 import { getRecordableCharacteristics, sortByHistoryImportance } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
@@ -1977,40 +1977,29 @@ const Dashboard = () => {
   // The home the dialog is scoped to — a right-click on another home's
   // sidebar item must open THAT home's analytics, and the title must say so.
   const [analyticsHomeId, setAnalyticsHomeId] = useState<string | null>(null);
-  const analyticsNav = useAnalyticsNav();
-  const { reset: analyticsReset } = analyticsNav;
+  const analyticsNav = useAnalyticsScope();
+  const { setScope: analyticsGoTo } = analyticsNav;
 
   // Scope → initial navigation level. Every menu passes the scope it knows
   // (accessory menus their accessory, group menus their group, room menus
   // their room) and the dialog opens already looking at the right thing.
   const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
     setAnalyticsHomeId(scope.homeId ?? null);
+    // Scopes ARE places now, so every menu maps onto one directly: an
+    // accessory menu opens that accessory, a room menu that room. The old
+    // model had no accessory level at all and had to fake one by assembling
+    // a Custom view of its characteristics.
     if (scope.level === 'accessory') {
-      const acc = scope.accessory;
-      const shortName = stripRoomPrefix(acc.name, acc.roomName ?? null);
-      // Every series here belongs to ONE accessory, so its name is a heading
-      // (chips and legends group under it), not a prefix repeated six times.
-      const series: ExplorerSeriesSel[] = sortByHistoryImportance(getRecordableCharacteristics(acc)).map(char => ({
-        accessoryId: acc.id,
-        characteristicType: char.type,
-        label: charLabel(char.type),
-        charLabel: charLabel(char.type),
-        fullLabel: [acc.roomName, shortName, charLabel(char.type)].filter(Boolean).join(' · '),
-        room: acc.roomName ?? null,
-        accessoryName: shortName,
-        unit: char.unit ?? null,
-        kind: getHistoryProfileKind(char.type),
-      }));
-      analyticsReset({ level: 'custom', view: { title: acc.name, series, aggregate: false } });
+      analyticsGoTo({ level: 'accessory', accessoryId: scope.accessory.id });
     } else if (scope.level === 'group') {
-      analyticsReset({ level: 'category', category: 'groups', groupId: scope.groupId });
+      analyticsGoTo({ level: 'group', groupId: scope.groupId });
     } else if (scope.level === 'category') {
-      analyticsReset({ level: 'category', category: scope.category, room: scope.room ?? null });
+      analyticsGoTo(scope.room ? { level: 'room', room: scope.room } : { level: 'home' });
     } else {
-      analyticsReset();
+      analyticsGoTo({ level: 'home' });
     }
     setAnalyticsOpen(true);
-  }, [analyticsReset]);
+  }, [analyticsGoTo]);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -7803,7 +7792,7 @@ const Dashboard = () => {
           and accessories (no cold relay round-trips). The title IS the
           location: current level's name with an embedded back button, the
           SettingsDialog drill-down convention. */}
-      <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) { analyticsReset(); setAnalyticsHomeId(null); } }}>
+      <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) { analyticsGoTo({ level: 'home' }); setAnalyticsHomeId(null); } }}>
         {/* Nearly full screen, same treatment as the admin panel dialog */}
         <DialogContent
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
@@ -7814,7 +7803,7 @@ const Dashboard = () => {
         >
           <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
             <DialogTitle className="text-base flex items-center gap-2">
-              {analyticsNav.depth > 0 && (
+              {analyticsNav.canGoBack && (
                 <button
                   className="p-1 -ml-1 rounded hover:bg-muted"
                   onClick={analyticsNav.back}
@@ -7823,18 +7812,12 @@ const Dashboard = () => {
                   <ArrowLeft className="h-4 w-4" />
                 </button>
               )}
-              {analyticsNav.title}
-              {(() => {
-                // Say WHICH home when there is more than one to confuse.
-                const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
-                const home = homes.find(h => h.id === effectiveAnalyticsHome);
-                return homes.length > 1 && home ? (
-                  <span className="text-sm font-normal text-muted-foreground">· {home.name}</span>
-                ) : null;
-              })()}
+              {/* The breadcrumb below names the home and the place; the title
+                  only has to say what this dialog is. */}
+              Analytics
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 overflow-hidden p-4">
             {analyticsOpen && (() => {
               const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
               const homeMatches = (id: string | undefined) =>
@@ -7849,6 +7832,7 @@ const Dashboard = () => {
                 <React.Suspense fallback={<div className="h-[300px]" />}>
                   <AnalyticsContent
                     homeId={effectiveAnalyticsHome}
+                    homeName={homes.find(h => h.id === effectiveAnalyticsHome)?.name ?? 'Home'}
                     accessories={scopedAccessories}
                     serviceGroups={scopedGroups}
                     nav={analyticsNav}

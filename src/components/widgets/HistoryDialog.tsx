@@ -3,13 +3,7 @@ import { ChevronDown, ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
-import { charLabel } from '@/components/automations/format';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
-import { BOOL_STATE_LABELS } from '@/history/labels';
-import { stateTotals } from '@/history/stateSummary';
-import { sanitizeSeriesData } from '@/history/sanitize';
-import { coverageStart, withCarryIn } from '@/history/carry';
-import { PLOT_LEFT, PLOT_RIGHT } from '@/components/home-analytics/chartGeometry';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -27,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import StateTimeline from './StateTimeline';
+import { AccessorySeriesSection } from '@/components/home-analytics/AccessorySections';
 
 const HistoryChart = lazy(() => import('./HistoryChart'));
 // Lazy for the same reason: it pulls the charting stack.
@@ -45,40 +39,8 @@ const RANGES = [
 // Bool vocabulary is shared with the Analytics strips (history/labels);
 // enum labels enrich from the characteristic's own options here, where the
 // accessory's WritableChar is at hand.
-function labelForValue(
-  char: WritableChar | undefined, type: string, value: number, text?: string | null,
-): string {
-  if (text != null) return text; // string kind: the text IS the label
-  const bool = BOOL_STATE_LABELS[type];
-  if (bool) return bool[value === 0 ? 0 : 1];
-  const option = char?.options?.find(o => o.value === value);
-  if (option) return option.label;
-  return value === 0 ? 'Off' : value === 1 ? 'On' : String(value);
-}
 
-/** Rolled stateMs keys: numeric codes for bool/enum, the raw text for string. */
-function labelForKey(char: WritableChar | undefined, type: string, key: string): string {
-  const parsed = Number(key);
-  if (Number.isFinite(parsed) && key.trim() !== '') return labelForValue(char, type, parsed);
-  return key;
-}
 
-/**
- * When the window reaches back further than the recording does, say so —
- * otherwise an empty left half of a 30d chart reads as a bug rather than as
- * "this accessory has only been recording since Tuesday".
- */
-function recordedFrom(data: HistorySeriesData, fromTs: number, toTs: number): string {
-  // coverageStart, not the first sample: a window that opened with a carried
-  // value was covered from its start, and saying "recorded from 12:03" of a
-  // 6h window that has data back to yesterday is simply false.
-  const first = coverageStart(data, fromTs);
-  if (!Number.isFinite(first)) return '';
-  if (first - fromTs < (toTs - fromTs) * 0.05) return '';
-  return ` · recorded from ${new Date(first).toLocaleDateString(undefined, {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  })}`;
-}
 
 function formatDuration(ms: number): string {
   const minutes = Math.round(ms / 60_000);
@@ -103,19 +65,6 @@ interface HistoryDialogProps {
   onOpenSettings?: () => void;
 }
 
-/** Numeric range stats from the served points. */
-function numericStats(points: HistoryPointData[]): { min: number; avg: number; max: number } | null {
-  if (points.length === 0) return null;
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  for (const p of points) {
-    min = Math.min(min, p.min);
-    max = Math.max(max, p.max);
-    sum += p.avg;
-  }
-  return { min, avg: sum / points.length, max };
-}
 
 /** Time-in-state totals + transition count across the served range. */
 
@@ -188,85 +137,19 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     s => s.points.length > 0 || s.states.length > 0 || s.stateBuckets.length > 0,
   );
 
-  const renderSeriesRow = (raw: HistorySeriesData) => {
-    const char = charByType.get(raw.characteristicType);
-    const isNumeric = raw.kind === 'numeric';
-    // Radio-fault sentinels (-40°) would stretch this little chart flat.
-    const sanitized = isNumeric ? sanitizeSeriesData(raw) : { data: raw, droppedPoints: 0 };
-    const s = sanitized.data;
-    // The window's opening value counts: it is what the accessory read for
-    // the stretch before its first in-window sample, so the chart, the stats
-    // and the "is there anything here" test must all see it.
-    const points = isNumeric ? withCarryIn(s, fromTs) : s.points;
-    const stats = isNumeric ? numericStats(points) : null;
-    const states = !isNumeric ? stateTotals(s, fromTs, toTs) : null;
-    const empty = points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0
-      && s.prevValue === null;
-    const unit = s.unit ?? '';
-    return (
-      <div key={s.characteristicType} className="space-y-1.5">
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs font-medium">{charLabel(s.characteristicType)}</span>
-          {s.resolution !== 'raw' && (
-            <span className="text-[10px] text-muted-foreground">{s.resolution} averages</span>
-          )}
-        </div>
-        {empty ? (
-          <div className="h-12 rounded-md border border-dashed flex items-center justify-center">
-            <span className="text-xs text-muted-foreground">
-              {isNumeric ? 'No data in this range' : 'Monitoring — no events in this range'}
-            </span>
-          </div>
-        ) : isNumeric ? (
-          <>
-            <Suspense fallback={<div className="h-[200px] w-full" />}>
-              <HistoryChart
-                points={s.points}
-                carriedValue={s.prevValue}
-                unit={s.unit}
-                gradientId={`hist-${target?.accessory?.id}-${s.characteristicType}`}
-                // Every panel in this dialog must span the SAME window, or a
-                // vertical read means nothing: each chart was fitting its own
-                // data extent, so Temperature ran to 14:38 while Fan Speed
-                // stopped at 13:06 — stacked, aligned-looking, and lying.
-                fromTs={fromTs}
-                toTs={toTs}
-              />
-            </Suspense>
-            {stats && (
-              <p className="text-[11px] text-muted-foreground">
-                min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
-                {recordedFrom(s, fromTs, toTs)}
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <StateTimeline
-              fromTs={fromTs}
-              toTs={toTs}
-              padLeft={PLOT_LEFT}
-              padRight={PLOT_RIGHT}
-              prevValue={s.prevValue}
-              prevValueText={s.prevValueText}
-              states={s.states}
-              stateBuckets={s.stateBuckets}
-              labelFor={(v, text) => labelForValue(char, s.characteristicType, v, text)}
-            />
-            {states && states.totals.length > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                {states.totals.slice(0, 3).map(([key, ms]) =>
-                  `${labelForKey(char, s.characteristicType, key)} ${formatDuration(ms)}`,
-                ).join(' · ')}
-                {states.transitions > 0 && ` · ${states.transitions} changes`}
-                {recordedFrom(s, fromTs, toTs)}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-    );
-  };
+  // The section renderer lives in home-analytics now: the Analytics surface
+  // renders the SAME component at its accessory scope, so the layout people
+  // like here cannot drift away from the one they meet there.
+  const renderSeriesRow = (raw: HistorySeriesData) => (
+    <AccessorySeriesSection
+      key={raw.characteristicType}
+      raw={raw}
+      fromTs={fromTs}
+      toTs={toTs}
+      char={charByType.get(raw.characteristicType)}
+      gradientKey={target?.accessory?.id ?? 'group'}
+    />
+  );
 
   return (
     <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
@@ -287,7 +170,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
               title="Open full-screen and compare with other accessories"
             >
-              Expand <ExternalLink className="h-3 w-3" />
+              Open in Analytics <ExternalLink className="h-3 w-3" />
             </button>
           </DialogTitle>
         </DialogHeader>

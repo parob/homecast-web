@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry, type OrganizedCategory } from '@/history/categories';
+import { measuresIn, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateValueLabel } from '@/history/labels';
@@ -14,16 +14,9 @@ import { seriesColor, type ChartSeries } from './chartColors';
 import { buildSels, labelWithoutRoom } from './selBuilder';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { Button } from '@/components/ui/button';
+import type { AnalyticsSettings } from './scope';
 import type { ExplorerView, SeriesSel } from './types';
-import type { HistorySeriesRefInput } from '@/lib/graphql/types';
-
-const RANGES = [
-  { label: '6h', ms: 6 * 3_600_000 },
-  { label: '24h', ms: 24 * 3_600_000 },
-  { label: '7d', ms: 7 * 86_400_000 },
-  { label: '30d', ms: 30 * 86_400_000 },
-  { label: '1y', ms: 365 * 86_400_000 },
-] as const;
+import type { HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const PER_MEASURE_CAP = 10;
 
@@ -38,20 +31,22 @@ const PER_MEASURE_CAP = 10;
 export default function RoomStackView({
   homeId,
   mock,
-  category,
+  roomSeries,
   room,
   accessoryInfo,
+  settings,
   onCustomize,
 }: {
   homeId: string | null;
   mock: boolean;
-  category: OrganizedCategory;
-  room: string;
+  /** Every recorded series in this room, across all categories. */
+  roomSeries: HistorySeriesInfo[];
+  room: string | null;
   accessoryInfo: Map<string, AccessoryInfoEntry>;
+  settings: AnalyticsSettings;
   onCustomize: (view: ExplorerView) => void;
 }) {
-  const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
-  const [hideUnusual, setHideUnusual] = useState(true);
+  const { rangeMs, hideUnusual } = settings;
   // Shared across the stacked panels: pointing at "Underfloor Heating" in the
   // Temperature legend picks it out of the Humidity panel too, which is the
   // whole reason these panels are stacked.
@@ -60,12 +55,7 @@ export default function RoomStackView({
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
 
-  const roomKey = room === 'Elsewhere' ? null : room;
-  const roomSeries = useMemo(
-    () => category.series.filter(s =>
-      (accessoryInfo.get(s.accessoryId.toUpperCase())?.room ?? null) === roomKey),
-    [category.series, accessoryInfo, roomKey],
-  );
+  const roomKey = room;
 
   // One panel per measure present in this room, importance-ordered.
   const measures = useMemo(() => measuresIn(roomSeries), [roomSeries]);
@@ -195,35 +185,7 @@ export default function RoomStackView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
-          {RANGES.map(r => (
-            <button
-              key={r.label}
-              onClick={() => setRangeMs(r.ms)}
-              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
-                rangeMs === r.ms
-                  ? 'bg-background text-foreground shadow-sm font-medium'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1" />
-        <label
-          className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-          title="Drop implausible readings (radio-fault sentinels)"
-        >
-          <input
-            type="checkbox"
-            checked={hideUnusual}
-            onChange={(e) => setHideUnusual(e.target.checked)}
-            className="accent-current"
-          />
-          Hide unusual data
-        </label>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
           variant="outline"
           size="sm"

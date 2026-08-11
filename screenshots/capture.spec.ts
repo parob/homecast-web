@@ -408,11 +408,11 @@ test.describe('Home Analytics screenshots', () => {
     await page.addInitScript(() => localStorage.setItem('cookie-consent', 'granted'));
   });
 
-  test('home analytics — climate, rooms-first', async ({ page }) => {
-    // The BIG mock: 9 rooms collapsing into readable room-average lines is
-    // the whole story of the redesign.
-    await page.goto('/analytics?category=climate&mockHistory=big');
-    await page.getByText('averaged from').first().waitFor({ timeout: 15000 });
+  test('home analytics — a room, one panel per measure', async ({ page }) => {
+    // The BIG mock: a room's own two or three sensors per measure is the
+    // whole story of the redesign — the home level never charts at all.
+    await page.goto('/analytics?room=Bedroom%202&mockHistory=big');
+    await page.getByText('Temperature').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(1500); // charts settle
     await page.screenshot({ path: img('analytics-category.png') });
     // The marketing feature image keeps its name — the pages reference it.
@@ -421,7 +421,7 @@ test.describe('Home Analytics screenshots', () => {
 
   test('home analytics — insights overview', async ({ page }) => {
     await page.goto('/analytics?mockHistory=big');
-    await page.getByText('Highlights').first().waitFor({ timeout: 15000 });
+    await page.getByText('Rooms').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(2000); // sparklines + insights settle
     await page.screenshot({ path: img('analytics-overview.png') });
   });

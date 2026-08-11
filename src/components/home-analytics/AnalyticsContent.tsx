@@ -1,23 +1,16 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { getRecordableCharacteristics } from '@/components/automations/characteristics';
-import { isHiddenRoom, organizeRecorded, type AccessoryInfoEntry } from '@/history/categories';
+import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
+import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
 import { liveFromHomeKit, type LiveAccessory } from '@/history/summaries';
-import ActivityView from './ActivityView';
-import AnalyticsHome from './AnalyticsHome';
-import BatteryView from './BatteryView';
-import CategoryView from './CategoryView';
-import CustomView from './CustomView';
-import GroupView from './GroupView';
-import MeasureView from './MeasureView';
-import SafetyView from './SafetyView';
-import UsageTable from './UsageTable';
+import ScopeDashboard from './ScopeDashboard';
+import ScopeHeader from './ScopeHeader';
+import ScopeTree from './ScopeTree';
+import { buildScopeTree, scopeCrumbs, type AnalyticsScopeState } from './scope';
 import { useRecordedSeries } from './useRecordedSeries';
 import { Button } from '@/components/ui/button';
-import type { AnalyticsNav } from './useAnalyticsNav';
 import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types';
-import type { ExplorerView } from './types';
 
 /**
  * Home Analytics — the whole surface behind one orchestrator, so it renders
@@ -37,15 +30,18 @@ import type { ExplorerView } from './types';
  */
 export default function AnalyticsContent({
   homeId,
+  homeName = 'Home',
   accessories,
   serviceGroups,
   nav,
 }: {
   homeId: string | null;
+  /** Names the root of the breadcrumb and the top of the tree. */
+  homeName?: string;
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
   serviceGroups?: HomeKitServiceGroup[] | null;
-  nav: AnalyticsNav;
+  nav: AnalyticsScopeState;
 }) {
   const mock = isMockHistoryEnabled();
   const effectiveHomeId = mock ? 'MOCK-HOME' : homeId;
@@ -86,6 +82,18 @@ export default function AnalyticsContent({
     return map;
   }, [accessories, mock]);
 
+  // The accessory scope needs the real characteristics, not just their types:
+  // an enum's own option labels beat a generic "2".
+  const charByAccessory = useMemo(() => {
+    const map = new Map<string, Map<string, WritableChar>>();
+    for (const acc of accessories ?? []) {
+      const chars = new Map<string, WritableChar>();
+      for (const c of getRecordableCharacteristics(acc)) chars.set(c.type, c);
+      if (chars.size > 0) map.set(acc.id.toUpperCase(), chars);
+    }
+    return map;
+  }, [accessories]);
+
   const groups = useMemo(() => {
     if (mock) return mockServiceGroups();
     return (serviceGroups ?? []).map(g => ({ id: g.id, name: g.name, memberIds: g.accessoryIds }));
@@ -104,9 +112,9 @@ export default function AnalyticsContent({
     ));
   }, [accessories, mock]);
 
-  const organized = useMemo(
-    () => organizeRecorded(recorded, accessoryInfo, groups, recordableByAccessory),
-    [recorded, accessoryInfo, groups, recordableByAccessory],
+  const tree = useMemo(
+    () => buildScopeTree(recorded, accessoryInfo, groups),
+    [recorded, accessoryInfo, groups],
   );
 
   if (seriesError) {
@@ -129,124 +137,52 @@ export default function AnalyticsContent({
       </div>
     );
   }
-
-  const current = nav.current;
-
-  if (current.level === 'custom') {
-    return (
-      <CustomView
-        homeId={effectiveHomeId}
-        mock={mock}
-        view={current.view}
-        onViewChange={(view) => nav.replace({ level: 'custom', view })}
-        accessories={accessories}
-        recorded={recorded}
-      />
-    );
-  }
-
-  if (current.level === 'category') {
-    const category = organized.find(c => c.id === current.category);
-    if (!category) {
-      return (
-        <div className="py-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            Nothing recorded in this category yet — charts build as accessories
-            report changes.
-          </p>
-        </div>
-      );
-    }
-    const onRoomChange = (room: string | null) => nav.replace({ ...current, room });
-    const onCustomize = (view: ExplorerView) => nav.push({ level: 'custom', view });
-
-    // Each category renders the way its data reads best: measures for
-    // continuous quantities, timelines for activity, a ranked list for
-    // batteries, a status board for safety.
-    switch (category.id) {
-      case 'climate':
-        return (
-          <MeasureView
-            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
-            accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
-          />
-        );
-      case 'activity':
-        return (
-          <ActivityView
-            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
-            accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
-          />
-        );
-      case 'energy':
-        return (
-          <div className="space-y-4">
-            <MeasureView
-              homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
-              accessoryInfo={accessoryInfo} onRoomChange={onRoomChange} onCustomize={onCustomize}
-            />
-            <UsageTable
-              homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
-              accessoryInfo={accessoryInfo}
-            />
-          </div>
-        );
-      case 'battery':
-        return <BatteryView category={category} live={live} onCustomize={onCustomize} />;
-      case 'safety':
-        return (
-          <SafetyView
-            homeId={effectiveHomeId} mock={mock} category={category} room={current.room}
-            live={live} accessoryInfo={accessoryInfo}
-            onRoomChange={onRoomChange} onCustomize={onCustomize}
-          />
-        );
-      case 'groups':
-        return (
-          <GroupView
-            homeId={effectiveHomeId} mock={mock} category={category} groupId={current.groupId}
-            accessoryInfo={accessoryInfo} recorded={recorded}
-            onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
-          />
-        );
-      default:
-        return (
-          <CategoryView
-            homeId={effectiveHomeId}
-            mock={mock}
-            category={category}
-            room={current.room}
-            groupId={current.groupId}
-            accessoryInfo={accessoryInfo}
-            onRoomChange={onRoomChange}
-            onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
-            onCustomize={onCustomize}
-          />
-        );
-    }
-  }
-
-  if (organized.length === 0) {
+  if (tree.accessoryCount === 0) {
     return (
       <div className="py-16 text-center">
         <p className="text-sm text-muted-foreground">
-          Nothing recorded yet. Turn on History in Settings → Homes → your
-          home, and
-          Analytics will build as your accessories report changes.
+          Nothing recorded yet. Turn on Analytics in Settings → Homes → your
+          home, and it will build as your accessories report changes.
         </p>
       </div>
     );
   }
 
+  const crumbs = scopeCrumbs(nav.scope, homeName, accessoryInfo, groups);
+
   return (
-    <AnalyticsHome
-      homeId={effectiveHomeId}
-      mock={mock}
-      organized={organized}
-      live={live}
-      recorded={recorded}
-      accessoryInfo={accessoryInfo}
-      onOpenCategory={(category, room) => nav.push({ level: 'category', category, room: room ?? null })}
-    />
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <ScopeHeader
+        crumbs={crumbs}
+        settings={nav.settings}
+        onSettings={nav.setSettings}
+        onSelect={nav.setScope}
+      />
+      <div className="flex min-h-0 flex-1 gap-4">
+        {/* The tree is desktop chrome; on a phone the breadcrumb and the
+            in-scope lists are the way around, and a permanent sidebar would
+            eat the width the charts need. */}
+        <div className="hidden w-52 shrink-0 md:block">
+          <ScopeTree tree={tree} scope={nav.scope} homeName={homeName} onSelect={nav.setScope} />
+        </div>
+        <div className="min-w-0 flex-1 overflow-y-auto pr-1">
+          <ScopeDashboard
+            scope={nav.scope}
+            settings={nav.settings}
+            homeId={effectiveHomeId}
+            mock={mock}
+            tree={tree}
+            live={live}
+            recorded={recorded}
+            accessoryInfo={accessoryInfo}
+            charByAccessory={charByAccessory}
+            groups={groups}
+            accessories={accessories}
+            onSelect={nav.setScope}
+            onReplace={nav.replaceScope}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
