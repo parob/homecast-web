@@ -183,7 +183,17 @@ export default function StateTimeline({
   const hoveredSegment = hover !== null ? segments[hover.index] : undefined;
   const hoverStart = hoveredSegment ? fromTs + (hoveredSegment.leftPct / 100) * span : 0;
   const hoverEnd = hoveredSegment ? hoverStart + (hoveredSegment.widthPct / 100) * span : 0;
+  // Where the pointer actually is, not where its segment starts. The strip
+  // was answering "what state, and how long did that run last" while the
+  // charts stacked above it answer "at 09:24, this" — reading them together
+  // meant guessing which instant the strip was talking about.
+  const hoverTs = hover !== null ? fromTs + (hover.xPct / 100) * span : 0;
   const timeAt = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  // The chart tooltips above name the day whenever the window crosses one.
+  // Same rule here, so the two headers read alike.
+  const stampAt = (ts: number) => new Date(ts).toLocaleString(undefined, span > 36 * 3_600_000
+    ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' });
   const durationOf = (ms: number) => {
     const minutes = Math.round(ms / 60_000);
     if (minutes < 60) return `${minutes}m`;
@@ -199,7 +209,7 @@ export default function StateTimeline({
           the duration, which is the question people actually have. */}
       {hoveredSegment && (
         <div
-          className="pointer-events-none absolute -top-7 z-20 whitespace-nowrap rounded-md border bg-background/95 px-2 py-1 text-[11px] shadow-sm backdrop-blur"
+          className="pointer-events-none absolute -top-11 z-20 whitespace-nowrap rounded-md border bg-background/95 px-2 py-1 text-[11px] leading-snug shadow-sm backdrop-blur"
           style={{
             // Percent of the TRACK, not of the padded container — the two
             // differ by the axis gutter and the label would drift right.
@@ -207,10 +217,13 @@ export default function StateTimeline({
             transform: `translateX(${hover!.xPct > 70 ? '-100%' : hover!.xPct < 8 ? '0' : '-50%'})`,
           }}
         >
-          <span className="font-medium">{labelFor(hoveredSegment.value, hoveredSegment.text)}</span>
-          <span className="text-muted-foreground">
-            {' · '}{durationOf(hoverEnd - hoverStart)}{' · '}{timeAt(hoverStart)}–{timeAt(hoverEnd)}
-          </span>
+          <div className="font-medium">{stampAt(hoverTs)}</div>
+          <div>
+            <span className="font-medium">{labelFor(hoveredSegment.value, hoveredSegment.text)}</span>
+            <span className="text-muted-foreground">
+              {' · '}{durationOf(hoverEnd - hoverStart)}{' · '}{timeAt(hoverStart)}–{timeAt(hoverEnd)}
+            </span>
+          </div>
         </div>
       )}
       <div
