@@ -1,15 +1,13 @@
 import { useMemo } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { charLabel } from '@/components/automations/format';
-import { getRecordableCharacteristics } from '@/components/automations/characteristics';
-import { getProfile } from '@/history/policy';
 import { canonicalHistoryType } from '@/history/keys';
 import { disambiguateSeriesLabels } from '@/history/labels';
 import type { AccessoryInfoEntry, OrganizedCategory } from '@/history/categories';
 import ChartPanel from './ChartPanel';
 import { Button } from '@/components/ui/button';
 import type { ExplorerView, SeriesSel } from './types';
-import type { HistorySeriesInfo, HomeKitAccessory } from '@/lib/graphql/types';
+import type { HistorySeriesInfo } from '@/lib/graphql/types';
 
 /**
  * One category, explorable: a room filter across the top (groups category
@@ -20,10 +18,6 @@ import type { HistorySeriesInfo, HomeKitAccessory } from '@/lib/graphql/types';
 
 const MAX_SERIES = 20;
 
-function profileKind(type: string): 'numeric' | 'bool' | 'enum' | 'string' {
-  return getProfile(canonicalHistoryType(type))?.kind ?? 'numeric';
-}
-
 export default function CategoryView({
   homeId,
   mock,
@@ -31,7 +25,6 @@ export default function CategoryView({
   room,
   groupId,
   accessoryInfo,
-  accessories,
   onRoomChange,
   onGroupChange,
   onCustomize,
@@ -44,7 +37,6 @@ export default function CategoryView({
   /** Groups category: the selected service group. */
   groupId?: string | null;
   accessoryInfo: Map<string, AccessoryInfoEntry>;
-  accessories: HomeKitAccessory[] | null;
   onRoomChange: (room: string | null) => void;
   onGroupChange: (groupId: string) => void;
   onCustomize: (view: ExplorerView) => void;
@@ -64,30 +56,14 @@ export default function CategoryView({
   }, [isGroups, category.groups, groupId]);
 
   // The series in scope: the room filter's slice of the category, numeric
-  // first — or, for groups, the group's own series plus each member's
-  // primary recordable characteristic (member history keeps recording under
-  // the member id; the group id only carries group writes).
+  // first. A group is ONE item — its own recorded series (group writes
+  // record under the group id). A per-member fan-out led with brightness
+  // and read as a wall of 100% lines; members chart under their own rooms
+  // and device analytics instead.
   const scoped = useMemo<SeriesSel[]>(() => {
     let infos: HistorySeriesInfo[];
-    const memberSels: SeriesSel[] = [];
     if (isGroups) {
       infos = activeGroup?.series ?? [];
-      const byId = new Map((accessories ?? []).map(a => [a.id.toUpperCase(), a]));
-      for (const memberId of (activeGroup?.memberIds ?? []).slice(0, 12)) {
-        const member = byId.get(memberId.toUpperCase());
-        if (!member) continue;
-        const char = getRecordableCharacteristics(member)[0];
-        if (!char) continue;
-        memberSels.push({
-          accessoryId: member.id,
-          characteristicType: char.type,
-          label: member.name,
-          fullLabel: `${member.name} · ${charLabel(char.type)}`,
-          room: member.roomName ?? null,
-          unit: char.unit ?? null,
-          kind: profileKind(char.type),
-        });
-      }
     } else if (room === 'Elsewhere') {
       infos = category.byRoom.get(null) ?? [];
     } else if (room) {
@@ -121,10 +97,9 @@ export default function CategoryView({
       kind: s.kind,
     }));
 
-    const all = [...sels, ...memberSels];
-    all.sort((a, b) => (a.kind === 'numeric' ? 0 : 1) - (b.kind === 'numeric' ? 0 : 1));
-    return all.slice(0, MAX_SERIES);
-  }, [isGroups, activeGroup, accessories, room, category, accessoryInfo]);
+    sels.sort((a, b) => (a.kind === 'numeric' ? 0 : 1) - (b.kind === 'numeric' ? 0 : 1));
+    return sels.slice(0, MAX_SERIES);
+  }, [isGroups, activeGroup, room, category, accessoryInfo]);
 
   // The climate band rule: ≥4 temperature sensors in scope collapse into a
   // min–max envelope with a bold average.

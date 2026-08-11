@@ -97,7 +97,7 @@ import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryD
 const AnalyticsContent = React.lazy(() => import('@/components/home-analytics/AnalyticsContent'));
 import { useAnalyticsNav } from '@/components/home-analytics/useAnalyticsNav';
 import type { SeriesSel as ExplorerSeriesSel } from '@/components/home-analytics/types';
-import { getRecordableCharacteristics } from '@/components/automations/characteristics';
+import { getRecordableCharacteristics, sortByHistoryImportance } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { getProfile as getHistoryProfile } from '@/history/policy';
 
@@ -426,7 +426,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {analyticsAvailable && (
           <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name })}>
             <LineChart className="h-4 w-4 mr-2" />
-            Analytics
+            Room Analytics
           </ContextMenuItem>
         )}
         {/* A room can't contain a room group, but it can contain a helper
@@ -1980,7 +1980,7 @@ const Dashboard = () => {
   const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
     if (scope.level === 'accessory') {
       const acc = scope.accessory;
-      const series: ExplorerSeriesSel[] = getRecordableCharacteristics(acc).map(char => ({
+      const series: ExplorerSeriesSel[] = sortByHistoryImportance(getRecordableCharacteristics(acc)).map(char => ({
         accessoryId: acc.id,
         characteristicType: char.type,
         label: `${acc.name} · ${charLabel(char.type)}`,
@@ -5774,6 +5774,13 @@ const Dashboard = () => {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const room = rooms.find(r => r.id === selectedRoomId);
+              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null });
+            }}>
+              <LineChart className="h-4 w-4 mr-2" />
+              Room Analytics
+            </DropdownMenuItem>
             {isMobile && (
             <DropdownMenuItem
               onClick={() => {
@@ -5849,13 +5856,7 @@ const Dashboard = () => {
               <Blocks className="h-4 w-4 mr-2" />
               New Virtual Accessory
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null });
-            }}>
-              <LineChart className="h-4 w-4 mr-2" />
-              Analytics
-            </DropdownMenuItem>
+
           </div>
         ) : selectedHomeId && hasContentAccess ? (
           <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
@@ -5877,6 +5878,10 @@ const Dashboard = () => {
             }}>
               <Share2 className="h-4 w-4 mr-2" />
               Share
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home' })}>
+              <LineChart className="h-4 w-4 mr-2" />
+              Home Analytics
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
@@ -5984,12 +5989,6 @@ const Dashboard = () => {
           <DropdownMenuItem onClick={() => setEditMode(!editMode)}>
             <Pencil className="h-4 w-4 mr-2" />
             {editMode ? 'Done Editing' : 'Edit Layout'}
-          </DropdownMenuItem>
-        )}
-        {hasContentAccess && (
-          <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home' })}>
-            <LineChart className="h-4 w-4 mr-2" />
-            Home Analytics
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onClick={() => setSettingsOpen(true)}>

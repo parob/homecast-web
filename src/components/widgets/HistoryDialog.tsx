@@ -258,9 +258,9 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <button
               onClick={() => { const accessory = target?.accessory; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory } : undefined); }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              title="Compare with other sensors in Home Analytics"
+              title="Open full-screen and compare with other devices"
             >
-              Analytics <ExternalLink className="h-3 w-3" />
+              Expand <ExternalLink className="h-3 w-3" />
             </button>
           </DialogTitle>
         </DialogHeader>

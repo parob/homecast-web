@@ -140,7 +140,6 @@ export default function AnalyticsContent({
         room={current.room}
         groupId={current.groupId}
         accessoryInfo={accessoryInfo}
-        accessories={accessories}
         onRoomChange={(room) => nav.replace({ ...current, room })}
         onGroupChange={(groupId) => nav.replace({ ...current, groupId })}
         onCustomize={(view) => nav.push({ level: 'custom', view })}

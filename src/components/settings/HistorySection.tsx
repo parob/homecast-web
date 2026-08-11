@@ -308,8 +308,8 @@ export function HistorySection({ homes }: HistorySectionProps) {
       </div>
 
       <p className="text-[10px] text-muted-foreground">
-        Once a home is recording, open any device's context menu → History to
-        see its charts, or{' '}
+        Once a home is recording, open any device's context menu → Device
+        Analytics for its charts, or{' '}
         <button className="underline hover:text-foreground" onClick={() => openAnalytics()}>Home Analytics</button>{' '}
         to compare sensors and rooms on one graph.
       </p>

@@ -997,7 +997,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               {canShowHistory && (
                 <ContextMenuItem onClick={() => openAnalytics({ level: 'group', groupId: group.id })}>
                   <LineChart className="h-4 w-4 mr-2" />
-                  Analytics
+                  Group Analytics
                 </ContextMenuItem>
               )}
               {onShare && (
