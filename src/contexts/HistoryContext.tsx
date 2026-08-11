@@ -4,7 +4,7 @@ import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled } from '@/history/mock';
 import type { CategoryId } from '@/history/categories';
-import type { HomeKitAccessory, HistoryStorageStatsData } from '@/lib/graphql/types';
+import type { HomeKitAccessory, HomeKitServiceGroup, HistoryStorageStatsData } from '@/lib/graphql/types';
 import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
 
 /**
@@ -37,8 +37,10 @@ interface HistoryContextValue {
   /** Per-home gate — sidebar items belong to homes other than the selected
    *  one, and a home with history off must not offer Analytics at all. */
   analyticsAvailableFor: (homeId: string | undefined | null) => boolean;
-  /** Open the History screen. No-op outside the dashboard. */
+  /** Open the compact history popup for one accessory. */
   openHistory: (accessory: HomeKitAccessory) => void;
+  /** Open the compact history popup for a group (aggregated members). */
+  openGroupHistory: (group: HomeKitServiceGroup) => void;
   /** Open Home Analytics, scoped. Defaults to the overview. */
   openAnalytics: (scope?: AnalyticsScope) => void;
 }
@@ -48,6 +50,7 @@ const HistoryContext = createContext<HistoryContextValue>({
   analyticsAvailable: false,
   analyticsAvailableFor: () => false,
   openHistory: () => {},
+  openGroupHistory: () => {},
   openAnalytics: () => {},
 });
 
@@ -107,7 +110,16 @@ export function HistoryProvider({ homeId, homeIds, onOpenHistory, onOpenAnalytic
 
   const openHistory = useCallback((accessory: HomeKitAccessory) => {
     if (!homeId || !onOpenHistory) return;
-    onOpenHistory({ homeId, accessory });
+    onOpenHistory({ homeId: accessory.homeId ?? homeId, accessory });
+  }, [homeId, onOpenHistory]);
+
+  const openGroupHistory = useCallback((group: HomeKitServiceGroup) => {
+    const groupHomeId = group.homeId ?? homeId;
+    if (!groupHomeId || !onOpenHistory) return;
+    onOpenHistory({
+      homeId: groupHomeId,
+      group: { id: group.id, name: group.name, memberIds: group.accessoryIds },
+    });
   }, [homeId, onOpenHistory]);
 
   const openAnalytics = useCallback((scope?: AnalyticsScope) => {
@@ -115,8 +127,8 @@ export function HistoryProvider({ homeId, homeIds, onOpenHistory, onOpenAnalytic
   }, [onOpenAnalytics]);
 
   const value = useMemo(
-    () => ({ historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor, openHistory, openAnalytics }),
-    [historyAvailable, enabled, analyticsAvailableFor, openHistory, openAnalytics],
+    () => ({ historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor, openHistory, openGroupHistory, openAnalytics }),
+    [historyAvailable, enabled, analyticsAvailableFor, openHistory, openGroupHistory, openAnalytics],
   );
 
   return (

@@ -54,7 +54,7 @@ const Privacy = () => {
 
                 <h3 className="text-base font-medium mt-4 mb-2">Accessory History (opt-in)</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">
-                  History is off by default. If you turn it on for a home (Settings → History), we record
+                  History is off by default. If you turn it on for a home (Settings → Homes → the home), we record
                   how the characteristics you choose change over time — for example temperature readings
                   or when a light switched on — so we can show you charts. Recorded samples are kept
                   indefinitely, alongside hourly and daily summaries that keep long-range charts fast.

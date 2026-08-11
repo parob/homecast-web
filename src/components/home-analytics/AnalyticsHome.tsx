@@ -245,7 +245,7 @@ export default function AnalyticsHome({
 
       <p className="text-[10px] text-muted-foreground">
         Computed from what your home records — opt-in, per accessory
-        (Settings → History). Headlines are live values; trends are today's
+        (Settings → Homes → your home). Headlines are live values; trends are today's
         recordings.
       </p>
     </div>

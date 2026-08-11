@@ -224,7 +224,8 @@ export default function AnalyticsContent({
     return (
       <div className="py-16 text-center">
         <p className="text-sm text-muted-foreground">
-          Nothing recorded yet. Turn on History in Settings → History and
+          Nothing recorded yet. Turn on History in Settings → Homes → your
+          home, and
           Analytics will build as your accessories report changes.
         </p>
       </div>

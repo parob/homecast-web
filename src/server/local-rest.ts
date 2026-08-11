@@ -705,7 +705,7 @@ export async function handleGetHistory(args: {
     _meta: {
       message: recorded.length > 0
         ? `${recorded.length} of ${series.length} characteristics have recorded history in the last ${hours}h`
-        : 'No recorded history in this range. History is opt-in: the home owner enables it in Settings → History.',
+        : 'No recorded history in this range. History is opt-in: the home owner enables it in Settings → Homes → the home.',
     },
   };
 }
@@ -894,7 +894,7 @@ export async function handleQueryHistory(args: {
       ...(truncated.length > 0 ? { truncated } : {}),
       message: seriesMatched > 0
         ? `${series.length} of ${seriesMatched} matched series over ${((endTs - startTs) / 86_400_000).toFixed(1)} days`
-        : 'No recorded series match. History is opt-in: the home owner enables it in Settings → History.',
+        : 'No recorded series match. History is opt-in: the home owner enables it in Settings → Homes → the home.',
     },
   };
 }

@@ -22,6 +22,7 @@ import { GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET
 import { SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
+import { HomeHistorySettings } from './HistorySection';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import { UptimeSection } from './UptimeSection';
 import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
@@ -405,6 +406,9 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
       {/* Reliability — relay + per-home uptime with end-to-end probe results.
           Cloud-only because Community mode has no cloud backend to record samples. */}
       {!isCommunity && <UptimeSection homeId={home.id} />}
+
+      {/* History — one toggle per home; charts live in Home Analytics. */}
+      <HomeHistorySettings home={home} />
 
       {/* MQTT (developer mode only). Community: custom brokers via native bridge. Cloud: managed broker + custom brokers via server. */}
       {developerMode && <div className="space-y-2">

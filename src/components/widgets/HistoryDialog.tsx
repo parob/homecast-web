@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
-import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
+import { GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
-import { isMockHistoryEnabled } from '@/history/mock';
+import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
 import { BOOL_STATE_LABELS } from '@/history/labels';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { useHistory } from '@/contexts/HistoryContext';
@@ -13,6 +13,7 @@ import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import type {
   HomeKitAccessory,
   HistorySeriesData,
+  HistorySeriesInfo,
   HistoryStorageStatsData,
   HistorySeriesRefInput,
 } from '@/lib/graphql/types';
@@ -25,6 +26,8 @@ import {
 import StateTimeline from './StateTimeline';
 
 const HistoryChart = lazy(() => import('./HistoryChart'));
+// Lazy for the same reason: it pulls the charting stack.
+const GroupHistorySections = lazy(() => import('@/components/home-analytics/GroupHistorySections'));
 
 const RANGES = [
   { label: '6h', ms: 6 * 3_600_000 },
@@ -66,13 +69,16 @@ function formatDuration(ms: number): string {
 
 export interface HistoryTarget {
   homeId: string;
-  accessory: HomeKitAccessory;
+  /** Accessory mode: per-characteristic charts for one accessory. */
+  accessory?: HomeKitAccessory;
+  /** Group mode: the same layout, aggregated across the group's members. */
+  group?: { id: string; name: string; memberIds: string[] };
 }
 
 interface HistoryDialogProps {
   target: HistoryTarget | null;
   onClose: () => void;
-  /** Open Settings → History (wired from the dashboard shell). */
+  /** Open the home's settings page (wired from the dashboard shell). */
   onOpenSettings?: () => void;
 }
 
@@ -144,7 +150,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   const fromTs = toTs - rangeMs;
 
   const recordable = useMemo(
-    () => (target ? sortByHistoryImportance(getRecordableCharacteristics(target.accessory)) : []),
+    () => (target?.accessory ? sortByHistoryImportance(getRecordableCharacteristics(target.accessory)) : []),
     [target],
   );
   const charByType = useMemo(() => {
@@ -158,7 +164,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   // air quality on multi-sensor devices).
   const refs = useMemo<HistorySeriesRefInput[]>(
     () => recordable.map(c => ({
-      accessoryId: target!.accessory.id,
+      accessoryId: target!.accessory!.id,
       characteristicType: c.type,
     })),
     [recordable, target],
@@ -170,13 +176,24 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   );
   const historyEnabled = mock || (statsData?.historyStorageStats?.enabled ?? true);
 
+  // Group mode needs the home's recorded-series listing for member lookup.
+  const { data: recordedData } = useQuery<{ historySeries: HistorySeriesInfo[] }>(GET_HISTORY_SERIES, {
+    variables: { homeId: target?.homeId },
+    skip: !target?.group || mock || !historyEnabled,
+    fetchPolicy: 'cache-and-network',
+  });
+  const recorded = useMemo<HistorySeriesInfo[]>(
+    () => (mock ? mockRecordedSeries() : (recordedData?.historySeries ?? [])),
+    [mock, recordedData],
+  );
+
   const { data: histMap, loading } = useMultiSeriesHistory(
     target?.homeId ?? null, refs, fromTs, toTs, 0, mock,
     { enabled: !!target && historyEnabled },
   );
 
   const series: HistorySeriesData[] = useMemo(() => {
-    if (!target) return [];
+    if (!target?.accessory) return [];
     const accessoryKey = target.accessory.id.toUpperCase();
     return recordable.flatMap(c => {
       const entry = histMap.get(`${accessoryKey}|${c.type}`);
@@ -218,7 +235,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               <HistoryChart
                 points={s.points}
                 unit={s.unit}
-                gradientId={`hist-${target?.accessory.id}-${s.characteristicType}`}
+                gradientId={`hist-${target?.accessory?.id}-${s.characteristicType}`}
               />
             </Suspense>
             {stats && (
@@ -259,9 +276,16 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         <DialogHeader>
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 truncate">{target?.accessory.name ?? 'History'}</span>
+            <span className="flex-1 truncate">{target?.accessory?.name ?? target?.group?.name ?? 'History'}</span>
             <button
-              onClick={() => { const accessory = target?.accessory; const homeId = target?.homeId; onClose(); openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined); }}
+              onClick={() => {
+                const accessory = target?.accessory;
+                const group = target?.group;
+                const homeId = target?.homeId;
+                onClose();
+                if (group) openAnalytics({ level: 'group', groupId: group.id, homeId });
+                else openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined);
+              }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
               title="Open full-screen and compare with other accessories"
             >
@@ -293,10 +317,21 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             </p>
             {onOpenSettings && (
               <button className="text-sm text-primary underline" onClick={onOpenSettings}>
-                Turn on in Settings → History
+                Turn on in Settings → Homes → this home
               </button>
             )}
           </div>
+        ) : target?.group ? (
+          <Suspense fallback={<div className="h-[240px]" />}>
+            <GroupHistorySections
+              homeId={target.homeId}
+              mock={mock}
+              group={target.group}
+              recorded={recorded}
+              fromTs={fromTs}
+              toTs={toTs}
+            />
+          </Suspense>
         ) : loading && !hasAnyData ? (
           <div className="py-10 flex items-center justify-center text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />

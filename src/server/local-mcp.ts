@@ -99,7 +99,7 @@ const TOOLS = [
       '"how long was the heating on today?". Returns per-characteristic series — numeric ones as ' +
       '[isoTime, value] pairs with a min/avg/max summary, on/off and mode ones as [isoTime, state] ' +
       'transitions. History is OPT-IN and off by default: if nothing is recorded, the home owner has to ' +
-      'turn it on in Settings → History first — say so rather than retrying. Recording only captures ' +
+      'turn it on in Settings → Homes → the home first — say so rather than retrying. Recording only captures ' +
       'changes, so a flat line costs nothing and gaps mean the value simply held.',
     inputSchema: {
       type: 'object',
@@ -127,7 +127,7 @@ const TOOLS = [
       'current_temperature, power_state, motion). Large pulls paginate: a truncated series includes ' +
       'continue_from — repeat the call with start=continue_from. Recording is change-based, so gaps mean the ' +
       'value simply held. History is OPT-IN and off by default: if nothing matches, the home owner has to turn ' +
-      'it on in Settings → History first — say so rather than retrying. Use get_history instead for a quick ' +
+      'it on in Settings → Homes → the home first — say so rather than retrying. Use get_history instead for a quick ' +
       'single-accessory look.',
     inputSchema: {
       type: 'object',

@@ -7788,7 +7788,7 @@ const Dashboard = () => {
 
       {/* Characteristic History — reachable from the widget context menu on
           any accessory with recordable characteristics, once the home has
-          opted in (Settings → History) */}
+          opted in (Settings → Homes → the home) */}
       <HistoryDialog
         target={historyTarget}
         onClose={() => setHistoryTarget(null)}
