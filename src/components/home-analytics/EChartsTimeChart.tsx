@@ -141,6 +141,8 @@ export default function EChartsTimeChart({
   // but not here. The two want opposite tooltips, and only the caller can
   // tell them apart.
   const highlightElsewhereRef = useRef(false);
+  // Every line this chart draws, for the tooltip to read from directly.
+  const allSeriesRef = useRef<Array<{ key: string; label: string; color: string }>>([]);
 
   // The caller rebuilds its series array on every render, so pointing at a
   // line — which is a state change up there — handed this chart a brand new
@@ -260,6 +262,26 @@ export default function EChartsTimeChart({
     const unrecordedUntil = Number.isFinite(firstTs) && firstTs - fromTs > (toTs - fromTs) * 0.05
       ? firstTs
       : null;
+
+    // ECharts only raises a tooltip when some series has a datum near the
+    // pointer — so a panel whose sensors stop reporting earlier than its
+    // neighbour's simply went silent at the right-hand end, which on stacked
+    // panels reads as one chart having lost its readout. This invisible pair
+    // spans the range and guarantees the formatter is called anywhere in the
+    // plot; what it prints comes from the tracks, not from this.
+    if (series.length > 0) {
+      const anchor = toPairs(series[0].data)[0]?.[1];
+      if (anchor !== undefined) {
+        styles.push(null);
+        chartSeries.push({
+          name: '__span', type: 'line', silent: true,
+          data: [[fromTs, anchor], [toTs, anchor]],
+          yAxisIndex: axisIndexFor(series[0].unit),
+          lineStyle: { opacity: 0 }, symbol: 'none', z: 0,
+          tooltip: { show: true },
+        });
+      }
+    }
 
     series.forEach((s, i) => {
       claim(s.key);
@@ -384,9 +406,16 @@ export default function EChartsTimeChart({
         // with. The vertical line stays: it names the instant every panel is
         // showing, and it is what echarts.connect keeps in step across the
         // stack, which is what makes one time axis and many measures readable.
+        //
+        // snap OFF. It existed so the crosshair could not float between
+        // readings, back when the numbers came from whichever sample ECharts
+        // picked; they are read from the line itself now, so snapping only
+        // does harm — each panel snapped to its OWN nearest sample, and two
+        // stacked charts claiming 01:16 and 01:31 at one pointer position is
+        // the opposite of reading them together.
         axisPointer: {
           type: 'line' as const,
-          snap: true,
+          snap: false,
           label: { show: false },
           lineStyle: { color: theme.faint },
         },
@@ -404,13 +433,28 @@ export default function EChartsTimeChart({
         // Cap + sort the rows ourselves — a 20-series wall is not a tooltip.
         formatter: (params: unknown) => {
           const items = (Array.isArray(params) ? params : [params]) as Array<{
-            seriesName?: string; value?: [number, number]; color?: string;
+            seriesName?: string; value?: [number, number]; color?: string; axisValue?: number;
           }>;
-          const all = items
-            .filter(p => p.seriesName && !p.seriesName.startsWith('__band')
-              && Array.isArray(p.value) && Number.isFinite(p.value[1]))
-            .map(p => ({ name: p.seriesName!, value: (p.value as [number, number])[1], color: String(p.color ?? '#888') }));
-          const ts = (items[0]?.value as [number, number] | undefined)?.[0];
+          // axisValue, not the item's own x: the span series that guarantees
+          // this formatter runs carries only the range's two ends, and reading
+          // the time off it would stamp every tooltip midnight.
+          const ts = items[0]?.axisValue ?? (items[0]?.value as [number, number] | undefined)?.[0];
+          // Every row, read the way the chart draws the line: last value at or
+          // before this instant. ECharts' own list is whichever series happen
+          // to have a sample near the pointer, which is neither all of them
+          // nor reliably the one being pointed at.
+          const valueAt = (key: string): number | null => {
+            const pairs = tracksRef.current.find(t => t.key === key)?.pairs ?? [];
+            let v: number | null = null;
+            for (const [x, y] of pairs) {
+              if (ts === undefined || x > ts) break;
+              v = y;
+            }
+            return v;
+          };
+          const all = allSeriesRef.current.map(({ key, label, color }) => (
+            { name: label, value: valueAt(key), color }
+          )).filter(r => r.value !== null);
 
           // Pointing at one line is a question about that line — so answer it
           // from the line itself, not from what ECharts happened to hand over.
@@ -429,16 +473,8 @@ export default function EChartsTimeChart({
           // wrong accessory, next to the one they are pointing at.
           if (highlightElsewhereRef.current) return '';
           const lit = litRef.current;
-          const rows = lit.length > 0 && ts !== undefined
-            ? lit.map(({ key, label, color }) => {
-              const pairs = tracksRef.current.find(t => t.key === key)?.pairs ?? [];
-              let value: number | null = null;
-              for (const [x, y] of pairs) {
-                if (x > ts) break;
-                value = y;
-              }
-              return { name: label, value, color };
-            })
+          const rows = lit.length > 0
+            ? lit.map(({ key, label, color }) => ({ name: label, value: valueAt(key), color }))
             : all;
           if (rows.length === 0) return '';
           rows.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
@@ -625,6 +661,9 @@ export default function EChartsTimeChart({
     if (!chart) return;
     const lit = new Set((highlightKeys ?? []).flatMap(key => indexByKey.get(key) ?? []));
     highlightElsewhereRef.current = !!highlightKeys && highlightKeys.length === 0;
+    allSeriesRef.current = stableSeries.map((x, i) => (
+      { key: x.key, label: x.label, color: x.color ?? seriesColor(i) }
+    ));
     litRef.current = [...lit]
       .map(i => keyByIndex.get(i))
       .filter((k): k is string => !!k)
