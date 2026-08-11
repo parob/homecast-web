@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
   Area,
   AreaChart,
@@ -19,7 +20,6 @@ import {
  */
 export interface DealPriceChartProps {
   chartData: { date: string; price: number }[];
-  gradientId: string;
   atlPrice: number | null;
   /** Show axes, grid and hover tooltip, at a taller size. */
   detailed?: boolean;
@@ -32,11 +32,15 @@ const shortDate = (iso: string) =>
 
 export default function DealPriceChart({
   chartData,
-  gradientId,
   atlPrice,
   detailed = false,
   currencySymbol = '',
 }: DealPriceChartProps) {
+  // The gradient id must be generated here, never derived from caller data:
+  // a product model string once leaked into it, and its spaces broke the
+  // url(#...) reference — WebKit paints a broken paint-server fill BLACK.
+  // useId's ':' delimiters are stripped for the same reason.
+  const gradientId = `deal-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
     // text-primary sets currentColor for the series, so the line and its fill
     // follow the theme instead of a hardcoded hex. One accent for every chart:

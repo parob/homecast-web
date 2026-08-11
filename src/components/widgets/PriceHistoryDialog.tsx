@@ -179,7 +179,6 @@ export function PriceHistoryDialog({ target, onClose }: PriceHistoryDialogProps)
                 <Suspense fallback={<div className="h-[200px] w-full" />}>
                   <DealPriceChart
                     chartData={chartData}
-                    gradientId={`price-hist-${target?.model ?? 'x'}`}
                     atlPrice={atlPrice}
                     detailed
                     currencySymbol={sym}

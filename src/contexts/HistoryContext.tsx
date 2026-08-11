@@ -17,20 +17,24 @@ interface HistoryContextValue {
   historyAvailable: (accessory: HomeKitAccessory) => boolean;
   /** Open the History screen. No-op outside the dashboard. */
   openHistory: (accessory: HomeKitAccessory) => void;
+  /** Open the Explorer dialog (multi-sensor comparison). */
+  openExplorer: () => void;
 }
 
 const HistoryContext = createContext<HistoryContextValue>({
   historyAvailable: () => false,
   openHistory: () => {},
+  openExplorer: () => {},
 });
 
 interface HistoryProviderProps {
   homeId: string | null;
   onOpenHistory?: (target: HistoryTarget) => void;
+  onOpenExplorer?: () => void;
   children: React.ReactNode;
 }
 
-export function HistoryProvider({ homeId, onOpenHistory, children }: HistoryProviderProps) {
+export function HistoryProvider({ homeId, onOpenHistory, onOpenExplorer, children }: HistoryProviderProps) {
   const mock = isMockHistoryEnabled();
 
   const { data } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
@@ -55,9 +59,13 @@ export function HistoryProvider({ homeId, onOpenHistory, children }: HistoryProv
     onOpenHistory({ homeId, accessory });
   }, [homeId, onOpenHistory]);
 
+  const openExplorer = useCallback(() => {
+    onOpenExplorer?.();
+  }, [onOpenExplorer]);
+
   const value = useMemo(
-    () => ({ historyAvailable, openHistory }),
-    [historyAvailable, openHistory],
+    () => ({ historyAvailable, openHistory, openExplorer }),
+    [historyAvailable, openHistory, openExplorer],
   );
 
   return (

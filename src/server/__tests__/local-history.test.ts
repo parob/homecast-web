@@ -161,28 +161,10 @@ describe('maintenance: rollups, watermarks, retention', () => {
     expect(daily[0].vMax).toBe(24);
   });
 
-  it('rawRetentionDays=0 prunes rolled samples but never unrolled ones', async () => {
+  it('keeps raw samples indefinitely — rollups summarise, nothing prunes', async () => {
     await setHistoryHomeConfig(HOME, { enabled: true, rawRetentionDays: 0 });
     const sid = seriesKey(HOME, ACC, 'current_temperature');
-    recordHistoryEvent(HOME, ACC, 'current_temperature', 20, 0, T0 + 10 * 60_000);
-    // This one is inside the still-open hour at NOW (03:30):
-    recordHistoryEvent(HOME, ACC, 'current_temperature', 23, 0, T0 + 3 * HOUR_MS + 10 * 60_000);
-    await flushHistoryBuffer();
-
-    await runHistoryMaintenance(NOW);
-
-    const samples = await db.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER);
-    // The rolled sample is gone; the open-hour sample survives.
-    expect(samples.map(s => s.v)).toEqual([23]);
-    // Its history lives on in the rollup.
-    const hourly = await db.getHistoryRollups(sid, 'h', 0, Number.MAX_SAFE_INTEGER);
-    expect(hourly.length).toBeGreaterThan(0);
-  });
-
-  it('respects a positive retention window', async () => {
-    await setHistoryHomeConfig(HOME, { enabled: true, rawRetentionDays: 30 });
-    const sid = seriesKey(HOME, ACC, 'current_temperature');
-    const old = NOW - 40 * DAY_MS;
+    const old = NOW - 400 * DAY_MS; // over a year old
     recordHistoryEvent(HOME, ACC, 'current_temperature', 18, 0, old);
     recordHistoryEvent(HOME, ACC, 'current_temperature', 21, 0, NOW - 60_000);
     await flushHistoryBuffer();
@@ -190,9 +172,9 @@ describe('maintenance: rollups, watermarks, retention', () => {
     await runHistoryMaintenance(NOW);
 
     const samples = await db.getHistorySamples(sid, 0, Number.MAX_SAFE_INTEGER);
-    expect(samples.map(s => s.v)).toEqual([21]);
-    // The 40-day-old sample was rolled before it was pruned (watermark
-    // fallback starts at the oldest sample, not one hour back).
+    expect(samples.map(s => s.v)).toEqual([18, 21]);
+    // The year-old sample was still rolled up (watermark falls back to the
+    // oldest sample), and remains in raw too.
     const hourly = await db.getHistoryRollups(sid, 'h', 0, Number.MAX_SAFE_INTEGER);
     expect(hourly[0].vLast).toBe(18);
   });

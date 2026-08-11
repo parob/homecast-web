@@ -1263,18 +1263,6 @@ async function resolveOperation(
       return { setHomeHistoryEnabled: true };
     }
 
-    case 'SetHomeHistoryRetention': {
-      const history = await import('./local-history');
-      const homeId = variables.homeId as string;
-      const days = Math.max(0, Math.min(Number(variables.rawRetentionDays) || 0, 3650));
-      const existing = (await history.getHistoryHomeConfigs())[homeId.toUpperCase()];
-      await history.setHistoryHomeConfig(homeId, {
-        enabled: existing?.enabled ?? false,
-        rawRetentionDays: days,
-      });
-      return { setHomeHistoryRetention: true };
-    }
-
     case 'SetHistorySeriesConfig': {
       const history = await import('./local-history');
       const row = await history.setHistorySeriesOverride(

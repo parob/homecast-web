@@ -869,7 +869,7 @@ export async function handleQueryHistory(args: {
         if (data.prevValue !== null) entry.opening_value = data.prevValue;
         pointsReturned += data.states.length;
       } else {
-        entry.buckets = data.stateBuckets.map(b => [iso(b.ts), b.transitions, JSON.parse(b.stateMsJson || '{}')]);
+        entry.buckets = data.stateBuckets.map(b => [iso(b.ts), b.transitions, b.stateMs]);
         entry.buckets_format = '[time, transitions, msInEachState]';
         pointsReturned += data.stateBuckets.length;
       }

@@ -94,6 +94,7 @@ import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { HistoryProvider } from '@/contexts/HistoryContext';
 import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
+const HistoryExplorerContent = React.lazy(() => import('@/components/history-explorer/HistoryExplorerContent'));
 import { DealBadge } from '@/components/widgets/DealBadge';
 import { PriceHistoryDialog, type PriceHistoryTarget } from '@/components/widgets/PriceHistoryDialog';
 import { findDealForAccessory } from '@/lib/deals';
@@ -1943,6 +1944,7 @@ const Dashboard = () => {
   const [debugAccessory, setDebugAccessory] = useState<HomeKitAccessory | null>(null);
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [debugHome, setDebugHome] = useState<{ type: 'home' | 'room' | 'collection'; data: any } | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
 
@@ -5999,7 +6001,7 @@ const Dashboard = () => {
       accessories={allAccessoriesData || []}
       onOpenPriceHistory={setPriceHistoryTarget}
     >
-    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget}>
+    <HistoryProvider homeId={selectedHomeId} onOpenHistory={setHistoryTarget} onOpenExplorer={() => setExplorerOpen(true)}>
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
@@ -7715,6 +7717,25 @@ const Dashboard = () => {
         target={historyTarget}
         onClose={() => setHistoryTarget(null)}
       />
+
+      {/* History Explorer — the multi-sensor comparison surface, as a
+          dialog over the dashboard so it reuses the already-loaded homes
+          and accessories (no cold relay round-trips). */}
+      <Dialog open={explorerOpen} onOpenChange={setExplorerOpen}>
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">History Explorer</DialogTitle>
+          </DialogHeader>
+          {explorerOpen && (
+            <React.Suspense fallback={<div className="h-[300px]" />}>
+              <HistoryExplorerContent
+                homeId={selectedHomeId}
+                accessories={allAccessoriesData || null}
+              />
+            </React.Suspense>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Debug Dialog for grouped accessories */}
       <Dialog open={!!debugAccessory} onOpenChange={(open) => !open && setDebugAccessory(null)}>

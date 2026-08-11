@@ -35,11 +35,11 @@ import { rollupBuckets, mergeBuckets, HOUR_MS, DAY_MS } from '../history/rollup'
 
 export interface HistoryHomeConfig {
   enabled: boolean;
-  /** Days of raw samples to keep. 0 = rollups-only (raw pruned once rolled). */
+  /** Legacy field, no longer applied: history is kept indefinitely. */
   rawRetentionDays: number;
 }
 
-export const DEFAULT_RAW_RETENTION_DAYS = 30;
+export const DEFAULT_RAW_RETENTION_DAYS = 0;
 const HOME_CONFIG_KEY = 'history:homes';
 const HOUR_WATERMARK_KEY = 'history:rollup:watermark:h';
 const DAY_WATERMARK_KEY = 'history:rollup:watermark:d';
@@ -303,23 +303,11 @@ export async function runHistoryMaintenance(now = Date.now()): Promise<void> {
     await db.setSetting(DAY_WATERMARK_KEY, String(dayTarget));
   }
 
-  // Retention: per home, delete raw samples past the window — but never past
-  // the hour watermark (rollups must have consumed them first).
+  // No retention pruning: history is kept indefinitely — raw samples AND
+  // rollups. The only thing that ever deletes samples is the emergency
+  // storage cap below (and the user's own purge button), and the cap still
+  // never deletes past the rollup watermark.
   const rolledThrough = hourlyClean && hourWatermark < hourTarget ? hourTarget : hourWatermark;
-  for (const series of allSeries) {
-    const config = homeConfigs.get(series.homeId);
-    if (!config?.enabled) continue;
-    const retentionCutoff = config.rawRetentionDays > 0
-      ? now - config.rawRetentionDays * DAY_MS
-      : rolledThrough;
-    const cutoff = Math.min(retentionCutoff, rolledThrough);
-    try {
-      await db.pruneHistorySamples(cutoff, series.id);
-    } catch (e) {
-      console.warn(`[LocalHistory] Prune failed for ${series.id}:`, e);
-    }
-  }
-
   await enforceStorageCap(rolledThrough);
 }
 

@@ -4,22 +4,15 @@ import { ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES, EXPORT_HISTORY } from '@/lib/graphql/queries';
 import {
   SET_HOME_HISTORY_ENABLED,
-  SET_HOME_HISTORY_RETENTION,
   SET_HISTORY_SERIES_CONFIG,
   PURGE_HISTORY,
 } from '@/lib/graphql/mutations';
 import { isCommunity } from '@/lib/config';
 import { charLabel } from '@/components/automations/format';
 import { useAccessoriesForHomes } from '@/hooks/useHomeKitData';
+import { useHistory } from '@/contexts/HistoryContext';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { HomeKitHome, HistoryStorageStatsData, HistorySeriesInfo } from '@/lib/graphql/types';
 
 /**
@@ -28,14 +21,6 @@ import type { HomeKitHome, HistoryStorageStatsData, HistorySeriesInfo } from '@/
  * privacy feature first: OFF until the user turns it on, and everything here
  * says plainly where the data lives.
  */
-
-const RETENTION_OPTIONS = [
-  { value: 7, label: '7 days' },
-  { value: 30, label: '30 days' },
-  { value: 90, label: '90 days' },
-  { value: 365, label: '1 year' },
-  { value: 0, label: 'Summaries only' },
-] as const;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -169,7 +154,6 @@ function HomeHistoryRow({ home }: { home: HomeKitHome }) {
   const stats = data?.historyStorageStats;
 
   const [setEnabled] = useMutation(SET_HOME_HISTORY_ENABLED);
-  const [setRetention] = useMutation(SET_HOME_HISTORY_RETENTION);
   const [purge] = useMutation(PURGE_HISTORY);
   const [exportHistory, { loading: exporting }] = useLazyQuery<{ exportHistory: string }>(EXPORT_HISTORY, {
     fetchPolicy: 'network-only',
@@ -234,33 +218,6 @@ function HomeHistoryRow({ home }: { home: HomeKitHome }) {
 
       {stats.enabled && (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm">Keep detailed samples for</p>
-              <p className="text-xs text-muted-foreground">
-                Older data is summarised to hourly and daily values and kept.
-              </p>
-            </div>
-            <Select
-              value={String(stats.rawRetentionDays)}
-              disabled={busy}
-              onValueChange={(value) =>
-                run(() => setRetention({ variables: { homeId: home.id, rawRetentionDays: Number(value) } }))
-              }
-            >
-              <SelectTrigger className="w-[150px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RETENTION_OPTIONS.map(o => (
-                  <SelectItem key={o.value} value={String(o.value)} className="text-xs">
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <DeviceSeriesList home={home} onChanged={() => void refetch()} />
 
           <div className="flex items-center justify-between gap-3 pt-1">
@@ -326,6 +283,7 @@ function HomeHistoryRow({ home }: { home: HomeKitHome }) {
 }
 
 export function HistorySection({ homes }: HistorySectionProps) {
+  const { openExplorer } = useHistory();
   return (
     <div className="space-y-4">
       <div>
@@ -352,7 +310,7 @@ export function HistorySection({ homes }: HistorySectionProps) {
       <p className="text-[10px] text-muted-foreground">
         Once a home is recording, open any device's context menu → History to
         see its charts, or the{' '}
-        <a href="/history" className="underline hover:text-foreground">History Explorer</a>{' '}
+        <button className="underline hover:text-foreground" onClick={() => openExplorer()}>History Explorer</button>{' '}
         to compare sensors and rooms on one graph.
       </p>
     </div>

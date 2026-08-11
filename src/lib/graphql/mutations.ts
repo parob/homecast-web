@@ -1042,12 +1042,6 @@ export const SET_HOME_HISTORY_ENABLED = gql`
   }
 `;
 
-export const SET_HOME_HISTORY_RETENTION = gql`
-  mutation SetHomeHistoryRetention($homeId: String!, $rawRetentionDays: Int!) {
-    setHomeHistoryRetention(homeId: $homeId, rawRetentionDays: $rawRetentionDays)
-  }
-`;
-
 export const SET_HISTORY_SERIES_CONFIG = gql`
   mutation SetHistorySeriesConfig($homeId: String!, $accessoryId: String!, $characteristicType: String!, $enabled: Boolean, $minIntervalS: Int, $deadband: Float) {
     setHistorySeriesConfig(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType, enabled: $enabled, minIntervalS: $minIntervalS, deadband: $deadband)

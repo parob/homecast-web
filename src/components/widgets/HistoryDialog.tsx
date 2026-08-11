@@ -5,6 +5,7 @@ import { GET_HISTORY, GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { isMockHistoryEnabled, mockHistoryData } from '@/history/mock';
+import { useHistory } from '@/contexts/HistoryContext';
 import type {
   HomeKitAccessory,
   HistorySeriesData,
@@ -128,6 +129,7 @@ function stateStats(
 }
 
 export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialogProps) {
+  const { openExplorer } = useHistory();
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const mock = isMockHistoryEnabled();
 
@@ -185,13 +187,13 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1 truncate">{target?.accessory.name ?? 'History'}</span>
-            <a
-              href={`/history?home=${encodeURIComponent(target?.homeId ?? '')}${isMockHistoryEnabled() ? '&mockHistory=1' : ''}`}
+            <button
+              onClick={() => { onClose(); openExplorer(); }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
               title="Compare with other sensors in the History Explorer"
             >
               Explorer <ExternalLink className="h-3 w-3" />
-            </a>
+            </button>
           </DialogTitle>
         </DialogHeader>
 
