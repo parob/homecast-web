@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { canonicalHistoryType } from '@/history/keys';
 import { groupStrip } from '@/history/groupStrip';
-import { stateValueLabel } from '@/history/labels';
+import { stateValueLabel, stripRoomPrefix } from '@/history/labels';
 import { isQuietRange } from '@/history/quiet';
 import { stateTotals } from '@/history/stateSummary';
 import StateTimeline from '@/components/widgets/StateTimeline';
@@ -144,13 +144,12 @@ export default function ActivityStrips({
         >
           <ChevronRight className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
           <span className="text-[11px] text-muted-foreground">
-            {/* A group's own room, when it has one and the name does not
-                already say it: "Living · Living Lights" says it twice.
-                A group whose members span rooms belongs to none. */}
-            {spansRooms && groupRoom
-              && !group.name.toLowerCase().startsWith(groupRoom.toLowerCase())
-              ? `${groupRoom} · ${group.name}`
-              : group.name}
+            {/* Strip the room, then put it back only where it distinguishes —
+                exactly what an accessory row does. "Living Lights" reads
+                "Lights" under its own room and "Living · Lights" across the
+                home; a group spanning rooms belongs to none and keeps its
+                whole name. */}
+            {groupLabel(group.name, groupRoom, spansRooms)}
           </span>
           <span className="text-[10px] text-muted-foreground/70">
             · {members.length} accessor{members.length === 1 ? 'y' : 'ies'}
@@ -214,6 +213,16 @@ export default function ActivityStrips({
       </div>
     </AnalyticsPanel>
   );
+}
+
+/**
+ * A group's name for a list that may or may not already say which room it is
+ * in — the strip-then-re-add rule the accessory rows follow.
+ */
+function groupLabel(name: string, room: string | null, spansRooms: boolean): string {
+  if (!room) return name;
+  const base = stripRoomPrefix(name, room);
+  return spansRooms ? `${room} · ${base}` : base;
 }
 
 /** A time-in-state key rendered as words — numeric codes go through the

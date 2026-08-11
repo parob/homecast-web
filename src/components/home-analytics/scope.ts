@@ -125,9 +125,20 @@ export function buildScopeTree(
       .sort((a, b) => a.name.localeCompare(b.name));
     if (members.length < 2) return [];
     const rooms = new Set(members.map(m => roomOf(m.id)));
+    const room = rooms.size === 1 ? [...rooms][0] : undefined;
     return [{
-      node: { id: group.id, name: group.name, memberCount: members.length, members },
-      room: rooms.size === 1 ? [...rooms][0] : undefined,
+      // A group is named by the same rule as an accessory: "Living Lights"
+      // sitting under Living is just "Lights". Groups are named after their
+      // room even more reliably than accessories are, so leaving them raw
+      // made the row that collapses nine bulbs the one row saying the room
+      // twice. A group spanning rooms belongs to none and keeps its name.
+      node: {
+        id: group.id,
+        name: getDisplayName(group.name, room ?? undefined),
+        memberCount: members.length,
+        members,
+      },
+      room,
     }];
   });
 

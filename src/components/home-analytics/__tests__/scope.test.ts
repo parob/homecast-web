@@ -77,6 +77,24 @@ describe('buildScopeTree', () => {
     expect(tree.groups).toEqual([]); // it belongs to a room, not to the home
   });
 
+  it('names a group the way it names an accessory — no room said twice', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A2', 'current_temperature')],
+      accessoryInfo,
+      [{ id: 'g1', name: 'Bedroom 2 Heating', memberIds: ['A1', 'A2'] }],
+    );
+    expect(tree.rooms.find(r => r.label === 'Bedroom 2')!.groups[0].name).toBe('Heating');
+  });
+
+  it('leaves a cross-room group its whole name — it has no room to drop', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo,
+      [{ id: 'g1', name: 'Bedroom 2 Heating', memberIds: ['A1', 'A3'] }],
+    );
+    expect(tree.groups[0].name).toBe('Bedroom 2 Heating');
+  });
+
   it('keeps a group that spans rooms at the top level', () => {
     const tree = buildScopeTree(
       [series('A1', 'current_temperature'), series('A3', 'current_temperature')],
