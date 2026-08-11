@@ -356,11 +356,16 @@ export default function EChartsTimeChart({
         // dialog that clips its overflow, and an unconfined tooltip near the
         // right edge was drawn half outside it. triggerOn/hideDelay stop the
         // panel flickering as the pointer crosses between stacked charts.
+        // A time marker, not a crosshair. The horizontal arm tracked the
+        // pointer's HEIGHT, which on a chart of several lines corresponds to
+        // nothing — it crossed whatever value the mouse happened to be level
+        // with. The vertical line stays: it names the instant every panel is
+        // showing, and it is what echarts.connect keeps in step across the
+        // stack, which is what makes one time axis and many measures readable.
         axisPointer: {
-          type: 'cross' as const,
+          type: 'line' as const,
           snap: true,
           label: { show: false },
-          crossStyle: { color: theme.faint },
           lineStyle: { color: theme.faint },
         },
         confine: true,
