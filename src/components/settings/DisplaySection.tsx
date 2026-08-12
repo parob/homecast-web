@@ -70,7 +70,7 @@ export function DisplaySection({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Show counts</p>
-          <p className="text-xs text-muted-foreground">Show accessory counts in sidebar and room headers</p>
+          <p className="text-xs text-muted-foreground">Show counts in the sidebar, room headers, scenes and automations</p>
         </div>
         <div className="relative flex items-center">
           {settingSaveError === 'hideAccessoryCounts' && (

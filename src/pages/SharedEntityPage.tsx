@@ -28,6 +28,7 @@ import {
   Layers,
   Zap,
   Eye,
+  Info,
   KeyRound,
   Wifi,
 } from 'lucide-react';
@@ -111,34 +112,52 @@ function SharedStatusBar({
 }) {
   const { isDarkBackground } = useBackgroundContext();
   const RoleIcon = role === 'control' ? Zap : Eye;
+  // Collapsed by default: this is provenance, read once and then in the way. The
+  // accessories are what the visitor came for, so the detail waits behind the ⓘ.
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <div className="mb-6">
+    <div className="mb-3">
       <div className={cn(
         "inline-flex items-center gap-2 text-sm",
         isDarkBackground
-          ? "text-white/70 bg-black/40 backdrop-blur-xl rounded-full px-4 py-2"
+          ? "text-white/70 bg-black/40 backdrop-blur-xl rounded-full px-3 py-1"
           : "text-muted-foreground"
       )}>
-        <span className="flex items-center gap-1">
-          <RoleIcon className="h-3 w-3" />
-          {role === 'control' ? 'Control Access' : 'View Only'}
-        </span>
-        {wsSubscribed && (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(o => !o)}
+          aria-expanded={detailsOpen}
+          aria-label="Share details"
+          className="flex items-center opacity-70 transition-opacity hover:opacity-100"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+        {detailsOpen && (
           <>
-            <span>·</span>
-            <span className="flex items-center gap-1 text-green-600">
-              <Wifi className="h-3 w-3" />
-              Live
+            <span className="flex items-center gap-1">
+              <RoleIcon className="h-3 w-3" />
+              {role === 'control' ? 'Control Access' : 'View Only'}
             </span>
+            {wsSubscribed && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1 text-green-600">
+                  <Wifi className="h-3 w-3" />
+                  Live
+                </span>
+              </>
+            )}
+            {accessoriesCount > 0 && (
+              <>
+                <span>·</span>
+                <span>{accessoriesCount} accessor{accessoriesCount !== 1 ? 'ies' : 'y'}</span>
+              </>
+            )}
           </>
         )}
-        {accessoriesCount > 0 && (
-          <>
-            <span>·</span>
-            <span>{accessoriesCount} accessor{accessoriesCount !== 1 ? 'ies' : 'y'}</span>
-          </>
-        )}
+        {/* Outside the collapse: the one action here, and the only route into
+            control access. Hiding it behind the ⓘ would bury it. */}
         {canUpgrade && (
           <>
             <button

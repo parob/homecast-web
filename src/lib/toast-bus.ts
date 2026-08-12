@@ -52,19 +52,16 @@ export function toastConnection(prev: ConnState, next: ConnState): void {
   if (prev === 'disconnected' && next === 'connecting') return;
   if (prev === 'connecting' && next === 'connected') return;
 
-  // Drop → visible warning. Use a persistent toast ID so subsequent
-  // disconnects replace rather than stack.
+  // Drop → a quiet note that we are working on it. Use a persistent toast ID so
+  // subsequent disconnects replace rather than stack.
+  //
+  // Deliberately neutral, not `.warning`: a drop is nearly always transient, and
+  // "Connection lost" in alarm colours asked the user to act on something they
+  // cannot act on. The description said the same thing twice, so it is gone.
   if ((prev === 'connected' || prev === 'connecting') &&
       (next === 'disconnected' || next === 'reconnecting')) {
     if (!shouldShow('conn:down')) return;
-    toast.warning('Connection lost', {
-      id: 'conn',
-      description:
-        next === 'reconnecting'
-          ? 'Reconnecting to Homecast…'
-          : 'Trying to reach Homecast.',
-      duration: 6000,
-    });
+    toast('Connecting…', { id: 'conn', duration: 4000 });
     return;
   }
 
@@ -72,7 +69,7 @@ export function toastConnection(prev: ConnState, next: ConnState): void {
   if ((prev === 'reconnecting' || prev === 'disconnected') && next === 'connected') {
     if (lastShown.has('conn:down')) {
       if (!shouldShow('conn:up')) return;
-      toast.success('Reconnected', { id: 'conn', duration: 3000 });
+      toast('Reconnected', { id: 'conn', duration: 3000 });
       lastShown.delete('conn:down');
     }
     return;

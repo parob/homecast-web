@@ -27,11 +27,13 @@ interface ScenesSectionProps {
  * Compact bubble button for the sensor-summary row. Toggles the
  * ScenesSection content rendered elsewhere on the page.
  */
-export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
+export function ScenesPill({ homeId, open, onToggle, isDarkBackground, hideAccessoryCounts }: {
   homeId: string;
   open: boolean;
   onToggle: () => void;
   isDarkBackground?: boolean;
+  /** The "Show counts" display setting, inverted. Same toggle the sidebar obeys. */
+  hideAccessoryCounts?: boolean;
 }) {
   const { data } = useQuery<{ scenes: HomeKitScene[] }>(GET_SCENES, {
     variables: { homeId },
@@ -56,8 +58,7 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground }: {
           : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'),
       )}
     >
-      <Zap className="h-3 w-3" />
-      <span>Scenes{count > 0 ? ` ${count}` : ''}</span>
+      <span>Scenes{!hideAccessoryCounts && count > 0 ? ` ${count}` : ''}</span>
       <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
     </button>
   );

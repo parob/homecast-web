@@ -16,7 +16,10 @@ import type {
 } from '@/lib/graphql/types';
 import { ErrorWithTrace } from './ErrorWithTrace';
 import type { RequestTrace } from '@/lib/types/trace';
-import { AreaSummary } from '@/components/summary';
+import { AreaSummary, StatusPill } from '@/components/summary';
+import { AnimatedCollapse } from '@/components/ui/animated-collapse';
+import { useSensorAggregation } from '@/hooks/useSensorAggregation';
+import type { HomeKitAccessory as NativeHomeKitAccessory } from '@/native/homekit-bridge';
 import { AccessoryWidget, ServiceGroupWidget, getRoomIcon, WidgetInteractionContext } from '@/components/widgets';
 import {
   useSharedWebSocket,
@@ -38,6 +41,21 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+
+// Matches the Dashboard's breadcrumb crumbs. Kept as a local copy rather than
+// exported from Dashboard.tsx, which is an 8,700-line page module.
+const BREADCRUMB_LINK_CLASS =
+  'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
+
+/**
+ * The summary widgets (StatusPill, AreaSummary, useSensorAggregation) type their
+ * input as the native bridge's HomeKitAccessory, where `category` is required;
+ * the public share query returns the GraphQL one, where it is optional. The two
+ * are the same object at runtime and nothing on the summary path reads
+ * `category`, so cross the boundary here rather than widen the native type for
+ * every caller of it.
+ */
+const forSummary = (list: HomeKitAccessory[]) => list as NativeHomeKitAccessory[];
 
 interface SharedHomeViewProps {
   entityData: SharedEntityData;
@@ -504,6 +522,9 @@ export function SharedHomeView({
   const selectedRoom = useExternalSidebar ? externalSelectedRoom ?? null : internalSelectedRoom;
   const setSelectedRoom = useExternalSidebar ? (onExternalRoomSelect ?? (() => {})) : setInternalSelectedRoom;
 
+  // Whole-home sensor bubbles, collapsed behind the Status pill by default.
+  const [statusOpen, setStatusOpen] = useState(false);
+
   // Filter accessories by selected room
   const filteredRoomNames = selectedRoom ? [selectedRoom] : roomNames;
 
@@ -599,6 +620,11 @@ export function SharedHomeView({
 
   // Check if we have rooms to show in sidebar (computed before early returns for hooks consistency)
   const hasRooms = roomNames.length > 1;
+
+  // Gate the whole Status block, not just its contents. StatusPill and AreaSummary
+  // each render null without readings, but the wrapper holding them would still
+  // take a space-y-6 gap from the accessories below it.
+  const { hasData: hasSensorData } = useSensorAggregation(forSummary(accessories));
 
   // Sidebar content - computed before early returns to ensure hooks are called consistently
   const sidebarContent = (!accessoriesLoading && !accessoriesError && accessories.length > 0 && hasRooms) ? (
@@ -834,52 +860,46 @@ export function SharedHomeView({
 
         {/* Main content */}
         <div className="flex-1 space-y-6 min-w-0">
-          {/* Mobile-only horizontal room picker — keeps room nav visible
-              alongside the device list, since the off-canvas Sheet menu would
-              otherwise hide the devices while open. */}
-          {hasRooms && (
-            <div className="md:hidden -mx-3 px-3 overflow-x-auto scrollbar-hidden">
-              <div className="flex gap-2 w-max">
-                <button
-                  onClick={() => setSelectedRoom(null)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
-                    isDarkBackground
-                      ? `text-white ${selectedRoom === null ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
-                      : selectedRoom === null
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted hover:bg-muted/80"
-                  )}
-                >
-                  <House className="h-3.5 w-3.5" />
-                  <span className="truncate max-w-[120px]">{homeName}</span>
-                </button>
-                {roomNames.map((roomName) => {
-                  const RoomIcon = getRoomIcon(roomName);
-                  return (
-                    <button
-                      key={roomName}
-                      onClick={() => setSelectedRoom(roomName)}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
-                        isDarkBackground
-                          ? `text-white ${selectedRoom === roomName ? 'bg-white/20' : 'bg-white/5 hover:bg-white/10'}`
-                          : selectedRoom === roomName
-                            ? "bg-secondary text-secondary-foreground"
-                            : "bg-muted hover:bg-muted/80"
-                      )}
-                    >
-                      <RoomIcon className="h-3.5 w-3.5" />
-                      <span className="truncate max-w-[120px]">{roomName}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Which room you are in. Only with one picked: on the whole home the
+              header already carries the name, and a second copy would just push
+              the accessories down. The home crumb is also the way back out —
+              the job the mobile room-pill row used to do before it was removed
+              for repeating the drawer beside it. */}
+          {selectedRoom && (
+            <h2 className={`text-base font-bold truncate ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+              <button
+                type="button"
+                onClick={() => setSelectedRoom(null)}
+                className={BREADCRUMB_LINK_CLASS}
+              >
+                {homeName}
+              </button>
+              <span className="opacity-60"> / </span>
+              {selectedRoom}
+            </h2>
           )}
 
-          {/* Area Summary - aggregated sensor readings */}
-          <AreaSummary accessories={accessories} isDarkBackground={isDarkBackground} />
+          {/* Sensor readings. A whole home aggregates every room, which is a long
+              row, so it sits behind a pill the way the dashboard does it. One
+              room's readings are short enough to earn the space and stay inline. */}
+          {selectedRoom ? (
+            <AreaSummary
+              accessories={forSummary(accessoriesByRoom[selectedRoom] ?? [])}
+              isDarkBackground={isDarkBackground}
+            />
+          ) : hasSensorData ? (
+            <div className="space-y-2">
+              <StatusPill
+                accessories={forSummary(accessories)}
+                open={statusOpen}
+                onToggle={() => setStatusOpen(o => !o)}
+                isDarkBackground={isDarkBackground}
+              />
+              <AnimatedCollapse open={statusOpen}>
+                <AreaSummary accessories={forSummary(accessories)} isDarkBackground={isDarkBackground} />
+              </AnimatedCollapse>
+            </div>
+          ) : null}
 
           {/* Render with room groups if available, otherwise flat rooms */}
           {roomGroupsData && !selectedRoom ? (

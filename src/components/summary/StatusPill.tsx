@@ -7,7 +7,7 @@
  * readings are short enough to earn the space.
  */
 
-import { ChevronRight, Gauge } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useSensorAggregation } from '@/hooks/useSensorAggregation';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { cn } from '@/lib/utils';
@@ -43,7 +43,6 @@ export function StatusPill({ accessories, open, onToggle, isDarkBackground }: St
           : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'),
       )}
     >
-      <Gauge className="h-3 w-3" />
       <span>Status</span>
       <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
     </button>

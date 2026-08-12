@@ -112,7 +112,10 @@ export function MainLayout({
               </SheetTrigger>
               {/* Mac: clear the traffic lights the same way the Dashboard drawer
                   does — inset the padding, not the panel. */}
-              <SheetContent side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", isDarkBackground ? "material-regular-dark" : "bg-background")} style={isInMacApp ? { paddingTop: 33 } : undefined} aria-describedby={undefined}>
+              {/* No close button: unlike the Dashboard drawer, this one opens
+                  straight onto its nav, so the X landed on top of the first row.
+                  Picking any nav button closes it, as does tapping outside or Esc. */}
+              <SheetContent hideCloseButton side="left" className={cn("w-[266px] p-0 overflow-x-hidden border-none safe-area-top safe-area-bottom safe-area-left", isDarkBackground ? "material-regular-dark" : "bg-background")} style={isInMacApp ? { paddingTop: 33 } : undefined} aria-describedby={undefined}>
                 <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                 <div className="h-full flex flex-col overflow-hidden">
                   {/* Close sheet when a nav button is clicked */}

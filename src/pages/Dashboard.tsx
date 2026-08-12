@@ -3198,6 +3198,19 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, [isConnectingOverlay]);
 
+  // Hold the document still while the connecting overlay is up. The overlay is
+  // hand-rolled rather than a Radix dialog, so it gets none of react-remove-scroll's
+  // behaviour; in the browser the document itself is the scroller (the container
+  // below sets minHeight: 120vh), so a wheel or drag over the blur moved the page.
+  // The previous inline value is restored rather than cleared so a Radix dialog
+  // that locked scroll first keeps its own lock afterwards.
+  useEffect(() => {
+    if (!isConnectingOverlay) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [isConnectingOverlay]);
+
   // Combined service groups data - use relay data
   const serviceGroupsData = relayServiceGroupsData ? { serviceGroups: relayServiceGroupsData } : null;
   const refetchServiceGroups = relayRefetchServiceGroups;
@@ -6969,8 +6982,8 @@ const Dashboard = () => {
               maxPullDownDistance={95}
               resistance={1}
               backgroundColor="transparent"
-              refreshingContent={<Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto mt-3" />}
-              pullingContent={<ArrowDown className="h-5 w-5 text-muted-foreground mx-auto mt-3" />}
+              refreshingContent={<Loader2 className={`h-5 w-5 animate-spin mx-auto mt-3 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`} />}
+              pullingContent={<ArrowDown className={`h-5 w-5 mx-auto mt-3 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`} />}
             >
             <div className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
               {/* Pending Invitations Modal */}
@@ -7022,11 +7035,14 @@ const Dashboard = () => {
                 </DialogContent>
               </Dialog>
               {/* Transient relay drop on an already-loaded home: keep the
-                  dashboard visible, just flag that it's reconnecting. */}
+                  dashboard visible, just flag that it's reconnecting. Deliberately
+                  quiet — amber read as an error for something that usually resolves
+                  itself, so this borrows the toast's glass pill instead. The home
+                  name is dropped: it is already the title directly above. */}
               {relayReconnecting && (
-                <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/15 px-4 py-1.5 text-xs font-medium text-amber-700 shadow-sm backdrop-blur dark:text-amber-200">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Reconnecting to {homes.find(h => h.id === selectedHomeId)?.name || 'your home'}…
+                <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-xl animate-in fade-in duration-300">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Connecting…
                 </div>
               )}
               {/* Enrollment Setup View */}
@@ -7395,12 +7411,14 @@ const Dashboard = () => {
                         open={scenesOpen}
                         onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
+                        hideAccessoryCounts={hideAccessoryCounts}
                       />
                       <AutomationsPill
                         homeId={selectedHomeId!}
                         open={automationsOpen}
                         onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
+                        hideAccessoryCounts={hideAccessoryCounts}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
                       />
                       <StatusPill
@@ -8692,10 +8710,20 @@ const Dashboard = () => {
       </AlertDialog>
         </div>{/* close main container */}
     {/* Loading overlay */}
-    <div className={cn(
-      "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-opacity duration-300",
-      isConnectingOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
-    )}>
+    <div
+      role="status"
+      aria-live="polite"
+      // Always mounted so it can fade, so it must leave the a11y tree when
+      // invisible — otherwise the live region announces the Refreshing/Connecting
+      // swap to a screen reader with nothing on screen.
+      aria-hidden={!isConnectingOverlay}
+      className={cn(
+        // touch-none + overscroll-contain stop a drag over the blur from chaining
+        // to the scroller behind it. This div is a sibling of the app's scroll
+        // container, not a child, so without them the page scrolls underneath.
+        "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-opacity duration-300 touch-none overscroll-contain",
+        isConnectingOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+      )}>
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
         <p className="text-white/80 text-sm">{isManualRefreshing ? 'Refreshing...' : 'Connecting...'}</p>

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { Plus, ChevronRight, Check, Workflow } from 'lucide-react';
+import { Plus, ChevronRight, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -37,11 +37,13 @@ interface AutomationsSectionProps {
  * Compact bubble button for the sensor-summary row. Toggles the
  * AutomationsSection content rendered elsewhere on the page.
  */
-export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demoAutomations }: {
+export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, hideAccessoryCounts, demoAutomations }: {
   homeId: string;
   open: boolean;
   onToggle: () => void;
   isDarkBackground?: boolean;
+  /** The "Show counts" display setting, inverted. Same toggle the sidebar obeys. */
+  hideAccessoryCounts?: boolean;
   demoAutomations?: HomeKitAutomation[];
 }) {
   const { data } = useQuery<GetAutomationsResponse>(GET_AUTOMATIONS, {
@@ -77,8 +79,7 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, demo
           : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80')
       }`}
     >
-      <Workflow className="h-3 w-3" />
-      <span>Automations{count > 0 ? ` ${count}` : ''}</span>
+      <span>Automations{!hideAccessoryCounts && count > 0 ? ` ${count}` : ''}</span>
       <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
     </button>
   );
