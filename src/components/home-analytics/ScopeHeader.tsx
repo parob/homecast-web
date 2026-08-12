@@ -66,7 +66,17 @@ export default function ScopeHeader({
           const last = i === crumbs.length - 1;
           return (
             <span key={`${crumb.label}-${i}`} className="flex min-w-0 items-center gap-0.5">
-              {(i > 0 || title) && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              {(i > 0 || title) && (
+                // The title is hidden by CSS below sm, so the chevron that
+                // separates it from the first crumb has to hide the same way
+                // — otherwise a phone opens on a separator with nothing on
+                // its left.
+                <ChevronRight
+                  className={`h-3.5 w-3.5 shrink-0 text-muted-foreground ${
+                    i === 0 && title ? 'hidden sm:block' : ''
+                  }`}
+                />
+              )}
               {last ? (
                 <span className="truncate font-medium">{crumb.label}</span>
               ) : (
@@ -82,7 +92,8 @@ export default function ScopeHeader({
         })}
       </nav>
 
-      <div className="order-3 inline-flex shrink-0 basis-full items-center justify-center rounded-lg bg-muted p-0.5 sm:order-2 sm:basis-auto sm:justify-start">
+      <div className="order-3 basis-full sm:order-2 sm:basis-auto">
+        <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
         {RANGES.map(r => (
           <button
             key={r.label}
@@ -96,6 +107,7 @@ export default function ScopeHeader({
             {r.label}
           </button>
         ))}
+        </div>
       </div>
 
       {onClose && (

@@ -94,19 +94,23 @@ export default function ScopeTree({
     needle ? tree.groups.filter(g => g.name.toLowerCase().includes(needle)) : tree.groups
   ), [tree.groups, needle]);
 
-  const rowBase = 'w-full flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors';
+  // The main navigation's room rows, exactly: px-3 py-2 text-sm with 16px
+  // icons. This tree is the same job in a narrower column, and on a phone it
+  // IS that menu — a sidebar that changes size depending on which screen
+  // opened it reads as two different lists.
+  const rowBase = 'w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors';
   const selected = 'bg-primary/10 text-foreground font-medium';
   const plain = 'text-muted-foreground hover:bg-muted hover:text-foreground';
 
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Find a room or accessory"
-          className="h-7 w-full rounded-md border bg-background pl-7 pr-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+          className="h-9 w-full rounded-lg border bg-background pl-8 pr-2 text-sm outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
 
@@ -125,9 +129,9 @@ export default function ScopeTree({
                   onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
                   aria-label={isCurrent ? `Collapse ${home.name}` : `Expand ${home.name}`}
                 >
-                  <ChevronRight className={`h-3 w-3 transition-transform ${isCurrent ? 'rotate-90' : ''}`} />
+                  <ChevronRight className={`h-4 w-4 transition-transform ${isCurrent ? 'rotate-90' : ''}`} />
                 </button>
-                <Home className="h-3.5 w-3.5 shrink-0" />
+                <Home className="h-4 w-4 shrink-0" />
                 <button
                   className="min-w-0 flex-1 truncate text-left"
                   onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
@@ -148,7 +152,7 @@ export default function ScopeTree({
                   onClick={() => toggle(room.room)}
                   aria-label={open ? `Collapse ${room.label}` : `Expand ${room.label}`}
                 >
-                  <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+                  <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
                 </button>
                 <button
                   className="min-w-0 flex-1 truncate text-left"
@@ -156,7 +160,7 @@ export default function ScopeTree({
                 >
                   {room.label}
                 </button>
-                <span className="shrink-0 text-[0.625rem] opacity-60">{room.total}</span>
+                <span className="shrink-0 text-xs opacity-60">{room.total}</span>
               </div>
               {open && room.groups.map(group => {
                 const groupOpen = openGroups.has(group.id);
@@ -172,16 +176,16 @@ export default function ScopeTree({
                         onClick={() => toggleGroup(group.id)}
                         aria-label={groupOpen ? `Collapse ${group.name}` : `Expand ${group.name}`}
                       >
-                        <ChevronRight className={`h-3 w-3 transition-transform ${groupOpen ? 'rotate-90' : ''}`} />
+                        <ChevronRight className={`h-4 w-4 transition-transform ${groupOpen ? 'rotate-90' : ''}`} />
                       </button>
-                      <Layers className="h-3 w-3 shrink-0 opacity-70" />
+                      <Layers className="h-4 w-4 shrink-0 opacity-70" />
                       <button
                         className="min-w-0 flex-1 truncate text-left"
                         onClick={() => onSelect({ level: 'group', groupId: group.id })}
                       >
                         {group.name}
                       </button>
-                      <span className="shrink-0 text-[0.625rem] opacity-60">{group.memberCount}</span>
+                      <span className="shrink-0 text-xs opacity-60">{group.memberCount}</span>
                     </div>
                     {groupOpen && group.members.map(member => {
                       const MemberIcon = accessoryIcon(member.widgetType);
@@ -191,9 +195,9 @@ export default function ScopeTree({
                         className={`${rowBase} pl-11 ${activeAccessory === member.id ? selected : plain}`}
                         onClick={() => onSelect({ level: 'accessory', accessoryId: member.id })}
                       >
-                        <MemberIcon className="h-3 w-3 shrink-0 opacity-70" />
+                        <MemberIcon className="h-4 w-4 shrink-0 opacity-70" />
                         <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                        <span className="shrink-0 text-[0.625rem] opacity-60">{member.seriesCount}</span>
+                        <span className="shrink-0 text-xs opacity-60">{member.seriesCount}</span>
                       </button>
                       );
                     })}
@@ -208,9 +212,9 @@ export default function ScopeTree({
                     className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
                     onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
                   >
-                    <AccIcon className="h-3 w-3 shrink-0 opacity-70" />
+                    <AccIcon className="h-4 w-4 shrink-0 opacity-70" />
                     <span className="min-w-0 flex-1 truncate">{acc.name}</span>
-                    <span className="shrink-0 text-[0.625rem] opacity-60">{acc.seriesCount}</span>
+                    <span className="shrink-0 text-xs opacity-60">{acc.seriesCount}</span>
                   </button>
                 );
               })}
@@ -225,7 +229,7 @@ export default function ScopeTree({
 
         {groups.length > 0 && (
           <>
-            <p className="px-2 pt-3 pb-1 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Across rooms
             </p>
             {groups.map(group => (
@@ -234,16 +238,16 @@ export default function ScopeTree({
                 className={`${rowBase} ${scope.level === 'group' && scope.groupId === group.id ? selected : plain}`}
                 onClick={() => onSelect({ level: 'group', groupId: group.id })}
               >
-                <Layers className="h-3.5 w-3.5 shrink-0" />
+                <Layers className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                <span className="shrink-0 text-[0.625rem] opacity-60">{group.memberCount}</span>
+                <span className="shrink-0 text-xs opacity-60">{group.memberCount}</span>
               </button>
             ))}
           </>
         )}
 
         {rooms.length === 0 && groups.length === 0 && needle && (
-          <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing matches “{filter}”.</p>
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches “{filter}”.</p>
         )}
       </div>
     </div>
