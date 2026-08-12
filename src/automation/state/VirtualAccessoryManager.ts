@@ -359,10 +359,18 @@ export class VirtualAccessoryManager {
       startedAt: Date.now(),
     };
 
+    // When it falls due, captured now rather than read back afterwards.
+    // setTimeout has no deadline guarantee — a backgrounded tab throttles it
+    // and a Mac under App Nap can hold it for seconds — so stamping
+    // `Date.now()` inside the callback recorded a finish later than the one
+    // the countdown actually showed. It has to be captured here because the
+    // callback zeroes `remaining` before anything can derive from it.
+    const dueAt = (timerState.startedAt ?? Date.now()) + totalMs;
+
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      timerState.finishedAt = Date.now();
+      timerState.finishedAt = dueAt;
       this.setValue(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
@@ -397,14 +405,19 @@ export class VirtualAccessoryManager {
     timerState.state = 'active';
     timerState.startedAt = Date.now();
 
+    // Resuming runs for what was left, so the due instant is measured from the
+    // resume — same reason as above for capturing it up front.
+    const remainingAtResume = timerState.remaining;
+    const dueAt = timerState.startedAt + remainingAtResume;
+
     timerState.timer = setTimeout(() => {
       timerState.state = 'idle';
       timerState.remaining = 0;
-      timerState.finishedAt = Date.now();
+      timerState.finishedAt = dueAt;
       this.setValue(accessoryId, 'idle');
       this.fireEvent('timer.finished', { accessoryId });
       this.pushState(accessoryId, 'idle');
-    }, timerState.remaining);
+    }, remainingAtResume);
 
     this.setValue(accessoryId, 'active');
     this.fireEvent('timer.resumed', { accessoryId });
@@ -576,7 +589,13 @@ export class VirtualAccessoryManager {
     const t = this.timers.get(def.id);
     // The configured duration, not the running TimerState's — an idle one
     // carries 0, which is true and useless to something about to start it.
-    const durationMs = durationToMs(def.duration);
+    //
+    // A timer's `duration` is optional, though: a Start action can supply one,
+    // in which case the definition has none and only the run knows how long it
+    // is. Reading it unguarded threw on the first such timer, and because
+    // `listVirtualAccessories` asks this for every timer it took the whole
+    // accessory list down with it — not just the tile.
+    const durationMs = def.duration ? durationToMs(def.duration) : (t?.duration ?? 0);
     if (!t || t.state === 'idle') return { state: 'idle', durationMs, finishedAt: t?.finishedAt };
     if (t.state === 'paused') return { state: 'paused', durationMs, remainingMs: t.remaining };
     return {

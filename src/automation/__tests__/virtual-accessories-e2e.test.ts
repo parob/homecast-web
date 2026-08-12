@@ -266,6 +266,26 @@ describe('timer (resettable, unlike HomeKit "turn off after")', () => {
     expect(bridge.setCharacteristic).toHaveBeenCalled();
   });
 
+  it('records when the countdown was due, not when the callback ran', async () => {
+    // setTimeout has no deadline guarantee — a throttled tab or a Mac under
+    // App Nap delivers it late — so a stamped `Date.now()` recorded a finish
+    // after the one the countdown itself showed. Fake timers reproduce that
+    // exactly: advancing past the due point runs the callback at the later
+    // clock reading.
+    engine.loadAutomations([
+      automation('start', [{ id: 'h1', type: 'virtual', accessoryId: 'bathroom_timer', operation: 'start', duration: { minutes: 5 } }]),
+    ]);
+
+    const startedAt = Date.now();
+    await engine.manualTrigger('start');
+    // Overshoot: the callback lands well past the moment it was due for.
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 30_000);
+
+    const info = engine.virtualManager.getTimerInfo('bathroom_timer');
+    expect(info?.state).toBe('idle');
+    expect(info?.finishedAt).toBe(startedAt + 5 * 60_000);
+  });
+
   it('cancelling stops it firing', async () => {
     engine.loadAutomations([
       automation('start', [{ id: 'h1', type: 'virtual', accessoryId: 'bathroom_timer', operation: 'start', duration: { minutes: 1 } }]),
@@ -313,5 +333,28 @@ describe('persistence', () => {
 
     expect(restored.stateStore.getVirtualState('bathroom_timer')).toBe('idle');
     restored.teardown();
+  });
+});
+
+describe('a timer whose duration comes from the action', () => {
+  // `duration` is optional on a timer definition — a Start action can carry it
+  // instead. Reading it unguarded threw, and listVirtualAccessories asks for
+  // it per timer, so one such helper broke the whole accessory list.
+  it('reports its running duration without a configured one', async () => {
+    vi.useFakeTimers();
+    try {
+      engine.loadAutomations([
+        automation('start', [{ id: 'h1', type: 'virtual', accessoryId: 'bathroom_timer', operation: 'start', duration: { seconds: 30 } }]),
+      ]);
+
+      expect(() => engine.virtualManager.getTimerInfo('bathroom_timer')).not.toThrow();
+
+      await engine.manualTrigger('start');
+      const info = engine.virtualManager.getTimerInfo('bathroom_timer');
+      expect(info?.state).toBe('active');
+      expect(info?.durationMs).toBe(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -147,3 +147,50 @@ describe('timer parity: MQTT browser vs dashboard', () => {
     expect(fromMqtt).toBe(fromRelay);
   });
 });
+
+describe('a finish instant that was never stamped', () => {
+  afterEach(cleanup);
+
+  it('derives the last run from an end instant that has passed', () => {
+    // What a retained MQTT payload looks like for a run that ended while
+    // nothing was watching: the instants describe the run, but no source ever
+    // recorded a separate "finished at".
+    const ended = Date.now() - 60_000;
+    const adapted = mqttToAccessory(
+      'homecast/county-hall-2d10/porch/porch-cooldown-2c12',
+      JSON.stringify({
+        timer: 'idle',
+        timer_started_at: ended - DURATION,
+        timer_ends_at: ended,
+        timer_duration_ms: DURATION,
+      }),
+      true,
+    );
+
+    // Identical to the same timer reporting the finish outright.
+    const explicit = readoutOf(relayAccessory({
+      virtualTimerState: 'idle',
+      virtualDurationMs: DURATION,
+      virtualFinishedAt: ended,
+    }));
+
+    expect(readoutOf(adapted!.accessory, true)).toBe(explicit);
+  });
+
+  it('does not read a running countdown as already finished', () => {
+    // endsAt is in the future here — it describes what is happening, not what
+    // happened, and must not be mistaken for a previous run.
+    const adapted = mqttToAccessory(
+      'homecast/county-hall-2d10/porch/porch-cooldown-2c12',
+      JSON.stringify({
+        timer: 'active',
+        timer_started_at: Date.now(),
+        timer_ends_at: Date.now() + DURATION,
+        timer_duration_ms: DURATION,
+      }),
+      true,
+    );
+
+    expect(readoutOf(adapted!.accessory, true)).not.toMatch(/Time’s up/);
+  });
+});

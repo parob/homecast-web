@@ -404,8 +404,23 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // countdown locally catches it immediately; the reported instant catches the
   // ones this tile wasn't mounted for — including a page opened seconds after
   // it fired. Neither alone is enough.
+  // A third way to learn it ran out, for sources that never carried a finish
+  // instant of their own: a countdown that is no longer running but whose end
+  // instant has passed ended AT that instant, by arithmetic. MQTT is the case
+  // that needs it — a retained payload describes the run without stamping when
+  // it stopped — and it costs nothing where a real one is reported, because
+  // the derived value is the same number.
+  //
+  // Guarded on not-running: a live countdown's `endsAt` is in the future and
+  // says nothing about a previous run.
+  const derivedFinish = charType === 'virtual_timer' && !running
+    ? (() => {
+      const endsAt = liveTimer?.endsAt ?? meta.virtualEndsAt;
+      return typeof endsAt === 'number' && endsAt <= Date.now() ? endsAt : undefined;
+    })()
+    : undefined;
   const reportedFinish = charType === 'virtual_timer'
-    ? (liveTimer?.finishedAt ?? meta.virtualFinishedAt)
+    ? (liveTimer?.finishedAt ?? meta.virtualFinishedAt ?? derivedFinish)
     : undefined;
   const watchedFinish = charType === 'virtual_timer'
     ? noteCountdown(accessory.id, running, timerTarget)
