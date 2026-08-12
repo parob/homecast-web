@@ -493,9 +493,9 @@ const TOOLS = [
       'Call get_state first for home/accessory slug keys and property names — same vocabulary throughout. ' +
       'TRIGGERS (array, at least one; ANY firing runs the automation): ' +
       '{"type":"device","accessory":"<slug>","characteristic":"<prop>","to":<v>,"from":<v> (optional),' +
-      '"for":<seconds or {minutes}> (optional, must hold that long)} — or "virtual":"<slug>" instead of "accessory" ' +
-      'to trigger off a virtual accessory (omit "characteristic": a virtual carries exactly one, decided by its ' +
-      'type), or "service_group":"<id>" for a group | ' +
+      '"for":<seconds or {minutes}> (optional, must hold that long)} — or "service_group":"<id>" for a group | ' +
+      '{"type":"virtual","virtual":"<slug>","to":<v>} — fire on a stored value changing; omit "characteristic" ' +
+      '(a virtual carries exactly one, decided by its type, and we fill it in), add above/below for a threshold | ' +
       '{"type":"numeric","accessory":"<slug>","characteristic":"relative_humidity","above":65,"below":<n>,"for":<...>} ' +
       '— THE THRESHOLD TRIGGER HomeKit cannot do; above/below at least one | ' +
       '{"type":"time","at":"07:30","weekdays":[1,2,3,4,5] (optional, 0=Sun)} | ' +

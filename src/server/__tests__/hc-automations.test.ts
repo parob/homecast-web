@@ -223,6 +223,51 @@ describe('virtual accessories — the stored state HomeKit has nowhere to put', 
     expect(stored.triggers[0].characteristicType).toBe('virtual_timer');
   });
 
+  it('takes "virtual" as a trigger type, the way conditions and actions do', async () => {
+    // The grammar names it a type everywhere else, so agents send it here too.
+    // It is a device trigger with an engine-owned target, not a shape of its
+    // own — so route it rather than rejecting a request that is unambiguous.
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111', name: 'House Mode', type: 'mode',
+      options: ['Home', 'Away'],
+    });
+    const created = await handleCreateHcAutomation({
+      home: 'george_street_1111',
+      name: 'Leaving',
+      triggers: [{ type: 'virtual', virtual: 'house_mode', to: 'Away' }],
+      actions: [{ type: 'virtual', virtual: 'house_mode', operation: 'set', value: 'Home' }],
+    });
+    const stored = JSON.parse(automationRows.find(r => r.id === created.automation.id)!.data);
+    expect(stored.triggers[0]).toMatchObject({
+      type: 'state', characteristicType: 'virtual_mode', to: 'Away',
+    });
+  });
+
+  it('makes a virtual trigger numeric when a threshold comes with it', async () => {
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111', name: 'Wash Count', type: 'counter',
+    });
+    const created = await handleCreateHcAutomation({
+      home: 'george_street_1111',
+      name: 'Too many washes',
+      triggers: [{ type: 'virtual', virtual: 'wash_count', above: 3 }],
+      actions: [{ type: 'notify', message: 'Three loads today' }],
+    });
+    const stored = JSON.parse(automationRows.find(r => r.id === created.automation.id)!.data);
+    expect(stored.triggers[0]).toMatchObject({
+      type: 'numeric_state', characteristicType: 'virtual_count', above: 3,
+    });
+  });
+
+  it('says which key names the target when a virtual trigger has none', async () => {
+    await expect(handleCreateHcAutomation({
+      home: 'george_street_1111',
+      name: 'Nowhere',
+      triggers: [{ type: 'virtual', to: 'Away' }],
+      actions: [{ type: 'notify', message: 'x' }],
+    })).rejects.toThrow(/virtual trigger requires "virtual"/);
+  });
+
   it('refuses a mode accessory with no options rather than creating a useless one', async () => {
     await expect(handleCreateVirtualAccessory({
       home: 'george_street_1111', name: 'Broken', type: 'mode',

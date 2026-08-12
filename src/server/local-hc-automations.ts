@@ -224,8 +224,20 @@ interface CompileContext {
 }
 
 function compileTrigger(raw: Record<string, any>, ctx: CompileContext): Trigger {
-  const type = raw.type;
+  let type = raw.type;
   const base = { id: newId() };
+
+  // Conditions and actions both take `virtual` as a type of their own, so
+  // agents reach for it on triggers too. It is not a shape of its own — it is a
+  // device (or numeric, if a threshold came with it) trigger whose target is
+  // engine-owned — but the request is unambiguous, so route it rather than
+  // rejecting it.
+  if (type === 'virtual') {
+    const ref = raw.virtual || raw.accessory;
+    if (!ref) throw new Error('virtual trigger requires "virtual"');
+    raw = { ...raw, virtual: ref, accessory: undefined };
+    type = raw.above !== undefined || raw.below !== undefined ? 'numeric' : 'device';
+  }
 
   if (type === 'device' || type === 'numeric') {
     let prop = raw.characteristic || raw.characteristicType;
@@ -301,7 +313,7 @@ function compileTrigger(raw: Record<string, any>, ctx: CompileContext): Trigger 
   }
 
   throw new Error(
-    `Unsupported trigger type: ${type}. Supported: [device, numeric, time, sun, webhook]`
+    `Unsupported trigger type: ${type}. Supported: [device, numeric, virtual, time, sun, webhook]`
   );
 }
 
