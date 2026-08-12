@@ -61,22 +61,20 @@ export default function ScopeHeader({
             <Menu className="h-5 w-5" />
           </button>
         )}
-        {title && <span className="hidden shrink-0 text-base font-semibold leading-6 sm:inline">{title}</span>}
+        {title && (
+          <span className="hidden shrink-0 items-center gap-0.5 sm:inline-flex">
+            <span className="text-base font-semibold leading-6">{title}</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </span>
+        )}
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
           return (
+            // The chevron TRAILS its own crumb rather than leading the next
+            // one, so when the trail wraps it stays at the end of the line it
+            // finished — a line that opens with a separator reads as a step
+            // whose parent is missing.
             <span key={`${crumb.label}-${i}`} className="flex items-center gap-0.5">
-              {(i > 0 || title) && (
-                // The title is hidden by CSS below sm, so the chevron that
-                // separates it from the first crumb has to hide the same way
-                // — otherwise a phone opens on a separator with nothing on
-                // its left.
-                <ChevronRight
-                  className={`h-3.5 w-3.5 shrink-0 text-muted-foreground ${
-                    i === 0 && title ? 'hidden sm:block' : ''
-                  }`}
-                />
-              )}
               {last ? (
                 <span className="font-medium">{crumb.label}</span>
               ) : (
@@ -87,6 +85,7 @@ export default function ScopeHeader({
                   {crumb.label}
                 </button>
               )}
+              {!last && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
             </span>
           );
         })}
