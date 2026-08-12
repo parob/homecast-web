@@ -54,7 +54,7 @@ export default function ScopeHeader({
           // The tree is the only way DOWN — the breadcrumb only walks up — so
           // hiding it on a phone left no way into a room at all.
           <button
-            className="-ml-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            className="mr-1 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
             onClick={onOpenNav}
             aria-label="Open navigation"
           >
