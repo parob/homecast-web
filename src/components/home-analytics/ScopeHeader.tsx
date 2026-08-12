@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, PanelLeft } from 'lucide-react';
+import { ChevronRight, Menu } from 'lucide-react';
 import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 
 /**
@@ -18,7 +18,6 @@ import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
  */
 export default function ScopeHeader({
   title,
-  onBack,
   onOpenNav,
   crumbs,
   settings,
@@ -27,8 +26,6 @@ export default function ScopeHeader({
 }: {
   /** The screen's name, leading the row. */
   title?: string;
-  /** A back arrow before the title, where the host has somewhere to go back to. */
-  onBack?: () => void;
   /** Opens the tree on a phone, where it cannot be a permanent column. */
   onOpenNav?: () => void;
   crumbs: Array<{ label: string; scope: AnalyticsScope }>;
@@ -54,16 +51,7 @@ export default function ScopeHeader({
             onClick={onOpenNav}
             aria-label="Open navigation"
           >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-        )}
-        {onBack && (
-          <button
-            className="-ml-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            onClick={onBack}
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-4 w-4" />
+            <Menu className="h-5 w-5" />
           </button>
         )}
         {title && <span className="shrink-0 text-base font-semibold leading-6">{title}</span>}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useHomes, useAccessoriesForHomes, useServiceGroups } from '@/hooks/useHomeKitData';
 import { isMockHistoryEnabled, mockHistoryVariant } from '@/history/mock';
 import AnalyticsContent from '@/components/home-analytics/AnalyticsContent';
@@ -37,7 +37,6 @@ function initialScopeFromParams(params: URLSearchParams): AnalyticsScope | undef
 
 export default function HomeAnalytics() {
   const mock = isMockHistoryEnabled();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: homes } = useHomes({ skip: mock });
@@ -71,7 +70,6 @@ export default function HomeAnalytics() {
       <main className="mx-auto flex h-screen max-w-6xl flex-col p-4">
         <AnalyticsContent
           title="Analytics"
-          onBack={() => (nav.canGoBack ? nav.back() : navigate('/portal'))}
           homeId={effectiveHomeId}
           homeName={(homes ?? []).find(h => h.id === effectiveHomeId)?.name ?? 'Home'}
           homes={(homes ?? []).map(h => ({ id: h.id, name: h.name }))}
