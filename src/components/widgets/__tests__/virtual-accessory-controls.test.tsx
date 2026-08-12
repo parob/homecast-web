@@ -645,15 +645,15 @@ describe('virtual accessory controls', () => {
   // holds was read while the timer was idle — zero. It read 0:00 on start.
   it('counts a just-started timer down from its configured duration', () => {
     cleanup();
-    const started = accessoryFor('virtual_timer');
-    started.services[0].characteristics[0].value = 'active';
-
+    // Pressing start is what licenses a local anchor: this browser watched the
+    // run begin, so "now" is genuinely when it began. No endsAt yet — that is
+    // exactly what the relay reports for the moment after the press.
+    const idle = accessoryFor('virtual_timer');
+    idle.services[0].characteristics[0].value = 'idle';
     render(
       <VirtualAccessoryWidget
         {...({
-          // No endsAt — exactly what the relay reports the instant you press
-          // start, and what an older relay bundle reports always.
-          accessory: { ...started, id: 'timer-optimistic', virtualDurationMs: 300_000 },
+          accessory: { ...idle, id: 'timer-optimistic', virtualDurationMs: 300_000 },
           getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
           onSetValue: () => {},
           onSlider: () => {},
@@ -662,7 +662,33 @@ describe('virtual accessory controls', () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }));
+
     expect(screen.getByText('5:00 left')).toBeTruthy();
+  });
+
+  it('will not invent a countdown for a run it did not see start', () => {
+    cleanup();
+    // A page opened while the timer was already going. Nothing here knows when
+    // it began — the payload carries no start and no end — and guessing "now"
+    // made the tile count down the full duration again on every reload, which
+    // is what an MQTT topic holding a bare `active` looked like.
+    const running = accessoryFor('virtual_timer');
+    running.services[0].characteristics[0].value = 'active';
+    render(
+      <VirtualAccessoryWidget
+        {...({
+          accessory: { ...running, id: 'timer-mid-run', virtualDurationMs: 300_000 },
+          getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+          onSetValue: () => {},
+          onSlider: () => {},
+          onToggle: () => {},
+        } as unknown as WidgetProps)}
+      />,
+    );
+
+    expect(screen.getByText('Running')).toBeTruthy();
+    expect(screen.queryByText('5:00 left')).toBeNull();
   });
 
   // The countdown is anchored to when the timer ENDS, not to how much was left
@@ -716,7 +742,13 @@ describe('virtual accessory controls', () => {
         onToggle: () => {},
       } as unknown as WidgetProps;
 
-      const first = render(<VirtualAccessoryWidget {...props} />);
+      // Started here, so a local anchor exists for the second tile to share.
+      // Built fresh rather than copied: a shallow copy shares the services
+      // array, so editing the value would change both.
+      const idle = accessoryFor('virtual_timer', { id: 'timer-two-tiles', virtualDurationMs: 300_000 });
+      idle.services[0].characteristics[0].value = 'idle';
+      const first = render(<VirtualAccessoryWidget {...({ ...props, accessory: idle } as WidgetProps)} />);
+      fireEvent.click(screen.getByRole('button', { name: /^Start/ }));
       expect(screen.getByText('5:00 left')).toBeTruthy();
 
       vi.advanceTimersByTime(60_000);
@@ -819,7 +851,12 @@ describe('virtual accessory controls', () => {
       // from is minutes old. Pressing start used to point the countdown at an
       // instant already past, so the tile sat at 0:00 until the next poll.
       const stale = { virtualStartedAt: now - 600_000, virtualDurationMs: 20_000 };
-      render(<VirtualAccessoryWidget {...timerProps('t-stale', 'active', stale)} />);
+      const view = render(<VirtualAccessoryWidget {...timerProps('t-stale', 'idle', stale)} />);
+      // Pressing start with a stale reported instant still pointed the
+      // countdown at a moment already past, so the tile sat at 0:00 and the
+      // button looked dead.
+      fireEvent.click(screen.getByRole('button', { name: /^Start/ }));
+      view.rerender(<VirtualAccessoryWidget {...timerProps('t-stale', 'active', stale)} />);
 
       expect(screen.getByText('0:20 left')).toBeTruthy();
     } finally {

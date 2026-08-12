@@ -849,19 +849,23 @@ function countdownTarget(
   const reported = startedAt !== undefined && durationMs !== undefined
     ? startedAt + durationMs
     : endsAt;
-  const justStarted = running && !(lastCountdownSeen.get(accessoryId)?.running ?? false);
-  if (justStarted && reported !== undefined && reported <= Date.now()) {
+  // A transition, not a first sighting. With no previous entry we have never
+  // seen this timer at all, which is what a page load looks like — and a page
+  // load tells us nothing about when a run that is already going began.
+  const seen = lastCountdownSeen.get(accessoryId);
+  const justStarted = running && seen !== undefined && !seen.running;
+  // Worth taking a local start only when the reported instants cannot serve:
+  // either they describe a run that is already over, or there are none at all
+  // because this source does not carry them.
+  const reportedIsStale = reported !== undefined && reported <= Date.now();
+  const reportedIsMissing = startedAt === undefined && endsAt === undefined;
+  if (justStarted && (reportedIsStale || reportedIsMissing)) {
     localTimerStarts.set(accessoryId, Date.now());
   }
   const localStart = localTimerStarts.get(accessoryId);
-  const needsGuess = running && localStart === undefined
-    && startedAt === undefined && endsAt === undefined;
   if (!running) {
     localTimerStarts.delete(accessoryId);
     return undefined;
-  }
-  if (needsGuess && !localTimerStarts.has(accessoryId)) {
-    localTimerStarts.set(accessoryId, Date.now());
   }
   // Start + duration in preference to endsAt: the duration is configuration
   // this browser already holds, so it stays right even when the relay's copy
