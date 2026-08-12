@@ -235,11 +235,20 @@ export default function AnalyticsContent({
             only way to navigate on a phone behind the screen it navigates. */}
         <SheetContent
           side="left"
-          className="z-[10060] w-72 p-4 md:hidden"
+          className="z-[10060] w-72 md:hidden"
           overlayClassName="z-[10055]"
+          // Opening a menu should not summon the keyboard: Radix focuses the
+          // first thing it finds, which here is the filter box.
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          style={{
+            paddingTop: 'calc(var(--safe-area-top, 0px) + 1rem)',
+            paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 1rem)',
+            paddingLeft: 'calc(var(--safe-area-left, 0px) + 1rem)',
+            paddingRight: '1rem',
+          }}
         >
           <SheetHeader className="sr-only"><SheetTitle>Navigate analytics</SheetTitle></SheetHeader>
-          <div className="h-full pt-6">
+          <div className="h-full pt-8">
             <ScopeTree
               tree={tree}
               scope={nav.scope}

@@ -68,7 +68,15 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute right-3 top-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+        {/* A side sheet reaches the top of the screen, so its close button is
+            the thing most likely to end up under a notch. Anchor it below the
+            inset; a bottom sheet starts mid-screen and keeps its own 12px. */}
+        <SheetPrimitive.Close
+          className={cn(
+            "absolute right-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
+            side === "bottom" ? "top-3" : "top-[calc(0.75rem+var(--safe-area-top,0px))]",
+          )}
+        >
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>

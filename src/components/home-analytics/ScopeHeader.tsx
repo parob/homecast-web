@@ -45,7 +45,11 @@ export default function ScopeHeader({
     // the rest instead of floating at the window's true top corner, over the
     // notch on a phone.
     <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b">
-      <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
+      {/* On a phone the row cannot hold a title, a trail, five range buttons
+          and a close: the trail lost, which is the one part that says where
+          you are. The title goes (the screen is obviously analytics) and the
+          range drops to its own line, leaving the breadcrumb the width. */}
+      <nav className="order-1 flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
         {onOpenNav && (
           // The tree is the only way DOWN — the breadcrumb only walks up — so
           // hiding it on a phone left no way into a room at all.
@@ -57,7 +61,7 @@ export default function ScopeHeader({
             <Menu className="h-5 w-5" />
           </button>
         )}
-        {title && <span className="shrink-0 text-base font-semibold leading-6">{title}</span>}
+        {title && <span className="hidden shrink-0 text-base font-semibold leading-6 sm:inline">{title}</span>}
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
           return (
@@ -78,7 +82,7 @@ export default function ScopeHeader({
         })}
       </nav>
 
-      <div className="inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5">
+      <div className="order-3 inline-flex shrink-0 basis-full items-center justify-center rounded-lg bg-muted p-0.5 sm:order-2 sm:basis-auto sm:justify-start">
         {RANGES.map(r => (
           <button
             key={r.label}
@@ -96,7 +100,7 @@ export default function ScopeHeader({
 
       {onClose && (
         <button
-          className="-mr-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="order-2 -mr-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:order-3"
           onClick={onClose}
           aria-label="Close"
         >

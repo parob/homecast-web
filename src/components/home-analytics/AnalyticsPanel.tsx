@@ -23,10 +23,13 @@ export default function AnalyticsPanel({
 }) {
   return (
     <div className="border rounded-lg p-3 space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
         <span className="text-xs font-medium">{title}</span>
-        <span className="flex items-center gap-2 shrink-0">
-          {source && <span className="text-[0.625rem] text-muted-foreground">{source}</span>}
+        <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
+          {/* Provenance is the first thing to go on a narrow screen: the
+              toggles beside it are controls, and "8 rooms · averaged from 25
+              sensors" was pushing them off the right edge. */}
+          {source && <span className="hidden text-[0.625rem] text-muted-foreground sm:inline">{source}</span>}
           {actions}
         </span>
       </div>
