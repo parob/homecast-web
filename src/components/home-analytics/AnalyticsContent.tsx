@@ -258,7 +258,11 @@ export default function AnalyticsContent({
               homeName={homeName}
               homes={homes}
               homeId={homeId}
-              onSelectHome={(id) => { onSelectHome?.(id); setNavOpen(false); }}
+              // Opening a home is not choosing one: only that home's tree is
+              // built, so its chevron has to switch — but the sheet stays put
+              // so you can carry on down to a room. Picking a room, group or
+              // accessory IS the choice, and closes it.
+              onSelectHome={(id) => onSelectHome?.(id)}
               onSelect={(scope) => { nav.setScope(scope); setNavOpen(false); }}
             />
           </div>
