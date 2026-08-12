@@ -1980,6 +1980,11 @@ const Dashboard = () => {
   // the dialog that lists them is rendered by the same component that renders
   // the provider and so cannot consume it.
   const [recordingHomeIds, setRecordingHomeIds] = useState<string[]>([]);
+  // The automation editor insets itself by 88px inside the Mac app to clear
+  // the titlebar, 48px on the web. Analytics matches it, so the two
+  // full-screen editors sit in the same frame.
+  const isMacApp = typeof window !== 'undefined'
+    && !!(window as unknown as { isHomecastMacApp?: boolean }).isHomecastMacApp;
   const analyticsNav = useAnalyticsScope();
   const { setScope: analyticsGoTo } = analyticsNav;
 
@@ -7797,13 +7802,16 @@ const Dashboard = () => {
           location: current level's name with an embedded back button, the
           SettingsDialog drill-down convention. */}
       <Dialog open={analyticsOpen} onOpenChange={(open) => { setAnalyticsOpen(open); if (!open) { analyticsGoTo({ level: 'home' }); setAnalyticsHomeId(null); } }}>
-        {/* Nearly full screen, same treatment as the admin panel dialog */}
+        {/* The automation editor's frame, to the pixel: full-bleed on a phone,
+            inset 48px on the desktop web and 88px in the Mac app, where the
+            titlebar needs the extra clearance. Two full-screen editors that
+            sit differently read as two different apps. */}
         <DialogContent
-          className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
-          style={{
-            height: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
-            maxHeight: 'calc(100vh - 48px - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px))',
-          }}
+          className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
+            isMacApp
+              ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'
+              : 'sm:!max-w-[calc(100vw-48px)] sm:!w-[calc(100vw-48px)] sm:!rounded-2xl sm:!h-[calc(100dvh-48px)] sm:!max-h-[calc(100dvh-48px)]'
+          }`}
         >
           {/* No bar of its own: the title leads the breadcrumb row inside,
               so the screen opens on content rather than on two rules and a
