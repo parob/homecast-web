@@ -1,4 +1,4 @@
-import { ChevronRight, Menu } from 'lucide-react';
+import { ChevronRight, Menu, X } from 'lucide-react';
 import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 
 /**
@@ -19,6 +19,7 @@ import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 export default function ScopeHeader({
   title,
   onOpenNav,
+  onClose,
   crumbs,
   settings,
   onSettings,
@@ -28,20 +29,22 @@ export default function ScopeHeader({
   title?: string;
   /** Opens the tree on a phone, where it cannot be a permanent column. */
   onOpenNav?: () => void;
+  /** Closes the host dialog. Ours rather than the dialog's own, so it sits
+   *  inside the safe area with everything else instead of over the notch. */
+  onClose?: () => void;
   crumbs: Array<{ label: string; scope: AnalyticsScope }>;
   settings: AnalyticsSettings;
   onSettings: (next: Partial<AnalyticsSettings>) => void;
   onSelect: (scope: AnalyticsScope) => void;
 }) {
   return (
-    // Sized to line up with the dialog's ✕, which floats over this row's top
-    // right corner rather than sitting in it. That button is 32px tall at
-    // top-[16px], so its centre is 32px down; the dialog opens its body at
-    // pt-1, so a 56px row centres its contents on exactly that line — and
-    // being centred is what gives the text equal air above and below rather
-    // than sitting tight against the rule. pr-9 keeps the range control out
-    // from under the ✕.
-    <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b pr-9">
+    // 56px and centred: the text gets equal air above and below rather than
+    // sitting tight against the rule, and everything in the row — burger,
+    // title, breadcrumb, range, close — shares one centre line. The close is
+    // OURS rather than the dialog's, so it lives inside the safe area with
+    // the rest instead of floating at the window's true top corner, over the
+    // notch on a phone.
+    <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b">
       <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
         {onOpenNav && (
           // The tree is the only way DOWN — the breadcrumb only walks up — so
@@ -90,6 +93,16 @@ export default function ScopeHeader({
           </button>
         ))}
       </div>
+
+      {onClose && (
+        <button
+          className="-mr-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

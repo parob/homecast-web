@@ -7807,6 +7807,7 @@ const Dashboard = () => {
             titlebar needs the extra clearance. Two full-screen editors that
             sit differently read as two different apps. */}
         <DialogContent
+          hideCloseButton
           className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
             isMacApp
               ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'
@@ -7853,6 +7854,7 @@ const Dashboard = () => {
                 <React.Suspense fallback={<div className="h-[300px]" />}>
                   <AnalyticsContent
                     title="Analytics"
+                    onClose={() => setAnalyticsOpen(false)}
                     homeId={effectiveAnalyticsHome}
                     homeName={homes.find(h => h.id === effectiveAnalyticsHome)?.name ?? 'Home'}
                     // Only homes that record: an entry that opens on "nothing

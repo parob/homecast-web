@@ -53,6 +53,7 @@ function mockWidgetType(recordable: string[], isVirtual?: boolean): string {
 
 export default function AnalyticsContent({
   title,
+  onClose,
   homeId,
   homeName = 'Home',
   homes,
@@ -65,6 +66,8 @@ export default function AnalyticsContent({
 }: {
   /** The screen's name, leading the header row (the host used to own a bar of its own). */
   title?: string;
+  /** Closes the host dialog, from inside the header rather than over it. */
+  onClose?: () => void;
   homeId: string | null;
   /** Names the root of the breadcrumb and the top of the tree. */
   homeName?: string;
@@ -217,6 +220,7 @@ export default function AnalyticsContent({
       <ScopeHeader
         title={title}
         onOpenNav={() => setNavOpen(true)}
+        onClose={onClose}
         crumbs={crumbs}
         settings={nav.settings}
         onSettings={nav.setSettings}
