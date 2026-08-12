@@ -676,6 +676,10 @@ export default function EChartsTimeChart({
     chart.setOption({
       series: styles.map((base, i) => {
         if (!base) return {};
+        // Nothing of the selection is in this panel: fade the lot. Leaving
+        // them at full strength said "these are what you picked", next to a
+        // panel where they are, and the tooltip has already gone quiet here.
+        if (highlightElsewhereRef.current) return { lineStyle: { opacity: 0.12, width: base.width } };
         if (lit.size === 0) return { lineStyle: { opacity: base.opacity, width: base.width } };
         return lit.has(i)
           ? { lineStyle: { opacity: 1, width: base.width + 0.75 } }

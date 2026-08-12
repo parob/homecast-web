@@ -35,26 +35,41 @@ export interface ChartLegendProps {
   highlightKeys?: string[] | null;
   /** Hovering a name or a cluster; null on leave. */
   onHighlight?: (keys: string[] | null) => void;
+  /** Latched entries — ringed, and the only ones the chart draws in full. */
+  latchedKeys?: string[];
+  /** Clicking a name latches it, and clicking it again lets it go. */
+  onToggle?: (key: string) => void;
 }
 
 function Dot({
-  entry, short, dim, onHighlight,
+  entry, short, dim, latched, onHighlight, onToggle,
 }: {
   entry: LegendEntry;
   short?: boolean;
   dim?: boolean;
+  latched?: boolean;
   onHighlight?: (keys: string[] | null) => void;
+  onToggle?: (key: string) => void;
 }) {
   // Every entry is a chip. The old bare dot-and-label key read as a caption
   // rather than as a set of things, and it sat next to a chip row that said
   // the same names in a better shape — so the chips won and the caption went.
   return (
     <span
-      className={`group inline-flex items-center gap-1.5 min-w-0 border rounded-full bg-background px-2 py-0.5 transition-opacity ${
+      role={onToggle ? 'button' : undefined}
+      tabIndex={onToggle ? 0 : undefined}
+      aria-pressed={onToggle ? !!latched : undefined}
+      className={`group inline-flex min-w-0 items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 transition-opacity ${
+        onToggle ? 'cursor-pointer' : ''
+      } ${latched ? 'ring-2 ring-primary/60 ring-offset-1 ring-offset-background' : ''} ${
         dim ? 'opacity-35' : 'opacity-100'
       }`}
       onMouseEnter={onHighlight ? () => onHighlight([entry.key]) : undefined}
       onMouseLeave={onHighlight ? () => onHighlight(null) : undefined}
+      onClick={onToggle ? () => onToggle(entry.key) : undefined}
+      onKeyDown={onToggle ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(entry.key); }
+      } : undefined}
     >
       <span
         className="inline-block h-2 w-2 rounded-full shrink-0"
@@ -73,7 +88,7 @@ function Dot({
 }
 
 export default function ChartLegend({
-  entries, highlightKeys, onHighlight,
+  entries, highlightKeys, onHighlight, latchedKeys, onToggle,
 }: ChartLegendProps) {
   // A key for one series is noise: the panel title already named it.
   if (entries.length < 2) return null;
@@ -84,7 +99,12 @@ export default function ChartLegend({
   const shown = entries;
 
   const lit = new Set(highlightKeys ?? []);
-  const dimmed = (key: string) => lit.size > 0 && !lit.has(key);
+  // An empty ARRAY is not the same as null: something is picked out and none
+  // of it is here, so every name in this key fades — matching the lines above
+  // it, which have already faded, and the tooltip, which has gone quiet.
+  const noneHere = Array.isArray(highlightKeys) && highlightKeys.length === 0;
+  const dimmed = (key: string) => noneHere || (lit.size > 0 && !lit.has(key));
+  const latchedSet = new Set(latchedKeys ?? []);
 
   const groups = new Map<string, LegendEntry[]>();
   for (const entry of shown) {
@@ -99,7 +119,7 @@ export default function ChartLegend({
 
   const content = !hasCluster
     ? shown.map(entry => (
-      <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} onHighlight={onHighlight} />
+      <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
     ))
     : [...groups.entries()].map(([groupKey, list]) => (
       list.length > 1 && list[0].group ? (
@@ -119,13 +139,13 @@ export default function ChartLegend({
             {list[0].group}
           </span>
           {list.map(entry => (
-            <Dot key={entry.key} entry={entry} short dim={dimmed(entry.key)} onHighlight={onHighlight} />
+            <Dot key={entry.key} entry={entry} short dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
           ))}
         </span>
       ) : (
         <span key={groupKey || list[0].key} className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           {list.map(entry => (
-            <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} onHighlight={onHighlight} />
+            <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
           ))}
         </span>
       )

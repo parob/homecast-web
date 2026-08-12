@@ -80,10 +80,20 @@ export default function RoomStackView({
   // are different series. Identity is the accessory — or the room, when the
   // whole view is per-room averages.
   const [hovered, setHovered] = useState<string | null>(null);
-  // Clicking a line pins it: the same highlight, except it survives the mouse
-  // leaving, so you can look at the numbers underneath without losing it.
-  const [pinned, setPinned] = useState<string | null>(null);
-  const highlight = hovered ?? pinned;
+  // Clicking — a line, or its name in the key — latches it. A latched set is
+  // a filter rather than a highlight: it survives the mouse leaving, it takes
+  // several at once, and while anything is latched, hovering stops moving it,
+  // so a chart you have narrowed down stays narrowed while you read it.
+  const [latched, setLatched] = useState<Set<string>>(new Set());
+  const toggleLatch = (id: string | null) => {
+    if (!id) return;
+    setLatched(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const highlight = latched.size > 0 ? null : hovered;
 
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
@@ -316,9 +326,11 @@ export default function RoomStackView({
         .find(x => `${x.accessoryId}|${x.characteristicType}` === key);
       return sel ? identityOf(sel) : key;
     };
-    const litKeys = highlight
-      ? chartSeries.filter(cs => identityOfKey(cs.key) === highlight).map(cs => cs.key)
-      : null;
+    const litKeys = latched.size > 0
+      ? chartSeries.filter(cs => latched.has(identityOfKey(cs.key))).map(cs => cs.key)
+      : highlight
+        ? chartSeries.filter(cs => identityOfKey(cs.key) === highlight).map(cs => cs.key)
+        : null;
 
     let min = Infinity;
     let max = -Infinity;
@@ -378,11 +390,10 @@ export default function RoomStackView({
           groupId={groupId}
           hideSlider={!isLastChart}
           highlightKeys={litKeys}
-          onSeriesHover={(key) => setHovered(key ? identityOfKey(key) : null)}
-          onSeriesSelect={(key) => {
-            const id = key ? identityOfKey(key) : null;
-            setPinned(prev => (id && prev === id ? null : id));
-          }}
+          // Hover is inert while a latch is on: the point of narrowing to two
+          // lines is that they stay narrowed as the mouse crosses the others.
+          onSeriesHover={(key) => { if (latched.size === 0) setHovered(key ? identityOfKey(key) : null); }}
+          onSeriesSelect={(key) => toggleLatch(key ? identityOfKey(key) : null)}
         />
         <ChartLegend
           entries={chartSeries.map(s => {
@@ -401,7 +412,12 @@ export default function RoomStackView({
             };
           })}
           highlightKeys={litKeys}
-          onHighlight={(keys) => setHovered(keys && keys.length > 0 ? identityOfKey(keys[0]) : null)}
+          latchedKeys={latched.size > 0 ? chartSeries.filter(cs => latched.has(identityOfKey(cs.key))).map(cs => cs.key) : []}
+          onHighlight={(keys) => {
+            if (latched.size > 0) return;
+            setHovered(keys && keys.length > 0 ? identityOfKey(keys[0]) : null);
+          }}
+          onToggle={(key) => toggleLatch(identityOfKey(key))}
         />
       </AnalyticsPanel>
     );
