@@ -25,6 +25,7 @@
  */
 
 import { SIMPLE_TO_CHAR } from '@/lib/characteristic-aliases';
+import { VIRTUAL_CHARACTERISTIC } from '@/automation/types/automation';
 import { uniqueKey } from './local-rest';
 import { executeHomeKitAction } from '../relay/local-handler';
 import {
@@ -227,18 +228,32 @@ function compileTrigger(raw: Record<string, any>, ctx: CompileContext): Trigger 
   const base = { id: newId() };
 
   if (type === 'device' || type === 'numeric') {
-    const prop = raw.characteristic || raw.characteristicType;
-    if (!prop) throw new Error(`${type} trigger requires "characteristic"`);
+    let prop = raw.characteristic || raw.characteristicType;
     const target: Record<string, unknown> = {};
     if (raw.service_group) {
       target.serviceGroupId = raw.service_group;
     } else {
       const ref = raw.accessory || raw.virtual;
       if (!ref) throw new Error(`${type} trigger requires "accessory", "virtual" or "service_group"`);
-      target.accessoryId = raw.virtual
-        ? resolveVirtual(ctx.virtuals, raw.virtual)
-        : resolveAccessory(ctx.accessories, ref);
+      if (raw.virtual) {
+        // A virtual accessory carries exactly one characteristic, decided by
+        // its type — a timer emits virtual_timer, a mode virtual_mode. Asking
+        // the caller for it invited an answer like "value", which no accessory
+        // ever emits: the trigger validated, stored, and could never fire.
+        // Nobody finds that out until the thing it was guarding runs away.
+        const id = resolveVirtual(ctx.virtuals, raw.virtual);
+        const virtualType = ctx.virtuals.byId[id]?.type;
+        const characteristic = virtualType ? VIRTUAL_CHARACTERISTIC[virtualType] : undefined;
+        if (!characteristic) {
+          throw new Error(`Unknown virtual accessory type for ${raw.virtual}: ${virtualType ?? 'missing'}`);
+        }
+        target.accessoryId = id;
+        prop = characteristic;
+      } else {
+        target.accessoryId = resolveAccessory(ctx.accessories, ref);
+      }
     }
+    if (!prop) throw new Error(`${type} trigger requires "characteristic"`);
 
     if (type === 'numeric') {
       if (raw.above === undefined && raw.below === undefined) {

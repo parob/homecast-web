@@ -187,6 +187,42 @@ describe('virtual accessories — the stored state HomeKit has nowhere to put', 
     expect(result.virtual_accessory.slug).toMatch(/^bedroom_1_dry_cycle_/);
   });
 
+  it('watches the characteristic the virtual actually carries, not the one asked for', async () => {
+    // A caller cannot know a mode emits virtual_mode, so it guesses — "value"
+    // was the guess in the field, and it validated, stored, and could never
+    // fire. The runtime cap it was guarding therefore did not exist.
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111', name: 'Bedroom 1 Dry Cycle', type: 'mode',
+      options: ['Idle', 'Running'],
+    });
+    const created = await handleCreateHcAutomation({
+      home: 'george_street_1111',
+      name: 'Runtime cap',
+      triggers: [{
+        type: 'device', characteristic: 'value',
+        virtual: 'bedroom_1_dry_cycle', to: 'Running', for: { minutes: 120 },
+      }],
+      actions: [{ type: 'virtual', virtual: 'bedroom_1_dry_cycle', operation: 'set', value: 'Idle' }],
+    });
+    const stored = JSON.parse(automationRows.find(r => r.id === created.automation.id)!.data);
+    expect(stored.triggers[0].characteristicType).toBe('virtual_mode');
+    expect(stored.triggers[0].accessoryId).toBeTruthy();
+  });
+
+  it('needs no characteristic at all for a virtual trigger', async () => {
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111', name: 'Cycle Timer', type: 'timer', duration: 3600,
+    });
+    const created = await handleCreateHcAutomation({
+      home: 'george_street_1111',
+      name: 'Timer watch',
+      triggers: [{ type: 'device', virtual: 'cycle_timer', to: 'idle' }],
+      actions: [{ type: 'virtual', virtual: 'cycle_timer', operation: 'turn_off' }],
+    });
+    const stored = JSON.parse(automationRows.find(r => r.id === created.automation.id)!.data);
+    expect(stored.triggers[0].characteristicType).toBe('virtual_timer');
+  });
+
   it('refuses a mode accessory with no options rather than creating a useless one', async () => {
     await expect(handleCreateVirtualAccessory({
       home: 'george_street_1111', name: 'Broken', type: 'mode',
