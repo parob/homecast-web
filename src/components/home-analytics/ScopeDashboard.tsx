@@ -26,6 +26,7 @@ export default function ScopeDashboard({
   accessoryInfo,
   charByAccessory,
   groups,
+  roomGroups = [],
 }: {
   scope: AnalyticsScope;
   settings: AnalyticsSettings;
@@ -36,6 +37,8 @@ export default function ScopeDashboard({
   /** Per-accessory characteristic lookup, for enum labels and ordering. */
   charByAccessory: Map<string, Map<string, WritableChar>>;
   groups: Array<{ id: string; name: string; memberIds: string[] }>;
+  /** The sidebar's room groups, resolved to room names by the host. */
+  roomGroups?: Array<{ id: string; name: string; roomNames: string[] }>;
 }) {
   const enabled = useMemo(() => recorded.filter(s => s.enabled !== false), [recorded]);
 
@@ -47,7 +50,7 @@ export default function ScopeDashboard({
   const scopeKey = `${homeId ?? ''}|${scope.level}|${
     scope.level === 'room' ? scope.room ?? ''
       : scope.level === 'accessory' ? scope.accessoryId
-        : scope.level === 'group' ? scope.groupId : ''}`;
+        : scope.level === 'group' || scope.level === 'roomGroup' ? scope.groupId : ''}`;
 
   if (scope.level === 'home') {
     // Exactly the view a room gets, aggregated: one line per room per
@@ -60,6 +63,32 @@ export default function ScopeDashboard({
         homeId={homeId}
         mock={mock}
         roomSeries={enabled}
+        room={null}
+        byRoom
+        accessoryInfo={accessoryInfo}
+        groups={groups}
+        settings={settings}
+      />
+    );
+  }
+
+  if (scope.level === 'roomGroup') {
+    // A room group is the home view, narrowed: one averaged line per room in
+    // it, the same aggregation the whole-home scope already does.
+    const group = roomGroups.find(g => g.id === scope.groupId);
+    if (!group) return <Empty>That room group is no longer here.</Empty>;
+    const wanted = new Set(group.roomNames.map(n => n.trim().toLowerCase()));
+    const groupSeries = enabled.filter(s => {
+      const room = accessoryInfo.get(s.accessoryId.toUpperCase())?.room;
+      return !!room && wanted.has(room.trim().toLowerCase());
+    });
+    if (groupSeries.length === 0) return <Empty>Nothing recorded in these rooms yet.</Empty>;
+    return (
+      <RoomStackView
+        key={scopeKey}
+        homeId={homeId}
+        mock={mock}
+        roomSeries={groupSeries}
         room={null}
         byRoom
         accessoryInfo={accessoryInfo}

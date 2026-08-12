@@ -4,7 +4,7 @@ import { getRecordableCharacteristics, type WritableChar } from '@/components/au
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { getAccessoryDisplayName } from '@/components/widgets/types';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
-import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
+import { isMockHistoryEnabled, mockAccessories, mockRoomGroups, mockServiceGroups } from '@/history/mock';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import ScopeDashboard from './ScopeDashboard';
 import ScopeHeader from './ScopeHeader';
@@ -61,6 +61,7 @@ export default function AnalyticsContent({
   onSelectHome,
   accessories,
   serviceGroups,
+  roomGroups,
   recordingEnabled,
   nav,
 }: {
@@ -79,6 +80,8 @@ export default function AnalyticsContent({
   /** Host-provided accessory data — the component never fetches relay data. */
   accessories: HomeKitAccessory[] | null;
   serviceGroups?: HomeKitServiceGroup[] | null;
+  /** The sidebar's room groups, resolved to room names by the host. */
+  roomGroups?: Array<{ id: string; name: string; roomNames: string[] }>;
   /** Does this home have recording switched on? undefined = the host cannot say. */
   recordingEnabled?: boolean;
   nav: AnalyticsScopeState;
@@ -152,8 +155,12 @@ export default function AnalyticsContent({
 
   const roomOrderKey = (roomOrder ?? []).join('\u0000');
   const tree = useMemo(
-    () => buildScopeTree(recorded, accessoryInfo, groups, roomOrderKey ? roomOrderKey.split('\u0000') : []),
-    [recorded, accessoryInfo, groups, roomOrderKey],
+    () => buildScopeTree(
+      recorded, accessoryInfo, groups,
+      roomOrderKey ? roomOrderKey.split('\u0000') : [],
+      mock ? mockRoomGroups() : (roomGroups ?? []),
+    ),
+    [recorded, accessoryInfo, groups, roomOrderKey, roomGroups],
   );
 
   if (seriesError) {
@@ -213,7 +220,9 @@ export default function AnalyticsContent({
     );
   }
 
-  const crumbs = scopeCrumbs(nav.scope, homeName, accessoryInfo, groups);
+  const crumbs = scopeCrumbs(
+    nav.scope, homeName, accessoryInfo, groups, mock ? mockRoomGroups() : (roomGroups ?? []),
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -291,6 +300,7 @@ export default function AnalyticsContent({
             accessoryInfo={accessoryInfo}
             charByAccessory={charByAccessory}
             groups={groups}
+            roomGroups={mock ? mockRoomGroups() : roomGroups}
           />
         </div>
       </div>

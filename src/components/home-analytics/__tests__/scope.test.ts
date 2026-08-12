@@ -134,6 +134,40 @@ describe('buildScopeTree', () => {
     expect(tree.rooms.map(r => r.label)).toEqual(['Kitchen', 'Bedroom 2']);
   });
 
+  it('puts a room group above its rooms, and takes them out of the top level', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A2', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo, [], [],
+      [{ id: 'rg1', name: 'Upstairs', roomNames: ['Bedroom 2', 'Kitchen'] }],
+    );
+    expect(tree.roomGroups.map(g => g.name)).toEqual(['Upstairs']);
+    expect(tree.roomGroups[0].rooms.map(r => r.label)).toEqual(['Bedroom 2', 'Kitchen']);
+    // Reachable through the group, so not loose beside it — the same rule a
+    // service group's members follow.
+    expect(tree.rooms).toEqual([]);
+    expect(tree.roomGroups[0].total).toBe(3);
+  });
+
+  it('ignores a room group with fewer than two recorded rooms', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature')],
+      accessoryInfo, [], [],
+      [{ id: 'rg1', name: 'Upstairs', roomNames: ['Bedroom 2', 'Kitchen'] }],
+    );
+    expect(tree.roomGroups).toEqual([]);
+    expect(tree.rooms.map(r => r.label)).toEqual(['Bedroom 2']);
+  });
+
+  it('leaves rooms no group claims at the top level', () => {
+    const tree = buildScopeTree(
+      [series('A1', 'current_temperature'), series('A2', 'current_temperature'), series('A3', 'current_temperature')],
+      accessoryInfo, [], [],
+      [{ id: 'rg1', name: 'Bedrooms', roomNames: ['Bedroom 2', 'Nowhere'] }],
+    );
+    expect(tree.roomGroups).toEqual([]); // only one of its rooms records
+    expect(tree.rooms.map(r => r.label)).toEqual(['Bedroom 2', 'Kitchen']);
+  });
+
   it('names accessories the way the dashboard does', () => {
     const tree = buildScopeTree(
       [series('A1', 'current_temperature')],
@@ -160,6 +194,20 @@ describe('scopeCrumbs', () => {
       info([['A9', 'Holiday Mode', null]]), groups,
     );
     expect(crumbs.map(c => c.label)).toEqual(['George Street', 'Holiday Mode']);
+  });
+
+  it('walks home → room group → room for a room inside one', () => {
+    const crumbs = scopeCrumbs(
+      { level: 'room', room: 'Bedroom 2' }, 'George Street', accessoryInfo, groups,
+      [{ id: 'rg1', name: 'Upstairs', roomNames: ['Bedroom 2'] }],
+    );
+    expect(crumbs.map(c => c.label)).toEqual(['George Street', 'Upstairs', 'Bedroom 2']);
+    expect(crumbs[1].scope).toEqual({ level: 'roomGroup', groupId: 'rg1' });
+  });
+
+  it('names a room group', () => {
+    expect(scopeCrumbs({ level: 'roomGroup', groupId: 'rg1' }, 'H', accessoryInfo, groups,
+      [{ id: 'rg1', name: 'Upstairs', roomNames: [] }]).map(c => c.label)).toEqual(['H', 'Upstairs']);
   });
 
   it('names a group', () => {

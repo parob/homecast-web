@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Home, Layers, Search } from 'lucide-react';
+import { ChevronRight, Home, Layers, LayoutGrid, Search } from 'lucide-react';
 import { accessoryIcon } from './accessoryIcons';
-import type { AnalyticsScope, ScopeTreeModel } from './scope';
+import type { AnalyticsScope, ScopeRoom, ScopeTreeModel } from './scope';
 
 /**
  * The navigation pane: the home as it actually is — rooms, the accessories
@@ -53,6 +53,9 @@ export default function ScopeTree({
   // "opened" rooms could only ever add.
   const [manual, setManual] = useState<Record<string, boolean>>({});
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  // A room group opens when you are standing anywhere inside it, and closes
+  // when you press its chevron — the same two-way rule rooms follow.
+  const [openRoomGroups, setOpenRoomGroups] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState('');
 
   const keyOf = (room: string | null) => room ?? ' roomless';
@@ -70,6 +73,9 @@ export default function ScopeTree({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+
+  const toggleRoomGroup = (id: string, isOpen: boolean) =>
+    setOpenRoomGroups(prev => ({ ...prev, [id]: !isOpen }));
 
   const needle = filter.trim().toLowerCase();
   const rooms = useMemo(() => {
@@ -90,6 +96,20 @@ export default function ScopeTree({
       .filter(r => r.accessories.length > 0 || r.groups.length > 0 || r.label.toLowerCase().includes(needle));
   }, [tree.rooms, needle]);
 
+  const roomGroups = useMemo(() => {
+    if (!needle) return tree.roomGroups;
+    return tree.roomGroups
+      .map(g => ({
+        ...g,
+        rooms: g.name.toLowerCase().includes(needle)
+          ? g.rooms
+          : g.rooms.filter(r => r.label.toLowerCase().includes(needle)
+            || r.accessories.some(a => a.name.toLowerCase().includes(needle))
+            || r.groups.some(x => x.name.toLowerCase().includes(needle))),
+      }))
+      .filter(g => g.rooms.length > 0 || g.name.toLowerCase().includes(needle));
+  }, [tree.roomGroups, needle]);
+
   const groups = useMemo(() => (
     needle ? tree.groups.filter(g => g.name.toLowerCase().includes(needle)) : tree.groups
   ), [tree.groups, needle]);
@@ -101,6 +121,87 @@ export default function ScopeTree({
   const rowBase = 'w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors';
   const selected = 'bg-primary/10 text-foreground font-medium';
   const plain = 'text-muted-foreground hover:bg-muted hover:text-foreground';
+
+  const renderRoom = (room: ScopeRoom, indent = 'pl-1') => {
+    const open = isOpen(room.room);
+    const isRoomScope = scope.level === 'room' && scope.room === room.room;
+    return (
+          <div key={keyOf(room.room)}>
+            <div className={`${rowBase} ${isRoomScope ? selected : plain} ${indent}`}>
+              <button
+                className="rounded p-0.5 hover:bg-muted"
+                onClick={() => toggle(room.room)}
+                aria-label={open ? `Collapse ${room.label}` : `Expand ${room.label}`}
+              >
+                <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+              </button>
+              <button
+                className="min-w-0 flex-1 truncate text-left"
+                onClick={() => onSelect({ level: 'room', room: room.room })}
+              >
+                {room.label}
+              </button>
+              <span className="shrink-0 text-xs opacity-60">{room.total}</span>
+            </div>
+            {open && room.groups.map(group => {
+              const groupOpen = openGroups.has(group.id);
+              const isGroupScope = scope.level === 'group' && scope.groupId === group.id;
+          return (
+                <div key={group.id}>
+                  {/* A room's lights are one row here for the same reason
+                      they are one row in its activity: nine near-identical
+                      entries are not nine choices. */}
+                  <div className={`${rowBase} ${isGroupScope ? selected : plain} pl-4`}>
+                    <button
+                      className="rounded p-0.5 hover:bg-muted"
+                      onClick={() => toggleGroup(group.id)}
+                      aria-label={groupOpen ? `Collapse ${group.name}` : `Expand ${group.name}`}
+                    >
+                      <ChevronRight className={`h-4 w-4 transition-transform ${groupOpen ? 'rotate-90' : ''}`} />
+                    </button>
+                    <Layers className="h-4 w-4 shrink-0 opacity-70" />
+                    <button
+                      className="min-w-0 flex-1 truncate text-left"
+                      onClick={() => onSelect({ level: 'group', groupId: group.id })}
+                    >
+                      {group.name}
+                    </button>
+                    <span className="shrink-0 text-xs opacity-60">{group.memberCount}</span>
+                  </div>
+                  {groupOpen && group.members.map(member => {
+                    const MemberIcon = accessoryIcon(member.widgetType);
+              return (
+                    <button
+                      key={member.id}
+                      className={`${rowBase} pl-11 ${activeAccessory === member.id ? selected : plain}`}
+                      onClick={() => onSelect({ level: 'accessory', accessoryId: member.id })}
+                    >
+                      <MemberIcon className="h-4 w-4 shrink-0 opacity-70" />
+                      <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                      <span className="shrink-0 text-xs opacity-60">{member.seriesCount}</span>
+                    </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {open && room.accessories.map(acc => {
+              const AccIcon = accessoryIcon(acc.widgetType);
+          return (
+                <button
+                  key={acc.id}
+                  className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
+                  onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
+                >
+                  <AccIcon className="h-4 w-4 shrink-0 opacity-70" />
+                  <span className="min-w-0 flex-1 truncate">{acc.name}</span>
+                  <span className="shrink-0 text-xs opacity-60">{acc.seriesCount}</span>
+                </button>
+              );
+            })}
+          </div>
+          );
+  };
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -141,86 +242,39 @@ export default function ScopeTree({
               </div>
               {isCurrent && (
                 <div className="pl-2">
-        {rooms.map(room => {
-          const open = isOpen(room.room);
-          const isRoomScope = scope.level === 'room' && scope.room === room.room;
+        {roomGroups.map(group => {
+          const inside = group.rooms.some(r => r.room === openRoom || r.room === roomOfActive);
+          const explicit = openRoomGroups[group.id];
+          const groupOpen = explicit !== undefined ? explicit : (!!needle || inside);
+          const isGroupScope = scope.level === 'roomGroup' && scope.groupId === group.id;
           return (
-            <div key={keyOf(room.room)}>
-              <div className={`${rowBase} ${isRoomScope ? selected : plain} pl-1`}>
+            <div key={group.id}>
+              {/* A room group is where the sidebar puts these rooms, so the
+                  tree puts them there too — and only there, the way a service
+                  group's members are reachable through the group rather than
+                  beside it. */}
+              <div className={`${rowBase} ${isGroupScope ? selected : plain} pl-1`}>
                 <button
                   className="rounded p-0.5 hover:bg-muted"
-                  onClick={() => toggle(room.room)}
-                  aria-label={open ? `Collapse ${room.label}` : `Expand ${room.label}`}
+                  onClick={() => toggleRoomGroup(group.id, groupOpen)}
+                  aria-label={groupOpen ? `Collapse ${group.name}` : `Expand ${group.name}`}
                 >
-                  <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+                  <ChevronRight className={`h-4 w-4 transition-transform ${groupOpen ? 'rotate-90' : ''}`} />
                 </button>
+                <LayoutGrid className="h-4 w-4 shrink-0 opacity-70" />
                 <button
                   className="min-w-0 flex-1 truncate text-left"
-                  onClick={() => onSelect({ level: 'room', room: room.room })}
+                  onClick={() => onSelect({ level: 'roomGroup', groupId: group.id })}
                 >
-                  {room.label}
+                  {group.name}
                 </button>
-                <span className="shrink-0 text-xs opacity-60">{room.total}</span>
+                <span className="shrink-0 text-xs opacity-60">{group.total}</span>
               </div>
-              {open && room.groups.map(group => {
-                const groupOpen = openGroups.has(group.id);
-                const isGroupScope = scope.level === 'group' && scope.groupId === group.id;
-                return (
-                  <div key={group.id}>
-                    {/* A room's lights are one row here for the same reason
-                        they are one row in its activity: nine near-identical
-                        entries are not nine choices. */}
-                    <div className={`${rowBase} ${isGroupScope ? selected : plain} pl-4`}>
-                      <button
-                        className="rounded p-0.5 hover:bg-muted"
-                        onClick={() => toggleGroup(group.id)}
-                        aria-label={groupOpen ? `Collapse ${group.name}` : `Expand ${group.name}`}
-                      >
-                        <ChevronRight className={`h-4 w-4 transition-transform ${groupOpen ? 'rotate-90' : ''}`} />
-                      </button>
-                      <Layers className="h-4 w-4 shrink-0 opacity-70" />
-                      <button
-                        className="min-w-0 flex-1 truncate text-left"
-                        onClick={() => onSelect({ level: 'group', groupId: group.id })}
-                      >
-                        {group.name}
-                      </button>
-                      <span className="shrink-0 text-xs opacity-60">{group.memberCount}</span>
-                    </div>
-                    {groupOpen && group.members.map(member => {
-                      const MemberIcon = accessoryIcon(member.widgetType);
-                      return (
-                      <button
-                        key={member.id}
-                        className={`${rowBase} pl-11 ${activeAccessory === member.id ? selected : plain}`}
-                        onClick={() => onSelect({ level: 'accessory', accessoryId: member.id })}
-                      >
-                        <MemberIcon className="h-4 w-4 shrink-0 opacity-70" />
-                        <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                        <span className="shrink-0 text-xs opacity-60">{member.seriesCount}</span>
-                      </button>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              {open && room.accessories.map(acc => {
-                const AccIcon = accessoryIcon(acc.widgetType);
-                return (
-                  <button
-                    key={acc.id}
-                    className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
-                    onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
-                  >
-                    <AccIcon className="h-4 w-4 shrink-0 opacity-70" />
-                    <span className="min-w-0 flex-1 truncate">{acc.name}</span>
-                    <span className="shrink-0 text-xs opacity-60">{acc.seriesCount}</span>
-                  </button>
-                );
-              })}
+              {groupOpen && group.rooms.map(room => renderRoom(room, 'pl-5'))}
             </div>
           );
         })}
+        {rooms.map(room => renderRoom(room))}
                 </div>
               )}
             </div>

@@ -7870,6 +7870,18 @@ const Dashboard = () => {
                     roomOrder={effectiveAnalyticsHome === selectedHomeId
                       ? sortedRooms.map(r => r.name)
                       : undefined}
+                    // Room groups address rooms by id; the analytics tree
+                    // keys them by name, because a series only knows which
+                    // room it was in. Resolve here, where both are to hand.
+                    roomGroups={effectiveAnalyticsHome === selectedHomeId
+                      ? roomGroups.map(g => ({
+                        id: g.id,
+                        name: g.name,
+                        roomNames: g.roomIds
+                          .map(id => sortedRooms.find(r => r.id === id)?.name)
+                          .filter((n): n is string => !!n),
+                      }))
+                      : undefined}
                     onSelectHome={(id) => { setAnalyticsHomeId(id); analyticsGoTo({ level: 'home' }); }}
                     accessories={scopedAccessories}
                     serviceGroups={scopedGroups}

@@ -258,6 +258,25 @@ const BIG_HOME = buildBigHome();
 export const MOCK_ACCESSORIES_BIG: MockAccessoryEntry[] = BIG_HOME.accessories;
 export const MOCK_SERVICE_GROUPS_BIG = BIG_HOME.groups;
 
+/**
+ * Room groups, the sidebar's own grouping — mocked so the analytics tree's
+ * group layer can be seen without a relay. The big home splits upstairs from
+ * down, the way a house of nine rooms actually gets navigated.
+ */
+export const MOCK_ROOM_GROUPS = [
+  { id: 'MOCK-RG-1', name: 'Upstairs', roomNames: ['Bedroom', 'Study'] },
+  { id: 'MOCK-RG-2', name: 'Downstairs', roomNames: ['Kitchen', 'Living Room', 'Hallway'] },
+];
+
+export const MOCK_ROOM_GROUPS_BIG = [
+  { id: 'BIG-RG-1', name: 'Upstairs', roomNames: ['Bedroom 1', 'Bedroom 2', 'Bedroom 3'] },
+  { id: 'BIG-RG-2', name: 'Downstairs', roomNames: ['Kitchen', 'Living', 'Hallway', 'Study'] },
+];
+
+export function mockRoomGroups(variant: MockVariant = mockHistoryVariant()) {
+  return variant === 'big' ? MOCK_ROOM_GROUPS_BIG : MOCK_ROOM_GROUPS;
+}
+
 /** The active variant's catalogue. */
 export function mockAccessories(variant: MockVariant = mockHistoryVariant()): MockAccessoryEntry[] {
   return variant === 'big' ? MOCK_ACCESSORIES_BIG : MOCK_ACCESSORIES;

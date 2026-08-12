@@ -18,7 +18,9 @@ export type AnalyticsScope =
   /** `room: null` is the roomless bucket (virtual accessories, Default Room). */
   | { level: 'room'; room: string | null }
   | { level: 'accessory'; accessoryId: string }
-  | { level: 'group'; groupId: string };
+  | { level: 'group'; groupId: string }
+  /** A user-defined group of rooms — the sidebar's room groups. */
+  | { level: 'roomGroup'; groupId: string };
 
 export const RANGES = [
   { label: '6h', ms: 6 * 3_600_000 },
@@ -71,7 +73,19 @@ export interface ScopeRoom {
   total: number;
 }
 
+export interface ScopeRoomGroupNode {
+  id: string;
+  name: string;
+  /** The group's rooms, in the navigation's order. */
+  rooms: ScopeRoom[];
+  /** Everything recording across them — what the count means. */
+  total: number;
+}
+
 export interface ScopeTreeModel {
+  /** Room groups, each holding its own rooms. */
+  roomGroups: ScopeRoomGroupNode[];
+  /** Rooms that no group claims. */
   rooms: ScopeRoom[];
   /** Groups that span rooms, so they belong to no single one. */
   groups: ScopeGroupNode[];
@@ -91,6 +105,8 @@ export function buildScopeTree(
   groups: Array<{ id: string; name: string; memberIds: string[] }>,
   /** Room names in the order the main navigation shows them. */
   roomOrder: string[] = [],
+  /** The sidebar's room groups, already resolved to room NAMES by the host. */
+  roomGroups: Array<{ id: string; name: string; roomNames: string[] }> = [],
 ): ScopeTreeModel {
   const counts = new Map<string, number>();
   for (const series of recorded) {
@@ -198,7 +214,31 @@ export function buildScopeTree(
     (n, r) => n + r.accessories.length + r.groups.reduce((m, g) => m + g.members.length, 0),
     0,
   );
-  return { rooms, groups: crossRoom, accessoryCount: placed };
+  // Room groups take their rooms OUT of the top level: a room reachable
+  // through its group and also loose beside it is the same duplication the
+  // tree already refuses for a service group's members. A group needs two
+  // recorded rooms to be worth a layer — one is that room with a lid on it.
+  const claimedRooms = new Set<string>();
+  const groupedRooms: ScopeRoomGroupNode[] = [];
+  for (const group of roomGroups) {
+    const wanted = new Set(group.roomNames.map(n => n.trim().toLowerCase()));
+    const mine = rooms.filter(r => r.room && wanted.has(r.room.trim().toLowerCase()));
+    if (mine.length < 2) continue;
+    mine.forEach(r => claimedRooms.add(r.label));
+    groupedRooms.push({
+      id: group.id,
+      name: group.name,
+      rooms: mine,
+      total: mine.reduce((n, r) => n + r.total, 0),
+    });
+  }
+
+  return {
+    roomGroups: groupedRooms,
+    rooms: rooms.filter(r => !claimedRooms.has(r.label)),
+    groups: crossRoom,
+    accessoryCount: placed,
+  };
 }
 
 /** Where you are, in words — the header's breadcrumb. */
@@ -207,13 +247,23 @@ export function scopeCrumbs(
   homeName: string,
   accessoryInfo: Map<string, AccessoryInfoEntry>,
   groups: Array<{ id: string; name: string }>,
+  roomGroups: Array<{ id: string; name: string; roomNames: string[] }> = [],
 ): Array<{ label: string; scope: AnalyticsScope }> {
   const home = { label: homeName, scope: { level: 'home' } as AnalyticsScope };
   switch (scope.level) {
     case 'home':
       return [home];
-    case 'room':
-      return [home, { label: scope.room ?? 'Elsewhere', scope }];
+    case 'room': {
+      const crumbs = [home];
+      const owner = scope.room
+        ? roomGroups.find(g => g.roomNames.some(n => n.trim().toLowerCase() === scope.room!.trim().toLowerCase()))
+        : undefined;
+      if (owner) {
+        crumbs.push({ label: owner.name, scope: { level: 'roomGroup', groupId: owner.id } });
+      }
+      crumbs.push({ label: scope.room ?? 'Elsewhere', scope });
+      return crumbs;
+    }
     case 'accessory': {
       const info = accessoryInfo.get(scope.accessoryId.toUpperCase());
       const crumbs = [home];
@@ -224,6 +274,10 @@ export function scopeCrumbs(
     case 'group': {
       const group = groups.find(g => g.id === scope.groupId);
       return [home, { label: group?.name ?? 'Group', scope }];
+    }
+    case 'roomGroup': {
+      const group = roomGroups.find(g => g.id === scope.groupId);
+      return [home, { label: group?.name ?? 'Rooms', scope }];
     }
   }
 }
