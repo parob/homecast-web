@@ -360,7 +360,7 @@ export default function RoomStackView({
             {panel.offers.map(({ complement }) => (
               <label
                 key={complement.id}
-                className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground"
+                className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground"
               >
                 <input
                   type="checkbox"
@@ -447,7 +447,7 @@ export default function RoomStackView({
               source={`${lighting.count} light${lighting.count === 1 ? '' : 's'}`}
               actions={(
                 <span className="flex items-center gap-2">
-                  <label className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+                  <label className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={showBrightness}
@@ -459,7 +459,7 @@ export default function RoomStackView({
                   {lightingOffers.map(({ complement }) => (
                     <label
                       key={complement.id}
-                      className="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground"
+                      className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground"
                     >
                       <input
                         type="checkbox"

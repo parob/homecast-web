@@ -113,7 +113,7 @@ export default function ActivityStrips({
 
   const renderStrip = ({ entry: { sel, data }, type }: LooseRow, indent = false) => (
     <div key={`${sel.accessoryId}|${sel.characteristicType}`} className={`space-y-1 ${indent ? 'pl-4' : ''}`}>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[0.6875rem] text-muted-foreground">
         {spansRooms ? labelWithRoom(sel) : labelWithoutRoom(sel)}
       </p>
       <StateTimeline
@@ -143,7 +143,7 @@ export default function ActivityStrips({
           })}
         >
           <ChevronRight className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[0.6875rem] text-muted-foreground">
             {/* Strip the room, then put it back only where it distinguishes —
                 exactly what an accessory row does. "Living Lights" reads
                 "Lights" under its own room and "Living · Lights" across the
@@ -151,7 +151,7 @@ export default function ActivityStrips({
                 whole name. */}
             {groupLabel(group.name, groupRoom, spansRooms)}
           </span>
-          <span className="text-[10px] text-muted-foreground/70">
+          <span className="text-[0.625rem] text-muted-foreground/70">
             · {members.length} accessor{members.length === 1 ? 'y' : 'ies'}
           </span>
         </button>
@@ -201,7 +201,7 @@ export default function ActivityStrips({
                 removed and what those rows were holding, and opening it puts
                 every one of them back. */}
             <button
-              className="flex w-full items-center gap-1 text-left text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              className="flex w-full items-center gap-1 text-left text-[0.625rem] text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => setShowQuiet(v => !v)}
             >
               <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${showQuiet ? 'rotate-90' : ''}`} />

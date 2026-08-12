@@ -155,6 +155,12 @@ export default function EChartsTimeChart({
   const stableSeries = seriesRef.current;
   // Same story for the axis pin, which is written as an object literal.
   const axisSig = JSON.stringify(axis ?? null);
+  // Canvas text is painted in pixels, so it ignores the root font-size the
+  // rest of the app scales with — a chart kept its 11px axis labels while
+  // every label around it grew. Read the setting and scale to match.
+  const fontScale = typeof document === 'undefined'
+    ? 1
+    : (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16;
 
   // Axis plan: units in appearance order. Without a pinned axis the first
   // goes left, the second right, and any more borrow the left (Normalize is
@@ -328,7 +334,7 @@ export default function EChartsTimeChart({
         itemStyle: { color: theme.faint, opacity: 0.07 },
         // Centred: the label describes the whole shaded stretch, and in a
         // corner it reads as a note about the axis instead.
-        label: { show: true, position: 'inside', color: theme.faint, fontSize: 10 },
+        label: { show: true, position: 'inside', color: theme.faint, fontSize: 10 * fontScale },
         data: [[{ name: 'No data', xAxis: fromTs }, { xAxis: unrecordedUntil }]],
       };
     }
@@ -346,7 +352,7 @@ export default function EChartsTimeChart({
       minInterval: idx === 0 ? axis?.minInterval : undefined,
       scale: !(idx === 0 && axis),
       axisLabel: {
-        color: theme.faint, fontSize: 11,
+        color: theme.faint, fontSize: 11 * fontScale,
         formatter: (v: number) => {
           if (normalize) return `${Math.round(v)}%`;
           // A named value wins: "Closed" says what 0% means on a blind.
@@ -377,7 +383,7 @@ export default function EChartsTimeChart({
         type: 'time' as const,
         min: fromTs,
         max: toTs,
-        axisLabel: { color: theme.faint, fontSize: 11, hideOverlap: true },
+        axisLabel: { color: theme.faint, fontSize: 11 * fontScale, hideOverlap: true },
         axisLine: { lineStyle: { color: theme.grid } },
         splitLine: { show: false },
       },
@@ -392,7 +398,7 @@ export default function EChartsTimeChart({
           borderColor: 'transparent', backgroundColor: 'transparent',
           fillerColor: 'rgba(128,128,128,0.12)',
           handleStyle: { color: theme.faint },
-          textStyle: { color: theme.faint, fontSize: 10 },
+          textStyle: { color: theme.faint, fontSize: 10 * fontScale },
           filterMode: 'none' as const,
         }]),
       ],
@@ -432,7 +438,7 @@ export default function EChartsTimeChart({
           : 'rgba(255,255,255,0.96)',
         borderWidth: 0,
         padding: [8, 12],
-        textStyle: { fontSize: 12, color: theme.text },
+        textStyle: { fontSize: 12 * fontScale, color: theme.text },
         extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-radius: 8px; max-width: 320px;',
         // Cap + sort the rows ourselves — a 20-series wall is not a tooltip.
         formatter: (params: unknown) => {
@@ -503,7 +509,7 @@ export default function EChartsTimeChart({
       series: chartSeries,
     };
     return { option, indexByKey, keyByIndex, tracks, styles };
-  }, [stableSeries, band, bandLabel, axisSig, fromTs, toTs, normalize, units, hideSlider]);
+  }, [stableSeries, band, bandLabel, axisSig, fromTs, toTs, normalize, units, hideSlider, fontScale]);
 
   useEffect(() => {
     const host = hostRef.current;

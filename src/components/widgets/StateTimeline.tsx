@@ -217,7 +217,7 @@ export default function StateTimeline({
           the duration, which is the question people actually have. */}
       {hoveredSegment && (
         <div
-          className="pointer-events-none absolute -top-11 z-20 whitespace-nowrap rounded-md border bg-background/95 px-2 py-1 text-[11px] leading-snug shadow-sm backdrop-blur"
+          className="pointer-events-none absolute -top-11 z-20 whitespace-nowrap rounded-md border bg-background/95 px-2 py-1 text-[0.6875rem] leading-snug shadow-sm backdrop-blur"
           style={{
             // Percent of the TRACK, not of the padded container — the two
             // differ by the axis gutter and the label would drift right.
@@ -254,7 +254,7 @@ export default function StateTimeline({
           className="absolute inset-y-0 left-0 z-10 flex items-center justify-center px-1.5"
           style={{ width: `${leadingGapPct}%` }}
         >
-          <span className="truncate text-[10px] text-muted-foreground">No data</span>
+          <span className="truncate text-[0.625rem] text-muted-foreground">No data</span>
         </div>
       )}
       {hover && (

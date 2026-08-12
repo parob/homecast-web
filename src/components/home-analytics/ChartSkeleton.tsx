@@ -28,7 +28,7 @@ export default function ChartSkeleton({
               style={{ width: `${Math.max(pct, 4)}%` }}
             />
           </div>
-          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
             {progress!.done} of {progress!.total} series
           </span>
         </div>

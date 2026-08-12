@@ -102,7 +102,7 @@ export function AccessorySeriesSection({
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-medium">{charLabel(s.characteristicType)}</span>
         {s.resolution !== 'raw' && (
-          <span className="text-[10px] text-muted-foreground">{s.resolution} averages</span>
+          <span className="text-[0.625rem] text-muted-foreground">{s.resolution} averages</span>
         )}
       </div>
       {empty ? (
@@ -124,7 +124,7 @@ export function AccessorySeriesSection({
             />
           </Suspense>
           {stats && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[0.6875rem] text-muted-foreground">
               min {stats.min.toFixed(1)}{unit} · avg {stats.avg.toFixed(1)}{unit} · max {stats.max.toFixed(1)}{unit}
               {recordedFrom(s, fromTs, toTs)}
             </p>
@@ -144,7 +144,7 @@ export function AccessorySeriesSection({
             labelFor={(v, text) => labelForValue(char, s.characteristicType, v, text)}
           />
           {states && states.totals.length > 0 && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[0.6875rem] text-muted-foreground">
               {states.totals.slice(0, 3).map(([key, ms]) =>
                 `${labelForKey(char, s.characteristicType, key)} ${formatDuration(ms)}`,
               ).join(' · ')}

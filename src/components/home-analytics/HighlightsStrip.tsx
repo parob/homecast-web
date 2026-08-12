@@ -41,7 +41,7 @@ export default function HighlightsStrip({
   if (loading && insights.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
+        <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {[0, 1].map(i => (
             <div key={i} className="h-14 rounded-xl border bg-muted/30 animate-pulse" />
@@ -54,7 +54,7 @@ export default function HighlightsStrip({
   if (insights.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
+        <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
         <p className="text-xs text-muted-foreground border rounded-xl px-4 py-3">
           All quiet — nothing unusual in today's data.
         </p>
@@ -64,7 +64,7 @@ export default function HighlightsStrip({
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">Highlights</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {insights.map(insight => {
           const Icon = ICONS[insight.icon];
@@ -85,7 +85,7 @@ export default function HighlightsStrip({
               <span className="min-w-0 flex-1">
                 <span className="block text-xs font-medium leading-snug">{insight.text}</span>
                 {insight.detail && (
-                  <span className="block text-[11px] text-muted-foreground mt-0.5">{insight.detail}</span>
+                  <span className="block text-[0.6875rem] text-muted-foreground mt-0.5">{insight.detail}</span>
                 )}
               </span>
               <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />

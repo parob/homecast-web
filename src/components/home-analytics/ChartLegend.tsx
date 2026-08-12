@@ -115,7 +115,7 @@ export default function ChartLegend({
   }
   const hasCluster = [...groups.values()].some(list => list.length > 1 && list[0].group);
 
-  const row = 'flex flex-wrap items-start gap-x-4 gap-y-2 text-[11px] text-muted-foreground';
+  const row = 'flex flex-wrap items-start gap-x-4 gap-y-2 text-[0.6875rem] text-muted-foreground';
 
   const content = !hasCluster
     ? shown.map(entry => (

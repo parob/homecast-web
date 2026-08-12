@@ -156,7 +156,7 @@ export default function ScopeTree({
                 >
                   {room.label}
                 </button>
-                <span className="shrink-0 text-[10px] opacity-60">{room.total}</span>
+                <span className="shrink-0 text-[0.625rem] opacity-60">{room.total}</span>
               </div>
               {open && room.groups.map(group => {
                 const groupOpen = openGroups.has(group.id);
@@ -181,7 +181,7 @@ export default function ScopeTree({
                       >
                         {group.name}
                       </button>
-                      <span className="shrink-0 text-[10px] opacity-60">{group.memberCount}</span>
+                      <span className="shrink-0 text-[0.625rem] opacity-60">{group.memberCount}</span>
                     </div>
                     {groupOpen && group.members.map(member => {
                       const MemberIcon = accessoryIcon(member.widgetType);
@@ -193,7 +193,7 @@ export default function ScopeTree({
                       >
                         <MemberIcon className="h-3 w-3 shrink-0 opacity-70" />
                         <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                        <span className="shrink-0 text-[10px] opacity-60">{member.seriesCount}</span>
+                        <span className="shrink-0 text-[0.625rem] opacity-60">{member.seriesCount}</span>
                       </button>
                       );
                     })}
@@ -210,7 +210,7 @@ export default function ScopeTree({
                   >
                     <AccIcon className="h-3 w-3 shrink-0 opacity-70" />
                     <span className="min-w-0 flex-1 truncate">{acc.name}</span>
-                    <span className="shrink-0 text-[10px] opacity-60">{acc.seriesCount}</span>
+                    <span className="shrink-0 text-[0.625rem] opacity-60">{acc.seriesCount}</span>
                   </button>
                 );
               })}
@@ -225,7 +225,7 @@ export default function ScopeTree({
 
         {groups.length > 0 && (
           <>
-            <p className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="px-2 pt-3 pb-1 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
               Across rooms
             </p>
             {groups.map(group => (
@@ -236,7 +236,7 @@ export default function ScopeTree({
               >
                 <Layers className="h-3.5 w-3.5 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                <span className="shrink-0 text-[10px] opacity-60">{group.memberCount}</span>
+                <span className="shrink-0 text-[0.625rem] opacity-60">{group.memberCount}</span>
               </button>
             ))}
           </>

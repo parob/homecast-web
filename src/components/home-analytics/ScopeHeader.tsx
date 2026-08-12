@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, PanelLeft } from 'lucide-react';
 import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 
 /**
@@ -19,6 +19,7 @@ import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 export default function ScopeHeader({
   title,
   onBack,
+  onOpenNav,
   crumbs,
   settings,
   onSettings,
@@ -28,6 +29,8 @@ export default function ScopeHeader({
   title?: string;
   /** A back arrow before the title, where the host has somewhere to go back to. */
   onBack?: () => void;
+  /** Opens the tree on a phone, where it cannot be a permanent column. */
+  onOpenNav?: () => void;
   crumbs: Array<{ label: string; scope: AnalyticsScope }>;
   settings: AnalyticsSettings;
   onSettings: (next: Partial<AnalyticsSettings>) => void;
@@ -43,6 +46,17 @@ export default function ScopeHeader({
     // from under the ✕.
     <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b pr-9">
       <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
+        {onOpenNav && (
+          // The tree is the only way DOWN — the breadcrumb only walks up — so
+          // hiding it on a phone left no way into a room at all.
+          <button
+            className="-ml-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            onClick={onOpenNav}
+            aria-label="Open navigation"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+        )}
         {onBack && (
           <button
             className="-ml-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -78,7 +92,7 @@ export default function ScopeHeader({
           <button
             key={r.label}
             onClick={() => onSettings({ rangeMs: r.ms })}
-            className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+            className={`rounded-md px-2.5 py-1 text-[0.6875rem] transition-colors ${
               settings.rangeMs === r.ms
                 ? 'bg-background font-medium text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'

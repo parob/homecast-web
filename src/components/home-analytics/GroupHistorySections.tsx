@@ -143,7 +143,7 @@ export default function GroupHistorySections({
             <div key={section.type} className="space-y-1.5">
               <div className="flex items-baseline justify-between">
                 <span className="text-xs font-medium">{label}</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[0.625rem] text-muted-foreground">
                   average of {entries.length} member{entries.length === 1 ? '' : 's'} · shaded = spread
                 </span>
               </div>
@@ -154,7 +154,7 @@ export default function GroupHistorySections({
                 fromTs={fromTs}
                 toTs={toTs}
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[0.6875rem] text-muted-foreground">
                 min {min.toFixed(1)}{unit} · avg {(sum / points.length).toFixed(1)}{unit} · max {max.toFixed(1)}{unit}
               </p>
             </div>
@@ -176,7 +176,7 @@ export default function GroupHistorySections({
           <div key={section.type} className="space-y-1.5">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-medium">{label}</span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[0.625rem] text-muted-foreground">
                 how many of {entries.length} are on
               </span>
             </div>
@@ -187,7 +187,7 @@ export default function GroupHistorySections({
               fromTs={fromTs}
               toTs={toTs}
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[0.6875rem] text-muted-foreground">
               combined on-time {formatDuration(totalOnMs)} · {changes} change{changes === 1 ? '' : 's'}
             </p>
           </div>
@@ -201,7 +201,7 @@ export default function GroupHistorySections({
           <div key={`own-${own.characteristicType}`} className="space-y-1.5">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-medium">Group {charLabel(own.characteristicType).toLowerCase()}</span>
-              <span className="text-[10px] text-muted-foreground">commands sent to the group as a whole</span>
+              <span className="text-[0.625rem] text-muted-foreground">commands sent to the group as a whole</span>
             </div>
             <StateTimeline
               fromTs={fromTs}

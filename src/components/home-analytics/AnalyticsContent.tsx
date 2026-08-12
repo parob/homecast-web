@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { getAccessoryDisplayName } from '@/components/widgets/types';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockServiceGroups } from '@/history/mock';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import ScopeDashboard from './ScopeDashboard';
 import ScopeHeader from './ScopeHeader';
 import ScopeTree from './ScopeTree';
@@ -84,6 +85,7 @@ export default function AnalyticsContent({
 }) {
   const mock = isMockHistoryEnabled();
   const effectiveHomeId = mock ? 'MOCK-HOME' : homeId;
+  const [navOpen, setNavOpen] = useState(false);
   const { recorded, loading: seriesLoading, error: seriesError, refetch } = useRecordedSeries(effectiveHomeId, mock);
 
   const accessoryInfo = useMemo(() => {
@@ -218,15 +220,33 @@ export default function AnalyticsContent({
       <ScopeHeader
         title={title}
         onBack={onBack}
+        onOpenNav={() => setNavOpen(true)}
         crumbs={crumbs}
         settings={nav.settings}
         onSettings={nav.setSettings}
         onSelect={nav.setScope}
       />
+      {/* A permanent column would eat the width the charts need on a phone,
+          but hiding it outright left no way down: the breadcrumb only walks
+          up. Same tree, in a sheet, closing as soon as you have chosen. */}
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
+        <SheetContent side="left" className="w-72 p-4 md:hidden">
+          <SheetHeader className="sr-only"><SheetTitle>Navigate analytics</SheetTitle></SheetHeader>
+          <div className="h-full pt-6">
+            <ScopeTree
+              tree={tree}
+              scope={nav.scope}
+              homeName={homeName}
+              homes={homes}
+              homeId={homeId}
+              onSelectHome={(id) => { onSelectHome?.(id); setNavOpen(false); }}
+              onSelect={(scope) => { nav.setScope(scope); setNavOpen(false); }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* The tree is desktop chrome; on a phone the breadcrumb and the
-            in-scope lists are the way around, and a permanent sidebar would
-            eat the width the charts need. */}
         <div className="hidden w-52 shrink-0 md:block">
           <ScopeTree
             tree={tree}

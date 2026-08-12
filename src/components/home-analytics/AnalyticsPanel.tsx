@@ -26,12 +26,12 @@ export default function AnalyticsPanel({
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-medium">{title}</span>
         <span className="flex items-center gap-2 shrink-0">
-          {source && <span className="text-[10px] text-muted-foreground">{source}</span>}
+          {source && <span className="text-[0.625rem] text-muted-foreground">{source}</span>}
           {actions}
         </span>
       </div>
       {children}
-      {caption && <div className="text-[11px] text-muted-foreground">{caption}</div>}
+      {caption && <div className="text-[0.6875rem] text-muted-foreground">{caption}</div>}
     </div>
   );
 }
