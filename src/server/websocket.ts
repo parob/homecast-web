@@ -174,7 +174,12 @@ export type BroadcastMessage =
   | EnrollmentCancelled;
 
 interface ServerWebSocketCallbacks {
-  onStateChange?: (state: ConnectionState) => void;
+  /**
+   * `silent` marks a transition the user should not be told about — currently
+   * the affinity-redirect handoff, which is a deliberate sub-second pod move
+   * rather than a connection problem.
+   */
+  onStateChange?: (state: ConnectionState, opts?: { silent?: boolean }) => void;
   onError?: (error: Error) => void;
   onBroadcast?: (message: BroadcastMessage) => void;
   onConnected?: () => void;
@@ -237,6 +242,8 @@ export class ServerWebSocket {
   private ws: WebSocket | NativeRelayWebSocket | null = null;
   private state: ConnectionState = 'disconnected';
   private reconnectDelay = INITIAL_RECONNECT_DELAY;
+  /** Set while an affinity-redirect handoff is in flight — see redirectTo(). */
+  private handingOff = false;
   /**
    * When anything last arrived on the socket. The only evidence that the
    * connection is still real — `readyState` reports a half-open socket as OPEN
@@ -491,6 +498,13 @@ export class ServerWebSocket {
     // Reset backoff delay for immediate reconnect
     this.reconnectDelay = INITIAL_RECONNECT_DELAY;
 
+    // A pod handoff is not a connection loss. The socket is being moved on
+    // purpose and is back in well under a second, so telling the user their
+    // connection dropped — and then that it recovered — describes a fault
+    // that did not happen. Every session takes one of these, so without this
+    // the banner greets people on an ordinary page load.
+    this.handingOff = true;
+
     // Reconnect immediately to the new target
     this.setState('reconnecting');
     this.establishConnection();
@@ -681,7 +695,12 @@ export class ServerWebSocket {
       } else if (newState === 'disconnected') {
         this.connectedAt = null;
       }
-      this.callbacks.onStateChange?.(newState);
+      // A redirect handoff runs reconnecting → connected. Both halves are
+      // silent: the drop never happened, so neither should the "recovered"
+      // that would follow it. Cleared once we are back up.
+      const silent = this.handingOff;
+      if (newState === 'connected') this.handingOff = false;
+      this.callbacks.onStateChange?.(newState, { silent });
     }
   }
 

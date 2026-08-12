@@ -485,7 +485,7 @@ class ServerConnection {
       this.websocket = new ServerWebSocket(
         { token, deviceId, deviceName, browserSessionId, wsUrl: WS_URL },
         {
-          onStateChange: (connectionState) => {
+          onStateChange: (connectionState, opts) => {
             // In community mode, authenticate with the relay as soon as connected
             if (isCommunity && connectionState === 'connected' && this.websocket) {
               const token = localStorage.getItem('homecast-token');
@@ -507,10 +507,21 @@ class ServerConnection {
             // Emit structured log + toast for state transitions so disconnects
             // are visible both in Cloud Logging (via browserLogger shipping)
             // and to the user in the UI.
+            // Emit the structured log for every transition — a redirect
+            // handoff is exactly the kind of thing worth being able to see in
+            // Cloud Logging afterwards — but keep it out of the UI, since
+            // nothing went wrong for the user to act on.
             const prev = this.state.connectionState;
             if (prev !== connectionState) {
-              try { browserLogger.logConnection(connectionState, `prev=${prev}`); } catch { /* noop */ }
-              try { toastConnection(prev, connectionState); } catch { /* noop */ }
+              try {
+                browserLogger.logConnection(
+                  connectionState,
+                  opts?.silent ? `prev=${prev} handoff` : `prev=${prev}`,
+                );
+              } catch { /* noop */ }
+              if (!opts?.silent) {
+                try { toastConnection(prev, connectionState); } catch { /* noop */ }
+              }
             }
             this.updateState(updates);
           },
