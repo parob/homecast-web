@@ -56,10 +56,13 @@ interface SheetContentProps
    * both need to clear the dialog, and only the caller knows that.
    */
   overlayClassName?: string;
+  /** Drop the built-in ✕ — for a sheet whose content offers its own way out
+   *  (picking something), where a close button is one more thing in a corner. */
+  hideCloseButton?: boolean;
 }
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, overlayClassName, children, ...props }, ref) => (
+  ({ side = "right", className, overlayClassName, hideCloseButton, children, ...props }, ref) => (
     <SheetPortal>
       <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
@@ -71,6 +74,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         {/* A side sheet reaches the top of the screen, so its close button is
             the thing most likely to end up under a notch. Anchor it below the
             inset; a bottom sheet starts mid-screen and keeps its own 12px. */}
+        {!hideCloseButton && (
         <SheetPrimitive.Close
           className={cn(
             "absolute right-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
@@ -80,6 +84,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>
+        )}
       </SheetPrimitive.Content>
     </SheetPortal>
   ),
