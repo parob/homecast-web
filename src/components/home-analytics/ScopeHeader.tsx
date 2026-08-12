@@ -49,7 +49,7 @@ export default function ScopeHeader({
           and a close: the trail lost, which is the one part that says where
           you are. The title goes (the screen is obviously analytics) and the
           range drops to its own line, leaving the breadcrumb the width. */}
-      <nav className="order-1 flex min-w-0 flex-1 items-center gap-1 text-sm leading-6">
+      <nav className="order-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5 text-sm leading-6">
         {onOpenNav && (
           // The tree is the only way DOWN — the breadcrumb only walks up — so
           // hiding it on a phone left no way into a room at all.
@@ -65,7 +65,7 @@ export default function ScopeHeader({
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
           return (
-            <span key={`${crumb.label}-${i}`} className="flex min-w-0 items-center gap-0.5">
+            <span key={`${crumb.label}-${i}`} className="flex items-center gap-0.5">
               {(i > 0 || title) && (
                 // The title is hidden by CSS below sm, so the chevron that
                 // separates it from the first crumb has to hide the same way
@@ -78,10 +78,10 @@ export default function ScopeHeader({
                 />
               )}
               {last ? (
-                <span className="truncate font-medium">{crumb.label}</span>
+                <span className="font-medium">{crumb.label}</span>
               ) : (
                 <button
-                  className="truncate text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-left text-muted-foreground transition-colors hover:text-foreground"
                   onClick={() => onSelect(crumb.scope)}
                 >
                   {crumb.label}

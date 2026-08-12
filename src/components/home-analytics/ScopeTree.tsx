@@ -231,15 +231,16 @@ export default function ScopeTree({
           const homeOpen = isCurrent && !collapsedHomes[home.id];
           return (
             <div key={home.id || 'home'}>
-              {/* A home expands like a room, and expanding another one IS
-                  switching to it — only the home you are in has its tree
-                  built, so there is nothing to show until you go there. This
-                  is how the main navigation behaves too. */}
+              {/* The home you are in collapses and re-opens like a room, and
+                  that is all it does — it is a display choice, not a
+                  navigation. Another home's chevron still switches, because
+                  only the current home has its tree built and there is
+                  genuinely nothing to show until you go there. */}
               <div className={`${rowBase} ${isCurrent && scope.level === 'home' ? selected : plain}`}>
                 <button
                   className="rounded p-0.5 hover:bg-muted"
                   onClick={() => (isCurrent
-                    ? setCollapsedHomes(prev => ({ ...prev, [home.id]: !homeOpen }))
+                    ? setCollapsedHomes(prev => ({ ...prev, [home.id]: homeOpen }))
                     : onSelectHome?.(home.id))}
                   aria-label={homeOpen ? `Collapse ${home.name}` : `Expand ${home.name}`}
                 >
