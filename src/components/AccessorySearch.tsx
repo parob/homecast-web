@@ -451,7 +451,14 @@ export function AccessorySearch({
                                             iconStyle={iconStyle}
                                             disabled={disabled}
                                           />
-                                          <ExpandedOverlay isExpanded={isExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout}>
+                                          {/* Above this dialog. ExpandedOverlay portals to
+                                              document.body, so the dialog is its SIBLING
+                                              rather than its ancestor and the default
+                                              dashboard elevation (below dialogs, correctly)
+                                              left the expanded widget painted behind the
+                                              search window. DialogOverlay and DialogContent
+                                              are both z-[10050]. */}
+                                          <ExpandedOverlay isExpanded={isExpanded} onClose={collapseExpandedWidget} onMouseEnter={cancelCollapseTimeout} zIndex={10051}>
                                             <AccessoryWidget
                                           onSetValue={onSetValue}
                                           onFinishEditing={collapseExpandedWidget}

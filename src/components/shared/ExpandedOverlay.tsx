@@ -10,12 +10,27 @@ export interface ExpandedOverlayProps {
   onMouseLeave?: () => void;
   /** Overlay panel width in px (clamped to the viewport). */
   width?: number;
+  /**
+   * Base stacking level for the scrim; the panel sits one above it. Defaults to
+   * the dashboard's, which is deliberately BELOW dialogs — right until a widget
+   * is expanded from inside one. The portal target is document.body either way,
+   * so the dialog is a sibling rather than an ancestor and simply paints over
+   * it. Only the caller knows it is inside a dialog, the same way SheetContent
+   * takes overlayClassName.
+   */
+  zIndex?: number;
   children: React.ReactNode;
 }
+
+/** Dashboard default: above the widget grid, below dialogs. */
+const DEFAULT_Z = 10017;
 
 // Portals preserve React context, so a per-accessory overlay opened from inside
 // an already-open group overlay sees depth 1 and skips its scrim.
 const OverlayDepthContext = createContext(0);
+
+// Carries the caller's elevation down to nested overlays, for the same reason.
+const OverlayZContext = createContext<number | null>(null);
 
 // Portrait panels are narrower so the hero control reads as a tall bar; on
 // desktop the hero stands beside its secondary controls and needs the width.
@@ -67,7 +82,9 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, children }) => {
+  const inheritedZ = useContext(OverlayZContext);
+  const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
@@ -321,7 +338,8 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
           {depth === 0 && (
             <div
               aria-hidden
-              className={`fixed-full-screen z-[10017] pointer-events-none backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
+              style={{ zIndex: baseZ }}
+              className={`fixed-full-screen pointer-events-none backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
                 isDarkBackground ? 'bg-black/15' : 'bg-black/[0.07]'
               } ${ready && !isClosing ? 'opacity-100' : 'opacity-0'}`}
             />
@@ -336,10 +354,11 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             // Glide when the panel resizes itself. Not while opening — the
             // position is being established then, and easing it would drag the
             // panel across the screen on every expand.
-            className={`fixed z-[10018] pointer-events-auto ${
+            className={`fixed pointer-events-auto ${
               ready && !isClosing ? 'transition-[top] duration-base ease-standard' : ''
             }`}
             style={{
+              zIndex: baseZ + 1,
               left: coords.x,
               // Anchor overlay's content to sit TOP_OFFSET px below the widget's
               // top edge (accounting for the 10px wrapper padding ring). Clamp
@@ -392,7 +411,13 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                   ready && !isClosing ? 'opacity-100' : 'opacity-0'
                 }`}>
                   <OverlayDepthContext.Provider value={depth + 1}>
-                    {children}
+                    {/* Nested overlays inherit the elevation rather than dropping
+                        back to the dashboard default — a group expanded inside a
+                        dialog would otherwise send its per-accessory overlay
+                        behind that dialog, which is the bug this prop fixes. */}
+                    <OverlayZContext.Provider value={baseZ + 2}>
+                      {children}
+                    </OverlayZContext.Provider>
                   </OverlayDepthContext.Provider>
                 </div>
               </div>
