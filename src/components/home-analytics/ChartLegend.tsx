@@ -119,7 +119,7 @@ export default function ChartLegend({
 
   const content = !hasCluster
     ? shown.map(entry => (
-      <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
+      <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key) && !dimmed(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
     ))
     : [...groups.entries()].map(([groupKey, list]) => (
       list.length > 1 && list[0].group ? (
@@ -139,13 +139,13 @@ export default function ChartLegend({
             {list[0].group}
           </span>
           {list.map(entry => (
-            <Dot key={entry.key} entry={entry} short dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
+            <Dot key={entry.key} entry={entry} short dim={dimmed(entry.key)} latched={latchedSet.has(entry.key) && !dimmed(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
           ))}
         </span>
       ) : (
         <span key={groupKey || list[0].key} className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           {list.map(entry => (
-            <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
+            <Dot key={entry.key} entry={entry} dim={dimmed(entry.key)} latched={latchedSet.has(entry.key) && !dimmed(entry.key)} onHighlight={onHighlight} onToggle={onToggle} />
           ))}
         </span>
       )

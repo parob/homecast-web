@@ -56,6 +56,10 @@ export default function ScopeTree({
   // A room group opens when you are standing anywhere inside it, and closes
   // when you press its chevron — the same two-way rule rooms follow.
   const [openRoomGroups, setOpenRoomGroups] = useState<Record<string, boolean>>({});
+  // Collapsing the home you are IN is a display choice, not a navigation. Its
+  // chevron used to call onSelect, which on a phone closed the whole menu:
+  // the one gesture meaning "show me less of this" ended the browse.
+  const [collapsedHomes, setCollapsedHomes] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState('');
 
   const keyOf = (room: string | null) => room ?? ' roomless';
@@ -119,15 +123,19 @@ export default function ScopeTree({
   // IS that menu — a sidebar that changes size depending on which screen
   // opened it reads as two different lists.
   const rowBase = 'w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors';
+  // One step per level, as a style: rowBase already sets px-3, and two padding
+  // utilities on one element leave the winner to Tailwind's class order rather
+  // than to us — which is why the indents were not landing.
+  const indent = (depth: number) => ({ paddingLeft: `${12 + depth * 18}px` });
   const selected = 'bg-primary/10 text-foreground font-medium';
   const plain = 'text-muted-foreground hover:bg-muted hover:text-foreground';
 
-  const renderRoom = (room: ScopeRoom, indent = 'pl-1') => {
+  const renderRoom = (room: ScopeRoom, depth = 1) => {
     const open = isOpen(room.room);
     const isRoomScope = scope.level === 'room' && scope.room === room.room;
     return (
           <div key={keyOf(room.room)}>
-            <div className={`${rowBase} ${isRoomScope ? selected : plain} ${indent}`}>
+            <div className={`${rowBase} ${isRoomScope ? selected : plain}`} style={indent(depth)}>
               <button
                 className="rounded p-0.5 hover:bg-muted"
                 onClick={() => toggle(room.room)}
@@ -151,7 +159,7 @@ export default function ScopeTree({
                   {/* A room's lights are one row here for the same reason
                       they are one row in its activity: nine near-identical
                       entries are not nine choices. */}
-                  <div className={`${rowBase} ${isGroupScope ? selected : plain} pl-4`}>
+                  <div className={`${rowBase} ${isGroupScope ? selected : plain}`} style={indent(depth + 1)}>
                     <button
                       className="rounded p-0.5 hover:bg-muted"
                       onClick={() => toggleGroup(group.id)}
@@ -173,7 +181,8 @@ export default function ScopeTree({
               return (
                     <button
                       key={member.id}
-                      className={`${rowBase} pl-11 ${activeAccessory === member.id ? selected : plain}`}
+                      className={`${rowBase} ${activeAccessory === member.id ? selected : plain}`}
+                        style={indent(depth + 2)}
                       onClick={() => onSelect({ level: 'accessory', accessoryId: member.id })}
                     >
                       <MemberIcon className="h-4 w-4 shrink-0 opacity-70" />
@@ -190,7 +199,8 @@ export default function ScopeTree({
           return (
                 <button
                   key={acc.id}
-                  className={`${rowBase} pl-7 ${activeAccessory === acc.id ? selected : plain}`}
+                  className={`${rowBase} ${activeAccessory === acc.id ? selected : plain}`}
+                    style={indent(depth + 1)}
                   onClick={() => onSelect({ level: 'accessory', accessoryId: acc.id })}
                 >
                   <AccIcon className="h-4 w-4 shrink-0 opacity-70" />
@@ -218,6 +228,7 @@ export default function ScopeTree({
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
         {(homes.length > 0 ? homes : [{ id: homeId ?? '', name: homeName }]).map(home => {
           const isCurrent = home.id === homeId || homes.length === 0;
+          const homeOpen = isCurrent && !collapsedHomes[home.id];
           return (
             <div key={home.id || 'home'}>
               {/* A home expands like a room, and expanding another one IS
@@ -227,10 +238,12 @@ export default function ScopeTree({
               <div className={`${rowBase} ${isCurrent && scope.level === 'home' ? selected : plain}`}>
                 <button
                   className="rounded p-0.5 hover:bg-muted"
-                  onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
-                  aria-label={isCurrent ? `Collapse ${home.name}` : `Expand ${home.name}`}
+                  onClick={() => (isCurrent
+                    ? setCollapsedHomes(prev => ({ ...prev, [home.id]: !homeOpen }))
+                    : onSelectHome?.(home.id))}
+                  aria-label={homeOpen ? `Collapse ${home.name}` : `Expand ${home.name}`}
                 >
-                  <ChevronRight className={`h-4 w-4 transition-transform ${isCurrent ? 'rotate-90' : ''}`} />
+                  <ChevronRight className={`h-4 w-4 transition-transform ${homeOpen ? 'rotate-90' : ''}`} />
                 </button>
                 <Home className="h-4 w-4 shrink-0" />
                 <button
@@ -240,8 +253,8 @@ export default function ScopeTree({
                   {home.name}
                 </button>
               </div>
-              {isCurrent && (
-                <div className="pl-2">
+              {homeOpen && (
+                <div>
         {roomGroups.map(group => {
           const inside = group.rooms.some(r => r.room === openRoom || r.room === roomOfActive);
           const explicit = openRoomGroups[group.id];
@@ -253,7 +266,7 @@ export default function ScopeTree({
                   tree puts them there too — and only there, the way a service
                   group's members are reachable through the group rather than
                   beside it. */}
-              <div className={`${rowBase} ${isGroupScope ? selected : plain} pl-1`}>
+              <div className={`${rowBase} ${isGroupScope ? selected : plain}`} style={indent(1)}>
                 <button
                   className="rounded p-0.5 hover:bg-muted"
                   onClick={() => toggleRoomGroup(group.id, groupOpen)}
@@ -270,7 +283,7 @@ export default function ScopeTree({
                 </button>
                 <span className="shrink-0 text-xs opacity-60">{group.total}</span>
               </div>
-              {groupOpen && group.rooms.map(room => renderRoom(room, 'pl-5'))}
+              {groupOpen && group.rooms.map(room => renderRoom(room, 2))}
             </div>
           );
         })}
