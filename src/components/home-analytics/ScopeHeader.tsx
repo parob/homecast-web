@@ -44,7 +44,7 @@ export default function ScopeHeader({
     // OURS rather than the dialog's, so it lives inside the safe area with
     // the rest instead of floating at the window's true top corner, over the
     // notch on a phone.
-    <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b">
+    <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2">
       {/* On a phone the row cannot hold a title, a trail, five range buttons
           and a close: the trail lost, which is the one part that says where
           you are. The title goes (the screen is obviously analytics) and the
@@ -92,7 +92,7 @@ export default function ScopeHeader({
         })}
       </nav>
 
-      <div className="order-3 basis-full sm:order-2 sm:basis-auto">
+      <div className="order-3 flex basis-full justify-end sm:order-2 sm:basis-auto">
         <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
         {RANGES.map(r => (
           <button

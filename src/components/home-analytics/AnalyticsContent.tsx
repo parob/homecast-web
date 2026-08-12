@@ -244,14 +244,14 @@ export default function AnalyticsContent({
           // first thing it finds, which here is the filter box.
           onOpenAutoFocus={(e) => e.preventDefault()}
           style={{
-            paddingTop: 'calc(var(--safe-area-top, 0px) + 1rem)',
+            paddingTop: 'calc(var(--safe-area-top, 0px) + 0.75rem)',
             paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 1rem)',
             paddingLeft: 'calc(var(--safe-area-left, 0px) + 1rem)',
             paddingRight: '1rem',
           }}
         >
           <SheetHeader className="sr-only"><SheetTitle>Navigate analytics</SheetTitle></SheetHeader>
-          <div className="h-full pt-8">
+          <div className="h-full">
             <ScopeTree
               tree={tree}
               scope={nav.scope}
