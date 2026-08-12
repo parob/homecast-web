@@ -239,22 +239,65 @@ export function withCallReason<T>(reason: string, fn: () => T): T {
  * outside it looked like a healthy relay that had stopped doing its job.
  *
  * Bounding the wait does not un-wedge the bridge. What it buys is a failure that
- * names itself: the request fails as BRIDGE_TIMEOUT against a known method,
- * instead of the cloud reporting a generic 30s timeout with nothing to say about
- * where the time went.
+ * names itself: BRIDGE_TIMEOUT against a known method, instead of the cloud
+ * reporting a bare timeout with nothing to say about where the time went. That
+ * only happens if the relay gives up *first*, which is why the number matters.
  *
- * Sits under the cloud's 30s request timeout so the relay is the one to give up,
- * and above the 10s ceiling Swift already applies to characteristic writes so it
- * never preempts a bounded write's real per-device result.
+ * Reads and writes need different ceilings, because they are boxed in from
+ * different sides:
+ *
+ * - **Reads** are unbounded natively — `characteristic.get` is what the bridge
+ *   was wedged on when the watchdog caught it. Nothing else will stop them, and
+ *   the cloud gives up at 10s (`route_request`), so the ceiling has to be under
+ *   that to be the one that reports.
+ *
+ * - **Writes** are already bounded at 10s inside Swift, which returns a real
+ *   per-device result ("this bulb did not confirm"). Cutting a write off sooner
+ *   would throw that away and replace it with something less informative, so the
+ *   ceiling sits above it and exists only to stop the promise hanging forever.
+ *
+ * Keep READ under `route_request`'s timeout and WRITE above Swift's write bound.
+ * If either of those moves, these move with them.
  */
-const BRIDGE_CALL_TIMEOUT_MS = 20_000;
+const BRIDGE_READ_TIMEOUT_MS = 8_000;
+const BRIDGE_WRITE_TIMEOUT_MS = 12_000;
 
 /**
- * Methods exempt from the ceiling because they block on a person, not a device.
+ * Methods that change something, and so are bounded by Swift's own write
+ * ceiling rather than by ours. Everything not listed is treated as a read —
+ * the stricter default, so a newly added method is bounded tightly by omission
+ * rather than loosely by oversight.
+ */
+const BRIDGE_WRITE_METHODS = new Set([
+  'characteristic.set',
+  'serviceGroup.set',
+  'state.set',
+  'scene.execute',
+  'scene.create',
+  'scene.update',
+  'scene.delete',
+  'room.create',
+  'room.delete',
+  'automation.create',
+  'automation.update',
+  'automation.delete',
+  'automation.enable',
+  'automation.disable',
+  'settings.setLaunchAtLogin',
+  'file.save',
+]);
+
+/**
+ * Methods exempt from any ceiling because they block on a person, not a device.
  * `notification.requestPermission` sits on the system permission prompt until
- * it is answered, and taking longer than 20s to click it is not a fault.
+ * it is answered, and taking a while to click it is not a fault.
  */
 const UNBOUNDED_BRIDGE_METHODS = new Set(['notification.requestPermission']);
+
+/** The ceiling that applies to `method`, in milliseconds. */
+function bridgeTimeoutFor(method: string): number {
+  return BRIDGE_WRITE_METHODS.has(method) ? BRIDGE_WRITE_TIMEOUT_MS : BRIDGE_READ_TIMEOUT_MS;
+}
 
 /**
  * Reject if the native side has not answered within the ceiling.
@@ -269,16 +312,18 @@ function callWithTimeout<T>(
 ): Promise<T> {
   if (UNBOUNDED_BRIDGE_METHODS.has(method)) return bridge.call<T>(method, payload);
 
+  const ceilingMs = bridgeTimeoutFor(method);
+
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       reject(Object.assign(
-        new Error(`HomeKit bridge did not answer ${method} within ${BRIDGE_CALL_TIMEOUT_MS / 1000}s`),
+        new Error(`HomeKit bridge did not answer ${method} within ${ceilingMs / 1000}s`),
         { code: 'BRIDGE_TIMEOUT', method },
       ));
-    }, BRIDGE_CALL_TIMEOUT_MS);
+    }, ceilingMs);
 
     bridge.call<T>(method, payload).then(
       (result) => {

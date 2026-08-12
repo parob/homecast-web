@@ -5,16 +5,27 @@
  * `window.homekit.call()` settles when Swift answers it, and if Swift never
  * answers it never settles. The relay has sat in exactly that state in
  * production — socket up, JavaScript healthy, every HomeKit-backed action
- * hanging until the cloud gave up 30s later with nothing to say about why.
- * These tests pin the ceiling that turns that into a named failure.
+ * hanging until the cloud gave up with nothing to say about why. These tests
+ * pin the ceilings that turn that into a named failure.
+ *
+ * The two numbers are boxed in from opposite sides and the ordering is the
+ * whole point, so it is asserted here rather than left to a comment: a read
+ * must give up before the cloud does (10s) or the relay never gets to report,
+ * and a write must give up after Swift's own 10s write bound or it discards
+ * the real per-device result.
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { HomeKit } from '@/native/homekit-bridge';
 
-/** Matches BRIDGE_CALL_TIMEOUT_MS in homekit-bridge.ts. */
-const CEILING_MS = 20_000;
+/** Matches BRIDGE_READ_TIMEOUT_MS / BRIDGE_WRITE_TIMEOUT_MS. */
+const READ_MS = 8_000;
+const WRITE_MS = 12_000;
+/** `route_request`'s default in homecast-cloud (`routing/router.py`). */
+const CLOUD_MS = 10_000;
+/** `HomeKitManager.writeTimeoutSeconds` in the Mac app. */
+const SWIFT_WRITE_MS = 10_000;
 
 type BridgeCall = (method: string, payload?: Record<string, unknown>) => Promise<unknown>;
 
@@ -35,7 +46,13 @@ describe('native bridge call ceiling', () => {
     delete (window as unknown as { homekit?: unknown }).homekit;
   });
 
-  it('rejects as BRIDGE_TIMEOUT when the native side never answers', async () => {
+  it('gives up on a read before the cloud does, and after Swift on a write', () => {
+    // The reason these are 8s and 12s rather than one number.
+    expect(READ_MS).toBeLessThan(CLOUD_MS);
+    expect(WRITE_MS).toBeGreaterThan(SWIFT_WRITE_MS);
+  });
+
+  it('rejects a read as BRIDGE_TIMEOUT when the native side never answers', async () => {
     // The fault itself: a promise that is never settled by Swift.
     installBridge(() => new Promise(() => {}));
 
@@ -46,7 +63,27 @@ describe('native bridge call ceiling', () => {
       method: 'accessories.list',
     });
 
-    await vi.advanceTimersByTimeAsync(CEILING_MS);
+    await vi.advanceTimersByTimeAsync(READ_MS);
+    await settled;
+  });
+
+  it('holds a write past the read ceiling, so Swift can report the real result', async () => {
+    installBridge(() => new Promise(() => {}));
+
+    const pending = HomeKit.setCharacteristic('a1', 'power_state', true);
+    const settled = expect(pending).rejects.toMatchObject({
+      code: 'BRIDGE_TIMEOUT',
+      method: 'characteristic.set',
+    });
+
+    // Still outstanding where a read would already have been cut off.
+    await vi.advanceTimersByTimeAsync(READ_MS);
+    let done = false;
+    void pending.then(() => { done = true; }, () => { done = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(WRITE_MS - READ_MS);
     await settled;
   });
 
@@ -82,7 +119,7 @@ describe('native bridge call ceiling', () => {
       () => { settled = true; },
     );
 
-    await vi.advanceTimersByTimeAsync(CEILING_MS * 3);
+    await vi.advanceTimersByTimeAsync(WRITE_MS * 3);
     expect(settled).toBe(false);
   });
 });
