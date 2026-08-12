@@ -226,7 +226,14 @@ export default function AnalyticsContent({
           but hiding it outright left no way down: the breadcrumb only walks
           up. Same tree, in a sheet, closing as soon as you have chosen. */}
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
-        <SheetContent side="left" className="w-72 p-4 md:hidden">
+        {/* Opened from inside the analytics dialog, so it has to clear it:
+            the dialog is z-[10050] and a sheet is z-[10015], which put the
+            only way to navigate on a phone behind the screen it navigates. */}
+        <SheetContent
+          side="left"
+          className="z-[10060] w-72 p-4 md:hidden"
+          overlayClassName="z-[10055]"
+        >
           <SheetHeader className="sr-only"><SheetTitle>Navigate analytics</SheetTitle></SheetHeader>
           <div className="h-full pt-6">
             <ScopeTree
