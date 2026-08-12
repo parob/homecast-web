@@ -216,7 +216,12 @@ export const SETPOINT_NUMERIC_TYPES = new Set([
   'target_temperature',
   'heating_threshold',
   'cooling_threshold',
-  'target_relative_humidity',
+  // `target_humidity`, not the HomeKit constant's `target_relative_humidity`:
+  // this set is tested against canonical history names, and the long form
+  // matched nothing — so a humidity setpoint drew as a solid peer reading AND
+  // was offered as a target, i.e. twice, under one key. Pinned by
+  // categories.test.ts.
+  'target_humidity',
 ]);
 
 export function isSetpointType(type: string): boolean {
@@ -302,7 +307,22 @@ export interface AccessoryInfoEntry {
   isVirtual?: boolean;
   /** resolveWidgetType's answer — what KIND of thing this is, for its icon. */
   widgetType?: string;
+  /**
+   * Which of a climate accessory's setpoints is actually governing, so the
+   * Targets overlay can leave out the one that isn't. An air conditioner in
+   * Cool mode still reports a heating threshold; drawing it is a flat line
+   * that commands nothing.
+   *
+   * This is the mode NOW, read from live accessory state — not a series. If
+   * the mode changed mid-range the line that survives is the one governing
+   * today, which is the question the overlay is usually answering. Undefined
+   * wherever live state is absent (mock mode), and undefined means draw both.
+   */
+  hvacMode?: HvacMode;
 }
+
+/** What a climate accessory is currently aiming to do. */
+export type HvacMode = 'heat' | 'cool' | 'both';
 
 export interface MonitoringEntry {
   accessoryId: string;

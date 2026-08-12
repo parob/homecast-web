@@ -17,8 +17,12 @@ const CHAR_LABELS: Record<string, string> = {
   // Climate
   target_temperature: 'Target Temperature',
   current_temperature: 'Temperature',
-  heating_threshold: 'Heating Threshold',
-  cooling_threshold: 'Cooling Threshold',
+  // What a heater-cooler aims at — it has no target_temperature. The widgets
+  // have always called these "Heat to" / "Cool to"; the analytics and
+  // automation surfaces said "Heating Threshold", so the same setting had two
+  // names and neither used the word people go looking for.
+  heating_threshold: 'Heat to',
+  cooling_threshold: 'Cool to',
   target_heating_cooling: 'HVAC Mode',
   heating_cooling_target: 'Mode',
   heating_cooling_current: 'Current Mode',

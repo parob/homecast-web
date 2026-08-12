@@ -158,3 +158,40 @@ describe('MEASURES', () => {
     expect(measures.map(m => m.id)).toEqual(['temperature', 'humidity']);
   });
 });
+
+describe('setpoint sets are spelled in canonical history names', () => {
+  // `target_relative_humidity` sat in SETPOINT_NUMERIC_TYPES for a release. It
+  // is the HomeKit constant's name; the canonical history name is
+  // `target_humidity`, so isSetpointType() answered false for the only series
+  // that could ever reach it — and a humidity setpoint drew BOTH as a solid
+  // peer reading and as a dashed target, one key, two lines. Nothing failed;
+  // the set simply matched nothing. These two tests are the tripwire.
+  it('every setpoint type is a real recordable profile', async () => {
+    const { SETPOINT_NUMERIC_TYPES, SETPOINT_STATE_TYPES } = await import('../categories');
+    const { getProfile } = await import('../policy');
+    for (const type of [...SETPOINT_NUMERIC_TYPES, ...SETPOINT_STATE_TYPES]) {
+      expect(getProfile(type), `${type} has no history profile`).toBeTruthy();
+    }
+  });
+
+  it('every setpoint type is already canonical', async () => {
+    const { SETPOINT_NUMERIC_TYPES, SETPOINT_STATE_TYPES } = await import('../categories');
+    const { canonicalHistoryType } = await import('../keys');
+    for (const type of [...SETPOINT_NUMERIC_TYPES, ...SETPOINT_STATE_TYPES]) {
+      expect(canonicalHistoryType(type), `${type} is not the canonical name`).toBe(type);
+    }
+  });
+
+  // A complement offers to draw what the panel filtered out. If the two lists
+  // disagree, a setpoint is either drawn twice or unreachable.
+  it('every setpoint complement offers only setpoint types', async () => {
+    const { MEASURE_COMPLEMENTS, isSetpointType } = await import('../categories');
+    for (const complements of Object.values(MEASURE_COMPLEMENTS)) {
+      for (const complement of complements.filter(c => c.setpoint)) {
+        for (const type of complement.types) {
+          expect(isSetpointType(type), `${type} is offered as a target but not filtered as one`).toBe(true);
+        }
+      }
+    }
+  });
+});

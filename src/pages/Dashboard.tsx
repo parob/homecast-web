@@ -45,7 +45,8 @@ import { serverConnection, getDeviceId } from '@/server/connection';
 import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
-import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, normalizeAccessories } from '@/hooks/useHomeKitData';
+import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, invalidateAccessoriesForHome, normalizeAccessories, wasHydratedFromStorage, getCachedListLength } from '@/hooks/useHomeKitData';
+import { markBoot, reportColdStart } from '@/lib/boot-timing';
 import { buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
 import { browserLogger } from '@/lib/browser-logger';
 import { useEntitySync } from '@/hooks/useEntitySync';
@@ -244,8 +245,8 @@ const CHARACTERISTIC_META: Record<string, CharacteristicMeta> = {
   // Thermostat
   'heating_cooling_current': { controlType: 'readonly', label: 'Mode' },
   'heating_cooling_target': { controlType: 'slider', label: 'Target Mode', min: 0, max: 3 },
-  'heating_threshold': { controlType: 'slider', label: 'Heat To', unit: '°C', min: 10, max: 35 },
-  'cooling_threshold': { controlType: 'slider', label: 'Cool To', unit: '°C', min: 10, max: 35 },
+  'heating_threshold': { controlType: 'slider', label: 'Heat to', unit: '°C', min: 10, max: 35 },
+  'cooling_threshold': { controlType: 'slider', label: 'Cool to', unit: '°C', min: 10, max: 35 },
   'target_humidity': { controlType: 'slider', label: 'Target Humidity', unit: '%', min: 0, max: 100 },
   'temperature_units': { controlType: 'readonly', label: 'Units' },
   'active': { controlType: 'toggle', label: 'Active' },
@@ -2043,7 +2044,11 @@ const Dashboard = () => {
     // for accessories outside the previous room — refetch to get fresh values
     const prev = prevSubscriptionScopeRef.current;
     if (prev?.type === 'room' && (scope.type === 'home' || scope.id !== prev.id)) {
-      invalidateHomeKitCache('accessories', { prefix: true });
+      // Only the home being viewed can have gone stale here — the missed
+      // updates are for accessories outside the previous room, in this home.
+      // The prefix form dropped every home's entry and kicked off a full
+      // N-home refetch wave on something as ordinary as changing rooms.
+      if (selectedHomeId) invalidateAccessoriesForHome(selectedHomeId);
     }
     prevSubscriptionScopeRef.current = scope;
 
@@ -2915,7 +2920,7 @@ const Dashboard = () => {
   // All home IDs for cross-home data fetching (search, collections, service groups)
   const allHomeIds = useMemo(() => (relayHomesData || []).map(h => h.id), [relayHomesData]);
   // All accessories across all homes — fetches per-home so routing works for cloud/shared users
-  const { data: allAccessoriesDataRaw, refetch: refetchAllAccessories } = useAccessoriesForHomes(allHomeIds, { skip: skipRelayData });
+  const { data: allAccessoriesDataRaw, refetch: refetchAllAccessories, progress: accessoriesProgress } = useAccessoriesForHomes(allHomeIds, { skip: skipRelayData });
   // useAccessoriesForHomes returns [] for empty homeIds (homes still loading);
   // downstream code expects null to indicate "not yet loaded"
   const allAccessoriesData = allHomeIds.length === 0 ? null : allAccessoriesDataRaw;
@@ -3174,6 +3179,23 @@ const Dashboard = () => {
 
   // Combined accessories data - use relay data
   const accessoriesData = relayAccessoriesData ? { accessories: relayAccessoriesData } : null;
+
+  // Shape the loading placeholder from the last known counts, so the real
+  // content lands into the layout the skeleton already drew instead of shoving
+  // it around. Falls back to a generic shape the first time we ever see a home.
+  const skeletonRooms = useMemo(() => {
+    const roomCount = getCachedListLength(`rooms:${selectedHomeId}`);
+    const accessoryCount = getCachedListLength(`accessories:${selectedHomeId}`);
+    if (roomCount == null || roomCount === 0) return undefined;
+    const perRoom = accessoryCount ? Math.max(1, Math.round(accessoryCount / roomCount)) : 3;
+    return Array.from({ length: Math.min(roomCount, 6) }, () => ({ tiles: Math.min(perRoom, 8) }));
+  }, [selectedHomeId, accessoriesData]);
+
+  // Only worth showing while more than one home is still arriving — "0 of 1"
+  // is noise, not progress.
+  const gridProgress = accessoriesProgress && accessoriesProgress.total > 1 && accessoriesProgress.done < accessoriesProgress.total
+    ? accessoriesProgress
+    : undefined;
   const accessoriesLoading = relayAccessoriesLoading;
   const accessoriesError = relayAccessoriesError;
   const refetchAccessories = relayRefetchAccessories;
@@ -3184,6 +3206,30 @@ const Dashboard = () => {
       setAccessoriesHomeId(selectedHomeId);
     }
   }, [selectedHomeId, accessoriesData, accessoriesLoading]);
+
+  // Cold-start milestones. 'shell' is the first render past the auth gate;
+  // 'accessories' is the app actually being useful, and is what the summary
+  // reports as the total. Marks are first-write-wins, so re-renders don't move
+  // them. See lib/boot-timing.ts for why this exists in both modes.
+  useEffect(() => {
+    markBoot('shell');
+  }, []);
+
+  useEffect(() => {
+    if (homesData?.homes?.length) markBoot('homes');
+  }, [homesData]);
+
+  useEffect(() => {
+    const list = accessoriesData?.accessories;
+    if (!list?.length) return;
+    markBoot('accessories');
+    reportColdStart({
+      warmCache: wasHydratedFromStorage(),
+      mode: isCommunity ? 'community' : 'cloud',
+      homes: homesData?.homes?.length,
+      accessories: list.length,
+    });
+  }, [accessoriesData, homesData]);
 
   // The manual-refresh overlay is cleared by refreshAll() when its refetches
   // actually settle — not by these derived flags, which go false immediately
@@ -5470,8 +5516,9 @@ const Dashboard = () => {
   // boot sequence is one continuous screen. It used to be bg-background, which
   // flashed white between the black splash and the wallpaper.
   if (authLoading) {
-    return <AppBootFallback />;
+    return <AppBootFallback status={isCommunity ? 'Connecting to this Mac\u2026' : 'Signing in\u2026'} />;
   }
+  markBoot('auth');
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -6193,7 +6240,7 @@ const Dashboard = () => {
                     {/* Homes Section */}
                     <div className="mb-6" data-tour="sidebar-homes">
                       {homesLoading ? (
-                        <SidebarRowsSkeleton rows={2} tone="dark" />
+                        <SidebarRowsSkeleton rows={getCachedListLength('homes') ?? 2} tone="dark" />
                       ) : visibleHomes.length === 0 && pendingEnrollments.length === 0 ? (
                         <p className="px-3 py-2 text-xs text-white/40">No homes found.</p>
                       ) : (
@@ -6217,18 +6264,17 @@ const Dashboard = () => {
                                     hasSelectedChild={(selectedRoomId !== null || selectedRoomGroupId !== null) && pendingHomeId === home.id}
                                     hideAccessoryCounts={hideAccessoryCounts}
                                     onSelect={() => {
-                                      if (pendingHomeId !== home.id) {
-                                        handleSelectHome(home.id);
-                                      } else {
-                                        // Same home: clear room/room group/collection to go to home view
-                                        setSelectedRoomId(null);
-                                        setSelectedRoomGroupId(null);
-                                        localStorage.removeItem('homecast-selected-room');
-                                        setSelectedCollection(null);
-                                        setSelectedCollectionId(null);
-                                        updateUrlParams({ room: null, roomGroup: null, collection: null });
-                                      }
-                                      setSidebarOpen(false);
+                                      // handleSelectHome already does all three cases: a
+                                      // different home selects and expands, the current home
+                                      // at its top level toggles the room list, and the
+                                      // current home from inside a room falls through to the
+                                      // select path — which is what the old mobile-only
+                                      // branch here was hand-rolling.
+                                      handleSelectHome(home.id);
+                                      // A home with rooms is somewhere you tap on the way to
+                                      // one of them, so the drawer stays put. Nothing to drill
+                                      // into means this was the destination.
+                                      if (home.roomCount === 0) setSidebarOpen(false);
                                     }}
                                     isHiddenUi={isHomeActuallyHidden(home.id)}
                                     onToggleVisibility={() => toggleVisibility('home', 'ui', home.id)}
@@ -6260,7 +6306,7 @@ const Dashboard = () => {
                                   <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
                                     <div className="ml-2 pt-1 scroll-clip">
                                       {roomsLoading ? (
-                                        <SidebarRowsSkeleton rows={3} tone="dark" compact />
+                                        <SidebarRowsSkeleton rows={getCachedListLength(`rooms:${home.id}`) ?? 3} tone="dark" compact />
                                       ) : sidebarTree.length === 0 ? (
                                         <p className="px-3 py-1.5 text-xs text-white/40">No rooms in this home.</p>
                                       ) : (
@@ -6290,8 +6336,13 @@ const Dashboard = () => {
                                                       isSelected={selectedRoomGroupId === group.entityId && selectedRoomId === null}
                                                       hasSelectedChild={selectedRoomId !== null && group.roomIds.includes(selectedRoomId)}
                                                       onSelect={() => {
+                                                        // handleSelectRoomGroup collapses the group when it is
+                                                        // already selected. Closing on that too made the one
+                                                        // gesture meaning "show me less of this" end the browse,
+                                                        // and hid the rooms on the way out. Only a group with no
+                                                        // rooms is somewhere you were actually heading.
                                                         handleSelectRoomGroup(group.entityId);
-                                                        setSidebarOpen(false);
+                                                        if (group.roomIds.length === 0) setSidebarOpen(false);
                                                       }}
                                                       onEdit={() => {
                                                         setEditingRoomGroup({
@@ -6427,10 +6478,13 @@ const Dashboard = () => {
                     <CollectionList
                       selectedId={selectedCollectionId}
                       onSelect={(collection) => {
-                        if (collection && selectedCollectionId !== collection.id) {
-                          handleSelectCollection(collection);
-                        }
-                        setSidebarOpen(false);
+                        // The id guard here existed to keep handleSelectCollection off
+                        // its toggle branch, because toggling and closing together just
+                        // hid the groups. Now that a collection with groups does not
+                        // close, re-tapping can collapse it like everything else.
+                        handleSelectCollection(collection);
+                        const groups = collection ? parseCollectionPayload(collection.payload).groups : [];
+                        if (groups.length === 0) setSidebarOpen(false);
                       }}
                       onLoadFromUrl={(collection) => setSelectedCollection(collection)}
 
@@ -6681,7 +6735,7 @@ const Dashboard = () => {
               {/* Homes Section */}
               <div className="mb-6" data-tour="sidebar-homes">
                 {homesLoading ? (
-                  <SidebarRowsSkeleton rows={2} tone={isDarkBackground ? 'dark' : 'light'} />
+                  <SidebarRowsSkeleton rows={getCachedListLength('homes') ?? 2} tone={isDarkBackground ? 'dark' : 'light'} />
                 ) : visibleHomes.length === 0 && pendingEnrollments.length === 0 ? (
                   <p className={`px-3 py-2 text-xs ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
                     No homes found.
@@ -6740,7 +6794,7 @@ const Dashboard = () => {
                             <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
                               <div className="ml-2 pt-1 scroll-clip">
                                 {roomsLoading ? (
-                                  <SidebarRowsSkeleton rows={3} tone={isDarkBackground ? 'dark' : 'light'} compact />
+                                  <SidebarRowsSkeleton rows={getCachedListLength(`rooms:${home.id}`) ?? 3} tone={isDarkBackground ? 'dark' : 'light'} compact />
                                 ) : sidebarTree.length === 0 ? (
                                   <p className={`px-3 py-1.5 text-xs ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
                                     No rooms in this home.
@@ -7097,12 +7151,16 @@ const Dashboard = () => {
               ) : (selectedCollectionId && hasContentAccess) ? (
                 /* Collection data in flight, or still waiting on the server */
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
                 />
               ) : (!tutorialDemoActive && !isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading) || (settingsLoading && !settingsData))) ? (
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={!serverConnected ? 'Connecting to server…' : 'Loading…'}
@@ -7138,6 +7196,8 @@ const Dashboard = () => {
                    probably a reconnect blip caught mid-fetch. Spin briefly
                    instead of flashing the offline banner. */
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={`Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
@@ -7159,6 +7219,8 @@ const Dashboard = () => {
                 />
               ) : (!tutorialDemoActive && accessoriesLoading && !accessoriesData) ? (
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={!serverConnected ? 'Connecting to server\u2026' : 'Loading accessories\u2026'}
@@ -7188,12 +7250,16 @@ const Dashboard = () => {
                 />
               ) : filteredRooms.length === 0 && homes.length === 0 && (homesLoading || !homesData) ? (
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={'Loading homes…'}
                 />
               ) : filteredRooms.length === 0 && (accessoriesLoading || roomsLoading) ? (
                 <AccessoryGridSkeleton
+                  rooms={skeletonRooms}
+                  progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
                   label={'Loading accessories…'}

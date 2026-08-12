@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
-import { getRecordableCharacteristics, type WritableChar } from '@/components/automations/characteristics';
+import { getRecordableCharacteristics, hvacModeOf, type WritableChar } from '@/components/automations/characteristics';
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
 import { getAccessoryDisplayName } from '@/components/widgets/types';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
@@ -117,6 +117,10 @@ export default function AnalyticsContent({
           // roomless so it never becomes a chip or a room-average line.
           room: isHiddenRoom(acc.roomName) ? null : (acc.roomName ?? null),
           isVirtual: Boolean((acc as { isVirtual?: boolean }).isVirtual),
+          // Lets the Targets overlay leave out the threshold this accessory
+          // isn't aiming at. Live state, so no extra fetch — undefined for
+          // everything that isn't climate, and undefined draws both.
+          hvacMode: hvacModeOf(acc),
         });
       }
     }
@@ -269,10 +273,18 @@ export default function AnalyticsContent({
               homeId={homeId}
               // Opening a home is not choosing one: only that home's tree is
               // built, so its chevron has to switch — but the sheet stays put
-              // so you can carry on down to a room. Picking a room, group or
-              // accessory IS the choice, and closes it.
+              // so you can carry on down to a room.
+              //
+              // The same now goes for anything else you can drill into. A room
+              // or a group is somewhere you tap on the way to what is inside
+              // it, so closing the sheet there threw away the browse and made
+              // you reopen and find your place again. Only a leaf is the
+              // destination, and only a leaf closes.
               onSelectHome={(id) => onSelectHome?.(id)}
-              onSelect={(scope) => { nav.setScope(scope); setNavOpen(false); }}
+              onSelect={(scope, opts) => {
+                nav.setScope(scope);
+                if (!opts?.hasChildren) setNavOpen(false);
+              }}
             />
           </div>
         </SheetContent>

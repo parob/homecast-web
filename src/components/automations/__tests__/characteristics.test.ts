@@ -178,3 +178,54 @@ describe('isHiddenChar', () => {
     expect(isHiddenChar('brightness')).toBe(false);
   });
 });
+
+describe('heater-cooler accessories', () => {
+  // The Annex Air Conditioner: a HeaterCooler, which has NO target_temperature
+  // characteristic at all. Its setpoints are heating_threshold and
+  // cooling_threshold, and HISTORY_CHAR_ORDER listed only the Thermostat
+  // spellings — so every air conditioner's targets ranked below battery
+  // housekeeping and fell behind HistoryDialog's six-series fold.
+  const heaterCooler = (mode?: number) => accessory([
+    char({ characteristicType: 'current_temperature', isWritable: false }),
+    char({ characteristicType: 'rotation_speed' }),
+    char({ characteristicType: 'battery_level', isWritable: false }),
+    char({ characteristicType: 'cooling_threshold' }),
+    char({ characteristicType: 'heating_threshold' }),
+    ...(mode === undefined ? [] : [char({ characteristicType: 'target_heater_cooler_state', value: String(mode) })]),
+  ]);
+
+  it('ranks its setpoints with the reading, not below battery', async () => {
+    const { getRecordableCharacteristics, sortByHistoryImportance } = await import('../characteristics');
+    const ordered = sortByHistoryImportance(getRecordableCharacteristics(heaterCooler()));
+    expect(ordered.map(c => c.type)).toEqual([
+      'current_temperature', 'heating_threshold', 'cooling_threshold',
+      'rotation_speed', 'battery_level',
+    ]);
+  });
+
+  it('labels its setpoints the way the widgets do', async () => {
+    const { charLabel } = await import('../format');
+    expect(charLabel('heating_threshold')).toBe('Heat to');
+    expect(charLabel('cooling_threshold')).toBe('Cool to');
+  });
+
+  it('reports which setpoint is governing, so the inert one can be left out', async () => {
+    const { hvacModeOf } = await import('../characteristics');
+    expect(hvacModeOf(heaterCooler(2))).toBe('cool');
+    expect(hvacModeOf(heaterCooler(1))).toBe('heat');
+    expect(hvacModeOf(heaterCooler(0))).toBe('both');   // Auto: both govern
+    expect(hvacModeOf(heaterCooler())).toBeUndefined(); // unreadable: draw both
+  });
+
+  it('reads a thermostat mode too, where 0 means Off rather than Auto', async () => {
+    const { hvacModeOf } = await import('../characteristics');
+    const thermostat = (mode: number) => accessory([
+      char({ characteristicType: 'target_temperature' }),
+      char({ characteristicType: 'heating_cooling_target', value: String(mode) }),
+    ]);
+    expect(hvacModeOf(thermostat(1))).toBe('heat');
+    expect(hvacModeOf(thermostat(2))).toBe('cool');
+    expect(hvacModeOf(thermostat(3))).toBe('both'); // Auto
+    expect(hvacModeOf(thermostat(0))).toBe('both'); // Off — nothing to single out
+  });
+});

@@ -18,6 +18,7 @@
  * a solid theme token and disappears against a dark background, so surfaces that
  * know they are dark pass tone="dark" and get white overlays instead.
  */
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 type Tone = 'light' | 'dark';
@@ -184,7 +185,17 @@ export function AccessoryGridSkeleton({
  * the user watched black → blank → white in the first second, three screens for
  * one wait.
  */
-export function AppBootFallback() {
+export function AppBootFallback({ status }: { status?: string } = {}) {
+  // A short wait needs no words — a label that flashes for 200ms is noise. But
+  // "stuck on a loading screen for ages" is exactly a wait that never says
+  // anything, so past about a second the screen starts explaining itself. The
+  // delay is what keeps this from being clutter on every fast boot.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWaited(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-7 bg-black"
@@ -199,6 +210,14 @@ export function AppBootFallback() {
         className="block rounded-[18px]"
       />
       <div className="h-[22px] w-[22px] animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
+      <p
+        className={cn(
+          'absolute bottom-24 px-8 text-center text-xs text-white/40 transition-opacity duration-500',
+          waited ? 'opacity-100' : 'opacity-0'
+        )}
+      >
+        {status ?? 'Starting up…'}
+      </p>
     </div>
   );
 }

@@ -57,9 +57,15 @@ class DataCache {
   // Track pending requests globally to deduplicate across hook instances
   private pendingRequests = new Map<string, Promise<unknown>>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Did this session start with usable data on disk? Reported in boot timing. */
+  private hydratedCount = 0;
 
   constructor() {
     this.hydrate();
+  }
+
+  get wasHydrated(): boolean {
+    return this.hydratedCount > 0;
   }
 
   get<T>(key: string): T | null {
@@ -93,6 +99,7 @@ class DataCache {
         if (!entry || typeof entry.timestamp !== 'number') continue;
         if (now - entry.timestamp > PERSIST_MAX_AGE) continue;
         this.cache.set(key, entry);
+        this.hydratedCount++;
       }
     } catch {
       // Corrupt or unavailable storage is not worth failing a boot over.
@@ -366,6 +373,12 @@ interface UseHomeKitDataResult<T> {
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+  /**
+   * How much of a multi-request fan-out has landed. Only the per-home hooks
+   * populate this — it exists so a loading placeholder can report a fact
+   * ("3 of 5 homes") rather than a percentage invented from a timer.
+   */
+  progress?: { done: number; total: number };
 }
 
 // ============================================================================
@@ -681,12 +694,17 @@ export function useAccessoriesForHomes(
     if (uncached.length === 0 || retryCountRef.current >= 3) return;
     retryCountRef.current++;
     for (const homeId of uncached) {
-      serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
-        homeId,
-        includeValues: true,
-      }).then(result => {
+      // Through getOrFetch, like the initial fan-out above: this retry fires on
+      // every cacheVersion bump, so issuing it raw could stack a second live
+      // accessories.list on top of one already in flight for the same home.
+      cache.getOrFetch(`accessories:${homeId}`, () =>
+        serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
+          homeId,
+          includeValues: true,
+        }).then(result => normalizeAccessories(result?.accessories ?? []))
+      ).then(normalized => {
         if (mountedRef.current) {
-          cache.set(`accessories:${homeId}`, normalizeAccessories(result?.accessories ?? []));
+          cache.set(`accessories:${homeId}`, normalized);
         }
       }).catch(() => {});
     }
@@ -707,7 +725,15 @@ export function useAccessoriesForHomes(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [homeIdsKey, cacheVersion]);
 
+  // One request per home, so "done" is simply how many have a cache entry.
+  const progress = useMemo(() => ({
+    done: homeIds.filter(id => cache.get<HomeKitAccessory[]>(`accessories:${id}`) !== null).length,
+    total: homeIds.length,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [homeIdsKey, cacheVersion]);
+
   return {
+    progress,
     data: data as HomeKitAccessory[] | null,
     loading,
     error,
@@ -894,6 +920,27 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
 }
 
 /**
+ * Did this session boot with usable data already on disk? A warm start paints
+ * from cache and should be near-instant; a cold one is bounded by the relay.
+ * Boot timing reports the two separately — averaged together they hide both.
+ */
+export function wasHydratedFromStorage(): boolean {
+  return cache.wasHydrated;
+}
+
+/**
+ * Length of a cached list, or null if we've never seen it.
+ *
+ * Used to shape loading placeholders: with the last known counts a skeleton can
+ * render the right number of rooms and tiles, so the real content lands into
+ * the same layout instead of shoving it around.
+ */
+export function getCachedListLength(key: string): number | null {
+  const entry = cache.get<unknown[]>(key);
+  return Array.isArray(entry) ? entry.length : null;
+}
+
+/**
  * Drop both the in-memory cache and its persisted copy.
  *
  * Must be called on sign-out: the persisted copy survives a reload by design,
@@ -903,6 +950,23 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
 export function clearPersistedHomeKitCache(): void {
   invalidateHomeKitCache('all');
   cache.clearPersisted();
+}
+
+/**
+ * Invalidate just one home's accessories.
+ *
+ * The broad `invalidateHomeKitCache('accessories', { prefix: true })` drops
+ * every home's entry and starts an N-home refetch wave. That is far too much
+ * for the common case — changing rooms — where the only thing that went stale
+ * is the home you are already looking at.
+ *
+ * Same UUID-case tolerance as invalidateHomeCaches: the relay and the cache
+ * don't always agree on casing, and a miss here is a silently stale tile.
+ */
+export function invalidateAccessoriesForHome(homeId: string): void {
+  for (const id of new Set([homeId, homeId.toUpperCase(), homeId.toLowerCase()])) {
+    cache.invalidate(`accessories:${id}`);
+  }
 }
 
 /**

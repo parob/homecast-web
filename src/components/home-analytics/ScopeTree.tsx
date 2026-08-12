@@ -28,7 +28,13 @@ export default function ScopeTree({
   homes?: Array<{ id: string; name: string }>;
   homeId: string | null;
   onSelectHome?: (id: string) => void;
-  onSelect: (scope: AnalyticsScope) => void;
+  /**
+   * `hasChildren` says whether the row you picked has anything nested under it.
+   * Only the tree knows, and on a phone the caller needs it: a row you can drill
+   * into is a step on the way somewhere, so the sheet has to stay put. A leaf is
+   * the destination.
+   */
+  onSelect: (scope: AnalyticsScope, opts?: { hasChildren?: boolean }) => void;
 }) {
   // undefined, not null, when the scope is not a room: null is a real room
   // here (the roomless bucket) and would match it.
@@ -145,7 +151,16 @@ export default function ScopeTree({
               </button>
               <button
                 className="min-w-0 flex-1 truncate text-left"
-                onClick={() => onSelect({ level: 'room', room: room.room })}
+                onClick={() => {
+                  // Picking a container opens it. Expansion is otherwise only
+                  // inferred from an active DESCENDANT, so selecting the room
+                  // itself would leave its contents folded away — the one thing
+                  // you stayed in the tree to reach.
+                  setManual(prev => ({ ...prev, [keyOf(room.room)]: true }));
+                  onSelect({ level: 'room', room: room.room }, {
+                    hasChildren: room.groups.length > 0 || room.accessories.length > 0,
+                  });
+                }}
               >
                 {room.label}
               </button>
@@ -170,7 +185,12 @@ export default function ScopeTree({
                     <Layers className="h-4 w-4 shrink-0 opacity-70" />
                     <button
                       className="min-w-0 flex-1 truncate text-left"
-                      onClick={() => onSelect({ level: 'group', groupId: group.id })}
+                      onClick={() => {
+                        setOpenGroups(prev => new Set(prev).add(group.id));
+                        onSelect({ level: 'group', groupId: group.id }, {
+                          hasChildren: group.members.length > 0,
+                        });
+                      }}
                     >
                       {group.name}
                     </button>
@@ -249,7 +269,13 @@ export default function ScopeTree({
                 <Home className="h-4 w-4 shrink-0" />
                 <button
                   className="min-w-0 flex-1 truncate text-left"
-                  onClick={() => (isCurrent ? onSelect({ level: 'home' }) : onSelectHome?.(home.id))}
+                  onClick={() => {
+                    if (!isCurrent) { onSelectHome?.(home.id); return; }
+                    setCollapsedHomes(prev => ({ ...prev, [home.id]: false }));
+                    onSelect({ level: 'home' }, {
+                      hasChildren: roomGroups.length > 0 || rooms.length > 0,
+                    });
+                  }}
                 >
                   {home.name}
                 </button>
@@ -278,7 +304,12 @@ export default function ScopeTree({
                 <LayoutGrid className="h-4 w-4 shrink-0 opacity-70" />
                 <button
                   className="min-w-0 flex-1 truncate text-left"
-                  onClick={() => onSelect({ level: 'roomGroup', groupId: group.id })}
+                  onClick={() => {
+                    setOpenRoomGroups(prev => ({ ...prev, [group.id]: true }));
+                    onSelect({ level: 'roomGroup', groupId: group.id }, {
+                      hasChildren: group.rooms.length > 0,
+                    });
+                  }}
                 >
                   {group.name}
                 </button>

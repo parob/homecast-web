@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { isSetpointType, measuresIn, MEASURE_COMPLEMENTS, SETPOINT_STATE_TYPES, type AccessoryInfoEntry } from '@/history/categories';
 import { canonicalHistoryType } from '@/history/keys';
 import { sanitizeSeriesData } from '@/history/sanitize';
@@ -23,6 +23,36 @@ import type { SeriesSel } from './types';
 import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const PER_MEASURE_CAP = 10;
+
+/**
+ * A panel's "also draw…" switch — Targets, Humidity, Brightness, Lux.
+ *
+ * A bare 10px checkbox in a header row reads as chrome, and these controls
+ * are the only route to data the panel is deliberately holding back. A chip
+ * that fills when it is on carries its state at a glance and gives the label
+ * a hit target, which the checkbox's own 10px square did not.
+ */
+function ComplementToggle({ label, on, onToggle }: {
+  label: string;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onToggle}
+      className={`rounded-full border px-2 py-0.5 text-[0.625rem] leading-4 transition-colors ${
+        on
+          ? 'border-foreground/30 bg-foreground/10 text-foreground'
+          : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 /**
  * A room's whole climate story on ONE time axis: a stacked panel per
@@ -119,6 +149,19 @@ export default function RoomStackView({
     [roomSeries, accessoryInfo],
   );
 
+  // A heater-cooler reports BOTH thresholds whatever mode it is in, so the
+  // one it isn't aiming at draws a flat line that commands nothing. Filtering
+  // here rather than at draw time means the inert series is never fetched and
+  // never counted as a hidden target. Auto — and any accessory whose mode we
+  // can't read — keeps both, which is correct: in Auto both govern.
+  const governsNow = useCallback((characteristicType: string, accessoryId: string) => {
+    const canonical = canonicalHistoryType(characteristicType);
+    if (canonical !== 'heating_threshold' && canonical !== 'cooling_threshold') return true;
+    const mode = accessoryInfo.get(accessoryId.toUpperCase())?.hvacMode;
+    if (!mode || mode === 'both') return true;
+    return mode === (canonical === 'heating_threshold' ? 'heat' : 'cool');
+  }, [accessoryInfo]);
+
   // One panel per measure present in this room, importance-ordered.
   const measures = useMemo(() => measuresIn(roomSeries), [roomSeries]);
   const panels = useMemo(() => measures.map(measure => {
@@ -145,7 +188,8 @@ export default function RoomStackView({
     const offers = (MEASURE_COMPLEMENTS[measure.id] ?? []).flatMap(complement => {
       const types = new Set(complement.types);
       const found = roomSeries.filter(s =>
-        s.kind === 'numeric' && types.has(canonicalHistoryType(s.characteristicType)));
+        s.kind === 'numeric' && types.has(canonicalHistoryType(s.characteristicType))
+        && governsNow(s.characteristicType, s.accessoryId));
       return found.length > 0
         ? [{ complement, sels: buildSels(found, accessoryInfo) }]
         : [];
@@ -158,7 +202,7 @@ export default function RoomStackView({
       offers,
       total: readings.length,
     };
-  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo, byRoom]);
+  }).filter(p => p.sels.length > 0), [measures, roomSeries, accessoryInfo, byRoom, governsNow]);
 
   const stripSels = useMemo(() => {
     const infos = roomSeries.filter(s =>
@@ -347,29 +391,31 @@ export default function RoomStackView({
     const unit = panel.measure.unit ?? '';
     const resolution = chartSeries[0].data.resolution;
     const isLastChart = panelIndex === panels.length - 1;
+    // A panel that is holding targets back says so. Without this the panel is
+    // indistinguishable from one whose accessories record no target at all,
+    // which is how a working overlay went unfound: the readings are right,
+    // nothing is missing, and there is no reason to go looking for a tick.
+    const hiddenTargets = panel.offers
+      .filter(o => o.complement.setpoint && !isOn(panel.measure.id, o.complement.id))
+      .reduce((count, o) => count + o.sels.length, 0);
 
     return (
       <AnalyticsPanel
         key={panel.measure.id}
         title={panel.measure.title}
-        source={byRoom
+        source={`${byRoom
           ? `${readingSeries.length} room${readingSeries.length === 1 ? '' : 's'} · averaged from ${perAccessory.length} sensor${perAccessory.length === 1 ? '' : 's'}`
-          : `${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`}
+          : `${readingSeries.length} sensor${readingSeries.length === 1 ? '' : 's'} · ${resolution === 'raw' ? 'raw readings' : `${resolution} averages`}${panel.total > panel.sels.length ? ` · ${panel.total - panel.sels.length} not shown` : ''}`
+        }${hiddenTargets > 0 ? ` · ${hiddenTargets} target${hiddenTargets === 1 ? '' : 's'} hidden` : ''}`}
         actions={panel.offers.length > 0 ? (
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5">
             {panel.offers.map(({ complement }) => (
-              <label
+              <ComplementToggle
                 key={complement.id}
-                className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground"
-              >
-                <input
-                  type="checkbox"
-                  checked={isOn(panel.measure.id, complement.id)}
-                  onChange={() => toggleComplement(panel.measure.id, complement.id)}
-                  className="accent-current"
-                />
-                {complement.label}
-              </label>
+                label={complement.label}
+                on={isOn(panel.measure.id, complement.id)}
+                onToggle={() => toggleComplement(panel.measure.id, complement.id)}
+              />
             ))}
           </span>
         ) : undefined}
@@ -446,29 +492,19 @@ export default function RoomStackView({
               title="Lighting"
               source={`${lighting.count} light${lighting.count === 1 ? '' : 's'}`}
               actions={(
-                <span className="flex items-center gap-2">
-                  <label className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={showBrightness}
-                      onChange={(e) => setShowBrightness(e.target.checked)}
-                      className="accent-current"
-                    />
-                    Brightness
-                  </label>
+                <span className="flex items-center gap-1.5">
+                  <ComplementToggle
+                    label="Brightness"
+                    on={showBrightness}
+                    onToggle={() => setShowBrightness(v => !v)}
+                  />
                   {lightingOffers.map(({ complement }) => (
-                    <label
+                    <ComplementToggle
                       key={complement.id}
-                      className="flex cursor-pointer items-center gap-1 text-[0.625rem] text-muted-foreground"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isOn('lighting', complement.id)}
-                        onChange={() => toggleComplement('lighting', complement.id)}
-                        className="accent-current"
-                      />
-                      {complement.label}
-                    </label>
+                      label={complement.label}
+                      on={isOn('lighting', complement.id)}
+                      onToggle={() => toggleComplement('lighting', complement.id)}
+                    />
                   ))}
                 </span>
               )}

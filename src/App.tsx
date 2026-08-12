@@ -15,11 +15,15 @@ import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
 import { lazy, Suspense } from "react";
 import { AppBootFallback } from "@/components/LoadingSkeletons";
+// Login stays eager: for a signed-out visitor it IS the first screen, and
+// making it a second round trip would just move the wait. The rest are not on
+// any first-paint path — a signed-in user going straight to /portal was paying
+// for all of them in the entry chunk.
 import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import OAuthConsent from "./pages/OAuthConsent";
-import NotFound from "./pages/NotFound";
-import ShareControlRedirect from "./pages/ShareControlRedirect";
+const Signup = lazy(() => import("./pages/Signup"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const ShareControlRedirect = lazy(() => import("./pages/ShareControlRedirect"));
 
 // Heavy pages — lazy loaded so the entry chunk stays small
 const Index = lazy(() => import("./pages/Index"));

@@ -175,7 +175,18 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Check if relay requires auth — retry up to 5 times (bridge may still be initializing)
+    // Check if relay requires auth — retry up to 5 times (bridge may still be initializing).
+    //
+    // The delays are backed off from a short first wait rather than a flat 1s
+    // each. Nothing here is rate-limited; the retry exists purely to outlast a
+    // bridge that is still coming up, and that usually takes far less than a
+    // second. Flat 1s spacing meant a relay that never becomes ready — a plain
+    // browser pointed at a Mac with no relay set up, which is a deterministic
+    // answer, not a transient one — spent 4s on a black screen before the login
+    // page appeared. Backing off costs the same five attempts but bounds the
+    // worst case at ~2.2s, and the common transient case now recovers in 150ms
+    // instead of a full second.
+    const RETRY_DELAYS_MS = [150, 300, 600, 1200];
     let status: { data?: { authEnabled?: boolean; relayReady?: boolean } } | null = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -190,7 +201,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
       } catch {
         // Network error or 503 — retry
       }
-      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 1000));
+      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
     }
 
     if (!status) {

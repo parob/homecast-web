@@ -8,6 +8,7 @@ import { charLabel, formatValue } from './format';
 import { parseCharacteristicValue } from '@/components/widgets/types';
 import { getProfile as getHistoryProfile } from '@/history/policy';
 import { canonicalHistoryType } from '@/history/keys';
+import type { HvacMode } from '@/history/categories';
 import type { HomeKitAccessory, HomeKitCharacteristic } from '@/lib/graphql/types';
 
 /** Internal/metadata characteristics that shouldn't appear in trigger/condition/action pickers */
@@ -205,6 +206,43 @@ export function getRecordableCharacteristics(accessory: HomeKitAccessory | undef
 }
 
 /**
+ * Which setpoint a climate accessory is currently aiming at.
+ *
+ * A heater-cooler carries BOTH a heating and a cooling threshold whatever mode
+ * it is in, so the two are only distinguishable by the mode: an air
+ * conditioner set to Cool still reports a heating threshold, and charting it
+ * draws a flat line that commands nothing. Auto (and anything unreadable)
+ * answers 'both' — in Auto both thresholds genuinely govern.
+ *
+ * Reads the two mode characteristics in HomeKit's own vocabularies, which
+ * disagree: HeaterCooler's target_heater_cooler_state is 0 Auto / 1 Heat /
+ * 2 Cool, Thermostat's heating_cooling_target is 0 Off / 1 Heat / 2 Cool /
+ * 3 Auto. Same numbers, different meanings for 0.
+ */
+export function hvacModeOf(accessory: HomeKitAccessory | undefined): HvacMode | undefined {
+  if (!accessory) return undefined;
+  const valueOf = (type: string): number | undefined => {
+    for (const service of accessory.services ?? []) {
+      for (const char of service.characteristics ?? []) {
+        if (canonicalHistoryType(char.characteristicType) !== type) continue;
+        const value = Number(char.value);
+        if (Number.isFinite(value)) return value;
+      }
+    }
+    return undefined;
+  };
+  const heaterCooler = valueOf('target_heater_cooler_state');
+  if (heaterCooler !== undefined) {
+    return heaterCooler === 1 ? 'heat' : heaterCooler === 2 ? 'cool' : 'both';
+  }
+  const thermostat = valueOf('heating_cooling_target');
+  if (thermostat !== undefined) {
+    return thermostat === 1 ? 'heat' : thermostat === 2 ? 'cool' : 'both';
+  }
+  return undefined;
+}
+
+/**
  * Importance order for HISTORY display — what a person opens the chart for,
  * first. Environment readings and levels lead, control states follow,
  * battery housekeeping last. Types not listed keep their service order
@@ -217,8 +255,14 @@ export const HISTORY_CHAR_ORDER = [
   'air_quality', 'eve_air_pressure', 'water_level',
   // Power and energy levels.
   'eve_energy_watt', 'eve_energy_kwh', 'eve_voltage', 'eve_ampere',
-  // Setpoints and HVAC state.
-  'target_temperature', 'heating_cooling_current', 'heating_cooling_target',
+  // Setpoints and HVAC state. Both service shapes: a Thermostat aims at
+  // target_temperature, a HeaterCooler has no such characteristic and aims at
+  // heating_threshold/cooling_threshold instead. Listing only the Thermostat
+  // spellings ranked every air conditioner's setpoints below battery
+  // housekeeping — and behind HistoryDialog's "Show more" fold.
+  'target_temperature', 'heating_threshold', 'cooling_threshold',
+  'heating_cooling_current', 'heating_cooling_target',
+  'current_heater_cooler_state', 'target_heater_cooler_state',
   // Activity events.
   'motion_detected', 'occupancy_detected', 'contact_state', 'current_door_state',
   'lock_current_state', 'obstruction_detected',

@@ -200,7 +200,9 @@ export default function GroupHistorySections({
         return (
           <div key={`own-${own.characteristicType}`} className="space-y-1.5">
             <div className="flex items-baseline justify-between">
-              <span className="text-xs font-medium">Group {charLabel(own.characteristicType).toLowerCase()}</span>
+              {/* Separator rather than "Group {label lowercased}": labels that
+                  read as a verb phrase ("Heat to") turn that into nonsense. */}
+              <span className="text-xs font-medium">Group · {charLabel(own.characteristicType)}</span>
               <span className="text-[0.625rem] text-muted-foreground">commands sent to the group as a whole</span>
             </div>
             <StateTimeline

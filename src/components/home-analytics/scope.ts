@@ -291,12 +291,28 @@ export interface AnalyticsScopeState {
   canGoBack: boolean;
 }
 
+/** Same place, not same object — every row builds a fresh scope literal. */
+function sameScope(a: AnalyticsScope | undefined, b: AnalyticsScope): boolean {
+  if (!a || a.level !== b.level) return false;
+  switch (a.level) {
+    case 'home': return true;
+    case 'room': return a.room === (b as { room: string | null }).room;
+    case 'accessory': return a.accessoryId === (b as { accessoryId: string }).accessoryId;
+    case 'group':
+    case 'roomGroup': return a.groupId === (b as { groupId: string }).groupId;
+  }
+}
+
 export function useAnalyticsScope(initial?: AnalyticsScope): AnalyticsScopeState {
   const [history, setHistory] = useState<AnalyticsScope[]>([initial ?? { level: 'home' }]);
   const [settings, setSettingsState] = useState<AnalyticsSettings>(DEFAULT_SETTINGS);
 
   const setScope = useCallback((next: AnalyticsScope) => {
-    setHistory(h => [...h, next]);
+    // Re-picking where you already are is not a step. It used to push anyway,
+    // which only showed up as a back button that needed pressing twice; now
+    // that a container row can be tapped repeatedly without closing the tree,
+    // it would stack a whole run of them.
+    setHistory(h => (sameScope(h[h.length - 1], next) ? h : [...h, next]));
   }, []);
   const back = useCallback(() => {
     setHistory(h => (h.length > 1 ? h.slice(0, -1) : h));
