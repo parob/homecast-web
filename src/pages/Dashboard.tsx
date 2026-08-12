@@ -52,7 +52,7 @@ import { useEntitySync } from '@/hooks/useEntitySync';
 import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLayout, useRoomGroupLayout } from '@/hooks/useEntityLayout';
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
-import { AreaSummary } from '@/components/summary';
+import { AreaSummary, StatusPill } from '@/components/summary';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
@@ -88,6 +88,7 @@ const BREADCRUMB_LINK_CLASS =
 import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
+import { AppBootFallback, SidebarRowsSkeleton, AccessoryGridSkeleton } from '@/components/LoadingSkeletons';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { AdBanner } from '@/components/ads/AdBanner';
@@ -1559,9 +1560,11 @@ const Dashboard = () => {
 
   // Temporarily show hidden items (homes, rooms, accessories) for unhiding
   const [showHiddenItems, setShowHiddenItems] = useState(false);
-  // Scenes/Automations sections, toggled by the pills in the sensor-summary row
+  // Scenes/Automations/Status sections, toggled by the pills in the summary row.
+  // Status is home-view only: room views keep the sensor bubbles inline.
   const [scenesOpen, setScenesOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
 
   // Helper accessories: ours, not HomeKit's, so they live in the room grid
   // alongside real accessories and in a home-level folder above the rooms.
@@ -3182,12 +3185,9 @@ const Dashboard = () => {
     }
   }, [selectedHomeId, accessoriesData, accessoriesLoading]);
 
-  // Clear manual refresh overlay when loading finishes
-  useEffect(() => {
-    if (isManualRefreshing && !accessoriesLoading && !collectionsLoading) {
-      setIsManualRefreshing(false);
-    }
-  }, [isManualRefreshing, accessoriesLoading, collectionsLoading]);
+  // The manual-refresh overlay is cleared by refreshAll() when its refetches
+  // actually settle — not by these derived flags, which go false immediately
+  // when a refetch runs over cached data.
 
   // Auto-refresh page if connecting overlay is stuck for 10 minutes
   useEffect(() => {
@@ -4586,6 +4586,20 @@ const Dashboard = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, visibility, visibilityVersion]);
 
+  // Every visible accessory in the current view — what the summary row reads.
+  // Memoised because both the Status pill and AreaSummary aggregate over it.
+  // The cast bridges the two HomeKitAccessory shapes: the GraphQL one leaves
+  // `category` optional where the bridge's requires it. The summary reads only
+  // services and characteristics, so the difference doesn't reach it.
+  const summaryAccessories = useMemo(
+    () => filteredRooms.flatMap(([_, accs]) => accs) as import('@/native/homekit-bridge').HomeKitAccessory[],
+    [filteredRooms]
+  );
+
+  // Whole home: no room and no room group drilled into. The scenes,
+  // automations and stats pills are home-level, so they only show here.
+  const isWholeHomeView = !!selectedHomeId && !selectedRoomId && !selectedRoomGroup;
+
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
     const category = accessory.category?.toLowerCase() || '';
@@ -5439,12 +5453,11 @@ const Dashboard = () => {
     } catch { /* ignore save errors */ }
   }, [settingsData, updateSettingsMutation]);
 
+  // Same visual as index.html's #app-loader and the Suspense fallback, so the
+  // boot sequence is one continuous screen. It used to be bg-background, which
+  // flashed white between the black splash and the wallpaper.
   if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <AppBootFallback />;
   }
 
   if (!isAuthenticated) {
@@ -5533,19 +5546,31 @@ const Dashboard = () => {
 
   const refreshAll = () => {
     setIsManualRefreshing(true);
-    refetchSessions();
+
+    // Hold the overlay on the actual refetches. It used to be cleared by an
+    // effect watching `accessoriesLoading`, but refetching over cached data
+    // never sets that flag — so "Refreshing…" appeared for a single frame and
+    // vanished long before any data arrived, which read as the refresh having
+    // done nothing.
+    const pending: Promise<unknown>[] = [Promise.resolve(refetchSessions())];
     // Refetch collections if viewing a collection
     if (selectedCollection && refetchCollectionsRef.current) {
-      refetchCollectionsRef.current();
+      pending.push(Promise.resolve(refetchCollectionsRef.current()));
     }
     if (hasContentAccess) {
-      refetchHomes();
+      pending.push(Promise.resolve(refetchHomes()));
       if (selectedHomeId) {
-        refetchRooms();
-        refetchAccessories();
-        refetchServiceGroups();
+        pending.push(Promise.resolve(refetchRooms()));
+        pending.push(Promise.resolve(refetchAccessories()));
+        pending.push(Promise.resolve(refetchServiceGroups()));
       }
     }
+
+    // A wedged relay must not strand the overlay; the 10-minute page reload
+    // below is a last resort, not a loading state.
+    const ceiling = new Promise(resolve => setTimeout(resolve, 20_000));
+    void Promise.race([Promise.allSettled(pending), ceiling])
+      .then(() => setIsManualRefreshing(false));
   };
   refreshAllRef.current = refreshAll;
 
@@ -6155,9 +6180,9 @@ const Dashboard = () => {
                     {/* Homes Section */}
                     <div className="mb-6" data-tour="sidebar-homes">
                       {homesLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="h-4 w-4 animate-spin text-white" />
-                        </div>
+                        <SidebarRowsSkeleton rows={2} tone="dark" />
+                      ) : visibleHomes.length === 0 && pendingEnrollments.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-white/40">No homes found.</p>
                       ) : (
                         <DndContext
                           sensors={activeSensors}
@@ -6222,9 +6247,9 @@ const Dashboard = () => {
                                   <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
                                     <div className="ml-2 pt-1 scroll-clip">
                                       {roomsLoading ? (
-                                        <div className="flex items-center justify-center py-2">
-                                          <Loader2 className="h-3 w-3 animate-spin text-white" />
-                                        </div>
+                                        <SidebarRowsSkeleton rows={3} tone="dark" compact />
+                                      ) : sidebarTree.length === 0 ? (
+                                        <p className="px-3 py-1.5 text-xs text-white/40">No rooms in this home.</p>
                                       ) : (
                                         <DndContext
                                           sensors={activeSensors}
@@ -6643,9 +6668,11 @@ const Dashboard = () => {
               {/* Homes Section */}
               <div className="mb-6" data-tour="sidebar-homes">
                 {homesLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className={`h-4 w-4 animate-spin ${isDarkBackground ? 'text-white' : ''}`} />
-                  </div>
+                  <SidebarRowsSkeleton rows={2} tone={isDarkBackground ? 'dark' : 'light'} />
+                ) : visibleHomes.length === 0 && pendingEnrollments.length === 0 ? (
+                  <p className={`px-3 py-2 text-xs ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+                    No homes found.
+                  </p>
                 ) : (
                   <DndContext
                     sensors={activeSensors}
@@ -6700,9 +6727,11 @@ const Dashboard = () => {
                             <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
                               <div className="ml-2 pt-1 scroll-clip">
                                 {roomsLoading ? (
-                                  <div className="flex items-center justify-center py-2">
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  </div>
+                                  <SidebarRowsSkeleton rows={3} tone={isDarkBackground ? 'dark' : 'light'} compact />
+                                ) : sidebarTree.length === 0 ? (
+                                  <p className={`px-3 py-1.5 text-xs ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+                                    No rooms in this home.
+                                  </p>
                                 ) : (
                                   <DndContext
                                     sensors={activeSensors}
@@ -7050,20 +7079,18 @@ const Dashboard = () => {
                   developerMode={developerMode}
                 />
               ) : (selectedCollectionId && hasContentAccess) ? (
-                /* Loading state while collection data is being fetched OR waiting for server connection */
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    {!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
-                  </p>
-                </div>
+                /* Collection data in flight, or still waiting on the server */
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={!serverConnected ? 'Connecting to server\u2026' : 'Loading collection\u2026'}
+                />
               ) : (!tutorialDemoActive && !isCommunity && ((sessionsLoading && !sessionsData) || (!homesData && homesLoading) || (settingsLoading && !settingsData))) ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    Loading…
-                  </p>
-                </div>
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={!serverConnected ? 'Connecting to server…' : 'Loading…'}
+                />
               ) : !hasContentAccess ? (
                 <SetupState
                   setupPath={(() => {
@@ -7094,12 +7121,11 @@ const Dashboard = () => {
                 /* Relay reported offline but not yet past the initial grace —
                    probably a reconnect blip caught mid-fetch. Spin briefly
                    instead of flashing the offline banner. */
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    Connecting to {homes.find(h => h.id === selectedHomeId)?.name || 'your home'}…
-                  </p>
-                </div>
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={`Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
+                />
               ) : (!tutorialDemoActive && showRelayOfflineSetup) ? (
                 <SetupState
                   setupPath={undefined}
@@ -7116,12 +7142,11 @@ const Dashboard = () => {
                   cloudSignupsAvailable={cloudSignupsAvailable}
                 />
               ) : (!tutorialDemoActive && accessoriesLoading && !accessoriesData) ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    {!serverConnected ? 'Connecting to server\u2026' : 'Loading accessories\u2026'}
-                  </p>
-                </div>
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={!serverConnected ? 'Connecting to server\u2026' : 'Loading accessories\u2026'}
+                />
               ) : (!tutorialDemoActive && accessoriesError && !accessoriesData) ? (
                 <ErrorWithTrace
                   title="Unable to load accessories"
@@ -7146,19 +7171,17 @@ const Dashboard = () => {
                   }
                 />
               ) : filteredRooms.length === 0 && homes.length === 0 && (homesLoading || !homesData) ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    Loading homes…
-                  </p>
-                </div>
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={'Loading homes…'}
+                />
               ) : filteredRooms.length === 0 && (accessoriesLoading || roomsLoading) ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className={`text-sm ${isDarkBackground ? "text-white/70" : "text-muted-foreground"}`}>
-                    Loading accessories…
-                  </p>
-                </div>
+                <AccessoryGridSkeleton
+                  tone={isDarkBackground ? 'dark' : 'light'}
+                  compact={compactMode}
+                  label={'Loading accessories…'}
+                />
               ) : filteredRooms.length === 0 && !tutorialDemoActive ? (
                 <Card className={isDarkBackground ? "bg-black/30 border-white/20" : ""}>
                   <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? "text-white" : ""}`}>
@@ -7360,34 +7383,51 @@ const Dashboard = () => {
                     homes.find(h => h.id === selectedHomeId)?.name || 'Home'
                   )}
                 </h2>
-                {/* Area Summary - aggregated sensor readings + scenes/automations pills */}
+                {/* Summary row: scenes/automations/status pills, or — on a room
+                    or room group — the sensor bubbles inline. A whole home's
+                    bubbles aggregate every room, so there they sit behind the
+                    Status pill with the other collapsible sections. */}
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
-                  {selectedHomeId && !selectedRoomId && !selectedRoomGroup && (
+                  {isWholeHomeView ? (
                     <>
                       <ScenesPill
-                        homeId={selectedHomeId}
+                        homeId={selectedHomeId!}
                         open={scenesOpen}
-                        onToggle={() => { setAutomationsOpen(false); setScenesOpen(o => !o); }}
+                        onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                       />
                       <AutomationsPill
-                        homeId={selectedHomeId}
+                        homeId={selectedHomeId!}
                         open={automationsOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(o => !o); }}
+                        onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
                       />
+                      <StatusPill
+                        accessories={summaryAccessories}
+                        open={statusOpen}
+                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
+                        isDarkBackground={isDarkBackground}
+                      />
                     </>
+                  ) : (
+                    <AreaSummary
+                      accessories={summaryAccessories}
+                      isDarkBackground={isDarkBackground}
+                    />
                   )}
-                  <AreaSummary
-                    accessories={filteredRooms.flatMap(([_, accs]) => accs)}
-                    isDarkBackground={isDarkBackground}
-                  />
                 </div>
-                {selectedHomeId && !selectedRoomId && !selectedRoomGroup && (
+                {isWholeHomeView && (
                   <>
-                    <ScenesSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
-                    <AutomationsSection homeId={selectedHomeId} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
+                    <ScenesSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
+                    <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
+                    <AnimatedCollapse open={statusOpen}>
+                      <AreaSummary
+                        accessories={summaryAccessories}
+                        isDarkBackground={isDarkBackground}
+                        className={compactMode ? 'mb-3' : 'mb-6'}
+                      />
+                    </AnimatedCollapse>
                   </>
                 )}
                 <DndContext
@@ -7490,7 +7530,7 @@ const Dashboard = () => {
 
                             return (
                               <SortableItem key={`group-${group.id}`} id={`group-${group.id}`} disabled={groupHidden}>
-                                <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140}>
+                                <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140} tone={isDarkBackground ? 'dark' : 'light'}>
                                 <ServiceGroupWidget
                                   group={group}
                                   accessories={groupAccessories}
@@ -7613,7 +7653,7 @@ const Dashboard = () => {
 
                           return (
                             <SortableItem key={accessory.id} id={accessory.id} disabled={isHidden}>
-                              <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140}>
+                              <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140} tone={isDarkBackground ? 'dark' : 'light'}>
                                 {accessoryContent}
                               </LazyWidget>
                             </SortableItem>

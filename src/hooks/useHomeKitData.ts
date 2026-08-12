@@ -37,12 +37,30 @@ interface CacheEntry<T> {
 
 type CacheListener = () => void;
 
+/**
+ * How long a rehydrated entry may be before we refuse to paint it.
+ *
+ * The cache is revalidated on every load, so this is not about correctness of
+ * the eventual state — it is about how wrong the *first frame* is allowed to
+ * be. A light that was on an hour ago is a plausible guess; one from last week
+ * is a fabrication. Beyond this, start empty and wait for the relay.
+ */
+const PERSIST_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const PERSIST_KEY = 'homecast-homekit-cache';
+/** Only these prefixes are worth persisting — the ones the first screen needs. */
+const PERSIST_PREFIXES = ['homes', 'rooms:', 'accessories:', 'serviceGroups:'];
+
 class DataCache {
   private cache = new Map<string, CacheEntry<unknown>>();
   private keyListeners = new Map<string, Set<CacheListener>>();
   private staleTime = 5 * 60 * 1000; // 5 minutes (matches Apollo's behavior)
   // Track pending requests globally to deduplicate across hook instances
   private pendingRequests = new Map<string, Promise<unknown>>();
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    this.hydrate();
+  }
 
   get<T>(key: string): T | null {
     const entry = this.cache.get(key);
@@ -53,6 +71,67 @@ class DataCache {
   set<T>(key: string, data: T): void {
     this.cache.set(key, { data, timestamp: Date.now() });
     this.notify(key);
+    this.schedulePersist();
+  }
+
+  /**
+   * Restore the last session's homes/rooms/accessories so the first paint has
+   * real content instead of a spinner.
+   *
+   * Entries keep their original timestamps, so everything rehydrated is already
+   * past staleTime and useCachedData revalidates it immediately — but via the
+   * stale path at :343, which does NOT flip `loading`. That is the whole point:
+   * content on screen, refresh running quietly behind it.
+   */
+  private hydrate(): void {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, CacheEntry<unknown>>;
+      const now = Date.now();
+      for (const [key, entry] of Object.entries(parsed)) {
+        if (!entry || typeof entry.timestamp !== 'number') continue;
+        if (now - entry.timestamp > PERSIST_MAX_AGE) continue;
+        this.cache.set(key, entry);
+      }
+    } catch {
+      // Corrupt or unavailable storage is not worth failing a boot over.
+      try { localStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Coalesced write-back. Accessory updates arrive in bursts (one per
+   * characteristic change), and serializing the whole cache on each would put
+   * a JSON.stringify of every accessory on the hot path.
+   */
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persist();
+    }, 2000);
+  }
+
+  private persist(): void {
+    try {
+      const out: Record<string, CacheEntry<unknown>> = {};
+      for (const [key, entry] of this.cache.entries()) {
+        if (!PERSIST_PREFIXES.some(p => key.startsWith(p))) continue;
+        out[key] = entry as CacheEntry<unknown>;
+      }
+      localStorage.setItem(PERSIST_KEY, JSON.stringify(out));
+    } catch {
+      // Quota exceeded (a large home can be sizeable) — drop the persisted
+      // copy rather than retrying forever. Next session just starts cold.
+      try { localStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
+    }
+  }
+
+  /** Forget the persisted copy — used on sign-out. */
+  clearPersisted(): void {
+    if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null; }
+    try { localStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
   }
 
   isStale(key: string): boolean {
@@ -64,6 +143,7 @@ class DataCache {
   invalidate(key: string): void {
     this.cache.delete(key);
     this.notify(key);
+    this.schedulePersist();
   }
 
   invalidateByPrefix(prefix: string): void {
@@ -81,6 +161,7 @@ class DataCache {
         this.notify(key);
       }
     }
+    this.schedulePersist();
   }
 
   subscribe(listener: CacheListener, key?: string): () => void {
@@ -547,15 +628,23 @@ export function useAccessoriesForHomes(
     setLoading(true);
     setError(null);
 
-    // Fetch accessories for each home
+    // Fetch accessories for each home.
+    //
+    // Routed through cache.getOrFetch so this dedupes against useAccessories()
+    // for the selected home, which uses the same `accessories:<id>` key. Calling
+    // serverConnection.request directly here meant the selected home's list —
+    // the expensive includeValues:true one — was fetched twice concurrently on
+    // every cold load. useAllServiceGroups below already does it this way.
     Promise.all(
       homeIds.map(homeId =>
-        serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
-          homeId,
-          includeValues: true,
-        })
-        .then(result => {
-          const normalized = normalizeAccessories(result.accessories);
+        cache.getOrFetch(`accessories:${homeId}`, () =>
+          serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
+            homeId,
+            includeValues: true,
+          })
+          .then(result => normalizeAccessories(result.accessories))
+        )
+        .then(normalized => {
           // Store in per-home cache so updates work
           if (mountedRef.current) {
             cache.set(`accessories:${homeId}`, normalized);
@@ -802,6 +891,18 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
     cache.invalidateByPrefix('accessories');
     cache.invalidateByPrefix('serviceGroups');
   }
+}
+
+/**
+ * Drop both the in-memory cache and its persisted copy.
+ *
+ * Must be called on sign-out: the persisted copy survives a reload by design,
+ * and one account's homes and accessories must never paint for the next person
+ * to sign in on this device.
+ */
+export function clearPersistedHomeKitCache(): void {
+  invalidateHomeKitCache('all');
+  cache.clearPersisted();
 }
 
 /**

@@ -329,10 +329,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         )}
       </div>
       <div>
-        <CardTitle className={`text-xs font-medium truncate selectable`}>
+        {/* No `selectable` here. That class exists to punch a hole in the Mac
+            and iOS shells' global `user-select: none`, and on a tile it did
+            exactly that \u2014 a drag or a long-press highlighted the name. The
+            wrapper's select-none can't outrank it, so the opt-in has to go. */}
+        <CardTitle className="text-xs font-medium truncate">
           {displayTitle}
         </CardTitle>
-        <CardDescription className={`text-[10px] mt-0.5 selectable`}>
+        <CardDescription className="text-[10px] mt-0.5">
           {effectiveSubtitle || '\u00A0'}
         </CardDescription>
       </div>
@@ -354,7 +358,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               thermostat's dial — overflows the box and gets sliced mid-word by
               the clamp's `overflow: hidden`, with no ellipsis to show anything
               was lost. Breaking it lets the clamp do its job. */}
-          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2 break-words' : 'truncate'} selectable`}>
+          <CardTitle className={`font-medium leading-tight ${expanded ? 'text-base' : 'text-sm'} ${multiLineTitle ? 'line-clamp-2 break-words' : 'truncate'}`}>
             {displayTitle}
           </CardTitle>
           {/* No height cap when the subtitle is showing. It used to be capped at
@@ -366,7 +370,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               collapses the subtitle away when the title needs two lines. */}
           <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
             <CardDescription
-              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} selectable`}
+              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'}`}
             >
               {effectiveSubtitle || '\u00A0'}
             </CardDescription>

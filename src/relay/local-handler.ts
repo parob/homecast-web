@@ -340,7 +340,16 @@ async function executeHomeKitActionInner(
         includeValues?: boolean;
         includeAll?: boolean;
       };
-      const result = await HomeKit.listAccessories({ homeId, roomId, includeValues });
+      // Both HomeKit reads are issued together. They are independent, and
+      // awaiting the room list after the accessory list made every
+      // accessories.list two serialized bridge round trips — N homes on a cold
+      // load paid that 2N times.
+      const accessoriesPromise = HomeKit.listAccessories({ homeId, roomId, includeValues });
+      const roomsPromise = homeId
+        ? HomeKit.listRooms(homeId).catch(() => null)  // naming is cosmetic
+        : Promise.resolve(null);
+      const result = await accessoriesPromise;
+      const roomsForNames = await roomsPromise;
       const { listVirtualAccessories } = await import('./virtual-accessories');
       // Helper accessories are published here, not alongside here. Everything
       // downstream — the dashboard, sharing, collections, search, REST, MQTT,
@@ -349,14 +358,9 @@ async function executeHomeKitActionInner(
       // that enforces the plan's HomeKit accessory limit, and a value the
       // engine owns is not a device anyone is being sold.
       // Room names, so a helper accessory groups by room like everything else.
-      // Only fetched when there is something to name.
-      let roomNames: Map<string, string> | undefined;
-      if (homeId) {
-        try {
-          const rooms = await HomeKit.listRooms(homeId);
-          roomNames = new Map(rooms.map(r => [r.id, r.name]));
-        } catch { /* naming is cosmetic — never fail the list over it */ }
-      }
+      const roomNames: Map<string, string> | undefined = roomsForNames
+        ? new Map(roomsForNames.map(r => [r.id, r.name] as [string, string]))
+        : undefined;
       const helpers = listVirtualAccessories({ homeId, roomId, roomNames });
       const accessories = includeAll ? result : filterAccessories(result);
       return { accessories: [...accessories, ...helpers] };

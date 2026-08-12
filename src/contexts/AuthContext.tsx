@@ -9,6 +9,7 @@ import { isRelayCapable } from '@/relay';
 import { isCommunity, config, isRelaySetupComplete, isRelayMode } from '@/lib/config';
 import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
+import { clearPersistedHomeKitCache } from '@/hooks/useHomeKitData';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 
 // Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it.
@@ -51,6 +52,11 @@ function setAuthToken(token: string) {
 function clearAuthToken() {
   localStorage.removeItem('homecast-token');
   syncTokenCookie(null);
+  // The HomeKit cache is persisted across reloads so a cold start can paint
+  // immediately. That copy is account-specific, so it has to die with the
+  // session — otherwise the next person to sign in on this device sees the
+  // previous account's homes on the first frame.
+  clearPersistedHomeKitCache();
 }
 
 // POST the (likely expired) JWT to /auth/refresh. The server accepts tokens

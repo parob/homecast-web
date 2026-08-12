@@ -14,6 +14,7 @@ import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
 import { lazy, Suspense } from "react";
+import { AppBootFallback } from "@/components/LoadingSkeletons";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import OAuthConsent from "./pages/OAuthConsent";
@@ -73,7 +74,7 @@ const devRoutes = BgDemo ? <Route path="/bgdemo" element={<BgDemo />} /> : null;
 const MainRoutes = () => (
   <WebSocketProvider>
     <AuthProvider>
-      <Suspense fallback={null}>
+      <Suspense fallback={<AppBootFallback />}>
         <Routes>
           {isCommunity ? (
             <>
@@ -141,7 +142,7 @@ const App = () => (
           <ScrollToTop />
           <StagingBanner />
           <CookieConsent />
-          <Suspense fallback={null}>
+          <Suspense fallback={<AppBootFallback />}>
           <Routes>
             {/* MQTT browser on mqtt.* domains — no auth/websocket providers needed */}
             {location.hostname.includes('mqtt.') ? (

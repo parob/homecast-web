@@ -14,6 +14,18 @@ import { useBackgroundContext } from '@/contexts/BackgroundContext';
 const RECOLOR_TRANSITION =
   'transition-shadow duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300';
 
+// A widget is a control surface, not a document. Dragging a brightness bar,
+// long-pressing a tile for its context menu, or double-tapping to expand one
+// all left a blue selection across the title and readout. Declared here rather
+// than per widget so it covers every type in every mode at once — compact tile,
+// inline card, and the expanded overlay panel all render through this wrapper.
+//
+// Form fields opt back in: Firefox propagates `none` into inputs, which would
+// make a virtual accessory's text and number values impossible to select while
+// editing. WebKit exempts them already, so this only matters off-Apple.
+const NO_SELECT =
+  'select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text';
+
 interface WidgetWrapperProps {
   children: React.ReactNode;
   className?: string;
@@ -69,7 +81,7 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const pressClass = `transition-transform duration-fast ease-standard ${pressed ? 'scale-[0.97]' : ''}`;
 
   return (
-    <div className={`relative rounded-2xl h-fit ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
+    <div className={`relative rounded-2xl h-fit ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
       {/* Blur layer - separate from content so it doesn't break during height animation */}
       <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu ${pressClass}`} />
       {/* Content */}
