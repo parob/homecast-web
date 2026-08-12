@@ -180,7 +180,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
             <button
               key={r.label}
               onClick={() => setRangeMs(r.ms)}
-              className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+              className={`text-[0.6875rem] px-2 py-0.5 rounded transition-colors ${
                 rangeMs === r.ms
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-muted'
@@ -231,7 +231,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
                   <div className="space-y-5 pb-1">{series.slice(6).map(renderSeriesRow)}</div>
                 </AnimatedCollapse>
                 <button
-                  className="w-full text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1 py-1"
+                  className="w-full text-[0.6875rem] text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1 py-1"
                   onClick={() => setShowAll(v => !v)}
                 >
                   <ChevronDown className={`h-3 w-3 transition-transform ${showAll ? 'rotate-180' : ''}`} />
