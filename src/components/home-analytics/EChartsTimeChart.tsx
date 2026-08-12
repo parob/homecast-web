@@ -360,6 +360,10 @@ export default function EChartsTimeChart({
 
     const option = {
       animation: false,
+      // Highlighting is a response to a click, not a transition: ECharts'
+      // default update animation faded the lines back over a beat, which read
+      // as the selection sticking after the pill had already let go.
+      animationDurationUpdate: 0,
       grid: {
         // Fixed gutters, not containLabel: state strips inset by the same
         // numbers so a vertical read lines up across stacked panels.
