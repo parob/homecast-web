@@ -4123,7 +4123,10 @@ const Dashboard = () => {
 
   // Apply font size to root element
   useEffect(() => {
-    const sizes = { small: '14px', medium: '16px', large: '18px' };
+    // Large was 18px — one step above medium and barely distinguishable from
+    // it. If someone has gone looking for the setting, they want to see a
+    // difference. Everything sized in rem follows.
+    const sizes = { small: '14px', medium: '16px', large: '20px' };
     document.documentElement.style.fontSize = sizes[fontSize];
   }, [fontSize]);
 

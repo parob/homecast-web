@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
 import { LineChart as EChartsLine } from 'echarts/charts';
 import {
@@ -65,6 +65,34 @@ function linearPix(probe: (v: number) => number, a: number, b: number): ((v: num
   if (!Number.isFinite(pa) || !Number.isFinite(pb) || a === b) return null;
   const k = (pb - pa) / (b - a);
   return (v: number) => pa + (v - a) * k;
+}
+
+/**
+ * The text-size setting, as a multiplier. Canvas text is painted in pixels and
+ * cannot inherit anything, so a chart kept its 11px axis labels while every
+ * label around it grew — the only way to follow the setting is to read the
+ * root font-size and scale by hand.
+ *
+ * Observed rather than read at render: the setting is applied by writing
+ * `style` on <html>, which is not a React update, so a chart that only looked
+ * when something else re-rendered it would change size late or not at all.
+ */
+function useRootFontScale(): number {
+  const read = () => (typeof document === 'undefined'
+    ? 1
+    : (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16);
+  const [scale, setScale] = useState(read);
+  useEffect(() => {
+    const update = () => setScale(prev => {
+      const next = read();
+      return Math.abs(next - prev) < 0.001 ? prev : next;
+    });
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+    return () => observer.disconnect();
+  }, []);
+  return scale;
 }
 
 interface ThemeColors {
@@ -155,12 +183,7 @@ export default function EChartsTimeChart({
   const stableSeries = seriesRef.current;
   // Same story for the axis pin, which is written as an object literal.
   const axisSig = JSON.stringify(axis ?? null);
-  // Canvas text is painted in pixels, so it ignores the root font-size the
-  // rest of the app scales with — a chart kept its 11px axis labels while
-  // every label around it grew. Read the setting and scale to match.
-  const fontScale = typeof document === 'undefined'
-    ? 1
-    : (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16;
+  const fontScale = useRootFontScale();
 
   // Axis plan: units in appearance order. Without a pinned axis the first
   // goes left, the second right, and any more borrow the left (Normalize is
