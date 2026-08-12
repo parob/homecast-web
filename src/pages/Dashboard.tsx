@@ -7820,7 +7820,20 @@ const Dashboard = () => {
           <DialogHeader className="sr-only">
             <DialogTitle>Analytics</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 pt-1">
+          {/* Full-bleed on a phone, so the notch and the home indicator are
+              the app's problem: the automation editor pads for them and this
+              did not, which put the breadcrumb row under the status bar.
+              calc rather than the .safe-area-* classes because those set
+              padding outright and would fight the 4px the ✕ is aligned to. */}
+          <div
+            className="flex-1 min-h-0 overflow-hidden"
+            style={{
+              paddingTop: 'calc(var(--safe-area-top, 0px) + 0.25rem)',
+              paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 1rem)',
+              paddingLeft: 'calc(var(--safe-area-left, 0px) + 1rem)',
+              paddingRight: 'calc(var(--safe-area-right, 0px) + 1rem)',
+            }}
+          >
             {analyticsOpen && (() => {
               const effectiveAnalyticsHome = analyticsHomeId ?? selectedHomeId;
               const homeMatches = (id: string | undefined) =>
