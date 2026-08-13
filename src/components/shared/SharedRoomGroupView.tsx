@@ -71,21 +71,15 @@ export function SharedRoomGroupView({
   }, [onRequestPasscodeUpgrade]);
 
   // Parse entity data to get roomIds and group name
-  const { groupName, allowedRoomIds } = useMemo(() => {
-    if (!entityData.data) return { groupName: 'Room Group', allowedRoomIds: new Set<string>() };
+  // Only the name is taken from the stored definition now. Its roomIds are
+  // hc_ids, which nothing on this side can compare against a relay's live
+  // UUIDs — see the grouping below.
+  const groupName = useMemo(() => {
+    if (!entityData.data) return entityData.entityName || 'Room Group';
     try {
-      const data = JSON.parse(entityData.data);
-      const roomIds = data.roomIds || [];
-      // Normalize room IDs for comparison
-      const normalizedRoomIds = new Set(
-        roomIds.map((id: string) => id.replace(/-/g, '').toLowerCase())
-      );
-      return {
-        groupName: data.name || entityData.entityName || 'Room Group',
-        allowedRoomIds: normalizedRoomIds,
-      };
+      return JSON.parse(entityData.data).name || entityData.entityName || 'Room Group';
     } catch {
-      return { groupName: entityData.entityName || 'Room Group', allowedRoomIds: new Set<string>() };
+      return entityData.entityName || 'Room Group';
     }
   }, [entityData]);
 
@@ -229,18 +223,18 @@ export function SharedRoomGroupView({
     return map;
   }, [accessories]);
 
-  // Filter service groups to only those with accessories in allowed rooms
+  // Same reasoning as the accessory grouping below: the group's roomIds are
+  // hc_ids and a relay accessory's roomId is a live UUID, so this cannot be
+  // decided here. The server restricts service groups to those with a member
+  // in the filtered accessory set, which is the same question asked where the
+  // identity map actually is. Kept as a memo so the shape below is unchanged.
   const filteredServiceGroups = useMemo(() => {
-    return serviceGroups.filter(group => {
-      // Check if any accessory in this group is in an allowed room
-      return group.accessoryIds.some(accId => {
-        const acc = accessoryById.get(accId) || accessoryById.get(accId.replace(/-/g, '').toLowerCase());
-        if (!acc) return false;
-        const normalizedRoomId = acc.roomId?.replace(/-/g, '').toLowerCase();
-        return normalizedRoomId && allowedRoomIds.has(normalizedRoomId);
-      });
-    });
-  }, [serviceGroups, accessoryById, allowedRoomIds]);
+    return serviceGroups.filter(group =>
+      group.accessoryIds.some(accId =>
+        accessoryById.has(accId) || accessoryById.has(accId.replace(/-/g, '').toLowerCase())
+      )
+    );
+  }, [serviceGroups, accessoryById]);
 
   // Build set of accessory IDs that are in service groups (to exclude from individual display)
   const accessoriesInGroups = useMemo(() => {
@@ -259,16 +253,17 @@ export function SharedRoomGroupView({
     const groupsByRoom: Record<string, HomeKitServiceGroup[]> = {};
     const idToName: Record<string, string> = {};
 
-    // Group accessories by room, filtering to only allowed rooms
+    // Group accessories by room.
     for (const accessory of accessories) {
       const roomName = accessory.roomName || 'Unknown Room';
       const roomId = accessory.roomId || roomName;
-      const normalizedRoomId = roomId.replace(/-/g, '').toLowerCase();
 
-      // Only include accessories in allowed rooms
-      if (!allowedRoomIds.has(normalizedRoomId)) {
-        continue;
-      }
+      // Deliberately NOT re-filtered by the group's roomIds here. Those come
+      // from the stored group definition and are hc_ids; `accessory.roomId`
+      // comes straight off the relay and is a live HomeKit UUID. Only the
+      // server holds the map between the two, and it has already scoped this
+      // payload to exactly the group's rooms — so comparing them again here
+      // matched nothing and rendered an empty page over a correct response.
 
       // Skip accessories that are part of a service group
       const normalizedAccId = accessory.id.replace(/-/g, '').toLowerCase();
@@ -373,7 +368,7 @@ export function SharedRoomGroupView({
     }
 
     return { accessoriesByRoom: byRoom, serviceGroupsByRoom: groupsByRoom, roomNames: names, roomIdToName: idToName };
-  }, [accessories, filteredServiceGroups, layout, allowedRoomIds, accessoriesInGroups, accessoryById]);
+  }, [accessories, filteredServiceGroups, layout, accessoriesInGroups, accessoryById]);
 
   // State for selected room (null = show all)
   const [internalSelectedRoom, setInternalSelectedRoom] = useState<string | null>(null);
