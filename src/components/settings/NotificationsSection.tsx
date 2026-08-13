@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, BellOff, Loader2, Clock, ChevronDown, Apple, AppWindow, Laptop, Smartphone, Home as HomeIcon } from 'lucide-react';
+import { Bell, BellOff, Loader2, Clock, ChevronDown, Apple, AppWindow, Laptop, Smartphone, Tablet, Home as HomeIcon } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { toast } from 'sonner';
 import { useQuery, useMutation } from '@apollo/client/react';
@@ -26,7 +26,7 @@ import type {
   SendTestNotificationResponse,
   SetNotificationMuteResponse,
 } from '@/lib/graphql/types';
-import { getDeviceFingerprint, getDevicePlatform } from '@/lib/device-identity';
+import { useDeviceIdentity } from '@/lib/device-identity';
 import { automationContainsActionType } from '@/automation/utils/actionWalker';
 import type { Automation } from '@/automation/types/automation';
 
@@ -34,8 +34,7 @@ export function NotificationsSection() {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
-  const fingerprint = getDeviceFingerprint();
-  const platform = getDevicePlatform();
+  const { platform, fingerprint } = useDeviceIdentity();
 
   const { data: mutesData, refetch: refetchMutes } = useQuery<GetNotificationMutesResponse>(
     GET_NOTIFICATION_MUTES,
@@ -95,8 +94,26 @@ export function NotificationsSection() {
     );
   }
 
-  const w = window as unknown as { isHomecastMacApp?: boolean; isHomecastIOSApp?: boolean; isHomecastAndroidApp?: boolean };
-  const isNativeApp = !!w.isHomecastMacApp || !!w.isHomecastIOSApp || !!w.isHomecastAndroidApp;
+  const w = window as unknown as {
+    isHomecastMacApp?: boolean;
+    isHomecastIOSApp?: boolean;
+    isHomecastAndroidApp?: boolean;
+    isHomecastTauriApp?: boolean;
+    isHomecastDesktopApp?: boolean;
+    homecastDeviceModel?: string;
+  };
+  // Tauri desktop shells (Windows/Linux/macOS) are native apps with no push path
+  // of their own — they belong in the "not available here" branch, not the
+  // "install the app" one.
+  const isNativeApp = !!w.isHomecastMacApp || !!w.isHomecastIOSApp || !!w.isHomecastAndroidApp
+    || !!w.isHomecastTauriApp || !!w.isHomecastDesktopApp;
+  const isIpad = !!w.homecastDeviceModel?.startsWith('iPad') || /iPad/.test(navigator.userAgent);
+  const deviceLabel = platform === 'android' ? 'phone'
+    : platform === 'ios' ? (isIpad ? 'iPad' : 'iPhone')
+    : 'Mac';
+  const DeviceIcon = platform === 'android' ? Smartphone
+    : platform === 'ios' ? (isIpad ? Tablet : Smartphone)
+    : Laptop;
   const homes = homesData?.homes ?? [];
 
   return (
@@ -138,11 +155,16 @@ export function NotificationsSection() {
         </div>
       )}
 
-      {/* Native app without a push path (iOS today) */}
+      {/* Native app without a push path: an iOS build older than the push
+          release, or a Tauri desktop shell which has none at all. */}
       {isNativeApp && !fingerprint && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
           <BellOff className="h-4 w-4" />
-          <span>Push isn&apos;t available on this device yet. Notifications go to your other Homecast apps.</span>
+          <span>
+            {w.isHomecastIOSApp
+              ? `Update the Homecast app to receive push notifications on this ${isIpad ? 'iPad' : 'iPhone'}.`
+              : 'Push isn’t available on this device. Notifications go to your other Homecast apps.'}
+          </span>
         </div>
       )}
 
@@ -167,13 +189,9 @@ export function NotificationsSection() {
           </div>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2">
-              {platform === 'android' ? (
-                <Smartphone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              ) : (
-                <Laptop className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              )}
+              <DeviceIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
               <div>
-                <p className="text-sm">Notifications on this {platform === 'android' ? 'phone' : 'Mac'}</p>
+                <p className="text-sm">Notifications on this {deviceLabel}</p>
                 <p className="text-xs text-muted-foreground">
                   Push from automation Notify actions. Test notifications are always delivered.
                 </p>

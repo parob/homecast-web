@@ -16,7 +16,6 @@ import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
-import { getDeviceFingerprint } from '../lib/device-identity';
 import { errorCode } from '../lib/describe-error';
 import { canServeLocally, resolveLocalHomeId } from './relay-routing';
 import {
@@ -257,7 +256,6 @@ export class ServerWebSocket {
   private isManualDisconnect = false;
   private pendingRequests = new Map<string, PendingRequest>();
   private requestIdCounter = 0;
-  private apnsRegistered = false;
   private connectionOpenedAt: number | null = null;
   private lastConnectionDuration: number | null = null;
 
@@ -959,9 +957,6 @@ export class ServerWebSocket {
       console.error('[ServerWS] Failed to declare relay homes:', err);
     });
 
-    // Register APNs token for native push notifications (cloud mode only)
-    this.registerAPNsToken();
-
     // Recalculate time triggers on wake/visibility — setTimeout dies during sleep
     this.automationWakeHandler = () => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
@@ -992,59 +987,6 @@ export class ServerWebSocket {
         }
       }
     }, 30000);
-  }
-
-  private async registerAPNsToken(): Promise<void> {
-    if (!HomeKit.isAvailable()) return;
-    // Called on every (re)connect promotion; once a registration has
-    // succeeded this session there is nothing new to say. A failed attempt
-    // leaves the flag unset so the next connect retries.
-    if (this.apnsRegistered) return;
-    try {
-      // Request notification permission (may already be granted)
-      const permResult = await HomeKit.requestNotificationPermission();
-      if (!permResult?.granted) return;
-
-      // The OS registration that produces the token is asynchronous: right
-      // after a permission grant getAPNsToken() legitimately returns null.
-      // Giving up on the first null meant a first launch never registered
-      // until the app was restarted — poll with backoff instead.
-      let apnsToken: string | null = null;
-      for (const delayMs of [0, 1000, 2000, 4000, 8000, 16000, 30000]) {
-        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
-        const tokenResult = await HomeKit.getAPNsToken();
-        apnsToken = tokenResult?.token ?? null;
-        if (apnsToken) break;
-      }
-      if (!apnsToken) {
-        console.warn('[ServerWS] APNs token still unavailable after retries — will retry on next connect');
-        return;
-      }
-
-      // Stable per-device fingerprint. The old token-derived one minted a
-      // "new device" on every APNs token rotation, leaving stale rows that
-      // received duplicate pushes (the server now also purges those on
-      // re-registration by matching the token value).
-      const fingerprint = getDeviceFingerprint() ?? `macos-${apnsToken.slice(0, 16)}`;
-
-      // Register with server via GraphQL
-      const { apolloClient } = await import('@/lib/apollo');
-      const { REGISTER_PUSH_TOKEN } = await import('@/lib/graphql/mutations');
-      await apolloClient.mutate({
-        mutation: REGISTER_PUSH_TOKEN,
-        variables: {
-          token: apnsToken,
-          platform: 'macos',
-          deviceFingerprint: fingerprint,
-          deviceName: 'Homecast Relay (Mac)',
-        },
-      });
-      this.apnsRegistered = true;
-      console.log('[ServerWS] Registered APNs token with server');
-    } catch (err) {
-      // Non-fatal — push notifications are optional
-      console.warn('[ServerWS] APNs token registration failed:', err);
-    }
   }
 
   /**

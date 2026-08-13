@@ -10,6 +10,7 @@ import { StagingBanner } from "@/components/layout/StagingBanner";
 import { CookieConsent } from "@/components/layout/CookieConsent";
 import { apolloClient } from "@/lib/apollo";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { PushRegistration } from "@/components/PushRegistration";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
@@ -78,6 +79,7 @@ const devRoutes = BgDemo ? <Route path="/bgdemo" element={<BgDemo />} /> : null;
 const MainRoutes = () => (
   <WebSocketProvider>
     <AuthProvider>
+      <PushRegistration />
       <Suspense fallback={<AppBootFallback />}>
         <Routes>
           {isCommunity ? (

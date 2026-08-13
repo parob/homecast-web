@@ -192,7 +192,6 @@ import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
-import { useAndroidPush } from '@/hooks/useAndroidPush';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { getAutoPresetId, PRESET_IMAGES, PRESET_SOLID_COLORS, PRESET_GRADIENTS, getDominantColor, applyBrightnessToHex } from '@/lib/colorUtils';
@@ -2430,10 +2429,6 @@ const Dashboard = () => {
   const [dismissHomeMutation] = useMutation(DISMISS_HOME);
   const pendingInvitations = pendingInvitationsData?.pendingInvitations ?? [];
   const [pendingInvitationsOpen, setPendingInvitationsOpen] = useState(false);
-
-  // Push notifications (cloud only) — Android FCM token registration.
-  // Preferences live in NotificationsSection, which is self-contained.
-  useAndroidPush();
 
   // Auto-open/close invitations modal based on pending invitations
   useEffect(() => {

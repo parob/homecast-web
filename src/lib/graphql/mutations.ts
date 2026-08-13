@@ -996,6 +996,12 @@ export const REGISTER_PUSH_TOKEN = gql`
   }
 `;
 
+export const UNREGISTER_PUSH_TOKEN = gql`
+  mutation UnregisterPushToken($deviceFingerprint: String!) {
+    unregisterPushToken(deviceFingerprint: $deviceFingerprint)
+  }
+`;
+
 export const SET_NOTIFICATION_MUTE = gql`
   mutation SetNotificationMute($deviceFingerprint: String!, $scope: String!, $muted: Boolean!, $scopeId: String) {
     setNotificationMute(deviceFingerprint: $deviceFingerprint, scope: $scope, muted: $muted, scopeId: $scopeId) {

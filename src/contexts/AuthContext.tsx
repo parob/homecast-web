@@ -11,6 +11,7 @@ import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 import { clearPersistedHomeKitCache } from '@/hooks/useHomeKitData';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
+import { unregisterThisDevice } from '@/lib/device-identity';
 
 // Sync auth token to a cross-subdomain cookie so mqtt.homecast.cloud can read it.
 // Max-Age must be long enough that a user who lives on the main domain for a
@@ -133,7 +134,7 @@ interface AuthContextType {
   hasStagingAccess: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string; message?: string }>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   resetAndUninstall?: () => Promise<void>;
   switchAccount: (token: string) => Promise<void>;
 }
@@ -698,11 +699,16 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string }) => void } } } };
     if (win.webkit?.messageHandlers?.homecast) {
       win.webkit.messageHandlers.homecast.postMessage({ action: 'logout' });
     }
+
+    // Stop push arriving here for the account being signed out. Must happen
+    // before clearAuthToken() (the mutation needs the JWT) and before the
+    // redirect below tears the page down. It is time-boxed internally.
+    await unregisterThisDevice();
 
     clearAuthToken();
     localStorage.removeItem('homecast-selected-home');
