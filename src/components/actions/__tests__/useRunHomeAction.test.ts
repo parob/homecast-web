@@ -158,7 +158,7 @@ describe('useRunHomeAction', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it('caps writes in flight at six', async () => {
+  it('fans out widely enough that a normal home is one wave, but stays bounded', async () => {
     let inFlight = 0;
     let peak = 0;
     request.mockImplementation(async () => {
@@ -179,7 +179,11 @@ describe('useRunHomeAction', () => {
     await run(action({ steps: [{ writes }] }));
 
     expect(request).toHaveBeenCalledTimes(20);
-    expect(peak).toBeLessThanOrEqual(6);
+    // 20 lights go out together rather than in waves — the point of the change
+    // from a cap of 6, where one wedged accessory pinned its whole wave for the
+    // native 10s write timeout.
+    expect(peak).toBe(20);
+    expect(peak).toBeLessThanOrEqual(24);
   });
 
   it('runs steps in order and honours a delay between them', async () => {

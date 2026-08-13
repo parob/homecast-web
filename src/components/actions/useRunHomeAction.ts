@@ -9,11 +9,24 @@ import type { HomeAction, HomeActionWrite } from './catalog';
 /**
  * How many writes may be in flight at once.
  *
- * Firing forty at once buries every other message on the socket behind them
- * and pushes the relay into rate-limiting its own HomeKit writes, which turns
- * a slow action into a failing one.
+ * Nothing downstream serializes, so this cap is the only thing deciding how
+ * long an action takes. The relay dispatches each request without awaiting it
+ * (`local-server.ts`), and although HomeKitManager is `@MainActor` its
+ * `writeValue` helper is deliberately `nonisolated` and awaited off-actor, so
+ * concurrent writes genuinely overlap. Native fans out unbounded already —
+ * `setServiceGroupCharacteristic` and `setState` both fire one TaskGroup over
+ * every member.
+ *
+ * It was 6, which made a 40-light home seven sequential waves. Worse than the
+ * latency: a single wedged accessory pins its whole wave for
+ * `writeTimeoutSeconds` (10s in HomeKitManager), so a couple of unresponsive
+ * bulbs could push the action past the request timeout and fail outright.
+ *
+ * Still bounded rather than unlimited — a 200-accessory home opening 200
+ * simultaneous requests is a burst nobody benefits from — but high enough that
+ * a normal home completes in one wave and one dead device blocks nothing.
  */
-const MAX_CONCURRENT_WRITES = 6;
+const MAX_CONCURRENT_WRITES = 24;
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -47,11 +60,23 @@ interface RunHomeActionArgs {
 /**
  * Run an Action: optimistically move every tile, then fan the writes out.
  *
- * Uses per-accessory `characteristic.set` rather than the bulk `state.set`.
- * `state.set` is slug-addressed and reports failures by slug, so a partial
- * failure could not be mapped back to an accessory — which would forfeit
- * per-accessory revert and force an all-or-nothing rollback. The relay's write
- * fan-out (MQTT publish, automation triggers) fires identically for both.
+ * Uses per-accessory `characteristic.set` rather than the bulk `state.set`,
+ * which would be one round trip instead of N.
+ *
+ * Not for the reason first recorded here: `state.set`'s `changes[]` does carry
+ * `accessoryId`, so failures *can* be mapped back. The actual blocker is
+ * addressing. Native resolves its keys through `findAccessoryByKey`, which
+ * matches sanitized room/accessory slugs and opens with
+ * `guard let room = accessory.room else { continue }` — so an accessory with
+ * no room (a virtual one, or anything in HomeKit's default room) cannot be
+ * addressed at all and would be silently dropped from "all lights off". It
+ * would also mean regenerating the relay's slugs client-side and keeping them
+ * in step through renames.
+ *
+ * The fix worth making is a relay action addressed by accessory id that fans
+ * out in one native TaskGroup; that needs a Mac app release, so until then the
+ * concurrency cap above is what keeps this quick. The relay's write fan-out
+ * (MQTT publish, automation triggers) fires identically either way.
  */
 export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCache }: RunHomeActionArgs) {
   return useCallback(async (action: HomeAction) => {
