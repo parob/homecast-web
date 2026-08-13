@@ -307,7 +307,7 @@ export function SharedCollectionView({
   );
 
   const handleSlider = useCallback(
-    async (accessoryId: string, characteristicType: string, value: number) => {
+    async (accessoryId: string, characteristicType: string, value: number | string | boolean) => {
       if (!canControl) {
         toast.error('View-only access');
         return;
@@ -696,6 +696,11 @@ export function SharedCollectionView({
               homeName={accessory.homeName}
               onToggle={canControl ? handleToggle : () => {}}
               onSlider={canControl ? handleSlider : () => {}}
+              // Virtual accessories write arbitrary values — a mode name, a
+              // date, a counter — not just slider numbers. Without this the
+              // widget's optional-chained onSetValue silently did nothing, so
+              // every helper control on a share page looked live and was inert.
+              onSetValue={canControl ? handleSlider : undefined}
               getEffectiveValue={getEffectiveValue}
               compact={collectionLayout?.compactMode || false}
               iconStyle={(collectionLayout?.iconStyle as 'standard' | 'colourful') || "colourful"}
@@ -724,6 +729,11 @@ export function SharedCollectionView({
           homeName={accessory.homeName}
           onToggle={canControl ? handleToggle : () => {}}
           onSlider={canControl ? handleSlider : () => {}}
+              // Virtual accessories write arbitrary values — a mode name, a
+              // date, a counter — not just slider numbers. Without this the
+              // widget's optional-chained onSetValue silently did nothing, so
+              // every helper control on a share page looked live and was inert.
+              onSetValue={canControl ? handleSlider : undefined}
           getEffectiveValue={getEffectiveValue}
           compact={collectionLayout?.compactMode || false}
           iconStyle={(collectionLayout?.iconStyle as 'standard' | 'colourful') || "colourful"}

@@ -234,7 +234,7 @@ export function SharedAccessoryGroupView({
   );
 
   const handleSlider = useCallback(
-    async (accessoryId: string, characteristicType: string, value: number) => {
+    async (accessoryId: string, characteristicType: string, value: number | string | boolean) => {
       if (!canControl) {
         toast.error('View-only access');
         return;

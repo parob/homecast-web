@@ -242,7 +242,7 @@ export function SharedRoomView({
   );
 
   const handleSlider = useCallback(
-    async (accessoryId: string, characteristicType: string, value: number) => {
+    async (accessoryId: string, characteristicType: string, value: number | string | boolean) => {
       if (!canControl) {
         toast.error('View-only access');
         return;
@@ -556,6 +556,11 @@ export function SharedRoomView({
               homeName={accessory.homeName}
               onToggle={canControl ? handleToggle : () => {}}
               onSlider={canControl ? handleSlider : () => {}}
+              // Virtual accessories write arbitrary values — a mode name, a
+              // date, a counter — not just slider numbers. Without this the
+              // widget's optional-chained onSetValue silently did nothing, so
+              // every helper control on a share page looked live and was inert.
+              onSetValue={canControl ? handleSlider : undefined}
               getEffectiveValue={getEffectiveValue}
               compact={false}
               iconStyle={(layout?.iconStyle as 'standard' | 'colourful') || 'colourful'}
