@@ -10,7 +10,7 @@
  */
 
 import { executeHomeKitAction } from '../relay/local-handler';
-import { SIMPLE_TO_CHAR } from '@/lib/characteristic-aliases';
+import { SIMPLE_TO_CHAR, canonicalCharacteristic, snakeCaseProp } from '@/lib/characteristic-aliases';
 import { uniqueKey, getSimpleName, formatValue } from './local-rest';
 import { isInsufficientHomeKitPrivileges, HOMEKIT_EDIT_PERMISSION_MESSAGE } from '../lib/homekit-errors';
 
@@ -87,6 +87,11 @@ export function validateAutomationName(name: string): string {
  * Exact-name checks only — no substring matching.
  */
 export function convertSimpleValue(prop: string, value: unknown): unknown {
+  // Snake_case only, and normalised first for the same reason
+  // canonicalCharacteristic normalises: `hvacMode` arriving from the camelCased
+  // cloud MCP surface would otherwise match nothing here and store the raw
+  // string "cool" where the relay needs 2.
+  prop = snakeCaseProp(prop);
   if (prop === 'alarm_target' || prop === 'alarm_state') {
     if (typeof value === 'string') {
       const mapped = ALARM_VALUES[value.toLowerCase()];
@@ -125,7 +130,7 @@ export function convertSimpleValue(prop: string, value: unknown): unknown {
 }
 
 function simpleToChar(prop: string): string {
-  return SIMPLE_TO_CHAR[prop] || prop;
+  return canonicalCharacteristic(prop);
 }
 
 function charToSimple(charType: string): string {

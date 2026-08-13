@@ -49,6 +49,20 @@ export const SIMPLE_TO_CHAR: Record<string, string> = {
 };
 
 /**
+ * Every characteristic name the bridge reports is snake_case — all 130 keys of
+ * `CharacteristicMapper.characteristicMap`, and every virtual_* name — so a
+ * camelCase spelling can only have come from somewhere that camelCases on the
+ * way out. The cloud GraphQL layer does exactly that: its MCP surface advertises
+ * `virtualMode` and `filterByHome`, so an agent reading it reasonably writes
+ * `relativeHumidity`, which then matches no event and no profile.
+ *
+ * A name already in snake_case has no capitals, so this leaves it alone.
+ */
+export function snakeCaseProp(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/**
  * The name a HomeKit event would use for this characteristic.
  *
  * Anything already canonical passes through untouched, so this is safe to apply
@@ -56,5 +70,8 @@ export const SIMPLE_TO_CHAR: Record<string, string> = {
  * usually cannot tell which side of the bridge a name came from.
  */
 export function canonicalCharacteristic(characteristicType: string): string {
-  return SIMPLE_TO_CHAR[characteristicType] ?? characteristicType;
+  const alias = SIMPLE_TO_CHAR[characteristicType];
+  if (alias) return alias;
+  const snake = snakeCaseProp(characteristicType);
+  return SIMPLE_TO_CHAR[snake] ?? snake;
 }
