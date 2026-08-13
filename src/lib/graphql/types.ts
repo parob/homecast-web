@@ -1,3 +1,5 @@
+import type { SummarySectionId, HomeActionId } from '@/lib/summary-sections';
+
 export interface User {
   id: string;
   email: string;
@@ -920,6 +922,10 @@ export interface HomeLayoutData {
   roomOrder?: string[];  // Can include room IDs and room group IDs (prefixed with 'room-group-')
   visibility?: {
     hiddenRooms?: string[];
+    /** Summary-row pills turned off for this home. Absent = all shown. */
+    hiddenSummarySections?: SummarySectionId[];
+    /** Individual Actions turned off for this home. Absent = all shown. */
+    hiddenActions?: HomeActionId[];
   };
   background?: BackgroundSettings;
 }

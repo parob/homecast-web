@@ -6,27 +6,19 @@ import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { UNSELECTED_CHIP } from './VirtualAccessoryWidget';
 import { WidgetProps, getCharacteristic } from './types';
 import { getIconColor } from './iconColors';
+import { SECURITY_STATE_NAMES, normalizeSecurityState } from './shared/securityState';
 
-const SECURITY_STATES = [
-  { name: 'Stay Arm', icon: Home, color: 'bg-blue-500' },
-  { name: 'Away Arm', icon: ShieldCheck, color: 'bg-green-500' },
-  { name: 'Night Arm', icon: Moon, color: 'bg-purple-500' },
-  { name: 'Disarmed', icon: ShieldOff, color: 'bg-muted' },
-  { name: 'Triggered', icon: ShieldAlert, color: 'bg-destructive' },
+// Names and the value normalisation are shared with the Actions catalog; only
+// the icon and colour for each state are this widget's business.
+const SECURITY_STATE_STYLES = [
+  { icon: Home, color: 'bg-blue-500' },
+  { icon: ShieldCheck, color: 'bg-green-500' },
+  { icon: Moon, color: 'bg-purple-500' },
+  { icon: ShieldOff, color: 'bg-muted' },
+  { icon: ShieldAlert, color: 'bg-destructive' },
 ];
 
-// Normalize security state from various formats to HomeKit numeric values
-// HomeKit: 0=Stay Arm, 1=Away Arm, 2=Night Arm, 3=Disarmed, 4=Triggered
-// Some devices return boolean-like values (true/false or "true"/"false") where true=Armed
-function normalizeSecurityState(value: unknown): number {
-  if (typeof value === 'number') {
-    return value >= 0 && value <= 4 ? value : 3;
-  }
-  // Boolean true = Armed (Away Arm), false = Disarmed
-  if (value === true || value === 'true' || value === 1 || value === '1') return 1; // Away Arm
-  if (value === false || value === 'false' || value === 0 || value === '0') return 3; // Disarmed
-  return 3; // Default to Disarmed
-}
+const SECURITY_STATES = SECURITY_STATE_NAMES.map((name, i) => ({ name, ...SECURITY_STATE_STYLES[i] }));
 
 export const SecuritySystemWidget: React.FC<WidgetProps> = memo(({
   accessory,

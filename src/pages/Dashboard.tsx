@@ -54,6 +54,9 @@ import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLa
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary, StatusPill } from '@/components/summary';
+import { ActionsPill, ActionsSection } from '@/components/actions/ActionsSection';
+import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
+import { isSummarySectionVisible } from '@/lib/summary-sections';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
@@ -1561,8 +1564,10 @@ const Dashboard = () => {
 
   // Temporarily show hidden items (homes, rooms, accessories) for unhiding
   const [showHiddenItems, setShowHiddenItems] = useState(false);
-  // Scenes/Automations/Status sections, toggled by the pills in the summary row.
-  // Status is home-view only: room views keep the sensor bubbles inline.
+  // Actions/Scenes/Automations/Status sections, toggled by the pills in the
+  // summary row — mutually exclusive, so opening one closes the other three.
+  // All are home-view only: room views keep the sensor bubbles inline.
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [scenesOpen, setScenesOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -3270,13 +3275,17 @@ const Dashboard = () => {
     fetchPolicy: 'cache-and-network',
   });
 
-  // Populate Apollo cache with individual room layouts for getOrderedItems to read
+  // Populate Apollo cache with individual room layouts for getOrderedItems to read.
+  // Key on the row's own entityType, not a hard-coded 'room': Community mode's
+  // resolver used to ignore the entityType variable and return every row, so a
+  // home's layout was being written into the cache key `room:<homeId>`.
   useEffect(() => {
     if (!roomLayoutsData?.storedEntities) return;
     for (const entity of roomLayoutsData.storedEntities) {
+      if (entity.entityType !== 'room') continue;
       apolloClient.writeQuery({
         query: GET_STORED_ENTITY_LAYOUT,
-        variables: { entityType: 'room', entityId: entity.entityId },
+        variables: { entityType: entity.entityType, entityId: entity.entityId },
         data: {
           storedEntityLayout: {
             __typename: 'StoredEntityLayout',
@@ -4655,9 +4664,31 @@ const Dashboard = () => {
     [filteredRooms]
   );
 
-  // Whole home: no room and no room group drilled into. The scenes,
+  // Actions read the whole home, not just what's on screen: "all lights off"
+  // has to mean every light, including ones in a hidden room or hidden from
+  // the dashboard for tidiness. Same list the settings checklist derives from,
+  // so the two never disagree about which actions a home has.
+  const actionAccessories = useMemo(
+    () => accessories as import('@/native/homekit-bridge').HomeKitAccessory[],
+    [accessories]
+  );
+
+  // Whole home: no room and no room group drilled into. The actions, scenes,
   // automations and stats pills are home-level, so they only show here.
   const isWholeHomeView = !!selectedHomeId && !selectedRoomId && !selectedRoomGroup;
+
+  // Which summary-row pills this home shows. Stored as a hidden-list in the
+  // home layout blob, so a home that predates the setting shows all four.
+  const showActions = isSummarySectionVisible(homeLayout, 'actions');
+  const showScenes = isSummarySectionVisible(homeLayout, 'scenes');
+  const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
+  const showStatus = isSummarySectionVisible(homeLayout, 'status');
+
+  const runHomeAction = useRunHomeAction({
+    homeId: selectedHomeId,
+    isViewOnly,
+    updateCharacteristicInCache,
+  });
 
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
@@ -7472,27 +7503,35 @@ const Dashboard = () => {
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
                   {isWholeHomeView ? (
                     <>
-                      <ScenesPill
-                        homeId={selectedHomeId!}
-                        open={scenesOpen}
-                        onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
+                      {showActions && <ActionsPill
+                        accessories={actionAccessories}
+                        homeLayout={homeLayout}
+                        open={actionsOpen}
+                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(false); setActionsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         hideAccessoryCounts={hideAccessoryCounts}
-                      />
-                      <AutomationsPill
+                      />}
+                      {showScenes && <ScenesPill
+                        homeId={selectedHomeId!}
+                        open={scenesOpen}
+                        onToggle={() => { setActionsOpen(false); setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
+                        isDarkBackground={isDarkBackground}
+                        hideAccessoryCounts={hideAccessoryCounts}
+                      />}
+                      {showAutomations && <AutomationsPill
                         homeId={selectedHomeId!}
                         open={automationsOpen}
-                        onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
+                        onToggle={() => { setActionsOpen(false); setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         hideAccessoryCounts={hideAccessoryCounts}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      />
-                      <StatusPill
+                      />}
+                      {showStatus && <StatusPill
                         accessories={summaryAccessories}
                         open={statusOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
+                        onToggle={() => { setActionsOpen(false); setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
-                      />
+                      />}
                     </>
                   ) : (
                     <AreaSummary
@@ -7501,17 +7540,29 @@ const Dashboard = () => {
                     />
                   )}
                 </div>
+                {/* Bodies are gated on the same flags as their pills: leaving a
+                    section mounted behind a hidden pill would keep its queries
+                    live and could strand it open with no way to close it. */}
                 {isWholeHomeView && (
                   <>
-                    <ScenesSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />
-                    <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />
-                    <AnimatedCollapse open={statusOpen}>
+                    {showActions && <ActionsSection
+                      accessories={actionAccessories}
+                      homeLayout={homeLayout}
+                      compact={compactMode}
+                      isDarkBackground={isDarkBackground}
+                      open={actionsOpen}
+                      isViewOnly={isViewOnly}
+                      onRunAction={runHomeAction}
+                    />}
+                    {showScenes && <ScenesSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />}
+                    {showAutomations && <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />}
+                    {showStatus && <AnimatedCollapse open={statusOpen}>
                       <AreaSummary
                         accessories={summaryAccessories}
                         isDarkBackground={isDarkBackground}
                         className={compactMode ? 'mb-3' : 'mb-6'}
                       />
-                    </AnimatedCollapse>
+                    </AnimatedCollapse>}
                   </>
                 )}
                 <DndContext

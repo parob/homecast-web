@@ -7,6 +7,7 @@ import type {
   UpdateStoredEntityLayoutResponse,
   BackgroundSettings,
 } from '@/lib/graphql/types';
+import type { SummarySectionId, HomeActionId } from '@/lib/summary-sections';
 
 /**
  * Hook to get and update entity layout configuration.
@@ -128,7 +129,13 @@ export function useEntityLayout<T extends object>(
 // Shared layout data type with background support
 export interface HomeLayoutData {
   roomOrder?: string[];
-  visibility?: { hiddenRooms?: string[] };
+  visibility?: {
+    hiddenRooms?: string[];
+    /** Summary-row pills turned off for this home. Absent = all shown. */
+    hiddenSummarySections?: SummarySectionId[];
+    /** Individual Actions turned off for this home. Absent = all shown. */
+    hiddenActions?: HomeActionId[];
+  };
   background?: BackgroundSettings;
 }
 

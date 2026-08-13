@@ -23,6 +23,7 @@ import { SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, C
 import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-bridge';
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { HomeHistorySettings } from './HistorySection';
+import { HomeScreenSection } from './HomeScreenSection';
 import { AddBrokerDialog } from './AddBrokerDialog';
 import { UptimeSection } from './UptimeSection';
 import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
@@ -402,6 +403,12 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
           )}
         </div>
       </div>
+
+      {/* Home Screen — which pills the summary row shows for this home, and
+          which Actions sit inside the Actions pill. Not developer-gated: this
+          is display preference, and it is stored per user, so a shared member
+          tidying their own view doesn't change anyone else's. */}
+      <HomeScreenSection home={home} />
 
       {/* Reliability — relay + per-home uptime with end-to-end probe results.
           Cloud-only because Community mode has no cloud backend to record samples. */}

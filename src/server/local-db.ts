@@ -259,20 +259,39 @@ export async function deleteCollection(id: string): Promise<boolean> {
 
 // --- Stored Entities ---
 
-interface StoredEntity {
+export interface StoredEntity {
   id: string;
   entityType: string;
   entityId: string;
   data: string;
+  parentId?: string | null;
   layoutJson: string | null;
   createdAt: string;
 }
 
-export async function getStoredEntities(): Promise<StoredEntity[]> {
-  return getAll<StoredEntity>('stored_entities');
+/**
+ * The store is keyed by `${entityType}:${entityId}` and carries no secondary
+ * index (see the schema in openDB), so the type filter runs in JS. A home has
+ * tens of these rows, not thousands — an index would cost a DB version bump
+ * for nothing.
+ */
+export async function getStoredEntities(entityType?: string): Promise<StoredEntity[]> {
+  const all = await getAll<StoredEntity>('stored_entities');
+  return entityType ? all.filter(e => e.entityType === entityType) : all;
 }
 
-export async function syncEntities(entities: Array<{ entityType: string; entityId: string; data: string }>): Promise<StoredEntity[]> {
+export async function getStoredEntityLayout(entityType: string, entityId: string): Promise<StoredEntity | null> {
+  return (await getById<StoredEntity>('stored_entities', `${entityType}:${entityId}`)) ?? null;
+}
+
+/**
+ * `useEntitySync` sends `dataJson` (the GraphQL field name); older callers sent
+ * `data`. Accepting both keeps the row populated either way — reading only
+ * `data` left every local row's payload undefined.
+ */
+export async function syncEntities(
+  entities: Array<{ entityType: string; entityId: string; parentId?: string | null; data?: string; dataJson?: string }>
+): Promise<StoredEntity[]> {
   const results: StoredEntity[] = [];
   for (const e of entities) {
     const id = `${e.entityType}:${e.entityId}`;
@@ -281,7 +300,9 @@ export async function syncEntities(entities: Array<{ entityType: string; entityI
       id,
       entityType: e.entityType,
       entityId: e.entityId,
-      data: e.data,
+      data: e.dataJson ?? e.data ?? existing?.data ?? '{}',
+      parentId: e.parentId ?? existing?.parentId ?? null,
+      // Layout survives a sync — sync only refreshes the identity payload.
       layoutJson: existing?.layoutJson ?? null,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     };
@@ -295,7 +316,7 @@ export async function updateStoredEntityLayout(entityType: string, entityId: str
   const id = `${entityType}:${entityId}`;
   let entity = await getById<StoredEntity>('stored_entities', id);
   if (!entity) {
-    entity = { id, entityType, entityId, data: '{}', layoutJson, createdAt: new Date().toISOString() };
+    entity = { id, entityType, entityId, data: '{}', parentId: null, layoutJson, createdAt: new Date().toISOString() };
   } else {
     entity.layoutJson = layoutJson;
   }

@@ -117,6 +117,30 @@ function toStoredVirtualAccessory(h: { id: string; homeId: string; data: string;
 }
 
 /**
+ * Local `stored_entities` rows onto the shape the client documents select.
+ * The IndexedDB row names two fields differently (`data`, `createdAt`) from
+ * the GraphQL surface (`dataJson`, `updatedAt`), so a read that skipped this
+ * mapping handed Apollo `undefined` for both.
+ *
+ * `typename` defaults to the list type. The single-layout query uses
+ * `StoredEntityLayout` to match what `useEntityLayout.updateCache` writes
+ * optimistically — otherwise a fresh read and an optimistic write land in two
+ * different normalised cache entries.
+ */
+function toStoredEntity(e: db.StoredEntity, typename = 'StoredEntity') {
+  return {
+    id: e.id,
+    entityType: e.entityType,
+    entityId: e.entityId,
+    parentId: e.parentId ?? null,
+    dataJson: e.data ?? null,
+    layoutJson: e.layoutJson ?? null,
+    updatedAt: e.createdAt,
+    __typename: typename,
+  };
+}
+
+/**
  * Handle a GraphQL request and return the response body.
  *
  * When `auth-enabled` is on, every operation outside `GRAPHQL_PUBLIC_OPS`
@@ -349,11 +373,26 @@ async function resolveOperation(
 
     // --- Stored Entities ---
     case 'GetStoredEntities':
-      return { storedEntities: (await db.getStoredEntities()).map(e => ({ ...e, __typename: 'StoredEntity' })) };
+      return {
+        storedEntities: (await db.getStoredEntities(variables.entityType as string | undefined))
+          .map(e => toStoredEntity(e)),
+      };
+
+    case 'GetStoredEntityLayout': {
+      const entity = await db.getStoredEntityLayout(
+        variables.entityType as string,
+        variables.entityId as string
+      );
+      // `null`, not `{}` — useEntityLayout reads data?.storedEntityLayout?.layoutJson
+      // and updateCache expects the field to be present in the shape.
+      return { storedEntityLayout: entity ? toStoredEntity(entity, 'StoredEntityLayout') : null };
+    }
 
     case 'SyncEntities': {
-      const entities = await db.syncEntities(variables.entities as Array<{ entityType: string; entityId: string; data: string }>);
-      return { syncEntities: entities.map(e => ({ ...e, __typename: 'StoredEntity' })) };
+      const entities = await db.syncEntities(
+        variables.entities as Array<{ entityType: string; entityId: string; parentId?: string | null; data?: string; dataJson?: string }>
+      );
+      return { syncEntities: { __typename: 'SyncEntitiesResult', success: true, syncedCount: entities.length } };
     }
 
     case 'UpdateStoredEntityLayout': {
@@ -362,7 +401,13 @@ async function resolveOperation(
         variables.entityId as string,
         variables.layoutJson as string
       );
-      return { updateStoredEntityLayout: entity ? { ...entity, __typename: 'StoredEntity' } : null };
+      return {
+        updateStoredEntityLayout: {
+          __typename: 'UpdateEntityLayoutResult',
+          success: !!entity,
+          entity: entity ? toStoredEntity(entity, 'StoredEntityLayout') : null,
+        },
+      };
     }
 
     // --- Room Groups ---
