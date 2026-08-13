@@ -16,9 +16,7 @@ import type {
 } from '@/lib/graphql/types';
 import { ErrorWithTrace } from './ErrorWithTrace';
 import type { RequestTrace } from '@/lib/types/trace';
-import { AreaSummary, StatusPill } from '@/components/summary';
-import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { useSensorAggregation } from '@/hooks/useSensorAggregation';
+import { AreaSummary } from '@/components/summary';
 import type { HomeKitAccessory as NativeHomeKitAccessory } from '@/native/homekit-bridge';
 import { AccessoryWidget, ServiceGroupWidget, getRoomIcon, WidgetInteractionContext } from '@/components/widgets';
 import {
@@ -48,8 +46,8 @@ const BREADCRUMB_LINK_CLASS =
   'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
 
 /**
- * The summary widgets (StatusPill, AreaSummary, useSensorAggregation) type their
- * input as the native bridge's HomeKitAccessory, where `category` is required;
+ * AreaSummary types its input as the native bridge's HomeKitAccessory, where
+ * `category` is required;
  * the public share query returns the GraphQL one, where it is optional. The two
  * are the same object at runtime and nothing on the summary path reads
  * `category`, so cross the boundary here rather than widen the native type for
@@ -522,9 +520,6 @@ export function SharedHomeView({
   const selectedRoom = useExternalSidebar ? externalSelectedRoom ?? null : internalSelectedRoom;
   const setSelectedRoom = useExternalSidebar ? (onExternalRoomSelect ?? (() => {})) : setInternalSelectedRoom;
 
-  // Whole-home sensor bubbles, collapsed behind the Status pill by default.
-  const [statusOpen, setStatusOpen] = useState(false);
-
   // Filter accessories by selected room
   const filteredRoomNames = selectedRoom ? [selectedRoom] : roomNames;
 
@@ -620,11 +615,6 @@ export function SharedHomeView({
 
   // Check if we have rooms to show in sidebar (computed before early returns for hooks consistency)
   const hasRooms = roomNames.length > 1;
-
-  // Gate the whole Status block, not just its contents. StatusPill and AreaSummary
-  // each render null without readings, but the wrapper holding them would still
-  // take a space-y-6 gap from the accessories below it.
-  const { hasData: hasSensorData } = useSensorAggregation(forSummary(accessories));
 
   // Sidebar content - computed before early returns to ensure hooks are called consistently
   const sidebarContent = (!accessoriesLoading && !accessoriesError && accessories.length > 0 && hasRooms) ? (
@@ -879,27 +869,18 @@ export function SharedHomeView({
             </h2>
           )}
 
-          {/* Sensor readings. A whole home aggregates every room, which is a long
-              row, so it sits behind a pill the way the dashboard does it. One
-              room's readings are short enough to earn the space and stay inline. */}
-          {selectedRoom ? (
-            <AreaSummary
-              accessories={forSummary(accessoriesByRoom[selectedRoom] ?? [])}
-              isDarkBackground={isDarkBackground}
-            />
-          ) : hasSensorData ? (
-            <div className="space-y-2">
-              <StatusPill
-                accessories={forSummary(accessories)}
-                open={statusOpen}
-                onToggle={() => setStatusOpen(o => !o)}
-                isDarkBackground={isDarkBackground}
-              />
-              <AnimatedCollapse open={statusOpen}>
-                <AreaSummary accessories={forSummary(accessories)} isDarkBackground={isDarkBackground} />
-              </AnimatedCollapse>
-            </div>
-          ) : null}
+          {/* Sensor readings, always on show. A share link is a read-only glance
+              at someone else's home — the temperatures and whether the doors are
+              shut are most of the point of following it, so they do not sit
+              behind a press. The dashboard hides them because it has scenes and
+              automations competing for the same row; this has neither.
+
+              Scoped to the room when one is picked, rather than the whole home:
+              a kitchen reporting the house's range read as a broken sensor. */}
+          <AreaSummary
+            accessories={forSummary(selectedRoom ? (accessoriesByRoom[selectedRoom] ?? []) : accessories)}
+            isDarkBackground={isDarkBackground}
+          />
 
           {/* Render with room groups if available, otherwise flat rooms */}
           {roomGroupsData && !selectedRoom ? (

@@ -33,6 +33,8 @@ interface MainLayoutProps {
   isInMobileApp?: boolean;
   footer?: React.ReactNode;
   background?: BackgroundSettings | null;
+  /** Sits in the header's right-hand bubble, just left of the Guest chip. */
+  headerBadge?: React.ReactNode;
 }
 
 export function MainLayout({
@@ -43,6 +45,7 @@ export function MainLayout({
   isInMobileApp,
   footer,
   background,
+  headerBadge,
 }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -100,6 +103,7 @@ export function MainLayout({
         isInMobileApp={isInMobileApp}
         hasBackground={hasBackground}
         isDarkBackground={isDarkBackground}
+        leftBadge={headerBadge}
       >
         <div className="flex items-center gap-3">
           {/* Mobile menu button - shown when sidebar content exists */}

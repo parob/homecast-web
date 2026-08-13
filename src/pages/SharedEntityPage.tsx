@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -91,7 +92,15 @@ function SharedHeaderContent({ icon: Icon, title, subtitle }: { icon: typeof Fol
   );
 }
 
-/** Status bar that reads dark mode from BackgroundContext (rendered inside MainLayout) */
+/**
+ * What this link is — access level, liveness, size — as a header badge beside
+ * the Guest chip rather than a row of its own above the accessories.
+ *
+ * It is provenance: read once, then in the way. Where the header has room it
+ * reads out in full; where it does not, it is one ⓘ that opens the same line in
+ * a popover. The breakpoint is lg because the header also carries the home name
+ * and the burger, and this text is ~40 characters.
+ */
 function SharedStatusBar({
   role, wsSubscribed, accessoriesCount, canUpgrade,
   upgradeDialogOpen, setUpgradeDialogOpen,
@@ -112,61 +121,70 @@ function SharedStatusBar({
 }) {
   const { isDarkBackground } = useBackgroundContext();
   const RoleIcon = role === 'control' ? Zap : Eye;
-  // Collapsed by default: this is provenance, read once and then in the way. The
-  // accessories are what the visitor came for, so the detail waits behind the ⓘ.
-  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  // The detail, shared by the wide layout and the narrow popover so the two
+  // cannot drift.
+  const detail = (
+    <>
+      <span className="flex items-center gap-1 whitespace-nowrap">
+        <RoleIcon className="h-3 w-3 shrink-0" />
+        {role === 'control' ? 'Control Access' : 'View Only'}
+      </span>
+      {wsSubscribed && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="flex items-center gap-1 whitespace-nowrap text-green-600">
+            <Wifi className="h-3 w-3 shrink-0" />
+            Live
+          </span>
+        </>
+      )}
+      {accessoriesCount > 0 && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="whitespace-nowrap">{accessoriesCount} accessor{accessoriesCount !== 1 ? 'ies' : 'y'}</span>
+        </>
+      )}
+    </>
+  );
 
   return (
-    <div className="mb-3">
-      <div className={cn(
-        "inline-flex items-center gap-2 text-sm",
-        isDarkBackground
-          ? "text-white/70 bg-black/40 backdrop-blur-xl rounded-full px-3 py-1"
-          : "text-muted-foreground"
-      )}>
-        <button
-          type="button"
-          onClick={() => setDetailsOpen(o => !o)}
-          aria-expanded={detailsOpen}
-          aria-label="Share details"
-          className="flex items-center opacity-70 transition-opacity hover:opacity-100"
-        >
-          <Info className="h-3.5 w-3.5" />
-        </button>
-        {detailsOpen && (
-          <>
-            <span className="flex items-center gap-1">
-              <RoleIcon className="h-3 w-3" />
-              {role === 'control' ? 'Control Access' : 'View Only'}
-            </span>
-            {wsSubscribed && (
-              <>
-                <span>·</span>
-                <span className="flex items-center gap-1 text-green-600">
-                  <Wifi className="h-3 w-3" />
-                  Live
-                </span>
-              </>
-            )}
-            {accessoriesCount > 0 && (
-              <>
-                <span>·</span>
-                <span>{accessoriesCount} accessor{accessoriesCount !== 1 ? 'ies' : 'y'}</span>
-              </>
-            )}
-          </>
-        )}
-        {/* Outside the collapse: the one action here, and the only route into
-            control access. Hiding it behind the ⓘ would bury it. */}
-        {canUpgrade && (
-          <>
-            <button
-              className="flex items-center gap-1 text-primary hover:underline"
-              onClick={() => setUpgradeDialogOpen(true)}
-            >
-              <KeyRound className="h-3 w-3" />
-              Unlock Control
-            </button>
+    <div className={cn(
+      "flex items-center gap-2 text-[11px] font-medium no-drag",
+      isDarkBackground ? "text-white/70" : "text-muted-foreground",
+    )}>
+      {/* Wide: read out in place. */}
+      <div className="hidden lg:flex items-center gap-2">{detail}</div>
+
+      {/* Narrow: the same line, one tap away. Popover rather than expanding in
+          place — the header row has the home name in it and no slack. */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Share details"
+            className="flex lg:hidden items-center opacity-70 transition-opacity hover:opacity-100"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-auto max-w-[85vw] px-3 py-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">{detail}</div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Never behind the ⓘ: the one action here, and the only route into
+          control access. */}
+      {canUpgrade && (
+        <>
+          <button
+            className="flex items-center gap-1 whitespace-nowrap text-primary hover:underline"
+            onClick={() => setUpgradeDialogOpen(true)}
+          >
+            <KeyRound className="h-3 w-3 shrink-0" />
+            <span className="hidden sm:inline">Unlock Control</span>
+            <span className="sm:hidden">Unlock</span>
+          </button>
             <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
               <DialogContent className="max-w-sm">
                 <DialogHeader>
@@ -197,9 +215,8 @@ function SharedStatusBar({
                 </form>
               </DialogContent>
             </Dialog>
-          </>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -489,13 +506,13 @@ export default function SharedEntityPage() {
   return (
     <MainLayout
       headerContent={headerContent}
+      headerBadge={statusBar}
       isInMacApp={isInMacApp}
       isInMobileApp={isInMobileApp}
       footer={sharedFooter}
       sidebar={sidebarContent}
       background={resolvedBackground}
     >
-      {statusBar}
       {entity.entityType === 'collection' || entity.entityType === 'collection_group' ? (
         <SharedCollectionView
           entityData={entity}
