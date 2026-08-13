@@ -8068,12 +8068,24 @@ const Dashboard = () => {
   const activeValue = activeChar?.value;
   const isActive = activeValue === true || activeValue === 1 || activeValue === 'true' || activeValue === '1' || activeChar === null;
 
+  // Pick the target the way ThermostatWidget actually picks it — BY MODE. This
+  // chain used to try target_temperature then heating_threshold on writability
+  // alone, never once considering cooling_threshold, so every heater-cooler
+  // was reported as aiming at its heating threshold no matter what mode it was
+  // in. On a unit whose two thresholds happen to match, the VALUE looked
+  // right and only the type was wrong, which is the worst way to be wrong: the
+  // panel exists to say what the widget will do, and it sent a real
+  // investigation down the wrong path.
+  const targetHCMode = Number(targetHCStateChar?.value);
+  const effectiveTargetType =
+    targetTempChar ? 'target_temperature'
+      : targetHCMode === 1 ? 'heating_threshold'
+        : (targetHCMode === 2 || targetHCMode === 0) && coolingThresholdChar ? 'cooling_threshold'
+          : 'heating_threshold';
   const effectiveTargetChar =
-    (targetTempChar?.isWritable ? targetTempChar : null) ||
-    (heatingThresholdChar?.isWritable ? heatingThresholdChar : null) ||
-    targetTempChar ||
-    heatingThresholdChar;
-  const effectiveTargetType = effectiveTargetChar === targetTempChar ? 'target_temperature' : 'heating_threshold';
+    effectiveTargetType === 'target_temperature' ? targetTempChar
+      : effectiveTargetType === 'cooling_threshold' ? coolingThresholdChar
+        : heatingThresholdChar;
 
   const sliderShouldShow = effectiveTargetChar && isActive;
   const sliderDisabled = !debugAccessory.isReachable || !effectiveTargetChar?.isWritable;

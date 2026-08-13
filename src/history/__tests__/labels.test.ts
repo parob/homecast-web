@@ -99,7 +99,7 @@ describe('stateValueLabel', () => {
     // "2 17h 26m" in a caption was heating_cooling_target's raw code.
     expect(stateValueLabel('heating_cooling_target', 2)).toBe('Cool');
     expect(stateValueLabel('heating_cooling_current', 1)).toBe('Heating');
-    expect(stateValueLabel('lock_current_state', 1)).toBe('Secured');
+    expect(stateValueLabel('lock_current_state', 1)).toBe('Locked'); // not HAP's "Secured"
     expect(stateValueLabel('air_quality', 5)).toBe('Poor');
   });
 
@@ -123,5 +123,39 @@ describe('stripRoomPrefix — the dashboard\'s rule, and only that rule', () => 
     // better answer in one panel.
     expect(stripRoomPrefix('Living Room Thermostat', 'Living')).toBe('Room Thermostat');
     expect(getDisplayName('Living Room Thermostat', 'Living')).toBe('Room Thermostat');
+  });
+});
+
+describe('the two enum vocabularies agree', () => {
+  // There are two tables of HomeKit enum words: ENUM_STATE_LABELS here, which
+  // dresses STORED history, and ENUM_LABELS in components/automations/
+  // characteristics.ts, which dresses an accessory's LIVE characteristics.
+  // They meet on one screen — the accessory page prefers the live options and
+  // falls back to the stored ones — so a value renamed in one and not the
+  // other silently keeps the old word wherever the other table wins. That is
+  // exactly what happened: 'Idle' was renamed to 'Standby' in history's table
+  // while the accessory page, reading the live table, went on saying 'Idle'.
+  it('gives every shared value the same word in both tables', async () => {
+    const { ENUM_STATE_LABELS } = await import('../labels');
+    const { ENUM_LABELS } = await import('@/components/automations/characteristics');
+    const mismatches: string[] = [];
+    for (const [type, live] of Object.entries(ENUM_LABELS)) {
+      const stored = ENUM_STATE_LABELS[type];
+      if (!stored || stored.length === 0) continue; // only one table knows it
+      for (const [code, word] of Object.entries(live)) {
+        const storedWord = stored[Number(code)];
+        if (storedWord && storedWord !== word) {
+          mismatches.push(`${type}[${code}]: live "${word}" vs stored "${storedWord}"`);
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('says Standby, not HAP\'s Idle, wherever a unit is on but doing nothing', async () => {
+    const { stateValueLabel } = await import('../labels');
+    expect(stateValueLabel('current_heater_cooler_state', 0)).toBe('Off');
+    expect(stateValueLabel('current_heater_cooler_state', 1)).toBe('Standby');
+    expect(stateValueLabel('current_heater_cooler_state', 3)).toBe('Cooling');
   });
 });

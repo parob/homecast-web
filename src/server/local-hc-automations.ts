@@ -24,7 +24,7 @@
  * HomeKit characteristic types.
  */
 
-import { SIMPLE_TO_CHAR } from '@/lib/characteristic-aliases';
+import { SIMPLE_TO_CHAR, canonicalCharacteristic, snakeCaseProp } from '@/lib/characteristic-aliases';
 import { VIRTUAL_CHARACTERISTIC } from '@/automation/types/automation';
 import { uniqueKey } from './local-rest';
 import { executeHomeKitAction } from '../relay/local-handler';
@@ -98,7 +98,7 @@ const VIRTUAL_OPERATIONS: VirtualOperation[] = [
 ];
 
 function simpleToChar(prop: string): string {
-  return SIMPLE_TO_CHAR[prop] || prop;
+  return canonicalCharacteristic(prop);
 }
 
 function charToSimple(charType: string): string {
@@ -417,7 +417,9 @@ async function compileAction(raw: Record<string, any>, ctx: CompileContext): Pro
   const base = { id: newId() };
 
   if (type === 'device') {
-    const props = Object.keys(raw).filter((k) => !ACTION_RESERVED.has(k));
+    // Reserved names are all snake_case, and a camelCased `serviceGroup` would
+    // otherwise read as a characteristic to write.
+    const props = Object.keys(raw).filter((k) => !ACTION_RESERVED.has(snakeCaseProp(k)));
     if (props.length === 0) {
       throw new Error('device action requires at least one property to set (e.g. on, brightness, cool_target)');
     }
@@ -816,6 +818,52 @@ export async function handleDeleteHcAutomation(args: {
   return { home: homeKey, deleted: args.id, message: `Deleted Homecast automation "${name}".` };
 }
 
+/**
+ * The one room `room` names, by id, exact name, or unambiguous substring.
+ *
+ * Exactness first and ambiguity refused: placing an accessory in the wrong room
+ * is silent — it simply appears somewhere else — so a guess between "Bedroom 1"
+ * and "Bedroom 1 Ensuite" is worth an error rather than a coin toss. Substring
+ * still resolves "bedroom 1 ensuite" typed in any case, and an id is accepted
+ * because a caller reading get_state has one to hand.
+ */
+export function matchRoom(rooms: Array<{ id?: string; name?: string }>, room: string): { id?: string; name?: string } {
+  const wanted = room.trim().toLowerCase();
+  const names = rooms.map(r => r.name || '').join(', ');
+
+  const byId = rooms.find(r => (r.id || '').toLowerCase() === wanted);
+  if (byId) return byId;
+  const byName = rooms.find(r => (r.name || '').trim().toLowerCase() === wanted);
+  if (byName) return byName;
+
+  const partial = rooms.filter(r => (r.name || '').toLowerCase().includes(wanted));
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) {
+    throw new Error(
+      `"${room}" matches more than one room: [${partial.map(r => r.name || '').join(', ')}] — name one exactly`
+    );
+  }
+  throw new Error(`No room named "${room}" in this home. Available: [${names}]`);
+}
+
+/**
+ * The room id to store for a room named `room`, or undefined for "no room".
+ *
+ * A virtual accessory is ours rather than HomeKit's, so it can sit in a room or
+ * above them at the top of the home — which is what an empty `room` asks for,
+ * and what one created without a room gets.
+ *
+ * Mirrors `resolve_room_id` in homecast-cloud's homes_hc_automations.py; the
+ * cloud additionally reduces the id to its hc_id, which Community has no need
+ * of because HomeKit's own ids are the only ones here.
+ */
+export async function resolveRoomId(homeId: string, room: string | undefined): Promise<string | undefined> {
+  if (room === undefined || !room.trim()) return undefined;
+
+  const result = await executeHomeKitAction('rooms.list', { homeId }) as any;
+  return matchRoom(result?.rooms || [], room).id;
+}
+
 export async function handleCreateVirtualAccessory(args: {
   home: string;
   name: string;
@@ -829,6 +877,7 @@ export async function handleCreateVirtualAccessory(args: {
   duration?: unknown;
   controllable?: boolean;
   icon?: string;
+  room?: string;
 }): Promise<Record<string, any>> {
   const { homeId, homeKey } = await resolveHome(args.home);
   if (!args.name || !args.name.trim()) throw new Error('Virtual accessory name is required');
@@ -847,6 +896,10 @@ export async function handleCreateVirtualAccessory(args: {
     homeId,
     type: engineType,
   };
+  // Absent rather than null when there is no room: the app reads a missing
+  // roomId as "top of the home", and the two must not be different states.
+  const roomId = await resolveRoomId(homeId, args.room);
+  if (roomId) def.roomId = roomId;
   if (args.icon !== undefined) def.icon = args.icon;
   if (args.controllable !== undefined) def.controllable = args.controllable;
 
@@ -901,6 +954,7 @@ export async function handleCreateVirtualAccessory(args: {
       slug: uniqueKey(def.name as string, def.id as string),
       name: def.name,
       type: args.type,
+      room: args.room?.trim() || null,
     },
     message:
       `Created virtual accessory "${def.name}". Reference it in Homecast automations by this slug ` +
@@ -922,6 +976,7 @@ export async function handleUpdateVirtualAccessory(args: {
   duration?: unknown;
   controllable?: boolean;
   icon?: string;
+  room?: string;
 }): Promise<Record<string, any>> {
   const { homeId, homeKey } = await resolveHome(args.home);
   const index = await buildVirtualIndex(homeId);
@@ -939,6 +994,13 @@ export async function handleUpdateVirtualAccessory(args: {
   }
   if (args.icon !== undefined) def.icon = args.icon;
   if (args.controllable !== undefined) def.controllable = args.controllable;
+  // An empty string is a move to the top of the home; an absent one leaves it
+  // where it is. Both resolve to no room id, so only the argument itself
+  // separates "move it out" from "don't move it".
+  if (args.room !== undefined) {
+    const roomId = await resolveRoomId(homeId, args.room);
+    if (roomId) def.roomId = roomId; else delete def.roomId;
+  }
   if (args.unit !== undefined) def.unit = args.unit;
   if (args.step !== undefined) def.step = Number(args.step);
   if (args.min !== undefined) def.min = Number(args.min);
@@ -988,8 +1050,11 @@ export async function handleUpdateVirtualAccessory(args: {
       type: ENGINE_TO_FRIENDLY[engineType] ?? engineType,
     },
     message:
-      `Updated virtual accessory "${def.name}". Its current value is unchanged — ` +
-      'use set_state to change that.',
+      `Updated virtual accessory "${def.name}".` +
+      (args.room === undefined
+        ? ''
+        : args.room.trim() ? ` Moved to ${args.room.trim()}.` : ' Moved to the top of the home.') +
+      ' Its current value is unchanged — use set_state to change that.',
   };
 }
 

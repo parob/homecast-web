@@ -82,6 +82,8 @@ export interface AccessoryPriceInfo {
   lastCheckedAt: string | null;
   pricePointCount: number;
   isNearAtl: boolean;
+  /** See DealInfo.baselineSource. */
+  baselineSource: 'list_price' | 'average';
   priceHistory: PricePoint[];
   deal: DealInfo | null;
 }
@@ -107,6 +109,10 @@ export interface DealInfo {
   priceHistory?: PricePoint[];
   allTimeLow: string | null;
   isNearAtl: boolean;
+  /** Whether allTimeLow rests on enough observations to be worth showing. */
+  atlIsMeaningful: boolean;
+  /** "list_price" when Amazon advertised a was-price, "average" when regularPrice is our rolling 30-day mean. */
+  baselineSource: 'list_price' | 'average';
   mappings?: MappedAccessory[];
 }
 

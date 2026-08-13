@@ -615,7 +615,11 @@ const TOOLS = [
       '"timer" — idle/active/paused; optional duration (seconds or {minutes}) | ' +
       '"text" — free text; optional initial | ' +
       '"date" — a date and time; optional initial (ISO 8601). ' +
-      'Returns {home, virtual_accessory:{id, slug, name, type}, message} — use the slug to reference it.',
+      'ROOM is optional and names the room it sits in, so it appears with that room\'s accessories in the app. ' +
+      'Give the room it belongs with — a dry cycle for Bedroom 1 belongs in Bedroom 1 — and leave it out only ' +
+      'for something genuinely house-wide, which sits at the top of the home instead. Unlike a real accessory ' +
+      'it can be moved freely afterwards, with update_virtual_accessory. ' +
+      'Returns {home, virtual_accessory:{id, slug, name, type, room}, message} — use the slug to reference it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -638,6 +642,7 @@ const TOOLS = [
         duration: { description: 'Default duration for a timer (seconds or {hours, minutes, seconds})' },
         controllable: { type: 'boolean', description: 'Whether a person can change it from the dashboard (default true)' },
         icon: { type: 'string', description: 'Optional icon slug' },
+        room: { type: 'string', description: 'Room name to place it in (omit for the top of the home)' },
       },
       required: ['home', 'name', 'type'],
     },
@@ -646,10 +651,13 @@ const TOOLS = [
   {
     name: 'update_virtual_accessory',
     description:
-      'Change a virtual accessory\'s DEFINITION — its name, or the settings that shape it (a mode\'s options, ' +
-      'a number\'s min/max/step/unit, a counter\'s step, a timer\'s duration, the icon, whether it is ' +
-      'controllable from the dashboard). Provide home and id (slug or id from get_state) plus only the fields ' +
-      'you are changing. ' +
+      'Change a virtual accessory\'s DEFINITION — its name, which room it sits in, or the settings that shape ' +
+      'it (a mode\'s options, a number\'s min/max/step/unit, a counter\'s step, a timer\'s duration, the icon, ' +
+      'whether it is controllable from the dashboard). Provide home and id (slug or id from get_state) plus ' +
+      'only the fields you are changing. ' +
+      'ROOM moves it: name a room to put it there, pass an empty string to move it to the top of the home ' +
+      'above the rooms, or omit it to leave it where it is. A virtual accessory is ours rather than HomeKit\'s, ' +
+      'so it can be moved as often as you like — a real accessory cannot. ' +
       'This does NOT change its current value — use set_state for that, exactly as you would for a real device. ' +
       'The type cannot be changed: a mode is not a counter, and the stored value would not survive. Delete and ' +
       'recreate instead. ' +
@@ -676,6 +684,7 @@ const TOOLS = [
         duration: { description: 'New default duration for a timer (seconds or {hours, minutes, seconds})' },
         controllable: { type: 'boolean' },
         icon: { type: 'string' },
+        room: { type: 'string', description: 'Room to move it to; "" moves it to the top of the home' },
       },
       required: ['home', 'id'],
     },
@@ -1042,6 +1051,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         duration: args.duration,
         controllable: args.controllable as boolean | undefined,
         icon: args.icon as string | undefined,
+        room: args.room as string | undefined,
       });
     }
 
@@ -1063,6 +1073,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         duration: args.duration,
         controllable: args.controllable as boolean | undefined,
         icon: args.icon as string | undefined,
+        room: args.room as string | undefined,
       });
     }
 

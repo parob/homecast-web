@@ -51,7 +51,7 @@ export const RESTING_STATE: Record<string, number> = {
   // Shut and secure.
   contact_state: 0, // Closed
   current_door_state: 1, // Closed
-  lock_current_state: 1, // Secured
+  lock_current_state: 1, // Locked
 };
 
 /** The resting value for a characteristic, or undefined if it has no notion of one. */
@@ -60,22 +60,66 @@ export function restingState(type: string): number | undefined {
 }
 
 /**
+ * Further states that are ALSO nothing to report.
+ *
+ * A heater-cooler separates Off (no power) from Standby (powered, but neither
+ * heating nor cooling). Both answer "it did not heat or cool", so a series
+ * that only ever visits the two says nothing its Power strip has not already
+ * said, in worse words — which is precisely where a unit that under-reports
+ * its compressor sits all day. The same shape holds for fans, purifiers and
+ * humidifiers, whose 1 is the identical "on but not doing the thing".
+ */
+const ALSO_QUIET: Record<string, number[]> = {
+  current_heater_cooler_state: [1], // Standby
+  current_humidifier_dehumidifier_state: [1],
+  current_fan_state: [1],
+  current_air_purifier_state: [1],
+};
+
+/** Every value that counts as nothing-to-report, or undefined if none do. */
+function quietValues(type: string): Set<number> | undefined {
+  const canonical = canonicalHistoryType(type);
+  const resting = RESTING_STATE[canonical];
+  if (resting === undefined) return undefined;
+  return new Set([resting, ...(ALSO_QUIET[canonical] ?? [])]);
+}
+
+/**
+ * What to say in place of a strip that never left its quiet states. Named per
+ * characteristic, because the generic "nothing changed" is not the finding: a
+ * compressor that ran all night behind a unit which never reports Cooling did
+ * change something, and the honest line is what was never OBSERVED.
+ */
+const QUIET_SUMMARY: Record<string, string> = {
+  current_heater_cooler_state: 'never reported heating or cooling in this range',
+  current_humidifier_dehumidifier_state: 'never reported humidifying or dehumidifying in this range',
+  current_fan_state: 'never reported blowing in this range',
+  current_air_purifier_state: 'never reported purifying in this range',
+};
+
+export function quietSummary(type: string): string | undefined {
+  return QUIET_SUMMARY[canonicalHistoryType(type)];
+}
+
+/**
  * Did this series have nothing to say across the range?
  *
  * Judged from the time-in-state totals rather than the transition count: a
  * series whose first sample lands inside the window counts as a transition
  * without anything having changed, and a series carried in from before it
- * counts as none. What matters is that exactly one state occupied the whole
- * range and that state is the resting one.
+ * counts as none. What matters is that every state it occupied was a quiet
+ * one — for most characteristics that means the single resting value, and
+ * for the heater-cooler family it means Off or Standby, which say the same
+ * nothing.
  */
 export function isQuietRange(type: string, totals: Array<[string, number]>): boolean {
   if (totals.length === 0) return true; // nothing recorded at all — an empty strip
-  if (totals.length > 1) return false;
-  const resting = restingState(type);
-  if (resting === undefined) return false;
-  const key = totals[0][0];
-  // String-kind series (a virtual mode) key by their text and never match.
-  if (key.trim() === '') return false;
-  const value = Number(key);
-  return Number.isFinite(value) && Math.round(value) === resting;
+  const quiet = quietValues(type);
+  if (!quiet) return false;
+  return totals.every(([key]) => {
+    // String-kind series (a virtual mode) key by their text and never match.
+    if (key.trim() === '') return false;
+    const value = Number(key);
+    return Number.isFinite(value) && quiet.has(Math.round(value));
+  });
 }

@@ -32,6 +32,15 @@ const executeHomeKitAction = vi.fn(async (action: string, _payload?: unknown) =>
   if (action === 'scenes.list') {
     return { scenes: [{ id: 'scene-1', name: 'Good Night' }] };
   }
+  if (action === 'rooms.list') {
+    return {
+      rooms: [
+        { id: 'r1', name: 'Bedroom 1' },
+        { id: 'r2', name: 'Bedroom 1 Ensuite' },
+        { id: 'r3', name: 'Kitchen' },
+      ],
+    };
+  }
   return {};
 });
 
@@ -101,6 +110,7 @@ import {
   handleCreateVirtualAccessory,
   handleUpdateVirtualAccessory,
   handleDeleteVirtualAccessory,
+  matchRoom,
 } from '@/server/local-hc-automations';
 
 /** The stored Automation JSON for the single automation we just created. */
@@ -593,5 +603,124 @@ describe('round trip', () => {
   it('refuses an unknown id instead of silently creating one', async () => {
     await expect(handleDeleteHcAutomation({ home: 'george_street_1111', id: 'nope' }))
       .rejects.toThrow(/not found/);
+  });
+});
+
+/**
+ * A virtual accessory can sit in a room, and can be moved between them.
+ *
+ * Mirror of TestRoomPlacement in test_homes_hc_automations.py. It had no way to
+ * say which room it was in at all: created without one it landed at the top of
+ * the home and stayed there.
+ */
+describe('room placement', () => {
+  const ROOMS = [
+    { id: 'r1', name: 'Bedroom 1' },
+    { id: 'r2', name: 'Bedroom 1 Ensuite' },
+    { id: 'r3', name: 'Kitchen' },
+  ];
+
+  /** The stored definition for the virtual accessory we just wrote. */
+  function storedVirtual(): any {
+    return JSON.parse(virtualRows[virtualRows.length - 1].data);
+  }
+
+  it('matches an exact name over a longer one containing it', () => {
+    // "Bedroom 1" is also a substring of "Bedroom 1 Ensuite"; naming a room
+    // exactly must never land the accessory in its neighbour.
+    expect(matchRoom(ROOMS, 'Bedroom 1').id).toBe('r1');
+  });
+
+  it('matches regardless of case and padding', () => {
+    expect(matchRoom(ROOMS, '  kitchen ').id).toBe('r3');
+  });
+
+  it('matches an unambiguous substring', () => {
+    expect(matchRoom(ROOMS, 'ensuite').id).toBe('r2');
+  });
+
+  it('matches a raw id', () => {
+    expect(matchRoom(ROOMS, 'R3').id).toBe('r3');
+  });
+
+  it('refuses an ambiguous substring', () => {
+    expect(() => matchRoom(ROOMS, 'bedroom')).toThrow(/matches more than one room/);
+  });
+
+  it('lists the real rooms when there is no match', () => {
+    expect(() => matchRoom(ROOMS, 'Garage'))
+      .toThrow(/Available: \[Bedroom 1, Bedroom 1 Ensuite, Kitchen\]/);
+  });
+
+  it('carries the room onto a new accessory', async () => {
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111',
+      name: 'Bedroom 1 Dry Cycle',
+      type: 'mode',
+      options: ['Idle', 'Running'],
+      room: 'Bedroom 1',
+    });
+
+    expect(storedVirtual().roomId).toBe('r1');
+  });
+
+  it('stores no room key at all when none is given', async () => {
+    // Absent and null are the same state to the app — "top of the home" — and
+    // storing null would make them look like different ones.
+    await handleCreateVirtualAccessory({
+      home: 'george_street_1111',
+      name: 'House Mode',
+      type: 'mode',
+      options: ['Home', 'Away'],
+    });
+
+    expect(storedVirtual()).not.toHaveProperty('roomId');
+  });
+
+  it('moves an existing accessory to another room', async () => {
+    const id = seedVirtual('Dry Cycle', 'input_select', {
+      options: ['Idle', 'Running'], roomId: 'r1',
+    });
+
+    const result = await handleUpdateVirtualAccessory({
+      home: 'george_street_1111', id, room: 'Kitchen',
+    });
+
+    expect(storedVirtual().roomId).toBe('r3');
+    expect(result.message).toContain('Moved to Kitchen');
+  });
+
+  it('moves it to the top of the home when given an empty room', async () => {
+    const id = seedVirtual('Dry Cycle', 'input_select', {
+      options: ['Idle', 'Running'], roomId: 'r1',
+    });
+
+    await handleUpdateVirtualAccessory({ home: 'george_street_1111', id, room: '' });
+
+    expect(storedVirtual()).not.toHaveProperty('roomId');
+  });
+
+  it('leaves the room alone on an unrelated edit', async () => {
+    // The distinction the `room === undefined` check exists for: "no room"
+    // is both "move it out of its room" and "this edit is not about rooms".
+    const id = seedVirtual('Dry Cycle', 'input_select', {
+      options: ['Idle', 'Running'], roomId: 'r1',
+    });
+
+    await handleUpdateVirtualAccessory({
+      home: 'george_street_1111', id, name: 'Drying Cycle',
+    });
+
+    expect(storedVirtual().roomId).toBe('r1');
+  });
+
+  it('refuses a room the home does not have, rather than dropping it', async () => {
+    await expect(handleCreateVirtualAccessory({
+      home: 'george_street_1111',
+      name: 'Garage Mode',
+      type: 'mode',
+      options: ['Idle'],
+      room: 'Garage',
+    })).rejects.toThrow(/No room named "Garage"/);
   });
 });

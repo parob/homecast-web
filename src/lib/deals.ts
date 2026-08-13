@@ -21,6 +21,19 @@ export const DEAL_TIER_STYLES = {
 const TIER_ORDER: Record<DealTier, number> = { good: 0, great: 1, hot: 2 };
 
 /**
+ * Mirrors `deal_detector.MIN_ATL_HISTORY_POINTS` on the server.
+ *
+ * `accessoryPriceInfo` returns `pricePointCount` but no meaningfulness flag
+ * (unlike `activeDeals`, which carries `atlIsMeaningful`), so the price screen
+ * has to apply the same threshold itself. Keep the two in step.
+ */
+export const MIN_ATL_HISTORY_POINTS = 8;
+
+export function atlIsMeaningful(pricePointCount: number | null | undefined): boolean {
+  return (pricePointCount ?? 0) >= MIN_ATL_HISTORY_POINTS;
+}
+
+/**
  * Extract the HomeKit identity (manufacturer + model) of an accessory —
  * the same pair the server maps to a device.
  */
@@ -43,15 +56,18 @@ export function getAccessoryIdentity(
 
 /**
  * Calculate per-unit deal price for comparison.
+ *
+ * Returns Infinity for a price we can't read, so an unparseable deal loses
+ * the tie-break instead of winning it. This used to be a try/catch around
+ * parseFloat — but parseFloat returns NaN rather than throwing, so the catch
+ * was dead code and `10 < NaN` is false, which meant a deal with a malformed
+ * price beat every well-formed one and took the badge.
  */
 function getUnitPrice(deal: DealInfo): number {
-  try {
-    const price = parseFloat(deal.dealPrice);
-    const qty = deal.quantity || 1;
-    return price / qty;
-  } catch {
-    return Infinity;
-  }
+  const price = parseFloat(deal.dealPrice);
+  const qty = deal.quantity || 1;
+  if (!Number.isFinite(price) || price <= 0) return Infinity;
+  return price / qty;
 }
 
 /**

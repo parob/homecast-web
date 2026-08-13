@@ -41,6 +41,33 @@ export default function DealPriceChart({
   // url(#...) reference — WebKit paints a broken paint-server fill BLACK.
   // useId's ':' delimiters are stripped for the same reason.
   const gradientId = `deal-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+
+  // The Y domain has to include the all-time-low line, and the padding has to
+  // scale with the prices.
+  //
+  // Two bugs lived in the old `['dataMin - 2', 'dataMax + 2']`. Recharts
+  // defaults ReferenceLine to ifOverflow="discard", so whenever the ATL sat
+  // more than 2 units below the 30-day minimum — exactly when it is worth
+  // showing — the line silently wasn't drawn. And a fixed ±2 is meaningless
+  // at ¥7,640 and pushes the domain negative for a £3 item.
+  const hasAtl = atlPrice != null && Number.isFinite(atlPrice);
+  const [domainMin, domainMax] = (() => {
+    const prices = chartData.map(d => d.price).filter(p => Number.isFinite(p));
+    if (!prices.length) return [0, 1] as const;
+    let lo = Math.min(...prices);
+    let hi = Math.max(...prices);
+    if (hasAtl) {
+      lo = Math.min(lo, atlPrice as number);
+      hi = Math.max(hi, atlPrice as number);
+    }
+    const pad = Math.max((hi - lo) * 0.1, hi * 0.02) || 1;
+    return [Math.max(0, lo - pad), hi + pad] as const;
+  })();
+
+  // Whole-number ticks collapse to duplicates on a narrow range (24.99-27.99
+  // all render as "25", "26", "27" but a 0.50 spread renders three "25"s).
+  const tickDecimals = domainMax - domainMin < 5 ? 2 : 0;
+
   return (
     // text-primary sets currentColor for the series, so the line and its fill
     // follow the theme instead of a hardcoded hex. One accent for every chart:
@@ -75,12 +102,12 @@ export default function DealPriceChart({
             />
           )}
           <YAxis
-            domain={['dataMin - 2', 'dataMax + 2']}
+            domain={[domainMin, domainMax]}
             hide={!detailed}
             tick={{ fontSize: 11, fill: 'currentColor' }}
             className="stroke-border text-muted-foreground"
             width={52}
-            tickFormatter={(v: number) => `${currencySymbol}${v.toFixed(0)}`}
+            tickFormatter={(v: number) => `${currencySymbol}${v.toFixed(tickDecimals)}`}
           />
           {detailed && (
             <Tooltip
@@ -98,7 +125,7 @@ export default function DealPriceChart({
             strokeWidth={2}
             fill={`url(#${gradientId})`}
           />
-          {atlPrice != null && (
+          {hasAtl && (
             // Dashed here is meaningful — this is a threshold, not a gridline
             <ReferenceLine
               y={atlPrice}

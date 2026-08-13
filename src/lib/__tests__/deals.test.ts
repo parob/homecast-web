@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findDealForAccessory, getAccessoryIdentity } from '../deals';
+import { atlIsMeaningful, findDealForAccessory, getAccessoryIdentity } from '../deals';
 import type { DealInfo, HomeKitAccessory } from '../graphql/types';
 
 function accessory(manufacturer: string, model: string, name = 'Bulb'): HomeKitAccessory {
@@ -109,5 +109,59 @@ describe('findDealForAccessory', () => {
 
   it('returns null when there are no deals at all', () => {
     expect(findDealForAccessory(accessory('Signify', 'LWA001'), [])).toBeNull();
+  });
+});
+
+describe('unit-price tie-break', () => {
+  it('does not let an unparseable price win the badge', () => {
+    // parseFloat returns NaN rather than throwing, so the old try/catch
+    // Infinity sentinel was dead code and `10 < NaN` is false — a malformed
+    // deal beat every well-formed one.
+    const good = deal('good', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: '10.00',
+    });
+    const broken = deal('broken', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: 'not-a-price',
+    });
+
+    for (const deals of [[good, broken], [broken, good]]) {
+      const match = findDealForAccessory(accessory('Signify', 'LWA001'), deals);
+      expect(match?.deal.id).toBe('good');
+    }
+  });
+
+  it('compares multi-packs on price per unit, not sticker price', () => {
+    const twoPack = deal('two-pack', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: '30.00',
+      quantity: 2, // 15.00 each
+      listingType: 'multi_pack',
+    });
+    const single = deal('single', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: '20.00',
+      quantity: 1, // 20.00 each
+    });
+
+    const match = findDealForAccessory(accessory('Signify', 'LWA001'), [single, twoPack]);
+    expect(match?.deal.id).toBe('two-pack');
+  });
+
+  it('rejects a zero or negative price rather than treating it as cheapest', () => {
+    const free = deal('free', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: '0',
+    });
+    const real = deal('real', [{ manufacturer: 'Signify', model: 'LWA001' }], {
+      dealPrice: '9.99',
+    });
+    const match = findDealForAccessory(accessory('Signify', 'LWA001'), [free, real]);
+    expect(match?.deal.id).toBe('real');
+  });
+});
+
+describe('atlIsMeaningful', () => {
+  it('matches the server threshold', () => {
+    expect(atlIsMeaningful(7)).toBe(false);
+    expect(atlIsMeaningful(8)).toBe(true);
+    expect(atlIsMeaningful(null)).toBe(false);
+    expect(atlIsMeaningful(undefined)).toBe(false);
   });
 });

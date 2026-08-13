@@ -90,6 +90,12 @@ export function DealsProvider({
     {
       skip: !enabled || accessoryInputs.length === 0,
       variables: { marketplace, accessories: accessoryInputs },
+      // Same cadence as the deals query. Left on the default cache-first with
+      // no poll, a newly-tracked product got no "Price & Deals" menu entry
+      // until a full page reload, even though its badge could appear within
+      // five minutes — the menu is the always-available surface, so it must
+      // not be the staler of the two.
+      pollInterval: 300_000,
     },
   );
 

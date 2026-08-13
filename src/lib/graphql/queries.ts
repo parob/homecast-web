@@ -91,6 +91,8 @@ export const GET_ACTIVE_DEALS = gql`
       unitPrice
       allTimeLow
       isNearAtl
+      atlIsMeaningful
+      baselineSource
       mappings {
         manufacturer
         model
@@ -144,6 +146,7 @@ export const GET_ACCESSORY_PRICE_INFO = gql`
       lastCheckedAt
       pricePointCount
       isNearAtl
+      baselineSource
       priceHistory {
         date
         price

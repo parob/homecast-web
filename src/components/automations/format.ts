@@ -25,9 +25,12 @@ const CHAR_LABELS: Record<string, string> = {
   cooling_threshold: 'Cool to',
   target_heating_cooling: 'HVAC Mode',
   heating_cooling_target: 'Mode',
-  heating_cooling_current: 'Current Mode',
-  target_heater_cooler_state: 'Target HVAC Mode',
-  current_heater_cooler_state: 'Current HVAC Mode',
+  // NOT "Current Mode" / "Current HVAC Mode". The mode is what you set it to
+  // (Cool); this is what the unit is doing about it, and calling it a mode is
+  // what made "Idle" read as contradicting a unit that was plainly running.
+  heating_cooling_current: 'Heating & cooling',
+  target_heater_cooler_state: 'Mode',
+  current_heater_cooler_state: 'Heating & cooling',
   current_humidity: 'Humidity',
   relative_humidity: 'Humidity',
   target_relative_humidity: 'Target Humidity',

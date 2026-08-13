@@ -3,8 +3,8 @@ import { ExternalLink, Loader2 } from 'lucide-react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_ACCESSORY_PRICE_INFO } from '@/lib/graphql/queries';
 import { TRACK_DEAL_CLICK } from '@/lib/graphql/mutations';
-import { DEAL_TIER_STYLES } from '@/lib/deals';
-import { getCurrencySymbol } from '@/lib/marketplace';
+import { atlIsMeaningful, DEAL_TIER_STYLES } from '@/lib/deals';
+import { formatPrice, getCurrencySymbol } from '@/lib/marketplace';
 import { openExternalUrl } from '@/lib/open-url';
 import type { AccessoryPriceInfo } from '@/lib/graphql/types';
 import {
@@ -60,12 +60,23 @@ export function PriceHistoryDialog({ target, onClose }: PriceHistoryDialogProps)
   );
 
   const info = data?.accessoryPriceInfo ?? null;
-  const sym = getCurrencySymbol(info?.currency || 'USD');
+  // No `|| 'USD'` fallback on the currency: defaulting made a server response
+  // with an empty currency print dollars for a .co.uk listing rather than
+  // failing visibly. `sym` is only for the chart axis; every price label goes
+  // through formatPrice, which renders in the listing's own convention.
+  const currency = info?.currency ?? '';
+  const sym = currency ? getCurrencySymbol(currency) : '';
   const deal = info?.deal ?? null;
   const style = deal ? (DEAL_TIER_STYLES[deal.dealTier] || DEAL_TIER_STYLES.good) : null;
 
   const chartData = (info?.priceHistory ?? []).map(p => ({ date: p.date, price: p.price }));
-  const atlPrice = info?.allTimeLow ? parseFloat(info.allTimeLow) : null;
+  // Same gate as DealBadge: the server declines to call a thin history an
+  // all-time low, so the chart must not draw one either.
+  const parsedAtl = info?.allTimeLow ? parseFloat(info.allTimeLow) : NaN;
+  const atlPrice =
+    info && atlIsMeaningful(info.pricePointCount) && Number.isFinite(parsedAtl)
+      ? parsedAtl
+      : null;
 
   // How the current price sits against its own recent average — the useful
   // read when there is no deal to report.
@@ -123,12 +134,22 @@ export function PriceHistoryDialog({ target, onClose }: PriceHistoryDialogProps)
                     className="text-2xl font-semibold"
                     style={style ? { color: style.color } : undefined}
                   >
-                    {info.currentPrice ? `${sym}${info.currentPrice}` : '—'}
+                    {info.currentPrice ? formatPrice(info.currentPrice, currency) : '—'}
                   </span>
                   {deal?.regularPrice && (
-                    <span className="text-xs text-muted-foreground line-through">
-                      {sym}{deal.regularPrice}
-                    </span>
+                    // A struck-through number reads as a manufacturer's list
+                    // price. Ours usually isn't one — it's our own rolling
+                    // 30-day mean — so only strike it through when Amazon
+                    // actually advertised a was-price, and say so otherwise.
+                    deal.baselineSource === 'list_price' ? (
+                      <span className="text-xs text-muted-foreground line-through">
+                        {formatPrice(deal.regularPrice, currency)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        usually {formatPrice(deal.regularPrice, currency)}
+                      </span>
+                    )
                   )}
                   {deal?.discountPercentage != null && deal.discountPercentage > 0 && (
                     <span className="text-xs text-muted-foreground">
@@ -200,7 +221,7 @@ export function PriceHistoryDialog({ target, onClose }: PriceHistoryDialogProps)
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Lowest seen</span>
                   <span className="font-medium">
-                    {sym}{info.allTimeLow}
+                    {formatPrice(info.allTimeLow, currency)}
                     {info.allTimeLowDate && (
                       <span className="text-muted-foreground font-normal">
                         {' · '}{new Date(info.allTimeLowDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
@@ -212,7 +233,7 @@ export function PriceHistoryDialog({ target, onClose }: PriceHistoryDialogProps)
               {info.avg30dPrice && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Average (30d)</span>
-                  <span className="font-medium">{sym}{info.avg30dPrice}</span>
+                  <span className="font-medium">{formatPrice(info.avg30dPrice, currency)}</span>
                 </div>
               )}
               {info.trackedSince && (

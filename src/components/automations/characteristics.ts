@@ -40,22 +40,27 @@ const BOOLEAN_CHAR_TYPES = new Set([
  * Value labels for HomeKit's enumerated characteristics, keyed by the
  * snake_case type the relay emits (see CharacteristicMapper.swift).
  */
-const ENUM_LABELS: Record<string, Record<number, string>> = {
+export const ENUM_LABELS: Record<string, Record<number, string>> = {
   lock_target_state: { 0: 'Unlocked', 1: 'Locked' },
   lock_current_state: { 0: 'Unlocked', 1: 'Locked', 2: 'Jammed', 3: 'Unknown' },
   lock_physical_controls: { 0: 'Unlocked', 1: 'Locked' },
   target_door_state: { 0: 'Open', 1: 'Closed' },
   current_door_state: { 0: 'Open', 1: 'Closed', 2: 'Opening', 3: 'Closing', 4: 'Stopped' },
   heating_cooling_target: { 0: 'Off', 1: 'Heat', 2: 'Cool', 3: 'Auto' },
-  heating_cooling_current: { 0: 'Off', 1: 'Heat', 2: 'Cool' },
+  // A CURRENT state is an activity, so "Heating", not the mode word "Heat";
+  // and 0/1 are HAP's "Inactive"/"Idle", which to a person are the same word
+  // twice. Must stay in step with ENUM_STATE_LABELS in history/labels.ts —
+  // this table dresses an accessory's live characteristics, that one dresses
+  // stored history, and the two meet on one screen. Pinned by labels.test.ts.
+  heating_cooling_current: { 0: 'Off', 1: 'Heating', 2: 'Cooling' },
   target_heater_cooler_state: { 0: 'Auto', 1: 'Heat', 2: 'Cool' },
-  current_heater_cooler_state: { 0: 'Inactive', 1: 'Idle', 2: 'Heating', 3: 'Cooling' },
+  current_heater_cooler_state: { 0: 'Off', 1: 'Standby', 2: 'Heating', 3: 'Cooling' },
   target_fan_state: { 0: 'Manual', 1: 'Auto' },
-  current_fan_state: { 0: 'Inactive', 1: 'Idle', 2: 'Blowing' },
+  current_fan_state: { 0: 'Off', 1: 'Standby', 2: 'Blowing' },
   target_air_purifier_state: { 0: 'Manual', 1: 'Auto' },
-  current_air_purifier_state: { 0: 'Inactive', 1: 'Idle', 2: 'Purifying' },
+  current_air_purifier_state: { 0: 'Off', 1: 'Standby', 2: 'Purifying' },
   target_humidifier_dehumidifier_state: { 0: 'Auto', 1: 'Humidify', 2: 'Dehumidify' },
-  current_humidifier_dehumidifier_state: { 0: 'Inactive', 1: 'Idle', 2: 'Humidifying', 3: 'Dehumidifying' },
+  current_humidifier_dehumidifier_state: { 0: 'Off', 1: 'Standby', 2: 'Humidifying', 3: 'Dehumidifying' },
   security_system_target_state: { 0: 'Home', 1: 'Away', 2: 'Night', 3: 'Off' },
   security_system_current_state: { 0: 'Home', 1: 'Away', 2: 'Night', 3: 'Off', 4: 'Triggered' },
   swing_mode: { 0: 'Off', 1: 'On' },

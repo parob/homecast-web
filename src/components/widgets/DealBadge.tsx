@@ -4,7 +4,7 @@ import { useMutation, useLazyQuery } from '@apollo/client/react';
 import { TRACK_DEAL_CLICK } from '@/lib/graphql/mutations';
 import { GET_DEAL_PRICE_HISTORY } from '@/lib/graphql/queries';
 import { DEAL_TIER_STYLES } from '@/lib/deals';
-import { getCurrencySymbol } from '@/lib/marketplace';
+import { formatPrice } from '@/lib/marketplace';
 import { openExternalUrl } from '@/lib/open-url';
 import type { DealInfo, PricePoint } from '@/lib/graphql/types';
 import {
@@ -57,8 +57,12 @@ export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
     price: p.price,
   }));
 
-  const atlPrice = deal.allTimeLow ? parseFloat(deal.allTimeLow) : null;
-  const sym = getCurrencySymbol(deal.currency);
+  // Only plot the all-time low when the server is willing to make that claim
+  // in words. It gates `atlIsMeaningful` on having seen enough distinct prices;
+  // drawing the line off `allTimeLow` alone put an "all-time low" threshold on
+  // a three-day-old listing the server had explicitly declined to call one.
+  const parsedAtl = deal.allTimeLow ? parseFloat(deal.allTimeLow) : NaN;
+  const atlPrice = deal.atlIsMeaningful && Number.isFinite(parsedAtl) ? parsedAtl : null;
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -125,12 +129,21 @@ export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
             {/* Price line */}
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className="text-base font-bold" style={{ color: style.color }}>
-                {sym}{deal.dealPrice}
+                {formatPrice(deal.dealPrice, deal.currency)}
               </span>
               {deal.regularPrice && (
-                <span className="text-xs text-muted-foreground line-through">
-                  {sym}{deal.regularPrice}
-                </span>
+                // Strike-through asserts "this was the list price". It only is
+                // one when Amazon advertised it; otherwise the number is our
+                // own 30-day average and gets stated as such.
+                deal.baselineSource === 'list_price' ? (
+                  <span className="text-xs text-muted-foreground line-through">
+                    {formatPrice(deal.regularPrice, deal.currency)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    usually {formatPrice(deal.regularPrice, deal.currency)}
+                  </span>
+                )
               )}
               {deal.discountPercentage != null && deal.discountPercentage > 0 && (
                 <span
@@ -145,7 +158,7 @@ export function DealBadge({ deal, onSeeFullHistory }: DealBadgeProps) {
             {/* Unit price for multi-packs */}
             {deal.unitPrice && (
               <p className="text-[11px] text-muted-foreground">
-                {sym}{deal.unitPrice}/each
+                {formatPrice(deal.unitPrice, deal.currency)}/each
               </p>
             )}
 

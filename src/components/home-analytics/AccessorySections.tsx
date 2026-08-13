@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { charLabel } from '@/components/automations/format';
 import type { WritableChar } from '@/components/automations/characteristics';
-import { BOOL_STATE_LABELS } from '@/history/labels';
+import { BOOL_STATE_LABELS, stateValueLabel } from '@/history/labels';
 import { coverageStart, withCarryIn } from '@/history/carry';
 import { sanitizeSeriesData } from '@/history/sanitize';
 import { stateTotals } from '@/history/stateSummary';
+import { isQuietRange, quietSummary } from '@/history/quiet';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { HistoryPointData, HistorySeriesData } from '@/lib/graphql/types';
@@ -33,7 +34,11 @@ export function labelForValue(
   if (bool) return bool[value === 0 ? 0 : 1];
   const option = char?.options?.find(o => o.value === value);
   if (option) return option.label;
-  return value === 0 ? 'Off' : value === 1 ? 'On' : String(value);
+  // Fall through to the history vocabulary before the generic Off/On. Without
+  // this an accessory whose options metadata is absent printed the raw HAP
+  // code — a thermostat's Cooling read "2 9h 33m", and its Heating read "On",
+  // which is not even the right kind of word.
+  return stateValueLabel(type, value);
 }
 
 /** Rolled stateMs keys: numeric codes for bool/enum, raw text for string. */
@@ -96,6 +101,19 @@ export function AccessorySeriesSection({
   const empty = points.length === 0 && s.states.length === 0 && s.stateBuckets.length === 0
     && s.prevValue === null;
   const unit = s.unit ?? '';
+  // An air conditioner whose bridge only ever reports Off and Standby draws a
+  // timeline identical to its own Power strip, one of whose words flatly
+  // contradicts the other. Such a strip earns a line, not 40px of bar.
+  //
+  // Only the characteristics with a named summary fold here — quietSummary is
+  // undefined for the rest, which keeps their timelines exactly as they were.
+  // This is the accessory's own page: a quiet smoke alarm still gets its full
+  // strip, because "nothing happened" is the whole reason you opened it. The
+  // aggressive folding belongs to ActivityStrips, where a room's worth of them
+  // stack up. Either way the totals still print — nothing is lost.
+  const quietLine = !isNumeric && states && isQuietRange(s.characteristicType, states.totals)
+    ? quietSummary(s.characteristicType)
+    : undefined;
 
   return (
     <div className="space-y-1.5">
@@ -132,17 +150,21 @@ export function AccessorySeriesSection({
         </>
       ) : (
         <>
-          <StateTimeline
-            fromTs={fromTs}
-            toTs={toTs}
-            padLeft={PLOT_LEFT}
-            padRight={PLOT_RIGHT}
-            prevValue={s.prevValue}
-            prevValueText={s.prevValueText}
-            states={s.states}
-            stateBuckets={s.stateBuckets}
-            labelFor={(v, text) => labelForValue(char, s.characteristicType, v, text)}
-          />
+          {quietLine ? (
+            <p className="text-[0.6875rem] italic text-muted-foreground">{quietLine}</p>
+          ) : (
+            <StateTimeline
+              fromTs={fromTs}
+              toTs={toTs}
+              padLeft={PLOT_LEFT}
+              padRight={PLOT_RIGHT}
+              prevValue={s.prevValue}
+              prevValueText={s.prevValueText}
+              states={s.states}
+              stateBuckets={s.stateBuckets}
+              labelFor={(v, text) => labelForValue(char, s.characteristicType, v, text)}
+            />
+          )}
           {states && states.totals.length > 0 && (
             <p className="text-[0.6875rem] text-muted-foreground">
               {states.totals.slice(0, 3).map(([key, ms]) =>
