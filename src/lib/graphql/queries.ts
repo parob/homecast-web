@@ -486,6 +486,7 @@ export const GET_MY_SHARED_ENTITIES = gql`
       entityType
       entityId
       entityName
+      homeId
       accessType
       role
       name

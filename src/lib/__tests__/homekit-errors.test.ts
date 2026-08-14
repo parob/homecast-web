@@ -10,6 +10,7 @@ import {
   HOMEKIT_EDIT_PERMISSION_MESSAGE,
   homeViewOnlyMessage,
   homeEditPermissionFix,
+  homeEditPermissionSteps,
   isInsufficientHomeKitPrivileges,
   translateHomeKitError,
 } from '@/lib/homekit-errors';
@@ -114,5 +115,29 @@ describe('homeEditPermissionFix', () => {
       expect(homeEditPermissionFix(kind)).toContain('Apple Home → Home Settings');
       expect(homeEditPermissionFix(kind)).toContain('Add & Edit Accessories');
     }
+  });
+});
+
+describe('homeEditPermissionSteps', () => {
+  it('ends on the setting the user has to turn on', () => {
+    const steps = homeEditPermissionSteps('cloud');
+    expect(steps[steps.length - 1]).toContain('Add & Edit Accessories');
+  });
+
+  /**
+   * A Cloud Relay appears in Apple Home's People list as what reads like a
+   * stranger's email address. When we know it, naming it beats any description
+   * of who to look for.
+   */
+  it('names the relay address when we know it', () => {
+    const steps = homeEditPermissionSteps('cloud', 'relay-1234@homecast.cloud');
+    expect(steps.join(' ')).toContain('relay-1234@homecast.cloud');
+    expect(steps.join(' ')).not.toContain('the Homecast relay');
+  });
+
+  it('falls back to the relay-kind wording without an address', () => {
+    expect(homeEditPermissionSteps('self-hosted').join(' ')).toContain("your relay's Apple ID");
+    expect(homeEditPermissionSteps('cloud', '  ').join(' ')).toContain('the Homecast relay');
+    expect(homeEditPermissionSteps().join(' ')).toContain('the relay user');
   });
 });

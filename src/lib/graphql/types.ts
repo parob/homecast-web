@@ -749,6 +749,10 @@ export interface EntityAccessInfo {
   shareUrl?: string | null;  // URL to access the shared entity
   accessSchedule?: string | null;
   createdAt?: string | null;
+  // For room/accessory/group entities, the parent home ID. NOT always a home:
+  // for collection_group this carries a collection id, and for a home share it
+  // is normally null (entityId is the home). Resolve via homeKeyForSharedEntity.
+  homeId?: string | null;
 }
 
 export interface SharingInfo {

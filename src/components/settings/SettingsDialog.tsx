@@ -31,6 +31,13 @@ import {
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import type { PinTarget } from '@/lib/pinned-tabs';
 import { isCommunity } from '@/lib/config';
+import { isMQTTAvailable } from '@/lib/mqtt-bridge';
+import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
+import {
+  HOME_SETTINGS_SECTION_META,
+  visibleHomeSettingsSections,
+  type HomeSettingsSectionId,
+} from '@/lib/home-settings-sections';
 import { getCloud } from '@/lib/cloud';
 import {
   AlertDialog,
@@ -170,6 +177,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [mobileSection, setMobileSection] = useState<SettingsTab | null>(null);
   // Desktop: which home is selected within the Homes section (null = show Homes list)
   const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
+  // Third level: which of the selected home's sub-sections is open (null = its overview)
+  const [homeSection, setHomeSection] = useState<HomeSettingsSectionId | null>(null);
 
   // Reset to initial tab when dialog opens
   useEffect(() => {
@@ -177,18 +186,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
       setActiveTab(initialTab || 'plan');
       setMobileSection(null);
       setSelectedHomeId(null);
+      setHomeSection(null);
     }
   }, [open, initialTab]);
 
   // Clear home selection whenever neither the desktop tab nor the mobile section is on 'homes'
   useEffect(() => {
-    if (activeTab !== 'homes' && mobileSection !== 'homes' && selectedHomeId) setSelectedHomeId(null);
+    if (activeTab !== 'homes' && mobileSection !== 'homes' && selectedHomeId) {
+      setSelectedHomeId(null);
+      setHomeSection(null);
+    }
   }, [activeTab, mobileSection, selectedHomeId]);
 
   // If developer mode is toggled off and we're on a developer-only tab, fall back to plan
   useEffect(() => {
-    if (!developerMode && (activeTab === 'api-access' || activeTab === 'webhooks')) {
+    if (!developerMode && (activeTab === 'api-access' || activeTab === 'webhooks' || activeTab === 'local-mode')) {
       setActiveTab('plan');
+      setMobileSection((s) => (s === 'api-access' || s === 'webhooks' || s === 'local-mode' ? null : s));
     }
   }, [developerMode, activeTab]);
 
@@ -219,10 +233,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
       items.push({ id: 'self-hosted-relay', label: 'Relay', group: 'Device', icon: Cloud });
     }
 
-    // Every device with its own Home access, not just relay-capable Macs —
-    // this pane is the one an iPhone user needs, and iPhones are deliberately
-    // not relay-capable.
-    if (isLocalCapable() && !isCommunity) {
+    // Local Mode needs no configuring — it takes over when the relay can't
+    // serve and steps back when it can, and the badge explains itself. The pane
+    // only exists to override that, so it sits behind developer mode with the
+    // other controls you reach for when you are testing rather than living in
+    // the app. Hiding it does not disable Local Mode itself.
+    //
+    // Gated on isLocalCapable() rather than isRelayCapable(): the device that
+    // most needs this is an iPhone, and iPhones are deliberately not
+    // relay-capable.
+    if (developerMode && isLocalCapable() && !isCommunity) {
       items.push({ id: 'local-mode', label: 'Local Mode', group: 'Device', icon: HomeIcon });
     }
 
@@ -234,6 +254,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
     return items;
   }, [developerMode, isInMacApp, isInMobileApp, isRelayCapable, launchAtLoginSupported, showSmartDeals]);
+
+  // Which sub-sections a home offers, for both the sidebar's third level and
+  // the mobile row list — one source so the two can't disagree.
+  const homeSections = useMemo(
+    () => visibleHomeSettingsSections({
+      isCommunity,
+      developerMode,
+      mqttBridgeAvailable: isMQTTAvailable(),
+    }),
+    [developerMode],
+  );
+
+  // Clamp rather than reset: if developer mode goes off while the MQTT page is
+  // open, drop to the home's overview instead of stranding the user on a page
+  // that no longer has a row in the sidebar.
+  const activeHomeSection = homeSection && homeSections.includes(homeSection) ? homeSection : null;
+  useEffect(() => {
+    if (homeSection && !homeSections.includes(homeSection)) setHomeSection(null);
+  }, [homeSection, homeSections]);
+
+  const selectHome = (homeId: string) => {
+    setSelectedHomeId(homeId);
+    setHomeSection(null);
+  };
 
   // Group menu items by their group
   const groupedItems = useMemo(() => {
@@ -248,6 +292,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
     return groups;
   }, [menuItems]);
+
+  // Matched case-insensitively: home ids reach us from sources that disagree on
+  // case (the relay and dashboard cache use uppercase, the cloud lowercase).
+  // Resolving to nothing is a real state — a cloud-relay removal shrinks the
+  // list under us — and falls back to the homes list rather than a blank pane.
+  const selectedHome = selectedHomeId
+    ? props.homes.find(h => h.id.toUpperCase() === selectedHomeId.toUpperCase()) ?? null
+    : null;
 
   const openExternalUrl = (url: string) => (e: React.MouseEvent) => {
     const w = window as any;
@@ -459,14 +511,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
       case 'sharing':
         return <SharedItemsSection developerMode={props.developerMode} />;
       case 'homes': {
-        const selectedHome = selectedHomeId
-          ? props.homes.find(h => h.id === selectedHomeId)
-          : null;
         if (selectedHome) {
           return (
             <HomeDetailView
               home={selectedHome}
               developerMode={props.developerMode}
+              section={activeHomeSection}
+              sections={homeSections}
+              onSelectSection={setHomeSection}
+              showSectionList={isMobile}
+              onCloudRelayRemoved={() => {
+                setSelectedHomeId(null);
+                setHomeSection(null);
+                // The homes list is served from the client-side HomeKit cache —
+                // drop it so the removed home disappears immediately rather than
+                // lingering until the TTL expires.
+                invalidateHomeKitCache('homes');
+              }}
             />
           );
         }
@@ -481,7 +542,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             isInMobileApp={props.isInMobileApp}
             cloudSignupsAvailable={props.cloudSignupsAvailable}
             developerMode={props.developerMode}
-            onSelectHome={setSelectedHomeId}
+            onSelectHome={selectHome}
           />
         );
       }
@@ -529,10 +590,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
   };
 
   const activeLabel = menuItems.find(i => i.id === (isMobile ? mobileSection : activeTab))?.label || 'Settings';
-  const selectedHome = selectedHomeId ? props.homes.find(h => h.id === selectedHomeId) : null;
-  const mobileTitle = mobileSection === 'homes' && selectedHome ? selectedHome.name : (mobileSection ? activeLabel : 'Settings');
+
+  // Mobile is a push stack three levels deep: menu → section → home → sub-section.
+  // The title names the level you are on, and back pops exactly one.
+  const inHomes = mobileSection === 'homes';
+  const mobileTitle = inHomes && selectedHome
+    ? (activeHomeSection ? HOME_SETTINGS_SECTION_META[activeHomeSection].label : selectedHome.name)
+    : (mobileSection ? activeLabel : 'Settings');
   const handleMobileBack = () => {
-    if (mobileSection === 'homes' && selectedHomeId) {
+    if (inHomes && activeHomeSection) {
+      setHomeSection(null);
+    } else if (inHomes && selectedHomeId) {
       setSelectedHomeId(null);
     } else {
       setMobileSection(null);
@@ -607,8 +675,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <DialogDescription className="sr-only">Configure display and server settings</DialogDescription>
             </DialogHeader>
             <div className="flex flex-1 min-h-0 border-t">
-              {/* Sidebar */}
-              <nav className="w-44 shrink-0 border-r overflow-y-auto py-1">
+              {/* Sidebar. w-52, not w-44: it now nests three levels deep
+                  (Homes → a home → that home's sections) and every third-level
+                  label truncated at the old width. Fixed rather than widening
+                  on expand, because the dialog's width is fixed too — a
+                  growing rail would take it out of the content pane and make
+                  the whole page jump every time you opened a home. */}
+              <nav className="w-52 shrink-0 border-r overflow-y-auto py-1">
                 {groupedItems.map((group) => (
                   <div key={group.label}>
                     {group.label !== 'General' && (
@@ -626,7 +699,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           <button
                             onClick={() => {
                               setActiveTab(item.id);
-                              if (isHomesRow) setSelectedHomeId(null);
+                              if (isHomesRow) {
+                                setSelectedHomeId(null);
+                                setHomeSection(null);
+                              }
                             }}
                             className={cn(
                               "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 px-3 py-1.5 text-sm transition-colors rounded-lg",
@@ -643,23 +719,58 @@ export function SettingsDialog(props: SettingsDialogProps) {
                                 : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             )}
                           </button>
-                          {homesExpanded && props.homes.map((home) => (
-                            <button
-                              key={home.id}
-                              onClick={() => {
-                                setActiveTab('homes');
-                                setSelectedHomeId(home.id);
-                              }}
-                              className={cn(
-                                "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 pl-7 pr-3 py-1 text-xs transition-colors rounded-lg",
-                                selectedHomeId === home.id
-                                  ? "bg-muted font-medium text-foreground"
-                                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                              )}
-                            >
-                              <span className="flex-1 text-left truncate">{home.name}</span>
-                            </button>
-                          ))}
+                          {homesExpanded && props.homes.map((home) => {
+                            const homeOpen = selectedHomeId === home.id;
+                            return (
+                              <div key={home.id}>
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('homes');
+                                    selectHome(home.id);
+                                  }}
+                                  className={cn(
+                                    "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 pl-7 pr-3 py-1 text-xs transition-colors rounded-lg",
+                                    homeOpen && !activeHomeSection
+                                      ? "bg-muted font-medium text-foreground"
+                                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                                  )}
+                                >
+                                  <span className="flex-1 text-left truncate">{home.name}</span>
+                                  {homeSections.length > 0 && (
+                                    homeOpen
+                                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  )}
+                                </button>
+                                {/* Third level. Only the open home expands —
+                                    expanding every home would put six rows per
+                                    home in a rail that has to stay narrow. The
+                                    left border does the indenting that another
+                                    round of padding could no longer afford. */}
+                                {homeOpen && homeSections.length > 0 && (
+                                  <div className="ml-7 mr-2 border-l pl-1.5 py-0.5">
+                                    {homeSections.map((id) => (
+                                      <button
+                                        key={id}
+                                        onClick={() => setHomeSection(id)}
+                                        title={HOME_SETTINGS_SECTION_META[id].label}
+                                        className={cn(
+                                          "w-full flex items-center px-2 py-1 text-xs transition-colors rounded-md",
+                                          activeHomeSection === id
+                                            ? "bg-muted font-medium text-foreground"
+                                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                                        )}
+                                      >
+                                        <span className="flex-1 text-left truncate">
+                                          {HOME_SETTINGS_SECTION_META[id].label}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}

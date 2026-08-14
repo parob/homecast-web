@@ -89,6 +89,31 @@ export const HOMEKIT_EDIT_PERMISSION_ALIAS =
   'Called "Allow Editing" on older iOS and macOS versions.';
 
 /**
+ * The fix as steps, for the one surface that has room to spell it out — the
+ * explainer behind the inline notice. Everywhere else keeps the one-line path
+ * from `homeEditPermissionFix`.
+ *
+ * `relayEmail` is the address the relay actually appears under in Apple Home's
+ * People list; when we know it, naming it beats any description of who to look
+ * for. Cloud Relay users are hunting for what reads as a stranger's email.
+ */
+export function homeEditPermissionSteps(relayKind?: RelayKind, relayEmail?: string | null): string[] {
+  const who = relayEmail?.trim() || (relayKind ? RELAY_KIND_WHO[relayKind] : 'the relay user');
+  return [
+    "Open the Apple Home app on a device signed in as this home's owner.",
+    'Tap the ⋯ button, then Home Settings.',
+    `Under People, tap ${who}.`,
+    'Turn on "Add & Edit Accessories".',
+  ];
+}
+
+/** What Full access adds, and what already works without it. */
+export const HOMEKIT_EDIT_PERMISSION_GAIN =
+  'Homecast can create, edit and delete HomeKit scenes and automations.';
+export const HOMEKIT_EDIT_PERMISSION_WITHOUT =
+  'Without it, Homecast can still control accessories, run scenes, and run its own automations — it just can\'t change what Apple Home stores.';
+
+/**
  * How much the relay's Apple ID can do in a home, as one phrase.
  *
  * "Full access" / "View-only" deliberately mirrors Apple Home's own wording,

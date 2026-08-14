@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Cloud, Plus, Home as HomeIcon, Info, X, ChevronRight } from 'lucide-react';
-import { HomeDetailView } from './HomeDetailView';
 import { CopyButton, CollapsibleHelp } from '@/components/SetupState';
 import { usePricing, getPricing } from '@/lib/pricing';
 import { homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
@@ -37,7 +36,7 @@ import type {
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
 import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
-import { useHomes, invalidateHomeKitCache } from '@/hooks/useHomeKitData';
+import { useHomes } from '@/hooks/useHomeKitData';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -49,9 +48,12 @@ interface HomesSectionProps {
   isInMobileApp: boolean;
   cloudSignupsAvailable?: boolean;
   developerMode?: boolean;
-  // When provided, home selection is lifted to the parent (desktop sidebar drives the nav).
-  // When absent, HomesSection manages selection internally (mobile drill-down).
-  onSelectHome?: (homeId: string) => void;
+  /**
+   * Selecting a home is the host's business, not this list's. A home page is a
+   * level in the settings nav with sub-sections of its own, so it can't be
+   * owned by a component that only knows how to render the list.
+   */
+  onSelectHome: (homeId: string) => void;
 }
 
 function statusBadge(status: string) {
@@ -397,12 +399,8 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [region, setRegion] = useState(guessRegion());
   const [appleId, setAppleId] = useState('');
-  const [selectedHome, setSelectedHome] = useState<HomeKitHome | null>(null);
   const [loading, setLoading] = useState(false);
-  const handleSelectHome = (home: HomeKitHome) => {
-    if (onSelectHome) onSelectHome(home.id);
-    else setSelectedHome(home);
-  };
+  const handleSelectHome = (home: HomeKitHome) => onSelectHome(home.id);
   const livePricing = usePricing();
   const PLACEHOLDER_PRICE = { amount: 0, symbol: '', formatted: '—' };
   const pricing = livePricing ?? (
@@ -510,25 +508,6 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
       setLoading(false);
     }
   }, [region, appleId, createCheckout, refetch]);
-
-  // If a home is selected, show its detail view (must be after all hooks)
-  if (selectedHome) {
-    return (
-      <HomeDetailView
-        home={selectedHome}
-        developerMode={developerMode}
-        onCloudRelayRemoved={() => {
-          setSelectedHome(null);
-          // The homes list is served from the client-side HomeKit cache —
-          // drop it so the removed home disappears immediately rather than
-          // lingering until the TTL expires.
-          invalidateHomeKitCache('homes');
-          refetch();
-          refetchHomes();
-        }}
-      />
-    );
-  }
 
   if (!isCloudPlan) {
     return (

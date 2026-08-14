@@ -1,71 +1,39 @@
 /**
- * Notification settings — per-device mutes.
+ * Notification settings for the device this screen is open on (like iOS
+ * notification settings): the master toggle, a test send, and the delivery
+ * history. Muting writes a NotificationMute row keyed by this device's
+ * fingerprint; the server drops the device from the fan-out. There are no
+ * account-wide preferences — other devices configure themselves.
  *
- * This screen configures the device it is open on (like iOS notification
- * settings): a master toggle, a toggle per home, and a toggle per automation
- * that contains a Notify action. Muting writes a NotificationMute row keyed by
- * this device's fingerprint; the server drops the device from the fan-out.
- * There are no account-wide preferences — other devices configure themselves.
+ * Silencing one home, or one automation, is a per-home setting and lives on
+ * the home's own page (Settings → Homes → a home → Notifications). This screen
+ * used to list every home inline, which put half of a home's settings here and
+ * half over there, and ran an automations query per home to do it.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, BellOff, Loader2, Clock, ChevronDown, Apple, AppWindow, Laptop, Smartphone, Tablet, Home as HomeIcon } from 'lucide-react';
+import { Bell, BellOff, Loader2, Clock, ChevronDown, Apple, AppWindow, Laptop, Smartphone, Tablet } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { toast } from 'sonner';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_HOMES, GET_NOTIFICATION_MUTES, GET_NOTIFICATION_HISTORY, HC_AUTOMATIONS } from '@/lib/graphql/queries';
-import { SET_NOTIFICATION_MUTE, SEND_TEST_NOTIFICATION, CLEAR_NOTIFICATION_HISTORY } from '@/lib/graphql/mutations';
+import { GET_NOTIFICATION_HISTORY } from '@/lib/graphql/queries';
+import { SEND_TEST_NOTIFICATION, CLEAR_NOTIFICATION_HISTORY } from '@/lib/graphql/mutations';
 import type {
-  GetHomesResponse,
-  GetNotificationMutesResponse,
   GetNotificationHistoryResponse,
   NotificationLogInfo,
-  NotificationMuteInfo,
   SendTestNotificationResponse,
-  SetNotificationMuteResponse,
 } from '@/lib/graphql/types';
-import { useDeviceIdentity } from '@/lib/device-identity';
-import { automationContainsActionType } from '@/automation/utils/actionWalker';
-import type { Automation } from '@/automation/types/automation';
+import { useNotificationMutes } from '@/hooks/useNotificationMutes';
 
 export function NotificationsSection() {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
-  const { platform, fingerprint } = useDeviceIdentity();
+  const { platform, fingerprint, deviceMuted, isSaving: isSavingMute, setMute } = useNotificationMutes();
 
-  const { data: mutesData, refetch: refetchMutes } = useQuery<GetNotificationMutesResponse>(
-    GET_NOTIFICATION_MUTES,
-    { skip: isCommunity || !fingerprint, fetchPolicy: 'cache-and-network' },
-  );
-  const { data: homesData } = useQuery<GetHomesResponse>(GET_HOMES, {
-    skip: isCommunity || !fingerprint,
-    fetchPolicy: 'cache-first',
-    errorPolicy: 'ignore',
-  });
-  const [setMuteMutation, { loading: isSavingMute }] = useMutation<SetNotificationMuteResponse>(SET_NOTIFICATION_MUTE);
   const [sendTestMutation] = useMutation<SendTestNotificationResponse>(SEND_TEST_NOTIFICATION);
-
-  // Only this device's mutes matter here; other devices configure themselves.
-  const myMutes = useMemo(
-    () => (mutesData?.notificationMutes ?? []).filter((m) => m.deviceFingerprint === fingerprint),
-    [mutesData, fingerprint],
-  );
-  const deviceMuted = myMutes.some((m) => m.scope === 'device');
-
-  const setMute = useCallback(async (scope: string, scopeId: string | null, muted: boolean) => {
-    if (!fingerprint) return;
-    try {
-      await setMuteMutation({
-        variables: { deviceFingerprint: fingerprint, scope, scopeId, muted },
-      });
-      await refetchMutes();
-    } catch {
-      toast.error('Failed to update notification setting');
-    }
-  }, [fingerprint, setMuteMutation, refetchMutes]);
 
   const handleTestNotification = useCallback(async () => {
     setIsSendingTest(true);
@@ -114,7 +82,6 @@ export function NotificationsSection() {
   const DeviceIcon = platform === 'android' ? Smartphone
     : platform === 'ios' ? (isIpad ? Tablet : Smartphone)
     : Laptop;
-  const homes = homesData?.homes ?? [];
 
   return (
     <div className="space-y-6">
@@ -207,111 +174,17 @@ export function NotificationsSection() {
         </div>
       )}
 
-      {/* Per-home and per-automation mutes */}
-      {fingerprint && homes.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Homes &amp; Automations</p>
-          <p className="text-xs text-muted-foreground mb-3">
-            Turn off a home to silence everything in it on this device, or turn off individual automations that send notifications.
-          </p>
-          <div className="space-y-4">
-            {homes.map((home) => (
-              <HomeMuteGroup
-                key={home.id}
-                homeId={home.id}
-                homeName={home.name}
-                myMutes={myMutes}
-                deviceMuted={deviceMuted}
-                isSaving={isSavingMute}
-                setMute={setMute}
-              />
-            ))}
-          </div>
-        </div>
+      {/* Where the narrower switches went. The per-home and per-automation
+          mutes belong with the home, not in a list of every home. */}
+      {fingerprint && (
+        <p className="text-xs text-muted-foreground">
+          To silence one home or automation, open that home in Settings &rarr; Homes &rarr; Notifications.
+        </p>
       )}
 
       {/* Notification History */}
       <NotificationHistory refreshTrigger={historyRefresh} />
 
-    </div>
-  );
-}
-
-function HomeMuteGroup({
-  homeId,
-  homeName,
-  myMutes,
-  deviceMuted,
-  isSaving,
-  setMute,
-}: {
-  homeId: string;
-  homeName: string;
-  myMutes: NotificationMuteInfo[];
-  deviceMuted: boolean;
-  isSaving: boolean;
-  setMute: (scope: string, scopeId: string | null, muted: boolean) => Promise<void>;
-}) {
-  const { data: hcData } = useQuery(HC_AUTOMATIONS, {
-    variables: { homeId },
-    fetchPolicy: 'cache-first',
-    errorPolicy: 'all',
-  });
-
-  // Automations that can actually notify — the mute list detects them by
-  // walking each automation's action tree for a Notify action.
-  const notifyAutomations = useMemo(() => {
-    const entities = (hcData as { hcAutomations?: { entityId: string; dataJson: string }[] } | undefined)?.hcAutomations ?? [];
-    const automations: Automation[] = [];
-    for (const e of entities) {
-      try {
-        const automation = JSON.parse(e.dataJson) as Automation;
-        if (automationContainsActionType(automation, 'notify')) {
-          automations.push(automation);
-        }
-      } catch {
-        // Unparseable definitions can't be shown; they also can't notify meaningfully.
-      }
-    }
-    return automations.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  }, [hcData]);
-
-  const homeMuted = myMutes.some(
-    (m) => m.scope === 'home' && m.scopeId?.toLowerCase() === homeId.toLowerCase(),
-  );
-  const automationMuted = (automationId: string) => myMutes.some(
-    (m) => m.scope === 'automation' && m.scopeId?.toLowerCase() === automationId.toLowerCase(),
-  );
-
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <p className="text-sm truncate">{homeName}</p>
-        </div>
-        <Switch
-          checked={!homeMuted}
-          onCheckedChange={(on) => setMute('home', homeId, !on)}
-          disabled={isSaving || deviceMuted}
-          className="shrink-0"
-        />
-      </div>
-      {notifyAutomations.length > 0 && (
-        <div className="mt-2 ml-6 space-y-2 border-l pl-3">
-          {notifyAutomations.map((automation) => (
-            <div key={automation.id} className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground truncate">{automation.name || 'Unnamed automation'}</p>
-              <Switch
-                checked={!automationMuted(automation.id)}
-                onCheckedChange={(on) => setMute('automation', automation.id, !on)}
-                disabled={isSaving || deviceMuted || homeMuted}
-                className="shrink-0"
-              />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

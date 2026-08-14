@@ -982,6 +982,9 @@ async function resolveOperation(
           entityType: a.entityType,
           entityId: a.entityId,
           entityName: a.entityName || null,
+          // Stored by CreateEntityAccess above; the shared-items list groups by
+          // it, so it has to survive the round trip in CE too.
+          homeId: a.homeId || null,
           accessType: a.accessType,
           role: a.role,
           name: a.name || null,

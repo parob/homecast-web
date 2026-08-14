@@ -5877,7 +5877,14 @@ const Dashboard = () => {
         It lives here rather than in leftBadge because the "Guest" pill sits
         between leftBadge and rightMenu — only this position is adjacent to
         search in both header layouts and in every auth state. */}
-    <LocalModeBadge isDarkBackground={isDarkBackground} onOpenSettings={() => setSettingsOpen(true)} />
+    <LocalModeBadge
+      isDarkBackground={isDarkBackground}
+      // The settings pane is developer-mode-only, so the link to it is too —
+      // offering it otherwise would open Settings on a page that isn't there.
+      onOpenSettings={developerMode
+        ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); }
+        : undefined}
+    />
     {hasContentAccess && (
     <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />

@@ -53,6 +53,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { ShareDialog } from '@/components/shared/ShareDialog';
+import { groupSharedEntitiesByHome } from './shared-entity-groups';
 
 const ENTITY_TYPE_ICONS: Record<EntityType, typeof Folder> = {
   collection: Folder,
@@ -85,6 +86,13 @@ interface SelectedEntity {
   entityType: EntityType;
   entityId: string;
   entityName: string;
+  /**
+   * Passed straight back to ShareDialog. Without it, adding a passcode from
+   * this list wrote home_id: null for room/accessory/group shares — the same
+   * action from the Dashboard has always supplied it — which quietly stripped
+   * the item's home and dropped it out of its group.
+   */
+  homeId?: string | null;
 }
 
 interface HomePermission {
@@ -202,9 +210,13 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
         entityType: entity.entityType,
         entityId: entity.entityId,
         entityName: entity.entityName,
+        homeId: entity.homeId ?? null,
         accessEntries: [],
       };
     }
+    // One entity, several access rows — an older row may predate homeId being
+    // recorded, so take the first that has one rather than the first overall.
+    if (!acc[key].homeId && entity.homeId) acc[key].homeId = entity.homeId;
     acc[key].accessEntries.push({
       id: entity.id,
       accessType: entity.accessType,
@@ -218,6 +230,7 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
     entityType: EntityType;
     entityId: string;
     entityName?: string | null;
+    homeId: string | null;
     accessEntries: Array<{
       id: string;
       accessType: string;
@@ -230,6 +243,12 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
 
   const uniqueEntities = Object.values(entitiesByKey);
 
+  // Grouped under their home, so two rooms both called "Kitchen" stop being
+  // indistinguishable. Headings are suppressed while nothing resolves to a
+  // home — see the render.
+  const entityGroups = groupSharedEntitiesByHome(uniqueEntities, homes);
+  const showGroupHeadings = entityGroups.some(g => g.homeName !== null);
+
   const formatEntityId = (id: string) => {
     if (id.length > 12) return `${id.slice(0, 6)}...${id.slice(-4)}`;
     return id;
@@ -241,6 +260,7 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
       entityType: entity.entityType,
       entityId: entity.entityId,
       entityName: displayName,
+      homeId: entity.homeId,
     });
   };
 
@@ -427,8 +447,21 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
               </p>
             </div>
           ) : (
-            <div className="space-y-2 pt-2">
-              {uniqueEntities.map(renderEntityCard)}
+            <div className="space-y-4 pt-2">
+              {entityGroups.map((group) => (
+                <div key={group.homeName ?? '__nohome__'} className="space-y-2">
+                  {/* No heading at all when nothing could be attributed — which
+                      is every list until the server reports homeId, and stays
+                      true for accounts that only share collections. A lone
+                      "Other" heading would be noise. */}
+                  {showGroupHeadings && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group.homeName ?? 'Other'}
+                    </p>
+                  )}
+                  {group.entities.map(renderEntityCard)}
+                </div>
+              ))}
             </div>
           )}
         </TabsContent>
@@ -600,6 +633,7 @@ export function SharedItemsSection({ developerMode }: { developerMode?: boolean 
           entityType={selectedEntity.entityType}
           entityId={selectedEntity.entityId}
           entityName={selectedEntity.entityName}
+          homeId={selectedEntity.homeId ?? undefined}
           open={!!selectedEntity}
           onOpenChange={(isOpen) => {
             if (!isOpen) handleShareDialogClose();
