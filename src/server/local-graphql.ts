@@ -8,6 +8,7 @@
 import * as db from './local-db';
 import * as auth from './local-auth';
 import { executeHomeKitAction } from '../relay/local-handler';
+import { executeHomeKitWrite } from './homekit-write';
 import { communityRequest } from './connection';
 
 interface GraphQLRequest {
@@ -582,13 +583,13 @@ async function resolveOperation(
       return { executeScene: { success: result?.success ?? true, sceneId: variables.sceneId, __typename: 'SceneExecuteResult' } };
     }
     case 'DeleteScene': {
-      const result = await executeHomeKitAction('scene.delete', { sceneId: variables.sceneId }) as any;
+      const result = await executeHomeKitWrite('scene.delete', { sceneId: variables.sceneId }) as any;
       return { deleteScene: { success: result?.success ?? true, sceneId: variables.sceneId, __typename: 'SceneDeleteResult' } };
     }
     case 'CreateScene': {
       // actions arrives as a JSON string (matches how automations pass actions over GraphQL)
       const actions = typeof variables.actions === 'string' ? JSON.parse(variables.actions as string) : variables.actions;
-      const result = await executeHomeKitAction('scene.create', {
+      const result = await executeHomeKitWrite('scene.create', {
         homeId: variables.homeId,
         name: variables.name,
         actions,
@@ -610,7 +611,7 @@ async function resolveOperation(
       if (variables.actions !== undefined && variables.actions !== null) {
         payload.actions = typeof variables.actions === 'string' ? JSON.parse(variables.actions as string) : variables.actions;
       }
-      const result = await executeHomeKitAction('scene.update', payload) as any;
+      const result = await executeHomeKitWrite('scene.update', payload) as any;
       return {
         updateScene: {
           actionSetType: null,
@@ -680,6 +681,34 @@ async function resolveOperation(
           __typename: 'HomeKitAutomation',
         },
       };
+    }
+
+    case 'GetHomes': {
+      // Without this the query fell through to the default branch below and
+      // returned {}, so `isAdmin` was permanently undefined in Community mode
+      // and every view-only warning built on it silently never fired.
+      try {
+        const homesResult = await executeHomeKitAction('homes.list', {}) as any;
+        const homes = homesResult?.homes || [];
+        return {
+          homes: homes.map((h: any) => ({
+            id: h.id,
+            name: h.name,
+            isPrimary: h.isPrimary ?? false,
+            roomCount: h.roomCount ?? 0,
+            accessoryCount: h.accessoryCount ?? 0,
+            // `role` is Homecast's sharing role, not a HomeKit one — the relay
+            // never sends it, and in Community mode you are always the owner.
+            role: 'owner',
+            // Passed through as-is: undefined on relays older than 1.1.2, which
+            // callers must be able to tell apart from an explicit false.
+            isAdmin: h.isAdmin ?? null,
+            __typename: 'HomeKitHome',
+          })),
+        };
+      } catch {
+        return { homes: [] };
+      }
     }
 
     case 'GetCachedHomes': {

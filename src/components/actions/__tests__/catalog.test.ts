@@ -85,6 +85,13 @@ describe('deriveHomeActions — lights', () => {
     expect(writesOf(actions, 'lights').every(w => w.value === true)).toBe(true);
   });
 
+  it('gives a running label that follows the same direction as the label', () => {
+    expect(find(deriveHomeActions([light('a', true)]), 'lights')!.runningLabel)
+      .toBe('Turning the lights off');
+    expect(find(deriveHomeActions([light('a', false)]), 'lights')!.runningLabel)
+      .toBe('Turning the lights on');
+  });
+
   it('canonicalises an `on`-reporting light but remembers the reported name', () => {
     const writes = writesOf(deriveHomeActions([light('a', true, 'on')]), 'lights');
     expect(writes[0].characteristicType).toBe('power_state');

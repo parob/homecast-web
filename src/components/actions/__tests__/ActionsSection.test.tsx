@@ -68,8 +68,8 @@ describe('ActionsSection', () => {
     const { onRunAction } = renderSection([lightOn]);
     fireEvent.keyDown(card('Turn all lights off'), { key: 'Enter' });
     expect(onRunAction).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(card('Turn all lights off'), { key: ' ' });
-    // still one: the first press is in flight, so the card is inert
+    // The card now reads "Turning the lights off", and is inert while it does.
+    fireEvent.keyDown(card('Turning the lights off'), { key: ' ' });
     expect(onRunAction).toHaveBeenCalledTimes(1);
   });
 
@@ -81,13 +81,42 @@ describe('ActionsSection', () => {
     );
 
     fireEvent.click(card('Turn all lights off'));
-    fireEvent.click(card('Turn all lights off'));
-    fireEvent.click(card('Turn all lights off'));
+    fireEvent.click(card('Turning the lights off'));
+    fireEvent.click(card('Turning the lights off'));
     expect(onRunAction).toHaveBeenCalledTimes(1);
 
     await act(async () => { release(); });
+    // and it goes back to naming the direction once it is done
     fireEvent.click(card('Turn all lights off'));
     expect(onRunAction).toHaveBeenCalledTimes(2);
+  });
+
+  it('says what it is doing, and counts up as writes settle', async () => {
+    let release: () => void = () => {};
+    let report: (done: number, total: number) => void = () => {};
+    const onRunAction = vi.fn((_a, opts) => {
+      report = opts.onProgress;
+      return new Promise<void>(resolve => { release = resolve; });
+    });
+    render(
+      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+    );
+
+    fireEvent.click(card('Turn all lights off'));
+    const running = card('Turning the lights off') as HTMLElement;
+    // Seeded before the first write settles, so the count never starts blank
+    expect(within(running).getByText('0 of 1 accessory')).toBeTruthy();
+
+    await act(async () => { report(1, 4); });
+    expect(within(card('Turning the lights off') as HTMLElement).getByText('1 of 4 accessories')).toBeTruthy();
+
+    // and the live region is marked so it is announced, not just seen
+    expect(within(card('Turning the lights off') as HTMLElement)
+      .getByText('1 of 4 accessories').getAttribute('aria-live')).toBe('polite');
+
+    await act(async () => { release(); });
+    // back to reporting state once it finishes
+    expect(within(card('Turn all lights off') as HTMLElement).getByText('1 of 1 on')).toBeTruthy();
   });
 
   it('leaves a nothing-to-do action in place, dimmed and unpressable', () => {

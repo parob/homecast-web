@@ -42,6 +42,7 @@ import {
   handleDeleteVirtualAccessory,
 } from './local-hc-automations';
 import { executeHomeKitAction } from '../relay/local-handler';
+import { executeHomeKitWrite } from './homekit-write';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -864,7 +865,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
       const index = await buildAccessoryIndex(homeId);
       const actionsPayload = buildActionsPayload(actions, index);
 
-      await executeHomeKitAction('scene.create', { homeId, name, actions: actionsPayload });
+      await executeHomeKitWrite('scene.create', { homeId, name, actions: actionsPayload });
       return { success: true, scene: name, home: homeSlug, message: 'Scene created' };
     }
 
@@ -904,7 +905,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         throw new Error('Provide at least one of: new_name, actions');
       }
 
-      await executeHomeKitAction('scene.update', payload);
+      await executeHomeKitWrite('scene.update', payload);
       return { success: true, scene: (payload.name as string) || scene.name, home: homeSlug, message: 'Scene updated' };
     }
 
@@ -938,7 +939,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
         );
       }
 
-      await executeHomeKitAction('scene.delete', { sceneId: scene.id });
+      await executeHomeKitWrite('scene.delete', { sceneId: scene.id });
       return { success: true, scene: scene.name, home: homeSlug, message: 'Scene deleted' };
     }
 

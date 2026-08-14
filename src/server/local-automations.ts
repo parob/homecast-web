@@ -12,7 +12,7 @@
 import { executeHomeKitAction } from '../relay/local-handler';
 import { SIMPLE_TO_CHAR, canonicalCharacteristic, snakeCaseProp } from '@/lib/characteristic-aliases';
 import { uniqueKey, getSimpleName, formatValue } from './local-rest';
-import { isInsufficientHomeKitPrivileges, HOMEKIT_EDIT_PERMISSION_MESSAGE } from '../lib/homekit-errors';
+import { executeHomeKitWrite } from './homekit-write';
 
 /**
  * Run an automation write against the native bridge, translating HomeKit's
@@ -20,16 +20,8 @@ import { isInsufficientHomeKitPrivileges, HOMEKIT_EDIT_PERMISSION_MESSAGE } from
  * Apple Home) into actionable guidance. Wording mirrors the cloud server's
  * homekit_errors.py.
  */
-async function executeAutomationWrite(action: string, payload: Record<string, unknown>): Promise<unknown> {
-  try {
-    return await executeHomeKitAction(action, payload);
-  } catch (error) {
-    if (isInsufficientHomeKitPrivileges(error)) {
-      throw new Error(HOMEKIT_EDIT_PERMISSION_MESSAGE);
-    }
-    throw error;
-  }
-}
+const executeAutomationWrite = (action: string, payload: Record<string, unknown>) =>
+  executeHomeKitWrite(action, payload, 'automation');
 
 // Reverse map for read-side normalization (covers names CHAR_TO_SIMPLE
 // doesn't, e.g. rotation_speed → speed). First entry wins on collisions.

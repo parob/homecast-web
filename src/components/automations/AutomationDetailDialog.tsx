@@ -22,6 +22,10 @@ import { Pencil, Trash2, Clock, Zap, Sunrise, MapPin, User } from 'lucide-react'
 import { AutomationTriggerSummary } from './AutomationTriggerSummary';
 import { charLabel, formatValue } from './format';
 import { DELETE_AUTOMATION, SET_AUTOMATION_ENABLED } from '@/lib/graphql/mutations';
+import { toast } from 'sonner';
+import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
+import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
+import { translateHomeKitError } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, DeleteAutomationResponse, SetAutomationEnabledResponse } from '@/lib/graphql/types';
 
 interface AutomationDetailDialogProps {
@@ -60,7 +64,14 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
 
   const isEnabled = optimisticEnabled ?? automation.isEnabled;
 
+  // Deleting and enabling/disabling both write to the HomeKit database, so both
+  // need edit access. Checked before the mutation so the user is told why
+  // rather than watching the switch spring back.
+  const [viewOnlyOpen, setViewOnlyOpen] = useState(false);
+  const relayCannotEdit = useRelayCannotEdit(automation.homeId);
+
   const handleDelete = async () => {
+    if (relayCannotEdit) { setDeleteConfirm(false); setViewOnlyOpen(true); return; }
     try {
       await deleteAutomation({ variables: { automationId: automation.id, homeId: automation.homeId } });
       setDeleteConfirm(false);
@@ -68,10 +79,13 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
       onDeleted();
     } catch (error) {
       console.error('Failed to delete automation:', error);
+      setDeleteConfirm(false);
+      toast.error('Could not delete automation', { description: translateHomeKitError(error) });
     }
   };
 
   const handleToggleEnabled = async (checked: boolean) => {
+    if (relayCannotEdit) { setViewOnlyOpen(true); return; }
     setOptimisticEnabled(checked);
     try {
       await setEnabled({ variables: { automationId: automation.id, enabled: checked, homeId: automation.homeId } });
@@ -79,6 +93,7 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
     } catch (error) {
       console.error('Failed to toggle automation:', error);
       setOptimisticEnabled(null);
+      toast.error('Could not update automation', { description: translateHomeKitError(error) });
     }
   };
 
@@ -194,7 +209,12 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
                   Edit
                 </Button>
               )}
-              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => relayCannotEdit ? setViewOnlyOpen(true) : setDeleteConfirm(true)}
+              >
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
                 Delete
               </Button>
@@ -219,6 +239,10 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {viewOnlyOpen && (
+        <ViewOnlyHomeDialog open onOpenChange={setViewOnlyOpen} homeId={automation.homeId} subject="automation" />
+      )}
     </>
   );
 }

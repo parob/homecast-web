@@ -7,6 +7,10 @@ import { Switch } from '@/components/ui/switch';
 import { Trash2 } from 'lucide-react';
 import { AutomationTriggerSummary } from './AutomationTriggerSummary';
 import { SET_AUTOMATION_ENABLED } from '@/lib/graphql/mutations';
+import { toast } from 'sonner';
+import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
+import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
+import { translateHomeKitError } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, SetAutomationEnabledResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 import { countEffectiveActions } from '@/automation/trigger-branches';
@@ -28,6 +32,11 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
   const [setEnabled] = useMutation<SetAutomationEnabledResponse>(SET_AUTOMATION_ENABLED);
 
+  // Only HomeKit automations live in the HomeKit database — Homecast ones are
+  // ours and stay editable whatever access the relay has in Apple Home.
+  const [viewOnlyOpen, setViewOnlyOpen] = useState(false);
+  const relayCannotEdit = useRelayCannotEdit(isHomeKit ? automation.homeId : undefined);
+
   // Normalize data from either type
   const name = isHomeKit ? automation.name : (hcAutomation?.name || 'Unnamed automation');
   const rawEnabled = isHomeKit ? automation.isEnabled : (hcAutomation?.enabled ?? true);
@@ -44,6 +53,8 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isHomeKit && relayCannotEdit) { setViewOnlyOpen(true); return; }
+
     const newEnabled = !isEnabled;
     setOptimisticEnabled(newEnabled);
 
@@ -56,6 +67,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       } catch (error) {
         console.error('Failed to toggle automation:', error);
         setOptimisticEnabled(null);
+        toast.error('Could not update automation', { description: translateHomeKitError(error) });
       }
     } else {
       onToggle?.(newEnabled);
@@ -64,6 +76,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isHomeKit && relayCannotEdit) { setViewOnlyOpen(true); return; }
     onDelete?.();
   };
 
@@ -145,6 +158,15 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
           </div>
         </div>
       </div>
+
+      {/* Stops click-through to onClick — portals bubble through the React tree,
+          so a click inside the dialog would otherwise open the detail view.
+          Mounted only while open: there is one card per automation. */}
+      {viewOnlyOpen && isHomeKit && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ViewOnlyHomeDialog open onOpenChange={setViewOnlyOpen} homeId={automation.homeId} subject="automation" />
+        </div>
+      )}
     </div>
   );
 }

@@ -594,15 +594,14 @@ export interface UpdateCollectionResponse {
   updateCollection: Collection | null;
 }
 
-// Pinned tab bar item (mobile bottom navigation)
-export interface PinnedTab {
-  type: 'home' | 'room' | 'collection' | 'collectionGroup';
-  id: string;
-  name: string;       // Cached for display before data loads
-  customName?: string; // User-defined label override for tab bar display
-  homeId?: string;    // Required for 'room' type (routing needs home context)
-  collectionId?: string; // Required for 'collectionGroup' type (navigate to parent collection first)
-}
+// Pinned tab bar item (mobile bottom navigation).
+//
+// Declared in `lib/pinned-tabs.ts` — a leaf the tab bar, the settings pane and
+// every pinnable tile can import without dragging this module in with it. Kept
+// exported here because the settings blob below embeds it and a good many
+// callers already reach for it from this file.
+export type { PinnedTab, PinnedTabType, PinTarget } from '@/lib/pinned-tabs';
+import type { PinnedTab } from '@/lib/pinned-tabs';
 
 // Per-device display/layout settings (stored under devices[deviceId] in settings blob)
 export interface DeviceDisplaySettings {

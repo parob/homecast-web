@@ -441,6 +441,20 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Point Local Mode's identity cache at whoever is signed in. Keyed by user so
+  // switching accounts cannot serve one person's home layout against another's
+  // HomeKit ids. One effect rather than a call beside each of the many
+  // setUser() sites, so a new sign-in path cannot forget it.
+  useEffect(() => {
+    if (!user?.id) return;
+    void import('../native/homekit-bridge').then(({ isLocalCapable }) => {
+      if (!isLocalCapable()) return;
+      void import('../server/local-identity').then(({ localIdentity }) => {
+        localIdentity.load(user.id);
+      });
+    });
+  }, [user?.id]);
+
   const [loginMutation] = useMutation<LoginResponse>(LOGIN);
   const [signupMutation] = useMutation<SignupResponse>(SIGNUP);
   const [getMe] = useLazyQuery<GetMeResponse>(GET_ME, { fetchPolicy: 'network-only' });

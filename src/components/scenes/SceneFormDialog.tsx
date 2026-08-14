@@ -17,7 +17,8 @@ import { parseCharacteristicValue } from '@/components/widgets/types';
 import { isBuiltInScene } from '@/lib/scenes';
 import { GET_ACCESSORIES, GET_HOMES } from '@/lib/graphql/queries';
 import { CREATE_SCENE, UPDATE_SCENE } from '@/lib/graphql/mutations';
-import { translateHomeKitError } from '@/lib/homekit-errors';
+import { translateHomeKitError, homeEditPermissionFix } from '@/lib/homekit-errors';
+import { useHomeRelayKind } from '@/hooks/useRelayCannotEdit';
 import { getDisplayName } from '@/lib/graphql/types';
 import type { HomeKitAccessory, HomeKitHome, HomeKitScene, AutomationAction } from '@/lib/graphql/types';
 
@@ -179,7 +180,6 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
   const isEditing = !!scene;
   // Automation-owned and built-in scenes can't be modified — show actions read-only
   const builtIn = isBuiltInScene(scene);
-  const readOnly = !!scene?.automationName || builtIn;
   const [name, setName] = useState('');
   const [actions, setActions] = useState<ActionData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +201,15 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
     () => (homesData?.homes ?? []).filter(h => h.id === homeId),
     [homesData, homeId],
   );
+
+  // Third reason a scene is read-only, alongside built-in and automation-owned:
+  // the relay's Apple ID only has view-only access to the home. Reuses the
+  // query the device picker already runs, so it costs no extra fetch.
+  // `=== false` only — older relays don't report isAdmin at all.
+  const relayCannotEdit = homes[0]?.isAdmin === false;
+  const readOnly = !!scene?.automationName || builtIn || relayCannotEdit;
+  // Which relay serves this home decides who the user grants access to.
+  const relayKind = useHomeRelayKind(relayCannotEdit ? homeId : undefined);
 
   const [createScene] = useMutation(CREATE_SCENE);
   const [updateScene] = useMutation(UPDATE_SCENE);
@@ -299,7 +308,7 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
       if (/UNKNOWN_METHOD|Unknown method/i.test(message)) {
         setError('Creating and editing scenes needs a newer version of the Homecast relay app.');
       } else {
-        setError(translateHomeKitError(e));
+        setError(translateHomeKitError(e, 'scene'));
       }
     } finally {
       setSaving(false);
@@ -337,7 +346,9 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
               <p className="text-xs text-muted-foreground">
                 {scene?.automationName
                   ? `This scene belongs to the automation "${scene.automationName}" — edit that automation to change it.`
-                  : 'This is a built-in HomeKit scene — it can be run, but only the Apple Home app can change or remove it.'}
+                  : builtIn
+                    ? 'This is a built-in HomeKit scene — it can be run, but only the Apple Home app can change or remove it.'
+                    : `Homecast can view this home but not change it, so this scene is read-only. ${homeEditPermissionFix(relayKind)}`}
               </p>
             )}
             <p className="text-xs text-muted-foreground">Device states this scene applies when run:</p>

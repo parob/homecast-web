@@ -18,7 +18,8 @@ import { charLabel, formatValue } from './format';
 import { CharacteristicValueInput } from './CharacteristicValueInput';
 import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
 import { defaultValueFor, findAccessoryById, getWritableCharacteristics, isHiddenChar } from './characteristics';
-import { translateHomeKitError, HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
+import { translateHomeKitError, homeEditPermissionFix, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
+import { useHomeRelayKind } from '@/hooks/useRelayCannotEdit';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
 type TriggerCategory = 'time' | 'accessory' | 'sensor';
@@ -307,6 +308,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
 
   // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay)
   const relayCannotEdit = homes.find(h => h.id === homeId)?.isAdmin === false;
+  const relayKind = useHomeRelayKind(relayCannotEdit ? homeId : undefined);
 
   const triggerAccessory = findAccessoryById(accessories, triggerAccessoryId);
   const triggerChars = triggerCategory === 'sensor' ? getReadableChars(triggerAccessory) : getWritableCharacteristics(triggerAccessory);
@@ -369,7 +371,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
                   but one line, with the full path on hover. */}
               <p
                 className="text-xs text-amber-700 dark:text-amber-300"
-                title={`${HOMEKIT_EDIT_PERMISSION_FIX} ${HOMEKIT_EDIT_PERMISSION_ALIAS}`}
+                title={`${homeEditPermissionFix(relayKind)} ${HOMEKIT_EDIT_PERMISSION_ALIAS}`}
               >
                 View-only in Apple Home — can't save.
               </p>

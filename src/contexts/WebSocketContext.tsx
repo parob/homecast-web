@@ -4,6 +4,8 @@ import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
 import { invalidateHomeKitCache, invalidateHomeCaches } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
+import { useLocalMode } from '../hooks/useLocalMode';
+import { localIdentity } from '../server/local-identity';
 import { toast } from 'sonner';
 
 // Logger - dev only to avoid Chrome energy warnings from high-frequency logging
@@ -68,6 +70,7 @@ type BufferedReachabilityUpdate = {
 export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [serverInfo, setServerInfo] = useState<ServerConnectionInfo | null>(null);
+  const { active: localModeActive } = useLocalMode();
 
   // Update buffering - batch rapid updates to reduce React re-renders
   const characteristicBufferRef = useRef<Map<string, BufferedCharacteristicUpdate>>(new Map());
@@ -200,27 +203,39 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   // - Mac app mode: HomeKit events (external changes) + server broadcasts (programmatic changes)
   // - Browser mode: Server broadcasts only
   useEffect(() => {
-    if (isRelayCapable()) {
+    // Local Mode needs this subscription too: it is the only source of
+    // *external* changes (someone using Apple Home, a motion sensor firing)
+    // when there is no relay pushing broadcasts.
+    if (isRelayCapable() || localModeActive) {
       // Mac app mode: subscribe to local HomeKit events for external changes (Apple Home, etc.)
       wsLog.info('Mac mode: subscribing to HomeKit events');
 
+      // HomeKit reports the ids of *this device's* context. In Local Mode the
+      // cache is keyed in the cloud's stable space, so events have to cross the
+      // same boundary the request path crosses. On the relay Mac the cache is
+      // already in live space and `toStable` is an identity function, so this
+      // is safe to apply unconditionally.
+      const stable = (id: string) => (localModeActive ? localIdentity.toStable(id) : id);
+
       const unsubscribeHomeKit = HomeKit.onEvent((event) => {
         if (event.type === 'characteristic.updated' && event.characteristicType) {
-          const key = `${event.accessoryId}:${event.characteristicType}`;
-          wsLog.event(event.accessoryId, event.characteristicType, event.value);
+          const accessoryId = stable(event.accessoryId);
+          const key = `${accessoryId}:${event.characteristicType}`;
+          wsLog.event(accessoryId, event.characteristicType, event.value);
 
           characteristicBufferRef.current.set(key, {
-            accessoryId: event.accessoryId,
-            homeId: event.homeId ?? null,
+            accessoryId,
+            homeId: event.homeId ? stable(event.homeId) : null,
             characteristicType: event.characteristicType,
             value: event.value
           });
           scheduleFlush();
         } else if (event.type === 'accessory.reachability' && event.isReachable !== undefined) {
-          wsLog.reachability(event.accessoryId, event.isReachable);
+          const accessoryId = stable(event.accessoryId);
+          wsLog.reachability(accessoryId, event.isReachable);
 
-          reachabilityBufferRef.current.set(event.accessoryId, {
-            accessoryId: event.accessoryId,
+          reachabilityBufferRef.current.set(accessoryId, {
+            accessoryId,
             isReachable: event.isReachable
           });
           scheduleFlush();
@@ -244,7 +259,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
 
       return unsubscribeBroadcasts;
     }
-  }, [handleBroadcast, scheduleFlush]);
+  }, [handleBroadcast, scheduleFlush, localModeActive]);
 
   // Cleanup on unmount
   useEffect(() => {

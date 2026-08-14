@@ -67,7 +67,12 @@ const LOCK = {
   }],
 };
 
-const mocks = [
+/**
+ * `isAdmin` is the relay's HomeKit edit access in this home. Built as one
+ * literal so the mock array keeps the shape MockedProvider's prop accepts —
+ * assembling it from parts produces a union that doesn't type-check.
+ */
+const makeMocks = (isAdmin: boolean | null = true) => [
   {
     request: { query: GET_ACCESSORIES, variables: { homeId: HOME_ID } },
     result: { data: { accessories: [LAMP, LOCK] } },
@@ -75,10 +80,12 @@ const mocks = [
   },
   {
     request: { query: GET_HOMES },
-    result: { data: { homes: [{ __typename: 'HomeKitHome', id: HOME_ID, name: 'Test Home', isPrimary: true, roomCount: 2, accessoryCount: 2, role: 'owner', isAdmin: true }] } },
+    result: { data: { homes: [{ __typename: 'HomeKitHome', id: HOME_ID, name: 'Test Home', isPrimary: true, roomCount: 2, accessoryCount: 2, role: 'owner', isAdmin }] } },
     maxUsageCount: 5,
   },
 ];
+
+const mocks = makeMocks();
 
 function scene(actions: unknown[]): HomeKitScene {
   return {
@@ -211,5 +218,67 @@ describe('SceneFormDialog action editor', () => {
     expect(screen.getByText('10%')).toBeTruthy();
     expect(screen.queryByRole('slider')).toBeNull();
     expect(screen.queryByRole('button', { name: /add devices/i })).toBeNull();
+  });
+});
+
+// A scene used to be fully editable right up to the Create button, which then
+// failed with HomeKit's "Insufficient privileges" — every device and value the
+// user had set was lost. View-only is now a third read-only reason, alongside
+// built-in and automation-owned.
+describe('SceneFormDialog when the relay is view-only', () => {
+  // No addTypename here: it isn't a prop on this Apollo version (the mocks
+  // already carry __typename), and passing it is a type error.
+  function renderWithAccess(isAdmin: boolean | null, existing?: HomeKitScene) {
+    return render(
+      <MockedProvider mocks={makeMocks(isAdmin)}>
+        <SceneFormDialog open onOpenChange={() => {}} homeId={HOME_ID} scene={existing ?? null} onDelete={() => {}} />
+      </MockedProvider>,
+    );
+  }
+
+  const oneAction = () => scene([{ accessoryId: 'ACC-LAMP', characteristicType: 'brightness', targetValue: 30 }]);
+
+  it('drops Save and Delete, and says why', async () => {
+    renderWithAccess(false, oneAction());
+
+    // The homes query settles after the accessories one, so wait on the notice
+    // itself rather than on the device list.
+    expect(await screen.findByText(/can view this home but not change it/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+    // Cancel becomes Close. getAll: Radix's DialogContent renders its own
+    // sr-only "Close" button too.
+    expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    // The fix path, not just the diagnosis. The relay kind rides a separate WS
+    // payload that isn't mocked here, so this pins the agnostic fallback —
+    // naming either concrete kind on unknown data would mislead half of users.
+    expect(screen.getByText(/Add & Edit Accessories/)).toBeTruthy();
+    expect(screen.getByText(/the relay user/)).toBeTruthy();
+  });
+
+  /**
+   * Asserting "Save is present" alone would also pass if the homes query had
+   * simply never resolved, which is the same state a broken check produces.
+   * Let the query settle first so absence of the notice means something.
+   */
+  async function expectStaysEditable() {
+    await screen.findByText('Reading Lamp');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy());
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.queryByText(/can view this home but not change it/i)).toBeNull();
+  }
+
+  it('keeps the scene editable when the relay has full access', async () => {
+    renderWithAccess(true, oneAction());
+    await expectStaysEditable();
+  });
+
+  // Relays older than 1.1.2 never reported isAdmin. Unknown is not restricted —
+  // warning there would put a permission notice in front of users who have none.
+  it('stays editable when the relay does not report access at all', async () => {
+    renderWithAccess(null, oneAction());
+    await expectStaysEditable();
   });
 });

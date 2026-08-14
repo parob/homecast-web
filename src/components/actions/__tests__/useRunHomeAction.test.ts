@@ -27,6 +27,7 @@ function action(overrides: Partial<HomeAction> = {}): HomeAction {
   return {
     id: 'lights',
     label: 'Turn all lights off',
+    runningLabel: 'Turning the lights off',
     subtitle: '2 of 2 on',
     icon: 'lightbulb',
     serviceType: 'lightbulb',
@@ -140,13 +141,30 @@ describe('useRunHomeAction', () => {
     expect(toastWarning).not.toHaveBeenCalled();
   });
 
+  it('reports progress from zero, once per write, including failures', async () => {
+    request.mockImplementation(async (_a: string, payload: { accessoryId: string }) => {
+      if (payload.accessoryId === 'b') throw new Error('no response');
+      return {};
+    });
+    const seen: Array<[number, number]> = [];
+    const { run } = setup();
+    await run(action(), { onProgress: (done, total) => seen.push([done, total]) });
+
+    // Seeded at 0 before anything settles, so the card never shows a blank
+    // count; then one tick per write, the failed one included — the count says
+    // how many are resolved, not how many worked.
+    expect(seen[0]).toEqual([0, 2]);
+    expect(seen.map(([d]) => d)).toEqual([0, 1, 2]);
+    expect(seen.every(([, total]) => total === 2)).toBe(true);
+  });
+
   it('refuses for a view-only member without touching the cache or the network', async () => {
     const { run, updateCharacteristicInCache } = setup({ isViewOnly: true });
     await run(action());
 
     expect(request).not.toHaveBeenCalled();
     expect(updateCharacteristicInCache).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith('View-only access: you cannot control devices in this home');
+    expect(toastError).toHaveBeenCalledWith('View-only access: you cannot control accessories in this home');
   });
 
   it('does nothing for an action with no writes left to make', async () => {
@@ -201,5 +219,49 @@ describe('useRunHomeAction', () => {
     ] }));
 
     expect(seen).toEqual(['first', 'second']);
+  });
+});
+
+describe('useRunHomeAction — per-call overrides', () => {
+  it('sends writes to the overriding home, not the one on screen', async () => {
+    // What a pinned action needs: it can target a home the user is not in.
+    const { run } = setup();
+
+    await run(action(), { homeId: 'home-2' });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [, payload] of request.mock.calls) {
+      expect((payload as { homeId: string }).homeId).toBe('home-2');
+    }
+  });
+
+  it('keeps the hook-level home when no override is given', async () => {
+    const { run } = setup();
+
+    await run(action());
+
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [, payload] of request.mock.calls) {
+      expect((payload as { homeId: string }).homeId).toBe('home-1');
+    }
+  });
+
+  it('blocks on the target home being view-only even when the current one is not', async () => {
+    const { run, updateCharacteristicInCache } = setup({ isViewOnly: false });
+
+    await run(action(), { homeId: 'home-2', isViewOnly: true });
+
+    expect(request).not.toHaveBeenCalled();
+    expect(updateCharacteristicInCache).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith('View-only access: you cannot control accessories in this home');
+  });
+
+  it('allows a writable target home while the current one is view-only', async () => {
+    const { run } = setup({ isViewOnly: true });
+
+    await run(action(), { homeId: 'home-2', isViewOnly: false });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

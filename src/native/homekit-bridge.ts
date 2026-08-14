@@ -186,6 +186,29 @@ export function isRelayEnabled(): boolean {
   return isRelayCapable() && localStorage.getItem('homecast-relay-disabled') !== 'true';
 }
 
+/**
+ * Can this device talk to HomeKit itself?
+ *
+ * Deliberately a different question from `isRelayCapable()`, which means "this
+ * device can *be* the relay" and drives relay claiming, relay duties, the relay
+ * status badge, the Settings relay pane and the offline-banner suppression.
+ * An iPhone can serve its own HomeKit but must never claim relay duty — so it
+ * sets this flag and not that one. Every Mac sets both.
+ */
+export function isLocalCapable(): boolean {
+  return (window as Window & { isHomeKitLocalCapable?: boolean }).isHomeKitLocalCapable === true;
+}
+
+/** What the native side reports about HomeKit availability on this device. */
+export interface HomeKitStatus {
+  ready: boolean;
+  authorized: boolean;
+  restricted: boolean;
+  /** HomeKit has finished deciding. False means still asking — wait, don't conclude. */
+  determined: boolean;
+  homeCount: number;
+}
+
 /** Distinguishes native calls started in the same millisecond. */
 let nativeCallSeq = 0;
 
@@ -400,6 +423,26 @@ export const HomeKit = {
    */
   isAvailable(): boolean {
     return getNativeBridge() !== null;
+  },
+
+  /**
+   * Whether HomeKit is usable on this device, and if not, why.
+   *
+   * Answers without waiting for HomeKit to load, because it is the call that
+   * decides whether Local Mode is offerable at all — a probe that blocks on
+   * the thing it is probing is no use when permission has been refused.
+   *
+   * Returns null on a build whose native side predates the method, which is
+   * how a newer web bundle stays safe inside an older app shell.
+   */
+  async getStatus(): Promise<HomeKitStatus | null> {
+    const bridge = getNativeBridge();
+    if (!bridge) return null;
+    try {
+      return await bridge.call<HomeKitStatus>('homekit.status');
+    } catch {
+      return null;
+    }
   },
 
   /**

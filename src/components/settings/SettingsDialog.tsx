@@ -29,6 +29,7 @@ import {
   Copy,
 } from 'lucide-react';
 import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
+import type { PinTarget } from '@/lib/pinned-tabs';
 import { isCommunity } from '@/lib/config';
 import { getCloud } from '@/lib/cloud';
 import {
@@ -56,8 +57,10 @@ import { HomeDetailView } from './HomeDetailView';
 import { TabBarSection } from './TabBarSection';
 import { AccountSection } from './AccountSection';
 import { NotificationsSection } from './NotificationsSection';
+import { LocalModeSection } from './LocalModeSection';
+import { isLocalCapable } from '@/native/homekit-bridge';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'tab-bar' | 'account';
+export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'local-mode' | 'tab-bar' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -135,8 +138,8 @@ export interface SettingsDialogProps {
   launchAtLoginSupported: boolean;
   // Tab bar (mobile)
   pinnedTabs: PinnedTab[];
-  handleUnpinTab: (type: string, id: string) => void;
-  handleUpdateTabName: (type: string, id: string, customName: string | undefined) => void;
+  handleUnpinTab: (target: PinTarget) => void;
+  handleUpdateTabName: (target: PinTarget, customName: string | undefined) => void;
   handleReorderTabs: (reordered: PinnedTab[]) => void;
   maxPinnedTabs: number;
   onReplayTutorial?: () => void;
@@ -214,6 +217,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
     if (isRelayCapable() && SelfHostedRelaySection) {
       items.push({ id: 'self-hosted-relay', label: 'Relay', group: 'Device', icon: Cloud });
+    }
+
+    // Every device with its own Home access, not just relay-capable Macs —
+    // this pane is the one an iPhone user needs, and iPhones are deliberately
+    // not relay-capable.
+    if (isLocalCapable() && !isCommunity) {
+      items.push({ id: 'local-mode', label: 'Local Mode', group: 'Device', icon: HomeIcon });
     }
 
     if (isInMobileApp) {
@@ -483,6 +493,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
         ) : (
           <div className="text-sm text-muted-foreground p-4">Relay settings are not available in Community mode.</div>
         );
+      case 'local-mode':
+        return <LocalModeSection />;
       case 'notifications':
         return <NotificationsSection />;
       case 'tab-bar':

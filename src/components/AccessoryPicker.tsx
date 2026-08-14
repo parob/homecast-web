@@ -42,51 +42,10 @@ import { getDisplayName } from '@/lib/graphql/types';
 import type { HomeKitAccessory, HomeKitHome, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { createFuse, fuseSearch } from '@/lib/fuzzySearch';
 
-// Map service types to icons
-const SERVICE_TYPE_ICONS: Record<string, LucideIcon> = {
-  lightbulb: Lightbulb,
-  switch: Power,
-  outlet: Plug,
-  thermostat: Thermometer,
-  heater_cooler: Thermometer,
-  fan: Fan,
-  air_purifier: Wind,
-  humidifier_dehumidifier: Droplets,
-  lock: Lock,
-  security_system: Shield,
-  door: DoorClosed,
-  window: DoorClosed,
-  window_covering: Blinds,
-  garage_door: Warehouse,
-  contact_sensor: DoorClosed,
-  motion_sensor: Activity,
-  occupancy_sensor: Activity,
-  temperature_sensor: Thermometer,
-  humidity_sensor: Droplets,
-  light_sensor: Sun,
-  smoke_sensor: AlertTriangle,
-  carbon_monoxide_sensor: Wind,
-  carbon_dioxide_sensor: Wind,
-  leak_sensor: Droplet,
-  air_quality_sensor: Wind,
-  speaker: Speaker,
-  smart_speaker: Speaker,
-  microphone: Speaker,
-  camera: Video,
-  doorbell: Bell,
-  valve: Droplets,
-  faucet: Droplets,
-  irrigation_system: Flower2,
-  stateless_programmable_switch: Disc,
-};
-
-export function getAccessoryIcon(accessory: { services?: Array<{ serviceType: string }> }): LucideIcon {
-  const serviceType = getPrimaryServiceType(accessory as any);
-  if (serviceType && SERVICE_TYPE_ICONS[serviceType]) {
-    return SERVICE_TYPE_ICONS[serviceType];
-  }
-  return CircleDot;
-}
+// Both live in components/widgets/serviceIcons.ts now — the tab bar needs them
+// too, and it should not have to import this list to get them.
+import { getAccessoryIcon } from '@/components/widgets/serviceIcons';
+export { getAccessoryIcon };
 
 // Category display order
 const CATEGORY_ORDER = [

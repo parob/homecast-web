@@ -4,6 +4,7 @@
  */
 
 import { executeHomeKitAction } from '../relay/local-handler';
+import { executeHomeKitWrite } from './homekit-write';
 import { communityRequest } from './connection';
 import { verifyTokenFull } from './local-auth';
 
@@ -133,7 +134,7 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
       case method === 'POST' && route === '/scenes': {
         if (!req.body) return { error: 'Missing body' };
         const body = JSON.parse(req.body);
-        return await executeHomeKitAction('scene.create', body);
+        return await executeHomeKitWrite('scene.create', body);
       }
 
       // PATCH /rest/scenes/:id — update a scene {name?, actions?}
@@ -141,13 +142,13 @@ export async function handleREST(req: HTTPRequest): Promise<unknown> {
         const sceneId = route.replace('/scenes/', '');
         if (!req.body) return { error: 'Missing body' };
         const body = JSON.parse(req.body);
-        return await executeHomeKitAction('scene.update', { sceneId, ...body });
+        return await executeHomeKitWrite('scene.update', { sceneId, ...body });
       }
 
       // DELETE /rest/scenes/:id
       case method === 'DELETE' && route.startsWith('/scenes/'): {
         const sceneId = route.replace('/scenes/', '');
-        return await executeHomeKitAction('scene.delete', { sceneId });
+        return await executeHomeKitWrite('scene.delete', { sceneId });
       }
 
       // POST /rest/scenes/:id/execute

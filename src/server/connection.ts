@@ -16,6 +16,46 @@ import { toastConnection } from '../lib/toast-bus';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
+/**
+ * Thrown when Local Mode is serving but the request needs the cloud.
+ *
+ * Distinct from the generic "not active" throw because this one reaches real
+ * users during an outage rather than only developers during a mistake, so the
+ * UI needs to be able to tell it apart and say something useful.
+ */
+export class LocalOnlyError extends Error {
+  readonly code = 'LOCAL_ONLY';
+  constructor(public readonly action: string) {
+    super(`"${action}" needs Homecast's servers, and this device can't reach them right now.`);
+    this.name = 'LocalOnlyError';
+  }
+}
+
+/**
+ * The Local Mode router, registered at runtime.
+ *
+ * An indirection rather than a direct import because the controller reaches
+ * through to `window` and the native bridge on construction, and this module is
+ * loaded by node tests that have neither. Registration also keeps the
+ * dependency pointing one way: the controller knows about the connection, not
+ * the reverse.
+ */
+export interface LocalModeRouter {
+  isActive(): boolean;
+  canServe(action: string, payload: Record<string, unknown>): boolean;
+  request<T>(action: string, payload: Record<string, unknown>): Promise<T>;
+}
+
+let localModeRouter: LocalModeRouter | null = null;
+
+export function setLocalModeRouter(router: LocalModeRouter | null): void {
+  localModeRouter = router;
+}
+
+function getLocalModeRouter(): LocalModeRouter | null {
+  return localModeRouter;
+}
+
 export interface ServerConnectionState {
   isActive: boolean;
   connectionState: ConnectionState;
@@ -105,6 +145,18 @@ const CACHE_INVALIDATING_ACTIONS = new Set([
   'automation.create', 'automation.update', 'automation.delete',
   'automation.enable', 'automation.disable',
 ]);
+
+/**
+ * Drop every cached HomeKit read.
+ *
+ * `communityCache` is a module singleton shared by Community mode and Local
+ * Mode, so a transition in either direction has to flush it. Miss that and a
+ * five-minute-old local answer outlives the relay's return — which presents as
+ * a HomeKit fault rather than a caching one, and is miserable to diagnose.
+ */
+export function clearCommunityCache(): void {
+  communityCache.clear();
+}
 
 function communityCacheKey(action: string, payload: Record<string, unknown>): string {
   // Build a stable key from action + relevant payload fields
@@ -620,7 +672,24 @@ class ServerConnection {
     if (isCommunity && communityRelayConfirmed) {
       return communityRequest<T>(action, payload);
     }
+
+    // Local Mode: this device answers from its own HomeKit because the relay
+    // cannot. Ids arrive here in the cloud's stable space and leave in it too —
+    // the live UUIDs this device's HomeKit uses never escape the controller.
+    // Imported lazily so this module stays loadable in node tests, which have
+    // no `window` for the controller to read.
+    const local = getLocalModeRouter();
+    if (local?.canServe(action, payload)) {
+      return local.request<T>(action, payload);
+    }
+
     if (!this.websocket) {
+      // In Local Mode this is reachable by ordinary use rather than by a
+      // programming error — the cloud is simply gone — so it needs a message
+      // a person could act on, and a code the UI can recognise.
+      if (local?.isActive()) {
+        throw new LocalOnlyError(action);
+      }
       throw new Error('[ServerConnection] Not active - cannot make request');
     }
     return this.websocket.request<T>(action, payload);

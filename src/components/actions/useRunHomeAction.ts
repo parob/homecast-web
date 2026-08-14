@@ -51,6 +51,19 @@ function applyToCache(
   }
 }
 
+/** Per-call overrides, for running an action against a home you are not in. */
+export interface RunHomeActionOverrides {
+  homeId?: string | null;
+  isViewOnly?: boolean;
+  /**
+   * Fires as each write settles, succeeded or failed, so the card can count up
+   * while it works. Matters most exactly when the action is slow: a wedged
+   * accessory holds its write for the native 10s timeout, and a bare spinner
+   * gives no way to tell that apart from nothing happening.
+   */
+  onProgress?: (done: number, total: number) => void;
+}
+
 interface RunHomeActionArgs {
   homeId: string | null;
   isViewOnly: boolean;
@@ -79,9 +92,14 @@ interface RunHomeActionArgs {
  * (MQTT publish, automation triggers) fires identically either way.
  */
 export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCache }: RunHomeActionArgs) {
-  return useCallback(async (action: HomeAction) => {
-    if (isViewOnly) {
-      toast.error('View-only access: you cannot control devices in this home');
+  return useCallback(async (action: HomeAction, opts?: RunHomeActionOverrides) => {
+    // A pinned action can target a home other than the one on screen, so both
+    // the destination and the permission check have to be overridable.
+    const effectiveHomeId = opts?.homeId !== undefined ? opts.homeId : homeId;
+    const effectiveViewOnly = opts?.isViewOnly !== undefined ? opts.isViewOnly : isViewOnly;
+
+    if (effectiveViewOnly) {
+      toast.error('View-only access: you cannot control accessories in this home');
       return;
     }
 
@@ -96,17 +114,28 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     //    from the next. Every action here has a single step today.
     const failed: HomeActionWrite[] = [];
     let firstError: unknown;
+    let settled = 0;
+    // Counts across every step, not per step, so the card shows one run of
+    // progress rather than restarting at zero on a composite action.
+    opts?.onProgress?.(0, writes.length);
 
     for (const step of action.steps) {
       if (step.writes.length > 0) {
-        const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, write =>
-          serverConnection.request('characteristic.set', {
-            accessoryId: write.accessoryId,
-            characteristicType: write.characteristicType,
-            value: write.value,
-            homeId,
-          }),
-        );
+        const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, async write => {
+          try {
+            return await serverConnection.request('characteristic.set', {
+              accessoryId: write.accessoryId,
+              characteristicType: write.characteristicType,
+              value: write.value,
+              homeId: effectiveHomeId,
+            });
+          } finally {
+            // `finally`, so a failure still advances the count — the point is
+            // "how many are resolved", not "how many worked". The toast at the
+            // end is what reports failures.
+            opts?.onProgress?.(++settled, writes.length);
+          }
+        });
         results.forEach((result, i) => {
           if (result.status === 'rejected') {
             failed.push(step.writes[i]);

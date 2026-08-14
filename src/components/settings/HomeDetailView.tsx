@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Home as HomeIcon, Radio, Wifi, WifiOff, Cloud, Monitor, Users, ExternalLink, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
-import { HOMEKIT_EDIT_PERMISSION_FIX, HOMEKIT_EDIT_PERMISSION_ALIAS, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
+import { homeEditPermissionFix, HOMEKIT_EDIT_PERMISSION_ALIAS, homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_HOME_MQTT_ENABLED, GET_HOME_MQTT_BROKERS, GET_HOME_MQTT_STATUS, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_HOME_MQTT_ENABLED, ADD_HOME_MQTT_BROKER, REMOVE_HOME_MQTT_BROKER, CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
@@ -296,10 +296,10 @@ export function HomeDetailView({ home: homeProp, developerMode, onCloudRelayRemo
                   four lines restating what still works, which buried the only
                   instruction that mattered. */}
               <p className="text-xs text-muted-foreground leading-snug" title={HOMEKIT_EDIT_PERMISSION_ALIAS}>
-                Lets Homecast manage HomeKit automations.
+                Lets Homecast manage HomeKit scenes and automations.
               </p>
               <p className="text-xs font-medium leading-snug" title={HOMEKIT_EDIT_PERMISSION_ALIAS}>
-                {HOMEKIT_EDIT_PERMISSION_FIX}
+                {homeEditPermissionFix(isCloudManaged ? 'cloud' : 'self-hosted')}
               </p>
             </div>
             <button

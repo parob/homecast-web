@@ -10,9 +10,10 @@ import { AutomationDetailDialog } from './AutomationDetailDialog';
 import { AutomationFormDialog } from './AutomationFormDialog';
 // Lazy: pulls in the whole flow editor (@xyflow/react) — only load once the user opens it
 const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
-import { GET_AUTOMATIONS, GET_HOMES, HC_AUTOMATIONS } from '@/lib/graphql/queries';
+import { GET_AUTOMATIONS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
+import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
-import type { HomeKitAutomation, HomeKitHome, GetAutomationsResponse } from '@/lib/graphql/types';
+import type { HomeKitAutomation, GetAutomationsResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 
 /** StoredEntityInfo rows as the HC_AUTOMATIONS document selects them. */
@@ -123,13 +124,9 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
   const relayNeedsUpdate = rawAutomations.some(a => a.id === '__relay_update_required__');
   const automations = relayNeedsUpdate ? [] : rawAutomations;
 
-  // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay)
-  const { data: homesData } = useQuery<{ homes: HomeKitHome[] }>(GET_HOMES, {
-    skip: !homeId || !!demoAutomations,
-    fetchPolicy: 'cache-first',
-    errorPolicy: 'ignore',
-  });
-  const relayCannotEdit = homesData?.homes?.find(h => h.id === homeId)?.isAdmin === false;
+  // Proactive: relay's Apple ID is view-only in this home (undefined = unknown/old relay).
+  // Demo data has no relay behind it, so the check is skipped there.
+  const relayCannotEdit = useRelayCannotEdit(demoAutomations ? undefined : homeId);
 
   const hcAutomations = useMemo(() => {
     const entities = hcData?.hcAutomations || [];

@@ -19,6 +19,14 @@ export interface ExpandedOverlayProps {
    * takes overlayClassName.
    */
   zIndex?: number;
+  /**
+   * Space to keep clear at the bottom of the viewport, in px.
+   *
+   * The clamp below otherwise parks a tall panel a few pixels off the bottom
+   * edge — right on top of the pinned tab bar, which is what opens these in the
+   * first place when a tab is the trigger.
+   */
+  bottomInset?: number;
   children: React.ReactNode;
 }
 
@@ -82,7 +90,7 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
@@ -314,7 +322,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const anchoredTop = coords.y - PADDING + TOP_OFFSET;
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
   const lowestTop = viewportH && panelHeight
-    ? viewportH - panelHeight - PADDING * 2 - 8
+    ? viewportH - panelHeight - PADDING * 2 - 8 - bottomInset
     : anchoredTop;
   const top = Math.max(8, Math.min(anchoredTop, Math.max(8, lowestTop)));
 

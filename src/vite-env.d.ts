@@ -41,15 +41,18 @@ declare global {
     isHomecastApp?: boolean;
     isHomecastMacApp?: boolean;
     isHomecastIOSApp?: boolean;
-    // HomeKit relay capability flag (Mac only)
+    // "This device can BE the relay" (Mac only)
     isHomeKitRelayCapable?: boolean;
+    // "This device can serve its own HomeKit" — Local Mode (Mac and iOS).
+    // Strictly weaker than the flag above: an iPhone sets this one only.
+    isHomeKitLocalCapable?: boolean;
     // Native app version (e.g. "1.0.1") — injected by Mac/iOS app
     homecastAppVersion?: string;
     // Native app git commit hash (e.g. "abc1234") — injected by Mac/iOS app
     homecastAppBuild?: string;
     // Debug: use localhost:3000 for WebSocket connection
     homecastUseLocalhost?: boolean;
-    // HomeKit bridge API (injected by Mac app)
+    // HomeKit bridge API (injected by the Mac and iOS apps)
     homekit?: HomeKitBridge;
     // Internal: callbacks for async bridge responses
     __homekit_callbacks?: Record<string, HomeKitCallbackEntry>;

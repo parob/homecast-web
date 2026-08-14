@@ -82,6 +82,16 @@ if (config.isCommunity) {
   ]).catch(err => console.error("[Homecast] Local server init failed:", err));
 }
 
+// Local Mode: let a device with its own Home access keep working when the
+// relay cannot serve it. Loaded lazily and only where it could ever apply —
+// the controller no-ops immediately on anything without a native HomeKit
+// bridge, which is every browser.
+if (!config.isCommunity) {
+  void import("./server/local-mode-controller")
+    .then(m => m.controller.start())
+    .catch(err => console.error("[Homecast] Local Mode init failed:", err));
+}
+
 // Touch press feedback — JS-based because CSS :active is unreliable in iOS WKWebView
 // (isTextInteractionEnabled=false suppresses :active, Tailwind preflight kills tap-highlight)
 const PRESSABLE = 'button, a[href], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="option"], [role="switch"]';

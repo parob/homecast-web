@@ -6,7 +6,9 @@ import type { GetCollectionsResponse, Collection, CollectionGroup } from '@/lib/
 import { parseCollectionPayload } from '@/lib/graphql/types';
 import { CreateCollectionDialog } from './CreateCollectionDialog';
 import { Button } from '@/components/ui/button';
-import { Plus, Folder, Loader2, Layers, Pencil, Trash2, FolderPlus, Share2, ImageIcon, Pin, PinOff } from 'lucide-react';
+import { Plus, Folder, Loader2, Layers, Pencil, Trash2, FolderPlus, Share2, ImageIcon } from 'lucide-react';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import type { PinnedTab } from '@/lib/pinned-tabs';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import {
   DropdownMenu,
@@ -51,9 +53,8 @@ interface SortableCollectionItemProps {
   onRename?: () => void;
   onDelete?: () => void;
   onBackgroundSettings?: () => void;
-  onPin?: () => void;
-  isPinned?: boolean;
-  pinFull?: boolean;
+  /** Present when this collection may be pinned; the menu item handles the rest. */
+  pinTab?: PinnedTab;
   isDarkBackground?: boolean;
   dragDisabled?: boolean;
   disableContextMenu?: boolean;
@@ -72,9 +73,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
   onRename,
   onDelete,
   onBackgroundSettings,
-  onPin,
-  isPinned,
-  pinFull,
+  pinTab,
   isDarkBackground,
   dragDisabled,
   disableContextMenu,
@@ -151,26 +150,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
               Share Collection
             </ContextMenuItem>
           )}
-          {onPin && (
-            <ContextMenuItem onClick={onPin} disabled={!isPinned && pinFull}>
-              {isPinned ? (
-                <>
-                  <PinOff className="h-4 w-4 mr-2" />
-                  Unpin from Tab Bar
-                </>
-              ) : pinFull ? (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Tab Bar Full
-                </>
-              ) : (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Pin to Tab Bar
-                </>
-              )}
-            </ContextMenuItem>
-          )}
+          {pinTab && <PinTabMenuItem tab={pinTab} />}
           {onSelectAccessories && (
             <ContextMenuItem onClick={onSelectAccessories}>
               <Plus className="h-4 w-4 mr-2" />
@@ -257,15 +237,11 @@ interface CollectionListProps {
   disableContextMenu?: boolean;
   /** Whether edit mode is active (enables wiggle animation) */
   editMode?: boolean;
-  /** Callback when pin is requested for a collection */
-  onPin?: (collection: Collection) => void;
-  /** Check if a collection is pinned */
-  isPinned?: (collectionId: string) => boolean;
-  /** Whether the pin tab bar is full */
-  pinFull?: boolean;
+  /** Builds the pin descriptor for a collection; omit to hide the pin item. */
+  pinTabFor?: (collection: Collection) => PinnedTab;
 }
 
-export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchReady, onLoadingChange, groups, selectedGroupId, onGroupSelect, groupItemCounts, hideAccessoryCounts, groupsContent, groupsExpanded = true, onShare, onSelectAccessories, onRename, onDelete, onReorder, onCreateGroup, onBackgroundSettings, isDarkBackground, dragDisabled, touchMode, disableContextMenu, editMode, onPin, isPinned, pinFull }: CollectionListProps) {
+export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchReady, onLoadingChange, groups, selectedGroupId, onGroupSelect, groupItemCounts, hideAccessoryCounts, groupsContent, groupsExpanded = true, onShare, onSelectAccessories, onRename, onDelete, onReorder, onCreateGroup, onBackgroundSettings, isDarkBackground, dragDisabled, touchMode, disableContextMenu, editMode, pinTabFor }: CollectionListProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [loadedFromUrl, setLoadedFromUrl] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -466,9 +442,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
                       onRename={onRename ? () => onRename(collection) : undefined}
                       onDelete={onDelete ? () => onDelete(collection) : undefined}
                       onBackgroundSettings={onBackgroundSettings ? () => onBackgroundSettings(collection) : undefined}
-                      onPin={onPin ? () => onPin(collection) : undefined}
-                      isPinned={isPinned ? isPinned(collection.id) : false}
-                      pinFull={pinFull}
+                      pinTab={pinTabFor?.(collection)}
                       isDarkBackground={isDarkBackground}
                       dragDisabled={dragDisabled}
                       disableContextMenu={disableContextMenu}

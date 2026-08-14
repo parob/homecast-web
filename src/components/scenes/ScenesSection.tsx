@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ChevronRight, Loader2, Play, Plus, Zap } from 'lucide-react';
@@ -12,6 +12,15 @@ import { getIconColor } from '@/components/widgets/iconColors';
 import { isBuiltInScene, isHiddenBuiltInScene } from '@/lib/scenes';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
+  ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
+import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
+import { translateHomeKitError } from '@/lib/homekit-errors';
 import { SceneFormDialog } from './SceneFormDialog';
 import type { HomeKitScene } from '@/lib/graphql/types';
 
@@ -72,6 +81,12 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
   const [deleting, setDeleting] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingScene, setEditingScene] = useState<HomeKitScene | null>(null);
+  const [viewOnlyOpen, setViewOnlyOpen] = useState(false);
+
+  // Creating a scene writes to the HomeKit database, so it needs edit access
+  // the relay may not have. Checked up front — the form is long enough that
+  // failing at Create meant losing every device and value the user had set.
+  const relayCannotEdit = useRelayCannotEdit(homeId);
 
   const { data, refetch } = useQuery<{ scenes: HomeKitScene[] }>(GET_SCENES, {
     variables: { homeId },
@@ -79,6 +94,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
+  const pins = usePinnedTabs();
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
@@ -112,7 +128,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
           description: 'Managing scenes needs a newer version of the Homecast relay app.',
         });
       } else {
-        toast.error('Could not delete scene', { description: message });
+        toast.error('Could not delete scene', { description: translateHomeKitError(e, 'scene') });
       }
       setConfirmDelete(null);
     } finally {
@@ -134,9 +150,9 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
               ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
               : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
           }>
-            {scenes.map(scene => (
+            {scenes.map(scene => {
+              const tile = (
               <div
-                key={scene.id}
                 role="button"
                 tabIndex={0}
                 onClick={() => { setEditingScene(scene); setFormOpen(true); }}
@@ -170,9 +186,31 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                   </button>
                 </div>
               </div>
-            ))}
+              );
+              // Wrapped only where pinning is on offer, so the menu is never
+              // an empty box. Fragment keeps the grid's direct children intact.
+              if (!pins.enabled) return <Fragment key={scene.id}>{tile}</Fragment>;
+              return (
+                <ContextMenu key={scene.id}>
+                  <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuLabel className="text-xs text-muted-foreground font-normal">
+                      {scene.name}
+                    </ContextMenuLabel>
+                    <ContextMenuSeparator />
+                    <PinTabMenuItem
+                      tab={{ type: 'scene', id: scene.id, name: scene.name, homeId: homeId ?? undefined }}
+                    />
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            })}
             <button
-              onClick={() => { setEditingScene(null); setFormOpen(true); }}
+              onClick={() => {
+                if (relayCannotEdit) { setViewOnlyOpen(true); return; }
+                setEditingScene(null);
+                setFormOpen(true);
+              }}
               className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
                 isDarkBackground
                   ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
@@ -184,6 +222,10 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
           </div>
         </div>
       </AnimatedCollapse>
+
+      {viewOnlyOpen && (
+        <ViewOnlyHomeDialog open onOpenChange={setViewOnlyOpen} homeId={homeId} subject="scene" />
+      )}
 
       <SceneFormDialog
         open={formOpen}

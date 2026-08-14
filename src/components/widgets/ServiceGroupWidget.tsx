@@ -16,6 +16,8 @@ import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { getPrimaryServiceType } from '@/components/widgets/types';
 import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColors';
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -391,6 +393,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Read from context, not props — same reasoning as WidgetCard's menu items.
   const { historyAvailable, openGroupHistory } = useHistory();
   const canShowHistory = accessories.some(a => historyAvailable(a));
+  const pins = usePinnedTabs();
 
   const hasContextMenu = !disableTooltip && !isDragging;
 
@@ -1005,6 +1008,18 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 </div>
               )}
               <ContextMenuSeparator />
+              {pins.enabled && (
+                <PinTabMenuItem
+                  tab={{
+                    type: 'serviceGroup',
+                    id: group.id,
+                    name: group.name,
+                    // A group carries its own homeId when the relay sent one;
+                    // otherwise its members all share one, so any will do.
+                    homeId: group.homeId ?? accessories[0]?.homeId,
+                  }}
+                />
+              )}
               {canShowHistory && (
                 <ContextMenuItem onClick={() => openGroupHistory(group)}>
                   <LineChart className="h-4 w-4 mr-2" />

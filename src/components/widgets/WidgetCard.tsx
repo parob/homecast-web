@@ -21,6 +21,8 @@ import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -608,8 +610,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // is how the last menu item ended up wired in exactly one place.
   const { isTracked, openPriceHistory } = useDeals();
   const canShowPrices = !!accessory && isTracked(accessory);
+  // Same reasoning as the comment above: by context, not by prop. It also keeps
+  // the item off AccessoryWidget's hand-written memo comparator, where a
+  // forgotten prop silently stops the tile re-rendering.
+  const pins = usePinnedTabs();
+  const canPin = pins.enabled && !!accessory;
 
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory;
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -673,6 +680,16 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share Accessory
                 </ContextMenuItem>
+              )}
+              {canPin && accessory && (
+                <PinTabMenuItem
+                  tab={{
+                    type: 'accessory',
+                    id: accessory.id,
+                    name: accessory.name,
+                    homeId: accessory.homeId,
+                  }}
+                />
               )}
               {canShowHistory && accessory && (
                 <ContextMenuItem onClick={() => openHistory(accessory)}>

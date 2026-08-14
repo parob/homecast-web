@@ -1,33 +1,25 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import {
   Blinds, ChevronRight, Fan, Lightbulb, Loader2, Lock, Plug, Play, Power, Shield, Thermometer,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ActionConfirmDialog } from './ActionConfirmDialog';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  ContextMenu, ContextMenuContent, ContextMenuLabel,
+  ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { getIconColor } from '@/components/widgets/iconColors';
 import { isHomeActionVisible } from '@/lib/summary-sections';
 import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
-import { deriveHomeActions, type HomeAction, type HomeActionIcon } from './catalog';
+import { deriveHomeActions, HOME_ACTION_NAMES, type HomeAction } from './catalog';
+import type { RunHomeActionOverrides } from './useRunHomeAction';
+import { ACTION_ICONS } from './icons';
 
-/** Matches the choices in AccessoryPicker's SERVICE_TYPE_ICONS, so a chip looks like its widgets. */
-const ACTION_ICONS: Record<HomeActionIcon, LucideIcon> = {
-  lightbulb: Lightbulb,
-  blinds: Blinds,
-  lock: Lock,
-  fan: Fan,
-  outlet: Plug,
-  thermostat: Thermometer,
-  shield: Shield,
-  power: Power,
-};
-
-const CONFIRM_DESCRIPTION_ID = 'home-action-confirm-description';
 
 function useVisibleActions(accessories: HomeKitAccessory[], homeLayout: HomeLayoutData | null | undefined) {
   return useMemo(
@@ -76,26 +68,35 @@ export function ActionsPill({ accessories, homeLayout, open, onToggle, isDarkBac
   );
 }
 
-export function ActionsSection({ accessories, homeLayout, compact, isDarkBackground, open, isViewOnly, onRunAction }: {
+export function ActionsSection({ accessories, homeLayout, homeId, compact, isDarkBackground, open, isViewOnly, onRunAction }: {
   accessories: HomeKitAccessory[];
   homeLayout: HomeLayoutData | null | undefined;
+  /** Which home these actions belong to. Required to pin one — the catalog is
+   *  derived per-home, so the id alone does not identify it. */
+  homeId?: string | null;
   compact?: boolean;
   isDarkBackground?: boolean;
   /** Controlled expansion (pill in the summary row drives it). */
   open: boolean;
   isViewOnly?: boolean;
-  onRunAction: (action: HomeAction) => Promise<void>;
+  onRunAction: (action: HomeAction, opts?: RunHomeActionOverrides) => Promise<void>;
 }) {
   const actions = useVisibleActions(accessories, homeLayout);
+  const pins = usePinnedTabs();
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
 
   const run = async (action: HomeAction) => {
     setRunningId(action.id);
+    setProgress({ done: 0, total: action.targetCount });
     try {
-      await onRunAction(action);
+      await onRunAction(action, {
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
     } finally {
       setRunningId(null);
+      setProgress(null);
     }
   };
 
@@ -121,9 +122,8 @@ export function ActionsSection({ accessories, homeLayout, compact, isDarkBackgro
               // card stays in place so the row doesn't reflow under the press.
               const inert = action.disabled || !!isViewOnly || running;
 
-              return (
+              const card = (
                 <div
-                  key={action.id}
                   role="button"
                   tabIndex={inert ? -1 : 0}
                   aria-disabled={inert}
@@ -150,10 +150,20 @@ export function ActionsSection({ accessories, homeLayout, compact, isDarkBackgro
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className={cn('text-sm font-medium break-words line-clamp-2 transition-colors duration-300', isDarkBackground && 'text-white')}>
-                        {action.label}
+                        {running ? action.runningLabel : action.label}
                       </p>
-                      <p className={cn('text-[11px] transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}>
-                        {action.subtitle}
+                      {/* While it runs the subtitle carries progress instead of
+                          state: the state it describes is mid-change and about
+                          to be wrong, and a count is the only thing that
+                          distinguishes a slow action from a stuck one.
+                          aria-live so it is announced, not just seen. */}
+                      <p
+                        aria-live={running ? 'polite' : undefined}
+                        className={cn('text-[11px] transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
+                      >
+                        {running && progress
+                          ? `${progress.done} of ${progress.total} accessor${progress.total === 1 ? 'y' : 'ies'}`
+                          : action.subtitle}
                       </p>
                     </div>
                     {/* Decorative: the whole card is the button, since an
@@ -164,42 +174,41 @@ export function ActionsSection({ accessories, homeLayout, compact, isDarkBackgro
                   </div>
                 </div>
               );
+
+              // Same shape as the scene tile: wrapped only where pinning is on
+              // offer. The stored name comes from HOME_ACTION_NAMES, never
+              // action.label — the label flips with live device state, so a pin
+              // made while the lights were on would read "Turn all lights on".
+              if (!pins.enabled || !homeId) return <Fragment key={action.id}>{card}</Fragment>;
+              return (
+                <ContextMenu key={action.id}>
+                  <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuLabel className="text-xs text-muted-foreground font-normal">
+                      {HOME_ACTION_NAMES[action.id]}
+                    </ContextMenuLabel>
+                    <ContextMenuSeparator />
+                    <PinTabMenuItem
+                      tab={{
+                        type: 'action',
+                        id: action.id,
+                        name: HOME_ACTION_NAMES[action.id],
+                        homeId,
+                      }}
+                    />
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
             })}
           </div>
         </div>
       </AnimatedCollapse>
 
-      {/* Mounted only while there is something to confirm, so the content
-          always carries a real title and description.
-
-          `aria-describedby` is passed explicitly because the shared
-          AlertDialogContent hard-codes it to `undefined` — shadcn's opt-out
-          for dialogs that have no description, which also detaches the ones
-          that do. Naming the id here reconnects it for this dialog without
-          changing the behaviour of every other AlertDialog in the app. */}
-      {confirming && (
-        <AlertDialog open onOpenChange={(o) => { if (!o) setConfirming(null); }}>
-          <AlertDialogContent aria-describedby={CONFIRM_DESCRIPTION_ID}>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{confirming.label}?</AlertDialogTitle>
-              <AlertDialogDescription id={CONFIRM_DESCRIPTION_ID}>{confirming.confirm}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(e) => {
-                  e.preventDefault();
-                  const action = confirming;
-                  setConfirming(null);
-                  run(action);
-                }}
-              >
-                {confirming.label}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
+      <ActionConfirmDialog
+        action={confirming}
+        onCancel={() => setConfirming(null)}
+        onConfirm={(action) => { setConfirming(null); run(action); }}
+      />
     </>
   );
 }

@@ -37,7 +37,7 @@ import {
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME } from '@/lib/graphql/mutations';
+import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME, EXECUTE_SCENE } from '@/lib/graphql/mutations';
 import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
@@ -46,6 +46,7 @@ import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
 import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, invalidateAccessoriesForHome, normalizeAccessories, wasHydratedFromStorage, getCachedListLength } from '@/hooks/useHomeKitData';
+import { useLocalMode } from '@/hooks/useLocalMode';
 import { markBoot, reportColdStart } from '@/lib/boot-timing';
 import { buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
 import { browserLogger } from '@/lib/browser-logger';
@@ -121,7 +122,12 @@ import { SliderControl } from '@/components/widgets/shared';
 import { getIconColor, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColors';
 import { WidgetColorContext } from '@/components/widgets/WidgetCard';
 import { WebhookListView } from '@/components/webhooks';
-import { MobileTabBar, MAX_PINNED_TABS } from '@/components/layout/MobileTabBar';
+import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
+import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
+import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
+import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -188,6 +194,7 @@ import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialo
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { RelayStatusBadge } from '@/components/layout/RelayStatusBadge';
+import { LocalModeBadge } from '@/components/layout/LocalModeBadge';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
@@ -357,16 +364,15 @@ interface SortableRoomItemProps {
   onToggleShowHidden?: () => void;
   onShare?: () => void;
   onBackgroundSettings?: () => void;
-  onPin?: () => void;
-  isPinned?: boolean;
-  pinFull?: boolean;
+  /** Present when this row may be pinned; the menu item handles the rest. */
+  pinTab?: PinnedTab;
   isDarkBackground?: boolean;
   dragDisabled?: boolean;
   disableContextMenu?: boolean;
   editMode?: boolean;
 }
 
-const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
   // Rendered inside HistoryProvider — context, not props (28 forwarding
   // components is how menu items end up wired in exactly one place).
   const { analyticsAvailableFor, openAnalytics } = useHistory();
@@ -443,26 +449,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
             New Virtual Accessory
           </ContextMenuItem>
         )}
-        {onPin && (
-          <ContextMenuItem onClick={onPin} disabled={!isPinned && pinFull}>
-            {isPinned ? (
-              <>
-                <PinOff className="h-4 w-4 mr-2" />
-                Unpin from Tab Bar
-              </>
-            ) : pinFull ? (
-              <>
-                <Pin className="h-4 w-4 mr-2" />
-                Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-              </>
-            ) : (
-              <>
-                <Pin className="h-4 w-4 mr-2" />
-                Pin to Tab Bar
-              </>
-            )}
-          </ContextMenuItem>
-        )}
+        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {onToggleVisibility && (
           <ContextMenuItem onClick={onToggleVisibility}>
             {isHiddenUi ? (
@@ -734,9 +721,8 @@ interface SortableHomeItemProps {
   onCreateHelper?: () => void;
   onBackgroundSettings?: () => void;
   onCloudRelay?: () => void;
-  onPin?: () => void;
-  isPinned?: boolean;
-  pinFull?: boolean;
+  /** Present when this row may be pinned; the menu item handles the rest. */
+  pinTab?: PinnedTab;
   dragDisabled?: boolean;
   disableContextMenu?: boolean;
   children?: React.ReactNode;
@@ -745,7 +731,7 @@ interface SortableHomeItemProps {
   tourId?: string;
 }
 
-const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, onPin, isPinned, pinFull, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
+const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, pinTab, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
   const { analyticsAvailableFor, openAnalytics } = useHistory();
   const {
     attributes,
@@ -851,26 +837,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
               New Virtual Accessory
             </ContextMenuItem>
           )}
-          {onPin && (
-            <ContextMenuItem onClick={onPin} disabled={!isPinned && pinFull}>
-              {isPinned ? (
-                <>
-                  <PinOff className="h-4 w-4 mr-2" />
-                  Unpin from Tab Bar
-                </>
-              ) : pinFull ? (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-                </>
-              ) : (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Pin to Tab Bar
-                </>
-              )}
-            </ContextMenuItem>
-          )}
+          {pinTab && <PinTabMenuItem tab={pinTab} />}
           {onToggleVisibility && (
             <ContextMenuItem onClick={onToggleVisibility}>
               {isHiddenUi ? (
@@ -942,16 +909,15 @@ interface SortableGroupItemProps {
   onRename?: () => void;
   onDelete?: () => void;
   onBackgroundSettings?: () => void;
-  onPin?: () => void;
-  isPinned?: boolean;
-  pinFull?: boolean;
+  /** Present when this row may be pinned; the menu item handles the rest. */
+  pinTab?: PinnedTab;
   isDarkBackground?: boolean;
   dragDisabled?: boolean;
   disableContextMenu?: boolean;
   editMode?: boolean;
 }
 
-const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected, onSelect, accessoryCount = 0, hideAccessoryCounts, onShare, onSelectAccessories, onRename, onDelete, onBackgroundSettings, onPin, isPinned, pinFull, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected, onSelect, accessoryCount = 0, hideAccessoryCounts, onShare, onSelectAccessories, onRename, onDelete, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
   const {
     attributes,
     listeners,
@@ -1015,26 +981,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
             Share Group
           </ContextMenuItem>
         )}
-        {onPin && (
-          <ContextMenuItem onClick={onPin} disabled={!isPinned && pinFull}>
-            {isPinned ? (
-              <>
-                <PinOff className="h-4 w-4 mr-2" />
-                Unpin from Tab Bar
-              </>
-            ) : pinFull ? (
-              <>
-                <Pin className="h-4 w-4 mr-2" />
-                Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-              </>
-            ) : (
-              <>
-                <Pin className="h-4 w-4 mr-2" />
-                Pin to Tab Bar
-              </>
-            )}
-          </ContextMenuItem>
-        )}
+        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {onSelectAccessories && (
           <ContextMenuItem onClick={onSelectAccessories}>
             <Plus className="h-4 w-4 mr-2" />
@@ -1262,6 +1209,7 @@ const Dashboard = () => {
   // Track relay connection state (for Mac app mode)
   // In Community mode, there's no cloud WebSocket — the relay talks to HomeKit directly
   // Initialize from current relay state in case component mounts after relay is already connected
+  const { active: localModeActive } = useLocalMode();
   const [serverConnected, setServerConnected] = useState(() => {
     if (isCommunity && isRelayCapable()) return true; // Relay Mac: always "connected" (local HomeKit)
     const state = serverConnection.getState();
@@ -2427,6 +2375,7 @@ const Dashboard = () => {
   const [acceptInvitationMutation] = useMutation<AcceptHomeInvitationResponse>(ACCEPT_HOME_INVITATION);
   const [rejectInvitationMutation] = useMutation<RejectHomeInvitationResponse>(REJECT_HOME_INVITATION);
   const [dismissHomeMutation] = useMutation(DISMISS_HOME);
+  const [executeSceneMutation] = useMutation(EXECUTE_SCENE);
   const pendingInvitations = pendingInvitationsData?.pendingInvitations ?? [];
   const [pendingInvitationsOpen, setPendingInvitationsOpen] = useState(false);
 
@@ -2539,31 +2488,52 @@ const Dashboard = () => {
   saveSettingsRef.current = saveSettings;
 
   // === Pin to tab bar helpers ===
-  const isTabPinned = useCallback((type: PinnedTab['type'], id: string) => {
-    return pinnedTabs.some(t => t.type === type && t.id === id);
+  // Keyed through pinKey rather than (type, id): action ids are a closed union,
+  // not UUIDs, so the same action pinned in two homes used to collide.
+  const isTabPinned = useCallback((target: PinTarget) => {
+    const key = pinKey(target);
+    return pinnedTabs.some(t => pinKey(t) === key);
   }, [pinnedTabs]);
 
   const handlePinTab = useCallback((tab: PinnedTab) => {
     if (pinnedTabs.length >= MAX_PINNED_TABS) return;
-    if (isTabPinned(tab.type, tab.id)) return;
+    if (isTabPinned(tab)) return;
     const newPins = [...pinnedTabs, tab];
     setPinnedTabs(newPins);
     saveSettings({ pinnedTabs: newPins }, 'pinnedTabs');
   }, [pinnedTabs, isTabPinned, saveSettings]);
 
-  const handleUnpinTab = useCallback((type: PinnedTab['type'], id: string) => {
-    const newPins = pinnedTabs.filter(t => !(t.type === type && t.id === id));
+  const handleUnpinTab = useCallback((target: PinTarget) => {
+    const key = pinKey(target);
+    const newPins = pinnedTabs.filter(t => pinKey(t) !== key);
     setPinnedTabs(newPins);
     saveSettings({ pinnedTabs: newPins }, 'pinnedTabs');
   }, [pinnedTabs, saveSettings]);
 
-  const handleUpdateTabName = useCallback((type: string, id: string, customName: string | undefined) => {
-    const newPins = pinnedTabs.map(t =>
-      t.type === type && t.id === id ? { ...t, customName } : t
-    );
+  /**
+   * Pin or unpin in one call — what every menu item actually wants, and what
+   * collapses the `isTabPinned(...) ? unpin(...) : pin({...})` ternary that was
+   * repeated at all eight pin sites.
+   */
+  const togglePinTab = useCallback((tab: PinnedTab) => {
+    if (isTabPinned(tab)) handleUnpinTab(tab);
+    else handlePinTab(tab);
+  }, [isTabPinned, handleUnpinTab, handlePinTab]);
+
+  const handleUpdateTabName = useCallback((target: PinTarget, customName: string | undefined) => {
+    const key = pinKey(target);
+    const newPins = pinnedTabs.map(t => pinKey(t) === key ? { ...t, customName } : t);
     setPinnedTabs(newPins);
     saveSettings({ pinnedTabs: newPins }, 'pinnedTabs');
   }, [pinnedTabs, saveSettings]);
+
+  const pinnedTabsActions = useMemo<PinnedTabsActions>(() => ({
+    // Pinning is a mobile affordance; the desktop sidebar is its own navigation.
+    enabled: isMobile,
+    isPinned: isTabPinned,
+    isFull: pinnedTabs.length >= MAX_PINNED_TABS,
+    toggle: togglePinTab,
+  }), [isMobile, isTabPinned, pinnedTabs.length, togglePinTab]);
 
   const handleReorderTabs = useCallback((reordered: PinnedTab[]) => {
     setPinnedTabs(reordered);
@@ -2908,12 +2878,16 @@ const Dashboard = () => {
   }, [collectionItemOrder, saveSettings]);
 
   // Relay hooks for HomeKit data (works in both Mac app and browser mode via WebSocket)
-  const { data: relayHomesData, loading: relayHomesLoading, refetch: relayRefetchHomes } = useHomes({ skip: !serverConnected });
+  // In Local Mode these are served by this device's own HomeKit, so gating them
+  // on the cloud connection is the wrong question — a phone with no reachable
+  // cloud would otherwise refuse to fetch the very data it already has.
+  const relayDataReady = serverConnected || localModeActive;
+  const { data: relayHomesData, loading: relayHomesLoading, refetch: relayRefetchHomes } = useHomes({ skip: !relayDataReady });
   // Don't fetch relay data until we know a relay device is available — prevents premature
   // requests that fail because the server can't route to the relay yet.
   // Also check homes data (relayConnected) as a faster signal than GET_SESSIONS polling.
   const anyHomeRelayConnected = (relayHomesData || []).some(h => h.relayConnected === true);
-  const skipRelayData = !serverConnected || (!hasDeviceAccess && !anyHomeRelayConnected);
+  const skipRelayData = !relayDataReady || (!hasDeviceAccess && !anyHomeRelayConnected && !localModeActive);
   const { data: relayRoomsData, loading: relayRoomsLoading, refetch: relayRefetchRooms } = useRooms(selectedHomeId, { skip: skipRelayData });
   const { data: relayAccessoriesData, loading: relayAccessoriesLoading, error: relayAccessoriesError, refetch: relayRefetchAccessories } = useAccessories(selectedHomeId, { skip: skipRelayData });
   const { data: relayServiceGroupsData, refetch: relayRefetchServiceGroups } = useServiceGroups(selectedHomeId, { skip: skipRelayData });
@@ -3309,8 +3283,12 @@ const Dashboard = () => {
   // Update a characteristic value in the local cache (relay hooks cache)
   // This is used for optimistic updates, so isServerUpdate is false to always apply
   const updateCharacteristicInCache = useCallback((accessoryId: string, characteristicType: string, newValue: any) => {
-    // Get homeId from selectedHomeId or look up from allAccessoriesData (for collections view)
-    const homeId = selectedHomeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId;
+    // The accessory's own home wins over the one being viewed. Inside a home
+    // view the two agree; they diverge for a collection spanning homes, and for
+    // a pinned tab controlling an accessory that lives somewhere else — where
+    // trusting selectedHomeId wrote the update into the wrong home's cache, so
+    // the tile never moved.
+    const homeId = allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId || selectedHomeId;
     if (!homeId) return;
     // The newValue is already JSON-stringified by callers, so parse it first
     const parsedValue = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
@@ -3331,6 +3309,18 @@ const Dashboard = () => {
   const isViewOnly = selectedHomeRole === 'view';
   const canShare = selectedHomeRole === 'owner' || selectedHomeRole === 'admin';
 
+  /**
+   * View-only for a named home, rather than the one on screen.
+   *
+   * A pinned tab can act on a home the user is not currently in, where the
+   * ambient `isViewOnly` describes the wrong home's permissions in both
+   * directions — blocking a write they may make, or allowing one they may not.
+   */
+  const isHomeViewOnly = useCallback((homeId?: string | null) => {
+    if (!homeId) return isViewOnly;
+    return homes.find(h => h.id === homeId)?.role === 'view';
+  }, [homes, isViewOnly]);
+
   // Check if selected home's relay is offline (owner or shared).
   // Routing through SetupState pre-empts the accessoriesError path so the user
   // sees the dedicated "Your Mac relay is offline" card instead of NO_DEVICE.
@@ -3343,8 +3333,14 @@ const Dashboard = () => {
     // flash "Your Mac relay is offline" inside the relay app. Cloud-managed
     // homes are served by a different relay, so the flag is still meaningful.
     if (isRelayCapable() && isRelayEnabled() && !home.isCloudManaged) return false;
+    // Same reasoning one step further out: if this device is serving the home
+    // from its own HomeKit, the relay being down is true but no longer the
+    // user's problem, and telling them their home is unreachable while they
+    // are actively using it would be simply wrong. The recovery poll below
+    // keeps running, so we still notice the relay coming back.
+    if (localModeActive) return false;
     return home.relayConnected === false;
-  }, [selectedHomeId, homes]);
+  }, [selectedHomeId, homes, localModeActive]);
 
   // A flapping relay (e.g. a cloud-managed Mac on a flaky link) can drop for up
   // to ~60s every few minutes. Without a grace period the whole dashboard flashes
@@ -4467,6 +4463,17 @@ const Dashboard = () => {
     return accessories.filter(a => group.accessoryIds.includes(a.id));
   }, [accessories]);
 
+  /**
+   * The same, over every loaded home.
+   *
+   * `accessories` is the selected home's list, so a group pinned to the tab bar
+   * while another home is on screen would resolve to zero members and render an
+   * empty control.
+   */
+  const getAccessoriesInGroupAllHomes = useCallback((group: HomeKitServiceGroup) => {
+    return (allAccessoriesRef.current || []).filter(a => group.accessoryIds.includes(a.id));
+  }, []);
+
   // Categorize accessories by type
   const getAccessoryCategory = useCallback((accessory: HomeKitAccessory): string => {
     const category = accessory.category?.toLowerCase() || '';
@@ -4755,7 +4762,9 @@ const Dashboard = () => {
     updateCharacteristicInCache(accessoryId, characteristicType, JSON.stringify(newValue));
 
     // Get homeId from selectedHomeId or look up from accessory (for collection view)
-    const homeId = selectedHomeId || accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId;
+    // Accessory's own home first — see updateCharacteristicInCache. Sending a
+    // write tagged with the viewed home routes it to the wrong relay entirely.
+    const homeId = accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId || selectedHomeId;
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
@@ -4795,7 +4804,9 @@ const Dashboard = () => {
     updateCharacteristicInCache(accessoryId, characteristicType, JSON.stringify(value));
 
     // Get homeId from selectedHomeId or look up from accessory (for collection view)
-    const homeId = selectedHomeId || accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId;
+    // Accessory's own home first — see updateCharacteristicInCache. Sending a
+    // write tagged with the viewed home routes it to the wrong relay entirely.
+    const homeId = accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId || selectedHomeId;
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
@@ -4820,6 +4831,164 @@ const Dashboard = () => {
       writeCharacteristic(accessoryId, characteristicType, value),
     [writeCharacteristic],
   );
+
+  // === Pinned tab activation ===
+  // Everything below answers questions the tab bar can't: it is presentational
+  // and holds no queries, while a pin can point at any loaded home rather than
+  // the one on screen.
+
+  /** The pin's accessory, from the cross-home list rather than the current home's. */
+  const resolvePinnedAccessory = useCallback((tab: PinnedTab) => {
+    if (tab.type !== 'accessory') return undefined;
+    return (allAccessoriesData || []).find(a => a.id === tab.id);
+  }, [allAccessoriesData]);
+
+  const resolvePinnedGroup = useCallback((tab: PinnedTab) => {
+    if (tab.type !== 'serviceGroup') return undefined;
+    return allServiceGroupsData?.find(g => g.id === tab.id);
+  }, [allServiceGroupsData]);
+
+  /**
+   * Whether a pin still resolves.
+   *
+   * `loading` and `missing` are kept apart on purpose: before the relay has
+   * answered, everything looks deleted. Only once the list has actually arrived
+   * is an absent id evidence of anything.
+   */
+  const resolvePinnedTabStatus = useCallback((tab: PinnedTab): PinnedTabStatus => {
+    switch (tab.type) {
+      case 'accessory':
+        if (!allAccessoriesData) return 'loading';
+        return resolvePinnedAccessory(tab) ? 'ready' : 'missing';
+      case 'serviceGroup':
+        if (!allServiceGroupsData) return 'loading';
+        return resolvePinnedGroup(tab) ? 'ready' : 'missing';
+      case 'action':
+        // Derived from accessories, so it exists as long as its home does.
+        if (!allAccessoriesData) return 'loading';
+        return homes.some(h => h.id === tab.homeId) ? 'ready' : 'missing';
+      case 'home':
+        return homes.length === 0 ? 'loading' : homes.some(h => h.id === tab.id) ? 'ready' : 'missing';
+      default:
+        // Scenes, rooms and collections are cheap to attempt and expensive to
+        // verify from here — a wrong "missing" is worse than a failed tap.
+        return 'ready';
+    }
+  }, [allAccessoriesData, allServiceGroupsData, homes, resolvePinnedAccessory, resolvePinnedGroup]);
+
+  /**
+   * The widget a popover-type tab shows.
+   *
+   * The real one, not a bespoke panel: a pinned lamp gets the same brightness
+   * bar and colour picker as its tile, and gains whatever the tile gains.
+   * Handlers are the grid's own, which is why the cross-home homeId precedence
+   * had to be fixed first — these run while another home is on screen.
+   */
+  const renderPinnedControl = useCallback((tab: PinnedTab): React.ReactNode => {
+    if (tab.type === 'accessory') {
+      const accessory = resolvePinnedAccessory(tab);
+      if (!accessory) return null;
+      return (
+        <AccessoryWidget
+          homeName={getHomeName(accessory.homeId)}
+          accessory={accessory}
+          onToggle={handleToggle}
+          onSlider={handleSlider}
+          onSetValue={writeCharacteristic}
+          getEffectiveValue={getEffectiveValue}
+          onFinishEditing={() => {}}
+          compact={false}
+          expanded
+          iconStyle={activeIconStyle}
+        />
+      );
+    }
+    if (tab.type === 'serviceGroup') {
+      const group = resolvePinnedGroup(tab);
+      if (!group) return null;
+      const members = getAccessoriesInGroupAllHomes(group);
+      return (
+        <ServiceGroupWidget
+          group={group}
+          accessories={members}
+          compact={false}
+          homeName={getHomeName(group.homeId ?? members[0]?.homeId)}
+          onToggle={(checked) => handleGroupToggle(group.id, checked, group.homeId ?? members[0]?.homeId)}
+          onSlider={(charType, value) => handleGroupSlider(group.id, charType, value, group.homeId ?? members[0]?.homeId)}
+          onAccessoryToggle={handleToggle}
+          onAccessorySlider={handleSlider}
+          getEffectiveValue={getEffectiveValue}
+          iconStyle={activeIconStyle}
+        />
+      );
+    }
+    return null;
+  }, [resolvePinnedAccessory, resolvePinnedGroup, handleToggle, handleSlider, writeCharacteristic,
+      getEffectiveValue, handleGroupToggle, handleGroupSlider, getAccessoriesInGroupAllHomes,
+      activeIconStyle, getHomeName]);
+
+  /**
+   * An action awaiting its confirm dialog, raised from the tab bar.
+   *
+   * Carries its own home rather than looking one up by action id afterwards:
+   * the same action can be pinned in two homes, and finding it by id alone
+   * would confirm one home's "Everything off" and run the other's.
+   */
+  const [pinnedActionConfirm, setPinnedActionConfirm] =
+    useState<{ action: HomeAction; homeId: string } | null>(null);
+
+  const runPinnedAction = useCallback(async (action: HomeAction, homeId: string) => {
+    await runHomeAction(action, { homeId, isViewOnly: isHomeViewOnly(homeId) });
+  }, [runHomeAction, isHomeViewOnly]);
+
+  /**
+   * What a run-type tab does when pressed, and what a dead tab says.
+   *
+   * Resolves only when the work is done — the bar spins its icon until then.
+   */
+  const activatePinnedTab = useCallback(async (tab: PinnedTab) => {
+    const label = tab.customName || tab.name;
+
+    if (resolvePinnedTabStatus(tab) === 'missing') {
+      toast.error(`"${label}" is no longer available`, {
+        description: 'It may have been deleted. Unpin it in Settings → Tab Bar.',
+      });
+      return;
+    }
+
+    if (tab.type === 'scene') {
+      try {
+        await executeSceneMutation({ variables: { sceneId: tab.id, homeId: tab.homeId } });
+        toast.success(`Ran "${label}"`);
+      } catch (e: any) {
+        toast.error('Scene failed', { description: String(e?.message ?? e) });
+      }
+      return;
+    }
+
+    if (tab.type === 'action') {
+      // Rebuilt from the pin's own home, not the one on screen.
+      const homeAccessories = (allAccessoriesData || [])
+        .filter(a => a.homeId === tab.homeId) as import('@/native/homekit-bridge').HomeKitAccessory[];
+      const action = deriveHomeActions(homeAccessories).find(a => a.id === tab.id);
+      if (!action) {
+        toast.error(`"${label}" has nothing to act on in this home`);
+        return;
+      }
+      if (action.disabled) {
+        toast.info(action.subtitle);
+        return;
+      }
+      // Security and Everything off are gated the same way here as in the grid.
+      if (action.confirm) {
+        setPinnedActionConfirm({ action, homeId: tab.homeId! });
+        return;
+      }
+      await runPinnedAction(action, tab.homeId!);
+    }
+  }, [resolvePinnedTabStatus, executeSceneMutation, allAccessoriesData, runPinnedAction]);
+
+
 
   // Stable callback for toggling hidden items visibility (shared by all widgets)
   /**
@@ -5702,6 +5871,13 @@ const Dashboard = () => {
   // Right menu for header (three dots menu)
   const headerRightMenu = (
     <>
+    {/* Immediately left of the search icon, and outside the hasContentAccess
+        guard: Local Mode's whole point is that it works before setup is
+        finished, so the badge has to survive the states where search does not.
+        It lives here rather than in leftBadge because the "Guest" pill sits
+        between leftBadge and rightMenu — only this position is adjacent to
+        search in both header layouts and in every auth state. */}
+    <LocalModeBadge isDarkBackground={isDarkBackground} onOpenSettings={() => setSettingsOpen(true)} />
     {hasContentAccess && (
     <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
@@ -5800,35 +5976,7 @@ const Dashboard = () => {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </DropdownMenuItem>
-            {isMobile && (
-            <DropdownMenuItem
-              onClick={() => {
-                if (isTabPinned('collection', selectedCollectionId!)) {
-                  handleUnpinTab('collection', selectedCollectionId!);
-                } else if (selectedCollection) {
-                  handlePinTab({ type: 'collection', id: selectedCollectionId!, name: selectedCollection.name });
-                }
-              }}
-              disabled={!isTabPinned('collection', selectedCollectionId!) && pinnedTabs.length >= MAX_PINNED_TABS}
-            >
-              {isTabPinned('collection', selectedCollectionId!) ? (
-                <>
-                  <PinOff className="h-4 w-4 mr-2" />
-                  Unpin from Tab Bar
-                </>
-              ) : pinnedTabs.length >= MAX_PINNED_TABS ? (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-                </>
-              ) : (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Pin to Tab Bar
-                </>
-              )}
-            </DropdownMenuItem>
-            )}
+            {selectedCollection && <PinTabMenuItem as="dropdown" tab={{ type: 'collection', id: selectedCollection.id, name: selectedCollection.name }} />}
             <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Select Accessories
@@ -5904,35 +6052,16 @@ const Dashboard = () => {
               <LineChart className="h-4 w-4 mr-2" />
               Analytics
             </DropdownMenuItem>
-            {isMobile && (
-            <DropdownMenuItem
-              onClick={() => {
-                const room = rooms.find(r => r.id === selectedRoomId);
-                if (isTabPinned('room', selectedRoomId!)) {
-                  handleUnpinTab('room', selectedRoomId!);
-                } else if (room) {
-                  handlePinTab({ type: 'room', id: selectedRoomId!, name: room.name, homeId: selectedHomeId! });
-                }
-              }}
-              disabled={!isTabPinned('room', selectedRoomId!) && pinnedTabs.length >= MAX_PINNED_TABS}
-            >
-              {isTabPinned('room', selectedRoomId!) ? (
-                <>
-                  <PinOff className="h-4 w-4 mr-2" />
-                  Unpin from Tab Bar
-                </>
-              ) : pinnedTabs.length >= MAX_PINNED_TABS ? (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-                </>
-              ) : (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Pin to Tab Bar
-                </>
-              )}
-            </DropdownMenuItem>
+            {selectedRoomId && selectedHomeId && (
+              <PinTabMenuItem
+                as="dropdown"
+                tab={{
+                  type: 'room',
+                  id: selectedRoomId,
+                  name: rooms.find(r => r.id === selectedRoomId)?.name || 'Room',
+                  homeId: selectedHomeId,
+                }}
+              />
             )}
             <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const room = rooms.find(r => r.id === selectedRoomId);
@@ -6017,35 +6146,15 @@ const Dashboard = () => {
               <Blocks className="h-4 w-4 mr-2" />
               New Virtual Accessory
             </DropdownMenuItem>
-            {isMobile && (
-            <DropdownMenuItem
-              onClick={() => {
-                const home = homes.find(h => h.id === selectedHomeId);
-                if (isTabPinned('home', selectedHomeId!)) {
-                  handleUnpinTab('home', selectedHomeId!);
-                } else if (home) {
-                  handlePinTab({ type: 'home', id: selectedHomeId!, name: home.name });
-                }
-              }}
-              disabled={!isTabPinned('home', selectedHomeId!) && pinnedTabs.length >= MAX_PINNED_TABS}
-            >
-              {isTabPinned('home', selectedHomeId!) ? (
-                <>
-                  <PinOff className="h-4 w-4 mr-2" />
-                  Unpin from Tab Bar
-                </>
-              ) : pinnedTabs.length >= MAX_PINNED_TABS ? (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-                </>
-              ) : (
-                <>
-                  <Pin className="h-4 w-4 mr-2" />
-                  Pin to Tab Bar
-                </>
-              )}
-            </DropdownMenuItem>
+            {selectedHomeId && (
+              <PinTabMenuItem
+                as="dropdown"
+                tab={{
+                  type: 'home',
+                  id: selectedHomeId,
+                  name: homes.find(h => h.id === selectedHomeId)?.name || 'Home',
+                }}
+              />
             )}
             <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
@@ -6184,6 +6293,7 @@ const Dashboard = () => {
   );
 
   return (
+    <PinnedTabsProvider value={pinnedTabsActions}>
     <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
     <DealsProvider
       enabled={dealsEffectivelyEnabled}
@@ -6321,9 +6431,7 @@ const Dashboard = () => {
                                         toast.success('Home removed');
                                       } catch { toast.error('Failed to remove home'); }
                                     } : undefined}
-                                    onPin={isMobile ? () => isTabPinned('home', home.id) ? handleUnpinTab('home', home.id) : handlePinTab({ type: 'home', id: home.id, name: home.name }) : undefined}
-                                    isPinned={isTabPinned('home', home.id)}
-                                    pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                                    pinTab={{ type: 'home', id: home.id, name: home.name }}
                                     isDarkBackground={isDarkBackground}
                                     dragDisabled={!dndEnabled || !!sidebarActiveId}
                                     disableContextMenu={isTouchDevice && editMode}
@@ -6454,9 +6562,7 @@ const Dashboard = () => {
                                                       onToggleShowHidden={handleToggleShowHidden}
                                                       onShare={selectedHomeId && canShare ? () => { setSidebarShareRoom({ room, homeId: selectedHomeId }); setSidebarOpen(false); } : undefined}
                                                       onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'room', id: room.id, name: room.name }); setBackgroundSettingsOpen(true); setSidebarOpen(false); }}
-                                                      onPin={isMobile && selectedHomeId ? () => isTabPinned('room', room.id) ? handleUnpinTab('room', room.id) : handlePinTab({ type: 'room', id: room.id, name: room.name, homeId: selectedHomeId }) : undefined}
-                                                      isPinned={isTabPinned('room', room.id)}
-                                                      pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                                                      pinTab={selectedHomeId ? { type: 'room', id: room.id, name: room.name, homeId: selectedHomeId } : undefined}
                                                       isDarkBackground={isDarkBackground}
                                                       dragDisabled={!dndEnabled}
                                                       disableContextMenu={isTouchDevice && editMode}
@@ -6533,9 +6639,7 @@ const Dashboard = () => {
                         setBackgroundSettingsOpen(true);
                         setSidebarOpen(false);
                       }}
-                      onPin={isMobile ? (collection) => isTabPinned('collection', collection.id) ? handleUnpinTab('collection', collection.id) : handlePinTab({ type: 'collection', id: collection.id, name: collection.name }) : undefined}
-                      isPinned={(collectionId) => isTabPinned('collection', collectionId)}
-                      pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                      pinTabFor={(collection) => ({ type: 'collection', id: collection.id, name: collection.name })}
                       isDarkBackground={isDarkBackground}
                       dragDisabled={!dndEnabled}
                       touchMode={isTouchDevice}
@@ -6568,9 +6672,7 @@ const Dashboard = () => {
                                   setBackgroundSettingsOpen(true);
                                   setSidebarOpen(false);
                                 }}
-                                onPin={isMobile && selectedCollection ? () => isTabPinned('collectionGroup', group.id) ? handleUnpinTab('collectionGroup', group.id) : handlePinTab({ type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id }) : undefined}
-                                isPinned={isTabPinned('collectionGroup', group.id)}
-                                pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                                pinTab={selectedCollection ? { type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id } : undefined}
                                 isDarkBackground={isDarkBackground}
                                 dragDisabled={!dndEnabled}
                                 disableContextMenu={isTouchDevice && editMode}
@@ -6706,9 +6808,25 @@ const Dashboard = () => {
               handleSelectCollectionGroup(groupId);
             }
           }}
+          onActivate={activatePinnedTab}
+          renderControl={renderPinnedControl}
+          resolveStatus={resolvePinnedTabStatus}
+          resolveAccessory={resolvePinnedAccessory}
           isDarkBackground={isDarkBackground}
         />
       )}
+
+      {/* Raised by a pinned action that carries a confirm, so the tab bar is
+          gated exactly as the Actions grid is. */}
+      <ActionConfirmDialog
+        action={pinnedActionConfirm?.action ?? null}
+        onCancel={() => setPinnedActionConfirm(null)}
+        onConfirm={(action) => {
+          const homeId = pinnedActionConfirm?.homeId;
+          setPinnedActionConfirm(null);
+          if (homeId) void runPinnedAction(action, homeId);
+        }}
+      />
 
       <AccessorySearch
         open={searchOpen}
@@ -6808,9 +6926,7 @@ const Dashboard = () => {
                                   toast.success('Home removed');
                                 } catch { toast.error('Failed to remove home'); }
                               } : undefined}
-                              onPin={isMobile ? () => isTabPinned('home', home.id) ? handleUnpinTab('home', home.id) : handlePinTab({ type: 'home', id: home.id, name: home.name }) : undefined}
-                              isPinned={isTabPinned('home', home.id)}
-                              pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                              pinTab={{ type: 'home', id: home.id, name: home.name }}
                               dragDisabled={!dndEnabled || !!sidebarActiveId}
                               disableContextMenu={isTouchDevice && editMode}
                               editMode={isTouchDevice && editMode}
@@ -6926,9 +7042,7 @@ const Dashboard = () => {
                                                 onToggleShowHidden={handleToggleShowHidden}
                                                 onShare={selectedHomeId && canShare ? () => setSidebarShareRoom({ room, homeId: selectedHomeId }) : undefined}
                                                 onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'room', id: room.id, name: room.name }); setBackgroundSettingsOpen(true); }}
-                                                onPin={isMobile && selectedHomeId ? () => isTabPinned('room', room.id) ? handleUnpinTab('room', room.id) : handlePinTab({ type: 'room', id: room.id, name: room.name, homeId: selectedHomeId }) : undefined}
-                                                isPinned={isTabPinned('room', room.id)}
-                                                pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                                                pinTab={selectedHomeId ? { type: 'room', id: room.id, name: room.name, homeId: selectedHomeId } : undefined}
                                                 isDarkBackground={isDarkBackground}
                                                 dragDisabled={!dndEnabled}
                                                 disableContextMenu={isTouchDevice && editMode}
@@ -6994,9 +7108,7 @@ const Dashboard = () => {
                   setBackgroundSettingsTarget({ type: 'collection', id: collection.id, name: collection.name });
                   setBackgroundSettingsOpen(true);
                 }}
-                onPin={isMobile ? (collection) => isTabPinned('collection', collection.id) ? handleUnpinTab('collection', collection.id) : handlePinTab({ type: 'collection', id: collection.id, name: collection.name }) : undefined}
-                isPinned={(collectionId) => isTabPinned('collection', collectionId)}
-                pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                pinTabFor={(collection) => ({ type: 'collection', id: collection.id, name: collection.name })}
                 isDarkBackground={isDarkBackground}
                 dragDisabled={!dndEnabled}
                 touchMode={isTouchDevice}
@@ -7028,9 +7140,7 @@ const Dashboard = () => {
                             setBackgroundSettingsTarget({ type: 'collectionGroup', id: group.id, name: group.name, parentId: selectedCollection?.id });
                             setBackgroundSettingsOpen(true);
                           }}
-                          onPin={isMobile && selectedCollection ? () => isTabPinned('collectionGroup', group.id) ? handleUnpinTab('collectionGroup', group.id) : handlePinTab({ type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id }) : undefined}
-                          isPinned={isTabPinned('collectionGroup', group.id)}
-                          pinFull={pinnedTabs.length >= MAX_PINNED_TABS}
+                          pinTab={selectedCollection ? { type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id } : undefined}
                           isDarkBackground={isDarkBackground}
                           dragDisabled={!dndEnabled}
                           disableContextMenu={isTouchDevice && editMode}
@@ -7365,35 +7475,7 @@ const Dashboard = () => {
                                   Share Room
                                 </DropdownMenuItem>
                               )}
-                              {isMobile && selectedHomeId && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    if (isTabPinned('room', selectedRoomId)) {
-                                      handleUnpinTab('room', selectedRoomId);
-                                    } else if (currentRoom) {
-                                      handlePinTab({ type: 'room', id: selectedRoomId, name: roomName, homeId: selectedHomeId });
-                                    }
-                                  }}
-                                  disabled={!isTabPinned('room', selectedRoomId) && pinnedTabs.length >= MAX_PINNED_TABS}
-                                >
-                                  {isTabPinned('room', selectedRoomId) ? (
-                                    <>
-                                      <PinOff className="h-4 w-4 mr-2" />
-                                      Unpin from Tab Bar
-                                    </>
-                                  ) : pinnedTabs.length >= MAX_PINNED_TABS ? (
-                                    <>
-                                      <Pin className="h-4 w-4 mr-2" />
-                                      Tab Bar Full ({MAX_PINNED_TABS}/{MAX_PINNED_TABS})
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Pin className="h-4 w-4 mr-2" />
-                                      Pin to Tab Bar
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-                              )}
+                              {currentRoom && selectedHomeId && <PinTabMenuItem as="dropdown" tab={{ type: 'room', id: selectedRoomId, name: roomName, homeId: selectedHomeId }} />}
                               {selectedHomeId && !isViewOnly && (
                                 <DropdownMenuItem onClick={() => toggleVisibility('room', 'ui', selectedHomeId, selectedRoomId)}>
                                   {isRoomActuallyHidden(selectedHomeId, selectedRoomId) ? (
@@ -7543,6 +7625,7 @@ const Dashboard = () => {
                     {showActions && <ActionsSection
                       accessories={actionAccessories}
                       homeLayout={homeLayout}
+                      homeId={selectedHomeId}
                       compact={compactMode}
                       isDarkBackground={isDarkBackground}
                       open={actionsOpen}
@@ -8875,6 +8958,7 @@ const Dashboard = () => {
     </HistoryProvider>
     </DealsProvider>
     </VirtualAccessoryEditProvider>
+    </PinnedTabsProvider>
   );
 };
 

@@ -15,15 +15,52 @@
 export const INSUFFICIENT_HOMEKIT_PRIVILEGES = 'INSUFFICIENT_HOMEKIT_PRIVILEGES';
 
 /**
+ * What the missing permission actually blocks. The same HomeKit access control
+ * gates scenes and automations alike, but naming the wrong one reads as a
+ * non-sequitur — a user told "HomeKit automations can't be changed" after
+ * failing to save a *scene* reasonably concludes we've misdiagnosed it.
+ */
+export type ViewOnlySubject = 'automation' | 'scene' | 'both';
+
+const VIEW_ONLY_SUBJECT_TEXT: Record<ViewOnlySubject, string> = {
+  automation: 'HomeKit automations',
+  scene: 'HomeKit scenes',
+  both: 'HomeKit scenes and automations',
+};
+
+/**
  * The self-contained version, for errors surfaced over the API and to MCP
  * agents. Unlike the inline UI notices it keeps the older-OS alias inline —
  * there's no tooltip on an error payload, and a user on an older iOS looking
  * for "Add & Edit Accessories" won't find it under that name.
  */
-export const HOMEKIT_EDIT_PERMISSION_MESSAGE =
-  "The relay's Apple ID has view-only access to this home, so HomeKit automations " +
-  'can\'t be changed. In Apple Home → Home Settings, enable "Add & Edit Accessories" ' +
-  'for the relay ("Allow Editing" on older iOS and macOS).';
+export function homeViewOnlyMessage(subject: ViewOnlySubject = 'automation'): string {
+  return (
+    `The relay's Apple ID has view-only access to this home, so ${VIEW_ONLY_SUBJECT_TEXT[subject]} ` +
+    'can\'t be changed. In Apple Home → Home Settings, enable "Add & Edit Accessories" ' +
+    'for the relay ("Allow Editing" on older iOS and macOS).'
+  );
+}
+
+/**
+ * The automation phrasing, unchanged — this is the constant mirrored in the
+ * cloud server's homekit_errors.py, so it stays byte-identical.
+ */
+export const HOMEKIT_EDIT_PERMISSION_MESSAGE = homeViewOnlyMessage('automation');
+
+/**
+ * Who the user has to grant access to, which is not the same person in both
+ * setups. A Cloud Relay is a Homecast-run Apple ID the user invited to their
+ * home by email; a self-hosted relay is their own Mac. "The relay user" covered
+ * both by naming neither, and left cloud users hunting for an entry in Home
+ * Settings that reads as a stranger's email address.
+ */
+export type RelayKind = 'cloud' | 'self-hosted';
+
+const RELAY_KIND_WHO: Record<RelayKind, string> = {
+  cloud: 'the Homecast relay',
+  'self-hosted': "your relay's Apple ID",
+};
 
 /**
  * The fix alone, as a path rather than a sentence.
@@ -32,9 +69,16 @@ export const HOMEKIT_EDIT_PERMISSION_MESSAGE =
  * relay user, and enable…") this ran to 25 words and got embedded inside
  * another sentence, producing 40–50 word notices nobody read. A path is
  * scannable and survives being dropped into any surface.
+ *
+ * Pass `undefined` when the relay kind isn't known yet — it rides a separate
+ * payload that can still be loading. That falls back to the original
+ * relay-agnostic "the relay user", which is vague but true of both; defaulting
+ * to either concrete kind would name the wrong one half the time.
  */
-export const HOMEKIT_EDIT_PERMISSION_FIX =
-  'Apple Home → Home Settings → the relay user → "Add & Edit Accessories".';
+export function homeEditPermissionFix(relayKind?: RelayKind): string {
+  const who = relayKind ? RELAY_KIND_WHO[relayKind] : 'the relay user';
+  return `Apple Home → Home Settings → ${who} → "Add & Edit Accessories".`;
+}
 
 /**
  * The older-OS alias. Genuinely useful, but not worth a parenthetical in every
@@ -86,9 +130,14 @@ export function isInsufficientHomeKitPrivileges(error: unknown): boolean {
   return text.includes(INSUFFICIENT_HOMEKIT_PRIVILEGES) || /insufficient privileges/i.test(text);
 }
 
-/** Translate an error for display; unrelated errors keep their original text. */
-export function translateHomeKitError(error: unknown): string {
-  if (isInsufficientHomeKitPrivileges(error)) return HOMEKIT_EDIT_PERMISSION_MESSAGE;
+/**
+ * Translate an error for display; unrelated errors keep their original text.
+ *
+ * `subject` defaults to 'automation' so every call site that predates scene
+ * support keeps its exact wording.
+ */
+export function translateHomeKitError(error: unknown, subject: ViewOnlySubject = 'automation'): string {
+  if (isInsufficientHomeKitPrivileges(error)) return homeViewOnlyMessage(subject);
   const message = (error as { message?: unknown })?.message;
   return typeof message === 'string' && message.length > 0 ? message : String(error);
 }

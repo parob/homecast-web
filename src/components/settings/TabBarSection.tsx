@@ -17,12 +17,12 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { PinnedTab } from '@/lib/graphql/types';
+import { pinKey, PIN_TYPE_LABELS, type PinnedTab, type PinTarget } from '@/lib/pinned-tabs';
 
 interface TabBarSectionProps {
   pinnedTabs: PinnedTab[];
-  handleUnpinTab: (type: string, id: string) => void;
-  handleUpdateTabName: (type: string, id: string, customName: string | undefined) => void;
+  handleUnpinTab: (target: PinTarget) => void;
+  handleUpdateTabName: (target: PinTarget, customName: string | undefined) => void;
   handleReorderTabs: (reordered: PinnedTab[]) => void;
   maxPinnedTabs: number;
 }
@@ -39,7 +39,7 @@ export function TabBarSection({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const itemIds = pinnedTabs.map((tab) => `${tab.type}-${tab.id}`);
+  const itemIds = pinnedTabs.map(pinKey);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -53,7 +53,9 @@ export function TabBarSection({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Pin up to {maxPinnedTabs} homes, rooms, or collections for quick access on mobile. Long-press items in the sidebar to pin them.
+        Pin up to {maxPinnedTabs} items for quick access on mobile — homes, rooms, collections,
+        scenes, actions, accessories or service groups. Long-press an item in the sidebar, or a
+        tile on the dashboard, to pin it.
       </p>
       {pinnedTabs.length > 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -61,10 +63,10 @@ export function TabBarSection({
             <div className="space-y-1">
               {pinnedTabs.map((tab) => (
                 <TabRow
-                  key={`${tab.type}-${tab.id}`}
+                  key={pinKey(tab)}
                   tab={tab}
-                  onUnpin={() => handleUnpinTab(tab.type, tab.id)}
-                  onUpdateName={(customName) => handleUpdateTabName(tab.type, tab.id, customName)}
+                  onUnpin={() => handleUnpinTab(tab)}
+                  onUpdateName={(customName) => handleUpdateTabName(tab, customName)}
                 />
               ))}
             </div>
@@ -83,7 +85,7 @@ function TabRow({ tab, onUnpin, onUpdateName }: {
   onUpdateName: (customName: string | undefined) => void;
 }) {
   const [value, setValue] = useState(tab.customName ?? '');
-  const sortableId = `${tab.type}-${tab.id}`;
+  const sortableId = pinKey(tab);
   const {
     attributes,
     listeners,
@@ -115,7 +117,7 @@ function TabRow({ tab, onUnpin, onUpdateName }: {
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
           <span className="text-sm truncate">{tab.name}</span>
-          <span className="text-[10px] text-muted-foreground shrink-0">{tab.type}</span>
+          <span className="text-[10px] text-muted-foreground shrink-0">{PIN_TYPE_LABELS[tab.type]}</span>
         </div>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={onUnpin}>
           <X className="h-3 w-3" />
