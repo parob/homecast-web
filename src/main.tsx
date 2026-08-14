@@ -92,6 +92,12 @@ if (!config.isCommunity) {
     .catch(err => console.error("[Homecast] Local Mode init failed:", err));
 }
 
+// Cache the app shell so the native apps open instantly and keep working with
+// no network. Only registers on the cloud hosts — Community mode is already
+// served locally. See lib/service-worker.ts.
+import { initServiceWorker } from "./lib/service-worker";
+initServiceWorker();
+
 // Touch press feedback — JS-based because CSS :active is unreliable in iOS WKWebView
 // (isTextInteractionEnabled=false suppresses :active, Tailwind preflight kills tap-highlight)
 const PRESSABLE = 'button, a[href], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="option"], [role="switch"]';
