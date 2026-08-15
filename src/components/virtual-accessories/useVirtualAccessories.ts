@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 import { VIRTUAL_ACCESSORIES } from '@/lib/graphql/queries';
 import { SAVE_VIRTUAL_ACCESSORY, DELETE_VIRTUAL_ACCESSORY } from '@/lib/graphql/mutations';
 import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
@@ -66,6 +67,7 @@ export interface VirtualTimerInfo {
 
 export function useVirtualAccessories(homeId: string | null, options: { active?: boolean } = {}) {
   const active = options.active ?? true;
+  const { isConnected } = useWebSocket();
   const [states, setStates] = useState<Record<string, unknown>>({});
   const [timers, setTimers] = useState<Record<string, VirtualTimerInfo>>({});
   /** Null while unknown; false once we know the engine isn't reachable. */
@@ -126,7 +128,20 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
       // than blanking a countdown that is still running.
       if (res?.timers) setTimers(res.timers);
       setEngineLive(true);
-    } catch {
+    } catch (err) {
+      // "The transport is not up yet" is not "the engine is gone".
+      //
+      // This poll fires as soon as a home and its helpers are known, which on a
+      // cold launch is before the socket has finished connecting — and the
+      // server's affinity redirect can kill the first socket underneath it a
+      // moment later. Both surfaced here as an exception, and calling that
+      // engine-is-dead disabled every virtual control for a full poll interval
+      // after every single launch. Leave the previous verdict alone and wait
+      // for the retry the connection change triggers below.
+      const code = (err as { code?: string } | null)?.code;
+      const message = (err as { message?: string } | null)?.message ?? '';
+      if (code === 'DISCONNECTED' || /not connected|not active/i.test(message)) return;
+
       // Relay offline, or running a build without helper support. Values stay
       // unknown and controls disable themselves — better than showing a stale
       // value beside a control that would act on it.
@@ -141,7 +156,11 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
     void refreshStates();
     const t = setInterval(() => { void refreshStates(); }, STATE_POLL_MS);
     return () => clearInterval(t);
-  }, [active, homeId, helpers.length, refreshStates]);
+    // `isConnected` is a trigger, not a gate: it re-polls the moment the socket
+    // becomes usable, instead of leaving the values blank for the rest of the
+    // interval. Deliberately not a precondition — community mode and Local Mode
+    // serve this request without a cloud socket at all.
+  }, [active, homeId, helpers.length, refreshStates, isConnected]);
 
   const operate = useCallback(async (
     accessoryId: string,

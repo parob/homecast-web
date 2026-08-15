@@ -8,6 +8,7 @@
 import { HomeKit, HomeKitEvent, isRelayCapable, isRelayEnabled, withCallReason } from '../native/homekit-bridge';
 import { executeHomeKitAction, setAccessoryLimit as setLocalHandlerAccessoryLimit, isAccessoryAllowed } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { logEvent } from '../lib/request-log';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
@@ -1094,6 +1095,9 @@ export class ServerWebSocket {
       } else if (message.type === 'connected') {
         // Server connection info - connection is now fully established
         console.log(`[ServerWS] Server info: instance=${message.serverInstanceId}, pubsub=${message.pubsubEnabled}`);
+        // Logged so the request panel shows where the server's hello lands
+        // relative to the app's opening burst — see the redirect note below.
+        logEvent('server', `hello ${String(message.serverInstanceId ?? '').slice(-6)}`);
         this.callbacks.onConnected?.();
       } else if (message.type === 'ping') {
         // Server ping - respond with pong
@@ -1117,6 +1121,10 @@ export class ServerWebSocket {
         const target = message.target as string;
         const reason = message.reason as string || 'unknown';
         console.log(`[ServerWS] Server requested redirect to ${target} (reason: ${reason})`);
+        // The affinity redirect arrives ~90ms after connect and tears the
+        // socket down under whatever the app has already sent. In the log it is
+        // the thing that explains a whole round of DISCONNECTED requests.
+        logEvent('server', `redirect (${reason})`);
         this.redirectTo(target);
       } else if (message.type === 'reconnect') {
         // Server requesting graceful reconnect (Cloud Run timeout approaching)
