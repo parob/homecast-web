@@ -1307,6 +1307,8 @@ const Dashboard = () => {
   });
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  /** How much of a manual refresh has landed, so the overlay can say so. */
+  const [refreshProgress, setRefreshProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const refreshAllRef = useRef<() => void>(() => {});
   const pullMaxDeltaRef = useRef(0);
   const [hardReloadCountdown, setHardReloadCountdown] = useState<number | null>(null);
@@ -5801,6 +5803,7 @@ const Dashboard = () => {
 
   const refreshAll = () => {
     setIsManualRefreshing(true);
+    setRefreshProgress({ done: 0, total: 0 });
 
     // Hold the overlay on the actual refetches. It used to be cleared by an
     // effect watching `accessoriesLoading`, but refetching over cached data
@@ -5819,6 +5822,18 @@ const Dashboard = () => {
         pending.push(Promise.resolve(refetchAccessories()));
         pending.push(Promise.resolve(refetchServiceGroups()));
       }
+    }
+
+    // Report real progress rather than spinning indefinitely. An indeterminate
+    // spinner over a refresh that can legitimately take many seconds gives no
+    // way to tell "working" from "wedged", which is exactly how it read.
+    setRefreshProgress({ done: 0, total: pending.length });
+    let settled = 0;
+    for (const p of pending) {
+      void p.then(
+        () => setRefreshProgress({ done: ++settled, total: pending.length }),
+        () => setRefreshProgress({ done: ++settled, total: pending.length }),
+      );
     }
 
     // A wedged relay must not strand the overlay; the 10-minute page reload
@@ -8940,7 +8955,23 @@ const Dashboard = () => {
       )}>
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
-        <p className="text-white/80 text-sm">{isManualRefreshing ? 'Refreshing...' : 'Connecting...'}</p>
+        <p className="text-white/80 text-sm">{isManualRefreshing ? 'Refreshing…' : 'Connecting…'}</p>
+        {/* A determinate bar wherever we genuinely know the denominator. An
+            indeterminate spinner over a refresh that can take many seconds
+            gives no way to tell "working" from "wedged". */}
+        {isManualRefreshing && refreshProgress.total > 0 && (
+          <div className="flex flex-col items-center gap-1.5 w-44">
+            <div className="h-1 w-full rounded-full bg-white/15 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-white/70 transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.round((refreshProgress.done / refreshProgress.total) * 100)}%` }}
+              />
+            </div>
+            <p className="text-white/50 text-[11px] tabular-nums">
+              {refreshProgress.done} of {refreshProgress.total}
+            </p>
+          </div>
+        )}
         <Button variant="ghost" size="sm" className="bg-white/10 text-white/60 hover:text-white hover:bg-white/20 mt-2" onClick={() => window.location.reload()}>
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
           Refresh page

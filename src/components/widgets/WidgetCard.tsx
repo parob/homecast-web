@@ -216,10 +216,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // The scheduler enforces a per-accessory cooldown + global concurrency cap
   // so this is cheap even on a 50-tile dashboard.
   const accessoryId = accessory?.id;
+  // homeId is not optional in practice: the server routes this to a relay by
+  // home, and without it the request is unaddressable and returns NO_DEVICE.
+  const accessoryHomeId = accessory?.homeId;
   useEffect(() => {
     if (!accessoryId || isReachable !== false) return;
-    requestAccessoryRefresh(accessoryId);
-  }, [accessoryId, isReachable]);
+    requestAccessoryRefresh(accessoryId, accessoryHomeId ?? undefined);
+  }, [accessoryId, accessoryHomeId, isReachable]);
 
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
   const useServiceColors = (iconStyle === 'standard' || iconStyle === 'colourful') && serviceType;
