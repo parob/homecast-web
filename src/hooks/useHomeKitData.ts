@@ -628,6 +628,31 @@ export function useRooms(homeId: string | null, options: UseHomeKitDataOptions =
 }
 
 /**
+ * Which of these cache keys still need fetching.
+ *
+ * The multi-home hooks below used to ask only "is anything missing", and
+ * hydration answers that with "no" every single time — so after a launch they
+ * returned without fetching anything at all, and the dashboard showed whatever
+ * the previous session had left on disk until something else happened to write
+ * those keys. `useCachedData` has always asked the fuller question; these two
+ * are hand-rolled because they fan out across homes, and the check did not get
+ * copied across with the rest.
+ */
+function homesNeedingFetch(prefix: string, homeIds: string[]): string[] {
+  return homeIds.filter((id) => {
+    const key = `${prefix}:${id}`;
+    return cache.get(key) === null || cache.isStale(key) || cache.needsRevalidate(key);
+  });
+}
+
+/** Re-run a fan-out effect when a revalidation is requested. */
+function useRevalidateTick(): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => cache.subscribeRevalidate(() => setTick(n => n + 1)), []);
+  return tick;
+}
+
+/**
  * Hook for fetching accessories for a specific home
  */
 export function useAccessories(
@@ -679,6 +704,10 @@ export function useAccessoriesForHomes(
 
   // Create stable key for home IDs
   const homeIdsKey = homeIds.slice().sort().join(',');
+  // Re-runs the fan-out below when a revalidation is requested (socket
+  // connected, app foregrounded). Without it these hooks only ever
+  // reconsidered on a home-list change.
+  const revalidateTick = useRevalidateTick();
 
   // Subscribe to cache changes for OUR home keys only (not all changes).
   // Subscribing to all changes caused the Dashboard to re-render on every HomeKit
@@ -703,16 +732,21 @@ export function useAccessoriesForHomes(
       };
     }
 
-    // Check if we already have cached data for all homes
-    const allCached = homeIds.every(id => cache.get<HomeKitAccessory[]>(`accessories:${id}`) !== null);
-    if (allCached) {
+    // Which homes actually need a request — missing, stale, or restored from
+    // disk and therefore never checked by this session.
+    const toFetch = homesNeedingFetch('accessories', homeIds);
+    if (toFetch.length === 0) {
       setLoading(false);
       return () => {
         mountedRef.current = false;
       };
     }
 
-    setLoading(true);
+    // Only a loading state when there is nothing to keep on screen. Refreshing
+    // over hydrated data has to be silent, or every launch flashes a skeleton
+    // over content that was already there.
+    const missing = homeIds.filter(id => cache.get<HomeKitAccessory[]>(`accessories:${id}`) === null);
+    setLoading(missing.length > 0);
     setError(null);
 
     // Fetch accessories for each home.
@@ -723,7 +757,7 @@ export function useAccessoriesForHomes(
     // the expensive includeValues:true one — was fetched twice concurrently on
     // every cold load. useAllServiceGroups below already does it this way.
     Promise.all(
-      homeIds.map(homeId =>
+      toFetch.map(homeId =>
         cache.getOrFetch(`accessories:${homeId}`, () =>
           serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
             homeId,
@@ -755,7 +789,7 @@ export function useAccessoriesForHomes(
       mountedRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeIdsKey, options.skip]);
+  }, [homeIdsKey, options.skip, revalidateTick]);
 
   // Retry un-cached homes when cache updates (e.g. after relay connects)
   const retryCountRef = useRef(0);
@@ -865,6 +899,10 @@ export function useAllServiceGroups(
   const mountedRef = useRef(true);
 
   const homeIdsKey = homeIds.slice().sort().join(',');
+  // Re-runs the fan-out below when a revalidation is requested (socket
+  // connected, app foregrounded). Without it these hooks only ever
+  // reconsidered on a home-list change.
+  const revalidateTick = useRevalidateTick();
 
   // Subscribe to cache changes for OUR service group keys only (not all changes).
   useEffect(() => {
@@ -915,7 +953,7 @@ export function useAllServiceGroups(
 
     return () => { mountedRef.current = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeIdsKey, options.skip]);
+  }, [homeIdsKey, options.skip, revalidateTick]);
 
   // Retry un-cached homes when cache updates
   const retryCountRef = useRef(0);

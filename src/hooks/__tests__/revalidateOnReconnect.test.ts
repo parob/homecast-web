@@ -48,6 +48,15 @@ function seedDisk(homes: unknown[], ageMs = 60_000) {
   }));
 }
 
+/** Same, for the per-home accessory lists the dashboard actually renders. */
+function seedDiskAccessories(byHome: Record<string, unknown[]>, ageMs = 60_000) {
+  const out: Record<string, unknown> = {};
+  for (const [id, list] of Object.entries(byHome)) {
+    out[`accessories:${id}`] = { data: list, timestamp: Date.now() - ageMs };
+  }
+  store.set(PERSIST_KEY, JSON.stringify(out));
+}
+
 /** Older than staleTime (5 min), so the mount fetch actually fires. */
 const PAST_STALE = 10 * 60_000;
 
@@ -63,6 +72,57 @@ describe('revalidating when the connection comes up', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
   afterEach(() => { vi.useRealTimers(); });
+
+  // The dashboard renders accessories through useAccessoriesForHomes, NOT
+  // useCachedData — a separate, hand-rolled fan-out. It asked only "is anything
+  // missing", which hydration always answers with "no", so after a launch it
+  // returned without fetching and showed last session's disk contents. Every
+  // fix aimed at useCachedData sailed straight past it.
+  describe('the multi-home fan-out the dashboard actually renders', () => {
+    it('refetches hydrated per-home accessories on mount', async () => {
+      seedDiskAccessories({ H1: [{ id: 'A1', name: 'Old Lamp' }] }, 60_000);
+      request.mockResolvedValue({ accessories: [{ id: 'A1', name: 'New Lamp' }] });
+
+      const { useAccessoriesForHomes } = await freshModule();
+      const { result } = renderHook(() => useAccessoriesForHomes(['H1']));
+
+      // Painted from disk immediately...
+      expect(result.current.data?.[0]).toMatchObject({ name: 'Old Lamp' });
+      // ...and corrected without anyone pulling to refresh.
+      await waitFor(() => expect(result.current.data?.[0]).toMatchObject({ name: 'New Lamp' }));
+      expect(request).toHaveBeenCalledWith('accessories.list', { homeId: 'H1', includeValues: true });
+    });
+
+    it('does not flash a loading state while refreshing over hydrated data', async () => {
+      seedDiskAccessories({ H1: [{ id: 'A1', name: 'Old Lamp' }] }, 60_000);
+      let resolveIt: (v: unknown) => void = () => {};
+      request.mockReturnValue(new Promise((r) => { resolveIt = r; }));
+
+      const { useAccessoriesForHomes } = await freshModule();
+      const { result } = renderHook(() => useAccessoriesForHomes(['H1']));
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.data?.[0]).toMatchObject({ name: 'Old Lamp' });
+
+      await act(async () => { resolveIt({ accessories: [{ id: 'A1', name: 'New Lamp' }] }); });
+      await waitFor(() => expect(result.current.data?.[0]).toMatchObject({ name: 'New Lamp' }));
+    });
+
+    it('re-asks on a revalidation signal once already settled', async () => {
+      seedDiskAccessories({ H1: [{ id: 'A1', name: 'Old Lamp' }] }, 60_000);
+      request.mockResolvedValue({ accessories: [{ id: 'A1', name: 'Settled' }] });
+
+      const { useAccessoriesForHomes, revalidateHomeKitCache } = await freshModule();
+      const { result } = renderHook(() => useAccessoriesForHomes(['H1']));
+      await waitFor(() => expect(result.current.data?.[0]).toMatchObject({ name: 'Settled' }));
+
+      request.mockReset();
+      request.mockResolvedValue({ accessories: [{ id: 'A1', name: 'Changed While Away' }] });
+      await act(async () => { revalidateHomeKitCache(); });
+
+      await waitFor(() => expect(result.current.data?.[0]).toMatchObject({ name: 'Changed While Away' }));
+    });
+  });
 
   it('refetches hydrated data on mount, however fresh its timestamp looks', async () => {
     // The launch case, with no signal involved at all: data restored from disk
