@@ -59,6 +59,8 @@ class DataCache {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
+  /** Bumped to ask every mounted hook to re-check its data. See revalidateAll. */
+  private epochListeners = new Set<CacheListener>();
 
   constructor() {
     this.hydrate();
@@ -145,6 +147,29 @@ class DataCache {
     const entry = this.cache.get(key);
     if (!entry) return true;
     return Date.now() - entry.timestamp > this.staleTime;
+  }
+
+  /**
+   * Ask every mounted hook to re-check its data, without dropping any of it.
+   *
+   * Deliberately NOT invalidate(): that deletes, which empties the screen and
+   * flashes a loading state, and doing it on every reconnect is the footgun
+   * invalidateHomeKitCache's doc warns about. This is the stale-while-
+   * revalidate half — the cached data stays on screen and is quietly replaced
+   * by the truth.
+   *
+   * An epoch counter rather than backdating timestamps: a rewritten timestamp
+   * would be persisted, and an entry written as "old" is dropped by the
+   * PERSIST_MAX_AGE check on the next launch — which would cost the instant
+   * paint this cache exists to provide.
+   */
+  revalidateAll(): void {
+    this.epochListeners.forEach(l => l());
+  }
+
+  subscribeRevalidate(fn: CacheListener): () => void {
+    this.epochListeners.add(fn);
+    return () => this.epochListeners.delete(fn);
   }
 
   invalidate(key: string): void {
@@ -492,6 +517,20 @@ function useCachedData<T>(
     }, cacheKey);
     return unsubscribe;
   }, [cacheKey]);
+
+  // Re-check when the transport becomes usable again.
+  //
+  // The mount fetch below runs the moment the cache paints from disk, which is
+  // now before the WebSocket exists — serverConnection.request() throws
+  // 'Not active', and the two 3s retries can expire before a cold-start socket
+  // finishes authenticating and waiting for its relay assignment. Nothing
+  // retried after that, so the app sat on hydrated data with no refresh
+  // pending, indefinitely, until someone pulled to refresh.
+  useEffect(() => {
+    return cache.subscribeRevalidate(() => {
+      if (mountedRef.current) fetchDataRef.current(true);
+    });
+  }, []);
 
   // Fetch on mount or when dependencies change
   useEffect(() => {
@@ -917,6 +956,20 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
     cache.invalidateByPrefix('accessories');
     cache.invalidateByPrefix('serviceGroups');
   }
+}
+
+/**
+ * Re-check every cached HomeKit read against the relay, keeping what is on
+ * screen until an answer arrives.
+ *
+ * Called when the connection becomes usable and when the app comes back from
+ * being hidden — the two moments where our picture may have gone stale with
+ * nobody to tell us. Cheap by construction: no data is dropped, so there is no
+ * loading state and no layout shift, and it costs the same handful of requests
+ * that pulling to refresh already does.
+ */
+export function revalidateHomeKitCache(): void {
+  cache.revalidateAll();
 }
 
 /**

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { HomeKit, isRelayCapable } from '../native/homekit-bridge';
 import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
-import { invalidateHomeKitCache, invalidateHomeCaches } from '../hooks/useHomeKitData';
+import { invalidateHomeKitCache, invalidateHomeCaches, revalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
 import { useLocalMode } from '../hooks/useLocalMode';
 import { localIdentity } from '../server/local-identity';
@@ -54,6 +54,12 @@ const WebSocketContext = createContext<WebSocketContextValue | undefined>(undefi
 
 // Buffer configuration - batch rapid updates to avoid overwhelming React
 const UPDATE_BUFFER_INTERVAL_MS = 100;
+
+/** Floor between "we may have missed something" refreshes, so a flapping relay
+ *  cannot turn a reconnect storm into a request storm. */
+const REVALIDATE_MIN_INTERVAL_MS = 10_000;
+/** Hidden for less than this is a glance away, not an absence worth re-asking over. */
+const HIDDEN_GAP_MS = 10_000;
 
 type BufferedCharacteristicUpdate = {
   accessoryId: string;
@@ -187,16 +193,54 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   }, [scheduleFlush, notifyServiceGroupUpdate]);
 
   // Subscribe to relay manager connection state (always needed for both modes)
+  //
+  // This also owns the "we may have missed something" refresh. Two moments
+  // qualify, and neither used to trigger anything: the socket becoming usable
+  // (the mount fetch fires before it exists and gives up after two retries),
+  // and the app coming back from hidden (a suspended WebView receives no
+  // broadcasts, and may resume on a socket that never looked disconnected).
+  //
+  // Revalidate, not invalidate — see revalidateHomeKitCache. Throttled so a
+  // flapping relay cannot turn a reconnect storm into a request storm.
   useEffect(() => {
     wsLog.info('Subscribing to server connection state');
+
+    let wasConnected = false;
+    let lastRevalidate = 0;
+    let hiddenSince = 0;
+
+    const revalidate = (why: string) => {
+      if (Date.now() - lastRevalidate < REVALIDATE_MIN_INTERVAL_MS) return;
+      lastRevalidate = Date.now();
+      wsLog.info(`Revalidating HomeKit data (${why})`);
+      revalidateHomeKitCache();
+    };
 
     const unsubscribeState = serverConnection.subscribe((state) => {
       const connected = state.connectionState === 'connected';
       wsLog.info(`Relay state: ${state.connectionState}`);
       setIsConnected(connected);
+
+      if (connected && !wasConnected) revalidate('connected');
+      wasConnected = connected;
     });
 
-    return unsubscribeState;
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') {
+        hiddenSince = Date.now();
+        return;
+      }
+      // A glance away is not an absence. Only a real gap can have cost us
+      // events, and re-asking on every tab switch would be pure noise.
+      if (hiddenSince && Date.now() - hiddenSince > HIDDEN_GAP_MS) revalidate('foregrounded');
+      hiddenSince = 0;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      unsubscribeState();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // Event subscriptions based on mode:
