@@ -108,9 +108,17 @@ export function HomeOverviewSection({
       {!isCommunity && home.isAdmin === false && !editRightsDismissed && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2">
           <Sparkles className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
-          <p className="min-w-0 flex-1 truncate text-xs">
-            <span className="font-medium">Give the relay Full access</span>
-            <span className="text-muted-foreground"> — optional</span>
+          {/* Says what you get, not what you must go and do — "give the relay
+              Full access" named the mechanism and left the point unstated. The
+              steps live behind "How", so this line only has to make someone
+              want to read them.
+
+              Never truncated: it wraps to a second line on a narrow phone
+              instead of trailing off mid-sentence, which on the old one-line
+              version could cut the word that carried the meaning. */}
+          <p className="min-w-0 flex-1 text-xs">
+            <span className="font-medium">Let Homecast edit scenes and automations</span>
+            <span className="text-muted-foreground"> · Optional</span>
           </p>
           <button
             onClick={() => setAccessDialogOpen(true)}

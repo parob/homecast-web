@@ -57,13 +57,16 @@ function renderHome(home: HomeKitHome = VIEW_ONLY_HOME) {
   );
 }
 
+/** The notice's headline, in one place so copy edits don't rewrite six tests. */
+const NOTICE = 'Let Homecast edit scenes and automations';
+
 describe('relay Full access notice', () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
   it('is one line, with the steps behind the popup rather than inline', () => {
     renderHome();
-    expect(screen.getByText('Give the relay Full access')).toBeTruthy();
+    expect(screen.getByText(NOTICE)).toBeTruthy();
     // The Apple Home path is not in the notice itself.
     expect(screen.queryByText(/Add & Edit Accessories/)).toBeNull();
 
@@ -72,14 +75,22 @@ describe('relay Full access notice', () => {
     expect(screen.getByText(/Under People/)).toBeTruthy();
   });
 
+  it('wraps rather than truncating, so the sentence never trails off', () => {
+    // It used to be `truncate`, which on a narrow phone cut the line mid-phrase
+    // — and the words that carried the meaning were the ones at the end.
+    renderHome();
+    const line = screen.getByText(NOTICE).parentElement!;
+    expect(line.className).not.toContain('truncate');
+  });
+
   it('stays hidden after dismissal, across a remount', () => {
     renderHome();
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByText('Give the relay Full access')).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
 
     cleanup();
     renderHome();
-    expect(screen.queryByText('Give the relay Full access')).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
   });
 
   it('stays hidden when the same home comes back under a re-cased id', () => {
@@ -88,7 +99,7 @@ describe('relay Full access notice', () => {
     cleanup();
 
     renderHome({ ...VIEW_ONLY_HOME, id: 'home-abcd' });
-    expect(screen.queryByText('Give the relay Full access')).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
   });
 
   it('still shows for a different home', () => {
@@ -97,7 +108,7 @@ describe('relay Full access notice', () => {
     cleanup();
 
     renderHome({ ...VIEW_ONLY_HOME, id: 'HOME-EEEE', name: 'County Hall' });
-    expect(screen.getByText('Give the relay Full access')).toBeTruthy();
+    expect(screen.getByText(NOTICE)).toBeTruthy();
   });
 
   it('keeps the steps reachable from the access row once dismissed', () => {
@@ -110,7 +121,7 @@ describe('relay Full access notice', () => {
 
   it('shows no notice when the relay already has Full access', () => {
     renderHome({ ...VIEW_ONLY_HOME, isAdmin: true });
-    expect(screen.queryByText('Give the relay Full access')).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
     expect(screen.getByText('Full access')).toBeTruthy();
   });
 });
