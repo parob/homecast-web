@@ -327,7 +327,7 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
               <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
                 <Zap className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs text-muted-foreground font-medium">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'New Scene'}</span>
+              <span className="text-xs text-muted-foreground font-medium">{readOnly ? 'Scene' : isEditing ? 'Edit Scene' : 'Create Scene'}</span>
             </div>
             {readOnly ? (
               <p className="text-lg font-semibold break-words">{scene?.name}</p>

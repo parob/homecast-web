@@ -86,13 +86,13 @@ describe('scenes/automations visibility with an empty list', () => {
     expect(pill.textContent).not.toMatch(/\d/);
   });
 
-  it('keeps the "New scene" button reachable with zero scenes', async () => {
+  it('keeps the "Create scene" button reachable with zero scenes', async () => {
     renderWithApollo(<ScenesSection homeId={HOME_ID} open={true} />);
 
-    expect(await screen.findByRole('button', { name: /new scene/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /create scene/i })).toBeTruthy();
   });
 
-  it('keeps the "New" automation button reachable after the queries settle at zero', async () => {
+  it('keeps the "Create" automation button reachable after the queries settle at zero', async () => {
     renderWithApollo(<AutomationsSection homeId={HOME_ID} open={true} />);
 
     // Wait for both queries to resolve — the empty-state copy only renders once

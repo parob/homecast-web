@@ -378,7 +378,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
                   <FolderPlus className="h-4 w-4 mr-2" />
-                  New Collection
+                  Create Collection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
@@ -386,7 +386,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
                 </div>
                 <DropdownMenuItem onClick={onCreateGroup}>
                   <Layers className="h-4 w-4 mr-2" />
-                  New Group
+                  Create Group
                 </DropdownMenuItem>
                 {onSelectAccessories && (
                   <DropdownMenuItem onClick={() => {

@@ -446,7 +446,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            New Virtual Accessory
+            Create Virtual Accessory
           </ContextMenuItem>
         )}
         {pinTab && <PinTabMenuItem tab={pinTab} />}
@@ -834,7 +834,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              New Virtual Accessory
+              Create Virtual Accessory
             </ContextMenuItem>
           )}
           {pinTab && <PinTabMenuItem tab={pinTab} />}
@@ -6113,7 +6113,7 @@ const Dashboard = () => {
                 to it. Pre-selects this room, since that is where you asked. */}
             <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
               <Blocks className="h-4 w-4 mr-2" />
-              New Virtual Accessory
+              Create Virtual Accessory
             </DropdownMenuItem>
 
           </div>
@@ -6151,7 +6151,7 @@ const Dashboard = () => {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
               <Blocks className="h-4 w-4 mr-2" />
-              New Virtual Accessory
+              Create Virtual Accessory
             </DropdownMenuItem>
             {selectedHomeId && (
               <PinTabMenuItem

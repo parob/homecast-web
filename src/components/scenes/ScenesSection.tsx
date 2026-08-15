@@ -51,7 +51,7 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground, hideAcces
     errorPolicy: 'ignore',
   });
   // Always render for a real home — hiding at zero made the section (and the
-  // "New scene" button inside it) unreachable, so a home with no scenes had no
+  // "Create scene" button inside it) unreachable, so a home with no scenes had no
   // way to create its first one.
   const count = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s)).length;
   if (!homeId) return null;
@@ -217,7 +217,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                   : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
               }`}
             >
-              <Plus className="h-3.5 w-3.5" /> New scene
+              <Plus className="h-3.5 w-3.5" /> Create scene
             </button>
           </div>
         </div>

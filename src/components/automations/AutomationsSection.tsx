@@ -64,7 +64,7 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, hide
   const hkCount = relayNeedsUpdate ? 0 : raw.length;
   const hcCount = (hcData?.hcAutomations || []).length;
   // Always render for a real home — hiding at zero made the section (and the
-  // "New" button inside it) unreachable, so a home with no automations had no
+  // "Create" button inside it) unreachable, so a home with no automations had no
   // way to create its first one.
   const count = hkCount + hcCount;
   if (!homeId && !demoAutomations) return null;
@@ -141,7 +141,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
 
   const isLoading = loading || hcLoading;
   const totalCount = automations.length + hcAutomations.length;
-  // Note: deliberately NOT hidden when empty. The section holds the only "New"
+  // Note: deliberately NOT hidden when empty. The section holds the only "Create"
   // button, so collapsing it at zero left no way to create a first automation.
   const isEmpty = !isLoading && totalCount === 0 && !relayNeedsUpdate;
 
@@ -246,7 +246,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
               }`}
             >
               <Plus className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
-              <span className={`${compact ? 'text-xs' : 'text-sm'}`}>New</span>
+              <span className={`${compact ? 'text-xs' : 'text-sm'}`}>Create</span>
             </button>
           </div>
         </div>
@@ -297,7 +297,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
       {/* New automation type picker dialog */}
       <Dialog open={newTypeOpen} onOpenChange={setNewTypeOpen}>
         <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden" onOpenAutoFocus={(e) => e.preventDefault()}>
-          <DialogTitle className="px-5 pt-5 pb-2 text-base font-semibold">Create New Automation</DialogTitle>
+          <DialogTitle className="px-5 pt-5 pb-2 text-base font-semibold">Create Automation</DialogTitle>
           <div className="grid grid-cols-2 gap-3 px-5 pb-5">
             {/* HomeKit option */}
             <button
