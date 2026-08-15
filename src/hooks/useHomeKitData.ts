@@ -33,6 +33,12 @@ export function normalizeAccessories(list: HomeKitAccessory[]): HomeKitAccessory
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
+  /**
+   * The revalidation epoch this entry was written at. Absent means "restored
+   * from disk", which always counts as needing a re-check — see needsRevalidate.
+   * Deliberately not persisted.
+   */
+  epoch?: number;
 }
 
 type CacheListener = () => void;
@@ -59,7 +65,8 @@ class DataCache {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
-  /** Bumped to ask every mounted hook to re-check its data. See revalidateAll. */
+  /** Bumped to ask for a re-check of everything. See revalidateAll. */
+  private revalidateEpoch = 0;
   private epochListeners = new Set<CacheListener>();
 
   constructor() {
@@ -77,7 +84,7 @@ class DataCache {
   }
 
   set<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
+    this.cache.set(key, { data, timestamp: Date.now(), epoch: this.revalidateEpoch });
     this.notify(key);
     this.schedulePersist();
   }
@@ -100,7 +107,10 @@ class DataCache {
       for (const [key, entry] of Object.entries(parsed)) {
         if (!entry || typeof entry.timestamp !== 'number') continue;
         if (now - entry.timestamp > PERSIST_MAX_AGE) continue;
-        this.cache.set(key, entry);
+        // Rebuilt without any epoch, deliberately: restored data has never been
+        // checked by THIS session, and its age was accumulated while the app
+        // was not running to hear about changes.
+        this.cache.set(key, { data: entry.data, timestamp: entry.timestamp });
         this.hydratedCount++;
       }
     } catch {
@@ -150,7 +160,7 @@ class DataCache {
   }
 
   /**
-   * Ask every mounted hook to re-check its data, without dropping any of it.
+   * Ask for every cached read to be re-checked, without dropping any of it.
    *
    * Deliberately NOT invalidate(): that deletes, which empties the screen and
    * flashes a loading state, and doing it on every reconnect is the footgun
@@ -158,13 +168,31 @@ class DataCache {
    * revalidate half — the cached data stays on screen and is quietly replaced
    * by the truth.
    *
-   * An epoch counter rather than backdating timestamps: a rewritten timestamp
-   * would be persisted, and an entry written as "old" is dropped by the
+   * A counter as well as a notification, because notifying alone loses the
+   * signal. On an app launch the socket frequently connects BEFORE the
+   * dashboard has mounted, so there is nothing subscribed to hear it; the hooks
+   * then mount, see a cache that still looks fresh, and skip. The epoch makes
+   * the request durable — a hook that mounts afterwards compares and fetches.
+   *
+   * Also why timestamps are not simply backdated instead: a rewritten timestamp
+   * gets persisted, and an entry written as "old" is dropped by the
    * PERSIST_MAX_AGE check on the next launch — which would cost the instant
    * paint this cache exists to provide.
    */
   revalidateAll(): void {
+    this.revalidateEpoch++;
     this.epochListeners.forEach(l => l());
+  }
+
+  /**
+   * Has this entry been fetched since the last revalidation request?
+   *
+   * Entries restored from disk have no epoch at all and always answer true:
+   * their timestamp measured a period when the app was not running and no
+   * update could reach it, so elapsed time says nothing about freshness.
+   */
+  needsRevalidate(key: string): boolean {
+    return (this.cache.get(key)?.epoch ?? -1) < this.revalidateEpoch;
   }
 
   subscribeRevalidate(fn: CacheListener): () => void {
@@ -448,8 +476,15 @@ function useCachedData<T>(
     const hasCachedData = cache.get<T>(cacheKey) !== null;
     const isStale = cache.isStale(cacheKey);
 
-    // If we have fresh cached data and not forcing, skip fetch
-    if (hasCachedData && !isStale && !force) return;
+    // If we have fresh cached data and not forcing, skip fetch.
+    //
+    // `needsRevalidate` is what stops "fresh" from meaning "correct". An entry
+    // restored from disk, or one predating a revalidation request that arrived
+    // before this hook mounted, still looks fresh by timestamp — staleTime is a
+    // timer, and it kept running while the app was closed and nothing could
+    // reach it. That is the bug behind "reopen the app and it shows the old
+    // state until you pull to refresh".
+    if (hasCachedData && !isStale && !force && !cache.needsRevalidate(cacheKey)) return;
 
     // If there's already a pending request (from another hook instance), don't start another
     // unless we're forcing a refetch

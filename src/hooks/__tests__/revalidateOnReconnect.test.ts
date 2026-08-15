@@ -64,22 +64,61 @@ describe('revalidating when the connection comes up', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('refreshes a cache that reopened inside its stale window', async () => {
-    // Failure 1, and the one users actually hit: reopen a minute later and the
-    // entry still looks fresh, so nothing is fetched. It is not fresh — we were
-    // not running, and an accessory changed while we were not looking.
+  it('refetches hydrated data on mount, however fresh its timestamp looks', async () => {
+    // The launch case, with no signal involved at all: data restored from disk
+    // has never been checked by this session, and its age accumulated while the
+    // app was closed. One minute old and still not to be trusted.
     seedDisk([{ id: 'H1', name: 'Old Name' }], 60_000);
     request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Changed While Away' }] });
 
-    const { useHomes, revalidateHomeKitCache } = await freshModule();
+    const { useHomes } = await freshModule();
     const { result } = renderHook(() => useHomes());
 
     expect(result.current.data).toEqual([{ id: 'H1', name: 'Old Name' }]);
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 'H1', name: 'Changed While Away' }]));
+  });
 
-    // The stuck state: no request is even attempted, however long you wait.
+  it('reaches a hook that mounts AFTER the revalidation signal', async () => {
+    // On an iOS launch the socket routinely connects before the dashboard has
+    // mounted. A signal that only notified live subscribers fired into an empty
+    // set and was lost — the hook then mounted, saw a fresh cache, and skipped.
+    seedDisk([{ id: 'H1', name: 'Old Name' }], 60_000);
+    const { useHomes, revalidateHomeKitCache } = await freshModule();
+
+    // Settle one full fetch so the entry is genuinely current for this session.
+    request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Old Name' }] });
+    const first = renderHook(() => useHomes());
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    first.unmount();
+
+    // Signal arrives with nothing mounted to hear it.
+    request.mockReset();
+    request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Changed While Away' }] });
+    await act(async () => { revalidateHomeKitCache(); });
+    expect(request).not.toHaveBeenCalled();
+
+    // The dashboard mounts a moment later and must still pick it up.
+    const { result } = renderHook(() => useHomes());
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 'H1', name: 'Changed While Away' }]));
+  });
+
+  it('re-asks a mounted hook whose entry is fresh for this session', async () => {
+    // The backgrounded-and-returned case: this session did fetch the entry, so
+    // it is legitimately fresh by both timestamp and epoch — but we were
+    // suspended, and freshness is not evidence when nobody was listening.
+    seedDisk([{ id: 'H1', name: 'Old Name' }], 60_000);
+    request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Settled' }] });
+
+    const { useHomes, revalidateHomeKitCache } = await freshModule();
+    const { result } = renderHook(() => useHomes());
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 'H1', name: 'Settled' }]));
+
+    // Nothing further on its own — the entry is fresh and this session wrote it.
+    request.mockReset();
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(request).not.toHaveBeenCalled();
 
+    request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Changed While Away' }] });
     await act(async () => { revalidateHomeKitCache(); });
 
     await waitFor(() => expect(result.current.data).toEqual([{ id: 'H1', name: 'Changed While Away' }]));
@@ -118,11 +157,14 @@ describe('revalidating when the connection comes up', () => {
     // The reason this is revalidate and not invalidate: dropping the entry
     // empties the screen and shoves the layout about on every reconnect.
     seedDisk([{ id: 'H1', name: 'Old Name' }]);
+    request.mockResolvedValue({ homes: [{ id: 'H1', name: 'Old Name' }] });
 
     const { useHomes, revalidateHomeKitCache } = await freshModule();
     const { result } = renderHook(() => useHomes());
+    await waitFor(() => expect(request).toHaveBeenCalled());
 
     let resolveIt: (v: unknown) => void = () => {};
+    request.mockReset();
     request.mockReturnValue(new Promise((r) => { resolveIt = r; }));
     await act(async () => { revalidateHomeKitCache(); });
 
