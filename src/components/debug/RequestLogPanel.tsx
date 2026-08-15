@@ -9,11 +9,11 @@
 // in Settings → Account.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Copy, Trash2, X, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Trash2, Minus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   getRequestLog, subscribeRequestLog, clearRequestLog, formatRequestLog,
-  setRequestPanelEnabled, type RequestLogEntry,
+  type RequestLogEntry,
 } from '@/lib/request-log';
 
 /** Height of the dock. Enough for ~12 rows without dominating a phone. */
@@ -65,6 +65,9 @@ export function RequestLogPanel() {
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState(false);
+  // Collapsed to its header bar. Recording carries on regardless — the
+  // recorder does not know or care whether anything is on screen.
+  const [minimised, setMinimised] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => subscribeRequestLog(() => forceRender(n => n + 1)), []);
@@ -118,14 +121,16 @@ export function RequestLogPanel() {
   return (
     <div
       className="shrink-0 flex flex-col bg-[#0b0e14] text-white border-t border-white/10 select-none"
-      style={{ height }}
+      style={{ height: minimised ? undefined : height }}
     >
-      <div
-        onPointerDown={startResize}
-        className="h-1.5 shrink-0 cursor-ns-resize bg-white/5 hover:bg-white/20 transition-colors"
-        role="separator"
-        aria-label="Resize request log"
-      />
+      {!minimised && (
+        <div
+          onPointerDown={startResize}
+          className="h-1.5 shrink-0 cursor-ns-resize bg-white/5 hover:bg-white/20 transition-colors"
+          role="separator"
+          aria-label="Resize request log"
+        />
+      )}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/10 shrink-0">
         <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
         <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
@@ -156,27 +161,33 @@ export function RequestLogPanel() {
         >
           <Trash2 className="h-3 w-3" />
         </button>
+        {/* Minimise, not close: switching the log off entirely belongs in
+            Settings, and an X here is a trap — it looks like "hide for now" and
+            actually costs you the capture you are in the middle of taking. */}
         <button
-          onClick={() => setRequestPanelEnabled(false)}
-          title="Close (re-enable in Settings → Account)"
+          onClick={() => setMinimised(m => !m)}
+          title={minimised ? 'Expand' : 'Minimise'}
+          aria-expanded={!minimised}
           className="text-white/50 hover:text-white p-1 rounded hover:bg-white/10"
         >
-          <X className="h-3.5 w-3.5" />
+          {minimised ? <ChevronUp className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
         </button>
       </div>
-      <div
-        ref={scrollerRef}
-        onScroll={onScroll}
-        className="flex-1 overflow-y-auto overscroll-contain"
-      >
-        {entries.length === 0 ? (
-          <p className="px-3 py-3 text-[11px] text-white/35 font-mono">
-            Nothing yet. Reload the app with this open to capture a launch.
-          </p>
-        ) : (
-          entries.map(e => <Row key={e.id} e={e} />)
-        )}
-      </div>
+      {!minimised && (
+        <div
+          ref={scrollerRef}
+          onScroll={onScroll}
+          className="flex-1 overflow-y-auto overscroll-contain"
+        >
+          {entries.length === 0 ? (
+            <p className="px-3 py-3 text-[11px] text-white/35 font-mono">
+              Nothing yet. Reload the app with this open to capture a launch.
+            </p>
+          ) : (
+            entries.map(e => <Row key={e.id} e={e} />)
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -512,6 +512,24 @@ export class ServerWebSocket {
    * Graceful reconnect - close and immediately reconnect without backoff.
    * Used when server requests reconnect (e.g., Cloud Run timeout approaching).
    */
+  /**
+   * Fail everything in flight, because this socket can no longer answer it.
+   *
+   * Rejecting rather than replaying: a caller knows whether its request is
+   * safe to repeat and we do not, and every read path here already retries.
+   * The important part is that it happens *promptly* — a rejection frees
+   * DataCache's per-key dedupe immediately, whereas a hung promise blocks
+   * every subsequent attempt for the whole request timeout.
+   */
+  private failPendingRequests(reason: string): void {
+    if (this.pendingRequests.size === 0) return;
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(new HomecastError('DISCONNECTED', reason));
+    }
+    this.pendingRequests.clear();
+  }
+
   private gracefulReconnect(): void {
     // Clean up current connection
     this.cleanup();
@@ -1357,12 +1375,7 @@ export class ServerWebSocket {
       // telemetry must never break reconnect
     }
 
-    // Reject all pending requests
-    for (const [, pending] of this.pendingRequests) {
-      clearTimeout(pending.timeout);
-      pending.reject(new HomecastError('DISCONNECTED', 'WebSocket connection closed'));
-    }
-    this.pendingRequests.clear();
+    this.failPendingRequests('WebSocket connection closed');
 
     this.cleanup();
 
@@ -1816,6 +1829,19 @@ export class ServerWebSocket {
 
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;
+
+    // Nothing in flight can be answered once this socket is gone, and this is
+    // the last moment anyone knows that. `handleClose` rejects them too, but it
+    // is unsubscribed three lines below — so on every path that tears the
+    // socket down deliberately (gracefulReconnect, the affinity redirect,
+    // disconnect) it never runs, and the requests simply hung.
+    //
+    // They then sat for the full 30s REQUEST_TIMEOUT while DataCache.getOrFetch
+    // handed the same dead promise to every retry, so nothing could recover
+    // until they expired. Measured on an iPhone launch: the server issues its
+    // affinity redirect ~280ms after connect, the app fires its opening burst
+    // at ~600ms, and the dashboard then showed stale data for 33 seconds.
+    this.failPendingRequests('Connection replaced before the response arrived');
 
     if (this.ws) {
       this.ws.onopen = null;

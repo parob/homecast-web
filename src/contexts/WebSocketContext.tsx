@@ -60,6 +60,9 @@ const UPDATE_BUFFER_INTERVAL_MS = 100;
 const REVALIDATE_MIN_INTERVAL_MS = 10_000;
 /** Hidden for less than this is a glance away, not an absence worth re-asking over. */
 const HIDDEN_GAP_MS = 10_000;
+/** Floor for recovering from an actual drop — short, because everything that
+ *  was in flight died with the socket and nothing else will re-ask. */
+const RECONNECT_REVALIDATE_MIN_MS = 2_000;
 
 type BufferedCharacteristicUpdate = {
   accessoryId: string;
@@ -206,11 +209,12 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     wsLog.info('Subscribing to server connection state');
 
     let wasConnected = false;
+    let wasDropped = false;
     let lastRevalidate = 0;
     let hiddenSince = 0;
 
-    const revalidate = (why: string) => {
-      if (Date.now() - lastRevalidate < REVALIDATE_MIN_INTERVAL_MS) return;
+    const revalidate = (why: string, minInterval = REVALIDATE_MIN_INTERVAL_MS) => {
+      if (Date.now() - lastRevalidate < minInterval) return;
       lastRevalidate = Date.now();
       wsLog.info(`Revalidating HomeKit data (${why})`);
       revalidateHomeKitCache();
@@ -221,7 +225,16 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       wsLog.info(`Relay state: ${state.connectionState}`);
       setIsConnected(connected);
 
-      if (connected && !wasConnected) revalidate('connected');
+      // Coming back from a drop is the one case the general throttle must not
+      // swallow: the server's affinity redirect lands within a second of the
+      // first connect, and everything in flight was just failed with it. The
+      // shorter floor still bounds a genuinely flapping socket.
+      if (connected && !wasConnected) {
+        revalidate('connected', wasDropped ? RECONNECT_REVALIDATE_MIN_MS : REVALIDATE_MIN_INTERVAL_MS);
+        wasDropped = false;
+      } else if (!connected && wasConnected) {
+        wasDropped = true;
+      }
       wasConnected = connected;
     });
 
