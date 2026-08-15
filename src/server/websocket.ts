@@ -9,6 +9,7 @@ import { HomeKit, HomeKitEvent, isRelayCapable, isRelayEnabled, withCallReason }
 import { executeHomeKitAction, setAccessoryLimit as setLocalHandlerAccessoryLimit, isAccessoryAllowed } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { logEvent } from '../lib/request-log';
+import { preferredWsUrl, rememberAffinityTarget, forgetAffinityTarget } from './affinity-target';
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
@@ -203,6 +204,9 @@ const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
 /** How long to wait for the server's first word before assuming the socket is
  *  usable anyway. Generous — it only runs when the server says nothing. */
 const READY_FALLBACK_MS = 2000;
+/** Grace after the server's greeting, so a redirect that follows it by ~10ms
+ *  lands first. See announceReady. */
+const READY_GRACE_MS = 250;
 // Short by design: a notify action must not stall the rest of the automation
 // waiting on a report that is only ever used to annotate the trace.
 const NOTIFY_RESULT_TIMEOUT_MS = 8000;
@@ -262,6 +266,11 @@ export class ServerWebSocket {
   /** Whether this socket has been announced usable — see armReadyAnnouncement. */
   private readyAnnounced = false;
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
+  private readyGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The configured endpoint, before any remembered affinity target. */
+  private frontDoorWsUrl = '';
+  /** Whether this socket ever produced a server message. */
+  private heardFromServer = false;
   private requestIdCounter = 0;
   private connectionOpenedAt: number | null = null;
   private lastConnectionDuration: number | null = null;
@@ -354,9 +363,14 @@ export class ServerWebSocket {
   private groupHomeCache = new Map<string, string>();
 
   constructor(config: ServerConfig, callbacks: ServerWebSocketCallbacks = {}) {
+    const frontDoor = config.wsUrl || appConfig.wsUrl;
+    this.frontDoorWsUrl = frontDoor;
     this.config = {
       ...config,
-      wsUrl: config.wsUrl || appConfig.wsUrl,
+      // Start where the server sent us last time, so the affinity handoff does
+      // not have to happen again. Falls back to `frontDoor` the moment a
+      // connection there fails to get a word out of the server.
+      wsUrl: preferredWsUrl(frontDoor),
     };
     this.callbacks = callbacks;
   }
@@ -498,6 +512,18 @@ export class ServerWebSocket {
 
     // Override the WebSocket URL for this session
     this.config.wsUrl = target;
+    // ...and for the next one. The redirect costs a whole second connection —
+    // measured at 1.2s and 4.6s on two consecutive iPhone launches — and it
+    // fires on every single connect, because the client always starts from the
+    // generic endpoint. The server does not redirect a connection that already
+    // carries the affinity it would have assigned (its `existing_affinity`
+    // guard), so starting from the last known target skips the handoff.
+    //
+    // Worth doing even though the affinity itself is currently decorative for
+    // shared and cloud-managed accounts, where the two sides key off different
+    // identifier spaces and never co-locate: the cost of the second connection
+    // is real whether or not the co-location it buys is.
+    rememberAffinityTarget(target);
     console.log(`[ServerWS] Redirecting to ${target}`);
 
     // Reset backoff delay for immediate reconnect
@@ -552,14 +578,29 @@ export class ServerWebSocket {
     }, READY_FALLBACK_MS);
   }
 
+  /**
+   * Announce after a short grace, not on the greeting itself.
+   *
+   * Measured: the server sends its hello and *then* `redirect (home_affinity)`
+   * **10ms later**. Announcing on the hello only avoided the doomed request
+   * burst because React could not re-render inside 10ms — a race won, not a
+   * race closed. The grace lets a redirect overtake the greeting, which is the
+   * order the server actually sends them in.
+   *
+   * Cheap at this scale: the requests it gates take 200ms–5s on this path, and
+   * the connection it waits on took over a second to establish.
+   */
   private announceReady(): void {
-    if (this.readyAnnounced) return;
-    this.readyAnnounced = true;
-    if (this.readyTimer) {
-      clearTimeout(this.readyTimer);
-      this.readyTimer = null;
-    }
-    this.setState('connected');
+    if (this.readyAnnounced || this.readyGraceTimer) return;
+    this.readyGraceTimer = setTimeout(() => {
+      this.readyGraceTimer = null;
+      this.readyAnnounced = true;
+      if (this.readyTimer) {
+        clearTimeout(this.readyTimer);
+        this.readyTimer = null;
+      }
+      this.setState('connected');
+    }, READY_GRACE_MS);
   }
 
   private failPendingRequests(reason: string): void {
@@ -1097,6 +1138,7 @@ export class ServerWebSocket {
 
       // The server's first word is what makes this socket usable. A redirect is
       // the one word that means the opposite, so it alone does not announce.
+      this.heardFromServer = true;
       if (message.type !== 'redirect') this.announceReady();
 
       // Everything the cloud sends, including what is not a request:
@@ -1427,6 +1469,15 @@ export class ServerWebSocket {
       });
     } catch {
       // telemetry must never break reconnect
+    }
+
+    // A remembered affinity target that never said a word is a retired pod, or
+    // an endpoint that no longer routes. Abandon it after ONE such attempt
+    // rather than retrying into the same silence every launch.
+    if (!this.heardFromServer && this.config.wsUrl !== this.frontDoorWsUrl) {
+      console.log('[ServerWS] Remembered endpoint said nothing — falling back');
+      forgetAffinityTarget();
+      this.config.wsUrl = this.frontDoorWsUrl;
     }
 
     this.failPendingRequests('WebSocket connection closed');
@@ -1899,7 +1950,12 @@ export class ServerWebSocket {
       clearTimeout(this.readyTimer);
       this.readyTimer = null;
     }
+    if (this.readyGraceTimer) {
+      clearTimeout(this.readyGraceTimer);
+      this.readyGraceTimer = null;
+    }
     this.readyAnnounced = false;
+    this.heardFromServer = false;
 
     this.failPendingRequests('Connection replaced before the response arrived');
 
