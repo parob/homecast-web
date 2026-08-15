@@ -8,8 +8,12 @@ import { useEffect, useState } from 'react';
 import { isLocalCapable } from '../native/homekit-bridge';
 import type { LocalModeState } from '../server/local-mode-controller';
 
+// `blocked: 'loading'` rather than null: before the controller has answered we
+// genuinely don't know, and claiming a definite blocker (or none) would flash
+// the wrong explanation on the Settings screen for a frame.
 const INACTIVE: LocalModeState = {
   active: false, reason: null, identityState: 'unmapped', matched: 0, reported: 0,
+  bridgeReady: false, blocked: 'loading', status: null,
 };
 
 export function useLocalMode(): LocalModeState {

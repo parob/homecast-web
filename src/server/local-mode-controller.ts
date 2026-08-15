@@ -6,11 +6,14 @@
 // be claimed on engage and released on disengage.
 
 import {
-  decideLocalMode, localModeCanServe, resolveLocalId,
+  decideLocalMode, localModeCanServe, resolveLocalId, identityFrom,
   EMPTY_MEMO,
+  type IdentityState,
   type LocalModeInputs, type LocalModeMemo, type LocalModeOverride, type LocalModeReason,
 } from './local-mode';
-import { HomeKit, isLocalCapable, isRelayCapable, withCallReason } from '../native/homekit-bridge';
+import {
+  HomeKit, isLocalCapable, isRelayCapable, withCallReason, type HomeKitStatus,
+} from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
@@ -22,16 +25,32 @@ import { localIdentity } from './local-identity';
 const OVERRIDE_KEY = 'homecast-local-mode';
 const TICK_MS = 1_000;
 const KEEPALIVE_MS = 30_000;
-/** How often to re-attempt warming the identity map when it is not yet mapped. */
+/** How often to re-report the topology once the cloud has answered once. */
 const WARM_RETRY_MS = 10 * 60_000;
+/** ...and how often to keep asking until it has, since nothing else will. */
+const UNMAPPED_RETRY_MS = 60_000;
+/** Re-probe HomeKit capability this often while it is not yet usable... */
+const UNREADY_REPROBE_MS = 2_000;
+/** ...and this often once it is, to notice revoked access or a new home. */
+const READY_REPROBE_MS = 30_000;
 
 export interface LocalModeState {
   active: boolean;
   reason: LocalModeReason | null;
   /** Whether this device's HomeKit ids are mapped to the cloud's stable ids. */
-  identityState: 'mapped' | 'partial' | 'unmapped';
+  identityState: IdentityState;
   matched: number;
   reported: number;
+  /** This device can serve HomeKit at all — permission granted and homes present. */
+  bridgeReady: boolean;
+  /**
+   * Why Local Mode cannot run here, when it can't. Distinct from `reason`,
+   * which explains why it *is* running. Without this the Settings screen fell
+   * back to "your relay is handling this home", which is not the reason and
+   * left the user with a selected "Always on" that visibly did nothing.
+   */
+  blocked: 'no-permission' | 'restricted' | 'no-homes' | 'loading' | 'is-relay' | 'off' | null;
+  status: HomeKitStatus | null;
 }
 
 export function getLocalModeOverride(): LocalModeOverride {
@@ -51,6 +70,7 @@ class LocalModeController implements LocalModeRouter {
   private memo: LocalModeMemo = EMPTY_MEMO;
   private state: LocalModeState = {
     active: false, reason: null, identityState: 'unmapped', matched: 0, reported: 0,
+    bridgeReady: false, blocked: 'loading', status: null,
   };
   private listeners = new Set<Listener>();
   private tick: ReturnType<typeof setInterval> | null = null;
@@ -59,6 +79,8 @@ class LocalModeController implements LocalModeRouter {
   private liveHomeIds = new Set<string>();
   private started = false;
   private lastWarmAttempt = 0;
+  private lastProbe = 0;
+  private status: HomeKitStatus | null = null;
 
   start(): void {
     if (this.started) return;
@@ -66,6 +88,11 @@ class LocalModeController implements LocalModeRouter {
     // nothing here worth a timer. This is every browser.
     if (!isLocalCapable()) return;
     this.started = true;
+
+    // Before auth, and possibly instead of it: `AuthContext` only calls
+    // `load()` once `getMe()` has answered, which it cannot do offline — the
+    // very case this whole feature exists for.
+    localIdentity.loadLast();
 
     setLocalModeRouter(this);
     void this.probeBridge();
@@ -104,13 +131,19 @@ class LocalModeController implements LocalModeRouter {
       // An older native shell with no status method. Fall back to "the bridge
       // object exists", which is what every pre-Local-Mode build could tell us.
       this.bridgeReady = HomeKit.isAvailable();
+      this.status = null;
       return;
     }
-    // `determined` false means HomeKit has not finished deciding — treat that
-    // as not-ready rather than as a refusal, or a slow first launch would look
-    // like a denied permission.
-    this.bridgeReady = status.determined && status.authorized && status.homeCount > 0;
+    this.status = status;
+    // Homes are the real signal. HomeKit takes seconds to load on a cold start
+    // and reports neither authorization nor homes until it has, so anything
+    // stricter than this reads a slow launch as a refusal.
+    this.bridgeReady = status.authorized && status.homeCount > 0;
+    this.lastProbe = Date.now();
   }
+
+  /** What the native side last said about HomeKit, for the Settings screen. */
+  getStatus(): HomeKitStatus | null { return this.status; }
 
   private async refreshLiveHomes(): Promise<void> {
     try {
@@ -126,6 +159,18 @@ class LocalModeController implements LocalModeRouter {
   // ── the decision ──────────────────────────────────────────────────────────
 
   private evaluate(): void {
+    // Re-probe rather than trusting the startup answer. HomeKit is not loaded
+    // when the app opens, so the first probe almost always says "no homes" —
+    // and without this the answer never changed, which showed as Local Mode
+    // sitting in Standby with a permission warning on a device that had
+    // permission all along. Keep checking while unready, and slowly afterwards
+    // so revoked access or a newly added home is still noticed.
+    const probeAfter = this.bridgeReady ? READY_REPROBE_MS : UNREADY_REPROBE_MS;
+    if (Date.now() - this.lastProbe > probeAfter) {
+      this.lastProbe = Date.now();
+      void this.probeBridge().then(() => this.emit({ ...this.state }));
+    }
+
     const conn = serverConnection.getState();
     const homes = readCachedHomes();
 
@@ -147,8 +192,16 @@ class LocalModeController implements LocalModeRouter {
     // discovering we need it at the moment the relay dies. `sync()` throttles
     // itself per topology hash, but building the report costs a handful of
     // HomeKit calls, so the attempt is gated here too — this runs on a 1s tick.
-    if (!d.active && this.bridgeReady && conn.connectionState === 'connected'
-        && Date.now() - this.lastWarmAttempt > WARM_RETRY_MS) {
+    //
+    // Deliberately not gated on `!d.active`: Local Mode very often engages
+    // *before* the first successful report (a relay that was already offline at
+    // launch, or a manual pin), and gating it there meant the one code path that
+    // could ever mint the map stopped running the moment it was needed. Nothing
+    // is lost by trying while active — the cloud being reachable is the real
+    // precondition, and it is checked here.
+    if (this.bridgeReady && localIdentity.hasUser()
+        && conn.connectionState === 'connected'
+        && Date.now() - this.lastWarmAttempt > this.retryDelay()) {
       this.lastWarmAttempt = Date.now();
       void this.syncIdentity();
     }
@@ -162,13 +215,57 @@ class LocalModeController implements LocalModeRouter {
       if (getRelayWritePublisher() === null) this.installPublisher();
     }
 
-    this.emit({ ...this.state, active: d.active, reason: d.reason ?? this.state.reason });
+    this.emit({
+      ...this.state,
+      ...identityFrom(localIdentity.counts()),
+      active: d.active,
+      reason: d.reason ?? this.state.reason,
+      bridgeReady: this.bridgeReady,
+      status: this.status,
+      blocked: d.active ? null : this.describeBlocker(inputs),
+    });
+  }
+
+  /**
+   * Try often until there is an answer at all, rarely once there is one.
+   *
+   * Keyed on having *any* report rather than on having a non-empty map: a
+   * report that matched nothing is still an answer, and re-asking every minute
+   * would rebuild the topology — a handful of HomeKit calls per home — forever
+   * on a device that is simply looking at a different Apple Home.
+   */
+  private retryDelay(): number {
+    return localIdentity.counts() ? WARM_RETRY_MS : UNMAPPED_RETRY_MS;
+  }
+
+  /**
+   * Why Local Mode is not running, in the user's terms.
+   *
+   * Ordered the same way `decideLocalMode` applies its guards, so the reason
+   * shown is the one actually stopping it rather than the first plausible one.
+   */
+  private describeBlocker(i: LocalModeInputs): LocalModeState['blocked'] {
+    if (i.override === 'off') return 'off';
+    if (i.isThisDeviceTheRelay) return 'is-relay';
+    if (!this.bridgeReady) {
+      const s = this.status;
+      if (!s) return 'loading';
+      if (s.restricted) return 'restricted';
+      if (!s.authorized) return s.determined ? 'no-permission' : 'loading';
+      if (s.homeCount === 0) return 'no-homes';
+      return 'loading';
+    }
+    return null;
   }
 
   private emit(next: LocalModeState): void {
     const changed = next.active !== this.state.active
       || next.reason !== this.state.reason
-      || next.identityState !== this.state.identityState;
+      || next.identityState !== this.state.identityState
+      || next.matched !== this.state.matched
+      || next.reported !== this.state.reported
+      || next.blocked !== this.state.blocked
+      || next.bridgeReady !== this.state.bridgeReady;
     this.state = next;
     if (changed) for (const fn of this.listeners) fn(next);
   }
@@ -250,14 +347,11 @@ class LocalModeController implements LocalModeRouter {
   }
 
   private async syncIdentity(force = false): Promise<void> {
-    const r = await localIdentity.sync(force);
-    if (!r) return;
-    this.emit({
-      ...this.state,
-      identityState: r.matched === 0 ? 'unmapped' : r.matched < r.reported ? 'partial' : 'mapped',
-      matched: r.matched,
-      reported: r.reported,
-    });
+    await localIdentity.sync(force);
+    // Read the counts back rather than trusting the return: a failed sync
+    // returns null while a perfectly good cached map is still loaded, and the
+    // status the user sees should describe the map they actually have.
+    this.emit({ ...this.state, ...identityFrom(localIdentity.counts()) });
   }
 
   // ── routing ───────────────────────────────────────────────────────────────

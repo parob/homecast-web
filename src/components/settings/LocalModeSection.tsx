@@ -5,10 +5,9 @@
 // them, but someone testing the app, or deliberately working off the cloud,
 // wants to pin it.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useLocalMode } from '@/hooks/useLocalMode';
-import { HomeKit, type HomeKitStatus } from '@/native/homekit-bridge';
 import { openExternalUrl } from '@/lib/open-url';
 import {
   getLocalModeOverride, setLocalModeOverride, controller,
@@ -22,12 +21,12 @@ const OPTIONS: Array<{ value: LocalModeOverride; label: string; hint: string }> 
 ];
 
 export function LocalModeSection() {
-  const { active, reason, identityState, matched, reported } = useLocalMode();
+  // Live from the controller rather than a probe of our own: HomeKit is not
+  // loaded when a screen first mounts, so a one-shot read here reported "no
+  // permission" on a device that had permission all along.
+  const { active, reason, identityState, matched, reported, blocked } = useLocalMode();
   const [override, setOverride] = useState<LocalModeOverride>(() => getLocalModeOverride());
-  const [status, setStatus] = useState<HomeKitStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
-
-  useEffect(() => { void HomeKit.getStatus().then(setStatus); }, []);
 
   const choose = (v: LocalModeOverride) => {
     setOverride(v);
@@ -39,8 +38,8 @@ export function LocalModeSection() {
     try { await controller.resyncIdentity(); } finally { setSyncing(false); }
   };
 
-  const denied = status !== null && status.determined && !status.authorized;
-  const noHomes = status !== null && status.authorized && status.homeCount === 0;
+  const denied = blocked === 'no-permission' || blocked === 'restricted';
+  const noHomes = blocked === 'no-homes';
 
   return (
     <div className="space-y-6">
@@ -112,13 +111,29 @@ export function LocalModeSection() {
         </div>
         <p className="text-[11px] text-muted-foreground">
           {active
-            ? reason === 'manual' ? 'Switched on here.'
-              : reason === 'no-relay-ever' ? "You haven't set up a relay yet."
-              : reason === 'socket-down' ? "This device can't reach Homecast's servers."
-              : 'Your relay is offline.'
-            : override === 'off' ? 'Turned off for this device.'
+            ? reason === 'manual' ? 'Controlling Apple Home from this device.'
+              : reason === 'no-relay-ever' ? "You haven't set up a relay yet, so this device is serving your home."
+              : reason === 'socket-down' ? "This device can't reach Homecast's servers, so it's serving your home itself."
+              : 'Your relay is offline, so this device is serving your home.'
+            // Not active. Say what is actually stopping it — "your relay is
+            // handling this home" was shown even when the real blocker was
+            // permission, which made a selected "Always on" look broken.
+            : blocked === 'off' ? 'Turned off for this device.'
+            : blocked === 'is-relay' ? 'This Mac is the relay, so it already talks to Apple Home directly.'
+            : blocked === 'no-permission' ? "Homecast can't use Apple Home on this device."
+            : blocked === 'restricted' ? 'Access to Apple Home is restricted on this device.'
+            : blocked === 'no-homes' ? "No homes on this device's Apple Account."
+            : blocked === 'loading' ? 'Checking Apple Home on this device…'
+            : override === 'on' ? 'Ready — waiting for Apple Home.'
             : 'Your relay is handling this home.'}
         </p>
+        {/* "Always on" cannot override a device that physically can't serve.
+            Saying so is kinder than leaving the radio selected and inert. */}
+        {override === 'on' && !active && blocked && blocked !== 'off' && (
+          <p className="text-[11px] text-amber-600">
+            Always on can't apply until this is resolved.
+          </p>
+        )}
       </div>
 
       <div className="rounded-lg border p-3 space-y-2">
@@ -136,9 +151,15 @@ export function LocalModeSection() {
           {/* This is what decides whether an outage looks like your home or like
               a stranger's: the accessory ids this device sees are not the ones
               the relay reports, and matching is what reconciles them. */}
-          {identityState === 'unmapped'
-            ? "Not matched yet. Until it is, accessories show their Apple Home names rather than yours."
-            : `${matched} of ${reported} accessories matched to your Homecast layout.`}
+          {identityState !== 'unmapped'
+            ? `${matched} of ${reported} accessories matched to your Homecast layout.`
+            // Two very different situations shared one sentence, and the honest
+            // one is worth separating: nothing reported yet is a matter of
+            // waiting, whereas a report where nothing matched means this device
+            // is looking at a different Apple Home than the relay is.
+            : reported > 0
+              ? `None of the ${reported} accessories this device can see matched your Homecast layout, so they show their Apple Home names. This usually means this device is signed in to a different Apple Account than your relay.`
+              : "Not matched yet. Until it is, accessories show their Apple Home names rather than yours."}
         </p>
       </div>
     </div>

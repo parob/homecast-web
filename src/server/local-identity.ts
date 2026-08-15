@@ -44,6 +44,9 @@ function storageKey(userId: string): string {
   return `homecast-local-identity:${userId}`;
 }
 
+/** Who was signed in last, so an offline launch knows which map is theirs. */
+const LAST_USER_KEY = 'homecast-local-identity:last';
+
 class LocalIdentity {
   private liveToHc = new Map<string, string>();
   private hcToLive = new Map<string, string>();
@@ -59,12 +62,52 @@ class LocalIdentity {
     this.hcToLive.clear();
     this.cached = null;
     try {
+      localStorage.setItem(LAST_USER_KEY, userId);
       const raw = localStorage.getItem(storageKey(userId));
       if (!raw) return;
       const c = JSON.parse(raw) as Cached;
       this.adopt(c);
     } catch {
       // A corrupt cache is worth nothing and costs a re-report. Ignore it.
+    }
+  }
+
+  /**
+   * Adopt the last signed-in user's map before auth has answered.
+   *
+   * `load()` is driven by `getMe()`, which needs the network — so on the one
+   * launch where any of this matters (offline, or the relay unreachable, which
+   * is when Local Mode takes over) it never ran at all. The device came up with
+   * no map: raw Apple Home names, none of the user's layout, and a Settings
+   * screen reporting "not matched yet" over a perfectly good map sitting in
+   * storage.
+   *
+   * Safe to guess from: the map is only ids, `load()` replaces it the moment a
+   * different user turns out to be signed in, and `forget()` removes it on
+   * sign-out — the same treatment the persisted HomeKit cache already gets.
+   */
+  loadLast(): void {
+    if (this.userId) return;
+    try {
+      const last = localStorage.getItem(LAST_USER_KEY);
+      if (last) this.load(last);
+    } catch {
+      // No storage, no map. Local Mode still controls, just unpersonalised.
+    }
+  }
+
+  /** Drop this device's map, so the next account to sign in starts clean. */
+  forget(): void {
+    const previous = this.userId;
+    this.userId = '';
+    this.cached = null;
+    this.liveToHc.clear();
+    this.hcToLive.clear();
+    try {
+      localStorage.removeItem(LAST_USER_KEY);
+      if (previous) localStorage.removeItem(storageKey(previous));
+    } catch {
+      // Nothing to do — the map is already gone from memory.
     }
   }
 
@@ -79,6 +122,29 @@ class LocalIdentity {
   stableToLive(): ReadonlyMap<string, string> { return this.hcToLive; }
 
   hasMap(): boolean { return this.liveToHc.size > 0; }
+
+  /**
+   * Whether a user's cache has been pointed at yet.
+   *
+   * `sync()` is worthless before this: the reconcile mutation needs a signed-in
+   * user, and a map minted without one cannot be written to storage — see the
+   * guard in `doSync`.
+   */
+  hasUser(): boolean { return this.userId !== ''; }
+
+  /**
+   * The last known match counts, whatever their source.
+   *
+   * Restored by `load()` as well as set by `sync()`, so a device that matched
+   * last week and is offline today still reports it. The controller reads this
+   * every tick rather than only on a successful sync — otherwise a sync that
+   * fails (which is the normal case when Local Mode engaged *because* the cloud
+   * is unreachable) leaves the UI claiming "not matched yet" over a map that is
+   * loaded and working.
+   */
+  counts(): SyncResult | null {
+    return this.cached ? { matched: this.cached.matched, reported: this.cached.reported } : null;
+  }
 
   /** One id, live → stable. Unmapped ids pass through unchanged. */
   toStable(id: string): string {
@@ -127,6 +193,13 @@ class LocalIdentity {
   }
 
   private async doSync(force: boolean): Promise<SyncResult | null> {
+    // No user yet means no cache to key and no auth to report under. The
+    // controller starts on module load, long before `getMe()` answers, so
+    // without this the first attempt would build a topology, spend a mutation
+    // that 401s — or worse, succeed and then drop the map on the floor at the
+    // `if (this.userId)` write below — and set the retry clock for ten minutes.
+    if (!this.userId) return null;
+
     let topology: TopologyReport;
     try {
       topology = await buildTopology();

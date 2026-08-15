@@ -58,6 +58,13 @@ function clearAuthToken() {
   // session — otherwise the next person to sign in on this device sees the
   // previous account's homes on the first frame.
   clearPersistedHomeKitCache();
+  // Same for Local Mode's id map, which is now adopted before auth answers
+  // (see `loadLast`) and so would otherwise outlive the account that minted it.
+  // Gated like the load below, so a browser never pulls the native chunk.
+  void import('@/native/homekit-bridge').then(({ isLocalCapable }) => {
+    if (!isLocalCapable()) return;
+    void import('@/server/local-identity').then(({ localIdentity }) => localIdentity.forget());
+  });
 }
 
 // POST the (likely expired) JWT to /auth/refresh. The server accepts tokens

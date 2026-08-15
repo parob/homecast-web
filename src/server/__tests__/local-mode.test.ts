@@ -85,6 +85,28 @@ describe('decideLocalMode — hard guards', () => {
   });
 });
 
+describe('decideLocalMode — "Always on" is not a magic wand', () => {
+  it('still refuses when the device cannot serve HomeKit at all', () => {
+    // Observed on a real iPhone: "Always on" selected, and Local Mode sat in
+    // Standby, because HomeKit had not finished loading so bridgeReady was
+    // false. Refusing is correct — you cannot serve a home you cannot read —
+    // but the UI must then say *that*, not "your relay is handling this home".
+    const d = decideLocalMode(inputs({ override: 'on', bridgeReady: false }), EMPTY_MEMO);
+    expect(d.active).toBe(false);
+  });
+
+  it('engages the moment the bridge becomes ready', () => {
+    // The other half of the same bug: capability was probed once at startup,
+    // before HomeKit had loaded, and never re-probed — so this transition
+    // never happened and "Always on" stayed inert forever.
+    const r = run([
+      { override: 'on', bridgeReady: false, now: 0 },
+      { override: 'on', bridgeReady: true, now: 1_000 },
+    ]);
+    expect(r.map((d) => d.active)).toEqual([false, true]);
+  });
+});
+
 describe('decideLocalMode — engaging', () => {
   it('waits the full engage delay, then activates', () => {
     const r = run([{ now: 0 }, { now: ENGAGE_AFTER_MS - 1 }, { now: ENGAGE_AFTER_MS }]);

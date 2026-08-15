@@ -58,6 +58,39 @@ export interface LocalModeDecision {
 
 export const EMPTY_MEMO: LocalModeMemo = { active: false, pendingSince: null };
 
+/** How much of this device's HomeKit lines up with the account's own layout. */
+export type IdentityState = 'mapped' | 'partial' | 'unmapped';
+
+/** What the last topology report matched, whenever it happened. */
+export interface IdentityCounts {
+  matched: number;
+  reported: number;
+}
+
+/**
+ * Summarise the identity map for the badge and the Settings screen.
+ *
+ * Deliberately takes the *cached* counts rather than a sync result. The two
+ * used to be conflated, and the difference is the whole bug: a sync only
+ * succeeds while the cloud is reachable, which is exactly what Local Mode is
+ * for the absence of — so a device with a perfectly good map restored from
+ * storage reported "not matched yet" for as long as it was needed.
+ *
+ * `matched: 0` with a non-zero `reported` stays 'unmapped', but keeps its
+ * counts: it is a genuinely different situation (this device is looking at
+ * another Apple Home) and the copy is allowed to say so.
+ */
+export function identityFrom(c: IdentityCounts | null): IdentityCounts & { identityState: IdentityState } {
+  if (!c || c.matched === 0) {
+    return { identityState: 'unmapped', matched: c?.matched ?? 0, reported: c?.reported ?? 0 };
+  }
+  return {
+    identityState: c.matched < c.reported ? 'partial' : 'mapped',
+    matched: c.matched,
+    reported: c.reported,
+  };
+}
+
 /**
  * Engage well inside Dashboard's 12s initial grace and far inside its 120s
  * confirmed grace, so Local Mode takes over *before* either offline screen
