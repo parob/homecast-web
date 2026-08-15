@@ -1452,7 +1452,7 @@ export function CollectionDetail({
               {selectedGroupId !== null ? (
                 <>
                   <span className="opacity-60">{collection.name}</span>
-                  <span className="mx-2 opacity-40">/</span>
+                  <span className="mx-1.5">{' '}</span>
                   <span>{payload.groups.find(g => g.id === selectedGroupId)?.name || 'Group'}</span>
                 </>
               ) : (

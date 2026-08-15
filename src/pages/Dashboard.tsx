@@ -86,6 +86,11 @@ const HOME_LEVEL_CONTEXT_ID = 'home-level';
  * Ancestor crumbs in the title bar. They keep the dimmed weight of the plain
  * text they replaced and brighten on hover, so the bar reads as navigation
  * rather than a label.
+ *
+ * No slash between crumbs: the weight difference already separates ancestor
+ * from current, and a second separator doing the same job is just more ink in
+ * a bar that has to truncate on a phone. The spacer keeps a real space so the
+ * names still read as two words to a screen reader.
  */
 const BREADCRUMB_LINK_CLASS =
   'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
@@ -7471,7 +7476,7 @@ const Dashboard = () => {
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
-                          <span className="mx-2 opacity-40">/</span>
+                          <span className="mx-1.5">{' '}</span>
                           {parentGroup && (
                             <>
                               <button
@@ -7481,7 +7486,7 @@ const Dashboard = () => {
                               >
                                 {parentGroup.name}
                               </button>
-                              <span className="mx-2 opacity-40">/</span>
+                              <span className="mx-1.5">{' '}</span>
                             </>
                           )}
                           <DropdownMenu>
@@ -7552,7 +7557,7 @@ const Dashboard = () => {
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
-                      <span className="mx-2 opacity-40">/</span>
+                      <span className="mx-1.5">{' '}</span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <span className="cursor-pointer">{selectedRoomGroup.name}</span>
