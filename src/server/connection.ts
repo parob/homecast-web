@@ -11,6 +11,7 @@ import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './we
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
 import { toastConnection } from '../lib/toast-bus';
 
@@ -165,6 +166,22 @@ function communityCacheKey(action: string, payload: Record<string, unknown>): st
   if (payload.roomId) parts.push(`r:${payload.roomId}`);
   if (payload.accessoryId) parts.push(`a:${payload.accessoryId}`);
   return parts.join('|');
+}
+
+/**
+ * A one-line gist of a request payload for the debug log.
+ *
+ * Ids only, never values: an accessories.list response is megabytes, and the
+ * point is to see the shape of what was asked, not to keep a copy of the home.
+ */
+function summarisePayload(payload: Record<string, unknown>): string | undefined {
+  const bits: string[] = [];
+  for (const key of ['homeId', 'roomId', 'accessoryId', 'groupId', 'sceneId'] as const) {
+    const v = payload[key];
+    if (typeof v === 'string') bits.push(`${key.replace(/Id$/, '')}=${v.slice(0, 8)}`);
+  }
+  if (payload.includeValues === true) bits.push('values');
+  return bits.length ? bits.join(' ') : undefined;
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
@@ -668,8 +685,29 @@ class ServerConnection {
    * In Community mode on relay: handled directly via local-handler.ts
    */
   async request<T = unknown>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+    // Every HomeKit action funnels through here, which is why the log is taken
+    // here rather than at any call site — including the ones that swallow their
+    // own errors, which are exactly the ones worth seeing.
+    const log = beginRequest(action, summarisePayload(payload));
+    const via = { transport: 'ws' };
+    try {
+      const result = await this.routeRequest<T>(action, payload, via);
+      log.ok(via.transport);
+      return result;
+    } catch (err) {
+      log.fail(err);
+      throw err;
+    }
+  }
+
+  private async routeRequest<T>(
+    action: string,
+    payload: Record<string, unknown>,
+    via: { transport: string },
+  ): Promise<T> {
     // Community mode on relay Mac: execute HomeKit actions directly, with cache
     if (isCommunity && communityRelayConfirmed) {
+      via.transport = 'community';
       return communityRequest<T>(action, payload);
     }
 
@@ -680,6 +718,7 @@ class ServerConnection {
     // no `window` for the controller to read.
     const local = getLocalModeRouter();
     if (local?.canServe(action, payload)) {
+      via.transport = 'local-mode';
       return local.request<T>(action, payload);
     }
 
@@ -890,6 +929,12 @@ class ServerConnection {
   }
 
   private updateState(updates: Partial<ServerConnectionState>): void {
+    // The socket's timeline is what makes the request log readable at launch:
+    // a fetch that failed is only explicable next to the moment the transport
+    // actually became usable.
+    if (updates.connectionState && updates.connectionState !== this.state.connectionState) {
+      logEvent('socket', updates.connectionState);
+    }
     this.state = { ...this.state, ...updates };
     this.notifyListeners();
   }

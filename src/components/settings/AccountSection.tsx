@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isRequestPanelEnabled, setRequestPanelEnabled } from '@/lib/request-log';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +69,10 @@ export function AccountSection({
   launchAtLogin,
   setLaunchAtLogin,
 }: AccountSectionProps) {
+  // Local rather than an account setting: the log has to be on before the app
+  // starts fetching, and account settings arrive long after that — so it lives
+  // in localStorage and is read synchronously at boot. See request-log.ts.
+  const [requestLogOpen, setRequestLogOpen] = useState(() => isRequestPanelEnabled());
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
   const [authEnabled, setAuthEnabled] = useState(false);
@@ -346,6 +351,26 @@ export function AccountSection({
             />
           </div>
         </div>
+        {/* Only meaningful with the developer tools on, and hidden otherwise so
+            it can't be switched on by someone who has no use for it. */}
+        {developerMode && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Request Log</p>
+              <p className="text-xs text-muted-foreground">
+                Dock a live log of every relay request under the app. Reload with it
+                open to see what happens at startup.
+              </p>
+            </div>
+            <Switch
+              checked={requestLogOpen}
+              onCheckedChange={(checked) => {
+                setRequestPanelEnabled(checked);
+                setRequestLogOpen(checked);
+              }}
+            />
+          </div>
+        )}
         {onReplayTutorial && (
           <div className="flex items-center justify-between">
             <div>

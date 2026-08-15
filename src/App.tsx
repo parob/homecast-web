@@ -12,6 +12,7 @@ import { apolloClient } from "@/lib/apollo";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PushRegistration } from "@/components/PushRegistration";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
+import { DebugDock } from "@/components/debug/DebugDock";
 import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
 import { lazy, Suspense } from "react";
@@ -80,6 +81,9 @@ const MainRoutes = () => (
   <WebSocketProvider>
     <AuthProvider>
       <PushRegistration />
+      {/* Wraps the signed-in app so the request log can dock beneath it. A
+          no-op render unless the log is switched on in Settings → Account. */}
+      <DebugDock>
       <Suspense fallback={<AppBootFallback />}>
         <Routes>
           {isCommunity ? (
@@ -133,6 +137,7 @@ const MainRoutes = () => (
           )}
         </Routes>
       </Suspense>
+      </DebugDock>
     </AuthProvider>
   </WebSocketProvider>
 );
