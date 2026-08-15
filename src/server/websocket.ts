@@ -200,6 +200,9 @@ import {
 } from './reconnect-policy';
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
+/** How long to wait for the server's first word before assuming the socket is
+ *  usable anyway. Generous — it only runs when the server says nothing. */
+const READY_FALLBACK_MS = 2000;
 // Short by design: a notify action must not stall the rest of the automation
 // waiting on a report that is only ever used to annotate the trace.
 const NOTIFY_RESULT_TIMEOUT_MS = 8000;
@@ -256,6 +259,9 @@ export class ServerWebSocket {
   private eventUnsubscribe: (() => void) | null = null;
   private isManualDisconnect = false;
   private pendingRequests = new Map<string, PendingRequest>();
+  /** Whether this socket has been announced usable — see armReadyAnnouncement. */
+  private readyAnnounced = false;
+  private readyTimer: ReturnType<typeof setTimeout> | null = null;
   private requestIdCounter = 0;
   private connectionOpenedAt: number | null = null;
   private lastConnectionDuration: number | null = null;
@@ -522,6 +528,40 @@ export class ServerWebSocket {
    * DataCache's per-key dedupe immediately, whereas a hung promise blocks
    * every subsequent attempt for the whole request timeout.
    */
+  /**
+   * Hold "connected" back until the server has said something.
+   *
+   * A socket being open is not the same as it being usable. On GKE the server
+   * answers a connection landing on the wrong pod with a `redirect` and tears
+   * it down — measured at ~90ms after open, every launch. Announcing on the raw
+   * open meant the app fired its whole opening burst into a socket the server
+   * had already decided to discard: six requests, all failing DISCONNECTED,
+   * then a retry round. Waiting for the server's first word costs those same
+   * ~90ms and skips the doomed round entirely.
+   *
+   * The fallback matters as much as the wait: a server that never sends a hello
+   * (an older build, or one that only speaks when spoken to) must not leave the
+   * app permanently "connecting". Same shape as the relay_status fallback below.
+   */
+  private armReadyAnnouncement(): void {
+    this.readyAnnounced = false;
+    if (this.readyTimer) clearTimeout(this.readyTimer);
+    this.readyTimer = setTimeout(() => {
+      console.log('[ServerWS] No greeting from the server — assuming usable');
+      this.announceReady();
+    }, READY_FALLBACK_MS);
+  }
+
+  private announceReady(): void {
+    if (this.readyAnnounced) return;
+    this.readyAnnounced = true;
+    if (this.readyTimer) {
+      clearTimeout(this.readyTimer);
+      this.readyTimer = null;
+    }
+    this.setState('connected');
+  }
+
   private failPendingRequests(reason: string): void {
     if (this.pendingRequests.size === 0) return;
     for (const [, pending] of this.pendingRequests) {
@@ -836,7 +876,9 @@ export class ServerWebSocket {
 
   private handleOpen(): void {
     console.log('[ServerWS] Connected');
-    this.setState('connected');
+    // Deliberately NOT announced yet — see armReadyAnnouncement. The socket is
+    // open, but the server has not said whether it intends to keep it.
+    this.armReadyAnnouncement();
     this.connectionOpenedAt = Date.now();
     // Start the liveness clock now: a socket that has just opened is alive,
     // and would otherwise inherit the previous connection's last timestamp.
@@ -1052,6 +1094,10 @@ export class ServerWebSocket {
     this.recordActivity();
     try {
       const message = JSON.parse(event.data);
+
+      // The server's first word is what makes this socket usable. A redirect is
+      // the one word that means the opposite, so it alone does not announce.
+      if (message.type !== 'redirect') this.announceReady();
 
       // Everything the cloud sends, including what is not a request:
       // relay_status, subscriber counts, automation pushes, broadcasts. None of
@@ -1849,6 +1895,12 @@ export class ServerWebSocket {
     // until they expired. Measured on an iPhone launch: the server issues its
     // affinity redirect ~280ms after connect, the app fires its opening burst
     // at ~600ms, and the dashboard then showed stale data for 33 seconds.
+    if (this.readyTimer) {
+      clearTimeout(this.readyTimer);
+      this.readyTimer = null;
+    }
+    this.readyAnnounced = false;
+
     this.failPendingRequests('Connection replaced before the response arrived');
 
     if (this.ws) {

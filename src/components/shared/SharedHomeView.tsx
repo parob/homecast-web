@@ -869,7 +869,7 @@ export function SharedHomeView({
               >
                 {homeName}
               </button>
-              <span className="mx-1.5">{' '}</span>
+              <span className="opacity-60"> / </span>
               {selectedRoom}
             </h2>
           )}
