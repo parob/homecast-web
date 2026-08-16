@@ -2,10 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": [
-          "3HMH4559WD.cloud.homecast.app",
-          "NZDV3AFAEG.cloud.homecast.app"
-        ],
+        "appIDs": ["3HMH4559WD.cloud.homecast.app"],
         "components": [
           {
             "/": "/*",
@@ -29,9 +26,6 @@
     ]
   },
   "webcredentials": {
-    "apps": [
-      "3HMH4559WD.cloud.homecast.app",
-      "NZDV3AFAEG.cloud.homecast.app"
-    ]
+    "apps": ["3HMH4559WD.cloud.homecast.app"]
   }
 }

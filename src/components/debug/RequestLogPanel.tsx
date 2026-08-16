@@ -133,9 +133,8 @@ export function RequestLogPanel() {
         // Collapsed it is a bar tucked into the bottom edge: inset from the
         // sides so it clears the screen's rounded corners, and flush to the
         // bottom, because an inset under it just wastes the space it saved.
-        minimised
-          ? 'mx-2 rounded-t-xl border border-b-0 border-white/10'
-          : 'border-t border-white/10',
+        // No rounding of its own — the screen's corners are the curve here.
+        minimised ? 'mx-2 border-t border-white/10' : 'border-t border-white/10',
       )}
       style={{ height: minimised ? COLLAPSED_HEIGHT : height }}
     >
@@ -156,13 +155,14 @@ export function RequestLogPanel() {
           <button
             onClick={() => setMinimised(false)}
             aria-label="Expand request log"
-            className="flex flex-1 items-center gap-2 self-stretch text-left rounded hover:bg-white/10 -mx-1 px-1"
+            className="relative flex flex-1 items-center gap-2 self-stretch text-left rounded hover:bg-white/10 -mx-1 px-1"
           >
             <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
             <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
             {errors > 0 && (
               <span className="text-[11px] text-red-400 tabular-nums">{errors} failed</span>
             )}
+            <ChevronUp className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 text-white/50" />
           </button>
         ) : (
           <>
@@ -200,14 +200,14 @@ export function RequestLogPanel() {
         {/* Minimise, not close: switching the log off entirely belongs in
             Settings, and an X here is a trap — it looks like "hide for now" and
             actually costs you the capture you are in the middle of taking. */}
-        <button
-          onClick={() => setMinimised(m => !m)}
-          title={minimised ? 'Expand' : 'Minimise'}
-          aria-expanded={!minimised}
-          className={`shrink-0 self-stretch flex items-center text-white/50 hover:text-white rounded hover:bg-white/10 ${minimised ? 'px-2 -mr-1' : 'p-2'}`}
+        {!minimised && <button
+          onClick={() => setMinimised(true)}
+          title="Minimise"
+          aria-expanded
+          className="shrink-0 self-stretch flex items-center text-white/50 hover:text-white rounded hover:bg-white/10 p-2"
         >
-          {minimised ? <ChevronUp className="h-5 w-5" /> : <Minus className="h-3.5 w-3.5" />}
-        </button>
+          <Minus className="h-3.5 w-3.5" />
+        </button>}
       </div>
       {!minimised && (
         <div
