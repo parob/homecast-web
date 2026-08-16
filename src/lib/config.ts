@@ -36,16 +36,53 @@ export function getCommunityMode(): 'relay' | 'client' | null {
 export function isRelayMode(): boolean { return getCommunityMode() === 'relay'; }
 export function isClientMode(): boolean { return getCommunityMode() === 'client'; }
 export function isRelaySetupComplete(): boolean { return !!localStorage.getItem('homecast-relay-setup'); }
-export function getRelayAddress(): string | null { return localStorage.getItem('homecast-relay-address'); }
+
+/**
+ * `192.168.1.5:5656` → `http://192.168.1.5:5656`; anything already carrying a
+ * scheme keeps it, so a relay reached over HTTPS stays HTTPS.
+ *
+ * `URL.origin` drops a default port, which is what lets the WebSocket rule
+ * below tell "explicit port" (LAN, mesh VPN) from "443/80" (behind a proxy).
+ */
+export function normalizeRelayOrigin(input: string): string {
+  const trimmed = input.trim().replace(/\/+$/, '');
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  try {
+    return new URL(withScheme).origin;
+  } catch {
+    return withScheme;
+  }
+}
+
+/**
+ * The relay this device connects to, as a full origin.
+ *
+ * This was stored as bare `host:port` before remote access was supported, so a
+ * value with no scheme is read as http — exactly what those installs were
+ * already doing implicitly. No migration step needed.
+ */
+export function getRelayAddress(): string | null {
+  const raw = localStorage.getItem('homecast-relay-address');
+  return raw ? normalizeRelayOrigin(raw) : null;
+}
+
+/** The relay's real WebSocket port, as reported by /health or Bonjour TXT. */
+export function getRelayWsPort(): number | null {
+  const raw = localStorage.getItem('homecast-relay-ws-port');
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 function resolveApiBase(): string {
   // Build-time override (local dev)
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
 
-  // Community client mode: point to the remote relay
+  // Community client mode: point to the remote relay. The stored value is a
+  // full origin, so a relay reached over HTTPS — a tunnel, a VPN, a public
+  // host — is used as given rather than forced back down to http.
   if (isCommunity && isClientMode()) {
     const addr = getRelayAddress();
-    if (addr) return `http://${addr}`;
+    if (addr) return addr;
   }
 
   // Community mode: API is on the same origin as the web app
@@ -68,23 +105,51 @@ function resolveWebBase(): string {
 
 const API_BASE = resolveApiBase();
 const WEB_BASE = resolveWebBase();
-const isLocal = API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
-const WS_BASE = API_BASE.replace(/^https?:/, isLocal ? 'ws:' : 'wss:');
+// Follow the scheme rather than guessing from the hostname: an https origin
+// always means wss, wherever it is served from.
+const WS_BASE = API_BASE.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 
-// In Community mode, WebSocket runs on HTTP port + 1 (separate NWProtocolWebSocket listener)
+/**
+ * Where a Community relay's WebSocket lives.
+ *
+ * The relay serves HTTP and WebSocket on two separate ports (WS = HTTP + 1).
+ * That is fine on a LAN, but a reverse proxy presenting one hostname on 443
+ * has no second port to offer — so the shape of the origin decides:
+ *
+ *   explicit port    → same host, the relay's real WS port  (LAN, mesh VPN)
+ *   no port (443/80) → same origin /ws, which the proxy routes to the WS port
+ *
+ * The real port comes from /health or Bonjour TXT when we have it; HTTP + 1 is
+ * only a fallback for relays that never reported one.
+ *
+ * `homecast-relay-ws-url` overrides both, for topologies neither rule fits.
+ */
+export function communityWsUrl(origin: string): string {
+  const override = localStorage.getItem('homecast-relay-ws-url');
+  if (override) return override;
+
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return `${WS_BASE}/ws`;
+  }
+  const scheme = url.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  if (!url.port) return `${scheme}//${url.host}/ws`;
+
+  const wsPort = getRelayWsPort() ?? parseInt(url.port, 10) + 1;
+  return `${scheme}//${url.hostname}:${wsPort}/ws`;
+}
+
 function resolveWsUrl(): string {
   if (isCommunity) {
-    // Client mode: connect to the remote relay's WebSocket
     if (isClientMode()) {
       const addr = getRelayAddress();
-      if (addr) {
-        const [host, port] = addr.includes(':') ? addr.split(':') : [addr, '5656'];
-        return `ws://${host}:${parseInt(port, 10) + 1}/ws`;
-      }
+      if (addr) return communityWsUrl(addr);
     }
-    const host = window.location.hostname;
-    const httpPort = parseInt(window.location.port || '5656', 10);
-    return `ws://${host}:${httpPort + 1}/ws`;
+    // Served by the relay itself — its own origin is the relay's origin.
+    return communityWsUrl(window.location.origin);
   }
   return `${WS_BASE}/ws`;
 }

@@ -38,6 +38,24 @@ export async function refreshAuthEnabled(): Promise<void> {
   } catch {
     authEnabledCache = false;
   }
+  publishAuthState();
+}
+
+/**
+ * Tell the native server whether we require a login, so it can say so in its
+ * Bonjour TXT record and on /health. The setting lives in IndexedDB, which is
+ * only reachable from here — Swift cannot read it, so it has to be pushed.
+ * Every path that refreshes the cache goes through here, so the advertisement
+ * cannot drift from the setting.
+ */
+function publishAuthState(): void {
+  const win = window as Window & {
+    webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } };
+  };
+  win.webkit?.messageHandlers?.localServer?.postMessage({
+    action: 'advertise',
+    authEnabled: authEnabledCache,
+  });
 }
 
 /** Whether the relay requires authentication for external clients. */
