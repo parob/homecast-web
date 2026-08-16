@@ -5813,7 +5813,29 @@ const Dashboard = () => {
   // boot sequence is one continuous screen. It used to be bg-background, which
   // flashed white between the black splash and the wallpaper.
   if (authLoading) {
-    return <AppBootFallback status={isCommunity ? 'Connecting to this Mac\u2026' : 'Signing in\u2026'} />;
+    // Community mode waits on a relay that may simply never answer — a Mac that
+    // is asleep, on another network, or not running the app. Waiting forever on
+    // a black screen is the worst possible answer to that, so past 20 seconds it
+    // says what it was trying to do and offers a way out.
+    return (
+      <AppBootFallback
+        status={isCommunity ? 'Connecting to this Mac\u2026' : 'Signing in\u2026'}
+        stuckAfterMs={20000}
+        stuckMessage={isCommunity
+          ? "Still trying to reach this Mac. Check the Homecast app is running on it and that both devices are on the same network."
+          : "Still signing in. Check your connection."}
+        stuckActions={
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+            <Button size="sm" variant="ghost" className="text-white/60 hover:text-white" onClick={logout}>
+              Sign out
+            </Button>
+          </div>
+        }
+      />
+    );
   }
   markBoot('auth');
 

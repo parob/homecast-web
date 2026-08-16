@@ -103,6 +103,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
   cloudSignupsAvailable?: boolean;
   accountType?: string;
 }) {
+  const hasCloud = accountType === 'cloud' || accountType === 'managed';
   const macLabel = isInMacApp ? 'Use this Mac as your relay' : 'I have a Mac at home';
   const macDescription = isInMacApp
     ? 'Your Mac needs to stay on for remote access to work.'
@@ -145,16 +146,25 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
         title="Set up a cloud relay"
         requirement="Requires an Apple Home Hub (Apple TV or HomePod)"
         onClick={() => onSelect('cloud-setup')}
-        disabled={!cloudSignupsAvailable}
+        disabled={!cloudSignupsAvailable && !hasCloud}
       >
         <p className="text-xs text-muted-foreground">
           {isInMacApp
             ? "Always on \u2014 your Mac doesn't need to stay running."
             : "We run a relay for you \u2014 no Mac needed. Always on, even when your computer is off."}
         </p>
-        <p className="text-xs text-muted-foreground">
-          {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused — at capacity'}
-        </p>
+        {/* Somebody already paying for this should be told they have it, not
+            quoted the price of it again. */}
+        {hasCloud ? (
+          <p className="text-xs font-medium text-green-600 flex items-center gap-1">
+            <Check className="h-3 w-3" />
+            Cloud plan active · unlimited accessories
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused — at capacity'}
+          </p>
+        )}
       </OptionCard>
 
       <OptionCard
@@ -532,7 +542,17 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
       if (step === 'intent') onComplete('skipped');
       else setStep('intent');
     }}>
-      <DialogContent className="sm:max-w-md" style={{ zIndex: 10050 }}>
+      <DialogContent
+        className="sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain"
+        // The Mac app's window owns the top 33px for its title bar, and the
+        // dialog centres against the whole window — so a tall step slid its
+        // header up underneath it. Capping the height keeps it inside, and the
+        // offset keeps a full-height one clear of the bar.
+        style={{
+          zIndex: 10050,
+          ...(isInMacApp ? { marginTop: 33, maxHeight: 'calc(100dvh - 4rem)' } : null),
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-center text-lg">{stepTitles[step]}</DialogTitle>
           <DialogDescription className="text-center text-sm text-muted-foreground">

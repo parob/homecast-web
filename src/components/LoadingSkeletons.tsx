@@ -18,7 +18,7 @@
  * a solid theme token and disappears against a dark background, so surfaces that
  * know they are dark pass tone="dark" and get white overlays instead.
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 type Tone = 'light' | 'dark';
@@ -185,16 +185,33 @@ export function AccessoryGridSkeleton({
  * the user watched black → blank → white in the first second, three screens for
  * one wait.
  */
-export function AppBootFallback({ status }: { status?: string } = {}) {
+export function AppBootFallback({ status, stuckAfterMs = 0, stuckMessage, stuckActions }: {
+  status?: string;
+  /**
+   * Give up waiting silently after this long and say so. 0 means never — right
+   * for a Suspense fallback that resolves or navigates on its own, wrong for
+   * anything waiting on a machine that might simply not answer.
+   */
+  stuckAfterMs?: number;
+  stuckMessage?: string;
+  /** Something to actually do about it. Without this the screen is still a wall. */
+  stuckActions?: React.ReactNode;
+} = {}) {
   // A short wait needs no words — a label that flashes for 200ms is noise. But
   // "stuck on a loading screen for ages" is exactly a wait that never says
   // anything, so past about a second the screen starts explaining itself. The
   // delay is what keeps this from being clutter on every fast boot.
   const [waited, setWaited] = useState(false);
+  const [stuck, setStuck] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setWaited(true), 1200);
     return () => clearTimeout(t);
   }, []);
+  useEffect(() => {
+    if (!stuckAfterMs) return;
+    const t = setTimeout(() => setStuck(true), stuckAfterMs);
+    return () => clearTimeout(t);
+  }, [stuckAfterMs]);
 
   return (
     <div
@@ -209,15 +226,24 @@ export function AppBootFallback({ status }: { status?: string } = {}) {
         height={80}
         className="block rounded-[18px]"
       />
-      <div className="h-[22px] w-[22px] animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
-      <p
-        className={cn(
-          'absolute bottom-24 px-8 text-center text-xs text-white/40 transition-opacity duration-500',
-          waited ? 'opacity-100' : 'opacity-0'
-        )}
-      >
-        {status ?? 'Starting up…'}
-      </p>
+      {!stuck && (
+        <div className="h-[22px] w-[22px] animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
+      )}
+      {stuck ? (
+        <div className="flex max-w-xs flex-col items-center gap-4 px-8 text-center">
+          <p className="text-sm text-white/70">{stuckMessage ?? "This is taking longer than it should."}</p>
+          {stuckActions}
+        </div>
+      ) : (
+        <p
+          className={cn(
+            'absolute bottom-24 px-8 text-center text-xs text-white/40 transition-opacity duration-500',
+            waited ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          {status ?? 'Starting up…'}
+        </p>
+      )}
     </div>
   );
 }
