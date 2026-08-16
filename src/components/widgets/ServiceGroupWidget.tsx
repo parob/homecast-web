@@ -18,7 +18,6 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { EditBadge } from '@/components/shared/EditBadge';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
@@ -410,42 +409,34 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Hidden styling
   const hiddenClass = isHidden ? 'opacity-40 grayscale' : '';
 
-  // Hidden badge — the unhide button, for the same reason WidgetCard's is:
-  // revealing hidden tiles is only useful if you can act on what you revealed.
-  const hiddenBadge = isHidden ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      {onHide ? (
-        <button
-          type="button"
-          aria-label={`Unhide ${group.name}`}
-          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
-          className="pointer-events-auto flex items-center gap-1 bg-zinc-700 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-md hover:bg-zinc-600 active:bg-zinc-600 transition-colors duration-fast"
-        >
-          <Eye className="h-3 w-3" />
-          Unhide
-        </button>
-      ) : (
-        <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-          Hidden
-        </span>
-      )}
+  // One visibility control, same shape and position as WidgetCard's — see the
+  // comment there for why the hide and unhide affordances were merged.
+  const visibilityButton = onHide && (editMode || isHidden) ? (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+      <button
+        type="button"
+        aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${group.name}`}
+        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
+        className="pointer-events-auto flex items-center gap-1.5 bg-zinc-800/95 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-zinc-700 active:bg-zinc-700 transition-colors duration-fast"
+      >
+        {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        {isHidden ? 'Unhide' : 'Hide'}
+      </button>
     </div>
   ) : null;
 
-  // Edit mode's hide affordance. See WidgetCard for why a hidden tile gets the
-  // unhide button instead of this one rather than both.
-  const editBadge = editMode && onHide && !isHidden ? (
-    <EditBadge
-      kind="hide"
-      label={`Hide ${group.name}`}
-      onClick={onHide}
-      className="absolute top-1.5 left-1.5"
-    />
+  const hiddenLabel = isHidden && !visibilityButton ? (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
+        Hidden
+      </span>
+    </div>
   ) : null;
 
   const handleCardClick = useCallback(() => {
-    if (isDragging) return;
+    if (isDragging || editMode) return;
     if (showCompact) {
       if (!isWidgetExpanded) {
         setIsWidgetExpanded(true);
@@ -457,20 +448,27 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     } else {
       setIsExpanded(prev => !prev);
     }
-  }, [isDragging, showCompact, isWidgetExpanded]);
+  }, [isDragging, editMode, showCompact, isWidgetExpanded]);
 
   // Compact subtitle text
   const compactSubtitle = allNoResponse
     ? 'No Response'
     : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
 
+  // Editing is for arranging, not operating. The group's switches and sliders are
+  // scattered through this card, so rather than gate each one, the whole card goes
+  // inert and the drag handle alone is given its pointer events back. The
+  // visibility button is a sibling of the Card, so it keeps working either way.
   const cardContent = (
-    <Card className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} cursor-pointer`} onClick={handleCardClick}>
+    <Card
+      className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} ${editMode ? 'pointer-events-none' : 'cursor-pointer'}`}
+      onClick={handleCardClick}
+    >
       <CardHeader className={showCompact ? 'p-[14px]' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
         {showCompact ? (
           // Compact mode - vertical layout matching preview style
           <div
-            className={`${isDragging ? 'cursor-grabbing' : 'cursor-pointer'}`}
+            className={`${isDragging ? 'cursor-grabbing' : 'cursor-pointer'} ${editMode ? 'pointer-events-auto' : ''}`}
             {...(dragHandle?.attributes || {})}
             {...(dragHandle?.listeners || {})}
           >
@@ -520,7 +518,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           // Non-compact mode - horizontal layout
           <div className="flex items-center justify-between gap-2">
             <div
-              className={`flex items-center min-w-0 flex-1 gap-2 ${isDragging ? 'cursor-grabbing' : 'cursor-pointer'}`}
+              className={`flex items-center min-w-0 flex-1 gap-2 ${isDragging ? 'cursor-grabbing' : 'cursor-pointer'} ${editMode ? 'pointer-events-auto' : ''}`}
               {...(dragHandle?.attributes || {})}
               {...(dragHandle?.listeners || {})}
             >
@@ -1109,8 +1107,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               )}
             </ContextMenuContent>
           </ContextMenu>
-          {hiddenBadge}
-          {editBadge}
+          {hiddenLabel}
+          {visibilityButton}
           {/* Expanded overlay for compact mode */}
           <ExpandedOverlay
             isExpanded={isWidgetExpanded}
@@ -1137,8 +1135,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     <WidgetColorContext.Provider value={colorContextValue}>
       <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
         {cardContent}
-        {hiddenBadge}
-        {editBadge}
+        {hiddenLabel}
+        {visibilityButton}
         {/* Expanded overlay for compact mode */}
         <ExpandedOverlay
           isExpanded={isWidgetExpanded}

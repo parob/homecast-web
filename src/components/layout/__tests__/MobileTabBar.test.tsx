@@ -256,6 +256,33 @@ describe('edit mode', () => {
     expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
   });
 
+  it('never puts the wiggle and the drag transform on one element', () => {
+    // `.wiggle` animates `transform: rotate(...)`, and a running CSS animation
+    // outranks an inline style — so sharing an element silently replaced
+    // dnd-kit's translate and the tabs stopped moving aside as you dragged.
+    // Nothing appeared to happen until the drop reordered the DOM.
+    const { container } = render(
+      <MobileTabBar
+        pinnedTabs={[TABS.home, TABS.room]}
+        selectedHomeId={null} selectedRoomId={null}
+        selectedCollectionId={null} selectedCollectionGroupId={null}
+        onSelectHome={vi.fn()} onSelectRoom={vi.fn()}
+        onSelectCollection={vi.fn()} onSelectCollectionGroup={vi.fn()}
+        onActivate={vi.fn()} renderControl={vi.fn()}
+        resolveStatus={() => 'ready'} resolveAccessory={() => undefined}
+        editMode onReorder={vi.fn()} onRename={vi.fn()} onUnpin={vi.fn()}
+      />,
+    );
+
+    // Asserting on `style.transform` would be vacuous: dnd-kit only writes one
+    // during an actual drag, which jsdom cannot perform. So assert the structure
+    // that makes the clash impossible — the wiggling element is never the node
+    // dnd-kit transforms.
+    expect(container.querySelectorAll('[data-sortable-node]')).toHaveLength(2);
+    expect(container.querySelectorAll('.wiggle')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-sortable-node].wiggle')).toHaveLength(0);
+  });
+
   it('latches nothing active while editing', () => {
     setup([TABS.home], { editMode: true, selectedHomeId: 'HOME-1' });
     expect(screen.getByRole('button', { name: 'Beach House' }).getAttribute('aria-current')).toBeNull();

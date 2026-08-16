@@ -411,13 +411,29 @@ function TabSlot({ id, sortable, children }: {
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         transition,
         opacity: isDragging ? 0.5 : 1,
-        // Derived from the id so neighbouring tabs don't wiggle in lockstep, the
-        // same trick the dashboard tiles use.
-        '--wiggle-offset': `${(id.charCodeAt(0) % 5) * 0.05}deg`,
-      } as React.CSSProperties}
-      className={cn('relative shrink-0 touch-none', !isDragging && 'wiggle')}
+      }}
+      className="relative shrink-0 touch-none"
+      // Marks the element dnd-kit writes its inline transform onto. The wiggle
+      // must never land here — a test asserts these stay two elements.
+      data-sortable-node=""
     >
-      {children({ ...attributes, ...listeners })}
+      {/* The wiggle MUST be on a different element from the sortable transform.
+          `.wiggle` sets `transform: rotate(...)` through a CSS animation, and a
+          running animation outranks an inline style — so sharing one element
+          meant the rotate silently replaced dnd-kit's translate, and the other
+          tabs never moved aside as you dragged. Nothing appeared to happen until
+          the drop reordered the DOM. The dashboard tiles are already split this
+          way (SortableItem carries the transform, WidgetCard the wiggle); this
+          collapsed the two into one and reintroduced the clash. */}
+      <div
+        className={cn(!isDragging && 'wiggle')}
+        style={{
+          // Derived from the id so neighbouring tabs don't wiggle in lockstep.
+          '--wiggle-offset': `${(id.charCodeAt(0) % 5) * 0.05}deg`,
+        } as React.CSSProperties}
+      >
+        {children({ ...attributes, ...listeners })}
+      </div>
     </div>
   );
 }

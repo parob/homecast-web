@@ -127,7 +127,6 @@ import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { EditBadge } from '@/components/shared/EditBadge';
 import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -376,6 +375,30 @@ interface SortableRoomItemProps {
   editMode?: boolean;
 }
 
+/**
+ * A sidebar row's visibility control in Edit Layout — the same Hide/Unhide button
+ * the tiles carry, sized for a row and pinned to its trailing edge.
+ *
+ * Always rendered as a sibling of the element holding dnd-kit's listeners: inside
+ * it, every tap would race the 250ms press that starts a drag. It swallows
+ * pointerdown as well as click, because the row navigates on both.
+ */
+const RowVisibilityButton: React.FC<{ isHidden: boolean; name: string; onClick: () => void }> = ({
+  isHidden, name, onClick,
+}) => (
+  <button
+    type="button"
+    aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${name}`}
+    onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+    onClick={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }}
+    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 rounded-full bg-zinc-800/95 px-2 py-0.5 text-[11px] font-semibold text-white shadow-md transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700"
+  >
+    {isHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+    {isHidden ? 'Unhide' : 'Hide'}
+  </button>
+);
+
 const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode, touchMode }) => {
   // Rendered inside HistoryProvider — context, not props (28 forwarding
   // components is how menu items end up wired in exactly one place).
@@ -411,7 +434,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           {...attributes}
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-10' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-24' : ''} ${
             isDarkBackground
               ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -427,11 +450,10 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         </button>
       </div>
       {showEditBadge && (
-        <EditBadge
-          kind={isHiddenUi ? 'unhide' : 'hide'}
-          label={`${isHiddenUi ? 'Unhide' : 'Hide'} ${room.name}`}
+        <RowVisibilityButton
+          isHidden={!!isHiddenUi}
+          name={room.name}
           onClick={onToggleVisibility!}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2"
         />
       )}
     </div>
@@ -781,7 +803,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           disabled={isLoading}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-10' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-24' : ''} ${
             isDarkBackground
               ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -816,11 +838,10 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
         </button>
       </div>
       {showEditBadge && (
-        <EditBadge
-          kind={isHiddenUi ? 'unhide' : 'hide'}
-          label={`${isHiddenUi ? 'Unhide' : 'Hide'} ${home.name}`}
+        <RowVisibilityButton
+          isHidden={!!isHiddenUi}
+          name={home.name}
           onClick={onToggleVisibility!}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2"
         />
       )}
     </div>
@@ -5088,6 +5109,58 @@ const Dashboard = () => {
     setShowHiddenItems(prev => !prev);
   }, []);
 
+  /**
+   * What "Show hidden" would actually reveal, right here, right now.
+   *
+   * The toggle used to be an eye icon labelled "Hidden", which said nothing about
+   * what it did or whether it would do anything at all. Naming the count fixes
+   * both: the control states its effect, and it is not rendered when the answer
+   * is zero, so it can never be a switch that appears to do nothing.
+   *
+   * Counts rooms as well as accessories and groups — the same toggle reveals
+   * hidden rooms in the sidebar, and a home whose only hidden thing is a room
+   * would otherwise have no way to get it back.
+   */
+  const hiddenReveal = useMemo(() => {
+    void visibilityVersion; // Layout is read from the Apollo cache, not from state.
+    if (!selectedHomeId) return { count: 0, label: '' };
+    let accessoryLike = 0;
+    for (const [roomName, roomAccessories] of Object.entries(accessoriesByRoom)) {
+      const contextId = rooms.find(r => r.name === roomName)?.id
+        || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_CONTEXT_ID : 'all');
+      for (const a of roomAccessories) {
+        if (isDeviceActuallyHidden(selectedHomeId, contextId, a.id)) accessoryLike++;
+      }
+      for (const g of getGroupsForRoom(roomAccessories)) {
+        if (isGroupActuallyHidden(selectedHomeId, g.id, contextId)) accessoryLike++;
+      }
+    }
+    const hiddenRooms = selectedRoomId
+      ? 0
+      : rooms.filter(r => isRoomActuallyHidden(selectedHomeId, r.id)).length;
+    const count = accessoryLike + hiddenRooms;
+    if (count === 0) return { count: 0, label: '' };
+    // "accessories" while that is all they are; "items" once rooms are in the mix.
+    const noun = hiddenRooms > 0
+      ? (count === 1 ? 'item' : 'items')
+      : (count === 1 ? 'accessory' : 'accessories');
+    return { count, label: `Show ${count} hidden ${noun}` };
+  }, [
+    visibilityVersion, selectedHomeId, selectedRoomId, accessoriesByRoom, rooms,
+    isDeviceActuallyHidden, isGroupActuallyHidden, isRoomActuallyHidden, getGroupsForRoom,
+  ]);
+
+  /**
+   * How far down the page starts. Normally the header's 80px; while editing, the
+   * edit bar's own height, since it replaces the header and is taller than it
+   * once the Show hidden row is present. Content would otherwise sit underneath
+   * the one control it needs.
+   */
+  const editBarHeight = isTouchDevice && editMode
+    ? 80 + (hiddenReveal.count > 0 ? 46 : 0)
+    : 80;
+
+
   // Leaving edit mode puts the hidden things back out of sight. On touch the
   // Show hidden toggle only exists inside the mode, so without this a reveal
   // would strand the dashboard showing dimmed tiles with no visible control to
@@ -6752,38 +6825,60 @@ const Dashboard = () => {
           </div>
       </AppHeader>
 
-      {/* Edit mode toolbar - touch devices only, centered over header.
-          Everything that arranges the dashboard lives here now: reorder (drag),
-          hide (the badge on every tile and sidebar row), and the tab bar below.
-          The Show hidden toggle is deliberately inside the mode rather than in
-          the header menu - revealing hidden things is only ever a step towards
-          unhiding one, which is an edit. */}
+      {/* Edit Layout's toolbar. A solid full-width bar that covers the app header
+          rather than floating over it: while editing, none of the header's normal
+          controls apply, and leaving them visible but inert invited taps that did
+          nothing. The burger stays, because the sidebar is half of what you came
+          here to arrange — homes and rooms live in it. The Sheet it opens is
+          z-[10015], above this bar, so it still works.
+
+          The Show hidden control names its own effect and its own count, and is
+          not rendered at all when there is nothing hidden — a switch that appears
+          to do nothing is worse than no switch. */}
       {isTouchDevice && editMode && (
-        <div className="fixed top-0 left-0 right-0 z-[10002] safe-area-top pointer-events-none" style={{ height: 'calc(80px + var(--safe-area-top, 0px))' }}>
-          <div className="flex flex-col items-center justify-center h-full gap-1">
-            <div className="pointer-events-auto flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-primary text-primary-foreground text-sm font-medium shadow-lg">
-              <span>Editing Layout</span>
+        <div
+          className="fixed top-0 left-0 right-0 z-[10002] bg-background/95 backdrop-blur-xl border-b border-border shadow-sm safe-area-top safe-area-x"
+          data-testid="edit-layout-bar"
+        >
+          <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
+            <div className="flex items-center justify-between gap-2 h-[48px]">
               <button
-                onClick={handleToggleShowHidden}
-                aria-pressed={showHiddenItems}
-                aria-label="Show hidden items"
-                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${showHiddenItems ? 'bg-white text-primary' : 'bg-white/20 text-primary-foreground active:bg-white/30'}`}
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open menu"
+                className="flex items-center justify-center h-10 w-10 -ml-2 rounded-lg text-foreground active:bg-muted"
               >
-                {showHiddenItems ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                Hidden
+                <Menu className="h-5 w-5" />
               </button>
+              <span className="text-sm font-semibold">Editing Layout</span>
               <button
                 onClick={() => setEditModeAndTidy(false)}
-                className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full active:bg-white/30"
+                className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold active:bg-primary/80"
               >
                 Done
               </button>
             </div>
-            <span className="pointer-events-none text-[11px] font-medium px-2 py-0.5 rounded-full bg-black/50 text-white/90">
-              {showHiddenItems
-                ? 'Tap Unhide on a dimmed item to bring it back'
-                : 'Drag to rearrange · tap a badge to hide'}
-            </span>
+            <p className="text-[11px] text-muted-foreground text-center pb-1.5">
+              Drag to rearrange &middot; tap Hide on anything you want out of the way
+            </p>
+            {hiddenReveal.count > 0 && (
+              <button
+                role="switch"
+                aria-checked={showHiddenItems}
+                onClick={handleToggleShowHidden}
+                className="mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-left active:bg-muted"
+              >
+                <span className="flex items-center gap-2 text-xs font-medium">
+                  {showHiddenItems ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  {hiddenReveal.label}
+                </span>
+                <span
+                  aria-hidden
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${showHiddenItems ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                >
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${showHiddenItems ? 'left-[18px]' : 'left-0.5'}`} />
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -7175,11 +7270,11 @@ const Dashboard = () => {
         {/* Main Content */}
         <main className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
           <div
-            className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pt-[80px] pb-16'}`}
+            className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
-              paddingTop: 'calc(80px + var(--safe-area-top, 0px))',
+              paddingTop: `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
               paddingBottom: isMobile && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))'
-            } : isMobile && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : undefined}
+            } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isMobile && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
               isPullable={!(isTouchDevice && editMode)}

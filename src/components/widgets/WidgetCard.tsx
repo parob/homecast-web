@@ -10,7 +10,6 @@ import {
   ContextMenuItem,
 } from '@/components/ui/context-menu';
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
-import { EditBadge } from '@/components/shared/EditBadge';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -236,13 +235,17 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const showHero = !!hero && expanded && !effectiveCompact;
   const heroPortrait = heroStack || isMobile !== false;
 
-  const effectiveHeaderAction = editModeType ? undefined : headerAction;
+  // Edit Layout is for arranging, not operating. A tile that still toggled under
+  // your thumb while you were trying to drag it made every mis-grab switch a
+  // light on. So while editing: no header switch, no secondary controls, and
+  // no expand. The header content stays live because it carries the drag handle.
+  const effectiveHeaderAction = editModeType || editMode ? undefined : headerAction;
   // If childrenVisible is not explicitly set, default to true when children exist
   // `|| showHero` matters: a hero-only widget (a switch's big rocker) has no
   // children, so without it the collapse stayed shut and the expanded panel
   // showed a title and nothing else — no rocker, no actions. Regressed in
   // f56ec90b; restored here with the hero-only case covered by a test.
-  const showChildren = childrenVisible ?? (!!children || showHero);
+  const showChildren = editMode ? false : (childrenVisible ?? (!!children || showHero));
   const characteristics = accessory ? getAllCharacteristics(accessory) : [];
   const hasCharacteristics = characteristics.length > 0;
 
@@ -265,7 +268,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const displayTitle = accessory ? getDisplayName(namedTitle, accessory.roomName) : namedTitle;
 
   const handleCardClick = (e: React.MouseEvent) => {
-    if (effectiveDisabled) return;
+    if (effectiveDisabled || editMode) return;
     // Allow toggling between compact and expanded states
     if (effectiveOnExpandToggle) {
       e.preventDefault();
@@ -395,43 +398,43 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const isCurrentlyHidden = isHidden || (editModeType === 'ui' && isHiddenUi);
   const hiddenClass = isCurrentlyHidden ? 'opacity-40 grayscale' : '';
 
-  // Hidden badge - floating centered overlay (always show when hidden)
-  // Rendered outside the Card element so it's not affected by the card's opacity/grayscale
-  //
-  // It is the unhide button, not a label. Revealing hidden tiles and then making
-  // you go back to a context menu to act on them was the whole complaint: the
-  // thing you are looking at is the thing you want to put back.
-  const hiddenBadge = isHidden ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      {onHide ? (
-        <button
-          type="button"
-          aria-label={`Unhide ${displayTitle}`}
-          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
-          className="pointer-events-auto flex items-center gap-1 bg-zinc-700 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-md hover:bg-zinc-600 active:bg-zinc-600 transition-colors duration-fast"
-        >
-          <Eye className="h-3 w-3" />
-          Unhide
-        </button>
-      ) : (
-        <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-          Hidden
-        </span>
-      )}
+  /**
+   * The tile's visibility control: one button, one place, the label flipping
+   * between Hide and Unhide.
+   *
+   * These were two different controls — a small icon-only badge in the corner to
+   * hide, and a centred labelled pill to unhide — which made the same job look
+   * like two unrelated ones depending on which state a tile happened to be in.
+   * Now it is the same size in the same position and only the word changes.
+   *
+   * It shows while editing, and on a hidden tile whenever one is on screen at
+   * all (desktop reveals them from the context menu, where there is no edit
+   * mode). Rendered outside the Card so the dimming applied to hidden content
+   * does not also grey out the button that undoes it.
+   */
+  const visibilityButton = onHide && (editMode || isHidden) ? (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+      <button
+        type="button"
+        aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${displayTitle}`}
+        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
+        className="pointer-events-auto flex items-center gap-1.5 bg-zinc-800/95 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-zinc-700 active:bg-zinc-700 transition-colors duration-fast"
+      >
+        {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        {isHidden ? 'Unhide' : 'Hide'}
+      </button>
     </div>
   ) : null;
 
-  // Edit mode's hide affordance. Only for a tile that is still visible — a hidden
-  // one already carries the unhide button above, and two badges on one tile would
-  // be asking which of them undoes the other.
-  const editBadge = editMode && onHide && !isHidden ? (
-    <EditBadge
-      kind="hide"
-      label={`Hide ${displayTitle}`}
-      onClick={onHide}
-      className="absolute top-1.5 left-1.5"
-    />
+  // A hidden tile with no way to act on it still has to say why it is greyed out.
+  const hiddenLabel = isHidden && !visibilityButton ? (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
+        Hidden
+      </span>
+    </div>
   ) : null;
 
   /**
@@ -769,9 +772,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               )}
             </ContextMenuContent>
           </ContextMenu>
-          {/* Hidden badge outside Card so it's not affected by opacity/grayscale */}
-          {hiddenBadge}
-          {editBadge}
+          {/* Outside Card so the hidden dimming doesn't grey out its own undo */}
+          {hiddenLabel}
+          {visibilityButton}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
     );
@@ -789,9 +792,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           >
             {cardInner}
           </Card>
-          {/* Hidden badge outside Card so not affected by opacity/grayscale */}
-          {hiddenBadge}
-          {editBadge}
+          {/* Outside Card so the hidden dimming doesn't grey out its own undo */}
+          {hiddenLabel}
+          {visibilityButton}
         </WidgetWrapper>
       </div>
     </WidgetColorContext.Provider>
