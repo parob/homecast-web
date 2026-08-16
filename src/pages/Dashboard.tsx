@@ -126,7 +126,7 @@ import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTa
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { RowEditActions } from '@/components/shared/EditActions';
 import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -375,30 +375,6 @@ interface SortableRoomItemProps {
   editMode?: boolean;
 }
 
-/**
- * A sidebar row's visibility control in Edit Layout — the same Hide/Unhide button
- * the tiles carry, sized for a row and pinned to its trailing edge.
- *
- * Always rendered as a sibling of the element holding dnd-kit's listeners: inside
- * it, every tap would race the 250ms press that starts a drag. It swallows
- * pointerdown as well as click, because the row navigates on both.
- */
-const RowVisibilityButton: React.FC<{ isHidden: boolean; name: string; onClick: () => void }> = ({
-  isHidden, name, onClick,
-}) => (
-  <button
-    type="button"
-    aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${name}`}
-    onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-    onClick={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }}
-    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 rounded-full bg-zinc-800/95 px-2 py-0.5 text-[11px] font-semibold text-white shadow-md transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700"
-  >
-    {isHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-    {isHidden ? 'Unhide' : 'Hide'}
-  </button>
-);
-
 const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode, touchMode }) => {
   // Rendered inside HistoryProvider — context, not props (28 forwarding
   // components is how menu items end up wired in exactly one place).
@@ -434,7 +410,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           {...attributes}
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-24' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-[7.5rem]' : ''} ${
             isDarkBackground
               ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -442,7 +418,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         >
           <RoomIcon className="h-4 w-4" />
           <span className="flex-1 truncate text-left">{room.name}</span>
-          {!hideAccessoryCounts && (
+          {!hideAccessoryCounts && !showEditBadge && (
             <span className={`text-xs ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
               {room.accessoryCount}
             </span>
@@ -450,10 +426,9 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         </button>
       </div>
       {showEditBadge && (
-        <RowVisibilityButton
-          isHidden={!!isHiddenUi}
-          name={room.name}
-          onClick={onToggleVisibility!}
+        <RowEditActions
+          action={{ kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility!, name: room.name }}
+          tab={pinTab}
         />
       )}
     </div>
@@ -487,7 +462,6 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
             Create Virtual Accessory
           </ContextMenuItem>
         )}
-        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {/* Not on touch: the row carries a hide badge in Edit Layout, and
             offering the same job twice means one of them is the wrong habit. */}
         {onToggleVisibility && !touchMode && (
@@ -803,7 +777,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           disabled={isLoading}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-24' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-[7.5rem]' : ''} ${
             isDarkBackground
               ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -830,7 +804,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
                   </Tooltip>
                 </TooltipProvider>
           )}
-          {!hideAccessoryCounts && home.accessoryCount > 0 && (
+          {!hideAccessoryCounts && !showEditBadge && home.accessoryCount > 0 && (
             <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
               {home.accessoryCount}
             </span>
@@ -838,10 +812,9 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
         </button>
       </div>
       {showEditBadge && (
-        <RowVisibilityButton
-          isHidden={!!isHiddenUi}
-          name={home.name}
-          onClick={onToggleVisibility!}
+        <RowEditActions
+          action={{ kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility!, name: home.name }}
+          tab={pinTab}
         />
       )}
     </div>
@@ -888,8 +861,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
               Create Virtual Accessory
             </ContextMenuItem>
           )}
-          {pinTab && <PinTabMenuItem tab={pinTab} />}
-          {/* Not on touch - see SortableRoomItem. */}
+            {/* Not on touch - see SortableRoomItem. */}
           {onToggleVisibility && !touchMode && (
             <ContextMenuItem onClick={onToggleVisibility}>
               {isHiddenUi ? (
@@ -994,7 +966,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${
+        className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-16' : ''} ${
           isDarkBackground
             ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
             : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -1002,7 +974,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
       >
         <Layers className="h-4 w-4" />
         <span className="flex-1 truncate text-left">{group.name}</span>
-        {!hideAccessoryCounts && (
+        {!hideAccessoryCounts && !editMode && (
           <span className={`text-xs ${
             isDarkBackground
               ? 'text-white/70'
@@ -1013,6 +985,8 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
         )}
       </button>
       </div>
+      {/* A collection group can't be hidden, so pin is the only action here. */}
+      {editMode && pinTab && <RowEditActions action={null} tab={pinTab} />}
     </div>
   );
 
@@ -1033,7 +1007,6 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
             Share Group
           </ContextMenuItem>
         )}
-        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {onSelectAccessories && (
           <ContextMenuItem onClick={onSelectAccessories}>
             <Plus className="h-4 w-4 mr-2" />
@@ -5068,6 +5041,8 @@ const Dashboard = () => {
       if (!group) return null;
       return (
         <div className="relative cursor-grabbing opacity-90">
+          {/* editMode must match the grid, or the lifted copy is not the tile
+              you picked up — its controls come back and its edit buttons go. */}
           <ServiceGroupWidget
             group={group}
             accessories={getAccessoriesInGroup(group)}
@@ -5076,6 +5051,7 @@ const Dashboard = () => {
             getEffectiveValue={getEffectiveValue}
             compact={compactMode}
             iconStyle={activeIconStyle}
+            editMode={isTouchDevice && editMode}
           />
         </div>
       );
@@ -5092,6 +5068,7 @@ const Dashboard = () => {
           getEffectiveValue={getEffectiveValue}
           compact={compactMode}
           iconStyle={activeIconStyle}
+          editMode={isTouchDevice && editMode}
         />
         {dragCrossRoomBlocked && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
@@ -5103,7 +5080,8 @@ const Dashboard = () => {
       </div>
     );
   }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
-      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice]);
+      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
+      isTouchDevice, editMode]);
 
   const handleToggleShowHidden = useCallback(() => {
     setShowHiddenItems(prev => !prev);
@@ -6109,7 +6087,6 @@ const Dashboard = () => {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </DropdownMenuItem>
-            {selectedCollection && <PinTabMenuItem as="dropdown" tab={{ type: 'collection', id: selectedCollection.id, name: selectedCollection.name }} />}
             <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Select Accessories
@@ -6172,17 +6149,6 @@ const Dashboard = () => {
               <LineChart className="h-4 w-4 mr-2" />
               Analytics
             </DropdownMenuItem>
-            {selectedRoomId && selectedHomeId && (
-              <PinTabMenuItem
-                as="dropdown"
-                tab={{
-                  type: 'room',
-                  id: selectedRoomId,
-                  name: rooms.find(r => r.id === selectedRoomId)?.name || 'Room',
-                  homeId: selectedHomeId,
-                }}
-              />
-            )}
             <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const room = rooms.find(r => r.id === selectedRoomId);
               setBackgroundSettingsTarget({
@@ -6243,16 +6209,6 @@ const Dashboard = () => {
               <Blocks className="h-4 w-4 mr-2" />
               Create Virtual Accessory
             </DropdownMenuItem>
-            {selectedHomeId && (
-              <PinTabMenuItem
-                as="dropdown"
-                tab={{
-                  type: 'home',
-                  id: selectedHomeId,
-                  name: homes.find(h => h.id === selectedHomeId)?.name || 'Home',
-                }}
-              />
-            )}
             <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
               const home = homes.find(h => h.id === selectedHomeId);
               setBackgroundSettingsTarget({
@@ -7586,7 +7542,6 @@ const Dashboard = () => {
                                   Share Room
                                 </DropdownMenuItem>
                               )}
-                              {currentRoom && selectedHomeId && <PinTabMenuItem as="dropdown" tab={{ type: 'room', id: selectedRoomId, name: roomName, homeId: selectedHomeId }} />}
                               {/* Visibility is an edit-mode job on touch, where the
                                   sidebar row carries the badge. Desktop has no edit
                                   mode, so it keeps both items here. */}
@@ -8015,6 +7970,7 @@ const Dashboard = () => {
                                   getEffectiveValue={getEffectiveValue}
                                   compact={compactMode}
                                   iconStyle={activeIconStyle}
+                                  editMode={isTouchDevice && editMode}
                                 />
                                 {groupByRoom && !dragOverValid && (
                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
@@ -8042,6 +7998,7 @@ const Dashboard = () => {
                                   onSlider={() => {}}
                                   disableTooltip
                                   iconStyle={activeIconStyle}
+                                  editMode={isTouchDevice && editMode}
                                 />
                                 {groupByRoom && !dragOverValid && (
                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">

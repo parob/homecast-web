@@ -17,8 +17,9 @@ import { getPrimaryServiceType } from '@/components/widgets/types';
 import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColors';
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
+import type { PinnedTab } from '@/lib/pinned-tabs';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -409,31 +410,24 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Hidden styling
   const hiddenClass = isHidden ? 'opacity-40 grayscale' : '';
 
-  // One visibility control, same shape and position as WidgetCard's — see the
-  // comment there for why the hide and unhide affordances were merged.
-  const visibilityButton = onHide && (editMode || isHidden) ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
-      <button
-        type="button"
-        aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${group.name}`}
-        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
-        className="pointer-events-auto flex items-center gap-1.5 bg-zinc-800/95 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-zinc-700 active:bg-zinc-700 transition-colors duration-fast"
-      >
-        {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-        {isHidden ? 'Unhide' : 'Hide'}
-      </button>
-    </div>
-  ) : null;
+  // Same actions as an accessory tile — see WidgetCard for why the primary one
+  // is hide on the dashboard and remove inside a collection.
+  const editPrimaryAction: PrimaryEditAction = onHide
+    ? { kind: 'hide', isHidden: !!isHidden, onToggle: onHide, name: group.name }
+    : (editMode && onRemove)
+      ? { kind: 'remove', label: removeLabel || 'Remove', onRemove }
+      : null;
 
-  const hiddenLabel = isHidden && !visibilityButton ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-        Hidden
-      </span>
-    </div>
-  ) : null;
+  const showEditActions = editMode || (!!isHidden && !!onHide);
+  const editTab: PinnedTab | null = editMode
+    ? { type: 'serviceGroup', id: group.id, name: group.name, homeId: accessories[0]?.homeId }
+    : null;
+
+  const editActions = showEditActions
+    ? <TileEditActions action={editPrimaryAction} tab={editTab} />
+    : null;
+
+  const hiddenLabel = isHidden && !editActions ? <HiddenLabel /> : null;
 
   const handleCardClick = useCallback(() => {
     if (isDragging || editMode) return;
@@ -1037,18 +1031,6 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 </div>
               )}
               <ContextMenuSeparator />
-              {pins.enabled && (
-                <PinTabMenuItem
-                  tab={{
-                    type: 'serviceGroup',
-                    id: group.id,
-                    name: group.name,
-                    // A group carries its own homeId when the relay sent one;
-                    // otherwise its members all share one, so any will do.
-                    homeId: group.homeId ?? accessories[0]?.homeId,
-                  }}
-                />
-              )}
               {canShowHistory && (
                 <ContextMenuItem onClick={() => openGroupHistory(group)}>
                   <LineChart className="h-4 w-4 mr-2" />
@@ -1108,7 +1090,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             </ContextMenuContent>
           </ContextMenu>
           {hiddenLabel}
-          {visibilityButton}
+          {editActions}
           {/* Expanded overlay for compact mode */}
           <ExpandedOverlay
             isExpanded={isWidgetExpanded}
@@ -1136,7 +1118,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
         {cardContent}
         {hiddenLabel}
-        {visibilityButton}
+        {editActions}
         {/* Expanded overlay for compact mode */}
         <ExpandedOverlay
           isExpanded={isWidgetExpanded}

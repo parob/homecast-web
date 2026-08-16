@@ -7,7 +7,7 @@ import { parseCollectionPayload } from '@/lib/graphql/types';
 import { CreateCollectionDialog } from './CreateCollectionDialog';
 import { Button } from '@/components/ui/button';
 import { Plus, Folder, Loader2, Layers, Pencil, Trash2, FolderPlus, Share2, ImageIcon } from 'lucide-react';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { RowEditActions } from '@/components/shared/EditActions';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import {
@@ -104,7 +104,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
+        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-16' : ''} ${
           isDarkBackground
             ? `text-white ${hasSelectedChild ? 'bg-white/10' : isSelected ? 'bg-white/20' : 'hover:bg-white/10'}`
             : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -112,15 +112,19 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
       >
         <Folder className="h-4 w-4" />
         <span className="flex-1 truncate font-semibold">{collection.name}</span>
-        <span className={`text-xs ${
-          isDarkBackground
-            ? 'text-white/70'
-            : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'
-        }`}>
-          {parseCollectionPayload(collection.payload).items.length}
-        </span>
+        {!editMode && (
+          <span className={`text-xs ${
+            isDarkBackground
+              ? 'text-white/70'
+              : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'
+          }`}>
+            {parseCollectionPayload(collection.payload).items.length}
+          </span>
+        )}
       </button>
       </div>
+      {/* A collection isn't hideable, so pin is the only action it offers. */}
+      {editMode && pinTab && <RowEditActions action={null} tab={pinTab} />}
     </div>
   );
 
@@ -150,7 +154,6 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
               Share Collection
             </ContextMenuItem>
           )}
-          {pinTab && <PinTabMenuItem tab={pinTab} />}
           {onSelectAccessories && (
             <ContextMenuItem onClick={onSelectAccessories}>
               <Plus className="h-4 w-4 mr-2" />
@@ -364,7 +367,10 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
           <h3 className={cn("text-xs font-semibold", isDarkBackground ? "text-white/70" : "text-muted-foreground")}>
             Collections
           </h3>
-          {selectedId && onCreateGroup ? (
+          {/* Creating is not arranging. While Edit Layout is running the "+"
+              would add a collection to the very list you are rearranging, so it
+              steps out of the way until you are done. */}
+          {editMode ? null : selectedId && onCreateGroup ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

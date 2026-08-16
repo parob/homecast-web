@@ -6,12 +6,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ActionConfirmDialog } from './ActionConfirmDialog';
-import {
-  ContextMenu, ContextMenuContent, ContextMenuLabel,
-  ContextMenuSeparator, ContextMenuTrigger,
-} from '@/components/ui/context-menu';
-import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { TileEditActions } from '@/components/shared/EditActions';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { getIconColor } from '@/components/widgets/iconColors';
 import { isHomeActionVisible } from '@/lib/summary-sections';
 import type { HomeLayoutData } from '@/hooks/useEntityLayout';
@@ -82,7 +78,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
   onRunAction: (action: HomeAction, opts?: RunHomeActionOverrides) => Promise<void>;
 }) {
   const actions = useVisibleActions(accessories, homeLayout);
-  const pins = usePinnedTabs();
+  const { editMode } = useLayoutEdit();
   const [runningId, setRunningId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
@@ -175,29 +171,20 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                 </div>
               );
 
-              // Same shape as the scene tile: wrapped only where pinning is on
-              // offer. The stored name comes from HOME_ACTION_NAMES, never
-              // action.label — the label flips with live device state, so a pin
-              // made while the lights were on would read "Turn all lights on".
-              if (!pins.enabled || !homeId) return <Fragment key={action.id}>{card}</Fragment>;
+              // Pinning is an Edit Layout job now, so the tile carries a button
+              // rather than hiding one in a long-press menu nothing else used.
+              // The stored name comes from HOME_ACTION_NAMES, never action.label
+              // — the label flips with live device state, so a pin made while the
+              // lights were on would read "Turn all lights on".
+              if (!editMode || !homeId) return <Fragment key={action.id}>{card}</Fragment>;
               return (
-                <ContextMenu key={action.id}>
-                  <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
-                  <ContextMenuContent className="w-56">
-                    <ContextMenuLabel className="text-xs text-muted-foreground font-normal">
-                      {HOME_ACTION_NAMES[action.id]}
-                    </ContextMenuLabel>
-                    <ContextMenuSeparator />
-                    <PinTabMenuItem
-                      tab={{
-                        type: 'action',
-                        id: action.id,
-                        name: HOME_ACTION_NAMES[action.id],
-                        homeId,
-                      }}
-                    />
-                  </ContextMenuContent>
-                </ContextMenu>
+                <div key={action.id} className="relative">
+                  {card}
+                  <TileEditActions
+                    action={null}
+                    tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
+                  />
+                </div>
               );
             })}
           </div>

@@ -10,6 +10,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { SwitchWidget } from '../SwitchWidget';
+import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
 import type { WidgetProps } from '../types';
 
 vi.mock('@/lib/config', () => ({
@@ -57,6 +58,29 @@ const ACCESSORY = {
   }],
   __typename: 'HomeKitAccessory',
 };
+
+/** Renders inside a pin provider, which is what makes the Pin button appear. */
+function renderPinnable(overrides: Record<string, unknown> = {}, pins: Record<string, unknown> = {}) {
+  const actions = {
+    enabled: true,
+    isPinned: () => false,
+    isFull: false,
+    toggle: vi.fn(),
+    ...pins,
+  };
+  render(
+    <PinnedTabsProvider value={actions as never}>
+      <SwitchWidget {...({
+        accessory: ACCESSORY,
+        getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+        onSetValue: vi.fn(), onSlider: vi.fn(), onToggle: vi.fn(),
+        iconStyle: 'colourful', compact: true,
+        ...overrides,
+      } as unknown as WidgetProps)} />
+    </PinnedTabsProvider>,
+  );
+  return actions;
+}
 
 function renderTile(overrides: Record<string, unknown> = {}) {
   const props = {
@@ -134,5 +158,56 @@ describe('tiles are inert while editing', () => {
 
     renderTile({ editMode: true, onHide: vi.fn() });
     expect(screen.queryAllByRole('switch')).toHaveLength(0);
+  });
+});
+
+describe('pin to tab bar', () => {
+  it('offers a pin button beside the primary action while editing', () => {
+    const actions = renderPinnable({ editMode: true, onHide: vi.fn() });
+
+    expect(screen.getByRole('button', { name: /^Hide / })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pin to Tab Bar' }));
+    expect(actions.toggle).toHaveBeenCalledTimes(1);
+    expect((actions.toggle as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      type: 'accessory', id: 'acc-lamp',
+    });
+  });
+
+  it('says Unpin once the tab is already on the bar', () => {
+    renderPinnable({ editMode: true, onHide: vi.fn() }, { isPinned: () => true });
+    expect(screen.getByRole('button', { name: 'Unpin from Tab Bar' })).toBeTruthy();
+  });
+
+  it('offers it disabled, not hidden, when the bar is full', () => {
+    // Silently dropping the button would read as "this cannot be pinned" rather
+    // than "the bar is full", which is a different and fixable problem.
+    const actions = renderPinnable({ editMode: true, onHide: vi.fn() }, { isFull: true });
+    const button = screen.getByRole('button', { name: /Tab Bar Full/ });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(actions.toggle).not.toHaveBeenCalled();
+  });
+
+  it('shows no pin button when pinning is not on offer at all', () => {
+    renderTile({ editMode: true, onHide: vi.fn() });
+    expect(screen.queryByRole('button', { name: /Pin|Unpin/ })).toBeNull();
+  });
+});
+
+describe('collections, where nothing is hidden', () => {
+  it('offers Remove in place of Hide', () => {
+    // A collection has no hidden state — you chose what went in, so the
+    // equivalent of hiding is taking it back out.
+    const onRemove = vi.fn();
+    renderTile({ editMode: true, onRemove, removeLabel: 'Remove from Collection' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from Collection' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /^Hide / })).toBeNull();
+  });
+
+  it('never offers remove outside edit mode', () => {
+    renderTile({ onRemove: vi.fn(), removeLabel: 'Remove from Collection' });
+    expect(screen.queryByRole('button', { name: /Remove/ })).toBeNull();
   });
 });

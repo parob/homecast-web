@@ -12,12 +12,8 @@ import { getIconColor } from '@/components/widgets/iconColors';
 import { isBuiltInScene, isHiddenBuiltInScene } from '@/lib/scenes';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
-import {
-  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
-  ContextMenuSeparator, ContextMenuTrigger,
-} from '@/components/ui/context-menu';
-import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { TileEditActions } from '@/components/shared/EditActions';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
 import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
 import { translateHomeKitError } from '@/lib/homekit-errors';
@@ -94,7 +90,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
-  const pins = usePinnedTabs();
+  const { editMode } = useLayoutEdit();
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
@@ -187,22 +183,16 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 </div>
               </div>
               );
-              // Wrapped only where pinning is on offer, so the menu is never
-              // an empty box. Fragment keeps the grid's direct children intact.
-              if (!pins.enabled) return <Fragment key={scene.id}>{tile}</Fragment>;
+              // Pinning is an Edit Layout job now — see ActionsSection.
+              if (!editMode) return <Fragment key={scene.id}>{tile}</Fragment>;
               return (
-                <ContextMenu key={scene.id}>
-                  <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
-                  <ContextMenuContent className="w-56">
-                    <ContextMenuLabel className="text-xs text-muted-foreground font-normal">
-                      {scene.name}
-                    </ContextMenuLabel>
-                    <ContextMenuSeparator />
-                    <PinTabMenuItem
-                      tab={{ type: 'scene', id: scene.id, name: scene.name, homeId: homeId ?? undefined }}
-                    />
-                  </ContextMenuContent>
-                </ContextMenu>
+                <div key={scene.id} className="relative">
+                  {tile}
+                  <TileEditActions
+                    action={null}
+                    tab={{ type: 'scene', id: scene.id, name: scene.name, homeId: homeId ?? undefined }}
+                  />
+                </div>
               );
             })}
             <button

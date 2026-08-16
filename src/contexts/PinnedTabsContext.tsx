@@ -39,4 +39,38 @@ export function usePinnedTabs(): PinnedTabsActions {
   return useContext(PinnedTabsContext);
 }
 
+/**
+ * The three-way state every "Pin to Tab Bar" affordance needs: pinned, full, or
+ * pinnable. Extracted when the same logic was wanted by a menu item, a tile
+ * button and a sidebar row button — three places is where "it's only four
+ * lines" stops being true and the wordings start drifting apart.
+ *
+ * Returns `null` when pinning isn't on offer at all, so callers render nothing
+ * rather than each repeating the `enabled` check.
+ */
+export interface PinAction {
+  pinned: boolean;
+  /** Bar is at capacity and this isn't already on it — offer it, disabled. */
+  full: boolean;
+  label: string;
+  toggle: () => void;
+}
+
+export function usePinAction(tab: PinnedTab | null | undefined): PinAction | null {
+  const { enabled, isPinned, isFull, toggle } = usePinnedTabs();
+  if (!enabled || !tab) return null;
+  const pinned = isPinned(tab);
+  const full = !pinned && isFull;
+  return {
+    pinned,
+    full,
+    label: pinned
+      ? 'Unpin from Tab Bar'
+      : full
+        ? `Tab Bar Full (${MAX_PINNED_TABS}/${MAX_PINNED_TABS})`
+        : 'Pin to Tab Bar',
+    toggle: () => { if (!full) toggle(tab); },
+  };
+}
+
 export { MAX_PINNED_TABS };

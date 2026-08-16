@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/context-menu';
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
+import type { PinnedTab } from '@/lib/pinned-tabs';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,7 +25,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -399,43 +400,35 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const hiddenClass = isCurrentlyHidden ? 'opacity-40 grayscale' : '';
 
   /**
-   * The tile's visibility control: one button, one place, the label flipping
-   * between Hide and Unhide.
+   * What Edit Layout offers on this tile.
    *
-   * These were two different controls — a small icon-only badge in the corner to
-   * hide, and a centred labelled pill to unhide — which made the same job look
-   * like two unrelated ones depending on which state a tile happened to be in.
-   * Now it is the same size in the same position and only the word changes.
+   * The primary action is whatever "get this off my screen" means here: on the
+   * dashboard you hide an accessory, in a collection you take it back out. Note
+   * `onRemove`, not `effectiveOnRemove` — the latter falls back to a virtual
+   * accessory's *delete*, and putting an irreversible delete where every other
+   * tile has a reversible hide is how someone loses a helper by aiming badly.
    *
-   * It shows while editing, and on a hidden tile whenever one is on screen at
-   * all (desktop reveals them from the context menu, where there is no edit
-   * mode). Rendered outside the Card so the dimming applied to hidden content
-   * does not also grey out the button that undoes it.
+   * The unhide half also shows outside edit mode, on a tile that is hidden and
+   * on screen at all: desktop reveals hidden tiles from the context menu and
+   * never enters edit mode, so the button has to stand on `isHidden` alone.
    */
-  const visibilityButton = onHide && (editMode || isHidden) ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
-      <button
-        type="button"
-        aria-label={`${isHidden ? 'Unhide' : 'Hide'} ${displayTitle}`}
-        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
-        className="pointer-events-auto flex items-center gap-1.5 bg-zinc-800/95 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-zinc-700 active:bg-zinc-700 transition-colors duration-fast"
-      >
-        {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-        {isHidden ? 'Unhide' : 'Hide'}
-      </button>
-    </div>
-  ) : null;
+  const editPrimaryAction: PrimaryEditAction = onHide
+    ? { kind: 'hide', isHidden, onToggle: onHide, name: displayTitle }
+    : (editMode && onRemove)
+      ? { kind: 'remove', label: removeLabel || 'Remove', onRemove }
+      : null;
+
+  const showEditActions = editMode || (isHidden && !!onHide);
+  const editTab: PinnedTab | null = editMode && accessory
+    ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId }
+    : null;
+
+  const editActions = showEditActions
+    ? <TileEditActions action={editPrimaryAction} tab={editTab} />
+    : null;
 
   // A hidden tile with no way to act on it still has to say why it is greyed out.
-  const hiddenLabel = isHidden && !visibilityButton ? (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-        Hidden
-      </span>
-    </div>
-  ) : null;
+  const hiddenLabel = isHidden && !editActions ? <HiddenLabel /> : null;
 
   /**
    * Virtual accessories are indistinguishable from real ones by design — a
@@ -723,16 +716,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   Share Accessory
                 </ContextMenuItem>
               )}
-              {canPin && accessory && (
-                <PinTabMenuItem
-                  tab={{
-                    type: 'accessory',
-                    id: accessory.id,
-                    name: accessory.name,
-                    homeId: accessory.homeId,
-                  }}
-                />
-              )}
               {canShowHistory && accessory && (
                 <ContextMenuItem onClick={() => openHistory(accessory)}>
                   <LineChart className="h-4 w-4 mr-2" />
@@ -774,7 +757,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </ContextMenu>
           {/* Outside Card so the hidden dimming doesn't grey out its own undo */}
           {hiddenLabel}
-          {visibilityButton}
+          {editActions}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
     );
@@ -794,7 +777,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </Card>
           {/* Outside Card so the hidden dimming doesn't grey out its own undo */}
           {hiddenLabel}
-          {visibilityButton}
+          {editActions}
         </WidgetWrapper>
       </div>
     </WidgetColorContext.Provider>

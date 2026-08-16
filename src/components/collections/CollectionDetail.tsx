@@ -1253,8 +1253,9 @@ export function CollectionDetail({
 
                 return (
                   <SortableItem key={`sg-${serviceGroup.id}`} id={`sg-${serviceGroup.id}`} disableTransform={disableTransform}>
-                    <div className={editMode ? 'wiggle' : ''} style={editMode ? { '--wiggle-offset': `${(serviceGroup.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined}>
+                    <div>
                     <ServiceGroupWidget
+                      editMode={editMode}
                       group={serviceGroup}
                       accessories={groupAccessories}
                       compact={compactMode}
@@ -1284,13 +1285,13 @@ export function CollectionDetail({
               return (
                 <SortableItem key={item.accessory_id} id={item.accessory_id} disableTransform={disableTransform}>
                   <div
-                    className={`relative ${compactMode ? 'cursor-pointer' : ''} ${editMode ? 'wiggle' : ''}`}
-                    style={editMode ? { '--wiggle-offset': `${(item.accessory_id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined}
+                    className={`relative ${compactMode ? 'cursor-pointer' : ''}`}
                     onClick={compactMode ? () => handleWidgetClick(item.accessory_id) : undefined}
                     onMouseLeave={compactMode ? handleWidgetMouseLeave : undefined}
                   >
                     <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                       homeName={getHomeName(accessory.homeId)}
                       accessory={accessory}
                       compact={compactMode}
@@ -1320,7 +1321,8 @@ export function CollectionDetail({
                          
                         >
                           <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                                           onFinishEditing={collapseExpandedWidget}
                             homeName={getHomeName(accessory.homeId)}
                             accessory={accessory}
@@ -1609,9 +1611,10 @@ export function CollectionDetail({
                     const groupRoomName = groupAccessories[0]?.roomName;
                     return (
                       <SortableItem key={`sg-${serviceGroup.id}`} id={`sg-${serviceGroup.id}`}>
-                        <div className={editMode ? 'wiggle' : ''} style={editMode ? { '--wiggle-offset': `${(serviceGroup.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined}>
+                        <div>
                         <ServiceGroupWidget
-                          group={serviceGroup}
+                          editMode={editMode}
+                      group={serviceGroup}
                           accessories={groupAccessories}
                           compact={compactMode}
                           homeName={getHomeName(homeId)}
@@ -1638,13 +1641,13 @@ export function CollectionDetail({
                   return (
                     <SortableItem key={item.accessory_id} id={item.accessory_id!}>
                       <div
-                        className={`relative ${compactMode ? 'cursor-pointer' : ''} ${editMode ? 'wiggle' : ''}`}
-                        style={editMode ? { '--wiggle-offset': `${(item.accessory_id!.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined}
+                        className={`relative ${compactMode ? 'cursor-pointer' : ''}`}
                         onClick={compactMode ? () => handleWidgetClick(item.accessory_id!) : undefined}
                         onMouseLeave={compactMode ? handleWidgetMouseLeave : undefined}
                       >
                         <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                           homeName={getHomeName(accessory.homeId)}
                           accessory={accessory}
                           compact={compactMode}
@@ -1673,7 +1676,8 @@ export function CollectionDetail({
                              
                             >
                               <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                                           onFinishEditing={collapseExpandedWidget}
                                 homeName={getHomeName(accessory.homeId)}
                                 accessory={accessory}
@@ -1704,7 +1708,8 @@ export function CollectionDetail({
                 {activeAccessory && (
                   <div className="relative cursor-grabbing">
                     <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                       homeName={getHomeName(activeAccessory.homeId)}
                       accessory={activeAccessory}
                       compact={compactMode}
@@ -1720,6 +1725,7 @@ export function CollectionDetail({
                 {activeServiceGroup && (
                   <div className="relative cursor-grabbing">
                     <ServiceGroupWidget
+                      editMode={editMode}
                       group={activeServiceGroup}
                       accessories={getAccessoriesInServiceGroup(activeServiceGroup)}
                       compact={compactMode}
@@ -1764,7 +1770,8 @@ export function CollectionDetail({
                 {activeAccessory && (
                   <div className="relative cursor-grabbing">
                     <AccessoryWidget
-                                          onSetValue={onSetValue}
+                                          editMode={editMode}
+                      onSetValue={onSetValue}
                       homeName={getHomeName(activeAccessory.homeId)}
                       accessory={activeAccessory}
                       compact={compactMode}
@@ -1780,6 +1787,7 @@ export function CollectionDetail({
                 {activeServiceGroup && (
                   <div className="relative cursor-grabbing">
                     <ServiceGroupWidget
+                      editMode={editMode}
                       group={activeServiceGroup}
                       accessories={getAccessoriesInServiceGroup(activeServiceGroup)}
                       compact={compactMode}
