@@ -1,12 +1,12 @@
 /**
  * The pinned tab bar: what may be pinned, and how a pin is identified.
  *
- * A leaf on purpose — no React, no lucide, no Apollo. The tab bar, the settings
- * pane, the dashboard and every tile that offers "Pin to Tab Bar" all need the
- * same key function, and none of them should have to import each other to get
- * it. `MAX_PINNED_TABS` lives here for the same reason: it used to live in
- * `components/layout/MobileTabBar.tsx`, which meant the settings dialog had to
- * import the tab bar just to render a limit.
+ * A leaf on purpose — no React, no lucide, no Apollo. The tab bar, the dashboard
+ * and every tile that offers "Pin to Tab Bar" all need the same key function,
+ * and none of them should have to import each other to get it.
+ * `MAX_PINNED_TABS` lives here for the same reason: it used to live in
+ * `components/layout/MobileTabBar.tsx`, which meant anything wanting to render
+ * the limit had to import the tab bar to get it.
  *
  * Pins fall into three behaviours, which is the whole design of the bar:
  * navigate somewhere, run something, or open a control for something.

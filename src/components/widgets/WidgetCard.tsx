@@ -10,6 +10,8 @@ import {
   ContextMenuItem,
 } from '@/components/ui/context-menu';
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
+import { EditBadge } from '@/components/shared/EditBadge';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -395,12 +397,41 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Hidden badge - floating centered overlay (always show when hidden)
   // Rendered outside the Card element so it's not affected by the card's opacity/grayscale
+  //
+  // It is the unhide button, not a label. Revealing hidden tiles and then making
+  // you go back to a context menu to act on them was the whole complaint: the
+  // thing you are looking at is the thing you want to put back.
   const hiddenBadge = isHidden ? (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-        Hidden
-      </span>
+      {onHide ? (
+        <button
+          type="button"
+          aria-label={`Unhide ${displayTitle}`}
+          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
+          className="pointer-events-auto flex items-center gap-1 bg-zinc-700 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-md hover:bg-zinc-600 active:bg-zinc-600 transition-colors duration-fast"
+        >
+          <Eye className="h-3 w-3" />
+          Unhide
+        </button>
+      ) : (
+        <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
+          Hidden
+        </span>
+      )}
     </div>
+  ) : null;
+
+  // Edit mode's hide affordance. Only for a tile that is still visible — a hidden
+  // one already carries the unhide button above, and two badges on one tile would
+  // be asking which of them undoes the other.
+  const editBadge = editMode && onHide && !isHidden ? (
+    <EditBadge
+      kind="hide"
+      label={`Hide ${displayTitle}`}
+      onClick={onHide}
+      className="absolute top-1.5 left-1.5"
+    />
   ) : null;
 
   /**
@@ -618,8 +649,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // forgotten prop silently stops the tile re-rendering.
   const pins = usePinnedTabs();
   const canPin = pins.enabled && !!accessory;
+  // On touch, hiding is Edit Layout's job — the tile carries a ⊘ badge there, so
+  // the menu doesn't repeat it. Desktop has no edit mode and keeps both items.
+  const { touchMode } = useLayoutEdit();
+  const menuOnHide = touchMode ? undefined : onHide;
+  const menuOnToggleShowHidden = touchMode ? undefined : onToggleShowHidden;
 
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || onHide || onToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin;
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || menuOnHide || menuOnToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin;
   if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
@@ -706,8 +742,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   Price &amp; Deals
                 </ContextMenuItem>
               )}
-              {onHide && (
-                <ContextMenuItem onClick={onHide}>
+              {menuOnHide && (
+                <ContextMenuItem onClick={menuOnHide}>
                   {isHidden ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
                   {hideLabel || (isHidden ? 'Unhide Accessory' : 'Hide Accessory')}
                 </ContextMenuItem>
@@ -724,9 +760,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   {effectiveRemoveLabel}
                 </ContextMenuItem>
               )}
-              {(onShare || onHide || onDebug || effectiveOnRemove || effectiveOnEdit) && onToggleShowHidden && <ContextMenuSeparator />}
-              {onToggleShowHidden && (
-                <ContextMenuItem onClick={onToggleShowHidden}>
+              {(onShare || menuOnHide || onDebug || effectiveOnRemove || effectiveOnEdit) && menuOnToggleShowHidden && <ContextMenuSeparator />}
+              {menuOnToggleShowHidden && (
+                <ContextMenuItem onClick={menuOnToggleShowHidden}>
                   {showHiddenItems ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
                   {showHiddenItems ? 'Hide Hidden Items' : 'Show Hidden Items'}
                 </ContextMenuItem>
@@ -735,6 +771,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </ContextMenu>
           {/* Hidden badge outside Card so it's not affected by opacity/grayscale */}
           {hiddenBadge}
+          {editBadge}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
     );
@@ -754,6 +791,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </Card>
           {/* Hidden badge outside Card so not affected by opacity/grayscale */}
           {hiddenBadge}
+          {editBadge}
         </WidgetWrapper>
       </div>
     </WidgetColorContext.Provider>

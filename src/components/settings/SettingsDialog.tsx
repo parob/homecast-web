@@ -17,7 +17,6 @@ import {
   Share2,
   Cloud,
   Home as HomeIcon,
-  Pin,
   User,
   ChevronRight,
   ChevronDown,
@@ -28,8 +27,7 @@ import {
   ExternalLink,
   Copy,
 } from 'lucide-react';
-import type { HomeKitHome, PinnedTab, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
-import type { PinTarget } from '@/lib/pinned-tabs';
+import type { HomeKitHome, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
 import { isCommunity } from '@/lib/config';
 import { isMQTTAvailable } from '@/lib/mqtt-bridge';
 import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
@@ -61,13 +59,12 @@ import { SharedItemsSection } from './SharedItemsSection';
 import { HomesSection } from './HomesSection';
 import { HomeDetailView } from './HomeDetailView';
 // SelfHostedRelaySection imported from @homecast/cloud above
-import { TabBarSection } from './TabBarSection';
 import { AccountSection } from './AccountSection';
 import { NotificationsSection } from './NotificationsSection';
 import { LocalModeSection } from './LocalModeSection';
 import { isLocalCapable } from '@/native/homekit-bridge';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'local-mode' | 'tab-bar' | 'account';
+export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'local-mode' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -143,12 +140,6 @@ export interface SettingsDialogProps {
   launchAtLogin: boolean;
   setLaunchAtLogin: (value: boolean) => void;
   launchAtLoginSupported: boolean;
-  // Tab bar (mobile)
-  pinnedTabs: PinnedTab[];
-  handleUnpinTab: (target: PinTarget) => void;
-  handleUpdateTabName: (target: PinTarget, customName: string | undefined) => void;
-  handleReorderTabs: (reordered: PinnedTab[]) => void;
-  maxPinnedTabs: number;
   onReplayTutorial?: () => void;
 }
 
@@ -246,9 +237,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
       items.push({ id: 'local-mode', label: 'Local Mode', group: 'Device', icon: HomeIcon });
     }
 
-    if (isInMobileApp) {
-      items.push({ id: 'tab-bar', label: 'Tab Bar', group: 'Device', icon: Pin });
-    }
+    // The tab bar used to be configured here. It is edited on the bar itself in
+    // Edit Layout now — this pane was gated on `isInMobileApp`, so a mobile
+    // browser rendered the bar and had no way to reach its settings.
 
     items.push({ id: 'account', label: 'Account', group: 'Account', icon: User });
 
@@ -558,16 +549,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return <LocalModeSection />;
       case 'notifications':
         return <NotificationsSection />;
-      case 'tab-bar':
-        return (
-          <TabBarSection
-            pinnedTabs={props.pinnedTabs}
-            handleUnpinTab={props.handleUnpinTab}
-            handleUpdateTabName={props.handleUpdateTabName}
-            handleReorderTabs={props.handleReorderTabs}
-            maxPinnedTabs={props.maxPinnedTabs}
-          />
-        );
       case 'account':
         return (
           <AccountSection

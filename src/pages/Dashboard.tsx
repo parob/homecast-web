@@ -125,7 +125,9 @@ import { WebhookListView } from '@/components/webhooks';
 import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
+import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { EditBadge } from '@/components/shared/EditBadge';
 import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -362,6 +364,8 @@ interface SortableRoomItemProps {
   onToggleVisibility?: () => void;
   showHiddenItems?: boolean;
   onToggleShowHidden?: () => void;
+  /** Touch device: visibility is Edit Layout's job, so keep it out of the menu. */
+  touchMode?: boolean;
   onShare?: () => void;
   onBackgroundSettings?: () => void;
   /** Present when this row may be pinned; the menu item handles the rest. */
@@ -372,7 +376,7 @@ interface SortableRoomItemProps {
   editMode?: boolean;
 }
 
-const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode }) => {
+const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, room, homeId, isSelected, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, showHiddenItems, onToggleShowHidden, onShare, onBackgroundSettings, pinTab, isDarkBackground, dragDisabled, disableContextMenu, editMode, touchMode }) => {
   // Rendered inside HistoryProvider — context, not props (28 forwarding
   // components is how menu items end up wired in exactly one place).
   const { analyticsAvailableFor, openAnalytics } = useHistory();
@@ -396,6 +400,10 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
 
   const wiggleOffset = editMode ? { '--wiggle-offset': `${(room.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
 
+  // Edit mode's hide affordance, rendered as a sibling of the button that carries
+  // the drag listeners — inside it, every tap would race dnd-kit's 250ms press.
+  const showEditBadge = editMode && !!onToggleVisibility;
+
   const innerContent = (
     <div ref={setNodeRef} style={style} className="relative cursor-pointer" data-sortable-id={room.id} onClick={onSelect}>
       <div className={editMode ? 'wiggle' : ''} style={wiggleOffset}>
@@ -403,7 +411,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           {...attributes}
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-10' : ''} ${
             isDarkBackground
               ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -418,6 +426,14 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           )}
         </button>
       </div>
+      {showEditBadge && (
+        <EditBadge
+          kind={isHiddenUi ? 'unhide' : 'hide'}
+          label={`${isHiddenUi ? 'Unhide' : 'Hide'} ${room.name}`}
+          onClick={onToggleVisibility!}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2"
+        />
+      )}
     </div>
   );
 
@@ -450,7 +466,9 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           </ContextMenuItem>
         )}
         {pinTab && <PinTabMenuItem tab={pinTab} />}
-        {onToggleVisibility && (
+        {/* Not on touch: the row carries a hide badge in Edit Layout, and
+            offering the same job twice means one of them is the wrong habit. */}
+        {onToggleVisibility && !touchMode && (
           <ContextMenuItem onClick={onToggleVisibility}>
             {isHiddenUi ? (
               <>
@@ -471,8 +489,8 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
             Set Room Background
           </ContextMenuItem>
         )}
-        {(onShare || onToggleVisibility || onBackgroundSettings) && onToggleShowHidden && <ContextMenuSeparator />}
-        {onToggleShowHidden && (
+        {(onShare || onToggleVisibility || onBackgroundSettings) && onToggleShowHidden && !touchMode && <ContextMenuSeparator />}
+        {onToggleShowHidden && !touchMode && (
           <ContextMenuItem onClick={onToggleShowHidden}>
             {showHiddenItems ? (
               <>
@@ -717,6 +735,8 @@ interface SortableHomeItemProps {
   isLoading?: boolean;
   showHiddenItems?: boolean;
   onToggleShowHidden?: () => void;
+  /** Touch device: visibility is Edit Layout's job, so keep it out of the menu. */
+  touchMode?: boolean;
   onCreateRoomGroup?: () => void;
   onCreateHelper?: () => void;
   onBackgroundSettings?: () => void;
@@ -731,7 +751,7 @@ interface SortableHomeItemProps {
   tourId?: string;
 }
 
-const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, pinTab, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, tourId }) => {
+const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, hasSelectedChild, hideAccessoryCounts, onSelect, isHiddenUi, onToggleVisibility, onDismiss, isLoading, showHiddenItems, onToggleShowHidden, onShare, onCreateRoomGroup, onCreateHelper, onBackgroundSettings, onCloudRelay, pinTab, dragDisabled, disableContextMenu, children, isDarkBackground, editMode, touchMode, tourId }) => {
   const { analyticsAvailableFor, openAnalytics } = useHistory();
   const {
     attributes,
@@ -750,6 +770,8 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
 
   const contentOpacity = isHiddenUi ? 'opacity-40' : '';
   const wiggleOffset = editMode ? { '--wiggle-offset': `${(home.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
+  // Sibling of the drag-listener button, never a child of it — see SortableRoomItem.
+  const showEditBadge = editMode && !!onToggleVisibility;
 
   const buttonContent = (
     <div ref={setNodeRef} style={style} className="relative cursor-pointer" onClick={onSelect}>
@@ -759,7 +781,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           disabled={isLoading}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-10' : ''} ${
             isDarkBackground
               ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -793,6 +815,14 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           )}
         </button>
       </div>
+      {showEditBadge && (
+        <EditBadge
+          kind={isHiddenUi ? 'unhide' : 'hide'}
+          label={`${isHiddenUi ? 'Unhide' : 'Hide'} ${home.name}`}
+          onClick={onToggleVisibility!}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2"
+        />
+      )}
     </div>
   );
 
@@ -838,7 +868,8 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
             </ContextMenuItem>
           )}
           {pinTab && <PinTabMenuItem tab={pinTab} />}
-          {onToggleVisibility && (
+          {/* Not on touch - see SortableRoomItem. */}
+          {onToggleVisibility && !touchMode && (
             <ContextMenuItem onClick={onToggleVisibility}>
               {isHiddenUi ? (
                 <>
@@ -871,8 +902,8 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
               Cloud Relay
             </ContextMenuItem>
           )}
-          {(onShare || onCreateRoomGroup || onToggleVisibility || onBackgroundSettings) && onToggleShowHidden && <ContextMenuSeparator />}
-          {onToggleShowHidden && (
+          {(onShare || onCreateRoomGroup || onToggleVisibility || onBackgroundSettings) && onToggleShowHidden && !touchMode && <ContextMenuSeparator />}
+          {onToggleShowHidden && !touchMode && (
             <ContextMenuItem onClick={onToggleShowHidden}>
               {showHiddenItems ? (
                 <>
@@ -1511,7 +1542,10 @@ const Dashboard = () => {
   // Mobile tab bar pinned items
   const [pinnedTabs, setPinnedTabs] = useState<PinnedTab[]>([]);
 
-  // Temporarily show hidden items (homes, rooms, accessories) for unhiding
+  // Temporarily show hidden items (homes, rooms, accessories) for unhiding.
+  // Never persisted, and on touch it is scoped to edit mode — see the effect
+  // below that clears it on the way out, so the reveal can't leak into normal
+  // browsing after you've finished arranging.
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   // Actions/Scenes/Automations/Status sections, toggled by the pills in the
   // summary row — mutually exclusive, so opening one closes the other three.
@@ -2541,6 +2575,13 @@ const Dashboard = () => {
     setPinnedTabs(reordered);
     saveSettings({ pinnedTabs: reordered }, 'pinnedTabs');
   }, [saveSettings]);
+
+  // Tells every tile and group whether hiding belongs to a menu (desktop) or to
+  // Edit Layout (touch), without threading a flag through 28 widget components.
+  const layoutEditState = useMemo(
+    () => ({ touchMode: isTouchDevice, editMode: isTouchDevice && editMode }),
+    [isTouchDevice, editMode],
+  );
 
   // === UI Visibility check functions ===
   // When showHiddenItems is true, these return false so hidden items are shown
@@ -4953,7 +4994,7 @@ const Dashboard = () => {
 
     if (resolvePinnedTabStatus(tab) === 'missing') {
       toast.error(`"${label}" is no longer available`, {
-        description: 'It may have been deleted. Unpin it in Settings → Tab Bar.',
+        description: 'It may have been deleted. Unpin it from the menu, under Edit Layout.',
       });
       return;
     }
@@ -5045,6 +5086,16 @@ const Dashboard = () => {
 
   const handleToggleShowHidden = useCallback(() => {
     setShowHiddenItems(prev => !prev);
+  }, []);
+
+  // Leaving edit mode puts the hidden things back out of sight. On touch the
+  // Show hidden toggle only exists inside the mode, so without this a reveal
+  // would strand the dashboard showing dimmed tiles with no visible control to
+  // turn them off. Desktop is untouched — it toggles from the context menus and
+  // never enters edit mode.
+  const setEditModeAndTidy = useCallback((next: boolean) => {
+    setEditMode(next);
+    if (!next) setShowHiddenItems(false);
   }, []);
 
   // Track previous background to avoid flashing during loading
@@ -5952,19 +6003,6 @@ const Dashboard = () => {
               <ImageIcon className="h-4 w-4 mr-2" />
               Background
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-              {showHiddenItems ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Hidden
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show Hidden
-                </>
-              )}
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
               if (group) setSidebarRenamingGroup({ id: group.id, name: group.name });
@@ -6017,19 +6055,6 @@ const Dashboard = () => {
             }}>
               <ImageIcon className="h-4 w-4 mr-2" />
               Background
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-              {showHiddenItems ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Hidden
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show Hidden
-                </>
-              )}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const collection = allCollections.find(c => c.id === selectedCollectionId);
@@ -6097,32 +6122,9 @@ const Dashboard = () => {
               <ImageIcon className="h-4 w-4 mr-2" />
               Background
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-              {showHiddenItems ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Hidden
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show Hidden
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleVisibility('room', 'ui', selectedHomeId!, selectedRoomId!)}>
-              {isRoomActuallyHidden(selectedHomeId!, selectedRoomId!) ? (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Unhide Room
-                </>
-              ) : (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Room
-                </>
-              )}
-            </DropdownMenuItem>
+            {/* Hide Room used to sit here. Hiding the room you are standing in
+                sent you somewhere else to prove it worked; it now lives on the
+                room's own sidebar row, next to every other room you might hide. */}
             {/* The room header has its own menu branch, and creating was only in
                 the home one — so viewing a room offered no way to add anything
                 to it. Pre-selects this room, since that is where you asked. */}
@@ -6190,32 +6192,8 @@ const Dashboard = () => {
               <ImageIcon className="h-4 w-4 mr-2" />
               Background
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-              {showHiddenItems ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Hidden
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show Hidden
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleVisibility('home', 'ui', selectedHomeId!)}>
-              {isHomeActuallyHidden(selectedHomeId!) ? (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Unhide Home
-                </>
-              ) : (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Home
-                </>
-              )}
-            </DropdownMenuItem>
+            {/* Hide Home moved to the home's sidebar row, for the same reason as
+                Hide Room above. */}
           </div>
         ) : hasContentAccess ? (
           <>
@@ -6223,24 +6201,11 @@ const Dashboard = () => {
               <RefreshCw className={`h-4 w-4 mr-2 ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
               Refresh
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-              {showHiddenItems ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide Hidden Items
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show Hidden Items
-                </>
-              )}
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         ) : null}
         {isTouchDevice && hasContentAccess && (
-          <DropdownMenuItem onClick={() => setEditMode(!editMode)}>
+          <DropdownMenuItem onClick={() => setEditModeAndTidy(!editMode)}>
             <Pencil className="h-4 w-4 mr-2" />
             {editMode ? 'Done Editing' : 'Edit Layout'}
           </DropdownMenuItem>
@@ -6315,6 +6280,7 @@ const Dashboard = () => {
   );
 
   return (
+    <LayoutEditProvider value={layoutEditState}>
     <PinnedTabsProvider value={pinnedTabsActions}>
     <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
     <DealsProvider
@@ -6415,6 +6381,7 @@ const Dashboard = () => {
                             <div className="space-y-1">
                               {visibleHomes.map((home, homeIdx) => (
                                   <SortableHomeItem
+                                    touchMode={isTouchDevice}
                                     key={home.id}
                                     home={home}
                                     tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
@@ -6567,6 +6534,7 @@ const Dashboard = () => {
                                                     style={{ pointerEvents: disablePointer ? 'none' : undefined }}
                                                   >
                                                     <SortableRoomItem
+                                                      touchMode={isTouchDevice}
                                                     onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                       room={room}
                                                       homeId={home.id}
@@ -6775,11 +6743,6 @@ const Dashboard = () => {
               launchAtLogin={launchAtLogin}
               setLaunchAtLogin={setLaunchAtLogin}
               launchAtLoginSupported={launchAtLoginSupported}
-              pinnedTabs={pinnedTabs}
-              handleUnpinTab={handleUnpinTab}
-              handleUpdateTabName={handleUpdateTabName}
-              handleReorderTabs={handleReorderTabs}
-              maxPinnedTabs={MAX_PINNED_TABS}
               onReplayTutorial={() => {
                 setSettingsOpen(false);
                 tutorialDismissedRef.current = false;
@@ -6789,23 +6752,47 @@ const Dashboard = () => {
           </div>
       </AppHeader>
 
-      {/* Edit mode bubble - touch devices only, centered over header */}
+      {/* Edit mode toolbar - touch devices only, centered over header.
+          Everything that arranges the dashboard lives here now: reorder (drag),
+          hide (the badge on every tile and sidebar row), and the tab bar below.
+          The Show hidden toggle is deliberately inside the mode rather than in
+          the header menu - revealing hidden things is only ever a step towards
+          unhiding one, which is an edit. */}
       {isTouchDevice && editMode && (
         <div className="fixed top-0 left-0 right-0 z-[10002] safe-area-top pointer-events-none" style={{ height: 'calc(80px + var(--safe-area-top, 0px))' }}>
-          <div className="flex items-center justify-center h-full">
-            <button
-              onClick={() => setEditMode(false)}
-              className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-sm font-medium active:bg-primary/80"
-            >
-              Editing Layout
-              <span className="text-xs font-semibold bg-white/20 px-1.5 py-0.5 rounded-full">Done</span>
-            </button>
+          <div className="flex flex-col items-center justify-center h-full gap-1">
+            <div className="pointer-events-auto flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-primary text-primary-foreground text-sm font-medium shadow-lg">
+              <span>Editing Layout</span>
+              <button
+                onClick={handleToggleShowHidden}
+                aria-pressed={showHiddenItems}
+                aria-label="Show hidden items"
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${showHiddenItems ? 'bg-white text-primary' : 'bg-white/20 text-primary-foreground active:bg-white/30'}`}
+              >
+                {showHiddenItems ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                Hidden
+              </button>
+              <button
+                onClick={() => setEditModeAndTidy(false)}
+                className="text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full active:bg-white/30"
+              >
+                Done
+              </button>
+            </div>
+            <span className="pointer-events-none text-[11px] font-medium px-2 py-0.5 rounded-full bg-black/50 text-white/90">
+              {showHiddenItems
+                ? 'Tap Unhide on a dimmed item to bring it back'
+                : 'Drag to rearrange · tap a badge to hide'}
+            </span>
           </div>
         </div>
       )}
 
-      {/* Mobile tab bar - floating bottom bubble */}
-      {isMobile && pinnedTabs.length > 0 && (
+      {/* Mobile tab bar - floating bottom bubble.
+          Rendered with no pins while editing, so the empty "Add" slot can say
+          how to fill it — otherwise a user who unpinned everything would be left
+          with no bar and no way back to one. */}
+      {isMobile && (pinnedTabs.length > 0 || (isTouchDevice && editMode)) && (
         <MobileTabBar
           pinnedTabs={pinnedTabs}
           selectedHomeId={selectedHomeId}
@@ -6835,6 +6822,11 @@ const Dashboard = () => {
           resolveStatus={resolvePinnedTabStatus}
           resolveAccessory={resolvePinnedAccessory}
           isDarkBackground={isDarkBackground}
+          editMode={isTouchDevice && editMode}
+          onReorder={handleReorderTabs}
+          onRename={handleUpdateTabName}
+          onUnpin={handleUnpinTab}
+          onRequestPin={() => toast.info('Long-press an accessory, or an item in the sidebar, to pin it here.')}
         />
       )}
 
@@ -6920,6 +6912,7 @@ const Dashboard = () => {
                       <div className="space-y-1">
                         {visibleHomes.map((home, homeIdx) => (
                             <SortableHomeItem
+                              touchMode={isTouchDevice}
                               key={home.id}
                               home={home}
                               tourId={homeIdx === 0 ? 'sidebar-home-item' : undefined}
@@ -7050,6 +7043,7 @@ const Dashboard = () => {
                                               style={{ pointerEvents: disablePointer ? 'none' : undefined }}
                                             >
                                               <SortableRoomItem
+                                                touchMode={isTouchDevice}
                                                     onCreateHelper={() => openHelperEditor({ roomId: room.id })}
                                                 room={room}
                                                 homeId={home.id}
@@ -7498,7 +7492,10 @@ const Dashboard = () => {
                                 </DropdownMenuItem>
                               )}
                               {currentRoom && selectedHomeId && <PinTabMenuItem as="dropdown" tab={{ type: 'room', id: selectedRoomId, name: roomName, homeId: selectedHomeId }} />}
-                              {selectedHomeId && !isViewOnly && (
+                              {/* Visibility is an edit-mode job on touch, where the
+                                  sidebar row carries the badge. Desktop has no edit
+                                  mode, so it keeps both items here. */}
+                              {selectedHomeId && !isViewOnly && !isTouchDevice && (
                                 <DropdownMenuItem onClick={() => toggleVisibility('room', 'ui', selectedHomeId, selectedRoomId)}>
                                   {isRoomActuallyHidden(selectedHomeId, selectedRoomId) ? (
                                     <>
@@ -7520,20 +7517,24 @@ const Dashboard = () => {
                                 <ImageIcon className="h-4 w-4 mr-2" />
                                 Set Room Background
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setShowHiddenItems(!showHiddenItems)}>
-                                {showHiddenItems ? (
-                                  <>
-                                    <EyeOff className="h-4 w-4 mr-2" />
-                                    Hide Hidden Items
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="h-4 w-4 mr-2" />
-                                    Show Hidden Items
-                                  </>
-                                )}
-                              </DropdownMenuItem>
+                              {!isTouchDevice && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={handleToggleShowHidden}>
+                                    {showHiddenItems ? (
+                                      <>
+                                        <EyeOff className="h-4 w-4 mr-2" />
+                                        Hide Hidden Items
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye className="h-4 w-4 mr-2" />
+                                        Show Hidden Items
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </>
@@ -8997,6 +8998,7 @@ const Dashboard = () => {
     </DealsProvider>
     </VirtualAccessoryEditProvider>
     </PinnedTabsProvider>
+    </LayoutEditProvider>
   );
 };
 

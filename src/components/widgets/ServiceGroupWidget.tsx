@@ -18,6 +18,8 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
+import { EditBadge } from '@/components/shared/EditBadge';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -394,6 +396,10 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const { historyAvailable, openGroupHistory } = useHistory();
   const canShowHistory = accessories.some(a => historyAvailable(a));
   const pins = usePinnedTabs();
+  // On touch, hiding is Edit Layout's job — see WidgetCard.
+  const { touchMode } = useLayoutEdit();
+  const menuOnHide = touchMode ? undefined : onHide;
+  const menuOnToggleShowHidden = touchMode ? undefined : onToggleShowHidden;
 
   const hasContextMenu = !disableTooltip && !isDragging;
 
@@ -404,13 +410,38 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Hidden styling
   const hiddenClass = isHidden ? 'opacity-40 grayscale' : '';
 
-  // Hidden badge
+  // Hidden badge — the unhide button, for the same reason WidgetCard's is:
+  // revealing hidden tiles is only useful if you can act on what you revealed.
   const hiddenBadge = isHidden ? (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-      <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
-        Hidden
-      </span>
+      {onHide ? (
+        <button
+          type="button"
+          aria-label={`Unhide ${group.name}`}
+          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onHide(); }}
+          className="pointer-events-auto flex items-center gap-1 bg-zinc-700 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-md hover:bg-zinc-600 active:bg-zinc-600 transition-colors duration-fast"
+        >
+          <Eye className="h-3 w-3" />
+          Unhide
+        </button>
+      ) : (
+        <span className="bg-zinc-500/90 text-white text-xs font-medium px-2.5 py-1 rounded-full shadow-sm">
+          Hidden
+        </span>
+      )}
     </div>
+  ) : null;
+
+  // Edit mode's hide affordance. See WidgetCard for why a hidden tile gets the
+  // unhide button instead of this one rather than both.
+  const editBadge = editMode && onHide && !isHidden ? (
+    <EditBadge
+      kind="hide"
+      label={`Hide ${group.name}`}
+      onClick={onHide}
+      className="absolute top-1.5 left-1.5"
+    />
   ) : null;
 
   const handleCardClick = useCallback(() => {
@@ -1057,8 +1088,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 <Eye className="h-4 w-4 mr-2" />
                 {(showCompact ? (isExpanded && isWidgetExpanded) : isExpanded) ? 'Hide Devices' : 'Show Devices'}
               </ContextMenuItem>
-              {onHide && (
-                <ContextMenuItem onClick={onHide}>
+              {menuOnHide && (
+                <ContextMenuItem onClick={menuOnHide}>
                   {isHidden ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
                   {hideLabel || (isHidden ? 'Unhide Accessory Group' : 'Hide Accessory Group')}
                 </ContextMenuItem>
@@ -1069,9 +1100,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   {removeLabel || 'Remove Accessory Group'}
                 </ContextMenuItem>
               )}
-              {onToggleShowHidden && <ContextMenuSeparator />}
-              {onToggleShowHidden && (
-                <ContextMenuItem onClick={onToggleShowHidden}>
+              {menuOnToggleShowHidden && <ContextMenuSeparator />}
+              {menuOnToggleShowHidden && (
+                <ContextMenuItem onClick={menuOnToggleShowHidden}>
                   {showHiddenItems ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
                   {showHiddenItems ? 'Hide Hidden Items' : 'Show Hidden Items'}
                 </ContextMenuItem>
@@ -1079,6 +1110,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             </ContextMenuContent>
           </ContextMenu>
           {hiddenBadge}
+          {editBadge}
           {/* Expanded overlay for compact mode */}
           <ExpandedOverlay
             isExpanded={isWidgetExpanded}
@@ -1106,6 +1138,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
         {cardContent}
         {hiddenBadge}
+        {editBadge}
         {/* Expanded overlay for compact mode */}
         <ExpandedOverlay
           isExpanded={isWidgetExpanded}

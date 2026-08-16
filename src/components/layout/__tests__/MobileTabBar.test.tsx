@@ -187,3 +187,77 @@ describe('labels and identity', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+describe('edit mode', () => {
+  it('renames on tap, and clears the override when the field is emptied', () => {
+    const onRename = vi.fn();
+    setup([{ ...TABS.room, customName: 'Kitch' }], { editMode: true, onRename });
+
+    // A tap opens the field instead of navigating — you are arranging the bar,
+    // not using it.
+    fireEvent.click(screen.getByRole('button', { name: 'Kitch' }));
+    const field = screen.getByRole('textbox', { name: 'Rename Kitchen' });
+    expect((field as HTMLInputElement).value).toBe('Kitch');
+
+    fireEvent.change(field, { target: { value: 'Cook' } });
+    fireEvent.blur(field);
+    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ id: 'ROOM-1' }), 'Cook');
+
+    // Emptying it must send `undefined`, not '' — that is what falls back to the
+    // real name rather than rendering a blank tab.
+    onRename.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Kitch' }));
+    const again = screen.getByRole('textbox', { name: 'Rename Kitchen' });
+    fireEvent.change(again, { target: { value: '   ' } });
+    fireEvent.blur(again);
+    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ id: 'ROOM-1' }), undefined);
+  });
+
+  it('never navigates or runs while editing', () => {
+    const props = setup([TABS.room, TABS.scene], { editMode: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Movie night' }));
+
+    expect(props.onSelectRoom).not.toHaveBeenCalled();
+    expect(props.onActivate).not.toHaveBeenCalled();
+  });
+
+  it('unpins the tab whose badge was pressed', () => {
+    const onUnpin = vi.fn();
+    setup([TABS.home, TABS.room], { editMode: true, onUnpin });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin Kitchen' }));
+    expect(onUnpin).toHaveBeenCalledTimes(1);
+    expect(onUnpin.mock.calls[0][0].id).toBe('ROOM-1');
+  });
+
+  it('offers no unpin or rename affordances outside edit mode', () => {
+    setup([TABS.room]);
+    expect(screen.queryByRole('button', { name: /Unpin/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('still renders, with an Add slot, when editing an empty bar', () => {
+    // Otherwise unpinning your last tab leaves no bar and no way back to one.
+    const onRequestPin = vi.fn();
+    setup([], { editMode: true, onRequestPin });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(onRequestPin).toHaveBeenCalled();
+  });
+
+  it('hides the Add slot once the bar is full', () => {
+    setup(
+      [TABS.home, TABS.room, TABS.scene, TABS.action, TABS.accessory],
+      { editMode: true },
+    );
+    expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
+  });
+
+  it('latches nothing active while editing', () => {
+    setup([TABS.home], { editMode: true, selectedHomeId: 'HOME-1' });
+    expect(screen.getByRole('button', { name: 'Beach House' }).getAttribute('aria-current')).toBeNull();
+  });
+});
