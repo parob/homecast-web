@@ -1400,6 +1400,15 @@ const Dashboard = () => {
       setSelectedCollectionId(prev.collectionId);
       setSelectedCollection(prev.collection);
       tutorialPrevSelectionRef.current = null;
+      // Close what the tour opened. The enter branch expands Automations so the
+      // spotlight has something to land on, and restoring only the *selection*
+      // left it hanging open afterwards — which is why a first run ended with a
+      // pill expanded that the user never touched. All four, not just that one:
+      // closed is their initial state, so this restores it whatever the tour did.
+      setActionsOpen(false);
+      setScenesOpen(false);
+      setAutomationsOpen(false);
+      setStatusOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorialDemoActive]);
