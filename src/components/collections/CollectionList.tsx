@@ -104,7 +104,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-16' : ''} ${
+        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-8' : ''} ${
           isDarkBackground
             ? `text-white ${hasSelectedChild ? 'bg-white/10' : isSelected ? 'bg-white/20' : 'hover:bg-white/10'}`
             : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`

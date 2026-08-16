@@ -270,8 +270,11 @@ export function CollectionDetail({
 
   // Click-to-expand handlers (same as Dashboard)
   const handleWidgetClick = useCallback((widgetId: string) => {
+    // See Dashboard: compact tiles are expanded by this wrapper, not by the
+    // card, so gating the card alone left them opening while editing.
+    if (editMode) return;
     setExpandedWidgetId(prev => prev === widgetId ? null : widgetId);
-  }, []);
+  }, [editMode]);
 
   const cancelCollapseTimeout = useCallback(() => {
     if (collapseTimeoutRef.current) {

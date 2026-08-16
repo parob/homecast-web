@@ -410,7 +410,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           {...attributes}
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-[7.5rem]' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-14' : ''} ${
             isDarkBackground
               ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -777,7 +777,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {...listeners}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           disabled={isLoading}
-          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-[7.5rem]' : ''} ${
+          className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${contentOpacity} ${showEditBadge ? 'pr-14' : ''} ${
             isDarkBackground
               ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
               : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -966,7 +966,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
         {...attributes}
         {...listeners}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
-        className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-16' : ''} ${
+        className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors overflow-visible ${isDragging ? 'cursor-grabbing' : ''} ${editMode && pinTab ? 'pr-8' : ''} ${
           isDarkBackground
             ? `${isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
             : `${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
@@ -4227,8 +4227,15 @@ const Dashboard = () => {
   }, [fontSize]);
 
   // Sidebar widths scale with font size
-  const sidebarWidth = fontSize === 'small' ? 200 : fontSize === 'large' ? 248 : 218;
-  const mobileSidebarWidth = fontSize === 'small' ? 250 : fontSize === 'large' ? 296 : 266;
+  // Editing adds two action buttons to the trailing edge of every row, which
+  // eats into the space the home or room name had. Widening the panel gives the
+  // name that space back rather than making you guess which room you are hiding.
+  const editingSidebar = isTouchDevice && editMode;
+  const EDIT_SIDEBAR_EXTRA = 56;
+  const sidebarWidth = (fontSize === 'small' ? 200 : fontSize === 'large' ? 248 : 218)
+    + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  const mobileSidebarWidth = (fontSize === 'small' ? 250 : fontSize === 'large' ? 296 : 266)
+    + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
 
   // Change font size (optimistic)
   const changeFontSize = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -4279,8 +4286,12 @@ const Dashboard = () => {
 
   // Handle widget click to expand/collapse
   const handleWidgetClick = useCallback((widgetId: string) => {
+    // Expanding is not arranging. The tile itself already refuses in edit mode,
+    // but compact tiles are expanded by *this* wrapper rather than by the card,
+    // so gating WidgetCard alone left them opening anyway.
+    if (isTouchDevice && editMode) return;
     setExpandedWidgetId(prev => prev === widgetId ? null : widgetId);
-  }, []);
+  }, [isTouchDevice, editMode]);
 
   // Ref for collapse timeout
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -6813,9 +6824,32 @@ const Dashboard = () => {
                 Done
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground text-center pb-1.5">
-              Drag to rearrange &middot; tap Hide on anything you want out of the way
-            </p>
+            {/* The tile buttons are icon-only, so their meaning is spelled out
+                once here rather than on every tile forever. Which primary action
+                a tile carries depends on where you are: a collection has no
+                hidden state, so there it removes rather than hides. */}
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-1.5 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <GripVertical className="h-3 w-3" />
+                Drag to rearrange
+              </span>
+              <span className="flex items-center gap-1">
+                {selectedCollectionId ? <Trash2 className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                {selectedCollectionId ? 'Remove' : 'Hide'}
+              </span>
+              {showHiddenItems && !selectedCollectionId && (
+                <span className="flex items-center gap-1">
+                  <Eye className="h-3 w-3" />
+                  Unhide
+                </span>
+              )}
+              {isMobile && (
+                <span className="flex items-center gap-1">
+                  <Pin className="h-3 w-3" />
+                  Pin to tab bar
+                </span>
+              )}
+            </div>
             {hiddenReveal.count > 0 && (
               <button
                 role="switch"
@@ -7853,7 +7887,7 @@ const Dashboard = () => {
                             // Compact mode: show compact widget with click-to-expand
                             <div
                               data-expandable-widget
-                              className={`relative 'cursor-pointer'`}
+                              className={`relative ${isTouchDevice && editMode ? '' : 'cursor-pointer'}`}
                               style={undefined}
                               onClick={() => handleWidgetClick(accessory.id)}
                               onMouseLeave={isExpanded ? handleWidgetMouseLeave : undefined}

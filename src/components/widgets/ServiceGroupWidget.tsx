@@ -427,7 +427,11 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     ? <TileEditActions action={editPrimaryAction} tab={editTab} />
     : null;
 
-  const hiddenLabel = isHidden && !editActions ? <HiddenLabel /> : null;
+  // Named outside edit mode, where there is no legend explaining what a bare eye
+  // icon means — desktop reveals hidden tiles from the context menu and never
+  // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
+  // across the middle would cover the name again.
+  const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
 
   const handleCardClick = useCallback(() => {
     if (isDragging || editMode) return;

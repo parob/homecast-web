@@ -24,36 +24,43 @@ import type { PinnedTab } from '@/lib/pinned-tabs';
 
 interface ActionButtonProps {
   icon: React.ComponentType<{ className?: string }>;
-  /** What the button reads. Rows get a shorter one — see `pinButton`. */
+  /** Never drawn — these are icon-only. It is the accessible name and tooltip. */
   label: string;
-  /** The full phrasing, when the visible label had to be abbreviated to fit. */
-  ariaLabel?: string;
   onClick: () => void;
   disabled?: boolean;
-  /** `tile` sits over a widget; `row` is the shorter one for a sidebar line. */
+  /** `tile` sits over a widget; `row` is the smaller one for a sidebar line. */
   size?: 'tile' | 'row';
 }
 
-function EditActionButton({ icon: Icon, label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
+/**
+ * Icon-only, deliberately.
+ *
+ * Labelled pills were tried first and were simply too big: a compact tile is
+ * about 80px tall and roughly 160px wide, so "Hide" beside "Pin to Tab Bar"
+ * covered the accessory's name — the one thing you need in order to know what
+ * you are about to hide. What the glyphs mean is spelled out once, in the Edit
+ * Layout bar, instead of on every tile forever.
+ */
+function EditActionButton({ icon: Icon, label, onClick, disabled, size = 'tile' }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
   return (
     <button
       type="button"
-      aria-label={ariaLabel ?? label}
+      aria-label={label}
+      title={label}
       disabled={disabled}
       onPointerDown={swallow}
       onMouseDown={swallow}
       onTouchStart={swallow}
       onClick={(e) => { swallow(e); if (!disabled) onClick(); }}
       className={cn(
-        'pointer-events-auto flex items-center gap-1.5 rounded-full bg-zinc-800/95 font-semibold text-white shadow-lg',
+        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-800/95 text-white shadow-lg',
         'transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700',
         'disabled:opacity-50 disabled:hover:bg-zinc-800/95',
-        size === 'tile' ? 'px-3 py-1.5 text-xs' : 'px-2 py-0.5 text-[11px]',
+        size === 'tile' ? 'h-6 w-6' : 'h-5 w-5',
       )}
     >
       <Icon className={size === 'tile' ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-      {label}
     </button>
   );
 }
@@ -77,21 +84,12 @@ export type PrimaryEditAction =
 function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row') {
   if (!action) return null;
   if (action.kind === 'remove') {
-    return (
-      <EditActionButton
-        icon={Trash2}
-        label={size === 'row' ? 'Remove' : action.label}
-        ariaLabel={action.label}
-        onClick={action.onRemove}
-        size={size}
-      />
-    );
+    return <EditActionButton icon={Trash2} label={action.label} onClick={action.onRemove} size={size} />;
   }
   return (
     <EditActionButton
       icon={action.isHidden ? Eye : EyeOff}
-      label={action.isHidden ? 'Unhide' : 'Hide'}
-      ariaLabel={`${action.isHidden ? 'Unhide' : 'Hide'} ${action.name}`}
+      label={`${action.isHidden ? 'Unhide' : 'Hide'} ${action.name}`}
       onClick={action.onToggle}
       size={size}
     />
@@ -100,15 +98,10 @@ function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row') {
 
 function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
   if (!pin) return null;
-  // A sidebar row has a name to fit as well; "Pin to Tab Bar" beside "Hide"
-  // leaves it nothing to truncate into. The icon and the full accessible name
-  // carry the meaning the shortened label drops.
-  const short = pin.pinned ? 'Unpin' : pin.full ? 'Full' : 'Pin';
   return (
     <EditActionButton
       icon={pin.pinned ? PinOff : Pin}
-      label={size === 'row' ? short : pin.label}
-      ariaLabel={pin.label}
+      label={pin.label}
       onClick={pin.toggle}
       disabled={pin.full}
       size={size}
@@ -117,7 +110,11 @@ function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
 }
 
 /**
- * Centred over a widget: the primary action, and the pin below it.
+ * Tucked into the widget's top-right corner.
+ *
+ * That corner is empty precisely while editing — it holds the accessory's switch
+ * the rest of the time, and edit mode takes the switch away. So these cover
+ * nothing: the icon stays top-left, the name and its readout stay below.
  *
  * Rendered by the caller *outside* the Card, so the dimming applied to a hidden
  * tile's content does not also grey out the button that undoes it.
@@ -128,7 +125,7 @@ export function TileEditActions({ action, tab }: { action: PrimaryEditAction; ta
   const pinned = pinButton(pin, 'tile');
   if (!primary && !pinned) return null;
   return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+    <div className="absolute right-1.5 top-1.5 z-30 flex items-center gap-1 pointer-events-none">
       {primary}
       {pinned}
     </div>
