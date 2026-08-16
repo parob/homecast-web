@@ -239,31 +239,13 @@ describe('edit mode', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('still renders, with an Add slot, when editing an empty bar', () => {
-    // Otherwise unpinning your last tab leaves no bar and no way back to one.
-    const onRequestPin = vi.fn();
-    setup([], { editMode: true, onRequestPin });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(onRequestPin).toHaveBeenCalled();
-  });
-
-  it('hides the Add slot once the bar is full', () => {
-    setup(
-      [TABS.home, TABS.room, TABS.scene, TABS.action, TABS.accessory],
-      { editMode: true },
-    );
-    expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
-  });
-
-  it('never puts the wiggle and the drag transform on one element', () => {
-    // `.wiggle` animates `transform: rotate(...)`, and a running CSS animation
-    // outranks an inline style — so sharing an element silently replaced
-    // dnd-kit's translate and the tabs stopped moving aside as you dragged.
-    // Nothing appeared to happen until the drop reordered the DOM.
+  it('draws nothing at all once the last pin is removed, even while editing', () => {
+    // There is no "Add" affordance on the bar — you pin things from the thing
+    // itself — so an empty bar has nothing to say and should not be a stray
+    // empty pill floating over the dashboard.
     const { container } = render(
       <MobileTabBar
-        pinnedTabs={[TABS.home, TABS.room]}
+        pinnedTabs={[]}
         selectedHomeId={null} selectedRoomId={null}
         selectedCollectionId={null} selectedCollectionGroupId={null}
         onSelectHome={vi.fn()} onSelectRoom={vi.fn()}
@@ -273,14 +255,7 @@ describe('edit mode', () => {
         editMode onReorder={vi.fn()} onRename={vi.fn()} onUnpin={vi.fn()}
       />,
     );
-
-    // Asserting on `style.transform` would be vacuous: dnd-kit only writes one
-    // during an actual drag, which jsdom cannot perform. So assert the structure
-    // that makes the clash impossible — the wiggling element is never the node
-    // dnd-kit transforms.
-    expect(container.querySelectorAll('[data-sortable-node]')).toHaveLength(2);
-    expect(container.querySelectorAll('.wiggle')).toHaveLength(2);
-    expect(container.querySelectorAll('[data-sortable-node].wiggle')).toHaveLength(0);
+    expect(container.firstChild).toBeNull();
   });
 
   it('latches nothing active while editing', () => {

@@ -6773,7 +6773,10 @@ const Dashboard = () => {
           left to explain. */}
       {isTouchDevice && editMode && (
         <div
-          className="fixed top-0 left-0 right-0 z-[10002] bg-background/95 backdrop-blur-xl border-b border-border shadow-sm safe-area-top safe-area-x"
+          // The same glass the tab bar and the header bubbles use, rather than a
+          // flat panel — it sits directly over the widgets and looked like a
+          // different kind of surface pasted on top of them.
+          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           data-testid="edit-layout-bar"
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
@@ -6781,7 +6784,7 @@ const Dashboard = () => {
               <button
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open menu"
-                className="flex items-center justify-center h-10 w-10 -ml-2 rounded-lg text-foreground active:bg-muted"
+                className={`flex items-center justify-center h-10 w-10 -ml-2 rounded-lg ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -6797,11 +6800,8 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Mobile tab bar - floating bottom bubble.
-          Rendered with no pins while editing, so the empty "Add" slot can say
-          how to fill it — otherwise a user who unpinned everything would be left
-          with no bar and no way back to one. */}
-      {isMobile && (pinnedTabs.length > 0 || (isTouchDevice && editMode)) && (
+      {/* Mobile tab bar - floating bottom bubble. */}
+      {isMobile && pinnedTabs.length > 0 && (
         <MobileTabBar
           pinnedTabs={pinnedTabs}
           selectedHomeId={selectedHomeId}
@@ -6835,7 +6835,6 @@ const Dashboard = () => {
           onReorder={handleReorderTabs}
           onRename={handleUpdateTabName}
           onUnpin={handleUnpinTab}
-          onRequestPin={() => toast.info('Long-press an accessory, or an item in the sidebar, to pin it here.')}
         />
       )}
 

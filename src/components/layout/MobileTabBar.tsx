@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Folder, House, Layers, Loader2, Plus, Zap } from 'lucide-react';
+import { Folder, House, Layers, Loader2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   DndContext,
@@ -78,8 +78,6 @@ interface MobileTabBarProps {
   onReorder?: (reordered: PinnedTab[]) => void;
   onRename?: (target: PinTarget, customName: string | undefined) => void;
   onUnpin?: (target: PinTarget) => void;
-  /** Tapping the empty slot — the Dashboard explains how to pin something. */
-  onRequestPin?: () => void;
 }
 
 export function MobileTabBar({
@@ -101,7 +99,6 @@ export function MobileTabBar({
   onReorder,
   onRename,
   onUnpin,
-  onRequestPin,
 }: MobileTabBarProps) {
   /** Which popover tab is open, by pin key. At most one at a time. */
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -141,9 +138,7 @@ export function MobileTabBar({
     onReorder?.(arrayMove(pinnedTabs, oldIndex, newIndex));
   }, [itemIds, pinnedTabs, onReorder]);
 
-  // Outside edit mode an empty bar is nothing to draw. Inside it, the empty slot
-  // is the only thing telling you how to fill the bar, so it has to render.
-  if (pinnedTabs.length === 0 && !editMode) return null;
+  if (pinnedTabs.length === 0) return null;
 
   const getIcon = (tab: PinnedTab): LucideIcon => {
     switch (tab.type) {
@@ -328,17 +323,6 @@ export function MobileTabBar({
     );
   });
 
-  const addSlot = editMode && pinnedTabs.length < MAX_PINNED_TABS ? (
-    <button
-      key="__add"
-      onClick={onRequestPin}
-      className="shrink-0 flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg border border-dashed border-current/40 text-muted-foreground active:bg-white/10"
-    >
-      <Plus className="h-5 w-5 shrink-0" />
-      <span className="text-[10px] font-medium">Add</span>
-    </button>
-  ) : null;
-
   const pill = (
     <div
       className={cn(
@@ -350,7 +334,6 @@ export function MobileTabBar({
       style={{ maxWidth: 'calc(100% - 32px)' }}
     >
       {tabs}
-      {addSlot}
     </div>
   );
 
