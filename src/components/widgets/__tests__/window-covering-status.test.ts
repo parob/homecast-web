@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coveringMotion, coveringStatusText, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
+import { coveringMotion, coveringStatusText, coveringToggleLabel, coveringToggleTarget, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
 
 // HomeKit's position_state values, of the RAW position.
 const DECREASING = 0;
@@ -115,5 +115,32 @@ describe('position conventions', () => {
 
     // Both fully open: one says 100, the other says 0.
     expect(Math.round((toOpenness(100, true) + toOpenness(0, false)) / 2)).toBe(100);
+  });
+});
+
+describe('the compact one-press button', () => {
+  it('offers the undo while the covering is still moving', () => {
+    // Half-way through closing: openness 60, heading for 0. The press that is
+    // worth having is Open. Reading the current position instead gave "Close",
+    // which re-sent the target it was already obeying and did nothing visible.
+    expect(coveringToggleLabel(60, 0, true)).toBe('Open');
+    expect(coveringToggleTarget(60, 0, true)).toBe(100);
+
+    // …and the mirror image, half-way through opening.
+    expect(coveringToggleLabel(40, 100, true)).toBe('Close');
+    expect(coveringToggleTarget(40, 100, true)).toBe(0);
+  });
+
+  it('offers the opposite of where it is once it has stopped', () => {
+    expect(coveringToggleLabel(0, 0, false)).toBe('Open');
+    expect(coveringToggleLabel(100, 100, false)).toBe('Close');
+    // Partially open and at rest is not closed, so the press closes it.
+    expect(coveringToggleLabel(60, 60, false)).toBe('Close');
+  });
+
+  it('ignores a stale target once motion has finished', () => {
+    // Target still reads 0 from the last command, but nothing is moving and the
+    // blind is open — the button must describe the blind, not the old order.
+    expect(coveringToggleLabel(100, 0, false)).toBe('Close');
   });
 });

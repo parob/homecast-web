@@ -82,3 +82,31 @@ export function toOpenness(rawPosition: number, standardLogic: boolean): number 
 export function fromOpenness(openness: number, standardLogic: boolean): number {
   return standardLogic ? openness : 100 - openness;
 }
+
+/**
+ * What the one-press button should offer next, in openness terms.
+ *
+ * Keyed on where the covering is *going*, not where it is. Reading the current
+ * position meant a blind half-way through closing still offered "Close" — a
+ * press that re-sent the target it was already obeying, and did nothing visible.
+ * The useful press mid-motion is the one that undoes it.
+ *
+ * Returns the openness to write: 100 to open, 0 to close.
+ */
+export function coveringToggleTarget(
+  currentOpenness: number,
+  targetOpenness: number,
+  isMoving: boolean,
+): number {
+  const heading = isMoving ? targetOpenness : currentOpenness;
+  return heading === 0 ? 100 : 0;
+}
+
+/** The label for that button — the verb for what the press will do. */
+export function coveringToggleLabel(
+  currentOpenness: number,
+  targetOpenness: number,
+  isMoving: boolean,
+): 'Open' | 'Close' {
+  return coveringToggleTarget(currentOpenness, targetOpenness, isMoving) === 100 ? 'Open' : 'Close';
+}

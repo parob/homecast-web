@@ -3,7 +3,7 @@ import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull 
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { VerticalSlider } from './shared';
-import { coveringMotion, coveringStatusText, usesStandardPositionLogic } from './shared/coveringStatus';
+import { coveringMotion, coveringStatusText, coveringToggleLabel, coveringToggleTarget, usesStandardPositionLogic } from './shared/coveringStatus';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
@@ -223,8 +223,11 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       : 'bg-primary/20 hover:bg-primary/30 border-transparent';
   };
 
-  // Compact button: Close is colored (matching theme), Open is grey
-  const isCompactCloseButton = currentPosition !== 0; // Shows "Close" when not fully closed
+  // Compact button: Close is colored (matching theme), Open is grey.
+  // Keyed on where it is heading, not where it is — see coveringToggleLabel.
+  const compactToggleLabel = coveringToggleLabel(currentPosition, targetPosition, isMoving);
+  const compactToggleTarget = coveringToggleTarget(currentPosition, targetPosition, isMoving);
+  const isCompactCloseButton = compactToggleLabel === 'Close';
   const compactButtonClasses = isCompactCloseButton
     ? (iconStyle === 'colourful' && widgetColors ? `${widgetColors.accent} hover:${widgetColors.accent}/90 text-white` : '')
     : 'bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-foreground';
@@ -354,13 +357,13 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
               e.stopPropagation();
               if (!isViewOnly) {
                 // For inverted blinds: convert from openness % back to coverage %
-                const targetValue = currentPosition === 0 ? 100 : 0;
+                const targetValue = compactToggleTarget;
                 onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - targetValue) : targetValue);
               }
             }}
             disabled={noResponse}
           >
-            {currentPosition === 0 ? 'Open' : 'Close'}
+            {compactToggleLabel}
           </Button>
         ) : undefined
       }
