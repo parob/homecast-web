@@ -22,12 +22,14 @@ interface AutomationCardProps {
   onClick: () => void;
   onUpdated?: () => void;
   onToggle?: (enabled: boolean) => void;
+  /** Edit Layout is running: arrange it, don't operate it. */
+  editMode?: boolean;
   onDelete?: () => void;
   compact?: boolean;
   isDarkBackground?: boolean;
 }
 
-export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground }: AutomationCardProps) {
+export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground, editMode }: AutomationCardProps) {
   const isHomeKit = !!automation;
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
   const [setEnabled] = useMutation<SetAutomationEnabledResponse>(SET_AUTOMATION_ENABLED);
@@ -99,9 +101,9 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   const subtextClass = (isDarkBackground && !isEnabled) ? 'text-white/60' : 'text-muted-foreground';
   return (
     <div
-      className={`relative rounded-2xl h-fit cursor-pointer transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
+      className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
       style={{ contain: 'layout style paint' }}
-      onClick={onClick}
+      onClick={editMode ? undefined : onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
     >
       {/* Blur layer — matches WidgetWrapper */}
@@ -142,11 +144,15 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               </div>
             </div>
           </div>
+          {/* Enabling an automation is operating it, not arranging it — and the
+              switch sits exactly where a mis-grab on the way to a drag lands. */}
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <div onClick={handleToggle}>
-              <Switch checked={isEnabled} className={compact ? 'scale-90' : ''} />
-            </div>
-            {onDelete && (
+            {!editMode && (
+              <div onClick={handleToggle}>
+                <Switch checked={isEnabled} className={compact ? 'scale-90' : ''} />
+              </div>
+            )}
+            {onDelete && !editMode && (
               <button
                 type="button"
                 onClick={handleDelete}

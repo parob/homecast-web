@@ -5046,6 +5046,11 @@ const Dashboard = () => {
    * when a drag could not leave one. Now it can, so the lookup has to span the
    * home — otherwise the floating tile vanishes the moment you cross a border.
    */
+  /**
+   * The tile that follows your finger. It must be the tile you picked up — same
+   * editMode, and an inert `onHide` so the Hide button does not vanish the moment
+   * you lift it. You cannot tap it mid-drag, so the handler does nothing.
+   */
   const renderSharedDragOverlay = useCallback((activeId: string) => {
     if (activeId.startsWith('group-')) {
       const group = serviceGroups.find(g => `group-${g.id}` === activeId);
@@ -5057,6 +5062,7 @@ const Dashboard = () => {
           <ServiceGroupWidget
             group={group}
             accessories={getAccessoriesInGroup(group)}
+            onHide={() => {}}
             onToggle={() => {}}
             onSlider={() => {}}
             getEffectiveValue={getEffectiveValue}
@@ -5074,6 +5080,7 @@ const Dashboard = () => {
         <AccessoryWidget
           homeName={getHomeName(accessory.homeId)}
           accessory={accessory}
+          onHide={() => {}}
           onToggle={() => {}}
           onSlider={() => {}}
           getEffectiveValue={getEffectiveValue}
@@ -5099,55 +5106,11 @@ const Dashboard = () => {
   }, []);
 
   /**
-   * What "Show hidden" would actually reveal, right here, right now.
-   *
-   * The toggle used to be an eye icon labelled "Hidden", which said nothing about
-   * what it did or whether it would do anything at all. Naming the count fixes
-   * both: the control states its effect, and it is not rendered when the answer
-   * is zero, so it can never be a switch that appears to do nothing.
-   *
-   * Counts rooms as well as accessories and groups — the same toggle reveals
-   * hidden rooms in the sidebar, and a home whose only hidden thing is a room
-   * would otherwise have no way to get it back.
+   * How far down the page starts. The edit bar deliberately matches the header
+   * it covers, so this is one number — kept named rather than inlined because
+   * three places need to agree on it.
    */
-  const hiddenReveal = useMemo(() => {
-    void visibilityVersion; // Layout is read from the Apollo cache, not from state.
-    if (!selectedHomeId) return { count: 0, label: '' };
-    let accessoryLike = 0;
-    for (const [roomName, roomAccessories] of Object.entries(accessoriesByRoom)) {
-      const contextId = rooms.find(r => r.name === roomName)?.id
-        || (roomName === HOME_LEVEL_ROOM ? HOME_LEVEL_CONTEXT_ID : 'all');
-      for (const a of roomAccessories) {
-        if (isDeviceActuallyHidden(selectedHomeId, contextId, a.id)) accessoryLike++;
-      }
-      for (const g of getGroupsForRoom(roomAccessories)) {
-        if (isGroupActuallyHidden(selectedHomeId, g.id, contextId)) accessoryLike++;
-      }
-    }
-    const hiddenRooms = selectedRoomId
-      ? 0
-      : rooms.filter(r => isRoomActuallyHidden(selectedHomeId, r.id)).length;
-    const count = accessoryLike + hiddenRooms;
-    if (count === 0) return { count: 0, label: '' };
-    // "accessories" while that is all they are; "items" once rooms are in the mix.
-    const noun = hiddenRooms > 0
-      ? (count === 1 ? 'item' : 'items')
-      : (count === 1 ? 'accessory' : 'accessories');
-    return { count, label: `Show ${count} hidden ${noun}` };
-  }, [
-    visibilityVersion, selectedHomeId, selectedRoomId, accessoriesByRoom, rooms,
-    isDeviceActuallyHidden, isGroupActuallyHidden, isRoomActuallyHidden, getGroupsForRoom,
-  ]);
-
-  /**
-   * How far down the page starts. Normally the header's 80px; while editing, the
-   * edit bar's own height, since it replaces the header and is taller than it
-   * once the Show hidden row is present. Content would otherwise sit underneath
-   * the one control it needs.
-   */
-  const editBarHeight = isTouchDevice && editMode
-    ? 80 + (hiddenReveal.count > 0 ? 46 : 0)
-    : 80;
+  const editBarHeight = 80;
 
 
   // Leaving edit mode puts the hidden things back out of sight. On touch the
@@ -5157,7 +5120,11 @@ const Dashboard = () => {
   // never enters edit mode.
   const setEditModeAndTidy = useCallback((next: boolean) => {
     setEditMode(next);
-    if (!next) setShowHiddenItems(false);
+    // Editing always shows hidden things — you cannot bring back what you cannot
+    // see, and a toggle for it was one more control to misread. `getOrderedItems`
+    // already sorts revealed items to the end of the grid, so they are out of the
+    // way of the ones you are actually arranging. Leaving puts them back.
+    setShowHiddenItems(next);
   }, []);
 
   // Track previous background to avoid flashing during loading
@@ -6799,16 +6766,18 @@ const Dashboard = () => {
           here to arrange — homes and rooms live in it. The Sheet it opens is
           z-[10015], above this bar, so it still works.
 
-          The Show hidden control names its own effect and its own count, and is
-          not rendered at all when there is nothing hidden — a switch that appears
-          to do nothing is worse than no switch. */}
+          There is no Show hidden control: editing always reveals hidden things,
+          sorted to the end of the grid. You cannot bring back what you cannot
+          see, and a toggle for it was one more thing to misread. Nor is there a
+          legend — the buttons say "Hide" and "Pin" in words, so there is nothing
+          left to explain. */}
       {isTouchDevice && editMode && (
         <div
           className="fixed top-0 left-0 right-0 z-[10002] bg-background/95 backdrop-blur-xl border-b border-border shadow-sm safe-area-top safe-area-x"
           data-testid="edit-layout-bar"
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
-            <div className="flex items-center justify-between gap-2 h-[48px]">
+            <div className="flex items-center justify-between gap-2 h-[80px]">
               <button
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open menu"
@@ -6824,51 +6793,6 @@ const Dashboard = () => {
                 Done
               </button>
             </div>
-            {/* The tile buttons are icon-only, so their meaning is spelled out
-                once here rather than on every tile forever. Which primary action
-                a tile carries depends on where you are: a collection has no
-                hidden state, so there it removes rather than hides. */}
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-1.5 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <GripVertical className="h-3 w-3" />
-                Drag to rearrange
-              </span>
-              <span className="flex items-center gap-1">
-                {selectedCollectionId ? <Trash2 className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                {selectedCollectionId ? 'Remove' : 'Hide'}
-              </span>
-              {showHiddenItems && !selectedCollectionId && (
-                <span className="flex items-center gap-1">
-                  <Eye className="h-3 w-3" />
-                  Unhide
-                </span>
-              )}
-              {isMobile && (
-                <span className="flex items-center gap-1">
-                  <Pin className="h-3 w-3" />
-                  Pin to tab bar
-                </span>
-              )}
-            </div>
-            {hiddenReveal.count > 0 && (
-              <button
-                role="switch"
-                aria-checked={showHiddenItems}
-                onClick={handleToggleShowHidden}
-                className="mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-left active:bg-muted"
-              >
-                <span className="flex items-center gap-2 text-xs font-medium">
-                  {showHiddenItems ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                  {hiddenReveal.label}
-                </span>
-                <span
-                  aria-hidden
-                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${showHiddenItems ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-                >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${showHiddenItems ? 'left-[18px]' : 'left-0.5'}`} />
-                </span>
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -7999,6 +7923,7 @@ const Dashboard = () => {
                                 <AccessoryWidget
                                   homeName={getHomeName(activeAccessory.homeId)}
                                   accessory={activeAccessory}
+                                  onHide={() => {}}
                                   onToggle={() => {}}
                                   onSlider={() => {}}
                                   getEffectiveValue={getEffectiveValue}
@@ -8028,6 +7953,7 @@ const Dashboard = () => {
                                   compact={compactMode}
                                   homeName={groupHomeName}
                                   roomName={roomName}
+                                  onHide={() => {}}
                                   onToggle={() => {}}
                                   onSlider={() => {}}
                                   disableTooltip

@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Plus, ChevronRight, Check } from 'lucide-react';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -87,6 +88,7 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, hide
 }
 
 export function AutomationsSection({ homeId, compact, isDarkBackground, open: expanded, demoAutomations }: AutomationsSectionProps) {
+  const { editMode } = useLayoutEdit();
   const [selectedAutomation, setSelectedAutomation] = useState<HomeKitAutomation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -217,6 +219,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
                 automation={automation}
                 onClick={() => handleCardClick(automation)}
                 onUpdated={() => refetch()}
+                editMode={editMode}
                 compact={compact}
                 isDarkBackground={isDarkBackground}
               />
@@ -229,13 +232,15 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
                 hcAutomation={hc}
                 onClick={() => handleHcAutomationClick(hc)}
                 onToggle={() => handleToggleHcAutomation(hc)}
+                editMode={editMode}
                 compact={compact}
                 isDarkBackground={isDarkBackground}
               />
             ))}
 
-            {/* New automation button — same height as cards */}
-            <button
+            {/* New automation button — same height as cards. Creating is not
+                arranging: it would add a card to the grid you are rearranging. */}
+            {!editMode && <button
               type="button"
               data-testid="new-automation-button"
               onClick={() => setNewTypeOpen(true)}
@@ -247,7 +252,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
             >
               <Plus className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
               <span className={`${compact ? 'text-xs' : 'text-sm'}`}>Create</span>
-            </button>
+            </button>}
           </div>
         </div>
       </AnimatedCollapse>

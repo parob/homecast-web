@@ -116,7 +116,10 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
               const running = runningId === action.id;
               // Nothing left to do, or no permission to do it. Either way the
               // card stays in place so the row doesn't reflow under the press.
-              const inert = action.disabled || !!isViewOnly || running;
+              // Editing joins the existing reasons a card must not fire: an
+              // action runs the moment you touch it, and a mis-grab on the way
+              // to a drag would turn the whole house off.
+              const inert = action.disabled || !!isViewOnly || running || editMode;
 
               const card = (
                 <div

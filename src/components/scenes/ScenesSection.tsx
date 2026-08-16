@@ -151,9 +151,9 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => { setEditingScene(scene); setFormOpen(true); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
-                className={`relative rounded-2xl h-fit cursor-pointer transition-all duration-300 ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`}
+                onClick={editMode ? undefined : () => { setEditingScene(scene); setFormOpen(true); }}
+                onKeyDown={(e) => { if (!editMode && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
+                className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`}
                 style={{ contain: 'layout style paint' }}
               >
                 {/* Blur layer — matches WidgetWrapper */}
@@ -172,6 +172,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                           : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
                     </p>
                   </div>
+                  {!editMode && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleRun(scene); }}
                     disabled={runningId === scene.id}
@@ -180,6 +181,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                   >
                     {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                   </button>
+                  )}
                 </div>
               </div>
               );
@@ -195,7 +197,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 </div>
               );
             })}
-            <button
+            {!editMode && <button
               onClick={() => {
                 if (relayCannotEdit) { setViewOnlyOpen(true); return; }
                 setEditingScene(null);
@@ -208,7 +210,7 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
               }`}
             >
               <Plus className="h-3.5 w-3.5" /> Create scene
-            </button>
+            </button>}
           </div>
         </div>
       </AnimatedCollapse>
