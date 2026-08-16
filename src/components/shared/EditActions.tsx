@@ -125,7 +125,7 @@ export function TileEditActions({ action, tab }: { action: PrimaryEditAction; ta
   const pinned = pinButton(pin, 'tile');
   if (!primary && !pinned) return null;
   return (
-    <div className="absolute right-1.5 top-1.5 z-30 flex items-center gap-1 pointer-events-none">
+    <div className="absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none">
       {primary}
       {pinned}
     </div>
@@ -144,7 +144,7 @@ export function RowEditActions({ action, tab }: { action: PrimaryEditAction; tab
   const pinned = pinButton(pin, 'row');
   if (!primary && !pinned) return null;
   return (
-    <div className="absolute right-1.5 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1">
+    <div className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1">
       {primary}
       {pinned}
     </div>

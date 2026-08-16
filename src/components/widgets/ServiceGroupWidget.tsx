@@ -478,7 +478,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                     : <Lightbulb className="h-4 w-4" />
                   }
                 </div>
-                {!isBlindsGroup && (
+                {!isBlindsGroup && !editMode && (
                   <div
                     className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
                     onClick={(e) => e.stopPropagation()}
@@ -548,7 +548,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 </CardDescription>
               </div>
             </div>
-            {!isBlindsGroup && (
+            {!isBlindsGroup && !editMode && (
               <div
                 className={`relative shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
                 onClick={(e) => e.stopPropagation()}
@@ -572,7 +572,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           </div>
         )}
       </CardHeader>
-      <AnimatedCollapse open={!showCompact && !allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo !== null)))}>
+      <AnimatedCollapse open={!editMode && !showCompact && !allNoResponse && (isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo !== null)))}>
         <CardContent className={`relative px-4 pb-3 pt-1 space-y-2 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           {isBlindsGroup && (
             <SliderControl

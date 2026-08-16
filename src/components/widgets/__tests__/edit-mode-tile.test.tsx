@@ -10,6 +10,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { SwitchWidget } from '../SwitchWidget';
+import { ServiceGroupWidget } from '../ServiceGroupWidget';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
 import type { WidgetProps } from '../types';
 
@@ -209,5 +210,44 @@ describe('collections, where nothing is hidden', () => {
   it('never offers remove outside edit mode', () => {
     renderTile({ onRemove: vi.fn(), removeLabel: 'Remove from Collection' });
     expect(screen.queryByRole('button', { name: /Remove/ })).toBeNull();
+  });
+});
+
+describe('service groups are inert while editing too', () => {
+  // The group's controls are scattered through its card rather than sitting in
+  // one header slot, so an early attempt just made the card pointer-events-none.
+  // That left every switch and slider visible but dead, which reads as broken
+  // rather than as "not now".
+  const GROUP = { id: 'grp-1', name: 'Downstairs', serviceIds: [], accessoryIds: ['acc-lamp'] };
+
+  function renderGroup(overrides: Record<string, unknown> = {}) {
+    const props = {
+      group: GROUP,
+      accessories: [ACCESSORY],
+      onToggle: vi.fn(),
+      onSlider: vi.fn(),
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      compact: true,
+      iconStyle: 'colourful',
+      ...overrides,
+    };
+    render(<ServiceGroupWidget {...(props as unknown as Parameters<typeof ServiceGroupWidget>[0])} />);
+  }
+
+  it('shows its switch normally', () => {
+    renderGroup();
+    expect(screen.queryAllByRole('switch').length).toBeGreaterThan(0);
+  });
+
+  it('takes the switch away entirely while editing, not merely disables it', () => {
+    renderGroup({ editMode: true, onHide: vi.fn() });
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+  });
+
+  it('carries the same Hide button as an accessory tile', () => {
+    const onHide = vi.fn();
+    renderGroup({ editMode: true, onHide });
+    fireEvent.click(screen.getByRole('button', { name: /^Hide Downstairs/ }));
+    expect(onHide).toHaveBeenCalledTimes(1);
   });
 });
