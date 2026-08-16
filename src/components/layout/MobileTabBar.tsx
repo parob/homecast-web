@@ -240,8 +240,11 @@ export function MobileTabBar({
           onClick={() => handleTap(tab, status)}
           aria-current={active ? 'true' : undefined}
           aria-disabled={missing || undefined}
+          // Fixed width, not content width: five pins of wildly different name
+          // lengths otherwise gave "Kitchen" three times the room of "Study",
+          // and the bar read as a ragged row rather than a set of tabs.
           className={cn(
-            'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg min-w-0 transition-colors',
+            'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg transition-colors',
             active
               ? isDarkBackground ? 'bg-white/20' : 'bg-black/10'
               : 'active:bg-white/10',
@@ -278,13 +281,15 @@ export function MobileTabBar({
                 if (e.key === 'Escape') setRenamingKey(null);
               }}
               className={cn(
-                'w-16 text-[10px] font-medium text-center rounded bg-white/80 text-black',
+                'w-full text-[10px] font-medium text-center rounded bg-white/80 text-black',
                 'px-1 py-px outline-none ring-1 ring-primary',
               )}
             />
           ) : (
+            // Two lines, then ellipsis. A long room name truncated to "Livin…"
+            // on one line is a worse tab than one wrapped over two.
             <span className={cn(
-              'text-[10px] font-medium truncate max-w-16',
+              'w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2',
               isDarkBackground ? 'text-white/80' : active ? 'text-foreground' : 'text-muted-foreground'
             )}>
               {tab.customName || tab.name}
@@ -326,7 +331,7 @@ export function MobileTabBar({
   const pill = (
     <div
       className={cn(
-        'pointer-events-auto flex items-center gap-1 px-2 py-1.5 rounded-2xl transition-colors duration-300',
+        'pointer-events-auto flex items-start gap-1 px-2 py-1.5 rounded-2xl transition-colors duration-300',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
         // Badges and a rename field don't fit five tabs at phone widths.
         editMode && 'overflow-x-auto scrollbar-hidden',

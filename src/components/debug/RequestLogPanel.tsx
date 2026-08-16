@@ -120,7 +120,7 @@ export function RequestLogPanel() {
 
   return (
     <div
-      className="shrink-0 flex flex-col bg-[#0b0e14] text-white border-t border-white/10 select-none"
+      className={`shrink-0 flex flex-col bg-[#0b0e14] text-white border-t border-white/10 select-none${minimised ? ' safe-area-bottom' : ''}`}
       style={{ height: minimised ? undefined : height }}
     >
       {!minimised && (
@@ -131,13 +131,33 @@ export function RequestLogPanel() {
           aria-label="Resize request log"
         />
       )}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/10 shrink-0">
-        <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
-        <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
-        {errors > 0 && (
-          <span className="text-[11px] text-red-400 tabular-nums">{errors} failed</span>
+      {/* Minimised, this bar is the only way back — and it sits on the very
+          bottom edge of the screen, where a 20px icon is not a target a thumb
+          can find. So the summary itself becomes the button, spanning the whole
+          width, and the row grows to a size a finger can actually land on. */}
+      <div className={`flex items-center gap-2 px-3 border-b border-white/10 shrink-0 ${minimised ? 'py-0 min-h-[44px]' : 'py-1.5'}`}>
+        {minimised ? (
+          <button
+            onClick={() => setMinimised(false)}
+            aria-label="Expand request log"
+            className="flex flex-1 items-center gap-2 self-stretch text-left rounded hover:bg-white/10 -mx-1 px-1"
+          >
+            <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
+            <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
+            {errors > 0 && (
+              <span className="text-[11px] text-red-400 tabular-nums">{errors} failed</span>
+            )}
+          </button>
+        ) : (
+          <>
+            <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
+            <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
+            {errors > 0 && (
+              <span className="text-[11px] text-red-400 tabular-nums">{errors} failed</span>
+            )}
+            <span className="flex-1" />
+          </>
         )}
-        <span className="flex-1" />
         {!follow && (
           <button
             onClick={() => { setFollow(true); const el = scrollerRef.current; if (el) el.scrollTop = el.scrollHeight; }}
@@ -146,21 +166,21 @@ export function RequestLogPanel() {
             <ChevronDown className="h-3 w-3" /> Follow
           </button>
         )}
-        <button
+        {!minimised && <button
           onClick={copy}
           title="Copy as text"
           className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10"
         >
           {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
           {copied ? 'Copied' : 'Copy'}
-        </button>
-        <button
+        </button>}
+        {!minimised && <button
           onClick={() => clearRequestLog()}
           title="Clear"
-          className="text-white/50 hover:text-white p-1 rounded hover:bg-white/10"
+          className="text-white/50 hover:text-white p-2 rounded hover:bg-white/10"
         >
-          <Trash2 className="h-3 w-3" />
-        </button>
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>}
         {/* Minimise, not close: switching the log off entirely belongs in
             Settings, and an X here is a trap — it looks like "hide for now" and
             actually costs you the capture you are in the middle of taking. */}
@@ -168,9 +188,9 @@ export function RequestLogPanel() {
           onClick={() => setMinimised(m => !m)}
           title={minimised ? 'Expand' : 'Minimise'}
           aria-expanded={!minimised}
-          className="text-white/50 hover:text-white p-1 rounded hover:bg-white/10"
+          className={`text-white/50 hover:text-white rounded hover:bg-white/10 ${minimised ? 'p-3 -mr-1' : 'p-2'}`}
         >
-          {minimised ? <ChevronUp className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+          {minimised ? <ChevronUp className="h-5 w-5" /> : <Minus className="h-3.5 w-3.5" />}
         </button>
       </div>
       {!minimised && (
