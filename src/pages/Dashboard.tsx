@@ -186,7 +186,7 @@ import {
 } from '@/components/ui/context-menu';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile, useIsPhone } from '@/hooks/use-mobile';
 import { CollectionList, CollectionDetail } from '@/components/collections';
 import { ShareDialog } from '@/components/shared/ShareDialog';
 import { SettingsDialog, type SettingsTab } from '@/components/settings/SettingsDialog';
@@ -1215,6 +1215,8 @@ const Dashboard = () => {
 
   // Check if mobile viewport
   const isMobile = useIsMobile();
+  // Turned sideways an iPhone is wider than the md: breakpoint — see useIsPhone.
+  const isPhone = useIsPhone();
   // Router hooks for admin panel
   const location = useLocation();
   const navigate = useNavigate();
@@ -2576,12 +2578,12 @@ const Dashboard = () => {
   }, [pinnedTabs, saveSettings]);
 
   const pinnedTabsActions = useMemo<PinnedTabsActions>(() => ({
-    // Pinning is a mobile affordance; the desktop sidebar is its own navigation.
-    enabled: isMobile,
+    // Pinning is a phone affordance; the desktop sidebar is its own navigation.
+    enabled: isPhone,
     isPinned: isTabPinned,
     isFull: pinnedTabs.length >= MAX_PINNED_TABS,
     toggle: togglePinTab,
-  }), [isMobile, isTabPinned, pinnedTabs.length, togglePinTab]);
+  }), [isPhone, isTabPinned, pinnedTabs.length, togglePinTab]);
 
   const handleReorderTabs = useCallback((reordered: PinnedTab[]) => {
     setPinnedTabs(reordered);
@@ -6244,6 +6246,25 @@ const Dashboard = () => {
             <DropdownMenuSeparator />
           </>
         ) : null}
+        {/* Touch reveals hidden things by entering Edit Layout, which shows them
+            automatically. The Mac has no edit mode, so without this the only way
+            to find something you had hidden is to already know it is there and
+            right-click the tile next to it. */}
+        {!isTouchDevice && hasContentAccess && (
+          <DropdownMenuItem onClick={handleToggleShowHidden}>
+            {showHiddenItems ? (
+              <>
+                <EyeOff className="h-4 w-4 mr-2" />
+                Hide Hidden Items
+              </>
+            ) : (
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                Show Hidden Items
+              </>
+            )}
+          </DropdownMenuItem>
+        )}
         {isTouchDevice && hasContentAccess && (
           <DropdownMenuItem onClick={() => setEditModeAndTidy(!editMode)}>
             <Pencil className="h-4 w-4 mr-2" />
@@ -6783,6 +6804,10 @@ const Dashboard = () => {
               launchAtLogin={launchAtLogin}
               setLaunchAtLogin={setLaunchAtLogin}
               launchAtLoginSupported={launchAtLoginSupported}
+              onReplaySetup={() => {
+                setSettingsOpen(false);
+                setTimeout(() => setShowOnboarding(true), 300);
+              }}
               onReplayTutorial={() => {
                 setSettingsOpen(false);
                 tutorialDismissedRef.current = false;
@@ -6817,7 +6842,9 @@ const Dashboard = () => {
               <button
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open menu"
-                className={`flex items-center justify-center h-10 w-10 -ml-2 rounded-lg ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
+                // Redundant once the sidebar is on screen in its own right —
+                // which is what happens when you turn a phone sideways.
+                className={`md:hidden flex items-center justify-center h-10 w-10 -ml-2 rounded-lg ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -6834,7 +6861,7 @@ const Dashboard = () => {
       )}
 
       {/* Mobile tab bar - floating bottom bubble. */}
-      {isMobile && pinnedTabs.length > 0 && (
+      {isPhone && pinnedTabs.length > 0 && (
         <MobileTabBar
           pinnedTabs={pinnedTabs}
           selectedHomeId={selectedHomeId}
@@ -7219,8 +7246,8 @@ const Dashboard = () => {
             className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               paddingTop: `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
-              paddingBottom: isMobile && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))'
-            } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isMobile && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
+              paddingBottom: isPhone && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))'
+            } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
               isPullable={!(isTouchDevice && editMode)}

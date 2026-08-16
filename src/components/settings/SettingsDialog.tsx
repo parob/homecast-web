@@ -141,6 +141,7 @@ export interface SettingsDialogProps {
   setLaunchAtLogin: (value: boolean) => void;
   launchAtLoginSupported: boolean;
   onReplayTutorial?: () => void;
+  onReplaySetup?: () => void;
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
@@ -560,6 +561,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             resetAndUninstall={props.resetAndUninstall}
             serverVersion={props.serverVersion}
             onReplayTutorial={props.onReplayTutorial}
+            onReplaySetup={props.onReplaySetup}
             showLaunchAtLogin={props.isInMacApp && props.launchAtLoginSupported}
             launchAtLogin={props.launchAtLogin}
             setLaunchAtLogin={props.setLaunchAtLogin}
