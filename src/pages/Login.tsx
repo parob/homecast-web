@@ -136,23 +136,27 @@ const Login = () => {
     }
     setConnecting(true);
     setConnectError('');
-    // Normalize: strip trailing slash, ensure protocol
+    // A bare host gets http and the local server's default port, because that
+    // is the on-the-network case. Anything with a scheme is taken as written,
+    // so a relay reached over HTTPS — a tunnel, a VPN, a public host — keeps
+    // its scheme and its port.
     let url = relayAddress.trim().replace(/\/+$/, '');
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `http://${url}`;
-    }
-    // Extract host:port for storage (config expects host:port, not full URL)
-    let addr: string;
+    const hasScheme = /^https?:\/\//i.test(url);
+    if (!hasScheme) url = `http://${url}`;
+    let origin: string;
     try {
       const parsed = new URL(url);
-      addr = parsed.port ? `${parsed.hostname}:${parsed.port}` : `${parsed.hostname}:5656`;
+      // Plain http with no port means the local server, not port 80. An https
+      // origin is left alone — that is a proxy, and it is already on 443.
+      if (parsed.protocol === 'http:' && !parsed.port) parsed.port = '5656';
+      origin = parsed.origin;
     } catch {
       setConnectError('Invalid URL. Use a format like http://192.168.1.50:5656');
       setConnecting(false);
       return;
     }
     try {
-      const resp = await fetch(`http://${addr}/health`, { signal: AbortSignal.timeout(5000) });
+      const resp = await fetch(`${origin}/health`, { signal: AbortSignal.timeout(5000) });
       const data = await resp.json();
       if (data.status !== 'ok' || data.mode !== 'community') {
         setConnectError('Not a Homecast Community relay');
@@ -160,7 +164,12 @@ const Login = () => {
         return;
       }
       localStorage.setItem('homecast-mode', 'client');
-      localStorage.setItem('homecast-relay-address', addr);
+      localStorage.setItem('homecast-relay-address', origin);
+      // The relay reports its real WebSocket port; without this the web app
+      // has to assume HTTP + 1.
+      if (typeof data.wsPort === 'number' && data.wsPort > 0) {
+        localStorage.setItem('homecast-relay-ws-port', String(data.wsPort));
+      }
       window.location.reload(); // Reload with new config pointing to relay
     } catch {
       setConnectError('Could not connect. Check the URL and make sure the relay is running.');
