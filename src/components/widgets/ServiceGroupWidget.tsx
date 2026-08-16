@@ -462,7 +462,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} ${editMode ? 'pointer-events-none' : 'cursor-pointer'}`}
       onClick={handleCardClick}
     >
-      <CardHeader className={showCompact ? 'p-[14px]' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
+      {/* p-3, not a fixed 14px. An accessory tile uses p-3 — 0.75rem — and the
+          text-size setting drives the root font size (14/16/20px), so its padding
+          is 10.5/12/15px while a hard-coded 14px never moved. The two sat side by
+          side in the same grid at visibly different sizes, and by a different
+          amount at each setting. Same unit, same scaling, same tile. */}
+      <CardHeader className={showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
         {showCompact ? (
           // Compact mode - vertical layout matching preview style
           <div
