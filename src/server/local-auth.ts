@@ -10,13 +10,93 @@
 
 import * as db from './local-db';
 
-// JWT signing key. Generated once per relay launch and kept in memory only —
-// never persisted. This means tokens are invalidated on every restart, which
-// is mitigated by short-lived access tokens + refresh rotation. Keeping the
-// key out of IndexedDB blocks the "steal the key via renderer bug / stolen
-// Mac" exfil path. A future Swift bridge to macOS Keychain can restore
-// restart-survival without re-introducing the exposure.
+// JWT signing key.
+//
+// On the Mac app the raw bytes live in the macOS Keychain and are fetched over
+// the native bridge — this is the "future Swift bridge to macOS Keychain" the
+// original in-memory design was waiting for. It matters more than it looks:
+// without it the key was regenerated on every relay launch, so every restart
+// of the Mac app silently signed out every client on the network, which is
+// exactly the experience LAN and remote clients would hit constantly.
+//
+// The key is still imported non-extractable, so renderer code cannot read the
+// bytes back out of the CryptoKey, and IndexedDB never sees them.
+//
+// Anywhere without the bridge — a browser, the iOS client, tests — falls back
+// to the old per-launch key, which is correct there: those contexts do not
+// sign tokens for anyone else.
 let jwtSecret: CryptoKey | null = null;
+/** In-flight key resolution, so concurrent callers can't mint two keys. */
+let jwtSecretPromise: Promise<CryptoKey> | null = null;
+
+type KeychainWindow = Window & {
+  webkit?: { messageHandlers?: { localServer?: { postMessage: (msg: unknown) => void } } };
+  __homecast_jwt_key?: (requestId: string, base64: string | null) => void;
+};
+
+/**
+ * Ask the Mac app for the relay's Keychain-held signing key.
+ * Resolves null off the Mac app, or if the bridge doesn't answer in time.
+ */
+function requestKeychainKey(rotate: boolean): Promise<ArrayBuffer | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  const win = window as KeychainWindow;
+  const handler = win.webkit?.messageHandlers?.localServer;
+  if (!handler) return Promise.resolve(null);
+
+  return new Promise(resolve => {
+    const requestId = `jwt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let settled = false;
+    const finish = (value: ArrayBuffer | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const previous = win.__homecast_jwt_key;
+    win.__homecast_jwt_key = (id, base64) => {
+      if (id !== requestId) {
+        previous?.(id, base64);
+        return;
+      }
+      win.__homecast_jwt_key = previous;
+      if (!base64) return finish(null);
+      try {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        finish(bytes.buffer);
+      } catch {
+        finish(null);
+      }
+    };
+
+    setTimeout(() => {
+      if (win.__homecast_jwt_key !== previous) win.__homecast_jwt_key = previous;
+      finish(null);
+    }, 3000);
+
+    try {
+      handler.postMessage({ action: 'jwtKey', requestId, rotate });
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+async function loadJwtSecret(rotate: boolean): Promise<CryptoKey> {
+  const raw = await requestKeychainKey(rotate);
+  if (raw) {
+    return crypto.subtle.importKey(
+      'raw',
+      raw,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false, // non-extractable: the bytes stay in the Keychain, not the renderer
+      ['sign', 'verify'],
+    );
+  }
+  return crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
 
 interface LocalUser {
   id: string;
@@ -114,17 +194,20 @@ async function verifyPassword(
 
 async function getJwtSecret(): Promise<CryptoKey> {
   if (jwtSecret) return jwtSecret;
-  // Non-extractable so renderer code can never read the raw bytes back, even
-  // if it can reach this module. The trade-off is that the key does not
-  // survive restarts — intentional; see module-level comment.
-  jwtSecret = await crypto.subtle.generateKey(
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify'],
-  );
+  if (!jwtSecretPromise) {
+    jwtSecretPromise = loadJwtSecret(false).then(key => {
+      jwtSecret = key;
+      jwtSecretPromise = null;
+      return key;
+    }).catch(err => {
+      jwtSecretPromise = null;
+      throw err;
+    });
+  }
+  const key = await jwtSecretPromise;
   // Best-effort cleanup of any leftover jwt-secret from pre-upgrade installs.
   try { await db.setSetting('jwt-secret', ''); } catch { /* ignore */ }
-  return jwtSecret;
+  return key;
 }
 
 function base64url(data: Uint8Array): string {
@@ -317,12 +400,17 @@ export async function deleteUser(userId: string): Promise<boolean> {
 }
 
 /** Rotate the JWT secret, invalidating all existing tokens. */
+/**
+ * Deliberately cut every outstanding token loose — on a password change, a
+ * user deletion, or auth being switched on.
+ *
+ * This rotation is the point; the *incidental* rotation on every relay launch
+ * was the bug. `rotate` drops the Keychain copy so a fresh key is minted
+ * rather than the old one being handed back.
+ */
 export async function invalidateAllTokens(): Promise<void> {
-  jwtSecret = await crypto.subtle.generateKey(
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify'],
-  );
+  jwtSecretPromise = null;
+  jwtSecret = await loadJwtSecret(true);
 }
 
 export async function changePassword(userId: string, newPassword: string): Promise<boolean> {
