@@ -40,6 +40,15 @@ export interface LocalModeInputs {
   homes: ReadonlyArray<LocalModeHome>;
   /** Whether the account has any relay at all. False = never set one up. */
   anyRelayKnown: boolean;
+  /**
+   * Whether we have actually *looked* at the account's homes yet.
+   *
+   * Empty-and-unread is not the same as empty-and-confirmed, and conflating
+   * them is what made a fresh cloud login announce "no relay has ever been set
+   * up" — instantly, since that case deliberately skips the engage delay — when
+   * the truth was only that the homes had not arrived yet.
+   */
+  homesLoaded: boolean;
   now: number;
 }
 
@@ -48,6 +57,8 @@ export interface LocalModeMemo {
   active: boolean;
   /** When the current engage-or-disengage candidacy started. */
   pendingSince: number | null;
+  /** Why it engaged. Disengage treats one of the reasons differently. */
+  reason?: LocalModeReason | null;
 }
 
 export interface LocalModeDecision {
@@ -151,6 +162,12 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
   // 2. Nothing to serve from.
   if (!i.bridgeReady) return off();
 
+  // 2b. We have not looked yet. Knowing nothing is not evidence of anything —
+  //     and the "no relay ever" branch below engages with no delay at all, so
+  //     without this a first login flips into Local Mode before the homes have
+  //     had a chance to arrive. A dead socket is exempt: that is evidence.
+  if (!i.homesLoaded && i.socketState !== 'disconnected') return off();
+
   // 3. The relay never serves itself locally. This device already answers for
   //    every client; a second, private path would only duplicate its writes.
   if (i.isThisDeviceTheRelay) return off();
@@ -176,16 +193,21 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
     : i.relayCapable ? ENGAGE_AFTER_MS_RELAY_CAPABLE : ENGAGE_AFTER_MS;
 
   if (prev.active) {
-    if (wants) return { active: true, reason, memo: { active: true, pendingSince: null } };
+    if (wants) return { active: true, reason, memo: { active: true, pendingSince: null, reason } };
+    // The slow disengage is anti-flap: it stops a relay dropping in and out
+    // from making the badge blink. But a relay *appearing* where we thought
+    // there was none is not a flap, it is the answer arriving — so stand down
+    // at once rather than sitting in a state we now know to be wrong.
+    if (prev.reason === 'no-relay-ever') return off();
     const since = prev.pendingSince ?? i.now;
     if (i.now - since >= DISENGAGE_AFTER_MS) return off();
-    return { active: true, reason: null, memo: { active: true, pendingSince: since } };
+    return { active: true, reason: null, memo: { active: true, pendingSince: since, reason: prev.reason } };
   }
 
   if (!wants) return off();
   const since = prev.pendingSince ?? i.now;
   if (i.now - since >= engageDelay) {
-    return { active: true, reason, memo: { active: true, pendingSince: null } };
+    return { active: true, reason, memo: { active: true, pendingSince: null, reason } };
   }
   return { active: false, reason: null, memo: { active: false, pendingSince: since } };
 }

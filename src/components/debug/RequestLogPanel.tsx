@@ -19,6 +19,11 @@ import {
 /** Height of the dock. Enough for ~12 rows without dominating a phone. */
 const DEFAULT_HEIGHT = 260;
 const MIN_HEIGHT = 120;
+/**
+ * Height of the collapsed bar. Explicit rather than `auto` so the open/close can
+ * animate — height does not transition to or from `auto`.
+ */
+const COLLAPSED_HEIGHT = 40;
 
 function statusColour(e: RequestLogEntry): string {
   if (e.kind === 'event') return 'text-sky-400';
@@ -105,7 +110,9 @@ export function RequestLogPanel() {
     const startY = e.clientY;
     const startHeight = height;
     const move = (ev: PointerEvent) => {
-      const next = Math.max(MIN_HEIGHT, Math.min(window.innerHeight - 80, startHeight - (ev.clientY - startY)));
+      // Rounded: clientY is fractional on a trackpad, and a panel sitting on a
+      // half-pixel renders every glyph and icon in it blurry.
+      const next = Math.round(Math.max(MIN_HEIGHT, Math.min(window.innerHeight - 80, startHeight - (ev.clientY - startY))));
       setHeight(next);
     };
     const up = () => {
@@ -120,8 +127,17 @@ export function RequestLogPanel() {
 
   return (
     <div
-      className={`shrink-0 flex flex-col bg-[#0b0e14] text-white border-t border-white/10 select-none${minimised ? ' safe-area-bottom' : ''}`}
-      style={{ height: minimised ? undefined : height }}
+      className={cn(
+        'shrink-0 flex flex-col overflow-hidden bg-[#0b0e14] text-white select-none',
+        'transition-[height] duration-200 ease-out',
+        // Collapsed it is a bar tucked into the bottom edge: inset from the
+        // sides so it clears the screen's rounded corners, and flush to the
+        // bottom, because an inset under it just wastes the space it saved.
+        minimised
+          ? 'mx-2 rounded-t-xl border border-b-0 border-white/10'
+          : 'border-t border-white/10',
+      )}
+      style={{ height: minimised ? COLLAPSED_HEIGHT : height }}
     >
       {!minimised && (
         <div
@@ -135,7 +151,7 @@ export function RequestLogPanel() {
           bottom edge of the screen, where a 20px icon is not a target a thumb
           can find. So the summary itself becomes the button, spanning the whole
           width, and the row grows to a size a finger can actually land on. */}
-      <div className={`flex items-center gap-2 px-3 border-b border-white/10 shrink-0 ${minimised ? 'py-0 min-h-[44px]' : 'py-1.5'}`}>
+      <div className={`flex items-center gap-2 px-3 shrink-0 ${minimised ? 'h-full py-0' : 'py-1.5 border-b border-white/10'}`}>
         {minimised ? (
           <button
             onClick={() => setMinimised(false)}
@@ -188,7 +204,7 @@ export function RequestLogPanel() {
           onClick={() => setMinimised(m => !m)}
           title={minimised ? 'Expand' : 'Minimise'}
           aria-expanded={!minimised}
-          className={`text-white/50 hover:text-white rounded hover:bg-white/10 ${minimised ? 'p-3 -mr-1' : 'p-2'}`}
+          className={`shrink-0 self-stretch flex items-center text-white/50 hover:text-white rounded hover:bg-white/10 ${minimised ? 'px-2 -mr-1' : 'p-2'}`}
         >
           {minimised ? <ChevronUp className="h-5 w-5" /> : <Minus className="h-3.5 w-3.5" />}
         </button>

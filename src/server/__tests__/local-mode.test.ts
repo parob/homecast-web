@@ -32,6 +32,7 @@ function inputs(over: Partial<LocalModeInputs> = {}): LocalModeInputs {
     socketState: 'connected',
     homes: [{ id: LIVE, relayState: 'offline' }],
     anyRelayKnown: true,
+    homesLoaded: true,
     now: 0,
     ...over,
   };
@@ -239,5 +240,90 @@ describe('resolveLocalId', () => {
     // the request goes to the cloud, rather than being answered wrongly.
     const s = { liveHomeIds: new Set<string>(), hcToLive: new Map([[HC.toUpperCase(), LIVE]]) };
     expect(resolveLocalId(HC, s)).toBeNull();
+  });
+});
+
+describe('not having looked yet is not evidence', () => {
+  it('stays off on a fresh login, before the homes have arrived', () => {
+    // The bug this fixes: an unread cache read as "no relay has ever been set
+    // up", which engages with *no* delay — so a first cloud login flipped into
+    // Local Mode instantly and blamed the user for not having a relay.
+    const d = decideLocalMode(
+      inputs({ homesLoaded: false, homes: [], anyRelayKnown: false }),
+      EMPTY_MEMO,
+    );
+    expect(d.active).toBe(false);
+    expect(d.reason).toBeNull();
+  });
+
+  it('still engages at once for an account that genuinely has no relay', () => {
+    // Same empty list, but we have actually looked. This case is meant to feel
+    // instant and must not be caught by the guard above.
+    const d = decideLocalMode(
+      inputs({ homesLoaded: true, homes: [], anyRelayKnown: false }),
+      EMPTY_MEMO,
+    );
+    expect(d.active).toBe(true);
+    expect(d.reason).toBe('no-relay-ever');
+  });
+
+  it('still serves a dead socket even with nothing loaded', () => {
+    // A socket that is down IS evidence, and is the case Local Mode exists for.
+    const d = decideLocalMode(
+      inputs({ homesLoaded: false, homes: [], anyRelayKnown: false, socketState: 'disconnected' }),
+      EMPTY_MEMO,
+    );
+    expect(d.active).toBe(true);
+  });
+});
+
+describe('standing down when the premise turns out to be wrong', () => {
+  it('drops immediately once a relay appears, rather than waiting out the anti-flap delay', () => {
+    const engaged = decideLocalMode(
+      inputs({ homesLoaded: true, homes: [], anyRelayKnown: false }),
+      EMPTY_MEMO,
+    );
+    expect(engaged.active).toBe(true);
+    expect(engaged.reason).toBe('no-relay-ever');
+
+    // One tick later the homes arrive with a healthy relay. A relay appearing
+    // where we thought there was none is the answer arriving, not a flap.
+    const after = decideLocalMode(
+      inputs({
+        homesLoaded: true,
+        homes: [{ id: LIVE, relayState: 'connected' }],
+        anyRelayKnown: true,
+        now: 1000,
+      }),
+      engaged.memo,
+    );
+    expect(after.active).toBe(false);
+  });
+
+  it('keeps the slow disengage for a relay that merely dropped out', () => {
+    // This one IS flap protection, and must not be shortened by the change above.
+    const engaged = decideLocalMode(
+      inputs({ now: ENGAGE_AFTER_MS }),
+      { active: false, pendingSince: 0 },
+    );
+    expect(engaged.active).toBe(true);
+    expect(engaged.reason).toBe('relay-offline');
+
+    const soonAfter = decideLocalMode(
+      inputs({ homes: [{ id: LIVE, relayState: 'connected' }], now: ENGAGE_AFTER_MS + 1000 }),
+      engaged.memo,
+    );
+    expect(soonAfter.active).toBe(true);
+
+    // The disengage clock starts when `wants` goes false — at soonAfter — not
+    // when it engaged.
+    const wellAfter = decideLocalMode(
+      inputs({
+        homes: [{ id: LIVE, relayState: 'connected' }],
+        now: ENGAGE_AFTER_MS + 1000 + DISENGAGE_AFTER_MS + 1,
+      }),
+      soonAfter.memo,
+    );
+    expect(wellAfter.active).toBe(false);
   });
 });

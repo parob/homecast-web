@@ -172,7 +172,8 @@ class LocalModeController implements LocalModeRouter {
     }
 
     const conn = serverConnection.getState();
-    const homes = readCachedHomes();
+    const cachedHomes = readCachedHomes();
+    const homes = cachedHomes ?? [];
 
     const inputs: LocalModeInputs = {
       bridgeReady: this.bridgeReady,
@@ -182,6 +183,7 @@ class LocalModeController implements LocalModeRouter {
       socketState: conn.connectionState,
       homes,
       anyRelayKnown: homes.length > 0,
+      homesLoaded: cachedHomes !== null,
       now: Date.now(),
     };
 
@@ -389,15 +391,22 @@ class LocalModeController implements LocalModeRouter {
 }
 
 /** Homes the app already knows about, for deciding whether any relay exists. */
-function readCachedHomes(): Array<{ id: string; relayState?: string; relayConnected?: boolean; isCloudManaged?: boolean }> {
+/**
+ * The account's homes as last cached, or `null` if we have never seen an answer.
+ *
+ * The distinction is the whole point: returning `[]` for "no cache yet" made a
+ * fresh login indistinguishable from an account with no homes, and the policy
+ * reads the latter as "no relay has ever been set up".
+ */
+function readCachedHomes(): Array<{ id: string; relayState?: string; relayConnected?: boolean; isCloudManaged?: boolean }> | null {
   try {
     const raw = localStorage.getItem('homecast-homekit-cache');
-    if (!raw) return [];
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, { data?: unknown }>;
     const homes = parsed?.homes?.data;
-    return Array.isArray(homes) ? homes : [];
+    return Array.isArray(homes) ? homes : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
