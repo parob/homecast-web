@@ -77,6 +77,7 @@ export type ServiceType =
   | 'outlet'
   | 'thermostat'
   | 'lock'
+  | 'lock_management'
   | 'door'
   | 'window'
   | 'window_covering'
@@ -167,8 +168,13 @@ const SERVICE_TYPE_MAP: Record<string, ServiceType> = {
   '00000040-0000-1000-8000-0026BB765291': 'fan',
   '00000041-0000-1000-8000-0026BB765291': 'garage_door',
   '00000043-0000-1000-8000-0026BB765291': 'lightbulb',
-  '00000044-0000-1000-8000-0026BB765291': 'lock', // lock_management
-  '00000045-0000-1000-8000-0026BB765291': 'lock',
+  // lock_management is the housekeeping side of a lock — control point, logs,
+  // auto-relock timeout — and it is NOT the lock. It kept its own type here
+  // because calling it 'lock' made it indistinguishable from lock_mechanism,
+  // and it sorts first on a Nuki: every lookup for "the lock service" found the
+  // management one, whose name is the manufacturer's, not the user's.
+  '00000044-0000-1000-8000-0026BB765291': 'lock_management',
+  '00000045-0000-1000-8000-0026BB765291': 'lock', // lock_mechanism
   '00000047-0000-1000-8000-0026BB765291': 'outlet',
   '00000049-0000-1000-8000-0026BB765291': 'switch',
   '0000004A-0000-1000-8000-0026BB765291': 'thermostat',
@@ -223,7 +229,7 @@ const SERVICE_TYPE_MAP: Record<string, ServiceType> = {
 // All known service type names (must match ServiceType union)
 const KNOWN_SERVICE_TYPES: ServiceType[] = [
   'accessory_information',
-  'lightbulb', 'switch', 'outlet', 'thermostat', 'lock', 'door', 'window',
+  'lightbulb', 'switch', 'outlet', 'thermostat', 'lock', 'lock_management', 'door', 'window',
   'window_covering', 'fan', 'garage_door',
   'motion_sensor', 'occupancy_sensor', 'contact_sensor', 'temperature_sensor',
   'humidity_sensor', 'light_sensor', 'smoke_sensor', 'carbon_monoxide_sensor',
@@ -265,15 +271,40 @@ export const normalizeServiceType = (serviceType: string): ServiceType | null =>
   return SERVICE_TYPE_MAP[serviceType.toUpperCase()] || null;
 };
 
-// Auxiliary service types that should be skipped when determining primary service
+/**
+ * Services that describe how an accessory is plumbed in rather than what it
+ * does. Skipped when deciding the primary service, and — the reason the list
+ * matters more than it looks — when deciding what the user called the thing:
+ * these are the services that keep the manufacturer's name after a rename.
+ *
+ * Compared after normalisation, so a UUID and its readable spelling both hit.
+ */
 const AUXILIARY_SERVICE_TYPES = [
   'accessory_information',
-  '0000003E-0000-1000-8000-0026BB765291', // accessory_information UUID
   'battery',
-  '00000096-0000-1000-8000-0026BB765291', // battery UUID
   'protocol_information',
+  'accessory_runtime_information',
   'pairing',
+  'label',              // Service Label — numbers the buttons, isn't one
+  'lock_management',    // logs and auto-relock, not the lock
+  'thread_transport',
+  'wifi_transport',
+  'data_stream',
+  'siri',
+  'eve_history',        // Eve's own logging service, on every Eve accessory
+  'e863f007-079e-48ff-8f27-9c2605a29f52', // eve_history, unmapped
 ];
+
+/** True for a service that exists to support the accessory, not to be it. */
+const isAuxiliaryService = (serviceType: string): boolean => {
+  if (AUXILIARY_SERVICE_TYPES.includes(serviceType.toLowerCase())) return true;
+  const normalized = normalizeServiceType(serviceType);
+  return normalized !== null && AUXILIARY_SERVICE_TYPES.includes(normalized);
+};
+
+/** The Accessory Information service, which holds the accessory's first name. */
+const isInformationService = (serviceType: string): boolean =>
+  normalizeServiceType(serviceType) === 'accessory_information';
 
 // Service type priority - higher priority services should be used as primary
 // even if other services appear first in the list
@@ -322,14 +353,8 @@ export const getPrimaryServiceType = (accessory: HomeKitAccessory): ServiceType 
   let bestPriority = -1;
 
   for (const service of accessory.services || []) {
-    const serviceTypeLower = service.serviceType.toLowerCase();
-    const serviceTypeUpper = service.serviceType.toUpperCase();
     // Skip auxiliary services that don't define the device's primary function
-    if (AUXILIARY_SERVICE_TYPES.includes(serviceTypeLower) ||
-        AUXILIARY_SERVICE_TYPES.includes(serviceTypeUpper) ||
-        AUXILIARY_SERVICE_TYPES.includes(service.serviceType)) {
-      continue;
-    }
+    if (isAuxiliaryService(service.serviceType)) continue;
     const normalized = normalizeServiceType(service.serviceType);
     if (normalized && normalized !== 'battery') {
       const priority = SERVICE_TYPE_PRIORITY[normalized] ?? 10;
@@ -343,6 +368,16 @@ export const getPrimaryServiceType = (accessory: HomeKitAccessory): ServiceType 
 };
 
 /**
+ * The least an accessory has to be for us to name it. Stated structurally so
+ * the native bridge, which has its own copy of these interfaces, can call the
+ * resolver without importing the GraphQL ones.
+ */
+export interface NameableAccessory {
+  name: string;
+  services?: Array<{ name?: string; serviceType: string }>;
+}
+
+/**
  * The name the user actually set.
  *
  * HomeKit puts the name on the service, not the accessory. Renaming a blind in
@@ -351,15 +386,46 @@ export const getPrimaryServiceType = (accessory: HomeKitAccessory): ServiceType 
  * MotionBlinds 29BB". Tiles read accessory.name, so the user's own name never
  * reached them. Apple Home shows the service name for a single-purpose
  * accessory; this does the same, falling back when the service is unnamed.
+ *
+ * The trap is that it also goes the other way, and taking the service name
+ * every time renames good accessories badly — a Nest Cam called "Front Yard
+ * Camera" has a motion service called "Motion", and a Hue pendant the user
+ * called "Living Room Pendant" still has a lightbulb service called "Hue
+ * Bulb". Across 645 real accessories the two conditions below are what
+ * separate the cases, and they leave every already-correct name alone:
+ *
+ *  1. The functional services agree on ONE name that isn't the accessory's.
+ *     Disagreement means a multi-purpose accessory — a Nest Protect with
+ *     separate smoke, CO and occupancy services, a Tado with two switches —
+ *     and only the accessory has a name for the whole of it.
+ *  2. The accessory itself was never renamed. accessory_information keeps the
+ *     accessory's first name, so information ≠ accessory means someone
+ *     deliberately set the accessory name, and that beats anything a service
+ *     says. Information == accessory means nobody did, and the service name
+ *     is the only rename that happened.
+ *
+ * Idempotent, deliberately: the relay resolves it and the bridge resolves it
+ * again on the way through, so the answer has to survive being asked twice.
  */
-export const getAccessoryDisplayName = (accessory: HomeKitAccessory): string => {
-  const primary = getPrimaryServiceType(accessory);
-  if (primary) {
-    const service = getServiceByType(accessory, primary);
-    const name = service?.name?.trim();
-    if (name) return name;
+export const getAccessoryDisplayName = (accessory: NameableAccessory): string => {
+  const services = accessory.services || [];
+
+  const functional = new Set<string>();
+  for (const service of services) {
+    if (isAuxiliaryService(service.serviceType)) continue;
+    const name = service.name?.trim();
+    if (name) functional.add(name);
   }
-  return accessory.name;
+  if (functional.size !== 1) return accessory.name;
+
+  const [serviceName] = functional;
+  if (serviceName === accessory.name) return accessory.name;
+
+  const informationName = services
+    .find(s => isInformationService(s.serviceType))?.name?.trim();
+  if (informationName && informationName !== accessory.name) return accessory.name;
+
+  return serviceName;
 };
 
 // Get a specific service by type from an accessory

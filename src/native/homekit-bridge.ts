@@ -170,6 +170,32 @@ import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
 import { describeError } from '../lib/describe-error';
+import { getAccessoryDisplayName } from '../components/widgets/types';
+
+/**
+ * Put the user's name on the accessory, once, at the door.
+ *
+ * HomeKit hands us the manufacturer's name on `HMAccessory` and the user's on
+ * the service they renamed, and everything downstream — tiles, search, scenes,
+ * the REST and MCP slugs, MQTT topics, Home Assistant discovery, notification
+ * text — reads `accessory.name`. Resolving it at each of those sites is how
+ * "Front Door Lock" stayed "Nuki_19F252BD" in most of them; resolving it here
+ * means a site cannot forget.
+ *
+ * Mutates rather than copies: an `accessories.list` for a large home runs to
+ * megabytes, the payload is freshly parsed JSON nobody else holds, and the
+ * resolver is idempotent, so re-running over a cached list is a no-op.
+ */
+function withUserNames<T extends { name: string; services?: Array<{ name?: string; serviceType: string }> }>(
+  accessories: T[],
+): T[] {
+  if (!Array.isArray(accessories)) return accessories;
+  for (const accessory of accessories) {
+    if (!accessory || typeof accessory.name !== 'string') continue;
+    accessory.name = getAccessoryDisplayName(accessory);
+  }
+  return accessories;
+}
 
 interface NativeBridge {
   call<T>(method: string, payload?: Record<string, unknown>): Promise<T>;
@@ -524,7 +550,7 @@ export const HomeKit = {
   }): Promise<HomeKitAccessory[]> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
-    return bridge.call<HomeKitAccessory[]>('accessories.list', options || {});
+    return withUserNames(await bridge.call<HomeKitAccessory[]>('accessories.list', options || {}));
   },
 
   /**
@@ -533,7 +559,7 @@ export const HomeKit = {
   async getAccessory(accessoryId: string): Promise<HomeKitAccessory> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
-    return bridge.call<HomeKitAccessory>('accessory.get', { accessoryId });
+    return withUserNames([await bridge.call<HomeKitAccessory>('accessory.get', { accessoryId })])[0];
   },
 
   /**
