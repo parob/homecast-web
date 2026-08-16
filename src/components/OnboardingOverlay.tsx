@@ -60,6 +60,40 @@ function CollapsibleHelp({ title, children }: { title: string; children: React.R
   );
 }
 
+/**
+ * One of the three ways in. Numbered on purpose: people arrive here having been
+ * told "download the app and join my home", and a list of similar-looking cards
+ * gave them no way to tell which one that was. The number orders them, and the
+ * requirement line under each says plainly what you need before it will work.
+ */
+function OptionCard({ n, icon, title, requirement, children, onClick, disabled }: {
+  n: number;
+  icon: React.ReactNode;
+  title: string;
+  /** What you must already have. The single most common reason to rule one out. */
+  requirement?: string;
+  children?: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={() => { if (!disabled) onClick(); }}
+      className={`w-full text-left rounded-lg border p-4 space-y-1.5 transition-colors ${disabled ? 'opacity-60 cursor-default' : 'hover:border-primary/50'}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
+          {n}
+        </span>
+        {icon}
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      {children}
+      {requirement && <p className="text-xs text-amber-600">{requirement}</p>}
+    </button>
+  );
+}
+
 function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, cloudSignupsAvailable = true, accountType }: {
   isInMacApp: boolean;
   isInMobileApp?: boolean;
@@ -76,11 +110,17 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
 
   return (
     <div className="space-y-3 py-2">
-      <button onClick={() => onSelect('mac-setup')} className="w-full text-left rounded-lg border p-4 space-y-1.5 hover:border-primary/50 transition-colors">
-        <div className="flex items-center gap-2">
-          <Monitor className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">{macLabel}</span>
-        </div>
+      <p className="text-xs text-muted-foreground">
+        Three ways to get started — pick the one that matches your situation.
+      </p>
+
+      <OptionCard
+        n={1}
+        icon={<Monitor className="h-4 w-4 text-muted-foreground" />}
+        title={macLabel}
+        requirement="Requires a Mac that stays switched on"
+        onClick={() => onSelect('mac-setup')}
+      >
         <p className="text-xs text-muted-foreground">{macDescription}</p>
         {accountType === 'standard' ? (
           <>
@@ -97,16 +137,16 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
             Standard · {pricing.standard.formatted}/mo · unlimited
           </p>
         )}
-      </button>
+      </OptionCard>
 
-      <button
-        onClick={() => cloudSignupsAvailable && onSelect('cloud-setup')}
-        className={`w-full text-left rounded-lg border p-4 space-y-1.5 transition-colors ${cloudSignupsAvailable ? 'hover:border-primary/50' : 'opacity-60 cursor-default'}`}
+      <OptionCard
+        n={2}
+        icon={<Cloud className="h-4 w-4 text-blue-500" />}
+        title="Set up a cloud relay"
+        requirement="Requires an Apple Home Hub (Apple TV or HomePod)"
+        onClick={() => onSelect('cloud-setup')}
+        disabled={!cloudSignupsAvailable}
       >
-        <div className="flex items-center gap-2">
-          <Cloud className="h-4 w-4 text-blue-500" />
-          <span className="text-sm font-medium">Set up a cloud relay</span>
-        </div>
         <p className="text-xs text-muted-foreground">
           {isInMacApp
             ? "Always on \u2014 your Mac doesn't need to stay running."
@@ -115,16 +155,20 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
         <p className="text-xs text-muted-foreground">
           {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused — at capacity'}
         </p>
-        <p className="text-xs text-amber-600">Requires an Apple Home Hub (Apple TV or HomePod)</p>
-      </button>
+      </OptionCard>
 
-      <button onClick={() => onSelect('shared-home')} className="w-full text-left rounded-lg border p-4 space-y-1.5 hover:border-primary/50 transition-colors">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Someone shared a home with me</span>
-        </div>
-        <p className="text-xs text-muted-foreground">Join a home you've been invited to.</p>
-      </button>
+      <OptionCard
+        n={3}
+        icon={<Users className="h-4 w-4 text-muted-foreground" />}
+        title="I want to join an existing home"
+        requirement="Requires an invitation from whoever set the home up"
+        onClick={() => onSelect('shared-home')}
+      >
+        <p className="text-xs text-muted-foreground">
+          Someone else has already set Homecast up and shared their home with you.
+          Nothing to install or pay for — you just need their invite.
+        </p>
+      </OptionCard>
 
       {!isInMacApp && (
         <button onClick={onSkip} className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-2">

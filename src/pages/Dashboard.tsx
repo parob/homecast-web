@@ -2138,6 +2138,24 @@ const Dashboard = () => {
     { skip: !isAuthenticated, fetchPolicy: 'cache-and-network' }
   );
   const accountType = accountData?.account?.accountType || user?.accountType || 'free';
+
+  /**
+   * A waitlisted account is activated by somebody else, somewhere else — so the
+   * app has to notice on its own. `cache-and-network` only refetches when the
+   * query mounts, and in the native shell the WebView is never remounted, which
+   * is why the only way through used to be signing out and back in.
+   */
+  const [checkingActivation, setCheckingActivation] = useState(false);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const recheck = () => { if (document.visibilityState === 'visible') void refetchAccount(); };
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('focus', recheck);
+    return () => {
+      document.removeEventListener('visibilitychange', recheck);
+      window.removeEventListener('focus', recheck);
+    };
+  }, [isAuthenticated, refetchAccount]);
   const accessoryLimit = accountData?.account?.accessoryLimit ?? (accountType === 'free' ? 10 : null);
   const showAdsenseBanner = !!(accountData?.account?.adsenseAdsEnabled) && !(window as any).isHomecastApp;
   const showSmartDeals = !!(accountData?.account?.smartDealsEnabled);
@@ -5816,9 +5834,24 @@ const Dashboard = () => {
           <p className="text-sm text-muted-foreground">
             Your account has been created but is not yet activated. We'll let you know when you're in!
           </p>
-          <Button variant="outline" size="sm" onClick={logout} className="mt-4">
-            Log Out
-          </Button>
+          {/* The app rechecks whenever it comes back to the foreground, but if
+              you have just been told you are in, waiting for that is its own
+              small frustration. */}
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <Button
+              size="sm"
+              disabled={checkingActivation}
+              onClick={async () => {
+                setCheckingActivation(true);
+                try { await refetchAccount(); } finally { setCheckingActivation(false); }
+              }}
+            >
+              {checkingActivation ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check again'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={logout}>
+              Log Out
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -7755,8 +7788,8 @@ const Dashboard = () => {
                             ? ''
                             : compactMode
                               ? (fontSize === 'small'
-                                ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
-                                : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
+                                ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(155px,calc(50%-4px)),1fr))]'
+                                : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(180px,calc(50%-4px)),1fr))]')
                               : (fontSize === 'small'
                                 ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
                                 : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')

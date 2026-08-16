@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X, Loader2 } from 'lucide-react';
@@ -54,19 +54,19 @@ const STEPS: TourStep[] = [
     target: 'sidebar-homes',
     openTrigger: 'sidebar-menu',
     title: 'Your Homes',
-    description: 'Your Apple Home houses appear here. Select a home to see its rooms, then pick a room to filter your devices.',
+    description: 'Your Apple Home houses appear here. Select a home to see its rooms, then pick a room to filter your accessories.',
     docPath: '/getting-started/dashboard',
     position: 'right',
   },
   {
     target: 'widget-area',
-    title: 'Device Widgets',
-    description: 'Each device appears as a widget. Tap toggles to switch devices on or off, and drag sliders to adjust brightness, temperature, or position.',
+    title: 'Accessory Widgets',
+    description: 'Each accessory appears as a widget. Tap toggles to switch accessories on or off, and drag sliders to adjust brightness, temperature, or position.',
     docPath: '/getting-started/dashboard',
     position: 'bottom',
   },
   {
-    // Stage 1: spotlight both share entry points (the device widget area as
+    // Stage 1: spotlight both share entry points (the accessory widget area as
     // the primary so the card lands directly below the widgets, and the
     // sidebar home/room as an additional highlight). Stage 2 then
     // demonstrates the right-click flow on the home/room.
@@ -75,9 +75,9 @@ const STEPS: TourStep[] = [
     openTriggers: [
       { target: 'sidebar-menu', action: 'click' },
     ],
-    title: 'Share homes, rooms, or devices',
-    description: 'Right-click any home or room in the sidebar — or any device widget — to open its share menu.',
-    mobileDescription: 'Long-press any home or room in the sidebar — or any device widget — to open its share menu.',
+    title: 'Share homes, rooms, or accessories',
+    description: 'Right-click any home or room in the sidebar — or any accessory widget — to open its share menu.',
+    mobileDescription: 'Long-press any home or room in the sidebar — or any accessory widget — to open its share menu.',
     position: 'bottom',
   },
   {
@@ -95,15 +95,15 @@ const STEPS: TourStep[] = [
     target: 'sidebar-collections',
     openTrigger: 'sidebar-menu',
     title: 'Collections',
-    description: 'Group devices from different rooms into custom views. Right-click a home or use the menu to create one — great for "All Lights" or "Bedtime" shortcuts.',
-    mobileDescription: 'Group devices from different rooms into custom views like "All Lights" or "Bedtime" — right here below your homes.',
+    description: 'Group accessories from different rooms into custom views. Right-click a home or use the menu to create one — great for "All Lights" or "Bedtime" shortcuts.',
+    mobileDescription: 'Group accessories from different rooms into custom views like "All Lights" or "Bedtime" — right here below your homes.',
     docPath: '/guides/collections',
     position: 'right',
   },
   {
     target: 'automations',
     title: 'Automations',
-    description: 'Automations run your devices on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
+    description: 'Automations run your accessories on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
     position: 'bottom',
   },
   {
@@ -542,6 +542,21 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
     onComplete();
   }, [onComplete]);
 
+  // The clamp needs the card's actual height, which is only knowable after it
+  // renders — steps differ by several lines, and the text-size setting scales
+  // all of them.
+  const [cardHeight, setCardHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const measure = () => setCardHeight(prev => (prev === el.offsetHeight ? prev : el.offsetHeight));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, [open, step]);
+
   if (!open) return null;
 
   // Compute card position
@@ -570,9 +585,16 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
       cardStyle.top = Math.max(PAD, targetRect.top);
       cardStyle.left = Math.max(PAD, targetRect.left - 340 - PAD);
     }
-    // Clamp to viewport
-    if (typeof cardStyle.top === 'number' && cardStyle.top + 250 > window.innerHeight) {
-      cardStyle.top = Math.max(PAD, window.innerHeight - 280);
+    // Clamp to the viewport using the card's real height. It used to assume 250px
+    // and park the card at innerHeight - 280, which is fine for a two-line step
+    // and runs clean off the bottom of a small screen for a longer one — the
+    // widgets step at large text was doing exactly that.
+    const h = cardHeight || 280;
+    if (typeof cardStyle.top === 'number' && cardStyle.top + h + PAD > window.innerHeight) {
+      // Prefer sitting above the target; fall back to pinning to the top, since
+      // a card taller than the screen has to start somewhere it can scroll from.
+      const above = targetRect.top - h - PAD;
+      cardStyle.top = above >= PAD ? above : PAD;
     }
   }
 
@@ -679,7 +701,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           the tutorial isn't stuck if the page is empty or still loading. */}
       {!warming && <div
         ref={cardRef}
-        className="absolute w-[320px] max-w-[calc(100vw-24px)] rounded-xl border bg-background shadow-xl p-4 space-y-3"
+        className="absolute w-[320px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain rounded-xl border bg-background shadow-xl p-4 space-y-3"
         style={{
           ...cardStyle,
           zIndex: 10050,

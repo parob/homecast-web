@@ -363,6 +363,10 @@ export function getAutoPresetId(entityId: string): string {
     hash = ((hash << 5) - hash) + entityId.charCodeAt(i);
     hash = hash & hash;
   }
-  const imagePresetIds = Object.keys(PRESET_IMAGES);
-  return imagePresetIds[Math.abs(hash) % imagePresetIds.length];
+  // Nature only. The abstract presets are still offered in the background
+  // picker, but a home that assigns its own wallpapers should start from
+  // photographs rather than from colour studies.
+  const natureIds = Object.keys(PRESET_IMAGES).filter(id => id.startsWith('nature-'));
+  const pool = natureIds.length > 0 ? natureIds : Object.keys(PRESET_IMAGES);
+  return pool[Math.abs(hash) % pool.length];
 }

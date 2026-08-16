@@ -4,6 +4,17 @@ import { useState } from 'react';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { TutorialDialog } from '../TutorialDialog';
 
+// The card measures itself so it can be clamped to the viewport by its real
+// height rather than an assumed one. jsdom has no ResizeObserver, and the
+// measurement is not what any of these tests are about.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // Walk the tutorial forward N times by clicking the Next button.
 // `findByRole` waits up to 1s for the button to appear — covers the dialog's
 // initial warm-up state (where only a loading spinner is rendered until the
