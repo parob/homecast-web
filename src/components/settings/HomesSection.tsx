@@ -142,7 +142,7 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium truncate">{displayName}</span>
+          <span className="text-sm font-medium break-words">{displayName}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {enrollment.status === 'active' ? (
@@ -331,7 +331,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <HomeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium truncate">{home.name}</span>
+          <span className="text-sm font-medium break-words">{home.name}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {!isOwner && home.role && (

@@ -80,7 +80,7 @@ export function HomeNotificationsSection({ home }: { home: { id: string; name: s
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-sm">{home.name}</p>
+        <p className="min-w-0 break-words text-sm">{home.name}</p>
         <Switch
           checked={!homeMuted}
           onCheckedChange={(on) => setMute('home', home.id, !on)}
@@ -93,7 +93,7 @@ export function HomeNotificationsSection({ home }: { home: { id: string; name: s
         <div className="ml-6 space-y-2 border-l pl-3">
           {notifyAutomations.map((automation) => (
             <div key={automation.id} className="flex items-center justify-between gap-3">
-              <p className="truncate text-sm text-muted-foreground">{automation.name || 'Unnamed automation'}</p>
+              <p className="min-w-0 break-words text-sm text-muted-foreground">{automation.name || 'Unnamed automation'}</p>
               <Switch
                 checked={!isMuted('automation', automation.id)}
                 onCheckedChange={(on) => setMute('automation', automation.id, !on)}

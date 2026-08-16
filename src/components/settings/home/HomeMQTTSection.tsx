@@ -75,7 +75,7 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <Radio className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm font-medium truncate">{broker.name}</span>
+            <span className="text-sm font-medium break-words">{broker.name}</span>
           </div>
           {statusBadge(broker.status)}
         </div>

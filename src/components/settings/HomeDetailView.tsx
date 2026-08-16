@@ -116,11 +116,11 @@ export function HomeDetailView({
       {/* The home's name leads every page — the desktop content pane has no
           chrome of its own, and on mobile the dialog title shows the sub-section
           rather than which home it belongs to. */}
-      <div className="flex items-center gap-2.5">
-        <HomeIcon className="h-5 w-5 text-muted-foreground" />
-        <h3 className="text-base font-semibold truncate">{home.name}</h3>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <HomeIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+        <h3 className="min-w-0 text-base font-semibold break-words">{home.name}</h3>
         {section && (
-          <span className="text-base text-muted-foreground truncate">
+          <span className="text-base text-muted-foreground break-words">
             {HOME_SETTINGS_SECTION_META[section].label}
           </span>
         )}

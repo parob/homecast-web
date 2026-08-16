@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { config, isCommunity } from '@/lib/config';
+import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
@@ -5814,21 +5814,42 @@ const Dashboard = () => {
   // flashed white between the black splash and the wallpaper.
   if (authLoading) {
     // Community mode waits on a relay that may simply never answer — a Mac that
-    // is asleep, on another network, or not running the app. Waiting forever on
-    // a black screen is the worst possible answer to that, so past 20 seconds it
-    // says what it was trying to do and offers a way out.
+    // is asleep, on another network, or not running the app. A black screen and
+    // a spinner, indefinitely, is the worst possible answer to that. Say which
+    // machine we are waiting for, and past twenty seconds offer a way out of it.
+    const relayAddress = isCommunity && isClientMode() ? getRelayAddress() : null;
+    const connectingTo = relayAddress
+      ? `Connecting to ${relayAddress}\u2026`
+      : isCommunity ? 'Connecting to this Mac\u2026' : 'Signing in\u2026';
     return (
       <AppBootFallback
-        status={isCommunity ? 'Connecting to this Mac\u2026' : 'Signing in\u2026'}
+        status={connectingTo}
         stuckAfterMs={20000}
-        stuckMessage={isCommunity
-          ? "Still trying to reach this Mac. Check the Homecast app is running on it and that both devices are on the same network."
-          : "Still signing in. Check your connection."}
+        stuckMessage={relayAddress
+          ? `Still trying to reach ${relayAddress}. Check that Mac is awake, that Homecast is running on it, and that both devices are on the same network.`
+          : isCommunity
+            ? "Still starting up. If this Mac has just woken, give it a moment."
+            : "Still signing in. Check your connection."}
         stuckActions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
               Try again
             </Button>
+            {relayAddress && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  // Back to the chooser on Login, with the old address forgotten.
+                  localStorage.removeItem('homecast-relay-address');
+                  localStorage.removeItem('homecast-relay-setup');
+                  localStorage.removeItem('homecast-mode');
+                  window.location.href = '/login';
+                }}
+              >
+                Change host
+              </Button>
+            )}
             <Button size="sm" variant="ghost" className="text-white/60 hover:text-white" onClick={logout}>
               Sign out
             </Button>
@@ -5837,6 +5858,7 @@ const Dashboard = () => {
       />
     );
   }
+
   markBoot('auth');
 
   if (!isAuthenticated) {
@@ -7837,8 +7859,8 @@ const Dashboard = () => {
                             ? ''
                             : compactMode
                               ? (fontSize === 'small'
-                                ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(155px,calc(50%-4px)),1fr))]'
-                                : 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(180px,calc(50%-4px)),1fr))]')
+                                ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
+                                : 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
                               : (fontSize === 'small'
                                 ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
                                 : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')

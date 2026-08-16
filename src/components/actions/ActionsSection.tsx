@@ -107,7 +107,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
         <div className={compact ? 'mb-3' : 'mb-6'}>
           <div className={
             compact
-              ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(180px,calc(50%-4px)),1fr))]'
+              ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
               : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
           }>
             {actions.map(action => {
