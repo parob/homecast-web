@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { TriStateToggle } from '../tri-state-toggle';
+import { BackgroundContext } from '@/contexts/BackgroundContext';
 
 describe('TriStateToggle — off and on', () => {
   afterEach(cleanup);
@@ -142,8 +143,8 @@ describe('TriStateToggle — where the thumb sits', () => {
     ['off', 'translateX(4px)', '0'],
     ['mixed', 'translateX(17px)', '0.5'],
     ['on', 'translateX(30px)', '1'],
-  ] as const)('parks %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
-    const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} />);
+  ] as const)('parks a wide %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
+    const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} wide />);
     const root = container.firstElementChild as HTMLElement;
     expect(thumb(root).style.transform).toBe(offset);
     // Mixed is the on colour at half strength over the off track — literally
@@ -151,12 +152,51 @@ describe('TriStateToggle — where the thumb sits', () => {
     expect(fill(root).style.opacity).toBe(opacity);
   });
 
-  it('keeps an ordinary switch\'s height and thumb, and is a quarter wider', () => {
-    const { container } = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
+  it.each([
+    ['off', 'translateX(4px)', '0'],
+    ['mixed', 'translateX(12px)', '0.5'],
+    ['on', 'translateX(20px)', '1'],
+  ] as const)('parks a narrow %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
+    const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} />);
     const root = container.firstElementChild as HTMLElement;
-    expect(root.style.width).toBe('50px');       // ui/switch.tsx is 40
-    expect(root.className).toContain('h-6');     // same height
-    expect(thumb(root).style.width).toBe('16px'); // same thumb
+    expect(thumb(root).style.transform).toBe(offset);
+    expect(fill(root).style.opacity).toBe(opacity);
+  });
+
+  it('is an ordinary switch\'s size by default, and only a quarter wider on request', () => {
+    // The default is what stops this from resizing all thirteen accessory
+    // switches the moment it starts backing ColoredSwitch. Only a control that
+    // can actually reach the middle earns the extra room.
+    const plain = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
+    const plainRoot = plain.container.firstElementChild as HTMLElement;
+    expect(plainRoot.style.width).toBe('40px');      // exactly ui/switch.tsx
+    expect(plainRoot.className).toContain('h-6');
+    expect(thumb(plainRoot).style.width).toBe('16px');
+    cleanup();
+
+    const wide = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide />);
+    const wideRoot = wide.container.firstElementChild as HTMLElement;
+    expect(wideRoot.style.width).toBe('50px');       // +25%
+    expect(wideRoot.className).toContain('h-6');     // same height
+    expect(thumb(wideRoot).style.width).toBe('16px'); // same thumb
+  });
+
+  it('takes the track colour from the wallpaper behind it', () => {
+    // The app's real light/dark axis is the background image, not a theme class.
+    const light = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
+    expect((light.container.firstElementChild as HTMLElement).className).toContain('bg-input');
+    cleanup();
+
+    const dark = render(
+      <BackgroundContext.Provider value={{ isDarkBackground: true } as never}>
+        <TriStateToggle state="off" onCheckedChange={vi.fn()} />
+      </BackgroundContext.Provider>
+    );
+    const root = dark.container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('bg-white/20');
+    expect(root.className).not.toContain('bg-input');
+    // and the thumb with it, or it disappears into the track
+    expect(thumb(root).className).toContain('bg-white/70');
   });
 
   it('paints the fill in the colour it was given', () => {

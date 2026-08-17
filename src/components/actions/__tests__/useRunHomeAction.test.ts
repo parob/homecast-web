@@ -329,3 +329,93 @@ describe('running a chosen direction', () => {
     expect(request.mock.calls.every(c => c[1].value === false)).toBe(true);
   });
 });
+
+describe('a run the user can call off', () => {
+  const twoWay = () => action({
+    toggle: {
+      state: 'off', onCount: 0, total: 2,
+      onSteps: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: true, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      offSteps: [{ writes: [] }],
+      onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
+    },
+  });
+
+  it('moves each accessory only once its own write has landed', async () => {
+    // The opposite of the optimistic pass, and deliberately so: a control the
+    // user can still grab must not claim work it has not done, or reversing it
+    // would turn off lights that never came on.
+    const order: string[] = [];
+    const updateCharacteristicInCache = vi.fn((id: string) => { order.push(`cache:${id}`); });
+    request.mockImplementation(async (_a: string, p: { accessoryId: string }) => {
+      order.push(`request:${p.accessoryId}`);
+    });
+    const { result } = renderHook(() => useRunHomeAction({
+      homeId: 'home-1', isViewOnly: false, updateCharacteristicInCache,
+    }));
+
+    await result.current(twoWay(), { direction: true, signal: new AbortController().signal });
+
+    // every cache write follows its own request, rather than all preceding them
+    expect(order.indexOf('request:a')).toBeLessThan(order.indexOf('cache:a'));
+    expect(order.indexOf('request:b')).toBeLessThan(order.indexOf('cache:b'));
+  });
+
+  it('issues nothing once it has been called off', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { run, updateCharacteristicInCache } = setup();
+
+    await run(twoWay(), { direction: true, signal: controller.signal });
+
+    expect(request).not.toHaveBeenCalled();
+    // and nothing moved, so there is nothing to put back
+    expect(updateCharacteristicInCache).not.toHaveBeenCalled();
+  });
+
+  it('drops the queue mid-flight, keeping what already landed', async () => {
+    const controller = new AbortController();
+    // The first write lands, and calls the rest off on its way out — standing in
+    // for the user reaching for the toggle while the fan-out is still draining.
+    request.mockImplementation(async (_a: string, p: { accessoryId: string }) => {
+      if (p.accessoryId === 'a') controller.abort();
+    });
+    const { run, updateCharacteristicInCache } = setup();
+
+    await run(twoWay(), { direction: true, signal: controller.signal });
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][1]).toMatchObject({ accessoryId: 'a' });
+    // 'a' really did turn on, so the cache says so and a reversal will find it
+    expect(updateCharacteristicInCache).toHaveBeenCalledWith('a', 'power_state', 'true');
+    expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('b', 'power_state', 'true');
+  });
+
+  it('says nothing when it is called off — that was the user\'s own decision', async () => {
+    const controller = new AbortController();
+    request.mockImplementation(async () => { controller.abort(); throw new Error('gone'); });
+    const { run } = setup();
+
+    await run(twoWay(), { direction: true, signal: controller.signal });
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
+  });
+
+  it('keeps the optimistic pass for a run with no way to call it off', async () => {
+    // A play button is fire-and-forget, and the instant repaint is worth more
+    // there than progress nobody can act on.
+    const order: string[] = [];
+    const updateCharacteristicInCache = vi.fn(() => { order.push('cache'); });
+    request.mockImplementation(async () => { order.push('request'); });
+    const { result } = renderHook(() => useRunHomeAction({
+      homeId: 'home-1', isViewOnly: false, updateCharacteristicInCache,
+    }));
+
+    await result.current(action());
+
+    expect(order.indexOf('request')).toBeGreaterThan(order.lastIndexOf('cache'));
+  });
+});

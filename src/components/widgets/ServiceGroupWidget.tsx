@@ -507,6 +507,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   >
                     <TriStateToggle
                       state={groupState}
+                      wide
                       onCheckedChange={onToggle}
                       disabled={effectiveDisabled}
                       className="shrink-0"
@@ -579,6 +580,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               >
                 <TriStateToggle
                   state={groupState}
+                  wide
                   onCheckedChange={onToggle}
                   disabled={effectiveDisabled}
                   className="shrink-0"
@@ -831,6 +833,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             >
               <TriStateToggle
                 state={groupState}
+                wide
                 onCheckedChange={onToggle}
                 disabled={effectiveDisabled}
                 className="shrink-0"

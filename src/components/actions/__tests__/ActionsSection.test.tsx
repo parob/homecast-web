@@ -131,24 +131,64 @@ describe('ActionsSection', () => {
     expect(onRunAction).not.toHaveBeenCalled();
   });
 
-  it('ignores a second press while the first is still in flight', async () => {
+  it('stays live while it runs, and the next press calls off the last', async () => {
+    // Half a house changing its mind is exactly when you want the control back.
+    // The press is not swallowed: it aborts the run in flight and starts its own.
+    const signals: Array<AbortSignal | undefined> = [];
     let release: () => void = () => {};
-    const onRunAction = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+    const onRunAction = vi.fn((_a, opts) => {
+      signals.push(opts.signal);
+      return new Promise<void>(resolve => { release = resolve; });
+    });
+    render(
+      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+    );
+
+    fireEvent.click(switchOn('lights'));
+    expect(screen.getByText('Turning the lights off')).toBeTruthy();
+    expect(signals[0]!.aborted).toBe(false);
+
+    fireEvent.click(switchOn('lights'));
+    expect(onRunAction).toHaveBeenCalledTimes(2);
+    expect(signals[0]!.aborted).toBe(true);   // the first was called off
+    expect(signals[1]!.aborted).toBe(false);
+
+    await act(async () => { release(); });
+  });
+
+  it('does not let a superseded run clear the state of the one that replaced it', async () => {
+    // An aborted run finishes late — its issued writes still have to settle —
+    // and its `finally` would otherwise wipe its replacement's running label.
+    const resolvers: Array<() => void> = [];
+    const onRunAction = vi.fn(() => new Promise<void>(resolve => { resolvers.push(resolve); }));
     render(
       <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
     fireEvent.click(switchOn('lights'));
-    fireEvent.click(switchOn('lights'));
+    await act(async () => { resolvers[0](); });      // the abandoned one lands
+    expect(screen.getByText('Turning the lights off')).toBeTruthy();  // still running
+
+    await act(async () => { resolvers[1](); });      // the live one lands
+    expect(screen.getByText('All lights')).toBeTruthy();
+  });
+
+  it('still bars a second press on a one-way action, which has no "stop" to mean', async () => {
+    let release: () => void = () => {};
+    const onRunAction = vi.fn((_a: unknown, _opts?: { signal?: AbortSignal }) =>
+      new Promise<void>(resolve => { release = resolve; }));
+    render(
+      <ActionsSection accessories={[lockOpen]} homeLayout={null} open onRunAction={onRunAction} />
+    );
+
+    fireEvent.click(card('locks'));
+    fireEvent.click(card('locks'));
     expect(onRunAction).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Turning the lights off')).toBeTruthy();
+    // and it runs without a signal: there is nothing to call off
+    expect(onRunAction.mock.calls[0][1]?.signal).toBeUndefined();
 
     await act(async () => { release(); });
-    // and it goes back to naming the direction once it is done
-    expect(screen.getByText('All lights')).toBeTruthy();
-    fireEvent.click(switchOn('lights'));
-    expect(onRunAction).toHaveBeenCalledTimes(2);
   });
 
   it('narrates the direction the user chose, not the one the catalog would have', async () => {

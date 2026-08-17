@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import {
   Blinds, ChevronRight, Fan, Lightbulb, Loader2, Lock, Plug, Play, Power, Shield, Thermometer,
@@ -100,22 +100,49 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
   // is the opposite of what the user chose exactly when they overrode it.
   const [runningDirection, setRunningDirection] = useState<boolean | undefined>(undefined);
 
+  /**
+   * The run in flight, so the next press can call it off.
+   *
+   * A two-way action stays live while it works: half a house changing its mind
+   * is exactly when you want the control back, and blocking the press until the
+   * last bulb answers is how "I pressed it twice" happens. The replacement run
+   * aborts this one, which drops every write still queued — and because an
+   * interruptible run only moves accessories it has confirmed, the reversal is
+   * computed from what actually changed rather than from what was intended.
+   */
+  const inFlight = useRef<AbortController | null>(null);
+
   const run = async (action: HomeAction, direction?: boolean) => {
     const total = direction === undefined || !action.toggle
       ? action.targetCount
       : (direction ? action.toggle.onSteps : action.toggle.offSteps).flatMap(s => s.writes).length;
+
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+
     setRunningId(action.id);
     setRunningDirection(direction);
     setProgress({ done: 0, total });
     try {
       await onRunAction(action, {
         direction,
-        onProgress: (done, t) => setProgress({ done, total: t }),
+        signal: action.toggle ? controller.signal : undefined,
+        onProgress: (done, t) => {
+          // A superseded run keeps settling its issued writes; its counts are
+          // no longer what the card is reporting on.
+          if (inFlight.current === controller) setProgress({ done, total: t });
+        },
       });
     } finally {
-      setRunningId(null);
-      setRunningDirection(undefined);
-      setProgress(null);
+      // Only the current run owns the running state. An aborted one finishes
+      // late, and clearing here would wipe its replacement's.
+      if (inFlight.current === controller) {
+        inFlight.current = null;
+        setRunningId(null);
+        setRunningDirection(undefined);
+        setProgress(null);
+      }
     }
   };
 
@@ -151,7 +178,11 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
               // Editing joins the existing reasons a card must not fire: an
               // action runs the moment you touch it, and a mis-grab on the way
               // to a drag would turn the whole house off.
-              const inert = action.disabled || !!isViewOnly || running || editMode;
+              // `running` bars a one-way action, which has no way to express
+              // "actually, stop" — pressing Lock up twice is just two runs. A
+              // two-way one stays live: its press means something new.
+              const inert = action.disabled || !!isViewOnly || editMode
+                || (running && !action.toggle);
               // A two-way action carries its own control, and the card must then
               // stop being one: leaving the press on the card too would run the
               // catalog's chosen direction from anywhere outside the toggle,
@@ -212,6 +243,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                       <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                         <TriStateToggle
                           state={toggle.state}
+                          wide
                           onCheckedChange={(next) => { if (!inert) run(action, next); }}
                           disabled={inert}
                           // No description: the subtitle beside it already

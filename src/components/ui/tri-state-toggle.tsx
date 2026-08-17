@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useBackgroundContext } from "@/contexts/BackgroundContext";
 import type { TriState } from "@/components/widgets/shared/powerState";
 
 /**
@@ -28,23 +29,45 @@ interface TriStateToggleProps {
   description?: string;
   /** Track fill for the on state; mirrors the same prop on `ui/switch.tsx`. */
   checkedColorClass?: string;
+  /**
+   * A quarter wider, for a control that can actually reach the middle.
+   *
+   * Off by default, and that default is load-bearing: this component backs
+   * every ordinary accessory switch through `ColoredSwitch`, and widening it
+   * unconditionally silently widened all thirteen of them — leaving them out of
+   * step with the `ui/switch.tsx` switches everywhere else. Only a control with
+   * three stops to show has earned the extra room.
+   */
+  wide?: boolean;
+  /**
+   * Off-state track. Defaults to something legible on the wallpaper actually
+   * behind it — see the dark-background note on the component.
+   */
+  uncheckedColorClass?: string;
+  /** Off-state thumb, same reasoning. */
+  uncheckedThumbClass?: string;
   className?: string;
 }
 
 /**
- * The track is `ui/switch.tsx`'s 24px tall and 16px thumb exactly, so this sits
- * in a row of ordinary switches without shifting anything — but a quarter wider,
- * 50px against 40px, because three positions in 40px put the thumb 13px from
- * each end and the middle stopped reading as the middle.
+ * 24px tall with a 16px thumb, exactly `ui/switch.tsx`, so either width sits in
+ * a row of ordinary switches without shifting anything.
+ *
+ * The wide track is 50px against 40px, because three positions in 40px put the
+ * stops 8px apart and the middle stopped reading as deliberate.
  */
-const TRACK_W = 50;
 const THUMB = 16;
 const PAD = 4;
-const MIN_X = PAD;                          // 4
-const MAX_X = TRACK_W - THUMB - PAD;        // 30
-const MID_X = (TRACK_W - THUMB) / 2;        // 17
 
-const THUMB_X: Record<TriState, number> = { off: MIN_X, mixed: MID_X, on: MAX_X };
+function geometry(wide: boolean) {
+  const track = wide ? 50 : 40;
+  return {
+    track,
+    min: PAD,                             // 4
+    max: track - THUMB - PAD,             // 30 wide, 20 narrow
+    mid: (track - THUMB) / 2,             // 17 wide, 12 narrow
+  };
+}
 
 /** Past this the gesture is a swipe and the press that follows it is not a tap. */
 const SWIPE_SLOP = 6;
@@ -58,8 +81,21 @@ export function TriStateToggle({
   label,
   description,
   checkedColorClass,
+  wide = false,
+  uncheckedColorClass,
+  uncheckedThumbClass,
   className,
 }: TriStateToggleProps) {
+  // The app's real light/dark axis is the wallpaper, not a theme class — see
+  // WidgetWrapper. An off track of `bg-input` is a pale grey that vanishes into
+  // a light wallpaper and glares against a dark one, and the switch reads as
+  // permanently half-lit either way. The context carries a safe default, so
+  // this still renders standalone (the MQTT browser, tests) without a provider.
+  const { isDarkBackground } = useBackgroundContext();
+  const offTrack = uncheckedColorClass ?? (isDarkBackground ? 'bg-white/20' : 'bg-input');
+  const offThumb = uncheckedThumbClass ?? (isDarkBackground ? 'bg-white/70' : 'bg-background');
+  const { track, min: MIN_X, max: MAX_X, mid: MID_X } = geometry(wide);
+  const thumbX: Record<TriState, number> = { off: MIN_X, mixed: MID_X, on: MAX_X };
   const descriptionId = React.useId();
   const onButtonRef = React.useRef<HTMLButtonElement>(null);
   const switchRef = React.useRef<HTMLButtonElement>(null);
@@ -112,7 +148,7 @@ export function TriStateToggle({
     if (disabled) return;
 
     const startX = e.clientX;
-    const from = THUMB_X[state];
+    const from = thumbX[state];
     let moved = false;
 
     const onMove = (ev: PointerEvent) => {
@@ -145,7 +181,7 @@ export function TriStateToggle({
     onBlur: () => { hasFocus.current = false; },
   };
 
-  const x = dragX ?? THUMB_X[state];
+  const x = dragX ?? thumbX[state];
   const dragging = dragX !== null;
 
   /**
@@ -174,20 +210,21 @@ export function TriStateToggle({
       className={cn(
         'pointer-events-none absolute left-0 top-1 block rounded-full shadow-sm',
         !dragging && 'transition-transform duration-base ease-standard',
-        state === 'off' && !dragging ? 'bg-background' : 'bg-white/60',
+        state === 'off' && !dragging ? offThumb : 'bg-white/60',
       )}
       style={{ width: THUMB, height: THUMB, transform: `translateX(${x}px)` }}
     />
   );
 
   const trackClasses = cn(
-    'relative inline-flex h-6 shrink-0 items-center overflow-hidden rounded-full bg-input',
+    'relative inline-flex h-6 shrink-0 items-center overflow-hidden rounded-full transition-colors duration-base ease-standard',
+    offTrack,
     disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer active:scale-90',
     className,
   );
   // touch-action keeps the page scrollable off a mis-grab: vertical still pans,
   // horizontal is ours.
-  const trackStyle = { width: TRACK_W, touchAction: 'pan-y' as const };
+  const trackStyle = { width: track, touchAction: 'pan-y' as const };
 
   // Mixed genuinely is two commands, so it gets two buttons — and ARIA agrees:
   // aria-checked="mixed" is valid on checkbox, never on switch.

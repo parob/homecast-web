@@ -69,6 +69,14 @@ export interface RunHomeActionOverrides {
    * tab-bar pin can express.
    */
   direction?: boolean;
+  /**
+   * Abort the writes this run has not issued yet.
+   *
+   * Supplying one also makes the run report truthfully rather than optimistically
+   * — see the note on the optimistic pass. Already-issued writes cannot be
+   * recalled; this stops the queue, which on a big home is most of it.
+   */
+  signal?: AbortSignal;
 }
 
 interface RunHomeActionArgs {
@@ -121,7 +129,18 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
 
     // 1. Optimistic pass — entirely synchronous, before any network work, so
     //    the UI has repainted by the time the first request leaves.
-    for (const write of writes) applyToCache(write, write.value, updateCharacteristicInCache);
+    //
+    //    An interruptible run skips it, and moves each accessory only once its
+    //    own write lands. A control the user can still grab mid-flight must not
+    //    claim work it has not done: reversing a run that had optimistically
+    //    marked every light on would compute its write set from that claim and
+    //    dutifully turn off lights that never came on. Truth costs the instant
+    //    repaint, and buys a toggle that travels through the middle as the
+    //    house actually changes — which is the whole point of the middle.
+    const interruptible = opts?.signal !== undefined;
+    if (!interruptible) {
+      for (const write of writes) applyToCache(write, write.value, updateCharacteristicInCache);
+    }
 
     // 2. Fan out, one step at a time so a step's delay actually separates it
     //    from the next. Every action here has a single step today.
@@ -135,13 +154,19 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     for (const step of steps) {
       if (step.writes.length > 0) {
         const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, async write => {
+          // Checked per write rather than per wave: the queue drains as workers
+          // free up, so most of a large run is still unissued when the user
+          // changes their mind.
+          if (opts?.signal?.aborted) return undefined;
           try {
-            return await serverConnection.request('characteristic.set', {
+            const result = await serverConnection.request('characteristic.set', {
               accessoryId: write.accessoryId,
               characteristicType: write.characteristicType,
               value: write.value,
               homeId: effectiveHomeId,
             });
+            if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
+            return result;
           } finally {
             // `finally`, so a failure still advances the count — the point is
             // "how many are resolved", not "how many worked". The toast at the
@@ -160,7 +185,16 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     }
 
     // 3. Revert only what actually failed — the rest already moved and stayed.
-    for (const write of failed) applyToCache(write, write.previousValue, updateCharacteristicInCache);
+    //    An interruptible run never moved anything it did not confirm, so it has
+    //    nothing to put back.
+    if (!interruptible) {
+      for (const write of failed) applyToCache(write, write.previousValue, updateCharacteristicInCache);
+    }
+
+    // Called off on purpose: the replacement run is the report, and a toast
+    // about the half we abandoned would be describing the user's own decision
+    // back to them as a fault.
+    if (opts?.signal?.aborted) return;
 
     if (failed.length === writes.length) {
       toast.error(`${action.label} failed`, { description: describeError(firstError) });
