@@ -302,9 +302,19 @@ async function resolveOperation(
       const { refreshAuthEnabled, clearAuthenticatedClients } = await import('./local-server');
       await refreshAuthEnabled();
       if (variables.enabled) {
-        await auth.invalidateAllTokens();
+        // Deliberately NOT invalidateAllTokens(). Rotating the signing key here
+        // destroyed the caller's own token, so switching auth on locked out the
+        // person who switched it on — the next request, including creating the
+        // first user, came back "Authentication required" from their own relay.
+        //
+        // It bought nothing either: while auth is off nobody holds a token
+        // except real accounts, because unauthenticated clients are Guests with
+        // no token at all. So the only credentials it could ever destroy were
+        // legitimate ones. Password changes and user deletion still rotate,
+        // which is where rotating is actually the point.
         clearAuthenticatedClients();
-        const broadcast = (window as any).__localserver_broadcast;
+        const broadcast =
+          typeof window !== 'undefined' ? (window as any).__localserver_broadcast : null;
         if (broadcast) broadcast({ type: 'auth_required' });
       }
       return { setAuthEnabled: { success: true, enabled: !!variables.enabled } };
@@ -334,7 +344,8 @@ async function resolveOperation(
         await auth.invalidateAllTokens();
         const { clearAuthenticatedClients } = await import('./local-server');
         clearAuthenticatedClients();
-        const broadcast = (window as any).__localserver_broadcast;
+        const broadcast =
+          typeof window !== 'undefined' ? (window as any).__localserver_broadcast : null;
         if (broadcast) broadcast({ type: 'auth_required' });
       }
       return { deleteCommunityUser: { success } };
@@ -345,7 +356,8 @@ async function resolveOperation(
       if (success) {
         const { clearAuthenticatedClients } = await import('./local-server');
         clearAuthenticatedClients();
-        const broadcast = (window as any).__localserver_broadcast;
+        const broadcast =
+          typeof window !== 'undefined' ? (window as any).__localserver_broadcast : null;
         if (broadcast) broadcast({ type: 'auth_required' });
       }
       return { changeCommunityUserPassword: { success } };

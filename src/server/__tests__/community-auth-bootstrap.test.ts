@@ -108,3 +108,33 @@ describe('community auth bootstrap', () => {
     expect(seeded.data?.isOnboarded).toBe(true);
   });
 });
+
+describe('enabling auth does not lock out the person enabling it', () => {
+  beforeEach(() => {
+    mockDb.users.clear();
+    mockDb.settings.clear();
+  });
+
+  it('leaves the caller\'s existing token valid', async () => {
+    const auth = await import('@/server/local-auth');
+    const { token } = await auth.createOwner('owner', 'pw-owner-1234');
+
+    const enabled: any = await handleGraphQL({
+      operationName: 'SetAuthEnabled',
+      variables: { enabled: true },
+      authorization: `Bearer ${token}`,
+    });
+    expect(enabled.data?.setAuthEnabled?.success).toBe(true);
+
+    // The token they held a moment ago must still work — rotating the signing
+    // key here is what locked people out of their own relay.
+    expect(await auth.verifyToken(token)).not.toBeNull();
+
+    const after: any = await handleGraphQL({
+      operationName: 'CreateCommunityUser',
+      variables: { name: 'second', password: 'pw-second-1234', role: 'view' },
+      authorization: `Bearer ${token}`,
+    });
+    expect(isAuthError(after)).toBe(false);
+  });
+});

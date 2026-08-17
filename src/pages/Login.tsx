@@ -67,6 +67,10 @@ const Login = () => {
   // guess is how an unreachable relay came to look like one demanding
   // credentials, for twenty seconds, before admitting it was unreachable.
   const [relayKnown, setRelayKnown] = useState(false);
+  // Bumped by "Try again" to re-run the effect that polls the relay.
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [newAddress, setNewAddress] = useState('');
 
   const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
   const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp || !!(window as any).isHomecastAndroidApp;
@@ -99,6 +103,9 @@ const Login = () => {
     // away from the form they're trying to use.
     setCommunityChecked(true);
 
+    setRelayNotReady(false);
+    setRelayKnown(false);
+
     let cancelled = false;
     const checkRelay = async () => {
       let consecutiveFailures = 0;
@@ -130,7 +137,36 @@ const Login = () => {
     };
     checkRelay();
     return () => { cancelled = true; };
-  }, []);
+  }, [retryNonce]);
+
+  /**
+   * Point this device at an address the user typed. Stored under its own key
+   * so it outranks whatever the native shell discovered — the shell's address
+   * is only ever a good guess, and if it is unreachable from here the
+   * correction has to win or it would be silently ignored.
+   */
+  const saveRelayOverride = () => {
+    const typed = newAddress.trim();
+    if (!typed) return;
+    let url = typed.replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' && !parsed.port) parsed.port = '5656';
+      localStorage.setItem('homecast-relay-override', parsed.origin);
+      localStorage.setItem('homecast-mode', 'client');
+      localStorage.removeItem('homecast-relay-ws-port');
+    } catch {
+      return;
+    }
+    window.location.reload();
+  };
+
+  /** Drop the stored token so the sign-in form comes back. */
+  const signOutAndRetry = () => {
+    localStorage.removeItem('homecast-token');
+    window.location.reload();
+  };
 
   // Handle "Start Relay"
   const handleStartRelay = () => {
@@ -368,6 +404,51 @@ const Login = () => {
                   : 'The Homecast relay hasn\'t been set up yet. Open the Homecast app on the relay Mac first.'}
               </CardDescription>
             </CardHeader>
+            <CardContent className="space-y-3 pb-3">
+              <Button className="w-full" onClick={() => setRetryNonce(n => n + 1)}>
+                Try again
+              </Button>
+
+              {editingAddress ? (
+                <div className="space-y-2">
+                  <Label htmlFor="new-relay">Relay address</Label>
+                  <Input
+                    id="new-relay"
+                    type="url"
+                    placeholder="http://192.168.1.50:5656"
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" className="flex-1" onClick={saveRelayOverride}>Connect</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingAddress(false)}>Cancel</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The address the app found may not be reachable from this device. Typing one
+                    here overrides it.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setNewAddress(getRelayAddress() || '');
+                    setEditingAddress(true);
+                  }}
+                >
+                  Use a different address
+                </Button>
+              )}
+
+              {token && (
+                <Button variant="outline" className="w-full" onClick={signOutAndRetry}>
+                  Sign in as someone else
+                </Button>
+              )}
+            </CardContent>
             <CardFooter className="flex flex-col gap-3 pt-0">
               <div className="w-full border-t pt-3">
                 <Button variant="outline" size="sm" className="w-full" onClick={switchMode}>

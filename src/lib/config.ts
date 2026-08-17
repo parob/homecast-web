@@ -50,10 +50,23 @@ function nativeRelayOrigin(): string | null {
 // --- Community mode: relay vs client ---
 // Set during first-launch setup. 'relay' = this device runs the relay.
 // 'client' = this device connects to a remote relay.
+/**
+ * An address the user typed in themselves, which beats everything.
+ *
+ * The shell's value is only ever a good default — it comes from whatever the
+ * relay advertised. If that address turns out to be unreachable from this
+ * device, the user needs a way to say so, and it has to outrank the shell or
+ * the correction would be silently ignored on the very platform that needs it.
+ */
+function relayOverride(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('homecast-relay-override');
+}
+
 export function getCommunityMode(): 'relay' | 'client' | null {
   if (!isCommunity) return null;
-  // The shell told us which relay to use; that settles it.
-  if (nativeRelayOrigin()) return 'client';
+  // A typed address, or the shell naming a relay, both mean client mode.
+  if (relayOverride() || nativeRelayOrigin()) return 'client';
   return (localStorage.getItem('homecast-mode') as 'relay' | 'client') || null;
 }
 export function isRelayMode(): boolean { return getCommunityMode() === 'relay'; }
@@ -85,7 +98,7 @@ export function normalizeRelayOrigin(input: string): string {
  * already doing implicitly. No migration step needed.
  */
 export function getRelayAddress(): string | null {
-  const raw = nativeRelayOrigin() || localStorage.getItem('homecast-relay-address');
+  const raw = relayOverride() || nativeRelayOrigin() || localStorage.getItem('homecast-relay-address');
   return raw ? normalizeRelayOrigin(raw) : null;
 }
 
