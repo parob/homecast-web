@@ -653,7 +653,13 @@ export default function EChartsTimeChart({
     };
     // Pins whatever is lit, so what you see highlighted is what you get;
     // clicking it again lets it go, clicking empty plot clears.
+    //
+    // Only the plot speaks. The zoom slider and the axis gutters live on this
+    // same canvas, and a drag of the slider ends in a click — which, now that
+    // an off-line click genuinely clears the selection, would read as "let
+    // everything go" every time you changed the window.
     const onClick = (e: { offsetX: number; offsetY: number }) => {
+      if (!chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])) return;
       selectCbRef.current?.(resolve(e));
     };
     zr.on('mousemove', onMove);

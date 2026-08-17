@@ -18,6 +18,7 @@ import { seriesColor, type ChartSeries } from './chartColors';
 import { aggregateNumericSeries, aggregateToSeries } from '@/history/aggregate';
 import { buildSels, labelWithoutRoom } from './selBuilder';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
+import { useSeriesSelection } from './useSeriesSelection';
 import type { AnalyticsSettings } from './scope';
 import type { SeriesSel } from './types';
 import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
@@ -108,22 +109,9 @@ export default function RoomStackView({
   // Highlighting is by THING, not by series: pointing at Underfloor Heating's
   // temperature must also pick out its humidity in the panel below, and those
   // are different series. Identity is the accessory — or the room, when the
-  // whole view is per-room averages.
-  const [hovered, setHovered] = useState<string | null>(null);
-  // Clicking — a line, or its name in the key — latches it. A latched set is
-  // a filter rather than a highlight: it survives the mouse leaving, it takes
-  // several at once, and while anything is latched, hovering stops moving it,
-  // so a chart you have narrowed down stays narrowed while you read it.
-  const [latched, setLatched] = useState<Set<string>>(new Set());
-  const toggleLatch = (id: string | null) => {
-    if (!id) return;
-    setLatched(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const highlight = latched.size > 0 ? null : hovered;
+  // whole view is per-room averages. Hover, latch and the resolved highlight
+  // all live in useSeriesSelection; see that file for why they are separate.
+  const { setHovered, latched, toggleLatch, highlight } = useSeriesSelection();
 
   const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;

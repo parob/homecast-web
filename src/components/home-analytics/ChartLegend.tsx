@@ -54,23 +54,20 @@ function Dot({
   // Every entry is a chip. The old bare dot-and-label key read as a caption
   // rather than as a set of things, and it sat next to a chip row that said
   // the same names in a better shape — so the chips won and the caption went.
-  return (
-    <span
-      role={onToggle ? 'button' : undefined}
-      tabIndex={onToggle ? 0 : undefined}
-      aria-pressed={onToggle ? !!latched : undefined}
-      className={`group inline-flex min-w-0 items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 transition-opacity ${
-        onToggle ? 'cursor-pointer' : ''
-      } ${latched ? 'ring-2 ring-primary/60 ring-offset-1 ring-offset-background' : ''} ${
-        dim ? 'opacity-35' : 'opacity-100'
-      }`}
-      onMouseEnter={onHighlight ? () => onHighlight([entry.key]) : undefined}
-      onMouseLeave={onHighlight ? () => onHighlight(null) : undefined}
-      onClick={onToggle ? () => onToggle(entry.key) : undefined}
-      onKeyDown={onToggle ? (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(entry.key); }
-      } : undefined}
-    >
+  //
+  // A real <button>, not a span wearing role="button". WebKit does not move
+  // focus to a button on tap, but it does to a [tabindex] span — and this chip
+  // had no focus styling at all, so the user agent drew its own ring, in the
+  // same blue and at the same radius as the latch ring below, and left it there
+  // until you tapped something else. A button also joins the PRESSABLE list in
+  // main.tsx, so a tapped chip finally acknowledges the tap, and it brings
+  // Enter/Space activation with it.
+  const shell = `group inline-flex min-w-0 items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-left transition-opacity ${
+    latched ? 'ring-2 ring-primary/60 ring-offset-1 ring-offset-background' : ''
+  } ${dim ? 'opacity-35' : 'opacity-100'}`;
+
+  const body = (
+    <>
       <span
         className="inline-block h-2 w-2 rounded-full shrink-0"
         style={{
@@ -83,7 +80,30 @@ function Dot({
       <span className="whitespace-normal break-words">
         {short ? (entry.shortLabel ?? entry.label) : entry.label}
       </span>
-    </span>
+    </>
+  );
+
+  const hover = {
+    onMouseEnter: onHighlight ? () => onHighlight([entry.key]) : undefined,
+    onMouseLeave: onHighlight ? () => onHighlight(null) : undefined,
+  };
+
+  // Nothing to toggle: a plain label, and not focusable.
+  if (!onToggle) return <span className={shell} {...hover}>{body}</span>;
+
+  return (
+    <button
+      type="button"
+      aria-pressed={!!latched}
+      // The latch owns ring-*, so focus is drawn with outline — a separate
+      // property, in a different colour at a different offset, so a chip that
+      // is both focused and latched shows two marks you can tell apart.
+      className={`${shell} cursor-pointer outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground`}
+      onClick={() => onToggle(entry.key)}
+      {...hover}
+    >
+      {body}
+    </button>
   );
 }
 
