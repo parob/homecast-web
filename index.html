@@ -18,14 +18,27 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"></noscript>
     <title>Homecast</title>
 
+    <!--
+      The icons below are generated from the one vector master — see brand/build.mjs.
+      Until now index.html declared no favicon at all (browsers fell back to an
+      implicit /favicon.ico fetch), no apple-touch-icon, and no og:image despite
+      advertising summary_large_image, which rendered every share as a blank card.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
     <meta name="description" content="Give Android, Windows, and web users access to your Apple HomeKit smart home" />
     <meta name="author" content="Homecast" />
 
     <meta property="og:title" content="Homecast" />
     <meta property="og:description" content="Give Android, Windows, and web users access to your Apple HomeKit smart home" />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://homecast.cloud/og-image.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://homecast.cloud/og-image.png" />
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3529699450676628" crossorigin="anonymous"></script>
     <!-- Google Analytics (Consent Mode v2) -->
     <script>
