@@ -27,6 +27,14 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
  * A hidden section's pill is the exception: there is nothing to open, since the
  * section itself does not render while hidden, so the whole pill turns it back on.
  */
+/**
+ * One shell for both states, so a pill does not change size as you hide and show
+ * it. The padding lives here rather than on whatever each variant happens to put
+ * inside — that is what made the hidden one 8px taller, and a row that jumps
+ * under your thumb as you use it is the wrong thing to have built.
+ */
+const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-xs font-medium transition-colors';
+
 export function SummarySectionEditPills({
   layout, isDarkBackground, openSection, onToggleOpen, onToggleHidden,
 }: {
@@ -48,8 +56,7 @@ export function SummarySectionEditPills({
           return (
             <span
               key={id}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-xs font-medium',
+              className={cn(SHELL,
                 isDarkBackground ? 'bg-black/25 text-white/40' : 'bg-muted text-muted-foreground/50',
               )}
             >
@@ -67,18 +74,19 @@ export function SummarySectionEditPills({
         return (
           <span
             key={id}
-            className={cn(
-              'inline-flex items-center rounded-full text-xs font-medium transition-colors',
+            className={cn(SHELL,
               isDarkBackground
                 ? (open ? 'bg-white/25 text-white' : 'bg-black/25 text-white/90')
                 : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'),
             )}
           >
+            {/* self-stretch so the label's target still covers the pill's full
+                height — the padding lives on the shell now, not in here. */}
             <button
               type="button"
               aria-expanded={open}
               onClick={() => onToggleOpen(id)}
-              className="inline-flex items-center gap-1.5 rounded-l-full py-1 pl-2.5 pr-1"
+              className="inline-flex items-center gap-1.5 self-stretch"
             >
               <span>{label}</span>
               <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
@@ -89,7 +97,6 @@ export function SummarySectionEditPills({
               ariaLabel={`Hide ${label}`}
               onClick={() => onToggleHidden(id, false)}
             />
-            <span className="w-1" />
           </span>
         );
       })}

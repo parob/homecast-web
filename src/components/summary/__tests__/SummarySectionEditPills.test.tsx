@@ -90,3 +90,32 @@ describe('the edit-mode summary row', () => {
     expect(screen.getByRole('button', { name: 'Unhide Status' }).textContent).toBe('Unhide');
   });
 });
+
+describe('a pill is the same size whichever state it is in', () => {
+  it('builds both states from the same shell', () => {
+    // jsdom has no layout, so measuring heights would be theatre. The invariant
+    // that actually prevents the jump is structural: both states put their
+    // padding on the same outer shell rather than on whatever each happens to
+    // wrap inside, so assert that instead.
+    const { container: shown } = render(
+      <SummarySectionEditPills
+        layout={null} openSection={null}
+        onToggleOpen={vi.fn()} onToggleHidden={vi.fn()}
+      />,
+    );
+    const shownShell = shown.querySelector('span')!.className;
+    cleanup();
+
+    const { container: isHidden } = render(
+      <SummarySectionEditPills
+        layout={hidden('actions')} openSection={null}
+        onToggleOpen={vi.fn()} onToggleHidden={vi.fn()}
+      />,
+    );
+    const hiddenShell = isHidden.querySelector('span')!.className;
+
+    // Only the colour classes may differ between the two.
+    const box = (cls: string) => cls.split(/\s+/).filter(c => /^(py|px|pl|pr|text-xs|rounded|gap|inline-flex|items)/.test(c)).sort();
+    expect(box(hiddenShell)).toEqual(box(shownShell));
+  });
+});

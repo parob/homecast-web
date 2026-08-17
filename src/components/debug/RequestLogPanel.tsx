@@ -21,9 +21,11 @@ const DEFAULT_HEIGHT = 260;
 const MIN_HEIGHT = 120;
 /**
  * Height of the collapsed bar. Explicit rather than `auto` so the open/close can
- * animate — height does not transition to or from `auto`.
+ * animate — height does not transition to or from `auto`. Generous, because this
+ * is the only way back into the panel and it sits on the bottom edge of the
+ * screen, where a thumb is least accurate.
  */
-const COLLAPSED_HEIGHT = 40;
+const COLLAPSED_HEIGHT = 52;
 
 function statusColour(e: RequestLogEntry): string {
   if (e.kind === 'event') return 'text-sky-400';
@@ -130,11 +132,11 @@ export function RequestLogPanel() {
       className={cn(
         'shrink-0 flex flex-col overflow-hidden bg-[#0b0e14] text-white select-none',
         'transition-[height] duration-200 ease-out',
-        // Collapsed it is a bar tucked into the bottom edge: inset from the
-        // sides so it clears the screen's rounded corners, and flush to the
-        // bottom, because an inset under it just wastes the space it saved.
-        // No rounding of its own — the screen's corners are the curve here.
-        minimised ? 'mx-2 border-t border-white/10' : 'border-t border-white/10',
+        // Collapsed it is a bar across the bottom edge: full width, square, and
+        // flush — an inset one read as a floating card rather than part of the
+        // app's own chrome, and an inset underneath just wasted the space the
+        // collapse had saved.
+        'border-t border-white/10',
       )}
       style={{ height: minimised ? COLLAPSED_HEIGHT : height }}
     >
