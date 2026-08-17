@@ -57,7 +57,11 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary, StatusPill } from '@/components/summary';
 import { ActionsPill, ActionsSection } from '@/components/actions/ActionsSection';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
-import { isSummarySectionVisible, withHomeActionVisibility, type HomeActionId } from '@/lib/summary-sections';
+import {
+  isSummarySectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
+  type HomeActionId, type SummarySectionId,
+} from '@/lib/summary-sections';
+import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
@@ -1188,7 +1192,6 @@ const Dashboard = () => {
   const AdminHomes = _cloud?.AdminHomes ?? null;
   const AdminHomeDetail = _cloud?.AdminHomeDetail ?? null;
   const AdminSessions = _cloud?.AdminSessions ?? null;
-  const AdminWebhooks = _cloud?.AdminWebhooks ?? null;
   const AdminRelays = _cloud?.AdminRelays ?? null;
   const AdminRelayDetail = _cloud?.AdminRelayDetail ?? null;
   const AdminDeals = _cloud?.AdminDeals ?? null;
@@ -4779,6 +4782,22 @@ const Dashboard = () => {
     })).catch(() => toast.error('Could not hide that action'));
   }, [updateHomeLayout]);
 
+  /**
+   * Turn a summary section on or off from the row itself, in Edit Layout.
+   *
+   * The same per-home `hiddenSummarySections` list Settings → Home → Home Screen
+   * writes, so the two cannot disagree.
+   */
+  const handleToggleSummarySection = useCallback((id: SummarySectionId, visible: boolean) => {
+    void updateHomeLayout(prev => ({
+      ...prev,
+      visibility: {
+        ...prev?.visibility,
+        hiddenSummarySections: withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, id, visible),
+      },
+    })).catch(() => toast.error('Could not save that'));
+  }, [updateHomeLayout]);
+
   const showActions = isSummarySectionVisible(homeLayout, 'actions');
   const showScenes = isSummarySectionVisible(homeLayout, 'scenes');
   const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
@@ -5170,6 +5189,13 @@ const Dashboard = () => {
   // never enters edit mode.
   const setEditModeAndTidy = useCallback((next: boolean) => {
     setEditMode(next);
+    // Collapse the summary sections either way. On the way in, the edit row
+    // replaces the pills and opens nothing, so a section left expanded behind it
+    // has no visible control; on the way out, closed is their initial state.
+    setActionsOpen(false);
+    setScenesOpen(false);
+    setAutomationsOpen(false);
+    setStatusOpen(false);
     // Editing always shows hidden things — you cannot bring back what you cannot
     // see, and a toggle for it was one more control to misread. `getOrderedItems`
     // already sorts revealed items to the end of the grid, so they are out of the
@@ -7742,7 +7768,15 @@ const Dashboard = () => {
                     bubbles aggregate every room, so there they sit behind the
                     Status pill with the other collapsible sections. */}
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
-                  {isWholeHomeView ? (
+                  {isWholeHomeView && editingSidebar ? (
+                    /* Editing: a stand-in row that can show a hidden section as
+                       well as hide a shown one, and that opens nothing. */
+                    <SummarySectionEditPills
+                      layout={homeLayout}
+                      isDarkBackground={isDarkBackground}
+                      onToggle={handleToggleSummarySection}
+                    />
+                  ) : isWholeHomeView ? (
                     <>
                       {showActions && <ActionsPill
                         accessories={actionAccessories}
@@ -8967,7 +9001,12 @@ const Dashboard = () => {
                 {adminSubPath === '/enrollments' && (
                   <Navigate to="/portal/admin/relays?kind=cloud" replace />
                 )}
-                {adminSubPath === '/webhooks' && <AdminWebhooks />}
+                {/* Webhooks are scoped per home, so they now live on each home's
+                    detail page rather than in a category of their own. Redirect
+                    the old path — same reason as /enrollments above. */}
+                {adminSubPath === '/webhooks' && (
+                  <Navigate to="/portal/admin/homes" replace />
+                )}
 
                 {adminSubPath === '/deals' && <AdminDeals />}
                 {adminSubPath === '/deals/homekit' && <AdminHomeKit />}
