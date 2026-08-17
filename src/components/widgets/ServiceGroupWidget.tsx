@@ -24,6 +24,8 @@ import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useHistory } from '@/contexts/HistoryContext';
+import { useDeals } from '@/contexts/DealsContext';
+import { pickDominantTrackedAccessory } from '@/lib/deals';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import {
   ContextMenu,
@@ -51,6 +53,7 @@ import {
   Share2,
   Bug,
   LineChart,
+  Tag,
 } from 'lucide-react';
 
 export interface ServiceGroupWidgetProps {
@@ -395,6 +398,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Read from context, not props — same reasoning as WidgetCard's menu items.
   const { historyAvailable, openGroupHistory } = useHistory();
   const canShowHistory = accessories.some(a => historyAvailable(a));
+  // A group has no identity of its own — no manufacturer, no model — so prices
+  // are those of the product it is mostly made of. Groups had no price surface
+  // at all before this, even when every member was a product we track.
+  const { isTracked, openPriceHistory } = useDeals();
+  const priceMember = useMemo(
+    () => pickDominantTrackedAccessory(accessories, isTracked),
+    [accessories, isTracked],
+  );
   const pins = usePinnedTabs();
   // On touch, hiding is Edit Layout's job — see WidgetCard.
   const { touchMode } = useLayoutEdit();
@@ -764,6 +775,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   if (canShowHistory) {
     groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group) });
   }
+  if (priceMember) {
+    groupActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
+  }
   if (onShare) {
     groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
   }
@@ -1044,6 +1058,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 <ContextMenuItem onClick={() => openGroupHistory(group)}>
                   <LineChart className="h-4 w-4 mr-2" />
                   Analytics
+                </ContextMenuItem>
+              )}
+              {priceMember && (
+                <ContextMenuItem onClick={() => openPriceHistory(priceMember)}>
+                  <Tag className="h-4 w-4 mr-2" />
+                  Price &amp; Deals
                 </ContextMenuItem>
               )}
               {onShare && (

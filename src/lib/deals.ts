@@ -55,6 +55,43 @@ export function getAccessoryIdentity(
 }
 
 /**
+ * The member of a service group whose product a price screen should show.
+ *
+ * A group is usually several of the same bulb, so "the price of this group"
+ * means that bulb's price. Count the members by identity and take the most
+ * common — the dominant product — with ties going to the first member, which is
+ * the order the group already lists them in.
+ *
+ * Only tracked members count. Three bulbs we know nothing about plus one we
+ * track should still offer prices for the one we know, rather than letting the
+ * unknown majority decide there is nothing to show.
+ */
+export function pickDominantTrackedAccessory(
+  accessories: HomeKitAccessory[],
+  isTracked: (accessory: HomeKitAccessory) => boolean,
+): HomeKitAccessory | null {
+  const byIdentity = new Map<string, { accessory: HomeKitAccessory; count: number }>();
+
+  for (const accessory of accessories) {
+    if (!isTracked(accessory)) continue;
+    const identity = getAccessoryIdentity(accessory);
+    if (!identity) continue;
+    const key = `${identity.manufacturer.toLowerCase()}|${identity.model.toLowerCase()}`;
+    const seen = byIdentity.get(key);
+    if (seen) seen.count += 1;
+    else byIdentity.set(key, { accessory, count: 1 });
+  }
+
+  let best: { accessory: HomeKitAccessory; count: number } | null = null;
+  // A Map iterates in insertion order and this is a strict >, so a tie keeps
+  // whichever product appeared first.
+  for (const entry of byIdentity.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  return best?.accessory ?? null;
+}
+
+/**
  * Calculate per-unit deal price for comparison.
  *
  * Returns Infinity for a price we can't read, so an unparseable deal loses

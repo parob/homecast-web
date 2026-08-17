@@ -1,9 +1,9 @@
-import { LineChart, Pencil, Share2 } from 'lucide-react';
+import { LineChart, Pencil, Share2, Tag } from 'lucide-react';
 
 /**
  * The action row in an expanded widget panel: small round icon buttons in
- * the corner — analytics, edit, share — rather than a full-width bar or a
- * header icon.
+ * the corner — analytics, prices, edit, share — rather than a full-width bar
+ * or a header icon.
  *
  * A header icon competed with the widget's own control for the top-right
  * slot; a full-width bar shouted louder than the controls above it. A
@@ -17,13 +17,17 @@ import { LineChart, Pencil, Share2 } from 'lucide-react';
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'edit' | 'share';
+  icon: 'analytics' | 'prices' | 'edit' | 'share';
   label: string;
   onClick: () => void;
 }
 
+// `prices` takes the same Tag as the context menu's Price & Deals item — the
+// cluster and the menu offer the same actions and should be recognisable as
+// each other.
 const ICONS = {
   analytics: LineChart,
+  prices: Tag,
   edit: Pencil,
   share: Share2,
 } as const;

@@ -199,6 +199,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const interactionCtx = useContext(WidgetInteractionContext);
   const { historyAvailable, openHistory } = useHistory();
   const canShowHistory = !!accessory && historyAvailable(accessory);
+  // Read from context rather than adding a prop: there are 28 widget
+  // components forwarding WidgetProps, and threading one through all of them
+  // is how the last menu item ended up wired in exactly one place. It also
+  // keeps the item off AccessoryWidget's hand-written memo comparator, where a
+  // forgotten prop silently stops the tile re-rendering.
+  const { isTracked, openPriceHistory } = useDeals();
+  const canShowPrices = !!accessory && isTracked(accessory);
   // WidgetWrapper's own rule: an ON tile takes a pale accent fill and needs
   // dark ink; only an OFF tile over a dark wallpaper goes white.
   const { isDarkBackground: tileOnDarkWallpaper } = useBackgroundContext();
@@ -521,6 +528,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (canShowHistory && accessory) {
     expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });
   }
+  // Next to Analytics, ahead of edit and share: both are for reading about the
+  // accessory, and the deal badge only ever appears on the collapsed tile — so
+  // without this the expanded panel offered no way to prices but a right-click.
+  if (canShowPrices && accessory) {
+    expandedActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(accessory) });
+  }
   if (effectiveOnEdit) {
     expandedActions.push({ key: 'edit', icon: 'edit', label: editLabel || 'Edit', onClick: effectiveOnEdit });
   }
@@ -639,14 +652,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Wrap with context menu if we have characteristics, location info, or actions to show
   // Context menu appears on right-click (desktop) or long-press (touch)
-  // Read from context rather than adding a prop: there are 28 widget
-  // components forwarding WidgetProps, and threading one through all of them
-  // is how the last menu item ended up wired in exactly one place.
-  const { isTracked, openPriceHistory } = useDeals();
-  const canShowPrices = !!accessory && isTracked(accessory);
-  // Same reasoning as the comment above: by context, not by prop. It also keeps
-  // the item off AccessoryWidget's hand-written memo comparator, where a
-  // forgotten prop silently stops the tile re-rendering.
+  // By context, not by prop — same reasoning as useDeals above.
   const pins = usePinnedTabs();
   const canPin = pins.enabled && !!accessory;
   // On touch, hiding is Edit Layout's job — the tile carries a ⊘ badge there, so

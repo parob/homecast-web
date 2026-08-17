@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { atlIsMeaningful, findDealForAccessory, getAccessoryIdentity } from '../deals';
+import { atlIsMeaningful, findDealForAccessory, getAccessoryIdentity, pickDominantTrackedAccessory } from '../deals';
 import type { DealInfo, HomeKitAccessory } from '../graphql/types';
 
 function accessory(manufacturer: string, model: string, name = 'Bulb'): HomeKitAccessory {
@@ -163,5 +163,70 @@ describe('atlIsMeaningful', () => {
     expect(atlIsMeaningful(8)).toBe(true);
     expect(atlIsMeaningful(null)).toBe(false);
     expect(atlIsMeaningful(undefined)).toBe(false);
+  });
+});
+
+describe('pickDominantTrackedAccessory', () => {
+  // A service group is usually several of the same product, so "the group's
+  // price" is that product's price.
+  const tracked = (models: string[]) => (a: HomeKitAccessory) => {
+    const id = getAccessoryIdentity(a);
+    return !!id && models.includes(id.model);
+  };
+
+  it('picks the product the group is mostly made of', () => {
+    const members = [
+      accessory('Signify', 'LWA001', 'Bulb 1'),
+      accessory('LIFX', 'LIFXA19', 'Odd one out'),
+      accessory('Signify', 'LWA001', 'Bulb 2'),
+      accessory('Signify', 'LWA001', 'Bulb 3'),
+    ];
+    const pick = pickDominantTrackedAccessory(members, tracked(['LWA001', 'LIFXA19']));
+    expect(pick?.name).toBe('Bulb 1');
+  });
+
+  it('ignores members we do not track, however many of them there are', () => {
+    const members = [
+      accessory('Acme', 'UNKNOWN1', 'Mystery 1'),
+      accessory('Acme', 'UNKNOWN1', 'Mystery 2'),
+      accessory('Acme', 'UNKNOWN1', 'Mystery 3'),
+      accessory('Signify', 'LWA001', 'The one we know'),
+    ];
+    const pick = pickDominantTrackedAccessory(members, tracked(['LWA001']));
+    expect(pick?.name).toBe('The one we know');
+  });
+
+  it('breaks a tie on member order, so the panel does not change its mind', () => {
+    const members = [
+      accessory('Signify', 'LWA001', 'First'),
+      accessory('LIFX', 'LIFXA19', 'Second'),
+    ];
+    const models = ['LWA001', 'LIFXA19'];
+    expect(pickDominantTrackedAccessory(members, tracked(models))?.name).toBe('First');
+    expect(pickDominantTrackedAccessory([...members].reverse(), tracked(models))?.name).toBe('Second');
+  });
+
+  it('matches identity case-insensitively, so casing drift cannot split a count', () => {
+    const members = [
+      accessory('Signify', 'LWA001', 'Bulb 1'),
+      accessory('signify', 'lwa001', 'Bulb 2'),
+      accessory('LIFX', 'LIFXA19', 'Strip'),
+    ];
+    const pick = pickDominantTrackedAccessory(members, tracked(['LWA001', 'lwa001', 'LIFXA19']));
+    expect(pick?.name).toBe('Bulb 1');
+  });
+
+  it('offers nothing for a group with no tracked member, and for an empty group', () => {
+    expect(pickDominantTrackedAccessory([accessory('Acme', 'UNKNOWN1')], tracked([]))).toBeNull();
+    expect(pickDominantTrackedAccessory([], tracked(['LWA001']))).toBeNull();
+  });
+
+  it('skips a member with no manufacturer or model at all', () => {
+    const nameless = { id: 'x', name: 'Nameless', services: [] } as unknown as HomeKitAccessory;
+    const pick = pickDominantTrackedAccessory(
+      [nameless, accessory('Signify', 'LWA001', 'Bulb')],
+      () => true,
+    );
+    expect(pick?.name).toBe('Bulb');
   });
 });
