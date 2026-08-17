@@ -14,6 +14,7 @@ import {
 } from '../server/local-activity';
 import { describeError } from '../lib/describe-error';
 import { canonicalCharacteristic } from '../lib/characteristic-aliases';
+import { bumpTelemetry } from '../server/local-telemetry';
 
 /** Distinguishes requests started within the same millisecond. */
 let activitySeq = 0;
@@ -248,6 +249,15 @@ export async function executeHomeKitAction(
    */
   origin: 'local' | 'cloud' = 'local',
 ): Promise<unknown> {
+  // Same funnel, same reasoning: counted here rather than in the switch so a
+  // new write action cannot be added without being counted. Counts only — the
+  // accessory, the value and the scene never leave this line.
+  if (action === 'characteristic.set' || action === 'state.set') {
+    bumpTelemetry('characteristicWrites');
+  } else if (action === 'scene.execute') {
+    bumpTelemetry('sceneRuns');
+  }
+
   // Every relay action funnels through here, so this is the one place the
   // socket lane needs tapping. Wrapped rather than sprinkled through the switch:
   // a new action gets its timing for free, and cannot be added without it.

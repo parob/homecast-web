@@ -121,6 +121,12 @@ export function initLocalServer(): void {
   // Load auth-enabled flag from IndexedDB
   refreshAuthEnabled();
 
+  // Anonymous usage reporting. Started here rather than in main.tsx because
+  // this is the one point that has already established the relay gate — a
+  // phone, a LAN browser and a Mac in client mode all return above, so a
+  // household reports once instead of once per device.
+  void import('./local-telemetry').then(m => m.initTelemetry());
+
   // Community mode has no ServerWebSocket, so nothing else starts the automation
   // engine here. Without this, Homecast automations are stored but never run.
   // Imported lazily to keep the engine out of the main bundle for the browser

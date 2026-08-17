@@ -863,6 +863,63 @@ export const GET_APP_INSTALLS = gql`
   }
 `;
 
+/**
+ * Community Edition fleet stats.
+ *
+ * Community relays have no account, so nothing here joins to a user — every
+ * field is a count or a label, and `installPrefix` is eight characters of a
+ * random id, present only so two rows on the table can be told apart.
+ */
+export const GET_COMMUNITY_TELEMETRY = gql`
+  query GetCommunityTelemetry($days: Int) {
+    communityTelemetry(days: $days) {
+      kpis {
+        activeInstalls
+        activeInstalls7d
+        activeInstalls24h
+        newInstalls
+        totalHomes
+        totalAccessories
+        totalClients
+        medianAccessories
+        p90Accessories
+        p99Accessories
+        maxAccessories
+        actionsPerDay
+        reportedTodayPercent
+      }
+      daily {
+        date
+        activeInstalls
+        newInstalls
+        totalAccessories
+        totalClients
+        actionsPerDay
+        complete
+      }
+      versions { label value percent }
+      platforms { label value percent }
+      categories { label value percent }
+      features { label value percent }
+      clientKinds { label value percent }
+      accessoryBuckets { label value percent }
+      usage { label value percent }
+      largest {
+        installPrefix
+        appVersion
+        homes
+        rooms
+        accessories
+        automations
+        clients
+        actionsPerDay
+        ageDays
+        lastSeen
+      }
+    }
+  }
+`;
+
 export const GET_COSTS_AND_REVENUE = gql`
   query GetCostsAndRevenue($days: Int) {
     costsAndRevenue(days: $days) {

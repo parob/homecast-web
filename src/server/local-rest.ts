@@ -274,7 +274,9 @@ export function formatValue(value: any, simpleName: string): any {
   return value;
 }
 
-function getDeviceType(accessory: any): string {
+/** Exported for the anonymous usage census in `local-telemetry.ts`, so the
+ *  fleet's category mix is classified exactly the way `/rest/state` is. */
+export function getDeviceType(accessory: any): string {
   const services = (accessory.services || []).map((s: any) => (s.serviceType || '').toLowerCase());
   const category = (accessory.category || '').toLowerCase();
   if (services.includes('lightbulb')) return 'light';

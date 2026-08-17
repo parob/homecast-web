@@ -2268,6 +2268,78 @@ export interface CostRevenueResponse {
   costsAndRevenue: CostRevenueData;
 }
 
+// ---- Community Edition telemetry ----
+
+/** One bar in a distribution: a version, platform, category or feature. */
+export interface CommunityLabelledCount {
+  label: string;
+  value: number;
+  /** Share of the fleet, 0-100. */
+  percent: number;
+}
+
+export interface CommunityDailyPoint {
+  date: string;
+  activeInstalls: number;
+  newInstalls: number;
+  totalAccessories: number;
+  totalClients: number;
+  actionsPerDay: number;
+  /**
+   * False for the current day. Relays report once a day at an install-specific
+   * time, so the newest point always has only part of the fleet in it.
+   */
+  complete: boolean;
+}
+
+export interface CommunityKPIs {
+  activeInstalls: number;
+  activeInstalls7d: number;
+  activeInstalls24h: number;
+  newInstalls: number;
+  totalHomes: number;
+  totalAccessories: number;
+  totalClients: number;
+  medianAccessories: number;
+  p90Accessories: number;
+  p99Accessories: number;
+  maxAccessories: number;
+  actionsPerDay: number;
+  /** Share of known installs that have reported today, 0-100. */
+  reportedTodayPercent: number;
+}
+
+export interface CommunityDeployment {
+  /** Eight characters of a random install id — enough to tell rows apart. */
+  installPrefix: string;
+  appVersion: string;
+  homes: number;
+  rooms: number;
+  accessories: number;
+  automations: number;
+  clients: number;
+  actionsPerDay: number;
+  ageDays: number;
+  lastSeen: string;
+}
+
+export interface CommunityTelemetryData {
+  kpis: CommunityKPIs;
+  daily: CommunityDailyPoint[];
+  versions: CommunityLabelledCount[];
+  platforms: CommunityLabelledCount[];
+  categories: CommunityLabelledCount[];
+  features: CommunityLabelledCount[];
+  clientKinds: CommunityLabelledCount[];
+  accessoryBuckets: CommunityLabelledCount[];
+  usage: CommunityLabelledCount[];
+  largest: CommunityDeployment[];
+}
+
+export interface CommunityTelemetryResponse {
+  communityTelemetry: CommunityTelemetryData;
+}
+
 // ---- Push Notifications ----
 
 export interface NotificationMuteInfo {

@@ -6,6 +6,10 @@
  * for Community mode.
  */
 
+// Safe to import statically: local-telemetry is a leaf module with no static
+// imports of its own, so this cannot close a cycle back into here.
+import { bumpTelemetry } from './local-telemetry';
+
 const DB_NAME = 'homecast-local';
 const DB_VERSION = 9; // v9: added history_series, history_samples, history_rollups
 
@@ -674,6 +678,14 @@ interface StoredTrace {
 }
 
 export async function saveExecutionTrace(trace: StoredTrace): Promise<void> {
+  // Every automation run lands here exactly once, which makes this the cheap
+  // place to count them — the alternative is scanning this store by timestamp,
+  // and it has no index for that. Counts only; the trace itself never leaves.
+  bumpTelemetry('automationRuns');
+  if (trace.status === 'error' || trace.status === 'failed') {
+    bumpTelemetry('automationErrors');
+  }
+
   await put('execution_traces', trace);
 
   // Prune old traces — keep last MAX_TRACES_PER_AUTOMATION per automation

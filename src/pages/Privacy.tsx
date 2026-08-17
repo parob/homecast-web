@@ -80,6 +80,30 @@ const Privacy = () => {
                   <li>Performance metrics</li>
                 </ul>
 
+                <h3 className="text-base font-medium mt-4 mb-2">Community Edition Usage Statistics</h3>
+                <p className="text-muted-foreground leading-relaxed mb-2">
+                  The Community Edition runs entirely on your own Mac and has no account. So that we know
+                  how it is being used and which app versions are still in the field, a Community relay
+                  sends us one anonymous report every 24 hours. It contains <strong className="text-foreground">counts only</strong>:
+                </p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4">
+                  <li>A random identifier generated on your Mac, not linked to you or any account</li>
+                  <li>App version, build, platform, OS version and locale</li>
+                  <li>How many homes, rooms, accessories, scenes, automations and users the relay serves</li>
+                  <li>How many accessories of each broad type (lights, switches, sensors, and so on)</li>
+                  <li>Which features are switched on (login required, MQTT, History, automations)</li>
+                  <li>How many client devices connected, and of what kind (browser, iOS, Home Assistant…)</li>
+                  <li>How many requests, device changes, scene runs and automation runs occurred</li>
+                </ul>
+                <p className="text-muted-foreground leading-relaxed mt-2">
+                  It never contains the names of your homes, rooms, accessories or scenes, any accessory
+                  identifier, any sensor reading or accessory state, the contents of your automations,
+                  your IP address, your hostname, or anything about the people who use the relay. The
+                  counts above are counts of your accessories, not data about them — nothing in this
+                  report describes what any accessory is or what it did. Reports are kept for 400 days.
+                  The reporting code is open source and can be read in full in the Homecast repository.
+                </p>
+
                 <h3 className="text-base font-medium mt-4 mb-2">Log Data</h3>
                 <p className="text-muted-foreground leading-relaxed mb-2">Our servers automatically collect:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4">
