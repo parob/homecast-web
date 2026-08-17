@@ -54,6 +54,13 @@ const RESIZE_GRACE_MS = 600;
 // If a resize leaves the pointer outside and it never comes back, the panel
 // should not sit there indefinitely.
 const RESIZE_ABANDON_MS = 5000;
+// How long to keep watching for the click belonging to the pointerdown that
+// dismissed the overlay. A pointerdown does not always produce one — a drag, a
+// cancelled touch, a secondary button — so the wait has to give up.
+const DISMISS_CLICK_GRACE_MS = 400;
+// How long a press may be held before its release is written off entirely. Only
+// reached when no pointerup or pointercancel ever arrives.
+const DISMISS_HOLD_MAX_MS = 10000;
 
 // Calculate overlay position and coordinates based on parent element.
 // The overlay is top-aligned with the trigger so it always opens downward from
@@ -197,6 +204,65 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     };
   }, [shouldRender]);
 
+  // The scrim swallows the POINTERDOWN, but a widget expands on CLICK — and the
+  // click has not been dispatched yet. By the time it is, the scrim has gone
+  // inert for its close animation and is no longer in the hit test.
+  //
+  // On a desktop browser that is usually survivable: the click target is the
+  // common ancestor of the pointerdown and pointerup targets, so it lands on
+  // <body> and no widget hears it. WebKit on iOS does not work that way — it
+  // hit-tests the touch point at touchend — so the tile underneath receives the
+  // click and expands. Which is why this reproduced on a phone and not at a desk.
+  //
+  // So the dismissal consumes its own gesture: swallow exactly the one click
+  // that its pointerdown is about to produce. This lives at component scope
+  // rather than inside the dismissal effect below because onClose() flips
+  // isExpanded, which tears that effect down in a microtask — long before the
+  // click lands. It is a document listener rather than a handler on the scrim
+  // for the same reason the scrim cannot do it: a nested overlay draws no scrim
+  // of its own, and it has the same tap to spend.
+  const swallowTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const swallowClick = useCallback((ev: MouseEvent) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    if (swallowTimerRef.current) clearTimeout(swallowTimerRef.current);
+    swallowTimerRef.current = undefined;
+  }, []);
+  // The click belongs to the pointer's RELEASE, not its press. Timing the grace
+  // period from the press means a finger that rests for a beat before lifting
+  // outlives it, and its click reaches the tile after all — the same bug again,
+  // at the speed of an unhurried tap. So the short grace runs from the release,
+  // and the press only arms a long backstop for the gesture that never ends
+  // (a cancelled touch, a pointer captured elsewhere). That backstop can afford
+  // to be generous: while the pointer is still down no other click can happen,
+  // so a swallow waiting through it has nothing of anyone else's to eat.
+  const startSwallowTimer = useCallback((ms: number) => {
+    if (swallowTimerRef.current) clearTimeout(swallowTimerRef.current);
+    swallowTimerRef.current = setTimeout(() => disarmClickSwallowRef.current(), ms);
+  }, []);
+  const onSwallowRelease = useCallback(() => {
+    startSwallowTimer(DISMISS_CLICK_GRACE_MS);
+  }, [startSwallowTimer]);
+  const disarmClickSwallow = useCallback(() => {
+    document.removeEventListener('click', swallowClick, true);
+    document.removeEventListener('pointerup', onSwallowRelease, true);
+    document.removeEventListener('pointercancel', onSwallowRelease, true);
+    if (swallowTimerRef.current) clearTimeout(swallowTimerRef.current);
+    swallowTimerRef.current = undefined;
+  }, [swallowClick, onSwallowRelease]);
+  // The timer is armed before disarmClickSwallow exists, so it reaches the
+  // current one through a ref rather than capturing a stale closure.
+  const disarmClickSwallowRef = useRef(disarmClickSwallow);
+  useEffect(() => { disarmClickSwallowRef.current = disarmClickSwallow; });
+  const armClickSwallow = useCallback(() => {
+    document.addEventListener('click', swallowClick, { capture: true, once: true });
+    document.addEventListener('pointerup', onSwallowRelease, { capture: true, once: true });
+    document.addEventListener('pointercancel', onSwallowRelease, { capture: true, once: true });
+    startSwallowTimer(DISMISS_HOLD_MAX_MS);
+  }, [swallowClick, onSwallowRelease, startSwallowTimer]);
+  // Unmount only. Anything shorter-lived defeats the point.
+  useEffect(() => disarmClickSwallow, [disarmClickSwallow]);
+
   // Dismiss when tapping outside the overlay, or when scrolling past a
   // threshold. Needed for touch/compact mode where there's no mouse-leave to
   // trigger a collapse. The overlay is position:fixed, so any scroll would
@@ -217,7 +283,9 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     };
 
     const handlePointerDown = (e: PointerEvent) => {
-      if (!isInsideOverlay(e.target)) onClose();
+      if (isInsideOverlay(e.target)) return;
+      onClose();
+      armClickSwallow();
     };
 
     const SCROLL_THRESHOLD = 40;
@@ -247,7 +315,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       document.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [isExpanded, onClose]);
+  }, [isExpanded, onClose, armClickSwallow]);
 
   // Handle mouse leave - call immediately
   // Is the pointer genuinely away from both the panel and the tile it came from?
