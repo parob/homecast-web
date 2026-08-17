@@ -1,47 +1,79 @@
 // @vitest-environment jsdom
 //
-// The edit-mode summary row. Its whole reason to exist is the one thing the live
-// pills cannot do: offer a hidden section back. A hidden pill does not render,
-// and the live pills also hide themselves when they have nothing to show — both
-// correct in normal use, both a one-way door in an editor.
+// The edit-mode summary row exists for the one thing the live pills cannot do:
+// offer a hidden section back. A hidden pill does not render, and the live pills
+// also hide themselves when they have nothing to show — both correct in normal
+// use, both a one-way door in an editor.
+//
+// It must not take the pills' normal job away in exchange. Each still opens and
+// closes its section; hiding is a second target beside it.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { SummarySectionEditPills } from '../SummarySectionEditPills';
 import type { HomeLayoutData } from '@/hooks/useEntityLayout';
+import type { SummarySectionId } from '@/lib/summary-sections';
 
 afterEach(cleanup);
 
-function setup(layout: HomeLayoutData | null = null) {
-  const onToggle = vi.fn();
-  render(<SummarySectionEditPills layout={layout} onToggle={onToggle} />);
-  return onToggle;
+function setup(layout: HomeLayoutData | null = null, openSection: SummarySectionId | null = null) {
+  const onToggleOpen = vi.fn();
+  const onToggleHidden = vi.fn();
+  render(
+    <SummarySectionEditPills
+      layout={layout}
+      openSection={openSection}
+      onToggleOpen={onToggleOpen}
+      onToggleHidden={onToggleHidden}
+    />,
+  );
+  return { onToggleOpen, onToggleHidden };
 }
 
-describe('the edit-mode summary row', () => {
-  it('shows every section, including the ones that are hidden', () => {
-    setup({ visibility: { hiddenSummarySections: ['scenes', 'status'] } });
+const hidden = (...ids: SummarySectionId[]): HomeLayoutData =>
+  ({ visibility: { hiddenSummarySections: ids } });
 
-    // All four present — a hidden one you cannot see is one you cannot restore.
+describe('the edit-mode summary row', () => {
+  it('shows every section, including the hidden ones', () => {
+    setup(hidden('scenes', 'status'));
     for (const label of ['Actions', 'Scenes', 'Automations', 'Status']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
 
-  it('offers Hide for a shown section and Show for a hidden one', () => {
-    setup({ visibility: { hiddenSummarySections: ['scenes'] } });
+  it('still opens and closes a section — editing does not freeze the row', () => {
+    const { onToggleOpen, onToggleHidden } = setup();
 
-    expect(screen.getByRole('button', { name: 'Hide Actions' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Show Scenes' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { expanded: false, name: /Actions/ }));
+    expect(onToggleOpen).toHaveBeenCalledWith('actions');
+    // Opening is not hiding.
+    expect(onToggleHidden).not.toHaveBeenCalled();
   });
 
-  it('asks for the opposite of the current state', () => {
-    const onToggle = setup({ visibility: { hiddenSummarySections: ['scenes'] } });
+  it('reflects which section is open', () => {
+    setup(null, 'scenes');
+    const opened = screen.getAllByRole('button', { expanded: true });
+    expect(opened).toHaveLength(1);
+    expect(opened[0].textContent).toContain('Scenes');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Actions' }));
-    expect(onToggle).toHaveBeenLastCalledWith('actions', false);
+  it('hides a shown section from its own eye, without opening it', () => {
+    const { onToggleOpen, onToggleHidden } = setup();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Scenes' }));
-    expect(onToggle).toHaveBeenLastCalledWith('scenes', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Automations' }));
+    expect(onToggleHidden).toHaveBeenCalledWith('automations', false);
+    expect(onToggleOpen).not.toHaveBeenCalled();
+  });
+
+  it('turns a hidden section back on, and offers nothing to expand', () => {
+    const { onToggleOpen, onToggleHidden } = setup(hidden('scenes'));
+
+    // Nothing to open: the section does not render while hidden, so there is no
+    // expand target that would do nothing.
+    expect(screen.queryByRole('button', { expanded: false, name: /Scenes/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unhide Scenes' }));
+    expect(onToggleHidden).toHaveBeenCalledWith('scenes', true);
+    expect(onToggleOpen).not.toHaveBeenCalled();
   });
 
   it('treats a home with no stored layout as everything shown', () => {
@@ -51,9 +83,10 @@ describe('the edit-mode summary row', () => {
     }
   });
 
-  it('reports its state to assistive tech, not just by colour', () => {
-    setup({ visibility: { hiddenSummarySections: ['status'] } });
-    expect(screen.getByRole('button', { name: 'Hide Actions' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Show Status' }).getAttribute('aria-pressed')).toBe('false');
+  it('says which way it goes in words, not by colour', () => {
+    setup(hidden('status'));
+    // The badge says which way it goes, in words, matching the tile buttons.
+    expect(screen.getByRole('button', { name: 'Hide Actions' }).textContent).toBe('Hide');
+    expect(screen.getByRole('button', { name: 'Unhide Status' }).textContent).toBe('Unhide');
   });
 });

@@ -35,13 +35,17 @@ interface ActionButtonProps {
 /**
  * Words, not glyphs.
  *
+ * Exported so the summary-row pills use this exact button rather than a lookalike
+ * — "the same style as the other hide buttons" is only true if it is the same
+ * component.
+ *
  * An eye and a pin needed a legend to explain them, which meant looking away
  * from the thing you were acting on to find out what you were about to do. One
  * word each says it outright. They are kept to a single word — "Hide", "Pin" —
  * because a compact tile is about 160px wide and has to hold two of them beside
  * the accessory's icon; the full phrasing survives as the accessible name.
  */
-function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
+export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
   return (
     <button

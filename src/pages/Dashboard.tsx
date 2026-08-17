@@ -4783,6 +4783,26 @@ const Dashboard = () => {
   }, [updateHomeLayout]);
 
   /**
+   * Which summary section is expanded, as one value. The four booleans are kept
+   * mutually exclusive by their own handlers, so this is the same state read the
+   * way the edit row needs it.
+   */
+  const openSummarySection: SummarySectionId | null =
+    actionsOpen ? 'actions'
+    : scenesOpen ? 'scenes'
+    : automationsOpen ? 'automations'
+    : statusOpen ? 'status'
+    : null;
+
+  /** Open one and close the rest — the same exclusivity the live pills enforce. */
+  const handleToggleSummaryOpen = useCallback((id: SummarySectionId) => {
+    setActionsOpen(id === 'actions' ? (o => !o) : false);
+    setScenesOpen(id === 'scenes' ? (o => !o) : false);
+    setAutomationsOpen(id === 'automations' ? (o => !o) : false);
+    setStatusOpen(id === 'status' ? (o => !o) : false);
+  }, []);
+
+  /**
    * Turn a summary section on or off from the row itself, in Edit Layout.
    *
    * The same per-home `hiddenSummarySections` list Settings → Home → Home Screen
@@ -7774,7 +7794,9 @@ const Dashboard = () => {
                     <SummarySectionEditPills
                       layout={homeLayout}
                       isDarkBackground={isDarkBackground}
-                      onToggle={handleToggleSummarySection}
+                      openSection={openSummarySection}
+                      onToggleOpen={handleToggleSummaryOpen}
+                      onToggleHidden={handleToggleSummarySection}
                     />
                   ) : isWholeHomeView ? (
                     <>

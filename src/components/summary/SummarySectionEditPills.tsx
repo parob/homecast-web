@@ -1,5 +1,6 @@
-import { Eye, EyeOff } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { EditActionButton } from '@/components/shared/EditActions';
 import {
   SUMMARY_SECTION_ORDER,
   SUMMARY_SECTION_META,
@@ -11,59 +12,85 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 /**
  * The summary row while Edit Layout is running.
  *
- * A deliberate stand-in for the four live pills rather than a flag threaded
- * through them, for two reasons:
+ * A stand-in for the four live pills rather than a flag threaded through them,
+ * because it has to do one thing they cannot: offer a *hidden* section back. A
+ * hidden section renders no pill at all, and the live pills also hide themselves
+ * when they have nothing to show — no scenes, no actions. Both are right in
+ * normal use and both are a one-way door in an editor, where the way back would
+ * otherwise be Settings.
  *
- * 1. **It has to show the hidden ones.** A hidden section does not render its
- *    pill at all, so a pill that could only hide would be a one-way door — the
- *    way back would be Settings. Editing reveals hidden things everywhere else;
- *    this keeps that promise. The live pills also each hide themselves when they
- *    have nothing to show (no scenes, no actions), which is right for normal use
- *    and wrong here: you cannot turn a section back on that refuses to draw.
- * 2. **It is inert.** These do not open anything. Expanding a section while
- *    arranging the row above it is the same mis-grab problem as a tile toggling
- *    a light, and the four live pills are mutually exclusive — opening one
- *    closes the others, which is a lot of movement under a thumb aiming at a
- *    small target.
+ * Each pill keeps its normal job. The label still opens and closes the section —
+ * you are arranging the row, not frozen out of it — and a separate eye beside it
+ * turns the section off. Two targets in one pill, which is why it is taller here
+ * than the 20px live one.
  *
- * Each pill carries its own state: solid and legible when the section is on,
- * dimmed with an eye when it is off.
+ * A hidden section's pill is the exception: there is nothing to open, since the
+ * section itself does not render while hidden, so the whole pill turns it back on.
  */
-export function SummarySectionEditPills({ layout, isDarkBackground, onToggle }: {
+export function SummarySectionEditPills({
+  layout, isDarkBackground, openSection, onToggleOpen, onToggleHidden,
+}: {
   layout: HomeLayoutData | null | undefined;
   isDarkBackground?: boolean;
-  onToggle: (id: SummarySectionId, visible: boolean) => void;
+  /** Which section is expanded. The four are mutually exclusive. */
+  openSection: SummarySectionId | null;
+  onToggleOpen: (id: SummarySectionId) => void;
+  onToggleHidden: (id: SummarySectionId, visible: boolean) => void;
 }) {
   return (
     <>
       {SUMMARY_SECTION_ORDER.map((id) => {
-        const visible = isSummarySectionVisible(layout, id);
         const label = SUMMARY_SECTION_META[id].label;
+        const visible = isSummarySectionVisible(layout, id);
+        const open = openSection === id;
+
+        if (!visible) {
+          return (
+            <span
+              key={id}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-xs font-medium',
+                isDarkBackground ? 'bg-black/25 text-white/40' : 'bg-muted text-muted-foreground/50',
+              )}
+            >
+              <span>{label}</span>
+              <EditActionButton
+                size="row"
+                label="Unhide"
+                ariaLabel={`Unhide ${label}`}
+                onClick={() => onToggleHidden(id, true)}
+              />
+            </span>
+          );
+        }
+
         return (
-          <button
+          <span
             key={id}
-            type="button"
-            aria-pressed={visible}
-            aria-label={`${visible ? 'Hide' : 'Show'} ${label}`}
-            onClick={() => onToggle(id, !visible)}
-            // Roomier than the live pill: it has a second thing in it now, and
-            // the live one is already only 20px tall.
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors',
+              'inline-flex items-center rounded-full text-xs font-medium transition-colors',
               isDarkBackground
-                ? visible
-                  ? 'bg-white/25 text-white'
-                  : 'bg-black/25 text-white/40'
-                : visible
-                  ? 'bg-primary/15 text-primary'
-                  : 'bg-muted text-muted-foreground/50',
+                ? (open ? 'bg-white/25 text-white' : 'bg-black/25 text-white/90')
+                : (open ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'),
             )}
           >
-            <span>{label}</span>
-            {visible
-              ? <EyeOff className="h-3.5 w-3.5 shrink-0" />
-              : <Eye className="h-3.5 w-3.5 shrink-0" />}
-          </button>
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => onToggleOpen(id)}
+              className="inline-flex items-center gap-1.5 rounded-l-full py-1 pl-2.5 pr-1"
+            >
+              <span>{label}</span>
+              <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
+            </button>
+            <EditActionButton
+              size="row"
+              label="Hide"
+              ariaLabel={`Hide ${label}`}
+              onClick={() => onToggleHidden(id, false)}
+            />
+            <span className="w-1" />
+          </span>
         );
       })}
     </>
