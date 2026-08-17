@@ -43,15 +43,39 @@ interface AccountSectionProps {
   setLaunchAtLogin: (value: boolean) => void;
 }
 
+/**
+ * Every operation on this screen is privileged — creating users, deleting
+ * them, changing passwords, turning authentication on and off — so all of them
+ * need the caller's token.
+ *
+ * Neither path used to send one. With authentication enabled that meant this
+ * whole screen was refused, on the relay Mac included: "Authentication
+ * required" when adding a user, and a switch that silently refused to move.
+ * The token was sitting in localStorage the entire time; nothing asked for it.
+ */
+function authHeaderToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  const token = localStorage.getItem('homecast-token');
+  return token && token !== 'community' ? token : null;
+}
+
 async function communityGraphQL(operationName: string, variables: Record<string, unknown> = {}) {
+  const token = authHeaderToken();
   if (isRelayCapable()) {
     // Relay Mac: call handleGraphQL directly — avoids HTTP round-trip through Swift bridge
     const { handleGraphQL } = await import('@/server/local-graphql');
-    return handleGraphQL({ operationName, variables });
+    return handleGraphQL({
+      operationName,
+      variables,
+      authorization: token ? `Bearer ${token}` : undefined,
+    });
   }
   const resp = await fetch(config.graphqlUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ operationName, query: '', variables }),
   });
   return resp.json();
@@ -78,6 +102,7 @@ export function AccountSection({
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [users, setUsers] = useState<CommunityUser[]>([]);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -103,7 +128,25 @@ export function AccountSection({
 
   const toggleAuth = async (enabled: boolean) => {
     setAuthEnabled(enabled);
-    await communityGraphQL('SetAuthEnabled', { enabled });
+    setAuthError('');
+    // The result was discarded, so a refused toggle looked like a toggle that
+    // simply did nothing — no error, no change, nothing to act on.
+    let result: any;
+    try {
+      result = await communityGraphQL('SetAuthEnabled', { enabled });
+    } catch (e: any) {
+      setAuthEnabled(!enabled);
+      setAuthError(e?.message || 'Could not reach the relay.');
+      return;
+    }
+    const failed = result?.errors?.[0]?.message
+      || (result?.data?.setAuthEnabled?.success === false
+          ? result.data.setAuthEnabled.error || 'Could not change this setting.'
+          : null);
+    if (failed) {
+      setAuthEnabled(!enabled); // put the switch back where it was
+      setAuthError(failed);
+    }
   };
 
   const addUser = async () => {
@@ -183,6 +226,10 @@ export function AccountSection({
             </div>
             <Switch checked={authEnabled} onCheckedChange={toggleAuth} />
           </div>
+
+          {authError && (
+            <p className="text-xs text-destructive">{authError}</p>
+          )}
 
           {authEnabled && (
             <div className="space-y-3 rounded-lg border p-3">

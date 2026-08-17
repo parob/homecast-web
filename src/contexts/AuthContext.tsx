@@ -306,9 +306,19 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
     // Retry on 503 (bridge still initializing)
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Send the token. Without it, every mutation an external client makes
+        // — creating a user, turning auth off — arrives unauthenticated and is
+        // refused, however correctly the client just signed in.
+        const clientToken =
+          typeof localStorage !== 'undefined' ? localStorage.getItem('homecast-token') : null;
         const res = await fetch(config.graphqlUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(clientToken && clientToken !== 'community'
+              ? { Authorization: `Bearer ${clientToken}` }
+              : {}),
+          },
           body: JSON.stringify({ operationName, query: '', variables }),
         });
         console.log(`[communityGraphQL] ${operationName} attempt ${attempt + 1}: HTTP ${res.status}`);
