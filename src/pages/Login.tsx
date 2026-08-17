@@ -62,6 +62,11 @@ const Login = () => {
   // Auth is on but the relay has no accounts. Nobody can sign in, so the form
   // has to create the first account rather than ask for one that cannot exist.
   const [needsOwner, setNeedsOwner] = useState(false);
+  // Whether the relay has answered at all. Until it has, we do not know
+  // whether a password is even wanted — and showing a sign-in form on that
+  // guess is how an unreachable relay came to look like one demanding
+  // credentials, for twenty seconds, before admitting it was unreachable.
+  const [relayKnown, setRelayKnown] = useState(false);
 
   const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
   const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp || !!(window as any).isHomecastAndroidApp;
@@ -108,6 +113,7 @@ const Login = () => {
           const result = await r.json();
           const relayReady = result?.data?.relayReady ?? false;
           if (relayReady) {
+            setRelayKnown(true);
             setNeedsOwner(
               (result?.data?.authEnabled ?? false) && !(result?.data?.isOnboarded ?? true),
             );
@@ -372,6 +378,24 @@ const Login = () => {
           </>
 
         /* --- Community: Auth-enabled login form --- */
+        /* --- Community: still asking the relay what it wants --- */
+        ) : isCommunity && !relayKnown ? (
+          <>
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Connecting…</CardTitle>
+              <CardDescription className="mt-2">
+                {/* The address is the diagnostic: if it names this device
+                    rather than the relay, the app is talking to itself. */}
+                <span className="font-mono text-foreground block mb-1">
+                  {getRelayAddress() || config.apiUrl}
+                </span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center pb-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </CardContent>
+          </>
+
         ) : isCommunity ? (
           <>
             <CardHeader className="text-center">
