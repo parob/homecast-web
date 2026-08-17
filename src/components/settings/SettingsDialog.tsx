@@ -221,7 +221,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
       items.push({ id: 'webhooks', label: 'Webhooks', group: 'Developer', icon: Webhook });
     }
 
-    if (isRelayCapable() && SelfHostedRelaySection) {
+    // Cloud only. A self-hosted relay is a Mac relaying HomeKit *to Homecast*,
+    // which is not a thing that happens in Community mode — there the Mac
+    // serves your network directly and nothing leaves it. The pane showed
+    // regardless, offering to "use this Mac as a relay to Homecast" on a
+    // relay that does no such thing.
+    if (!isCommunity && isRelayCapable() && SelfHostedRelaySection) {
       items.push({ id: 'self-hosted-relay', label: 'Relay', group: 'Device', icon: Cloud });
     }
 
@@ -539,7 +544,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
         );
       }
       case 'self-hosted-relay':
-        return SelfHostedRelaySection ? (
+        // Not just "is the component present" — a Community build that happens
+        // to have the cloud package compiled in would otherwise render it.
+        return !isCommunity && SelfHostedRelaySection ? (
           <SelfHostedRelaySection
             accountType={props.accountType}
           />
