@@ -19,6 +19,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2, BookOpen } from 'lucide-react';
 import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
+import { toast } from '@/hooks/use-toast';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
 
 interface CommunityUser {
@@ -102,7 +103,6 @@ export function AccountSection({
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
   const [authEnabled, setAuthEnabled] = useState(false);
-  const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [users, setUsers] = useState<CommunityUser[]>([]);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -128,7 +128,6 @@ export function AccountSection({
 
   const toggleAuth = async (enabled: boolean) => {
     setAuthEnabled(enabled);
-    setAuthError('');
     // The result was discarded, so a refused toggle looked like a toggle that
     // simply did nothing — no error, no change, nothing to act on.
     let result: any;
@@ -136,7 +135,11 @@ export function AccountSection({
       result = await communityGraphQL('SetAuthEnabled', { enabled });
     } catch (e: any) {
       setAuthEnabled(!enabled);
-      setAuthError(e?.message || 'Could not reach the relay.');
+      toast({
+        variant: 'destructive',
+        title: 'Could not reach the relay',
+        description: e?.message || 'The relay did not respond.',
+      });
       return;
     }
     const failed = result?.errors?.[0]?.message
@@ -145,7 +148,18 @@ export function AccountSection({
           : null);
     if (failed) {
       setAuthEnabled(!enabled); // put the switch back where it was
-      setAuthError(failed);
+      toast({
+        variant: 'destructive',
+        title: enabled ? 'Could not turn authentication on' : 'Could not turn authentication off',
+        description: failed,
+      });
+      return;
+    }
+    // Switching auth on while holding no token would leave this session a
+    // Guest on a relay that now demands credentials — signed in to nothing,
+    // and unable to undo it. Hand over to the sign-in screen instead.
+    if (enabled && !authHeaderToken()) {
+      window.location.reload();
     }
   };
 
@@ -162,7 +176,11 @@ export function AccountSection({
         role: newRole,
       });
       if (result?.errors?.[0]) {
-        setAddError(result.errors[0].message);
+        toast({
+          variant: 'destructive',
+          title: 'Could not create the account',
+          description: result.errors[0].message,
+        });
         return;
       }
       setNewUsername('');
@@ -171,12 +189,23 @@ export function AccountSection({
       setShowAddUser(false);
       loadAuthState();
     } catch (e: any) {
-      setAddError(e.message || 'Failed to create user');
+      toast({
+        variant: 'destructive',
+        title: 'Could not create the account',
+        description: e?.message || 'The relay did not respond.',
+      });
     }
   };
 
   const deleteUser = async (userId: string) => {
-    await communityGraphQL('DeleteCommunityUser', { userId });
+    const result: any = await communityGraphQL('DeleteCommunityUser', { userId });
+    if (result?.errors?.[0]) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not delete the account',
+        description: result.errors[0].message,
+      });
+    }
     loadAuthState();
   };
 
@@ -192,7 +221,12 @@ export function AccountSection({
     }
     setChangingPassword(true);
     try {
-      await communityGraphQL('ChangeCommunityUserPassword', { userId: passwordDialogUser.id, password: editPassword });
+      const result: any = await communityGraphQL('ChangeCommunityUserPassword', { userId: passwordDialogUser.id, password: editPassword });
+      if (result?.errors?.[0]) {
+        setEditPasswordError(result.errors[0].message);
+        setChangingPassword(false);
+        return;
+      }
       setPasswordDialogUser(null);
       setEditPassword('');
       setEditPasswordError('');
@@ -227,12 +261,19 @@ export function AccountSection({
             <Switch checked={authEnabled} onCheckedChange={toggleAuth} />
           </div>
 
-          {authError && (
-            <p className="text-xs text-destructive">{authError}</p>
-          )}
-
-          {authEnabled && (
+          {/* Always shown, not just when auth is on. Accounts have to exist
+              *before* authentication can be switched on — turning it on with
+              none would lock everyone out — so hiding this behind the switch
+              made the two settings mutually block each other. */}
+          {(
             <div className="space-y-3 rounded-lg border p-3">
+              {!authEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  Accounts are used once authentication is on. Create one first —
+                  turning authentication on without an account would leave nobody
+                  able to sign in.
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium flex items-center gap-1.5">
                   <Shield className="h-3.5 w-3.5" />
