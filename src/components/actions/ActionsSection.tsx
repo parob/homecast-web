@@ -146,9 +146,16 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
     }
   };
 
-  /** What the card calls itself right now: the set, or the direction in flight. */
-  const titleOf = (action: HomeAction, running: boolean) => {
-    if (!running) return action.label;
+  /**
+   * What is happening, for the subtitle. The title stays put.
+   *
+   * Swapping the title for "Turning the lights off" made the card rename itself
+   * mid-press and, being half again as long, wrap and clip against the two-line
+   * clamp. A name that changes under you is hard to scan and hard to aim at, so
+   * the name is the name and the verb goes underneath, where the count already
+   * lives.
+   */
+  const runningTextOf = (action: HomeAction) => {
     if (action.toggle && runningDirection !== undefined) {
       return runningDirection ? action.toggle.onRunning : action.toggle.offRunning;
     }
@@ -219,19 +226,23 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className={cn('text-sm font-medium break-words line-clamp-2 transition-colors duration-300', isDarkBackground && 'text-white')}>
-                        {titleOf(action, running)}
+                        {action.label}
                       </p>
-                      {/* While it runs the subtitle carries progress instead of
-                          state: the state it describes is mid-change and about
-                          to be wrong, and a count is the only thing that
-                          distinguishes a slow action from a stuck one.
-                          aria-live so it is announced, not just seen. */}
+                      {/* While it runs the subtitle carries what is happening
+                          instead of the state: the state it describes is
+                          mid-change and about to be wrong. The count rides
+                          along because it is the only thing that distinguishes
+                          a slow action from a stuck one — a wedged accessory
+                          holds its write for the native 10s timeout, and a bare
+                          verb gives no way to tell that apart from nothing
+                          happening. aria-live so it is announced, not just
+                          seen. */}
                       <p
                         aria-live={running ? 'polite' : undefined}
                         className={cn('text-[11px] transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
                       >
-                        {running && progress
-                          ? `${progress.done} of ${progress.total} accessor${progress.total === 1 ? 'y' : 'ies'}`
+                        {running
+                          ? `${runningTextOf(action)}${progress ? ` · ${progress.done} of ${progress.total}` : ''}`
                           : action.subtitle}
                       </p>
                     </div>

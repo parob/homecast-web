@@ -198,11 +198,18 @@ describe('the compact tile has one line, and spends it on the count', () => {
     expect(subtitle('1 of 2 on')).toHaveLength(1);
   });
 
-  it('says All off rather than 0 of 2 on', () => {
-    // countLabel's wording, so the compact tile and the Actions card describing
-    // the same lights do not phrase the same state two different ways.
+  it('uses a word at either end, not arithmetic', () => {
+    // "0 of 2 on" and "2 of 2 on" are the state the thumb has already made
+    // plain, spelled out as a sum. The word is quicker to read and does not
+    // grow with the group.
     renderGroup([lamp('a', false), lamp('b', false)]);
-    expect(subtitle('0 of 2 on')).toHaveLength(1);
+    expect(subtitle('Off')).toHaveLength(1);
+    expect(screen.queryByText('0 of 2 on')).toBeNull();
+    cleanup();
+
+    renderGroup([lamp('a', true), lamp('b', true)]);
+    expect(subtitle('On')).toHaveLength(1);
+    expect(screen.queryByText('2 of 2 on')).toBeNull();
   });
 
   it('leaves a blinds group its own vocabulary', () => {

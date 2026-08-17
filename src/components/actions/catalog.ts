@@ -151,8 +151,15 @@ function positionLogicFor(accessory: HomeKitAccessory): boolean {
   return usesStandardPositionLogic(manufacturer, model);
 }
 
+/**
+ * Both ends get a word rather than a sum. "All off" was already here; "4 of 4
+ * on" was the same statement done as arithmetic, next to a control that had
+ * already made it plain. A count is worth printing only when it is telling you
+ * something the control cannot — which is exactly when it is neither.
+ */
 function countLabel(active: number, total: number, word: 'on' | 'open'): string {
   if (active === 0) return word === 'on' ? 'All off' : 'All closed';
+  if (active >= total) return word === 'on' ? 'All on' : 'All open';
   return `${active} of ${total} ${word}`;
 }
 

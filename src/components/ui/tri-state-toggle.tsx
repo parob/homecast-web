@@ -30,13 +30,16 @@ interface TriStateToggleProps {
   /** Track fill for the on state; mirrors the same prop on `ui/switch.tsx`. */
   checkedColorClass?: string;
   /**
-   * A quarter wider, for a control that can actually reach the middle.
+   * A quarter wider *while it is in the middle*, for a control that can reach it.
    *
    * Off by default, and that default is load-bearing: this component backs
    * every ordinary accessory switch through `ColoredSwitch`, and widening it
    * unconditionally silently widened all thirteen of them — leaving them out of
    * step with the `ui/switch.tsx` switches everywhere else. Only a control with
-   * three stops to show has earned the extra room.
+   * three stops to show has earned the extra room — and only while it is
+   * actually showing them: at either end there are two stops like anything
+   * else, so it animates back to the ordinary width and stops being the odd one
+   * out in a row of tiles.
    */
   wide?: boolean;
   /**
@@ -50,29 +53,65 @@ interface TriStateToggleProps {
 }
 
 /**
- * Everything here is in rem, and that is the whole point.
+ * A length that follows the text size, but only halfway.
  *
- * `ui/switch.tsx` is `h-6 w-10` with an `h-4 w-4` thumb — all rem — and the app
- * drives the root font size from a user preference (14 / 16 / 20px, see
- * Dashboard). Sizing this in pixels instead pinned it while every switch beside
- * it grew, so on the large setting the track was narrower and the thumb visibly
- * smaller than the one it is meant to match. The narrow numbers below are
- * `ui/switch.tsx`'s exactly: 2.5rem of track, 1rem of thumb, ends at 0.25rem
- * and 1.25rem — the same places `translate-x-1` and `translate-x-5` put them.
+ * Two failures bracket this. Sized in pixels, the toggle sat still while every
+ * rem-sized switch around it grew with the Small/Medium/Large preference, and
+ * looked shrunken on the large setting. Sized purely in rem it tracked them
+ * exactly — and then a control that is 40px at medium becomes 35 at small,
+ * which is small for a thumb you are meant to hit, and 50 at large, which is a
+ * lot of furniture for a tile.
+ *
+ * So only a quarter of each length follows the type and three quarters is
+ * fixed: it moves in the same direction, at a quarter of the rate.
+ *
+ * The sizes below are quoted at the LARGE setting, not the middle one, and that
+ * is deliberate: large is where the pre-existing switch was 50px, and that is
+ * the size this control is meant to be. Anchoring there and damping downwards
+ * makes it essentially one size that nudges with the text — 46.25 at small,
+ * 47.5 at medium, 50 at large — rather than a control that halves in area
+ * across the range.
+ *
+ * The cost is real and worth knowing: at the medium setting this is 47.5px
+ * against `ui/switch.tsx`'s 40, so the two no longer match on the commonest
+ * setting. That switch is a settings-screen control and this is a tile control,
+ * so they are rarely in shot together, and they remain the same shape, height
+ * ratio and colour — which is what makes them read as one family.
  */
-const THUMB = 1;      // rem — h-4/w-4
-const PAD = 0.25;     // rem — translate-x-1
-const NARROW = 2.5;   // rem — w-10
-const WIDE = NARROW * 1.25;
+interface Len { px: number; rem: number }
+
+/** How much of a length follows the root font size. The rest is fixed. */
+const SCALE_SHARE = 0.25;
+
+/** The root size the numbers below are quoted at: the large text setting. */
+const ANCHOR_ROOT = 20;
+
+/** Split a size-at-large into its fixed and scaling parts. */
+const len = (atLarge: number): Len => ({
+  px: atLarge * (1 - SCALE_SHARE),
+  rem: (atLarge * SCALE_SHARE) / ANCHOR_ROOT,
+});
+
+const sub = (a: Len, ...rest: Len[]): Len =>
+  rest.reduce((acc, r) => ({ px: acc.px - r.px, rem: acc.rem - r.rem }), a);
+const half = (a: Len): Len => ({ px: a.px / 2, rem: a.rem / 2 });
+
+const css = (v: Len) => `calc(${v.px}px + ${v.rem}rem)`;
+const toPx = (v: Len, root: number) => v.px + v.rem * root;
+
+const THUMB = len(20);    // ui/switch.tsx's h-4 w-4, at the large setting
+const PAD = len(5);       // its translate-x-1
+const HEIGHT = len(30);   // its h-6
+const NARROW = len(50);   // its w-10
+const WIDE = len(62.5);   // a quarter wider, for three stops
 
 function geometry(wide: boolean) {
   const track = wide ? WIDE : NARROW;
   return {
     track,
-    widthClass: wide ? 'w-[3.125rem]' : 'w-10',
-    min: PAD,                             // 0.25
-    max: track - THUMB - PAD,             // 1.875 wide, 1.25 narrow
-    mid: (track - THUMB) / 2,             // 1.0625 wide, 0.75 narrow
+    min: PAD,
+    max: sub(track, THUMB, PAD),
+    mid: half(sub(track, THUMB)),
   };
 }
 
@@ -107,8 +146,12 @@ export function TriStateToggle({
   const { isDarkBackground } = useBackgroundContext();
   const offTrack = uncheckedColorClass ?? (isDarkBackground ? 'bg-white/20' : 'bg-input');
   const offThumb = uncheckedThumbClass ?? (isDarkBackground ? 'bg-white/70' : 'bg-background');
-  const { widthClass, min: MIN_X, max: MAX_X, mid: MID_X } = geometry(wide);
-  const thumbX: Record<TriState, number> = { off: MIN_X, mixed: MID_X, on: MAX_X };
+  // The extra room is for the middle, so it is only taken in the middle. The
+  // geometry follows, which is what makes the thumb's end stops line up with an
+  // ordinary switch's the moment it gets there.
+  const spread = wide && state === 'mixed';
+  const { track, min: MIN_X, max: MAX_X, mid: MID_X } = geometry(spread);
+  const thumbX: Record<TriState, Len> = { off: MIN_X, mixed: MID_X, on: MAX_X };
   const descriptionId = React.useId();
   const onButtonRef = React.useRef<HTMLButtonElement>(null);
   const switchRef = React.useRef<HTMLButtonElement>(null);
@@ -161,7 +204,10 @@ export function TriStateToggle({
     if (disabled) return;
 
     const startX = e.clientX;
-    const from = thumbX[state];
+    const root = remPx();
+    const from = toPx(thumbX[state], root);
+    const lo = toPx(MIN_X, root);
+    const hi = toPx(MAX_X, root);
     let moved = false;
 
     const onMove = (ev: PointerEvent) => {
@@ -169,7 +215,7 @@ export function TriStateToggle({
       // The slop stays in pixels — it is a property of the finger, not of the
       // text-size setting — while the position it produces is in rem.
       if (!moved && Math.abs(dx) > SWIPE_SLOP) moved = true;
-      if (moved) setDragX(clamp(from + dx / remPx(), MIN_X, MAX_X));
+      if (moved) setDragX(clamp(from + dx, lo, hi));
     };
 
     const onEnd = (ev: PointerEvent) => {
@@ -196,8 +242,13 @@ export function TriStateToggle({
     onBlur: () => { hasFocus.current = false; },
   };
 
-  const x = dragX ?? thumbX[state];
   const dragging = dragX !== null;
+  const root = remPx();
+  const restX = thumbX[state];
+  // At rest the offset stays a calc, so it keeps tracking the text size without
+  // needing a re-render; mid-drag it is whatever the finger says.
+  const offset = dragging ? `${dragX}px` : css(restX);
+  const xPx = dragging ? (dragX as number) : toPx(restX, root);
 
   /**
    * Anything on means the track is on-coloured — the middle looks exactly like
@@ -209,7 +260,7 @@ export function TriStateToggle({
    * "how many". Ramping over the first half of the travel rather than switching
    * at a threshold is what keeps a drag continuous under the finger.
    */
-  const fillOpacity = clamp((x - MIN_X) / (MID_X - MIN_X), 0, 1);
+  const fillOpacity = clamp((xPx - toPx(MIN_X, root)) / (toPx(MID_X, root) - toPx(MIN_X, root)), 0, 1);
 
   const fill = (
     <span
@@ -227,24 +278,23 @@ export function TriStateToggle({
     <span
       aria-hidden
       className={cn(
-        'pointer-events-none absolute left-0 top-1 block h-4 w-4 rounded-full shadow-sm',
+        'pointer-events-none absolute left-0 block rounded-full shadow-sm',
         !dragging && 'transition-transform duration-base ease-standard',
         state === 'off' && !dragging ? offThumb : 'bg-white/60',
       )}
-      style={{ transform: `translateX(${x}rem)` }}
+      style={{ width: css(THUMB), height: css(THUMB), top: css(PAD), transform: `translateX(${offset})` }}
     />
   );
 
   const trackClasses = cn(
-    'relative inline-flex h-6 shrink-0 items-center overflow-hidden rounded-full transition-colors duration-base ease-standard',
-    widthClass,
+    'relative inline-flex shrink-0 items-center overflow-hidden rounded-full transition-[width,background-color] duration-base ease-standard',
     offTrack,
     disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer active:scale-90',
     className,
   );
   // touch-action keeps the page scrollable off a mis-grab: vertical still pans,
   // horizontal is ours.
-  const trackStyle = { touchAction: 'pan-y' as const };
+  const trackStyle = { width: css(track), height: css(HEIGHT), touchAction: 'pan-y' as const };
 
   // Mixed genuinely is two commands, so it gets two buttons — and ARIA agrees:
   // aria-checked="mixed" is valid on checkbox, never on switch.

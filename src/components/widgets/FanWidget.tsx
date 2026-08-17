@@ -64,7 +64,7 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
         />
       ) : undefined}
       title={accessory.name}
-      subtitle={isOn && speed !== null ? `${Math.round(speed)}% speed` : isOn ? 'On' : null}
+      subtitle={isOn ? (speed !== null ? `${Math.round(speed)}% speed` : 'On') : 'Off'}
       icon={<Fan className={`h-4 w-4 ${isOn ? 'animate-spin' : ''}`} style={{ animationDuration: speed ? `${2000 / (speed / 50)}ms` : '2s' }} />}
       isOn={isOn}
       isReachable={accessory.isReachable}

@@ -145,7 +145,7 @@ describe('ActionsSection', () => {
     );
 
     fireEvent.click(switchOn('lights'));
-    expect(screen.getByText('Turning the lights off')).toBeTruthy();
+    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
     expect(signals[0]!.aborted).toBe(false);
 
     fireEvent.click(switchOn('lights'));
@@ -168,10 +168,10 @@ describe('ActionsSection', () => {
     fireEvent.click(switchOn('lights'));
     fireEvent.click(switchOn('lights'));
     await act(async () => { resolvers[0](); });      // the abandoned one lands
-    expect(screen.getByText('Turning the lights off')).toBeTruthy();  // still running
+    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
 
     await act(async () => { resolvers[1](); });      // the live one lands
-    expect(screen.getByText('All lights')).toBeTruthy();
+    expect(within(card('lights')).getByText('All on')).toBeTruthy();
   });
 
   it('still bars a second press on a one-way action, which has no "stop" to mean', async () => {
@@ -200,8 +200,22 @@ describe('ActionsSection', () => {
       <ActionsSection accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
     );
     fireEvent.click(half('lights', 'on'));
-    expect(screen.getByText('Turning the lights on')).toBeTruthy();
-    expect(screen.queryByText('Turning the lights off')).toBeNull();
+    expect(within(card('lights')).getByText(/Turning the lights on/)).toBeTruthy();
+    expect(within(card('lights')).queryByText(/Turning the lights off/)).toBeNull();
+  });
+
+  it('keeps the title still while it runs, and puts the verb underneath', () => {
+    // A card that renames itself mid-press is hard to scan and hard to aim at,
+    // and "Turning the lights off" is half again as long as its name — long
+    // enough to wrap into the two-line clamp and be cut off.
+    const onRunAction = vi.fn(() => new Promise<void>(() => {}));
+    render(
+      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+    );
+    fireEvent.click(switchOn('lights'));
+
+    expect(within(card('lights')).getByText('All lights')).toBeTruthy();
+    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
   });
 
   it('says what it is doing, and counts up as writes settle', async () => {
@@ -217,17 +231,16 @@ describe('ActionsSection', () => {
 
     fireEvent.click(switchOn('lights'));
     // Seeded before the first write settles, so the count never starts blank
-    expect(within(card('lights')).getByText('0 of 1 accessory')).toBeTruthy();
+    expect(within(card('lights')).getByText('Turning the lights off · 0 of 1')).toBeTruthy();
 
     await act(async () => { report(1, 4); });
-    expect(within(card('lights')).getByText('1 of 4 accessories')).toBeTruthy();
-
+    const line = within(card('lights')).getByText('Turning the lights off · 1 of 4');
     // and the live region is marked so it is announced, not just seen
-    expect(within(card('lights')).getByText('1 of 4 accessories').getAttribute('aria-live')).toBe('polite');
+    expect(line.getAttribute('aria-live')).toBe('polite');
 
     await act(async () => { release(); });
     // back to reporting state once it finishes
-    expect(within(card('lights')).getByText('1 of 1 on')).toBeTruthy();
+    expect(within(card('lights')).getByText('All on')).toBeTruthy();
   });
 
   it('leaves a nothing-to-do action in place, dimmed and unpressable', () => {

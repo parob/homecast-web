@@ -348,7 +348,11 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // on, and its badge counted the sensor as an unlit lamp.
   const groupState = triState(allNoResponse ? 0 : onCount, powerTotal);
   const isPartiallyOn = !isBlindsGroup && groupState === 'mixed';
-  const powerDescription = powerCountDescription(onCount, powerTotal);
+  // Only when it adds something. At either end the control's own state already
+  // says it, and a screen reader would hear "on, 4 of 4 on".
+  const powerDescription = groupState === 'mixed'
+    ? powerCountDescription(onCount, powerTotal)
+    : undefined;
 
   // Use white text when group is off and there's a DARK background (not light)
   // Determine the primary service type for the group
@@ -466,16 +470,17 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Compact subtitle text.
   //
-  // A count of members is the least interesting true thing a tile can say — it
-  // does not change, and the full-size header spends a badge on the number that
-  // does. There is no room for that badge here, so the one line the compact tile
-  // has says how many are on instead, which is also the number the thumb's
-  // middle position is being vague about.
+  // Mixed is the case the thumb is deliberately vague about — it says "some",
+  // so the line says which some. At either end it is precise already, and
+  // "4 of 4 on" is that same fact done as arithmetic; the word is quicker to
+  // read and does not grow with the group.
   const compactSubtitle = allNoResponse
     ? 'No Response'
     : isBlindsGroup ? blindsStatus
-    : powerTotal > 0 ? powerCountDescription(onCount, powerTotal)
-    : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
+    : powerTotal === 0 ? `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`
+    : groupState === 'mixed' ? powerCountDescription(onCount, powerTotal)
+    : groupState === 'on' ? 'On'
+    : 'Off';
 
   // Editing is for arranging, not operating. The group's switches and sliders are
   // scattered through this card, so rather than gate each one, the whole card goes

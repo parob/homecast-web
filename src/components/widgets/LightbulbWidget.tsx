@@ -47,7 +47,12 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
   const hue = hueChar ? getEffectiveValue(accessory.id, hueChar.type, hueChar.value) : null;
   const saturation = saturationChar ? getEffectiveValue(accessory.id, saturationChar.type, saturationChar.value) : null;
 
-  const subtitle = isOn && brightness !== null ? `${Math.round(brightness)}% brightness` : null;
+  // Off is a state, not the absence of one. A blank line under the name left
+  // the tile saying nothing at all about the light, and the switch beside it
+  // carrying the whole message on its own.
+  const subtitle = isOn
+    ? (brightness !== null ? `${Math.round(brightness)}% brightness` : 'On')
+    : 'Off';
 
   const canPickColor = expanded && !!hueChar?.isWritable && !!saturationChar?.isWritable;
   const showHero = expanded && !compact && !!brightnessChar?.isWritable;

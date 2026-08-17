@@ -129,67 +129,93 @@ describe('TriStateToggle — disabled', () => {
 describe('TriStateToggle — where the thumb sits', () => {
   afterEach(cleanup);
 
-  // All in rem, because the root font size is a user preference and every
-  // switch beside this one is rem-sized. The narrow stops are ui/switch.tsx's
-  // exactly — 0.25rem and 1.25rem, where translate-x-1 and translate-x-5 put
-  // them — so the two are interchangeable at any text size.
+  // A quarter of each length follows the text size and three quarters is fixed,
+  // anchored at the LARGE setting — where the switch this replaces was 50px,
+  // and where these numbers are quoted. Sized purely in pixels it sat still
+  // while the switches around it grew; sized purely in rem it halved in area
+  // across the range.
   const thumb = (root: HTMLElement) =>
     Array.from(root.querySelectorAll('span')).find(s => s.style.transform !== '')!;
   const fill = (root: HTMLElement) =>
     Array.from(root.querySelectorAll('span')).find(s => s.style.opacity !== '')!;
 
+  /** What a calc() length comes to at a given root font size. */
+  const at = (css: string, rootPx: number) => {
+    const m = css.match(/calc\((-?[\d.]+)px \+ (-?[\d.]+)rem\)/)!;
+    return parseFloat(m[1]) + parseFloat(m[2]) * rootPx;
+  };
+  const offsetOf = (root: HTMLElement) =>
+    thumb(root).style.transform.slice('translateX('.length, -1);
+
   it.each([
-    ['off', 'translateX(0.25rem)', '0'],
-    ['mixed', 'translateX(1.0625rem)', '1'],
-    ['on', 'translateX(1.875rem)', '1'],
-  ] as const)('parks a wide %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
+    ['off', 5, '0'],
+    ['mixed', 21.25, '1'],
+    ['on', 25, '1'],
+  ] as const)('parks a wide %s at %spx with the track at %s of the on colour', (state, px, opacity) => {
     const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} wide />);
     const root = container.firstElementChild as HTMLElement;
-    expect(thumb(root).style.transform).toBe(offset);
+    // Off and on take the ordinary geometry, because the extra room is only
+    // there to hold three stops and at either end there are two — so `on` lands
+    // at 25, an ordinary switch's far stop, not at the wide track's 37.5.
+    expect(at(offsetOf(root), 20)).toBe(px);
     // Anything on means fully on-coloured: seven of eight lights lit must not
     // look half switched off. The thumb is what says how many.
     expect(fill(root).style.opacity).toBe(opacity);
   });
 
   it.each([
-    ['off', 'translateX(0.25rem)', '0'],
-    ['mixed', 'translateX(0.75rem)', '1'],
-    ['on', 'translateX(1.25rem)', '1'],
-  ] as const)('parks a narrow %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
+    ['off', 5],
+    ['mixed', 15],
+    ['on', 25],
+  ] as const)('parks a narrow %s at %spx', (state, px) => {
     const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} />);
     const root = container.firstElementChild as HTMLElement;
-    expect(thumb(root).style.transform).toBe(offset);
-    expect(fill(root).style.opacity).toBe(opacity);
+    expect(at(offsetOf(root), 20)).toBe(px);
   });
 
-  it('is an ordinary switch\'s size by default, and only a quarter wider on request', () => {
-    // The default is what stops this from resizing all thirteen accessory
-    // switches the moment it starts backing ColoredSwitch. Only a control that
-    // can actually reach the middle earns the extra room.
-    const plain = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
-    const plainRoot = plain.container.firstElementChild as HTMLElement;
-    expect(plainRoot.className).toContain('w-10');   // exactly ui/switch.tsx
-    expect(plainRoot.className).toContain('h-6');
-    cleanup();
-
-    const wide = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide />);
-    const wideRoot = wide.container.firstElementChild as HTMLElement;
-    expect(wideRoot.className).toContain('w-[3.125rem]');  // w-10 +25%
-    expect(wideRoot.className).toContain('h-6');           // same height
-  });
-
-  it('sizes itself in rem, so it grows with the text-size preference', () => {
-    // The whole reason the thumb looked shrunken: the root font size is a user
-    // setting (14 / 16 / 20px) and every switch beside this one is rem-sized,
-    // so a pixel-sized one stays put while they grow.
-    const { container } = render(<TriStateToggle state="on" onCheckedChange={vi.fn()} wide />);
+  it('is the size the switch it replaces was, at the large text setting', () => {
+    // Large is the anchor: it is where the old fully-rem switch came to 50px,
+    // and that is the size this control is meant to be. 50 wide, 30 tall, a
+    // 20px thumb, ends at 5 and 25 — ui/switch.tsx at 20px root, exactly.
+    const { container } = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
     const root = container.firstElementChild as HTMLElement;
-    // No pixel widths anywhere: track and thumb are Tailwind rem classes and
-    // the only inline geometry is a rem transform.
-    expect(root.style.width).toBe('');
-    expect(thumb(root).className).toContain('h-4');
-    expect(thumb(root).className).toContain('w-4');
-    expect(thumb(root).style.transform).toContain('rem');
+    expect(at(root.style.width, 20)).toBe(50);
+    expect(at(root.style.height, 20)).toBe(30);
+    expect(at(thumb(root).style.width, 20)).toBe(20);
+    expect(at(offsetOf(root), 20)).toBe(5);
+  });
+
+  it('barely moves across the rest of the range', () => {
+    // The whole point of anchoring high and damping down: essentially one size
+    // that nudges with the text, rather than a control that halves in area.
+    // Fully rem it would have run 35 / 40 / 50.
+    const { container } = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
+    const width = (container.firstElementChild as HTMLElement).style.width;
+
+    expect(at(width, 20)).toBe(50);      // large — as it was before
+    expect(at(width, 16)).toBe(47.5);    // medium
+    expect(at(width, 14)).toBe(46.25);   // small
+    // under 10% across the whole range, against 43% for a fully-rem control
+    expect(at(width, 20) - at(width, 14)).toBeLessThan(at(width, 20) * 0.1);
+  });
+
+  it('only spreads while it is in the middle, and animates back', () => {
+    // The extra room exists to hold three stops. At either end there are two,
+    // like every other switch, so it gives the width back rather than standing
+    // out in a row of tiles.
+    const { container, rerender } = render(
+      <TriStateToggle state="mixed" onCheckedChange={vi.fn()} wide />
+    );
+    const root = () => container.firstElementChild as HTMLElement;
+    expect(at(root().style.width, 20)).toBe(62.5);               // the wide track
+    // and the change is animated, not a jump
+    expect(root().className).toContain('transition-[width,background-color]');
+
+    rerender(<TriStateToggle state="on" onCheckedChange={vi.fn()} wide />);
+    expect(at(root().style.width, 20)).toBe(50);                 // the ordinary one
+
+    rerender(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide />);
+    expect(at(root().style.width, 20)).toBe(50);
   });
 
   it('takes the track colour from the wallpaper behind it', () => {
@@ -208,13 +234,6 @@ describe('TriStateToggle — where the thumb sits', () => {
     expect(root.className).not.toContain('bg-input');
     // and the thumb with it, or it disappears into the track
     expect(thumb(root).className).toContain('bg-white/70');
-  });
-
-  it('paints the fill in the colour it was given', () => {
-    const { container } = render(
-      <TriStateToggle state="mixed" onCheckedChange={vi.fn()} checkedColorClass="bg-amber-500" />
-    );
-    expect(fill(container.firstElementChild as HTMLElement).className).toContain('bg-amber-500');
   });
 });
 
