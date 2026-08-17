@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Home, Loader2, Mail } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 import { PasswordRequirements, validatePassword } from '@/components/ui/password-requirements';
 import { isCommunity } from '@/lib/config';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const Signup = () => {
   const { signup, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -95,7 +96,7 @@ const Signup = () => {
       <div className="relative z-10 mb-8 flex flex-col items-center gap-2">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
-            <Home className="h-6 w-6 text-primary-foreground" />
+            <HomecastMark className="h-6 w-6 text-primary-foreground" />
           </div>
           <span className="text-2xl font-bold">Homecast</span>
         </div>

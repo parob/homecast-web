@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Home, Lightbulb, Lock, Speaker, Smartphone, Cloud, Globe, ArrowRight, Bell, Laptop, Thermometer, DoorOpen } from 'lucide-react';
+import { Lightbulb, Lock, Speaker, Smartphone, Cloud, Globe, ArrowRight, Bell, Laptop, Thermometer, DoorOpen } from 'lucide-react';
 import { FAQ, FAQItem } from '@/components/FAQ';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
+import { HomecastMark } from '@/components/HomecastMark';
 // GraphQL Logo
 const GraphQLLogo = () => (
   <svg className="h-6 w-6" viewBox="0 0 100 100" fill="none">
@@ -228,7 +229,7 @@ const ArchitectureDiagram = () => {
           <div className="flex flex-col items-center">
             <div className="flex h-[72px] items-center justify-center">
               <div ref={icon3Ref} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/25">
-                <Home className="h-6 w-6 text-primary-foreground" />
+                <HomecastMark className="h-6 w-6 text-primary-foreground" />
               </div>
             </div>
             <span className="text-base font-medium mt-3 whitespace-nowrap">Homecast Relay</span>
@@ -264,7 +265,7 @@ const ArchitectureDiagram = () => {
             <div ref={appBoxRef} className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
-                  <Home className="h-4 w-4 text-primary-foreground" />
+                  <HomecastMark className="h-4 w-4 text-primary-foreground" />
                 </div>
                 <span className="text-[11px] font-semibold">Homecast App</span>
               </div>
@@ -341,7 +342,7 @@ const ArchitectureDiagram = () => {
 
         <div className="flex flex-col items-center gap-2">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/25">
-            <Home className="h-6 w-6 text-primary-foreground" />
+            <HomecastMark className="h-6 w-6 text-primary-foreground" />
           </div>
           <span className="text-base font-medium whitespace-nowrap">Homecast Relay</span>
           <p className="text-[11px] text-muted-foreground text-center">Run on your own Mac or let us host it for you.</p>
@@ -355,7 +356,7 @@ const ArchitectureDiagram = () => {
           <div className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
-                <Home className="h-4 w-4 text-primary-foreground" />
+                <HomecastMark className="h-4 w-4 text-primary-foreground" />
               </div>
               <span className="text-[11px] font-semibold">Homecast App</span>
             </div>
@@ -580,7 +581,7 @@ const HowItWorks = () => {
                         <img src="/homekit_logo.png" alt="HomeKit" className="h-7 w-7" />
                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
                         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
-                          <Home className="h-3.5 w-3.5 text-primary-foreground" />
+                          <HomecastMark className="h-3.5 w-3.5 text-primary-foreground" />
                         </div>
                       </div>
                     </div>
@@ -617,7 +618,7 @@ const HowItWorks = () => {
                       <Smartphone className="h-4 w-4 text-green-500" />
                       <Bell className="h-4 w-4 text-amber-500" />
                       <div className="flex h-4 w-4 items-center justify-center rounded bg-gradient-to-br from-primary to-primary/80">
-                        <Home className="h-2.5 w-2.5 text-primary-foreground" />
+                        <HomecastMark className="h-2.5 w-2.5 text-primary-foreground" />
                       </div>
                     </div>
                     <span className="text-xs font-medium mt-1.5">Access your Devices, Anywhere</span>
@@ -716,7 +717,7 @@ const HowItWorks = () => {
                   {/* Homecast App (Relay Mode) - cloud managed */}
                   <div className="flex flex-col items-center">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
-                      <Home className="h-5 w-5 text-primary-foreground" />
+                      <HomecastMark className="h-5 w-5 text-primary-foreground" />
                     </div>
                     <span className="text-xs font-medium mt-1.5">Homecast Relay</span>
                     <span className="text-[10px] text-muted-foreground">Hosted by Homecast</span>
@@ -749,7 +750,7 @@ const HowItWorks = () => {
                       <Smartphone className="h-4 w-4 text-green-500" />
                       <Bell className="h-4 w-4 text-amber-500" />
                       <div className="flex h-4 w-4 items-center justify-center rounded bg-gradient-to-br from-primary to-primary/80">
-                        <Home className="h-2.5 w-2.5 text-primary-foreground" />
+                        <HomecastMark className="h-2.5 w-2.5 text-primary-foreground" />
                       </div>
                     </div>
                     <span className="text-xs font-medium mt-1.5">Access your Devices, Anywhere</span>

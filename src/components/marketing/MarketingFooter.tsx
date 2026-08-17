@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Home, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const MarketingFooter = () => {
   return (
@@ -10,7 +11,7 @@ const MarketingFooter = () => {
           <div className="col-span-1 md:col-span-2">
             <Link to="/" className="flex items-center gap-3 mb-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
-                <Home className="h-5 w-5 text-primary-foreground" />
+                <HomecastMark className="h-5 w-5 text-primary-foreground" />
               </div>
               <span className="text-xl font-bold tracking-tight">Homecast</span>
             </Link>

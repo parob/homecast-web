@@ -23,7 +23,6 @@ import {
   Lock,
   Loader2,
   AlertCircle,
-  Home as HomeIcon,
   Lightbulb,
   DoorClosed,
   Layers,
@@ -32,6 +31,7 @@ import {
   Info,
   KeyRound,
   Wifi,
+  Home as HomeIcon,
 } from 'lucide-react';
 import { SharedCollectionView } from '@/components/shared/SharedCollectionView';
 import { SharedRoomView } from '@/components/shared/SharedRoomView';
@@ -41,6 +41,7 @@ import { SharedAccessoryGroupView } from '@/components/shared/SharedAccessoryGro
 import { SharedRoomGroupView } from '@/components/shared/SharedRoomGroupView';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { checkIsInMacApp } from '@/lib/platform';
+import { HomecastMark } from '@/components/HomecastMark';
 
 // Detect if running inside a mobile native app WebView (iOS or Android)
 const checkIsInMobileApp = () => {
@@ -383,7 +384,7 @@ export default function SharedEntityPage() {
         <span>Shared via</span>
         <div className="flex items-center gap-1.5">
           <div className="h-5 w-5 rounded bg-primary flex items-center justify-center">
-            <HomeIcon className="h-3 w-3 text-primary-foreground" />
+            <HomecastMark className="h-3 w-3 text-primary-foreground" />
           </div>
           <span className="font-medium">Homecast</span>
         </div>

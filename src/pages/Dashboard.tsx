@@ -212,6 +212,7 @@ import { SetupState, EnrollmentTrackerCard } from '@/components/SetupState';
 import { usePricing, getPricing } from '@/lib/pricing';
 import { purchasePlan, openManageSubscriptions } from '@/lib/purchase';
 import { isNativePurchaseAvailable } from '@/lib/platform';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const formatTimeAgo = (date: Date): string => {
   const now = new Date();
@@ -6461,7 +6462,7 @@ const Dashboard = () => {
                     <div className="px-3 py-3 mt-3">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center justify-center rounded-lg bg-primary" style={{ height: 32, width: 32 }}>
-                          <Home className="text-primary-foreground" style={{ height: 16, width: 16 }} />
+                          <HomecastMark className="text-primary-foreground" style={{ height: 16, width: 16 }} />
                         </div>
                         <div className="flex flex-col">
                           <span className={`font-semibold ${isDarkBackground ? 'text-white' : ''}`} style={{ fontSize: 16, lineHeight: 1.2 }}>Homecast</span>
@@ -6794,7 +6795,7 @@ const Dashboard = () => {
               </Sheet>
             )}
             <div className={`flex items-center justify-center rounded-lg md:hidden transition-colors duration-300 bg-primary ${isTouchDevice && editMode || (isMobile && hasContentAccess) ? 'hidden' : ''}`} style={{ height: 40, width: 40 }}>
-              <Home className="transition-colors duration-300 text-primary-foreground" style={{ height: 20, width: 20 }} />
+              <HomecastMark className="transition-colors duration-300 text-primary-foreground" style={{ height: 20, width: 20 }} />
             </div>
             <span className={`font-semibold hidden sm:inline md:hidden transition-colors duration-300 ${isDarkBackground ? 'text-white' : ''} ${isTouchDevice && editMode || (isMobile && hasContentAccess) ? '!hidden' : ''}`} style={{ fontSize: 18 }}>Homecast</span>
           </div>
@@ -7002,7 +7003,7 @@ const Dashboard = () => {
               {/* Header in sidebar */}
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center justify-center rounded-md transition-colors duration-300 bg-primary" style={{ height: 32, width: 32 }}>
-                  <Home className="transition-colors duration-300 text-primary-foreground" style={{ height: 16, width: 16 }} />
+                  <HomecastMark className="transition-colors duration-300 text-primary-foreground" style={{ height: 16, width: 16 }} />
                 </div>
                 <div className="flex flex-col">
                   <span className="font-semibold" style={{ fontSize: 16, lineHeight: 1.2 }}>Homecast</span>

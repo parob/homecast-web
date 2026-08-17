@@ -10,6 +10,7 @@ import { useMutation } from '@apollo/client/react';
 import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 
 import { config, isCommunity, getCommunityMode, getRelayAddress } from '@/lib/config';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const API_URL = config.apiUrl;
 
@@ -265,7 +266,7 @@ const Login = () => {
       {/* Logo */}
       <div className="relative z-10 mb-8 flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
-          <Home className="h-6 w-6 text-primary-foreground" />
+          <HomecastMark className="h-6 w-6 text-primary-foreground" />
         </div>
         <div className="flex flex-col">
           <span className="text-2xl font-bold" style={{ lineHeight: 1.2 }}>Homecast</span>

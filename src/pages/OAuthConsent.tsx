@@ -10,6 +10,7 @@ import { GET_CACHED_HOMES } from '@/lib/graphql/queries';
 import { WELL_KNOWN_CLIENTS } from '@/lib/oauth-clients';
 
 import { config } from '@/lib/config';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const API_URL = config.apiUrl;
 
@@ -255,7 +256,7 @@ const OAuthConsent = () => {
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
         <div className="mb-8 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-            <Home className="h-6 w-6 text-primary-foreground" />
+            <HomecastMark className="h-6 w-6 text-primary-foreground" />
           </div>
           <span className="text-2xl font-bold">Homecast</span>
         </div>
@@ -287,7 +288,7 @@ const OAuthConsent = () => {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="mb-8 flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-          <Home className="h-6 w-6 text-primary-foreground" />
+          <HomecastMark className="h-6 w-6 text-primary-foreground" />
         </div>
         <span className="text-2xl font-bold">Homecast</span>
       </div>

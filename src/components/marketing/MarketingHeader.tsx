@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Home, Menu } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { StagingSyncLabel } from '@/components/layout/StagingBanner';
+import { HomecastMark } from '@/components/HomecastMark';
 
 const navItems = [
   { to: '/', label: 'Home' },
@@ -36,7 +37,7 @@ const MarketingHeader = () => {
       <div className="mx-auto grid h-16 max-w-7xl grid-cols-2 sm:grid-cols-3 items-center px-3 sm:px-6">
         <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
-            <Home className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
+            <HomecastMark className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
           </div>
           <span className="text-sm sm:text-xl font-bold tracking-tight whitespace-nowrap">Homecast</span>
         </Link>
