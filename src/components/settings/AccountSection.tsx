@@ -103,6 +103,7 @@ export function AccountSection({
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [authPending, setAuthPending] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [users, setUsers] = useState<CommunityUser[]>([]);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -127,14 +128,28 @@ export function AccountSection({
   useEffect(() => { loadAuthState(); }, [loadAuthState]);
 
   const toggleAuth = async (enabled: boolean) => {
-    setAuthEnabled(enabled);
-    // The result was discarded, so a refused toggle looked like a toggle that
-    // simply did nothing — no error, no change, nothing to act on.
+    // Turning it on with no accounts cannot succeed — the relay refuses it,
+    // because it would leave nobody able to sign in. We already know the
+    // answer here, so ask for the account instead of flicking the switch on
+    // and dragging it back when the refusal arrives.
+    if (enabled && users.length === 0) {
+      setShowAddUser(true);
+      toast({
+        title: 'Create an account first',
+        description:
+          'Authentication needs someone to sign in as. Add an account below, then turn it on.',
+      });
+      return;
+    }
+
+    // Deliberately not optimistic. The switch moves once the relay agrees, so
+    // a refusal never shows up as the control twitching and reverting.
+    setAuthPending(true);
     let result: any;
     try {
       result = await communityGraphQL('SetAuthEnabled', { enabled });
     } catch (e: any) {
-      setAuthEnabled(!enabled);
+      setAuthPending(false);
       toast({
         variant: 'destructive',
         title: 'Could not reach the relay',
@@ -142,12 +157,12 @@ export function AccountSection({
       });
       return;
     }
+    setAuthPending(false);
     const failed = result?.errors?.[0]?.message
       || (result?.data?.setAuthEnabled?.success === false
           ? result.data.setAuthEnabled.error || 'Could not change this setting.'
           : null);
     if (failed) {
-      setAuthEnabled(!enabled); // put the switch back where it was
       toast({
         variant: 'destructive',
         title: enabled ? 'Could not turn authentication on' : 'Could not turn authentication off',
@@ -155,6 +170,7 @@ export function AccountSection({
       });
       return;
     }
+    setAuthEnabled(enabled);
     // Switching auth on while holding no token would leave this session a
     // Guest on a relay that now demands credentials — signed in to nothing,
     // and unable to undo it. Hand over to the sign-in screen instead.
@@ -258,7 +274,7 @@ export function AccountSection({
                   : 'Anyone on your network can access this relay'}
               </p>
             </div>
-            <Switch checked={authEnabled} onCheckedChange={toggleAuth} />
+            <Switch checked={authEnabled} onCheckedChange={toggleAuth} disabled={authPending} />
           </div>
 
           {/* Always shown, not just when auth is on. Accounts have to exist

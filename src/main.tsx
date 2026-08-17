@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import App from "./App.tsx";
 import "./index.css";
 import { markBoot } from "./lib/boot-timing";
+import { reloadForNewBundle } from "./lib/stale-bundle";
 
 markBoot("module");
 import { browserLogger } from "./lib/browser-logger";
@@ -131,10 +132,16 @@ window.addEventListener('vite:preloadError', (e) => {
   // pick up the new bundle. Only once per guard window to avoid loops; the
   // guard clears after the reloaded app has run stably (below), so each
   // future deploy gets its own reload rather than surfacing a raw error.
+  //
+  // reloadForNewBundle, not location.reload: the service worker answers
+  // navigations from its shell cache, and that shell is the one naming the
+  // chunks that just vanished. A plain reload re-serves it and fails again —
+  // then the guard below swallows the second attempt and the user gets the
+  // crash screen. See lib/stale-bundle.ts.
   const key = 'homecast-preload-reload';
   if (!sessionStorage.getItem(key)) {
     sessionStorage.setItem(key, '1');
-    window.location.reload();
+    reloadForNewBundle();
   } else {
     console.error('[Homecast] Failed to load module after reload:', e);
   }

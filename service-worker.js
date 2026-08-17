@@ -61,11 +61,29 @@ self.addEventListener('activate', (event) => {
           .filter((n) => n.startsWith('homecast-shell-') && n !== SHELL_CACHE)
           .map((n) => caches.delete(n))
       );
+      await purgeFallbacks();
       await trimAssets();
       await self.clients.claim();
     })()
   );
 });
+
+/**
+ * Evict rewrite fallbacks an earlier worker stored (see isFallback). The asset
+ * cache is never versioned, so without this a session that hit a dead chunk
+ * before this fix keeps serving that HTML from disk with no way out. Bounded by
+ * ASSET_LIMIT and entirely local, so it costs one pass per deploy.
+ */
+async function purgeFallbacks() {
+  const cache = await caches.open(ASSET_CACHE);
+  const keys = await cache.keys();
+  await Promise.all(
+    keys.map(async (request) => {
+      const hit = await cache.match(request);
+      if (hit && isFallback(hit)) await cache.delete(request);
+    })
+  );
+}
 
 async function trimAssets() {
   const cache = await caches.open(ASSET_CACHE);
@@ -131,9 +149,24 @@ async function serveAsset(request) {
 
   const response = await fetch(request);
   // Only store our own successful, non-opaque responses. An opaque or error
-  // response cached here would be indistinguishable from a good one later.
-  if (response.ok && response.type === 'basic') {
+  // response cached here would be indistinguishable from a good one later —
+  // and so would the rewrite fallback, which is why isFallback exists.
+  if (response.ok && response.type === 'basic' && !isFallback(response)) {
     cache.put(request, response.clone());
   }
   return response;
+}
+
+/**
+ * A hashed asset that a deploy removed does NOT 404. Firebase's SPA rewrite
+ * answers the unmatched path with index.html — 200, text/html — and the
+ * /assets/** header rule stamps it immutable for a year.
+ *
+ * That response is `ok` and `basic`, so the check above would happily store a
+ * document under a script URL, in a cache that is deliberately never versioned
+ * by build. Nothing would ever evict it before the 200-entry trim. Refuse it:
+ * the import then fails, and the app reloads onto the new bundle instead.
+ */
+function isFallback(response) {
+  return (response.headers.get('content-type') || '').includes('text/html');
 }

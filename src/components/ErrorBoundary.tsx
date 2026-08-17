@@ -1,4 +1,5 @@
 import React, { Component, type ReactNode } from "react";
+import { isStaleBundleError, reloadForNewBundle } from "@/lib/stale-bundle";
 
 interface Props {
   children: ReactNode;
@@ -65,6 +66,48 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) return this.props.children;
 
     const detail = this.getFullDetail();
+
+    // A deploy renamed the chunk this session was still asking for. Nothing is
+    // broken and there is nothing to report — the bundle on disk is simply the
+    // old one. Say that, instead of showing a stack trace for a working app.
+    if (isStaleBundleError(this.state.error)) {
+      return (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100vh",
+            fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+            textAlign: "center",
+            padding: 24,
+          }}
+        >
+          <div style={{ maxWidth: 360 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: "inherit" }}>
+              Homecast has been updated
+            </h1>
+            <p style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5, marginBottom: 20 }}>
+              This page is running an older version. Reload to pick up the new one.
+            </p>
+            <button
+              onClick={reloadForNewBundle}
+              style={{
+                background: "rgba(128,128,128,0.1)",
+                color: "inherit",
+                border: "1px solid rgba(128,128,128,0.2)",
+                borderRadius: 8,
+                padding: "8px 20px",
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div
