@@ -129,33 +129,32 @@ describe('TriStateToggle — disabled', () => {
 describe('TriStateToggle — where the thumb sits', () => {
   afterEach(cleanup);
 
-  // 50px track, 16px thumb, 4px of padding: the ends sit at 4 and 30 and the
-  // middle at 17, exactly between them. A quarter wider than ui/switch.tsx's
-  // 40px because at that width the three stops are 13px apart and the middle
-  // stopped reading as the middle; the height and the thumb are unchanged, so
-  // it still lines up with an ordinary switch beside it.
+  // All in rem, because the root font size is a user preference and every
+  // switch beside this one is rem-sized. The narrow stops are ui/switch.tsx's
+  // exactly — 0.25rem and 1.25rem, where translate-x-1 and translate-x-5 put
+  // them — so the two are interchangeable at any text size.
   const thumb = (root: HTMLElement) =>
     Array.from(root.querySelectorAll('span')).find(s => s.style.transform !== '')!;
   const fill = (root: HTMLElement) =>
     Array.from(root.querySelectorAll('span')).find(s => s.style.opacity !== '')!;
 
   it.each([
-    ['off', 'translateX(4px)', '0'],
-    ['mixed', 'translateX(17px)', '0.5'],
-    ['on', 'translateX(30px)', '1'],
+    ['off', 'translateX(0.25rem)', '0'],
+    ['mixed', 'translateX(1.0625rem)', '1'],
+    ['on', 'translateX(1.875rem)', '1'],
   ] as const)('parks a wide %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
     const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} wide />);
     const root = container.firstElementChild as HTMLElement;
     expect(thumb(root).style.transform).toBe(offset);
-    // Mixed is the on colour at half strength over the off track — literally
-    // halfway between the two ends, rather than a half-filled bar.
+    // Anything on means fully on-coloured: seven of eight lights lit must not
+    // look half switched off. The thumb is what says how many.
     expect(fill(root).style.opacity).toBe(opacity);
   });
 
   it.each([
-    ['off', 'translateX(4px)', '0'],
-    ['mixed', 'translateX(12px)', '0.5'],
-    ['on', 'translateX(20px)', '1'],
+    ['off', 'translateX(0.25rem)', '0'],
+    ['mixed', 'translateX(0.75rem)', '1'],
+    ['on', 'translateX(1.25rem)', '1'],
   ] as const)('parks a narrow %s at %s with the track at %s of the on colour', (state, offset, opacity) => {
     const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} />);
     const root = container.firstElementChild as HTMLElement;
@@ -169,16 +168,28 @@ describe('TriStateToggle — where the thumb sits', () => {
     // can actually reach the middle earns the extra room.
     const plain = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
     const plainRoot = plain.container.firstElementChild as HTMLElement;
-    expect(plainRoot.style.width).toBe('40px');      // exactly ui/switch.tsx
+    expect(plainRoot.className).toContain('w-10');   // exactly ui/switch.tsx
     expect(plainRoot.className).toContain('h-6');
-    expect(thumb(plainRoot).style.width).toBe('16px');
     cleanup();
 
     const wide = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide />);
     const wideRoot = wide.container.firstElementChild as HTMLElement;
-    expect(wideRoot.style.width).toBe('50px');       // +25%
-    expect(wideRoot.className).toContain('h-6');     // same height
-    expect(thumb(wideRoot).style.width).toBe('16px'); // same thumb
+    expect(wideRoot.className).toContain('w-[3.125rem]');  // w-10 +25%
+    expect(wideRoot.className).toContain('h-6');           // same height
+  });
+
+  it('sizes itself in rem, so it grows with the text-size preference', () => {
+    // The whole reason the thumb looked shrunken: the root font size is a user
+    // setting (14 / 16 / 20px) and every switch beside this one is rem-sized,
+    // so a pixel-sized one stays put while they grow.
+    const { container } = render(<TriStateToggle state="on" onCheckedChange={vi.fn()} wide />);
+    const root = container.firstElementChild as HTMLElement;
+    // No pixel widths anywhere: track and thumb are Tailwind rem classes and
+    // the only inline geometry is a rem transform.
+    expect(root.style.width).toBe('');
+    expect(thumb(root).className).toContain('h-4');
+    expect(thumb(root).className).toContain('w-4');
+    expect(thumb(root).style.transform).toContain('rem');
   });
 
   it('takes the track colour from the wallpaper behind it', () => {

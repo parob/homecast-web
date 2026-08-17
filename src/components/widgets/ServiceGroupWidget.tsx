@@ -464,10 +464,18 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     }
   }, [isDragging, editMode, showCompact, isWidgetExpanded]);
 
-  // Compact subtitle text
+  // Compact subtitle text.
+  //
+  // A count of members is the least interesting true thing a tile can say — it
+  // does not change, and the full-size header spends a badge on the number that
+  // does. There is no room for that badge here, so the one line the compact tile
+  // has says how many are on instead, which is also the number the thumb's
+  // middle position is being vague about.
   const compactSubtitle = allNoResponse
     ? 'No Response'
-    : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
+    : isBlindsGroup ? blindsStatus
+    : powerTotal > 0 ? powerCountDescription(onCount, powerTotal)
+    : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`;
 
   // Editing is for arranging, not operating. The group's switches and sliders are
   // scattered through this card, so rather than gate each one, the whole card goes

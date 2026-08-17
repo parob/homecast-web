@@ -50,23 +50,36 @@ interface TriStateToggleProps {
 }
 
 /**
- * 24px tall with a 16px thumb, exactly `ui/switch.tsx`, so either width sits in
- * a row of ordinary switches without shifting anything.
+ * Everything here is in rem, and that is the whole point.
  *
- * The wide track is 50px against 40px, because three positions in 40px put the
- * stops 8px apart and the middle stopped reading as deliberate.
+ * `ui/switch.tsx` is `h-6 w-10` with an `h-4 w-4` thumb — all rem — and the app
+ * drives the root font size from a user preference (14 / 16 / 20px, see
+ * Dashboard). Sizing this in pixels instead pinned it while every switch beside
+ * it grew, so on the large setting the track was narrower and the thumb visibly
+ * smaller than the one it is meant to match. The narrow numbers below are
+ * `ui/switch.tsx`'s exactly: 2.5rem of track, 1rem of thumb, ends at 0.25rem
+ * and 1.25rem — the same places `translate-x-1` and `translate-x-5` put them.
  */
-const THUMB = 16;
-const PAD = 4;
+const THUMB = 1;      // rem — h-4/w-4
+const PAD = 0.25;     // rem — translate-x-1
+const NARROW = 2.5;   // rem — w-10
+const WIDE = NARROW * 1.25;
 
 function geometry(wide: boolean) {
-  const track = wide ? 50 : 40;
+  const track = wide ? WIDE : NARROW;
   return {
     track,
-    min: PAD,                             // 4
-    max: track - THUMB - PAD,             // 30 wide, 20 narrow
-    mid: (track - THUMB) / 2,             // 17 wide, 12 narrow
+    widthClass: wide ? 'w-[3.125rem]' : 'w-10',
+    min: PAD,                             // 0.25
+    max: track - THUMB - PAD,             // 1.875 wide, 1.25 narrow
+    mid: (track - THUMB) / 2,             // 1.0625 wide, 0.75 narrow
   };
+}
+
+/** The live root font size, which is what a rem is worth right now. */
+function remPx(): number {
+  if (typeof document === 'undefined') return 16;
+  return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 }
 
 /** Past this the gesture is a swipe and the press that follows it is not a tap. */
@@ -94,7 +107,7 @@ export function TriStateToggle({
   const { isDarkBackground } = useBackgroundContext();
   const offTrack = uncheckedColorClass ?? (isDarkBackground ? 'bg-white/20' : 'bg-input');
   const offThumb = uncheckedThumbClass ?? (isDarkBackground ? 'bg-white/70' : 'bg-background');
-  const { track, min: MIN_X, max: MAX_X, mid: MID_X } = geometry(wide);
+  const { widthClass, min: MIN_X, max: MAX_X, mid: MID_X } = geometry(wide);
   const thumbX: Record<TriState, number> = { off: MIN_X, mixed: MID_X, on: MAX_X };
   const descriptionId = React.useId();
   const onButtonRef = React.useRef<HTMLButtonElement>(null);
@@ -153,8 +166,10 @@ export function TriStateToggle({
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
+      // The slop stays in pixels — it is a property of the finger, not of the
+      // text-size setting — while the position it produces is in rem.
       if (!moved && Math.abs(dx) > SWIPE_SLOP) moved = true;
-      if (moved) setDragX(clamp(from + dx, MIN_X, MAX_X));
+      if (moved) setDragX(clamp(from + dx / remPx(), MIN_X, MAX_X));
     };
 
     const onEnd = (ev: PointerEvent) => {
@@ -185,12 +200,16 @@ export function TriStateToggle({
   const dragging = dragX !== null;
 
   /**
-   * The track's colour is the on colour laid over the off colour at the thumb's
-   * own progress, so the middle is literally halfway between the two ends
-   * rather than a half-filled bar — and a swipe blends continuously under the
-   * finger instead of snapping when it lands.
+   * Anything on means the track is on-coloured — the middle looks exactly like
+   * the right-hand end, and only the thumb says which it is.
+   *
+   * A half-strength middle was the obvious reading of "part-way", but it made
+   * a group with seven of eight lights lit look half switched off, which is the
+   * opposite of what it is. Colour answers "is anything on"; the thumb answers
+   * "how many". Ramping over the first half of the travel rather than switching
+   * at a threshold is what keeps a drag continuous under the finger.
    */
-  const fillOpacity = (x - MIN_X) / (MAX_X - MIN_X);
+  const fillOpacity = clamp((x - MIN_X) / (MID_X - MIN_X), 0, 1);
 
   const fill = (
     <span
@@ -208,23 +227,24 @@ export function TriStateToggle({
     <span
       aria-hidden
       className={cn(
-        'pointer-events-none absolute left-0 top-1 block rounded-full shadow-sm',
+        'pointer-events-none absolute left-0 top-1 block h-4 w-4 rounded-full shadow-sm',
         !dragging && 'transition-transform duration-base ease-standard',
         state === 'off' && !dragging ? offThumb : 'bg-white/60',
       )}
-      style={{ width: THUMB, height: THUMB, transform: `translateX(${x}px)` }}
+      style={{ transform: `translateX(${x}rem)` }}
     />
   );
 
   const trackClasses = cn(
     'relative inline-flex h-6 shrink-0 items-center overflow-hidden rounded-full transition-colors duration-base ease-standard',
+    widthClass,
     offTrack,
     disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer active:scale-90',
     className,
   );
   // touch-action keeps the page scrollable off a mis-grab: vertical still pans,
   // horizontal is ours.
-  const trackStyle = { width: track, touchAction: 'pan-y' as const };
+  const trackStyle = { touchAction: 'pan-y' as const };
 
   // Mixed genuinely is two commands, so it gets two buttons — and ARIA agrees:
   // aria-checked="mixed" is valid on checkbox, never on switch.

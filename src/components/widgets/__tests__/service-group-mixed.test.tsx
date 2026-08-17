@@ -172,3 +172,54 @@ describe('members that cannot be on do not count against the ones that can', () 
     expect(badge('1/2 on')).toBeTruthy();
   });
 });
+
+describe('the compact tile has one line, and spends it on the count', () => {
+  afterEach(cleanup);
+
+  /**
+   * The visible subtitle, as opposed to the toggle's own sr-only description —
+   * which says the same words on purpose, so that tabbing straight to the
+   * control still tells you the count without reading the card.
+   */
+  const subtitle = (text: string) =>
+    screen.getAllByText(text).filter(el => !el.className.includes('sr-only'));
+
+  it('says how many are on rather than how many there are', () => {
+    // "6 devices" is the least interesting true thing the tile can say — it
+    // never changes. There is no room for the full header's badge here, so the
+    // subtitle carries the number instead.
+    renderGroup([lamp('a', true), lamp('b', false)]);
+    expect(subtitle('1 of 2 on')).toHaveLength(1);
+    expect(screen.queryByText('2 devices')).toBeNull();
+  });
+
+  it('counts only what can be on', () => {
+    renderGroup([lamp('a', true), lamp('b', false), SENSOR]);
+    expect(subtitle('1 of 2 on')).toHaveLength(1);
+  });
+
+  it('says All off rather than 0 of 2 on', () => {
+    // countLabel's wording, so the compact tile and the Actions card describing
+    // the same lights do not phrase the same state two different ways.
+    renderGroup([lamp('a', false), lamp('b', false)]);
+    expect(subtitle('0 of 2 on')).toHaveLength(1);
+  });
+
+  it('leaves a blinds group its own vocabulary', () => {
+    // A blind is not on or off, and coveringStatusText already says what it is.
+    const blind = {
+      id: 'blind-1', name: 'Blind', category: 'WindowCovering', isReachable: true, roomName: 'Kitchen',
+      services: [{
+        id: 'blind-1:svc', name: 'Blind', serviceType: 'window_covering',
+        characteristics: [
+          { id: 'b:cp', characteristicType: 'current_position', value: 0, isReadable: true, isWritable: true, __typename: 'HomeKitCharacteristic' },
+          { id: 'b:tp', characteristicType: 'target_position', value: 0, isReadable: true, isWritable: true, __typename: 'HomeKitCharacteristic' },
+        ],
+        __typename: 'HomeKitService',
+      }],
+      __typename: 'HomeKitAccessory',
+    };
+    renderGroup([blind]);
+    expect(screen.queryByText(/of \d+ on/)).toBeNull();
+  });
+});
