@@ -9,6 +9,7 @@
  */
 
 import * as db from './local-db';
+import { randomUUID } from '../lib/uuid';
 
 // JWT signing key.
 //
@@ -301,7 +302,7 @@ export async function createOwner(name: string, password: string): Promise<{ use
 
   const { hash, salt, iterations } = await hashPassword(password);
   const user: LocalUser = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     passwordHash: hash,
     salt,
@@ -374,7 +375,7 @@ export async function createUser(name: string, password: string, role: 'admin' |
 
   const { hash, salt, iterations } = await hashPassword(password);
   const user: LocalUser = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     passwordHash: hash,
     salt,

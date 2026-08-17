@@ -106,6 +106,7 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
+import { randomUUID } from '@/lib/uuid';
 
 // Measuring configuration to reduce layout measurements during drag
 const measuringConfig = {
@@ -831,7 +832,7 @@ export function CollectionDetail({
   const createGroup = () => {
     if (!newGroupName.trim()) return;
     const newGroup: CollectionGroup = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name: newGroupName.trim(),
     };
     const newPayload = { ...payload, groups: [...payload.groups, newGroup] };

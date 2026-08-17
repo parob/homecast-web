@@ -17,6 +17,7 @@
 
 import * as db from './local-db';
 import { verifyToken, verifyTokenFull, generateCustomToken } from './local-auth';
+import { randomUUID } from '../lib/uuid';
 
 // --- Helpers ---
 
@@ -188,7 +189,7 @@ async function handleRegister(body: Record<string, any>): Promise<Record<string,
     }
   }
 
-  const clientId = crypto.randomUUID();
+  const clientId = randomUUID();
   const client = {
     client_id: clientId,
     client_name: body.client_name || null,
@@ -497,7 +498,7 @@ async function handleAuthCodeGrant(body: Record<string, any>): Promise<Record<st
   // Generate refresh token
   const refreshTokenRaw = randomHex(48);
   const refreshTokenHash = await sha256Hex(refreshTokenRaw);
-  const family = crypto.randomUUID();
+  const family = randomUUID();
 
   await db.putRefreshToken({
     token_hash: refreshTokenHash,

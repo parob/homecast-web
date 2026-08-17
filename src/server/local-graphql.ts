@@ -10,6 +10,7 @@ import * as auth from './local-auth';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { executeHomeKitWrite } from './homekit-write';
 import { communityRequest } from './connection';
+import { randomUUID } from '../lib/uuid';
 
 interface GraphQLRequest {
   operationName?: string;
@@ -618,7 +619,7 @@ async function resolveOperation(
 
     case 'SaveCredential': {
       const cred = {
-        id: (variables.id as string) || crypto.randomUUID(),
+        id: (variables.id as string) || randomUUID(),
         name: variables.name as string,
         type: variables.type as 'api_key' | 'bearer' | 'basic_auth' | 'header',
         encryptedValue: variables.encryptedValue as string,
@@ -1011,7 +1012,7 @@ async function resolveOperation(
     case 'CreateEntityAccess': {
       const shareHash = btoa(`${variables.entityType}:${variables.entityId}:${Date.now()}`).replace(/[+/=]/g, c => c === '+' ? '-' : c === '/' ? '_' : '').slice(0, 16);
       const access = {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         entityType: variables.entityType as string,
         entityId: variables.entityId as string,
         accessType: variables.accessType as string,
@@ -1092,7 +1093,7 @@ async function resolveOperation(
     case 'InviteHomeMember': {
       // In Community mode, "invite" creates the member directly (no email)
       const member = {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         homeId: variables.homeId as string,
         email: variables.email as string, // username in Community mode
         name: variables.email as string,

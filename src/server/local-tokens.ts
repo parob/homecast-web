@@ -4,6 +4,7 @@
  */
 
 import * as db from './local-db';
+import { randomUUID } from '../lib/uuid';
 
 interface ApiToken {
   id: string;
@@ -31,7 +32,7 @@ async function hashToken(token: string): Promise<string> {
 export async function createToken(name: string, homePermissions: string, expiresAt?: string): Promise<{ token: ApiToken; fullToken: string }> {
   const fullToken = generateTokenString();
   const tokenObj: ApiToken = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     tokenHash: await hashToken(fullToken),
     prefix: fullToken.slice(0, 11), // "hc_" + first 8 hex chars

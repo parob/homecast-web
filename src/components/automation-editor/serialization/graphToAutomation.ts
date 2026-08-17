@@ -49,6 +49,7 @@ import type {
 import { createEmptyConditionBlock } from '@/automation/types/automation';
 import { CHOOSE_BY_TRIGGER_PREFIX, TRIGGER_GATE_PREFIX } from '@/automation/trigger-branches';
 import { ifConfigToConditionBlock, type IfConditionConfig } from './if-condition';
+import { randomUUID } from '@/lib/uuid';
 
 /**
  * Convert a React Flow graph into an Automation definition.
@@ -77,7 +78,7 @@ export function graphToAutomation(
   const { conditions, actions } = combineBranches(branches);
 
   return {
-    id: existingId ?? crypto.randomUUID(),
+    id: existingId ?? randomUUID(),
     name,
     homeId,
     enabled: true,

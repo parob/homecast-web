@@ -1,12 +1,13 @@
 /**
  * Tracing utilities for distributed tracing across web client, server, and device.
  */
+import { randomUUID } from './uuid';
 
 /**
  * Generate a unique trace ID (UUID v4).
  */
 export function generateTraceId(): string {
-  return crypto.randomUUID();
+  return randomUUID();
 }
 
 /**

@@ -2,6 +2,8 @@
 // Simplified node types: 3 triggers + 5 actions + 2 logic = 10 palette types
 // These map to the engine's detailed types during serialization
 
+import { randomUUID } from '../../lib/uuid';
+
 // ============================================================
 // Node Categories
 // ============================================================
@@ -300,7 +302,7 @@ export type FlowNodeData = {
 export function createDefaultNodeData(def: NodeDefinition): FlowNodeData {
   // Default config for specific node types
   const defaultConfigs: Record<string, Record<string, unknown>> = {
-    webhook: { webhookId: crypto.randomUUID().slice(0, 8) },
+    webhook: { webhookId: randomUUID().slice(0, 8) },
   };
 
   return {

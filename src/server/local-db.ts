@@ -9,6 +9,7 @@
 // Safe to import statically: local-telemetry is a leaf module with no static
 // imports of its own, so this cannot close a cycle back into here.
 import { bumpTelemetry } from './local-telemetry';
+import { randomUUID } from '../lib/uuid';
 
 const DB_NAME = 'homecast-local';
 const DB_VERSION = 9; // v9: added history_series, history_samples, history_rollups
@@ -238,7 +239,7 @@ export async function getCollections(): Promise<Collection[]> {
 
 export async function createCollection(name: string): Promise<Collection> {
   const collection: Collection = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     payload: null,
     createdAt: new Date().toISOString(),
@@ -344,7 +345,7 @@ export async function getRoomGroups(): Promise<RoomGroup[]> {
 
 export async function createRoomGroup(name: string, homeId: string, roomIds: string[]): Promise<RoomGroup> {
   const group: RoomGroup = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     homeId,
     roomIds,
@@ -386,7 +387,7 @@ export async function getHcAutomations(homeId?: string): Promise<HcAutomation[]>
 }
 
 export async function saveHcAutomation(homeId: string, automationId: string | null, data: string): Promise<HcAutomation> {
-  const id = automationId ?? crypto.randomUUID();
+  const id = automationId ?? randomUUID();
   const existing = await getById<HcAutomation>('hc_automations', id);
 
   // Snapshot current version before overwriting (auto-versioning)
@@ -395,7 +396,7 @@ export async function saveHcAutomation(homeId: string, automationId: string | nu
       const versions = await getAutomationVersions(id);
       const nextVersion = (versions[0]?.version ?? 0) + 1;
       await saveAutomationVersion({
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         automationId: id,
         version: nextVersion,
         dataJson: existing.data,
@@ -444,7 +445,7 @@ export async function getVirtualAccessories(homeId?: string): Promise<VirtualAcc
 }
 
 export async function saveVirtualAccessory(homeId: string, accessoryId: string | null, data: string): Promise<VirtualAccessoryRow> {
-  const id = accessoryId ?? crypto.randomUUID();
+  const id = accessoryId ?? randomUUID();
   const existing = await getById<VirtualAccessoryRow>('hc_virtual_accessories', id);
   const now = new Date().toISOString();
   const helper: VirtualAccessoryRow = { id, homeId, data, createdAt: existing?.createdAt ?? now, updatedAt: now };

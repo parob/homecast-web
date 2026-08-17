@@ -15,6 +15,7 @@
  *   - Plain browser, Tauri desktop shells: none → null
  */
 import { useEffect, useRef, useState } from 'react';
+import { randomUUID } from '@/lib/uuid';
 
 const MACOS_FINGERPRINT_KEY = 'homecast-device-fingerprint';
 // Legacy key name — renaming would orphan existing Android registrations.
@@ -80,7 +81,7 @@ export function getDeviceFingerprint(): string | null {
   try {
     let fingerprint = localStorage.getItem(key);
     if (!fingerprint) {
-      fingerprint = `${platform}-${crypto.randomUUID()}`;
+      fingerprint = `${platform}-${randomUUID()}`;
       localStorage.setItem(key, fingerprint);
     }
     return fingerprint;

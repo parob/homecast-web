@@ -55,6 +55,7 @@ import type { NodeDefinition } from './constants';
 import { graphToAutomation } from './serialization/graphToAutomation';
 import { automationToGraph } from './serialization/automationToGraph';
 import type { Automation, VirtualAccessoryDefinition } from '@/automation/types/automation';
+import { randomUUID } from '@/lib/uuid';
 
 const nodeTypes: NodeTypes = {
   automationNode: BaseNode,
@@ -441,7 +442,7 @@ function AutomationEditorInner({
   const duplicateNode = useCallback((nodeId: string) => {
     const original = nodes.find((n) => n.id === nodeId);
     if (!original) return;
-    const newId = crypto.randomUUID();
+    const newId = randomUUID();
     const newNode: Node<FlowNodeData> = {
       ...original,
       id: newId,
@@ -493,7 +494,7 @@ function AutomationEditorInner({
   const addNewNode = useCallback(
     (def: NodeDefinition, position?: { x: number; y: number }) => {
       if (runView) return;
-      const id = crypto.randomUUID();
+      const id = randomUUID();
       const pos = position ?? { x: 300, y: (nodes.length + 1) * 80 + 50 };
 
       const newNode: Node<FlowNodeData> = {

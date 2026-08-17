@@ -10,6 +10,7 @@
 import * as db from './local-db';
 import { HomeKit } from '../native/homekit-bridge';
 import { isCommunity } from '../lib/config';
+import { randomUUID } from '../lib/uuid';
 
 // --- Types ---
 
@@ -104,8 +105,8 @@ async function deliverWebhook(
   deliveryId?: string,
   eventId?: string,
 ): Promise<void> {
-  const id = deliveryId || crypto.randomUUID();
-  const evtId = eventId || `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const id = deliveryId || randomUUID();
+  const evtId = eventId || `evt_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
   const maxAttempts = webhook.maxRetries + 1;
 
   // Circuit breaker check
@@ -270,7 +271,7 @@ export async function createWebhook(params: {
 }): Promise<{ webhook: Webhook; rawSecret: string }> {
   const rawSecret = generateWebhookSecret();
   const webhook: Webhook = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: params.name,
     url: params.url,
     secret: rawSecret,
@@ -366,7 +367,7 @@ export async function testWebhook(webhookId: string): Promise<{ success: boolean
         'X-Homecast-Signature': signature,
         'X-Homecast-Timestamp': String(timestamp),
         'X-Homecast-Event': 'webhook.test',
-        'X-Homecast-Delivery': `test_${crypto.randomUUID()}`,
+        'X-Homecast-Delivery': `test_${randomUUID()}`,
       },
       body,
       signal: controller.signal,

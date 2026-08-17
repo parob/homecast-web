@@ -19,6 +19,7 @@ import { describeTriggerData, capLarge } from './trace-summaries';
 import type { NotifyDelivery } from '../types/notify';
 import type { HomeKitEvent } from '../../native/homekit-bridge';
 import { describeError } from '../../lib/describe-error';
+import { randomUUID } from '../../lib/uuid';
 
 // Rate limiting
 const MAX_EXECUTIONS_PER_MINUTE = 10;
@@ -411,7 +412,7 @@ export class AutomationEngine {
     const reasonText = BLOCKED_REASON_TEXT[reason];
 
     this.config.onTraceComplete({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       automationId: automation.id,
       automationName: automation.name,
       startedAt: nowIso,

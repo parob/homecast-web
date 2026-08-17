@@ -1,6 +1,8 @@
 // Homecast Automation Engine - Core Type Definitions
 // Inspired by Home Assistant's Trigger-Condition-Action model
 
+import { randomUUID } from '../../lib/uuid';
+
 // ============================================================
 // Utilities
 // ============================================================
@@ -693,7 +695,7 @@ export function createEmptyConditionBlock(): ConditionBlock {
 
 export function createEmptyAutomation(homeId: string): Automation {
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: '',
     homeId,
     enabled: true,

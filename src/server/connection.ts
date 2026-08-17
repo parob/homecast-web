@@ -81,7 +81,7 @@ export function getDeviceId(): string {
   // Generate new ID if none exists, or if prefix doesn't match current mode
   // (handles migration from old web_ prefix for Mac apps)
   if (!deviceId || !deviceId.startsWith(expectedPrefix)) {
-    deviceId = expectedPrefix + crypto.randomUUID();
+    deviceId = expectedPrefix + randomUUID();
     localStorage.setItem(STORAGE_KEY, deviceId);
     if (import.meta.env.DEV) console.log(`[ServerConnection] Generated new device ID: ${deviceId} (was: ${oldDeviceId}, isRelayCapable: ${isMacApp})`);
   } else {
@@ -103,7 +103,7 @@ export function getBrowserSessionId(): string | undefined {
   let sessionId = sessionStorage.getItem(STORAGE_KEY);
 
   if (!sessionId) {
-    sessionId = 'sess_' + crypto.randomUUID();
+    sessionId = 'sess_' + randomUUID();
     sessionStorage.setItem(STORAGE_KEY, sessionId);
     if (import.meta.env.DEV) console.log(`[ServerConnection] Generated new browser session ID: ${sessionId}`);
   }
@@ -112,6 +112,7 @@ export function getBrowserSessionId(): string | undefined {
 }
 
 import { config, isCommunity, isClientMode } from '@/lib/config';
+import { randomUUID } from '@/lib/uuid';
 
 const WS_URL = config.wsUrl;
 

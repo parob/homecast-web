@@ -46,6 +46,7 @@ import type {
   VirtualAccessoryDefinition,
   VirtualOperation,
 } from '../automation/types/automation';
+import { randomUUID } from '@/lib/uuid';
 
 type AccessoryIndex = Awaited<ReturnType<typeof buildAccessoryIndex>>;
 
@@ -109,7 +110,7 @@ function charToSimple(charType: string): string {
 }
 
 function newId(): string {
-  return crypto.randomUUID();
+  return randomUUID();
 }
 
 /**

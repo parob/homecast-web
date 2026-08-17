@@ -13,6 +13,7 @@ import type {
   StepTags,
   WaitResult,
 } from '../types/execution';
+import { randomUUID } from '../../lib/uuid';
 
 /**
  * Per-execution-run context. Holds variables, trigger data,
@@ -71,7 +72,7 @@ export class ExecutionContext {
     ancestorIds: readonly string[] = [],
     homeId?: string,
   ) {
-    this.traceId = crypto.randomUUID();
+    this.traceId = randomUUID();
     this.automationId = automationId;
     this.automationName = automationName;
     this.homeId = homeId;
