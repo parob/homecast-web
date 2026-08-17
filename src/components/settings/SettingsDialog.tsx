@@ -163,6 +163,25 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const SmartDealsSection = _cloud?.SmartDealsSection ?? null;
   const SelfHostedRelaySection = _cloud?.SelfHostedRelaySection ?? null;
 
+  // The relay's address on the LAN. window.location.origin is localhost on the
+  // relay Mac, which means "this device" wherever it is read — so copying it to
+  // a phone hands over a link to the phone. Only the server knows the answer,
+  // and it reports it on /health.
+  const [lanOrigin, setLanOrigin] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isCommunity || !isRelayCapable()) return;
+    let cancelled = false;
+    fetch('/health', { signal: AbortSignal.timeout(4000) })
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled || !d?.lanAddress) return;
+        setLanOrigin(`http://${d.lanAddress}:${d.port || window.location.port || 5656}`);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const portalUrl = lanOrigin ?? window.location.origin;
+
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'plan');
   // On mobile, null means showing the menu list; a tab value means showing that section
@@ -324,18 +343,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </p>
               <div className="flex items-center gap-2">
                 <a
-                  href={window.location.origin}
+                  href={portalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={openExternalUrl(window.location.origin)}
+                  onClick={openExternalUrl(portalUrl)}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline font-mono truncate"
                 >
-                  {window.location.origin}
+                  {portalUrl}
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>
                 <button
                   type="button"
-                  onClick={() => props.copyToClipboard(window.location.origin)}
+                  onClick={() => props.copyToClipboard(portalUrl)}
                   className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   aria-label="Copy local portal URL"
                 >
