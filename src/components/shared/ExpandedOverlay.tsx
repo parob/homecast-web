@@ -339,17 +339,27 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       <div ref={parentRef} className="hidden" />
       {shouldRender && createPortal(
         <>
-          {/* Subtle scrim behind the panel. pointer-events-none keeps the
-              pointerdown-outside dismissal working (tapping another widget
-              closes this overlay AND opens that one). Only the outermost
-              overlay dims — nested overlays (group → accessory) skip it. */}
+          {/* Subtle scrim behind the panel. It swallows the tap that dismisses
+              the overlay: the pointerdown lands here, the document-capture
+              handler above sees a target outside the panel and closes, and
+              whatever sits underneath never hears about it. It used to be
+              pointer-events-none, so dismissing also pressed the widget you
+              happened to dismiss over — a blurred, unreachable-looking backdrop
+              that still actuated devices. One tap now means one thing.
+              Interactive only once it is actually painted, so the 150ms close
+              animation doesn't eat the next tap. Only the outermost overlay
+              dims — nested overlays (group → accessory) skip it. */}
           {depth === 0 && (
             <div
               aria-hidden
               style={{ zIndex: baseZ }}
-              className={`fixed-full-screen pointer-events-none backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
+              // Blocking the pointer also blocks scrolling the page behind, and
+              // the scroll-past-40px dismissal with it. A wheel over the
+              // backdrop means the same thing a tap does.
+              onWheel={() => onClose()}
+              className={`fixed-full-screen backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
                 isDarkBackground ? 'bg-black/15' : 'bg-black/[0.07]'
-              } ${ready && !isClosing ? 'opacity-100' : 'opacity-0'}`}
+              } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
             />
           )}
           <div
