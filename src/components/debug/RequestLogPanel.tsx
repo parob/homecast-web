@@ -152,19 +152,23 @@ export function RequestLogPanel() {
           bottom edge of the screen, where a 20px icon is not a target a thumb
           can find. So the summary itself becomes the button, spanning the whole
           width, and the row grows to a size a finger can actually land on. */}
-      <div className={`flex items-center gap-2 px-3 shrink-0 ${minimised ? 'h-full py-0' : 'py-1.5 border-b border-white/10'}`}>
+      <div className={`flex items-center gap-2 shrink-0 ${minimised ? 'h-full py-0 px-4' : 'px-3 py-1.5 border-b border-white/10'}`}>
         {minimised ? (
           <button
             onClick={() => setMinimised(false)}
             aria-label="Expand request log"
-            className="relative flex flex-1 items-center gap-2 self-stretch text-left rounded hover:bg-white/10 -mx-1 px-1"
+            // Full width so the whole bar is the target, but nothing painted:
+            // it used to pull out into the row's padding with a negative margin
+            // and fill it on hover, which put a colour where the inset should be.
+            // Feedback is on the text instead, which tints nothing but itself.
+            className="group relative flex flex-1 items-center gap-2 self-stretch text-left"
           >
-            <span className="text-[11px] font-semibold tracking-wide text-white/80">Requests</span>
+            <span className="text-[11px] font-semibold tracking-wide text-white/80 transition-colors group-hover:text-white">Requests</span>
             <span className="text-[11px] text-white/35 tabular-nums">{entries.length}</span>
             {errors > 0 && (
               <span className="text-[11px] text-red-400 tabular-nums">{errors} failed</span>
             )}
-            <ChevronUp className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 text-white/50" />
+            <ChevronUp className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 text-white/50 transition-colors group-hover:text-white" />
           </button>
         ) : (
           <>
@@ -176,7 +180,10 @@ export function RequestLogPanel() {
             <span className="flex-1" />
           </>
         )}
-        {!follow && (
+        {/* Follow scrolls the list to the bottom, so it means nothing without a
+            list on screen — and collapsed it was the one thing still painting a
+            background inside the bar's padding. */}
+        {!follow && !minimised && (
           <button
             onClick={() => { setFollow(true); const el = scrollerRef.current; if (el) el.scrollTop = el.scrollHeight; }}
             className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10"
