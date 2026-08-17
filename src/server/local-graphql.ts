@@ -154,6 +154,19 @@ function toStoredEntity(e: db.StoredEntity, typename = 'StoredEntity') {
 }
 
 /**
+ * A Community member onto the shape the client documents select.
+ *
+ * Community members are local accounts created on the spot — there is no
+ * invite email and nothing to accept — so they are active from the moment they
+ * are added. Rows written before `status` existed get it filled in here, and
+ * the superseded `isPending` is derived rather than stored twice.
+ */
+function toHomeMember(m: any) {
+  const status = m.status || 'active';
+  return { ...m, status, isPending: status === 'awaiting_signup', __typename: 'HomeMember' };
+}
+
+/**
  * Handle a GraphQL request and return the response body.
  *
  * When `auth-enabled` is on, every operation outside `GRAPHQL_PUBLIC_OPS`
@@ -1070,7 +1083,10 @@ async function resolveOperation(
     case 'GetHomeMembers': {
       const members = await db.getHomeMembers();
       const filtered = variables.homeId ? members.filter(m => m.homeId === variables.homeId) : members;
-      return { homeMembers: filtered.map(m => ({ ...m, __typename: 'HomeMember' })) };
+      // Community members are local accounts — there is no invite to accept,
+      // so they are active from the moment they are added. Rows written before
+      // `status` existed get it filled in here.
+      return { homeMembers: filtered.map(toHomeMember) };
     }
 
     case 'InviteHomeMember': {
@@ -1085,7 +1101,7 @@ async function resolveOperation(
         createdAt: new Date().toISOString(),
       };
       await db.putHomeMember(member);
-      return { inviteHomeMember: { success: true, error: null, member: { ...member, __typename: 'HomeMember' }, __typename: 'InviteHomeMemberResult' } };
+      return { inviteHomeMember: { success: true, error: null, member: toHomeMember(member), __typename: 'InviteHomeMemberResult' } };
     }
 
     case 'UpdateHomeMemberRole': {
@@ -1094,7 +1110,7 @@ async function resolveOperation(
       if (!member) return { updateHomeMemberRole: { success: false, error: 'Not found' } };
       member.role = variables.role;
       await db.putHomeMember(member);
-      return { updateHomeMemberRole: { success: true, error: null, member: { ...member, __typename: 'HomeMember' }, __typename: 'UpdateHomeMemberRoleResult' } };
+      return { updateHomeMemberRole: { success: true, error: null, member: toHomeMember(member), __typename: 'UpdateHomeMemberRoleResult' } };
     }
 
     case 'RemoveHomeMember': {

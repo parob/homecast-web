@@ -682,6 +682,7 @@ export const GET_HOME_MEMBERS = gql`
       name
       role
       isPending
+      status
       createdAt
     }
   }

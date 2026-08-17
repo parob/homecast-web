@@ -16,6 +16,7 @@ import type {
   UpdateEntityAccessResponse,
   DeleteEntityAccessResponse,
   HomeMemberInfo,
+  HomeMemberStatus,
   GetHomeMembersResponse,
   InviteHomeMemberResponse,
   UpdateHomeMemberRoleResponse,
@@ -50,6 +51,7 @@ import {
   ChevronRight,
   AlertCircle,
   Clock,
+  MailCheck,
 } from 'lucide-react';
 import {
   Select,
@@ -64,6 +66,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { memberStatus, MEMBER_STATUS_LABELS } from '@/lib/home-members';
 import { toast } from 'sonner';
 import { ShareQRCode } from './ShareQRCode';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -94,6 +97,34 @@ interface ShareDialogProps {
 }
 
 type PublicAccessState = 'off' | 'view' | 'control';
+
+const MEMBER_STATUS_BADGE: Record<Exclude<HomeMemberStatus, 'active'>, {
+  title: string;
+  className: string;
+  Icon: typeof Clock;
+}> = {
+  awaiting_signup: {
+    title: 'Invitation sent. Nobody has signed up with this email yet — the home appears once they create an account and accept.',
+    className: 'text-amber-600 dark:text-amber-400',
+    Icon: Clock,
+  },
+  awaiting_acceptance: {
+    title: 'They have a Homecast account. The invitation is waiting for them to accept it.',
+    className: 'text-sky-600 dark:text-sky-400',
+    Icon: MailCheck,
+  },
+};
+
+function MemberStatusBadge({ member }: { member: HomeMemberInfo }) {
+  const status = memberStatus(member);
+  if (status === 'active') return null;
+  const { title, className, Icon } = MEMBER_STATUS_BADGE[status];
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-xs', className)} title={title}>
+      <Icon className="h-3 w-3" /> {MEMBER_STATUS_LABELS[status]}
+    </span>
+  );
+}
 
 export function ShareDialog({
   entityType,
@@ -403,7 +434,16 @@ export function ShareDialog({
         variables: { homeId: entityId, email: memberEmail.trim(), role: memberRole },
       });
       if (result?.inviteHomeMember.success) {
-        toast.success(`Invited ${memberEmail.trim()}`);
+        const invited = memberEmail.trim();
+        const member = result.inviteHomeMember.member;
+        const status = member ? memberStatus(member) : 'awaiting_acceptance';
+        toast.success(
+          status === 'active'
+            ? `Added ${invited}`
+            : status === 'awaiting_signup'
+              ? `Invited ${invited} — they'll need to create a Homecast account first`
+              : `Invited ${invited} — waiting for them to accept`
+        );
         setMemberEmail('');
         setAddingMember(false);
         refetchMembers();
@@ -912,11 +952,7 @@ export function ShareDialog({
                       <div className="flex-1 min-w-0">
                         <div className="text-sm truncate">{member.name || member.email}</div>
                         {member.name && <div className="text-xs text-muted-foreground truncate">{member.email}</div>}
-                        {member.isPending && (
-                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                            <Clock className="h-3 w-3" /> Pending
-                          </span>
-                        )}
+                        <MemberStatusBadge member={member} />
                       </div>
                       {canModifyMember(member) ? (
                         <div className="flex items-center gap-1">

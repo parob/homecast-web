@@ -838,6 +838,7 @@ export const INVITE_HOME_MEMBER = gql`
         name
         role
         isPending
+        status
         createdAt
       }
     }
@@ -856,6 +857,7 @@ export const UPDATE_HOME_MEMBER_ROLE = gql`
         name
         role
         isPending
+        status
         createdAt
       }
     }

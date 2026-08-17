@@ -12,6 +12,7 @@ import type {
   GetCachedHomesResponse,
 } from '@/lib/graphql/types';
 import { WELL_KNOWN_CLIENTS } from '@/lib/oauth-clients';
+import { summariseOutstandingInvites } from '@/lib/home-members';
 import {
   Dialog,
   DialogContent,
@@ -331,17 +332,19 @@ export function SharedItemsDialog({ open, onOpenChange }: SharedItemsDialogProps
             {(() => {
               const memberEntries = entity.accessEntries.filter(a => a.accessType === 'member');
               if (memberEntries.length === 0) return null;
-              const pendingCount = memberEntries.filter(a => a.accessSchedule === 'pending').length;
+              // Counts both outstanding states — a member who signed up but
+              // hasn't accepted is still waiting on something.
+              const outstanding = summariseOutstandingInvites(memberEntries);
               const accessInfo = ACCESS_TYPE_INFO.member;
               return (
                 <>
                   <Badge variant="secondary" className={`h-5 text-[10px] gap-0.5 ${accessInfo.color}`}>
                     {memberEntries.length} {memberEntries.length === 1 ? 'Member' : 'Members'}
                   </Badge>
-                  {pendingCount > 0 && (
-                    <Badge variant="secondary" className="h-5 text-[10px] gap-0.5 text-amber-600 bg-amber-500/10">
+                  {outstanding && (
+                    <Badge variant="secondary" className="h-5 text-[10px] gap-0.5 text-amber-600 bg-amber-500/10" title={outstanding.title}>
                       <Clock className="h-3 w-3" />
-                      {pendingCount} Pending
+                      {outstanding.count} Pending
                     </Badge>
                   )}
                 </>

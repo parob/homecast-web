@@ -396,13 +396,23 @@ export interface GetCachedHomesResponse {
 
 // --- Home Member Types ---
 
+/**
+ * Where a member is in the invite lifecycle.
+ * - `awaiting_signup` — invited, but nobody has signed up with that email yet.
+ * - `awaiting_acceptance` — they have an account; the invitation is unanswered.
+ * - `active` — accepted; the home is in their list.
+ */
+export type HomeMemberStatus = 'awaiting_signup' | 'awaiting_acceptance' | 'active';
+
 export interface HomeMemberInfo {
   id: string;
   homeId: string;
   email: string;
   name: string | null;
   role: string;
+  /** @deprecated Use `status` — this is only ever `awaiting_signup`. */
   isPending: boolean;
+  status: HomeMemberStatus;
   createdAt: string;
 }
 
