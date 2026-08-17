@@ -12,9 +12,31 @@ import { isRelayCapable } from "../native/homekit-bridge";
 // error instead of hanging the page until the LB cuts the connection at 30s.
 const GRAPHQL_REQUEST_TIMEOUT_MS = 15_000;
 
+// `timeoutMs` rides along inside the fetch init and never reaches the wire —
+// fetch ignores init properties it doesn't recognise. Use withRequestTimeout()
+// rather than writing the shape by hand.
+type TimeoutInit = RequestInit & { timeoutMs?: number };
+
+/**
+ * Per-operation override of GRAPHQL_REQUEST_TIMEOUT_MS, for the rare query that
+ * is legitimately slower than an interactive one.
+ *
+ *   useQuery(GET_APP_INSTALLS, { context: withRequestTimeout(60_000) })
+ *
+ * Reach for this only when the server genuinely needs the time (a third-party
+ * API round trip, say). The 15s default is what keeps a wedged backend from
+ * looking like a hung page, so it stays the default for everything else.
+ */
+export const withRequestTimeout = (ms: number) => ({
+  fetchOptions: { timeoutMs: ms } as TimeoutInit,
+});
+
 const fetchWithTimeout: typeof fetch = (input, init) => {
+  const override = (init as TimeoutInit | undefined)?.timeoutMs;
+  const timeoutMs =
+    typeof override === "number" && override > 0 ? override : GRAPHQL_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GRAPHQL_REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const upstreamSignal = init?.signal;
   if (upstreamSignal) {
     if (upstreamSignal.aborted) controller.abort();
