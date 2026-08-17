@@ -28,7 +28,7 @@ import {
   Copy,
 } from 'lucide-react';
 import type { HomeKitHome, UserSettingsData, GetSettingsResponse } from '@/lib/graphql/types';
-import { isCommunity } from '@/lib/config';
+import { isCommunity, getRelayAddress } from '@/lib/config';
 import { isMQTTAvailable } from '@/lib/mqtt-bridge';
 import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
 import {
@@ -163,10 +163,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const SmartDealsSection = _cloud?.SmartDealsSection ?? null;
   const SelfHostedRelaySection = _cloud?.SelfHostedRelaySection ?? null;
 
-  // The relay's address on the LAN. window.location.origin is localhost on the
-  // relay Mac, which means "this device" wherever it is read — so copying it to
-  // a phone hands over a link to the phone. Only the server knows the answer,
-  // and it reports it on /health.
+  // The relay's address on the LAN. `window.location.origin` is never it:
+  // on the relay Mac it is loopback, and on a phone the page is served by
+  // *that phone's* own loopback server, so the origin means "this device"
+  // wherever it is read — copying it to another device hands over a link to
+  // nothing. Two sources, because the answer lives in different places:
+  //   - on the relay, only the server knows, and it reports it on /health;
+  //   - on a client, it is the relay origin the app already paired with.
   const [lanOrigin, setLanOrigin] = useState<string | null>(null);
   useEffect(() => {
     if (!isCommunity || !isRelayCapable()) return;
@@ -180,7 +183,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  const portalUrl = lanOrigin ?? window.location.origin;
+  // Falls back to the origin only where it is genuinely the relay's — a plain
+  // browser pointed at the relay over the LAN. A client with no paired relay
+  // has no portal address to offer, and shows no card rather than a wrong one.
+  const clientRelayOrigin = isCommunity && !isRelayCapable() ? getRelayAddress() : null;
+  const portalUrl =
+    lanOrigin ??
+    clientRelayOrigin ??
+    ((window as any).isHomecastApp && !isRelayCapable() ? null : window.location.origin);
 
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'plan');
@@ -336,33 +346,35 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 You're running the Community edition — fully local, no cloud dependency, unlimited accessories.
               </p>
             </div>
-            <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-sm font-medium">Local portal</p>
-              <p className="text-xs text-muted-foreground">
-                Open Homecast from any device on your network at this address.
-              </p>
-              <div className="flex items-center gap-2">
-                <a
-                  href={portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={openExternalUrl(portalUrl)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline font-mono truncate"
-                >
-                  {portalUrl}
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                </a>
-                <button
-                  type="button"
-                  onClick={() => props.copyToClipboard(portalUrl)}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Copy local portal URL"
-                >
-                  <Copy className="h-3 w-3" />
-                  Copy
-                </button>
+            {portalUrl && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <p className="text-sm font-medium">Local portal</p>
+                <p className="text-xs text-muted-foreground">
+                  Open Homecast from any device on your network at this address.
+                </p>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={portalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={openExternalUrl(portalUrl)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline font-mono truncate"
+                  >
+                    {portalUrl}
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => props.copyToClipboard(portalUrl)}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Copy local portal URL"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
             {/* Inside the App Store build → link to the repo (anti-steering safe).
                 In a regular browser → keep the GitHub Sponsors call-to-action. */}
             {(window as any).isHomecastApp ? (
