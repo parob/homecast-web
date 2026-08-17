@@ -26,6 +26,15 @@ interface OnboardingOverlayProps {
   cloudSignupsAvailable?: boolean;
   accountType?: string;
   initialStep?: WizardStep;
+  /** The account already has at least one home (owned or shared with them). */
+  hasHomes?: boolean;
+  /**
+   * Close the wizard and open Settings → Homes, which owns the real add-a-home
+   * flow (Apple ID + region + the invitation the relay is waiting for). Someone
+   * who already pays for Cloud, or already has a home, needs that — not a
+   * first-run pitch with a price on it.
+   */
+  onAddHomeInSettings?: () => void;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -94,7 +103,7 @@ function OptionCard({ n, icon, title, requirement, children, onClick, disabled }
   );
 }
 
-function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, cloudSignupsAvailable = true, accountType }: {
+function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, cloudSignupsAvailable = true, accountType, hasHomes, onAddHomeInSettings }: {
   isInMacApp: boolean;
   isInMobileApp?: boolean;
   onSelect: (step: WizardStep) => void;
@@ -102,8 +111,13 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
   pricing: NonNullable<ReturnType<typeof usePricing>>;
   cloudSignupsAvailable?: boolean;
   accountType?: string;
+  hasHomes?: boolean;
+  onAddHomeInSettings?: () => void;
 }) {
   const hasCloud = accountType === 'cloud' || accountType === 'managed';
+  // Nothing left to sell and nothing to decide: adding a further home is a
+  // Settings task, so go straight there rather than through a setup step.
+  const cloudGoesToSettings = Boolean(onAddHomeInSettings) && (hasCloud || Boolean(hasHomes));
   const macLabel = isInMacApp ? 'Use this Mac as your relay' : 'I have a Mac at home';
   const macDescription = isInMacApp
     ? 'Your Mac needs to stay on for remote access to work.'
@@ -143,9 +157,9 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
       <OptionCard
         n={2}
         icon={<Cloud className="h-4 w-4 text-blue-500" />}
-        title="Set up a cloud relay"
+        title={cloudGoesToSettings ? (hasCloud ? 'Register a home on your cloud relay' : 'Add another home') : 'Set up a cloud relay'}
         requirement="Requires an Apple Home Hub (Apple TV or HomePod)"
-        onClick={() => onSelect('cloud-setup')}
+        onClick={() => (cloudGoesToSettings ? onAddHomeInSettings!() : onSelect('cloud-setup'))}
         disabled={!cloudSignupsAvailable && !hasCloud}
       >
         <p className="text-xs text-muted-foreground">
@@ -156,9 +170,18 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
         {/* Somebody already paying for this should be told they have it, not
             quoted the price of it again. */}
         {hasCloud ? (
-          <p className="text-xs font-medium text-green-600 flex items-center gap-1">
-            <Check className="h-3 w-3" />
-            Cloud plan active · unlimited accessories
+          <>
+            <p className="text-xs font-medium text-green-600 flex items-center gap-1">
+              <Check className="h-3 w-3" />
+              Cloud plan active · unlimited accessories
+            </p>
+            {cloudGoesToSettings && (
+              <p className="text-xs text-muted-foreground">Nothing to pay — opens Settings to register the home.</p>
+            )}
+          </>
+        ) : cloudGoesToSettings ? (
+          <p className="text-xs text-muted-foreground">
+            Opens Settings, alongside the homes you already have · {pricing.cloud.formatted}/mo
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -285,11 +308,14 @@ function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard
   );
 }
 
-function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = true }: {
+function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = true, hasCloudPlan, hasHomes, onAddHomeInSettings }: {
   onComplete: (enrollmentId?: string) => void;
   onBack: () => void;
   pricing: NonNullable<ReturnType<typeof usePricing>>;
   cloudSignupsAvailable?: boolean;
+  hasCloudPlan?: boolean;
+  hasHomes?: boolean;
+  onAddHomeInSettings?: () => void;
 }) {
   const [homeName, setHomeName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -314,6 +340,33 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
       setLoading(false);
     }
   }, [homeName, onComplete]);
+
+  // Already subscribed, or already running homes: this step's job is checkout,
+  // and there is nothing to check out. Settings → Homes owns adding a home to
+  // an existing plan, so hand over rather than quoting a price again.
+  if (onAddHomeInSettings && (hasCloudPlan || hasHomes)) {
+    return (
+      <div className="space-y-4 py-2">
+        {hasCloudPlan && (
+          <p className="text-xs font-medium text-green-600 flex items-center gap-1">
+            <Check className="h-3 w-3" />
+            Cloud plan active · unlimited accessories
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">
+          {hasCloudPlan
+            ? "You're already subscribed, so there's nothing to buy. Register the home and we'll show you the invitation to send your relay from Apple Home."
+            : 'Homes are added in Settings, alongside the ones you already have.'}
+        </p>
+        <Button size="sm" className="w-full text-xs" onClick={onAddHomeInSettings}>
+          {hasCloudPlan ? 'Register a home' : 'Add a home in Settings'}
+        </Button>
+        <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onBack}>
+          <ArrowLeft className="h-3 w-3 mr-1" /> Back
+        </Button>
+      </div>
+    );
+  }
 
   if (!cloudSignupsAvailable) {
     return (
@@ -340,12 +393,14 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
 
       <div className="space-y-2">
         <label className="text-xs font-medium">What's your Apple Home called?</label>
+        {/* No autoFocus: on a phone it throws the keyboard up over the page
+            the moment this step opens, so the explanation, the price and the
+            hub requirement are all hidden behind it before anyone reads them. */}
         <Input
           placeholder="My Home"
           value={homeName}
           onChange={(e) => setHomeName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCheckout()}
-          autoFocus
         />
         <p className="text-xs text-muted-foreground">
           Enter the exact name as it appears in the Apple Home app.
@@ -509,9 +564,12 @@ const stepDescriptions: Record<WizardStep, string> = {
   'shared-home': 'Check for home invitations',
 };
 
-export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType, initialStep = 'intent' }: OnboardingOverlayProps) {
+export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType, initialStep = 'intent', hasHomes, onAddHomeInSettings }: OnboardingOverlayProps) {
   const [step, setStep] = useState<WizardStep>(initialStep);
   const pricing = usePricing();
+  const hasCloudPlan = accountType === 'cloud' || accountType === 'managed';
+  /** Nothing to sell and nothing to name — Settings → Homes takes it from here. */
+  const cloudHandsOffToSettings = Boolean(onAddHomeInSettings) && (hasCloudPlan || Boolean(hasHomes));
 
   const handleIntentSelect = useCallback((selected: WizardStep) => {
     setStep(selected);
@@ -543,20 +601,30 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
       else setStep('intent');
     }}>
       <DialogContent
-        className="sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain"
+        // No max-h here: this is the tallest dialog in the app, so it takes
+        // DialogContent's safe-area-aware cap rather than a plain 100dvh one
+        // that slid its header under the iPhone's status bar.
+        className="sm:max-w-md overflow-y-auto overscroll-contain"
         // The Mac app's window owns the top 33px for its title bar, and the
         // dialog centres against the whole window — so a tall step slid its
         // header up underneath it. Capping the height keeps it inside, and the
-        // offset keeps a full-height one clear of the bar.
+        // offset keeps a full-height one clear of the bar. (Catalyst reports no
+        // safe-area insets, so this replaces the cap rather than fighting it.)
         style={{
           zIndex: 10050,
           ...(isInMacApp ? { marginTop: 33, maxHeight: 'calc(100dvh - 4rem)' } : null),
         }}
       >
         <DialogHeader>
-          <DialogTitle className="text-center text-lg">{stepTitles[step]}</DialogTitle>
+          <DialogTitle className="text-center text-lg">
+            {step === 'cloud-setup' && cloudHandsOffToSettings ? 'Register a home' : stepTitles[step]}
+          </DialogTitle>
           <DialogDescription className="text-center text-sm text-muted-foreground">
-            {stepDescriptions[step]}
+            {/* The default description asks for a home name. That step doesn't
+                ask for one when there's nothing to buy. */}
+            {step === 'cloud-setup' && cloudHandsOffToSettings
+              ? (hasCloudPlan ? 'Add a home to your cloud relay' : 'Add a home to your account')
+              : stepDescriptions[step]}
           </DialogDescription>
         </DialogHeader>
 
@@ -569,6 +637,8 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
             pricing={pricing}
             cloudSignupsAvailable={cloudSignupsAvailable}
             accountType={accountType}
+            hasHomes={hasHomes}
+            onAddHomeInSettings={onAddHomeInSettings}
           />
         )}
 
@@ -590,6 +660,9 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
             onBack={() => setStep('intent')}
             pricing={pricing}
             cloudSignupsAvailable={cloudSignupsAvailable}
+            hasCloudPlan={hasCloudPlan}
+            hasHomes={hasHomes}
+            onAddHomeInSettings={onAddHomeInSettings}
           />
         )}
 

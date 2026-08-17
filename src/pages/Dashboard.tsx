@@ -5849,6 +5849,23 @@ const Dashboard = () => {
     } catch { /* ignore save errors */ }
   }, [settingsData, updateSettingsMutation]);
 
+  /**
+   * Hand the wizard over to Settings → Homes, which owns the real add-a-home
+   * flow. Reached by someone who already pays for Cloud (nothing to buy) or
+   * already has homes (adding another is a Settings task, not a first run).
+   *
+   * Onboarding is marked complete on the way out, or the first-run effect
+   * re-opens the wizard on top of the settings dialog we just opened.
+   * `cloudCheckoutJustCompleted` is what makes HomesSection open its add
+   * dialog straight away — the same route taken after a cloud checkout.
+   */
+  const handleAddHomeInSettings = useCallback(() => {
+    handleOnboardingComplete('cloud-relay');
+    setCloudCheckoutJustCompleted(true);
+    setSettingsInitialTab('homes');
+    setSettingsOpen(true);
+  }, [handleOnboardingComplete]);
+
   const handleSetupMac = useCallback(async () => {
     try {
       const currentSettings: import('@/lib/graphql/types').UserSettingsData = settingsData?.settings?.data ? JSON.parse(settingsData.settings.data) : {};
@@ -9118,6 +9135,8 @@ const Dashboard = () => {
           cloudSignupsAvailable={cloudSignupsAvailable}
           accountType={accountType}
           initialStep={onboardingInitialStep}
+          hasHomes={homes.length > 0}
+          onAddHomeInSettings={handleAddHomeInSettings}
         />
       )}
 
