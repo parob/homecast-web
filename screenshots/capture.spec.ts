@@ -732,6 +732,16 @@ const BASE_SETTINGS = {
   homeOrder: [HOME_ID, SHARED_HOME_ID],
 };
 
+/**
+ * The iPhone and iPad sets run compact.
+ *
+ * A full-size widget is a whole row on a phone, so the 6.7" shots fitted four
+ * accessories and read as a list of four things rather than a home. Compact
+ * tiles put a room's worth on screen at once — which is what these frames need
+ * to say at the thumbnail size the store renders them.
+ */
+const COMPACT_SETTINGS = { ...BASE_SETTINGS, compactMode: true };
+
 test.describe('App Store screenshots', () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
@@ -906,7 +916,7 @@ test.describe('iPhone App Store screenshots', () => {
 
   // 1 — Home overview with ocean gradient
   test('iphone 01 — My Home overview', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
@@ -915,20 +925,25 @@ test.describe('iPhone App Store screenshots', () => {
     await page.screenshot({ path: iphoneImg('01-home-overview.png') });
   });
 
-  // 2 — Living Room with forest background
-  test('iphone 02 — Living Room', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+  // 2 — Beach House (second home) with beach background
+  //
+  // This was the Living Room. Compact tiles are half-width, so a four-device
+  // room filled a third of a 2778px-tall frame and left the rest as blurred
+  // wallpaper. A whole home fills it — and shows a second, shared home.
+  test('iphone 02 — Beach House', async ({ page }) => {
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
-      [`room:${ROOMS.livingRoom}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
+      [`home:${SHARED_HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-beach', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await gotoMyHome(page, 'Living Room');
-    await page.screenshot({ path: iphoneImg('02-living-room.png') });
+    await page.goto(`/portal?home=${SHARED_HOME_ID}`);
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: iphoneImg('02-beach-house.png') });
   });
 
   // 3 — Right menu open with aurora gradient
   test('iphone 03 — Right menu', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-aurora', blur: 20, brightness: 35 } },
     });
@@ -941,7 +956,7 @@ test.describe('iPhone App Store screenshots', () => {
 
   // 4 — Share dialog open via MoreVertical menu
   test('iphone 04 — Share dialog', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
@@ -957,7 +972,7 @@ test.describe('iPhone App Store screenshots', () => {
 
   // 5 — Mobile sidebar navigation
   test('iphone 05 — Sidebar navigation', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
@@ -981,7 +996,7 @@ test.describe('iPad App Store screenshots', () => {
 
   // 1 — Home overview with ocean gradient
   test('ipad 01 — My Home overview', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
@@ -990,20 +1005,27 @@ test.describe('iPad App Store screenshots', () => {
     await page.screenshot({ path: ipadImg('01-home-overview.png') });
   });
 
-  // 2 — Living Room with forest background
-  test('ipad 02 — Living Room', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+  // 2 — Automations open over the home, forest background
+  //
+  // Was the Living Room. A four-device room is one row of compact tiles on a
+  // 2732px-tall frame, which left it almost empty — and so does the Beach
+  // House, the only other home in the fixtures. The automations row keeps the
+  // whole home on screen and adds the one thing shot 1 doesn't show.
+  test('ipad 02 — Automations', async ({ page }) => {
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
-      [`room:${ROOMS.livingRoom}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
+      [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-forest', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
-    await gotoMyHome(page, 'Living Room');
-    await page.screenshot({ path: ipadImg('02-living-room.png') });
+    await gotoMyHome(page);
+    await page.getByRole('button', { name: /^Automations/ }).first().click();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: ipadImg('02-automations.png') });
   });
 
   // 3 — Right menu open with aurora gradient
   test('ipad 03 — Right menu', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-aurora', blur: 20, brightness: 35 } },
     });
@@ -1016,7 +1038,7 @@ test.describe('iPad App Store screenshots', () => {
 
   // 4 — Share dialog open over dashboard
   test('ipad 04 — Share dialog', async ({ page }) => {
-    overrideSettings(BASE_SETTINGS);
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
@@ -1029,14 +1051,20 @@ test.describe('iPad App Store screenshots', () => {
     await page.screenshot({ path: ipadImg('04-sharing.png') });
   });
 
-  // 5 — Compact mode with mountains
-  test('ipad 05 — Compact mode', async ({ page }) => {
-    overrideSettings({ ...BASE_SETTINGS, compactMode: true });
+  // 5 — A compact tile expanded, over the compact grid, with mountains
+  //
+  // Compact tiles hide the sliders behind a tap, so one frame shows the tap:
+  // the whole home stays on screen and the tapped accessory floats above it
+  // with its full controls.
+  test('ipad 05 — Expanded widget', async ({ page }) => {
+    overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'nature-mountains', blur: 15, brightness: 30 } },
     });
     await setupMocks(page);
     await gotoMyHome(page);
-    await page.screenshot({ path: ipadImg('05-compact-mode.png') });
+    await page.locator('[data-expandable-widget]').filter({ hasText: 'Ceiling Light' }).first().click();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: ipadImg('05-expanded-widget.png') });
   });
 });
