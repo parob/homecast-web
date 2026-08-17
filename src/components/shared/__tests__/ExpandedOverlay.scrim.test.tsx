@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import React from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, act, cleanup, waitFor } from '@testing-library/react';
 import { ExpandedOverlay } from '../ExpandedOverlay';
@@ -160,6 +161,53 @@ describe('ExpandedOverlay backdrop', () => {
     expect(tileClick).not.toHaveBeenCalled();
 
     // The overlay is gone; the tile works again on the next tap.
+    act(() => {
+      tile.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(tileClick).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The pinned tab bar renders `{isOpen && <ExpandedOverlay isExpanded ...>}`,
+   * so closing does not animate it out — it unmounts the component outright, in
+   * the same tick as the pointerdown. A swallow torn down by that unmount takes
+   * the tap with it, which is why this stayed broken for a pinned widget after
+   * it was fixed for one in the list.
+   */
+  it('still spends the tap when the caller unmounts it on close', async () => {
+    const tileClick = vi.fn();
+
+    function PinnedShape() {
+      const [open, setOpen] = React.useState(true);
+      return (
+        <>
+          <button type="button" onClick={tileClick}>tile</button>
+          {open && (
+            <ExpandedOverlay isExpanded onClose={() => setOpen(false)}>
+              <div>content</div>
+            </ExpandedOverlay>
+          )}
+        </>
+      );
+    }
+
+    render(<PinnedShape />);
+    await openScrim();
+    const tile = document.querySelector<HTMLButtonElement>('button')!;
+
+    act(() => {
+      scrim()!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    });
+    // The overlay is not merely closing — it is gone.
+    expect(scrim()).toBeNull();
+
+    act(() => {
+      document.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+      tile.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(tileClick).not.toHaveBeenCalled();
+
+    // The swallow outlived the component, but only for its one tap.
     act(() => {
       tile.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });

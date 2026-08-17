@@ -225,8 +225,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const swallowClick = useCallback((ev: MouseEvent) => {
     ev.stopPropagation();
     ev.preventDefault();
-    if (swallowTimerRef.current) clearTimeout(swallowTimerRef.current);
-    swallowTimerRef.current = undefined;
+    // Clear the whole arrangement, not just the timer: a swallow that outlives
+    // its component (see the unmount effect below) is the only thing left to
+    // tidy up the release listeners it armed.
+    disarmClickSwallowRef.current();
   }, []);
   // The click belongs to the pointer's RELEASE, not its press. Timing the grace
   // period from the press means a finger that rests for a beat before lifting
@@ -260,8 +262,22 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     document.addEventListener('pointercancel', onSwallowRelease, { capture: true, once: true });
     startSwallowTimer(DISMISS_HOLD_MAX_MS);
   }, [swallowClick, onSwallowRelease, startSwallowTimer]);
-  // Unmount only. Anything shorter-lived defeats the point.
-  useEffect(() => disarmClickSwallow, [disarmClickSwallow]);
+  // Unmount must not cancel a swallow that is already armed.
+  //
+  // Not every caller keeps this component mounted across a close. The pinned
+  // tab bar renders `{isOpen && <ExpandedOverlay isExpanded ...>}`, so onClose()
+  // flips isOpen and the whole overlay — scrim, listeners and all — is gone in
+  // the same tick as the pointerdown that dismissed it. Tearing the swallow
+  // down there threw away the tap it had just committed to spending, and the
+  // click landed on the tile underneath: fixed for a widget in the list, still
+  // broken for a pinned one, which is exactly how it presented.
+  //
+  // The armed listeners hold no React state and disarm themselves — on the
+  // click, or on their own timer if none comes — so they are safe to outlive
+  // the component that armed them.
+  useEffect(() => () => {
+    if (!swallowTimerRef.current) disarmClickSwallowRef.current();
+  }, []);
 
   // Dismiss when tapping outside the overlay, or when scrolling past a
   // threshold. Needed for touch/compact mode where there's no mouse-leave to
