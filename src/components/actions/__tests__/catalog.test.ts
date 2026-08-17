@@ -89,9 +89,9 @@ describe('deriveHomeActions — lights', () => {
 
   it('gives a running label that follows the same direction as the label', () => {
     expect(find(deriveHomeActions([light('a', true)]), 'lights')!.runningLabel)
-      .toBe('Turning the lights off');
+      .toBe('Turning off');
     expect(find(deriveHomeActions([light('a', false)]), 'lights')!.runningLabel)
-      .toBe('Turning the lights on');
+      .toBe('Turning on');
   });
 
   it('canonicalises an `on`-reporting light but remembers the reported name', () => {

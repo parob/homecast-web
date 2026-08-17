@@ -31,6 +31,37 @@ const MAX_CONCURRENT_WRITES = 24;
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /**
+ * The last write queued for each accessory, so two writes to one device stay in
+ * the order they were asked for.
+ *
+ * Without this, reversing a run mid-flight is a race it can lose: the "on" is
+ * already travelling, the "off" is sent while it travels, and whichever the
+ * relay happens to finish last is the state the light is left in. Chaining per
+ * accessory — and only per accessory, so different devices still go at once —
+ * makes the later request the later request, and last-write-wins becomes true
+ * rather than likely.
+ */
+const writeQueue = new Map<string, Promise<unknown>>();
+
+/**
+ * Forget every chain. Only for tests: the map is module state, so one test
+ * leaving a write pending would make every later write to that accessory wait
+ * behind it for ever.
+ */
+export function __resetWriteQueue(): void {
+  writeQueue.clear();
+}
+
+function queueWrite<T>(accessoryId: string, send: () => Promise<T>): Promise<T> {
+  const previous = writeQueue.get(accessoryId) ?? Promise.resolve();
+  // Swallow the predecessor's failure: a device that refused one write must not
+  // stop the next one being tried.
+  const mine = previous.then(send, send);
+  writeQueue.set(accessoryId, mine.then(() => undefined, () => undefined));
+  return mine;
+}
+
+/**
  * Move one characteristic in the cache, under every name a widget might read it by.
  *
  * Widgets look up whichever name the bridge reported — FanWidget tries `on`,
@@ -69,6 +100,11 @@ export interface RunHomeActionOverrides {
    * tab-bar pin can express.
    */
   direction?: boolean;
+  /**
+   * This run is taking over from one still in flight, so it writes to every
+   * member rather than the ones that currently look wrong. See `onStepsEvery`.
+   */
+  supersedes?: boolean;
   /**
    * Abort the writes this run has not issued yet.
    *
@@ -118,8 +154,11 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
       return;
     }
 
-    const steps = opts?.direction !== undefined && action.toggle
-      ? (opts.direction ? action.toggle.onSteps : action.toggle.offSteps)
+    const toggle = action.toggle;
+    const steps = opts?.direction !== undefined && toggle
+      ? (opts.supersedes
+          ? (opts.direction ? toggle.onStepsEvery : toggle.offStepsEvery)
+          : (opts.direction ? toggle.onSteps : toggle.offSteps))
       : action.steps;
 
     const writes = steps.flatMap(step => step.writes);
@@ -154,19 +193,21 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     for (const step of steps) {
       if (step.writes.length > 0) {
         const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, async write => {
-          // Checked per write rather than per wave: the queue drains as workers
-          // free up, so most of a large run is still unissued when the user
-          // changes their mind.
-          if (opts?.signal?.aborted) return undefined;
           try {
-            const result = await serverConnection.request('characteristic.set', {
-              accessoryId: write.accessoryId,
-              characteristicType: write.characteristicType,
-              value: write.value,
-              homeId: effectiveHomeId,
+            return await queueWrite(write.accessoryId, async () => {
+              // Checked here, inside the queue, rather than before joining it:
+              // a write can sit behind another device's turn for a while, and
+              // the whole point is to drop the ones that have not gone yet.
+              if (opts?.signal?.aborted) return undefined;
+              const result = await serverConnection.request('characteristic.set', {
+                accessoryId: write.accessoryId,
+                characteristicType: write.characteristicType,
+                value: write.value,
+                homeId: effectiveHomeId,
+              });
+              if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
+              return result;
             });
-            if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
-            return result;
           } finally {
             // `finally`, so a failure still advances the count — the point is
             // "how many are resolved", not "how many worked". The toast at the

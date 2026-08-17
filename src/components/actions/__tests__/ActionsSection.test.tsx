@@ -145,7 +145,7 @@ describe('ActionsSection', () => {
     );
 
     fireEvent.click(switchOn('lights'));
-    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
+    expect(within(card('lights')).getByText(/Turning off/)).toBeTruthy();
     expect(signals[0]!.aborted).toBe(false);
 
     fireEvent.click(switchOn('lights'));
@@ -168,7 +168,7 @@ describe('ActionsSection', () => {
     fireEvent.click(switchOn('lights'));
     fireEvent.click(switchOn('lights'));
     await act(async () => { resolvers[0](); });      // the abandoned one lands
-    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
+    expect(within(card('lights')).getByText(/Turning off/)).toBeTruthy();
 
     await act(async () => { resolvers[1](); });      // the live one lands
     expect(within(card('lights')).getByText('All on')).toBeTruthy();
@@ -200,13 +200,27 @@ describe('ActionsSection', () => {
       <ActionsSection accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
     );
     fireEvent.click(half('lights', 'on'));
-    expect(within(card('lights')).getByText(/Turning the lights on/)).toBeTruthy();
-    expect(within(card('lights')).queryByText(/Turning the lights off/)).toBeNull();
+    expect(within(card('lights')).getByText(/Turning on/)).toBeTruthy();
+    expect(within(card('lights')).queryByText(/Turning off/)).toBeNull();
+  });
+
+  it('keeps a long name on one line, and offers the whole of it on hover', () => {
+    // The point of the compact row. "All switches & outlets" used to wrap into
+    // the two-line clamp and then clip, losing its second line entirely; it now
+    // trails off on one line, with the full name in the tooltip.
+    renderSection([
+      acc('s1', 'switch', [['power_state', true]]),
+      acc('o1', 'outlet', [['power_state', false]]),
+    ]);
+    const name = within(card('switches')).getByText('All switches & outlets');
+    expect(name.className).toContain('truncate');
+    expect(name.className).not.toContain('line-clamp-2');
+    expect(name.getAttribute('title')).toBe('All switches & outlets');
   });
 
   it('keeps the title still while it runs, and puts the verb underneath', () => {
     // A card that renames itself mid-press is hard to scan and hard to aim at,
-    // and "Turning the lights off" is half again as long as its name — long
+    // and "Turning off" is half again as long as its name — long
     // enough to wrap into the two-line clamp and be cut off.
     const onRunAction = vi.fn(() => new Promise<void>(() => {}));
     render(
@@ -215,7 +229,7 @@ describe('ActionsSection', () => {
     fireEvent.click(switchOn('lights'));
 
     expect(within(card('lights')).getByText('All lights')).toBeTruthy();
-    expect(within(card('lights')).getByText(/Turning the lights off/)).toBeTruthy();
+    expect(within(card('lights')).getByText(/Turning off/)).toBeTruthy();
   });
 
   it('says what it is doing, and counts up as writes settle', async () => {
@@ -231,10 +245,10 @@ describe('ActionsSection', () => {
 
     fireEvent.click(switchOn('lights'));
     // Seeded before the first write settles, so the count never starts blank
-    expect(within(card('lights')).getByText('Turning the lights off · 0 of 1')).toBeTruthy();
+    expect(within(card('lights')).getByText('Turning off · 0 of 1')).toBeTruthy();
 
     await act(async () => { report(1, 4); });
-    const line = within(card('lights')).getByText('Turning the lights off · 1 of 4');
+    const line = within(card('lights')).getByText('Turning off · 1 of 4');
     // and the live region is marked so it is announced, not just seen
     expect(line.getAttribute('aria-live')).toBe('polite');
 

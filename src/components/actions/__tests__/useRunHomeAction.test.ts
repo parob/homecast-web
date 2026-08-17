@@ -20,7 +20,7 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const { useRunHomeAction } = await import('../useRunHomeAction');
+const { useRunHomeAction, __resetWriteQueue } = await import('../useRunHomeAction');
 type HomeAction = import('../catalog').HomeAction;
 
 function action(overrides: Partial<HomeAction> = {}): HomeAction {
@@ -55,6 +55,7 @@ function setup(opts: { isViewOnly?: boolean } = {}) {
 }
 
 beforeEach(() => {
+  __resetWriteQueue();
   request.mockReset().mockResolvedValue({});
   markPendingUpdate.mockReset();
   toastError.mockReset();
@@ -278,8 +279,16 @@ describe('running a chosen direction', () => {
       offSteps: [{ writes: [
         { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: true },
       ] }],
-      onRunning: 'Turning the lights on',
-      offRunning: 'Turning the lights off',
+      onStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: true, previousValue: true },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      offStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: true },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: false, previousValue: false },
+      ] }],
+      onRunning: 'Turning on',
+      offRunning: 'Turning off',
     },
   });
 
@@ -314,7 +323,8 @@ describe('running a chosen direction', () => {
       toggle: {
         state: 'on', onCount: 2, total: 2,
         onSteps: [{ writes: [] }], offSteps: [{ writes: [] }],
-        onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
+        onStepsEvery: [{ writes: [] }], offStepsEvery: [{ writes: [] }],
+        onRunning: 'Turning on', offRunning: 'Turning off',
       },
     }), { direction: true });
 
@@ -339,7 +349,15 @@ describe('a run the user can call off', () => {
         { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
       ] }],
       offSteps: [{ writes: [] }],
-      onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
+      onStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: true, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      offStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: false, previousValue: false },
+      ] }],
+      onRunning: 'Turning on', offRunning: 'Turning off',
     },
   });
 
@@ -417,5 +435,96 @@ describe('a run the user can call off', () => {
     await result.current(action());
 
     expect(order.indexOf('request')).toBeGreaterThan(order.lastIndexOf('cache'));
+  });
+});
+
+describe('reversing a run that is still going', () => {
+  const twoWay = () => action({
+    toggle: {
+      state: 'off', onCount: 0, total: 2,
+      onSteps: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: true, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      // What the cache would produce mid-run: nothing looks on yet, so the
+      // minimal reversal is empty — the hole this feature fell into.
+      offSteps: [{ writes: [] }],
+      onStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: true, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      offStepsEvery: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: false },
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: false, previousValue: false },
+      ] }],
+      onRunning: 'Turning on', offRunning: 'Turning off',
+    },
+  });
+
+  it('writes to every member, not the ones that currently look wrong', async () => {
+    // The bug this exists to stop: mid-run the cache still says every light is
+    // off, so the minimal "off" set is empty and the reversal does nothing at
+    // all — then the in-flight "on" lands and the lights come on.
+    const { run } = setup();
+    await run(twoWay(), { direction: false, supersedes: true, signal: new AbortController().signal });
+
+    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
+    expect(request.mock.calls.every(c => c[1].value === false)).toBe(true);
+  });
+
+  it('still writes only what needs changing when nothing is in flight', async () => {
+    // The filter is right in the ordinary case, and is what keeps a 40-light
+    // home from writing 40 times to change two.
+    const { run } = setup();
+    await run(twoWay(), { direction: false, signal: new AbortController().signal });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('sends a device its second write only after its first has landed', async () => {
+    // Otherwise reversing is a race: the "on" is already travelling and
+    // whichever the relay finishes last is the state the light keeps.
+    const order: string[] = [];
+    const gates: Array<() => void> = [];
+    request.mockImplementation(async (_a: string, p: { accessoryId: string; value: boolean }) => {
+      order.push(`start:${p.accessoryId}=${p.value}`);
+      if (p.value === true) await new Promise<void>(r => gates.push(r));
+      order.push(`done:${p.accessoryId}=${p.value}`);
+    });
+    const { run } = setup();
+
+    const first = run(twoWay(), { direction: true, signal: new AbortController().signal });
+    await Promise.resolve();
+    const second = run(twoWay(), { direction: false, supersedes: true, signal: new AbortController().signal });
+
+    // the "off" cannot have gone out yet — its device is still busy
+    expect(order).not.toContain('start:a=false');
+
+    gates.forEach(release => release());
+    await Promise.all([first, second]);
+
+    // 'a' is written on, that write lands, and only then is it written off
+    expect(order.indexOf('start:a=false')).toBeGreaterThan(order.indexOf('done:a=true'));
+    expect(order.indexOf('done:a=true')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('lets different accessories go at once', async () => {
+    // The chain is per device, not global — a slow bulb must not hold up the
+    // rest of the house.
+    const started: string[] = [];
+    const gates: Array<() => void> = [];
+    request.mockImplementation(async (_a: string, p: { accessoryId: string }) => {
+      started.push(p.accessoryId);
+      await new Promise<void>(r => gates.push(r));
+    });
+    const { run } = setup();
+    const pending = run(twoWay(), { direction: true, signal: new AbortController().signal });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    // both are in flight before either has been allowed to finish
+    expect(started).toEqual(['a', 'b']);
+
+    gates.forEach(release => release());
+    await pending;
   });
 });

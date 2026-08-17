@@ -65,10 +65,24 @@ export interface HomeActionToggle {
   onSteps: HomeActionStep[];
   offSteps: HomeActionStep[];
   /**
+   * The same, over every member rather than only the ones that look wrong.
+   *
+   * For taking over a run that is still going. The minimal sets are filtered on
+   * the cached reading, and mid-run that reading is stale in the worst possible
+   * way: an interruptible run moves an accessory only once its write lands, so
+   * a light with "on" in flight still reads as off — and a reversal to off
+   * filters out exactly the lights that are about to come on, writes to none of
+   * them, and then watches them turn on. Asserting the wanted value on every
+   * member is the only set that cannot have that hole in it. A write to a
+   * device already in the wanted state is a no-op; missing one is not.
+   */
+  onStepsEvery: HomeActionStep[];
+  offStepsEvery: HomeActionStep[];
+  /**
    * In progress, per direction. `runningLabel` cannot serve here: it follows
    * the catalog's chosen direction, so dragging a mixed group *on* would have
-   * announced "Turning the lights off" — the one thing the user had just said
-   * they did not want.
+   * announced "Turning off" — the one thing the user had just said they did
+   * not want.
    */
   onRunning: string;
   offRunning: string;
@@ -83,7 +97,11 @@ export interface HomeAction {
    * that flipped under a toggle would be describing the wrong half of it.
    */
   label: string;
-  /** The direction in progress: "Turning the lights off". Shown while it runs. */
+  /**
+   * What is being done, and only that: "Turning off", not "Turning the lights
+   * off". The title stays put while a card runs and already names the thing, so
+   * a subject here would appear twice in two stacked lines.
+   */
   runningLabel: string;
   /** What the label elides: "8 of 12 on", "All locked". */
   subtitle: string;
@@ -182,11 +200,15 @@ function powerTargets(accessories: HomeKitAccessory[], types: string[]) {
 function powerWrites(
   targets: ReturnType<typeof powerTargets>,
   turnOn: boolean,
+  every = false,
 ): HomeActionWrite[] {
   // Only touch what needs to change: keeps targetCount honest, and keeps the
   // fan-out (and the partial-failure toast) proportional to the real work.
+  //
+  // `every` drops that filter, for the one case where the current reading
+  // cannot be trusted — see `onStepsEvery` on HomeActionToggle.
   return targets
-    .filter(t => t.on !== turnOn)
+    .filter(t => every || t.on !== turnOn)
     .map(t => ({
       accessoryId: t.accessory.id,
       characteristicType: canonicalCharacteristic(t.reported),
@@ -243,6 +265,8 @@ function buildPowerAction(
       total: targets.length,
       onSteps: oneStep(powerWrites(targets, true)),
       offSteps: oneStep(powerWrites(targets, false)),
+      onStepsEvery: oneStep(powerWrites(targets, true, true)),
+      offStepsEvery: oneStep(powerWrites(targets, false, true)),
       onRunning: opts.onRunning,
       offRunning: opts.offRunning,
     },
@@ -283,7 +307,7 @@ function buildBlindsAction(accessories: HomeKitAccessory[]): HomeAction | null {
   return {
     id: 'blinds',
     label: turningOn ? 'Open all blinds' : 'Close all blinds',
-    runningLabel: turningOn ? 'Opening the blinds' : 'Closing the blinds',
+    runningLabel: turningOn ? 'Opening' : 'Closing',
     subtitle: countLabel(openCount, targets.length, 'open'),
     icon: 'blinds',
     serviceType: 'window_covering',
@@ -322,7 +346,7 @@ function buildLocksAction(accessories: HomeKitAccessory[]): HomeAction | null {
     // mis-tap is not something a confirmation dialog makes acceptable; the
     // per-accessory LockWidget already covers unlocking.
     label: 'Lock up',
-    runningLabel: 'Locking up',
+    runningLabel: 'Locking',
     subtitle: unlocked.length === 0 ? 'All locked' : `${unlocked.length} of ${targets.length} unlocked`,
     icon: 'lock',
     serviceType: 'lock',
@@ -381,7 +405,7 @@ function buildClimateOffAction(accessories: HomeKitAccessory[]): HomeAction | nu
   return {
     id: 'climate-off',
     label: 'Turn off heating & cooling',
-    runningLabel: 'Turning heating & cooling off',
+    runningLabel: 'Turning off',
     subtitle: countLabel(activeCount, targets.length, 'on'),
     icon: 'thermostat',
     serviceType: 'thermostat',
@@ -433,7 +457,7 @@ function buildSecurityAction(accessories: HomeKitAccessory[]): HomeAction | null
   return {
     id: 'security',
     label: turningOn ? 'Arm security' : 'Disarm security',
-    runningLabel: turningOn ? 'Arming security' : 'Disarming security',
+    runningLabel: turningOn ? 'Arming' : 'Disarming',
     subtitle,
     icon: 'shield',
     serviceType: 'security_system',
@@ -465,7 +489,7 @@ function buildEverythingOffAction(accessories: HomeKitAccessory[]): HomeAction |
     // nothing for a blind, and folding the locks or the alarm into the
     // biggest, easiest-to-hit button would make its label a lie.
     label: 'Turn everything off',
-    runningLabel: 'Turning everything off',
+    runningLabel: 'Turning off',
     subtitle: onCount === 0 ? 'All off' : `${onCount} of ${targets.length} on`,
     icon: 'power',
     serviceType: 'switch',
@@ -499,19 +523,19 @@ export function deriveHomeActions(accessories: HomeKitAccessory[]): HomeAction[]
     buildPowerAction('lights', list, ['lightbulb'], {
       icon: 'lightbulb', serviceType: 'lightbulb',
       label: 'All lights',
-      onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
+      onRunning: 'Turning on', offRunning: 'Turning off',
     }),
     buildBlindsAction(list),
     buildLocksAction(list),
     buildPowerAction('fans', list, ['fan'], {
       icon: 'fan', serviceType: 'fan',
       label: 'All fans',
-      onRunning: 'Turning the fans on', offRunning: 'Turning the fans off',
+      onRunning: 'Turning on', offRunning: 'Turning off',
     }),
     buildPowerAction('switches', list, ['switch', 'outlet'], {
       icon: 'outlet', serviceType: 'outlet',
       label: 'All switches & outlets',
-      onRunning: 'Turning the switches on', offRunning: 'Turning the switches off',
+      onRunning: 'Turning on', offRunning: 'Turning off',
     }),
     buildClimateOffAction(list),
     buildSecurityAction(list),

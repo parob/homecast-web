@@ -117,6 +117,10 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
       ? action.targetCount
       : (direction ? action.toggle.onSteps : action.toggle.offSteps).flatMap(s => s.writes).length;
 
+    // Taking over from a live run changes what the replacement has to write:
+    // the cached readings it would otherwise filter on are mid-change, so it
+    // asserts the wanted value on every member instead.
+    const supersedes = inFlight.current !== null;
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
@@ -127,6 +131,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
     try {
       await onRunAction(action, {
         direction,
+        supersedes,
         signal: action.toggle ? controller.signal : undefined,
         onProgress: (done, t) => {
           // A superseded run keeps settling its issued writes; its counts are
@@ -220,12 +225,23 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                     'absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 transform-gpu',
                     isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80',
                   )} />
-                  <div className="relative z-[1] flex items-center gap-2 p-3">
-                    <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm', colors.bg, colors.text)}>
-                      <Icon className="h-4 w-4" />
+                  {/* Everything on this row is a little smaller than a tile's,
+                      to buy the name room. On the compact grid a 180px card
+                      spends ~115px on chrome — a 32px chip, the toggle, gaps and
+                      padding — leaving the name about 65px, which "All switches
+                      & outlets" wrapped into two lines and then clipped. A 24px
+                      chip, tighter padding and 13px type give back enough that
+                      most names fit, and the ones that do not now trail off on
+                      one line rather than losing their second. */}
+                  <div className="relative z-[1] flex items-center gap-2 p-2.5">
+                    <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm', colors.bg, colors.text)}>
+                      <Icon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className={cn('text-sm font-medium break-words line-clamp-2 transition-colors duration-300', isDarkBackground && 'text-white')}>
+                      <p
+                        title={action.label}
+                        className={cn('text-[13px] font-medium leading-tight truncate transition-colors duration-300', isDarkBackground && 'text-white')}
+                      >
                         {action.label}
                       </p>
                       {/* While it runs the subtitle carries what is happening
@@ -239,7 +255,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                           seen. */}
                       <p
                         aria-live={running ? 'polite' : undefined}
-                        className={cn('text-[11px] transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
+                        className={cn('text-[10px] truncate transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
                       >
                         {running
                           ? `${runningTextOf(action)}${progress ? ` · ${progress.done} of ${progress.total}` : ''}`
