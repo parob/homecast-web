@@ -22,7 +22,7 @@ vi.hoisted(() => {
   });
 });
 
-import { communityWsUrl, normalizeRelayOrigin } from '../config';
+import { communityWsUrl, normalizeRelayOrigin, getCommunityMode, getRelayAddress } from '../config';
 
 describe('normalizeRelayOrigin', () => {
   it('reads a bare host:port as http, the way it was stored before HTTPS was possible', () => {
@@ -90,5 +90,37 @@ describe('communityWsUrl', () => {
   it('ignores a nonsense stored WS port rather than emitting NaN', () => {
     localStorage.setItem('homecast-relay-ws-port', 'not-a-port');
     expect(communityWsUrl('http://192.168.1.5:5656')).toBe('ws://192.168.1.5:5657/ws');
+  });
+});
+
+describe('native relay origin', () => {
+  // iOS serves this app from the device's own loopback server and points only
+  // its API calls at the relay. If "which relay" is lost, the app falls back to
+  // same-origin and the phone talks to itself — a server with no bridge, where
+  // every request hangs and a healthy relay is reported unreachable.
+  beforeEach(() => {
+    localStorage.clear();
+    delete (window as any).__HOMECAST_RELAY_ORIGIN__;
+  });
+
+  it('forces client mode, even with no localStorage at all', () => {
+    (window as any).__HOMECAST_RELAY_ORIGIN__ = 'http://192.168.1.5:5656';
+    expect(getCommunityMode()).toBe('client');
+    expect(getRelayAddress()).toBe('http://192.168.1.5:5656');
+  });
+
+  it('wins over a stale localStorage mode', () => {
+    localStorage.setItem('homecast-mode', 'relay');
+    localStorage.setItem('homecast-relay-address', 'http://10.0.0.9:5656');
+    (window as any).__HOMECAST_RELAY_ORIGIN__ = 'http://192.168.1.5:5656';
+    expect(getCommunityMode()).toBe('client');
+    expect(getRelayAddress()).toBe('http://192.168.1.5:5656');
+  });
+
+  it('falls back to localStorage when the shell said nothing', () => {
+    localStorage.setItem('homecast-mode', 'client');
+    localStorage.setItem('homecast-relay-address', '10.0.0.9:5656');
+    expect(getCommunityMode()).toBe('client');
+    expect(getRelayAddress()).toBe('http://10.0.0.9:5656');
   });
 });

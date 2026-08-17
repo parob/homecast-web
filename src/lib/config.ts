@@ -26,11 +26,34 @@ export const isCommunity: boolean =
     isPrivateIP(window.location.hostname)
   );
 
+/**
+ * The relay origin handed down by the native shell, when there is one.
+ *
+ * iOS serves this web app from the phone's *own* loopback server and points
+ * only its API calls at the relay, so "which relay" has to cross from Swift.
+ * It used to cross only as injected localStorage, which made a silent
+ * catastrophe possible: if that write did not stick — cleared by a mode
+ * switch, a fresh container, anything — `getCommunityMode()` returned null,
+ * the app fell back to same-origin, and the phone started talking to its own
+ * loopback server. That server has no bridge on iOS, so every GraphQL call
+ * hung until it timed out and the UI reported the relay as unreachable while
+ * the relay was perfectly healthy.
+ *
+ * A window global set at document start cannot be cleared by page code and is
+ * present before this module is evaluated, so it is the authority when set.
+ */
+function nativeRelayOrigin(): string | null {
+  if (typeof window === 'undefined') return null;
+  return (window as any).__HOMECAST_RELAY_ORIGIN__ || null;
+}
+
 // --- Community mode: relay vs client ---
 // Set during first-launch setup. 'relay' = this device runs the relay.
 // 'client' = this device connects to a remote relay.
 export function getCommunityMode(): 'relay' | 'client' | null {
   if (!isCommunity) return null;
+  // The shell told us which relay to use; that settles it.
+  if (nativeRelayOrigin()) return 'client';
   return (localStorage.getItem('homecast-mode') as 'relay' | 'client') || null;
 }
 export function isRelayMode(): boolean { return getCommunityMode() === 'relay'; }
@@ -62,7 +85,7 @@ export function normalizeRelayOrigin(input: string): string {
  * already doing implicitly. No migration step needed.
  */
 export function getRelayAddress(): string | null {
-  const raw = localStorage.getItem('homecast-relay-address');
+  const raw = nativeRelayOrigin() || localStorage.getItem('homecast-relay-address');
   return raw ? normalizeRelayOrigin(raw) : null;
 }
 

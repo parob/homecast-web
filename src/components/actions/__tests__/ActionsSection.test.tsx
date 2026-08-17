@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { ActionsSection } from '../ActionsSection';
+import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 
 function acc(id: string, serviceType: string, chars: Array<[string, unknown]>): HomeKitAccessory {
   return {
@@ -32,16 +33,22 @@ const alarm = acc('s1', 'security_system', [
 
 const card = (label: string) => screen.getByText(label).closest('[role="button"]')!;
 
-function renderSection(accessories: HomeKitAccessory[], props: Partial<React.ComponentProps<typeof ActionsSection>> = {}) {
+function renderSection(
+  accessories: HomeKitAccessory[],
+  props: Partial<React.ComponentProps<typeof ActionsSection>> = {},
+  layoutEdit: { touchMode: boolean; editMode: boolean } = { touchMode: false, editMode: false },
+) {
   const onRunAction = vi.fn().mockResolvedValue(undefined);
   render(
-    <ActionsSection
-      accessories={accessories}
-      homeLayout={null}
-      open
-      onRunAction={onRunAction}
-      {...props}
-    />
+    <LayoutEditProvider value={layoutEdit}>
+      <ActionsSection
+        accessories={accessories}
+        homeLayout={null}
+        open
+        onRunAction={onRunAction}
+        {...props}
+      />
+    </LayoutEditProvider>
   );
   return { onRunAction };
 }
@@ -171,5 +178,39 @@ describe('ActionsSection', () => {
       <ActionsSection accessories={[sensor]} homeLayout={null} open onRunAction={vi.fn()} />
     );
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+});
+
+describe('hiding an action', () => {
+  afterEach(cleanup);
+
+  it('offers Hide Action on right-click, and reports which one', () => {
+    const onHideAction = vi.fn();
+    renderSection([lightOn], { homeId: 'HOME-1', onHideAction });
+
+    fireEvent.contextMenu(card('Turn all lights off'));
+    fireEvent.click(screen.getByText('Hide Action'));
+
+    expect(onHideAction).toHaveBeenCalledTimes(1);
+    // The stable id, not the label — the label flips with live device state.
+    expect(onHideAction.mock.calls[0][0]).toBe('lights');
+  });
+
+  it('offers nothing to right-click on touch, where Edit Layout owns hiding', () => {
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { touchMode: true, editMode: false },
+    );
+    fireEvent.contextMenu(card('Turn all lights off'));
+    expect(screen.queryByText('Hide Action')).toBeNull();
+  });
+
+  it('offers nothing where there is nothing to write to', () => {
+    // A view-only member, or a home we do not have the id for: the Dashboard
+    // withholds the handler rather than the menu offering a no-op.
+    renderSection([lightOn], { homeId: 'HOME-1' });
+    fireEvent.contextMenu(card('Turn all lights off'));
+    expect(screen.queryByText('Hide Action')).toBeNull();
   });
 });

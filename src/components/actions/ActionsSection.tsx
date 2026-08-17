@@ -6,8 +6,14 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ActionConfirmDialog } from './ActionConfirmDialog';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
+  ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { EyeOff } from 'lucide-react';
 import { TileEditActions } from '@/components/shared/EditActions';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { type HomeActionId } from '@/lib/summary-sections';
 import { getIconColor } from '@/components/widgets/iconColors';
 import { isHomeActionVisible } from '@/lib/summary-sections';
 import type { HomeLayoutData } from '@/hooks/useEntityLayout';
@@ -64,7 +70,7 @@ export function ActionsPill({ accessories, homeLayout, open, onToggle, isDarkBac
   );
 }
 
-export function ActionsSection({ accessories, homeLayout, homeId, compact, isDarkBackground, open, isViewOnly, onRunAction }: {
+export function ActionsSection({ accessories, homeLayout, homeId, compact, isDarkBackground, open, isViewOnly, onRunAction, onHideAction }: {
   accessories: HomeKitAccessory[];
   homeLayout: HomeLayoutData | null | undefined;
   /** Which home these actions belong to. Required to pin one — the catalog is
@@ -76,9 +82,15 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
   open: boolean;
   isViewOnly?: boolean;
   onRunAction: (action: HomeAction, opts?: RunHomeActionOverrides) => Promise<void>;
+  /**
+   * Turn an action off for this home. Writes the same per-home `hiddenActions`
+   * list Settings writes, so hiding one here unticks it there. Absent where
+   * there is nothing to write to (a shared home, a view-only member).
+   */
+  onHideAction?: (id: HomeActionId) => void;
 }) {
   const actions = useVisibleActions(accessories, homeLayout);
-  const { editMode } = useLayoutEdit();
+  const { editMode, touchMode } = useLayoutEdit();
   const [runningId, setRunningId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
@@ -174,20 +186,41 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                 </div>
               );
 
-              // Pinning is an Edit Layout job now, so the tile carries a button
-              // rather than hiding one in a long-press menu nothing else used.
-              // The stored name comes from HOME_ACTION_NAMES, never action.label
-              // — the label flips with live device state, so a pin made while the
-              // lights were on would read "Turn all lights on".
-              if (!editMode || !homeId) return <Fragment key={action.id}>{card}</Fragment>;
+              // Editing: the same two buttons a tile carries. Hiding an action is
+              // the only "get rid of this" there is — they are derived from what
+              // the home contains, not authored, so there is nothing to delete.
+              // The pinned name comes from HOME_ACTION_NAMES, never action.label,
+              // which flips with live device state: a pin made while the lights
+              // were on would read "Turn all lights on" for ever.
+              if (editMode && homeId && onHideAction) {
+                return (
+                  <div key={action.id} className="relative">
+                    {card}
+                    <TileEditActions
+                      action={{ kind: 'remove', label: `Hide ${HOME_ACTION_NAMES[action.id]}`, onRemove: () => onHideAction(action.id) }}
+                      tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
+                    />
+                  </div>
+                );
+              }
+
+              // Desktop has no edit mode, so hiding lives where every other
+              // desktop hide does: the right-click menu.
+              if (touchMode || !homeId || !onHideAction) return <Fragment key={action.id}>{card}</Fragment>;
               return (
-                <div key={action.id} className="relative">
-                  {card}
-                  <TileEditActions
-                    action={null}
-                    tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
-                  />
-                </div>
+                <ContextMenu key={action.id}>
+                  <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+                      {HOME_ACTION_NAMES[action.id]}
+                    </ContextMenuLabel>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onClick={() => onHideAction(action.id)}>
+                      <EyeOff className="mr-2 h-4 w-4" />
+                      Hide Action
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>

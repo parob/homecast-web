@@ -57,7 +57,7 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary, StatusPill } from '@/components/summary';
 import { ActionsPill, ActionsSection } from '@/components/actions/ActionsSection';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
-import { isSummarySectionVisible } from '@/lib/summary-sections';
+import { isSummarySectionVisible, withHomeActionVisibility, type HomeActionId } from '@/lib/summary-sections';
 import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
 import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
@@ -127,7 +127,7 @@ import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { RowEditActions } from '@/components/shared/EditActions';
-import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
+import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -4759,6 +4759,26 @@ const Dashboard = () => {
 
   // Which summary-row pills this home shows. Stored as a hidden-list in the
   // home layout blob, so a home that predates the setting shows all four.
+  /**
+   * Turn a home action off, from the action itself — right-click on the Mac,
+   * the Hide button in Edit Layout on touch.
+   *
+   * The same per-home `hiddenActions` list Settings → Home → Actions writes, so
+   * the two can never disagree. Actions are derived from what the home contains
+   * rather than authored, so hiding is the only thing "get rid of this" can
+   * mean — and the pill removes itself once the last one goes, which Settings
+   * can undo.
+   */
+  const handleHideHomeAction = useCallback((id: HomeActionId) => {
+    void updateHomeLayout(prev => ({
+      ...prev,
+      visibility: {
+        ...prev?.visibility,
+        hiddenActions: withHomeActionVisibility(HOME_ACTION_ORDER, prev?.visibility?.hiddenActions, id, false),
+      },
+    })).catch(() => toast.error('Could not hide that action'));
+  }, [updateHomeLayout]);
+
   const showActions = isSummarySectionVisible(homeLayout, 'actions');
   const showScenes = isSummarySectionVisible(homeLayout, 'scenes');
   const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
@@ -7775,6 +7795,7 @@ const Dashboard = () => {
                       open={actionsOpen}
                       isViewOnly={isViewOnly}
                       onRunAction={runHomeAction}
+                      onHideAction={selectedHomeId && !isViewOnly ? handleHideHomeAction : undefined}
                     />}
                     {showScenes && <ScenesSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />}
                     {showAutomations && <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />}
