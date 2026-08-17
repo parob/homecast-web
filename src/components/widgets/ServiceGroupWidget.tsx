@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+import { TriStateToggle } from '@/components/ui/tri-state-toggle';
+import { isOn as isPowerOn, triState, powerCountDescription } from '@/components/widgets/shared/powerState';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -177,19 +178,29 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     return count > 0 ? Math.round(total / count) : 0;
   };
 
-  // Calculate if group is on (computed directly, not memoized)
-  const isGroupOn = () => {
-    return accessories.some(accessory => {
+  // How many members are on, out of how many carry a power characteristic at
+  // all. One traversal answers every question the tile asks — whether anything
+  // is on, whether everything is, and the count in the badge — which used to be
+  // two near-identical loops that could drift apart.
+  const getPowerCounts = () => {
+    let onCount = 0;
+    let total = 0;
+    for (const accessory of accessories) {
+      let powered = false;
+      let hasPower = false;
       for (const service of accessory.services || []) {
         for (const char of service.characteristics || []) {
           if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
+            hasPower = true;
             const value = getEffectiveValue ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : char.value;
-            if (value === true || value === 1 || value === '1' || value === 'true') return true;
+            if (isPowerOn(value)) powered = true;
           }
         }
       }
-      return false;
-    });
+      if (hasPower) total++;
+      if (powered) onCount++;
+    }
+    return { onCount, total };
   };
 
   // Get average brightness
@@ -295,22 +306,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   const getAveragePosition = useCallback(() => averageOpenness('current_position'), [averageOpenness]);
 
-  // Count how many are on
-  const getOnCount = useCallback(() => {
-    return accessories.filter(accessory => {
-      for (const service of accessory.services || []) {
-        for (const char of service.characteristics || []) {
-          if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
-            const value = getEffectiveValue ? getEffectiveValue(accessory.id, char.characteristicType, char.value) : char.value;
-            if (value === true || value === 1 || value === '1' || value === 'true') return true;
-          }
-        }
-      }
-      return false;
-    }).length;
-  }, [accessories, getEffectiveValue]);
+  const { onCount, total: powerTotal } = getPowerCounts();
 
-  const groupOn = allNoResponse ? false : isGroupOn();
+  // Any-on, as it has always been: the icon tint, the wrapper and every
+  // "is there anything to show" branch below key off this, and a group with one
+  // lamp lit is not an off group.
+  const groupOn = allNoResponse ? false : onCount > 0;
   const brightness = isLightsGroup ? getAverageBrightness() : null;
   const colorTempInfo = hasColorTemp ? getColorTempInfo() : null;
   const position = isBlindsGroup ? getAveragePosition() : 0;
@@ -342,8 +343,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     const open = Math.round(100 - coverageValue);
     return open >= 100 ? 'Open' : open <= 0 ? 'Closed' : `${open}%`;
   };
-  const onCount = getOnCount();
-  const isPartiallyOn = !isBlindsGroup && onCount > 0 && onCount < accessories.length;
+  // The denominator is what *can* be on, not what is in the group: a group
+  // holding three lights and a motion sensor could otherwise never read as fully
+  // on, and its badge counted the sensor as an unlit lamp.
+  const groupState = triState(allNoResponse ? 0 : onCount, powerTotal);
+  const isPartiallyOn = !isBlindsGroup && groupState === 'mixed';
+  const powerDescription = powerCountDescription(onCount, powerTotal);
 
   // Use white text when group is off and there's a DARK background (not light)
   // Determine the primary service type for the group
@@ -500,11 +505,13 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                     onClick={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <Switch
-                      checked={groupOn}
+                    <TriStateToggle
+                      state={groupState}
                       onCheckedChange={onToggle}
                       disabled={effectiveDisabled}
                       className="shrink-0"
+                      label={getDisplayName(group.name, roomName)}
+                      description={powerDescription}
                       checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
                     />
                     {effectiveDisabled && effectiveOnDisabledClick && (
@@ -558,7 +565,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   )}
                   {!allNoResponse && isPartiallyOn && (
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
-                      {onCount}/{accessories.length} on
+                      {onCount}/{powerTotal} on
                     </Badge>
                   )}
                 </CardDescription>
@@ -570,11 +577,13 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <Switch
-                  checked={groupOn}
+                <TriStateToggle
+                  state={groupState}
                   onCheckedChange={onToggle}
                   disabled={effectiveDisabled}
                   className="shrink-0"
+                  label={getDisplayName(group.name, roomName)}
+                  description={powerDescription}
                   checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
                 />
                 {effectiveDisabled && effectiveOnDisabledClick && (
@@ -710,12 +719,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                         )}
                       </div>
                       {!isBlind && powerCharType && onAccessoryToggle && (
-                        <Switch
-                          checked={accIsOn}
+                        <TriStateToggle
+                          state={accIsOn ? 'on' : 'off'}
                           onCheckedChange={() => onAccessoryToggle(accessory.id, powerCharType!, accIsOn)}
                           disabled={effectiveDisabled || !accessory.isReachable}
                           className="scale-75"
-                          onClick={(e) => e.stopPropagation()}
+                          label={getDisplayName(accessory.name, accessory.roomName)}
                           checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
                         />
                       )}
@@ -808,7 +817,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 )}
                 {!allNoResponse && isPartiallyOn && (
                   <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
-                    {onCount}/{accessories.length} on
+                    {onCount}/{powerTotal} on
                   </Badge>
                 )}
               </CardDescription>
@@ -820,11 +829,13 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <Switch
-                checked={groupOn}
+              <TriStateToggle
+                state={groupState}
                 onCheckedChange={onToggle}
                 disabled={effectiveDisabled}
                 className="shrink-0"
+                label={getDisplayName(group.name, roomName)}
+                description={powerDescription}
                 checkedColorClass={iconStyle === 'colourful' && iconColor ? iconColor.switchBg : undefined}
               />
               {effectiveDisabled && effectiveOnDisabledClick && (
@@ -1038,7 +1049,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               {!isBlindsGroup && (
                 <div className="flex justify-between px-2 py-1.5 text-sm">
                   <span className="text-muted-foreground">On</span>
-                  <span>{onCount} / {accessories.length}</span>
+                  <span>{onCount} / {powerTotal}</span>
                 </div>
               )}
               {isLightsGroup && brightness !== null && (

@@ -15,6 +15,7 @@ import { TileEditActions } from '@/components/shared/EditActions';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { type HomeActionId } from '@/lib/summary-sections';
 import { getIconColor } from '@/components/widgets/iconColors';
+import { TriStateToggle } from '@/components/ui/tri-state-toggle';
 import { isHomeActionVisible } from '@/lib/summary-sections';
 import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
@@ -95,12 +96,16 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
 
-  const run = async (action: HomeAction) => {
+  const run = async (action: HomeAction, direction?: boolean) => {
+    const total = direction === undefined || !action.toggle
+      ? action.targetCount
+      : (direction ? action.toggle.onSteps : action.toggle.offSteps).flatMap(s => s.writes).length;
     setRunningId(action.id);
-    setProgress({ done: 0, total: action.targetCount });
+    setProgress({ done: 0, total });
     try {
       await onRunAction(action, {
-        onProgress: (done, total) => setProgress({ done, total }),
+        direction,
+        onProgress: (done, t) => setProgress({ done, total: t }),
       });
     } finally {
       setRunningId(null);
@@ -132,21 +137,28 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
               // action runs the moment you touch it, and a mis-grab on the way
               // to a drag would turn the whole house off.
               const inert = action.disabled || !!isViewOnly || running || editMode;
+              // A two-way action carries its own control, and the card must then
+              // stop being one: leaving the press on the card too would run the
+              // catalog's chosen direction from anywhere outside the toggle,
+              // which is the guess the toggle exists to stop making.
+              const toggle = editMode ? undefined : action.toggle;
 
               const card = (
                 <div
-                  role="button"
-                  tabIndex={inert ? -1 : 0}
-                  aria-disabled={inert}
-                  onClick={() => { if (!inert) press(action); }}
-                  onKeyDown={(e) => {
+                  data-testid={`action-${action.id}`}
+                  role={toggle ? undefined : 'button'}
+                  tabIndex={toggle ? undefined : (inert ? -1 : 0)}
+                  aria-disabled={toggle ? undefined : inert}
+                  onClick={toggle ? undefined : () => { if (!inert) press(action); }}
+                  onKeyDown={toggle ? undefined : (e) => {
                     if (inert) return;
                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(action); }
                   }}
                   className={cn(
                     'relative rounded-2xl h-fit transition-all duration-300 ring-1 ring-inset',
                     isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
-                    inert ? 'opacity-50 cursor-default' : 'cursor-pointer',
+                    inert && 'opacity-50',
+                    toggle ? 'cursor-default' : (inert ? 'cursor-default' : 'cursor-pointer'),
                   )}
                   style={{ contain: 'layout style paint' }}
                 >
@@ -177,11 +189,31 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                           : action.subtitle}
                       </p>
                     </div>
-                    {/* Decorative: the whole card is the button, since an
-                        action has nothing to open or edit. */}
-                    <span className={cn('shrink-0 rounded-lg p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
-                      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    </span>
+                    {toggle ? (
+                      // No spinner swap: the run writes optimistically before it
+                      // touches the network and the catalog re-derives from the
+                      // accessories, so the thumb moves on its own. The subtitle
+                      // above is already carrying the progress count.
+                      <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <TriStateToggle
+                          state={toggle.state}
+                          onCheckedChange={(next) => { if (!inert) run(action, next); }}
+                          disabled={inert}
+                          // No description: the subtitle beside it already
+                          // reads "1 of 2 on", and an sr-only copy would say
+                          // the same thing twice to the only people who cannot
+                          // see it is already there.
+                          label={HOME_ACTION_NAMES[action.id]}
+                          checkedColorClass={colors.switchBg}
+                        />
+                      </span>
+                    ) : (
+                      /* Decorative: the whole card is the button, since a
+                         one-way action has nothing to open or edit. */
+                      <span className={cn('shrink-0 rounded-lg p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
+                        {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      </span>
+                    )}
                   </div>
                 </div>
               );

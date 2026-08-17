@@ -265,3 +265,61 @@ describe('useRunHomeAction — per-call overrides', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 });
+
+describe('running a chosen direction', () => {
+  const twoWay = () => action({
+    toggle: {
+      state: 'mixed',
+      onCount: 1,
+      total: 2,
+      onSteps: [{ writes: [
+        { accessoryId: 'b', characteristicType: 'power_state', reportedCharacteristicType: 'on', value: true, previousValue: false },
+      ] }],
+      offSteps: [{ writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: true },
+      ] }],
+    },
+  });
+
+  it('writes the direction it was given, not the one the catalog chose', async () => {
+    const { run } = setup();
+    await run(twoWay(), { direction: true });
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][1]).toMatchObject({ accessoryId: 'b', value: true });
+  });
+
+  it('takes the other direction just as readily', async () => {
+    const { run } = setup();
+    await run(twoWay(), { direction: false });
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][1]).toMatchObject({ accessoryId: 'a', value: false });
+  });
+
+  it('falls back to the action\'s own steps when no direction is asked for', async () => {
+    // What a play button and a tab-bar pin do: neither has a control that can
+    // express a direction.
+    const { run } = setup();
+    await run(twoWay());
+
+    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
+  });
+
+  it('quietly does nothing when asked for the end it is already at', async () => {
+    const { run } = setup();
+    await run(action({
+      toggle: { state: 'on', onCount: 2, total: 2, onSteps: [{ writes: [] }], offSteps: [{ writes: [] }] },
+    }), { direction: true });
+
+    expect(request).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('ignores a direction on a one-way action, which has no other steps to run', async () => {
+    const { run } = setup();
+    await run(action({ id: 'everything-off' }), { direction: true });
+    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
+    expect(request.mock.calls.every(c => c[1].value === false)).toBe(true);
+  });
+});

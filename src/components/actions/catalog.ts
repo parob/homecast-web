@@ -12,9 +12,11 @@ import { getCharacteristic, getPrimaryServiceType, hasServiceType } from '@/comp
 import { usesStandardPositionLogic, fromOpenness, toOpenness } from '@/components/widgets/shared/coveringStatus';
 import { SECURITY_STATE, normalizeSecurityState, isSecurityArmed } from '@/components/widgets/shared/securityState';
 import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
+import { isOn, triState, type TriState } from '@/components/widgets/shared/powerState';
 import type { HomeActionId } from '@/lib/summary-sections';
 
 export type { HomeActionId };
+export { isOn };
 
 /** Key into the icon map in ActionsSection — keeps this module free of lucide imports. */
 export type HomeActionIcon =
@@ -43,6 +45,27 @@ export interface HomeActionStep {
   delayAfterMs?: number;
 }
 
+/**
+ * What a two-way action needs to be driven by a switch rather than a button.
+ *
+ * `steps` alone cannot do it: it holds the writes for the *next press*, one
+ * direction, chosen by the catalog. A toggle hands that choice to the user, so
+ * both directions have to exist before either is asked for. Each list is
+ * pre-filtered to the members that actually need changing, so "turn them all
+ * on" when seven of eight already are writes to one accessory.
+ *
+ * Present only on the pure power actions — lights, fans, switches. Lock up,
+ * heating & cooling off and everything off are one-way by decision, not by
+ * omission; see the comments on each.
+ */
+export interface HomeActionToggle {
+  state: TriState;
+  onCount: number;
+  total: number;
+  onSteps: HomeActionStep[];
+  offSteps: HomeActionStep[];
+}
+
 export interface HomeAction {
   id: HomeActionId;
   /** Names the direction the next press goes: "Turn all lights off". */
@@ -63,6 +86,8 @@ export interface HomeAction {
   /** Present ⇒ confirm before running, using this as the dialog question. */
   confirm?: string;
   steps: HomeActionStep[];
+  /** Present ⇒ render a tri-state toggle instead of a play button. */
+  toggle?: HomeActionToggle;
 }
 
 /** Fixed display order, and the order the settings checklist uses. */
@@ -87,14 +112,6 @@ export const HOME_ACTION_NAMES: Record<HomeActionId, string> = {
   security: 'Security',
   'everything-off': 'Everything off',
 };
-
-/**
- * Cache values arrive JSON-stringified and devices disagree about the encoding,
- * so truthiness is checked by hand. Mirrors ServiceGroupWidget.getOnCount.
- */
-export function isOn(value: unknown): boolean {
-  return value === true || value === 1 || value === '1' || value === 'true';
-}
 
 /** The power characteristic an accessory actually reports, or null. */
 function powerChar(accessory: HomeKitAccessory) {
@@ -191,8 +208,20 @@ function buildPowerAction(
     serviceType: opts.serviceType,
     targetCount: writes.length,
     turningOn,
-    disabled: writes.length === 0,
+    // Always false, and now says so. A power action is never spent — one
+    // direction or the other always has work — and a toggle must not dim at the
+    // "all on" end, which is precisely the end the user may want to leave.
+    disabled: false,
+    // `steps` stays the single next-press direction: the tab-bar pin runs an
+    // action by id and has no switch to read a direction from.
     steps: oneStep(writes),
+    toggle: {
+      state: triState(onCount, targets.length),
+      onCount,
+      total: targets.length,
+      onSteps: oneStep(powerWrites(targets, true)),
+      offSteps: oneStep(powerWrites(targets, false)),
+    },
   };
 }
 

@@ -9,3 +9,5 @@ export { VerticalToggle } from './VerticalToggle';
 export { mirrorMired, miredToKelvin, formatMirroredAsKelvin } from './colorTemp';
 export { coveringStatusText, coveringMotion, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from './coveringStatus';
 export { SECURITY_STATE, SECURITY_STATE_NAMES, normalizeSecurityState, isSecurityArmed } from './securityState';
+export { isOn, triState, powerCountDescription } from './powerState';
+export type { TriState } from './powerState';

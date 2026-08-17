@@ -31,7 +31,18 @@ const alarm = acc('s1', 'security_system', [
   ['security_system_current_state', 3], ['security_system_target_state', 3],
 ]);
 
-const card = (label: string) => screen.getByText(label).closest('[role="button"]')!;
+/**
+ * A one-way action's card is itself the button; a two-way action's card is not,
+ * because its toggle is. So the card is found by id rather than by role.
+ */
+const card = (id: string) => screen.getByTestId(`action-${id}`);
+
+/** The single switch on a card whose action is all-on or all-off. */
+const switchOn = (id: string) => within(card(id)).getByRole('switch');
+
+/** The half of a mixed card's toggle that goes the given way. */
+const half = (id: string, direction: 'on' | 'off') =>
+  within(card(id)).getByRole('button', { name: `Turn all ${direction}` });
 
 function renderSection(
   accessories: HomeKitAccessory[],
@@ -58,26 +69,66 @@ describe('ActionsSection', () => {
 
   it('renders one card per action, labelled by direction and subtitled by state', () => {
     renderSection([lightOn, lightOff]);
-    const lights = card('Turn all lights off');
-    expect(within(lights as HTMLElement).getByText('1 of 2 on')).toBeTruthy();
+    expect(within(card('lights')).getByText('1 of 2 on')).toBeTruthy();
+    expect(screen.getByText('Turn all lights off')).toBeTruthy();
     // A lone pair of lights also earns the everything-off card
     expect(screen.getByText('Turn everything off')).toBeTruthy();
   });
 
-  it('runs an action on click', () => {
-    const { onRunAction } = renderSection([lightOn]);
-    fireEvent.click(card('Turn all lights off'));
-    expect(onRunAction).toHaveBeenCalledTimes(1);
-    expect(onRunAction.mock.calls[0][0].id).toBe('lights');
+  it('gives a two-way action a toggle, and a one-way action a card that is the button', () => {
+    renderSection([lightOn, lockOpen]);
+    // Lights can go either way, so the control says which way and the card
+    // itself is inert.
+    expect(within(card('lights')).getByRole('switch')).toBeTruthy();
+    expect(card('lights').getAttribute('role')).toBeNull();
+    // Lock up is one-way on purpose: no toggle, and the card still presses.
+    expect(within(card('locks')).queryByRole('switch')).toBeNull();
+    expect(card('locks').getAttribute('role')).toBe('button');
   });
 
-  it('runs an action from the keyboard', () => {
+  it('parks the thumb in the middle when only some are on, and offers both ends', () => {
+    const { onRunAction } = renderSection([lightOn, lightOff]);
+    // Mixed is two commands, so it is two buttons and never a switch.
+    expect(within(card('lights')).queryByRole('switch')).toBeNull();
+
+    fireEvent.click(half('lights', 'off'));
+    expect(onRunAction.mock.calls[0][1].direction).toBe(false);
+
+    cleanup();
+    const second = renderSection([lightOn, lightOff]);
+    fireEvent.click(half('lights', 'on'));
+    expect(second.onRunAction.mock.calls[0][1].direction).toBe(true);
+  });
+
+  it('runs an action from its toggle', () => {
     const { onRunAction } = renderSection([lightOn]);
-    fireEvent.keyDown(card('Turn all lights off'), { key: 'Enter' });
+    fireEvent.click(switchOn('lights'));
     expect(onRunAction).toHaveBeenCalledTimes(1);
-    // The card now reads "Turning the lights off", and is inert while it does.
-    fireEvent.keyDown(card('Turning the lights off'), { key: ' ' });
-    expect(onRunAction).toHaveBeenCalledTimes(1);
+    expect(onRunAction.mock.calls[0][0].id).toBe('lights');
+    // Every light is on, so the only way left is off.
+    expect(onRunAction.mock.calls[0][1].direction).toBe(false);
+  });
+
+  it('runs an action from the keyboard, aiming with the arrow keys', async () => {
+    // A keyboard user cannot aim at a half, so the arrows are the only way to
+    // reach either end of a mixed toggle.
+    const { onRunAction } = renderSection([lightOn, lightOff]);
+    fireEvent.keyDown(within(card('lights')).getByRole('group'), { key: 'ArrowRight' });
+    expect(onRunAction.mock.calls[0][1].direction).toBe(true);
+
+    // Inert while that run is in flight, so let it settle before aiming back.
+    await act(async () => {});
+    fireEvent.keyDown(within(card('lights')).getByRole('group'), { key: 'ArrowLeft' });
+    expect(onRunAction.mock.calls[1][1].direction).toBe(false);
+  });
+
+  it('no longer runs when the card body is pressed', () => {
+    // The toggle is the only way in: a press anywhere else would have to guess
+    // a direction, which is the guess the toggle exists to stop making.
+    const { onRunAction } = renderSection([lightOn]);
+    fireEvent.click(card('lights'));
+    fireEvent.keyDown(card('lights'), { key: 'Enter' });
+    expect(onRunAction).not.toHaveBeenCalled();
   });
 
   it('ignores a second press while the first is still in flight', async () => {
@@ -87,14 +138,16 @@ describe('ActionsSection', () => {
       <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
-    fireEvent.click(card('Turn all lights off'));
-    fireEvent.click(card('Turning the lights off'));
-    fireEvent.click(card('Turning the lights off'));
+    fireEvent.click(switchOn('lights'));
+    fireEvent.click(switchOn('lights'));
+    fireEvent.click(switchOn('lights'));
     expect(onRunAction).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Turning the lights off')).toBeTruthy();
 
     await act(async () => { release(); });
     // and it goes back to naming the direction once it is done
-    fireEvent.click(card('Turn all lights off'));
+    expect(screen.getByText('Turn all lights off')).toBeTruthy();
+    fireEvent.click(switchOn('lights'));
     expect(onRunAction).toHaveBeenCalledTimes(2);
   });
 
@@ -109,29 +162,27 @@ describe('ActionsSection', () => {
       <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
-    fireEvent.click(card('Turn all lights off'));
-    const running = card('Turning the lights off') as HTMLElement;
+    fireEvent.click(switchOn('lights'));
     // Seeded before the first write settles, so the count never starts blank
-    expect(within(running).getByText('0 of 1 accessory')).toBeTruthy();
+    expect(within(card('lights')).getByText('0 of 1 accessory')).toBeTruthy();
 
     await act(async () => { report(1, 4); });
-    expect(within(card('Turning the lights off') as HTMLElement).getByText('1 of 4 accessories')).toBeTruthy();
+    expect(within(card('lights')).getByText('1 of 4 accessories')).toBeTruthy();
 
     // and the live region is marked so it is announced, not just seen
-    expect(within(card('Turning the lights off') as HTMLElement)
-      .getByText('1 of 4 accessories').getAttribute('aria-live')).toBe('polite');
+    expect(within(card('lights')).getByText('1 of 4 accessories').getAttribute('aria-live')).toBe('polite');
 
     await act(async () => { release(); });
     // back to reporting state once it finishes
-    expect(within(card('Turn all lights off') as HTMLElement).getByText('1 of 1 on')).toBeTruthy();
+    expect(within(card('lights')).getByText('1 of 1 on')).toBeTruthy();
   });
 
   it('leaves a nothing-to-do action in place, dimmed and unpressable', () => {
     // Every lock already secured: the card stays so the grid doesn't reflow,
     // but it no longer does anything.
     const { onRunAction } = renderSection([lockShut]);
-    const lockUp = card('Lock up');
-    expect(within(lockUp as HTMLElement).getByText('All locked')).toBeTruthy();
+    const lockUp = card('locks');
+    expect(within(lockUp).getByText('All locked')).toBeTruthy();
     expect(lockUp.getAttribute('aria-disabled')).toBe('true');
     expect(lockUp.className).toContain('opacity-50');
 
@@ -139,16 +190,25 @@ describe('ActionsSection', () => {
     expect(onRunAction).not.toHaveBeenCalled();
   });
 
+  it('never dims a two-way action, because neither end is the end of the road', () => {
+    // Every light already on used to be "nothing to do". It is not: off is
+    // still somewhere to go, and dimming would strand the user at that end.
+    const { onRunAction } = renderSection([lightOn]);
+    expect(card('lights').className).not.toContain('opacity-50');
+    fireEvent.click(switchOn('lights'));
+    expect(onRunAction).toHaveBeenCalledTimes(1);
+  });
+
   it('disables every card for a view-only member', () => {
     const { onRunAction } = renderSection([lightOn, lockOpen], { isViewOnly: true });
-    fireEvent.click(card('Turn all lights off'));
-    fireEvent.click(card('Lock up'));
+    fireEvent.click(switchOn('lights'));
+    fireEvent.click(card('locks'));
     expect(onRunAction).not.toHaveBeenCalled();
   });
 
   it('asks before arming, and only runs once confirmed', () => {
     const { onRunAction } = renderSection([alarm]);
-    fireEvent.click(card('Arm security'));
+    fireEvent.click(card('security'));
     expect(onRunAction).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('alertdialog');
@@ -160,7 +220,7 @@ describe('ActionsSection', () => {
 
   it('does not run when the confirmation is cancelled', () => {
     const { onRunAction } = renderSection([alarm]);
-    fireEvent.click(card('Arm security'));
+    fireEvent.click(card('security'));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
     expect(onRunAction).not.toHaveBeenCalled();
   });
@@ -188,7 +248,7 @@ describe('hiding an action', () => {
     const onHideAction = vi.fn();
     renderSection([lightOn], { homeId: 'HOME-1', onHideAction });
 
-    fireEvent.contextMenu(card('Turn all lights off'));
+    fireEvent.contextMenu(card('lights'));
     fireEvent.click(screen.getByText('Hide Action'));
 
     expect(onHideAction).toHaveBeenCalledTimes(1);
@@ -202,7 +262,7 @@ describe('hiding an action', () => {
       { homeId: 'HOME-1', onHideAction: vi.fn() },
       { touchMode: true, editMode: false },
     );
-    fireEvent.contextMenu(card('Turn all lights off'));
+    fireEvent.contextMenu(card('lights'));
     expect(screen.queryByText('Hide Action')).toBeNull();
   });
 
@@ -210,7 +270,7 @@ describe('hiding an action', () => {
     // A view-only member, or a home we do not have the id for: the Dashboard
     // withholds the handler rather than the menu offering a no-op.
     renderSection([lightOn], { homeId: 'HOME-1' });
-    fireEvent.contextMenu(card('Turn all lights off'));
+    fireEvent.contextMenu(card('lights'));
     expect(screen.queryByText('Hide Action')).toBeNull();
   });
 });

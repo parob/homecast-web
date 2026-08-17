@@ -290,3 +290,83 @@ describe('deriveHomeActions — shape', () => {
     expect(order).toEqual([...HOME_ACTION_ORDER].filter(id => order.includes(id)));
   });
 });
+
+describe('two-way actions carry both directions', () => {
+  const toggleOf = (list: ReturnType<typeof deriveHomeActions>, id: string) => find(list, id)!.toggle!;
+  const idsOf = (steps: { writes: { accessoryId: string }[] }[]) =>
+    steps.flatMap(s => s.writes).map(w => w.accessoryId).sort();
+
+  it('reports mixed, and writes only what each direction would change', () => {
+    // `steps` alone could never drive a switch: it holds one direction, the one
+    // the catalog chose. A toggle hands that choice to the user, so both have
+    // to exist before either is asked for.
+    const actions = deriveHomeActions([light('a', true), light('b', false), light('c', true)]);
+    const toggle = toggleOf(actions, 'lights');
+
+    expect(toggle.state).toBe('mixed');
+    expect(toggle.onCount).toBe(2);
+    expect(toggle.total).toBe(3);
+
+    // Only the one that is off needs turning on; only the two that are on need
+    // turning off.
+    expect(idsOf(toggle.onSteps)).toEqual(['b']);
+    expect(idsOf(toggle.offSteps)).toEqual(['a', 'c']);
+    expect(toggle.onSteps.flatMap(s => s.writes).every(w => w.value === true)).toBe(true);
+    expect(toggle.offSteps.flatMap(s => s.writes).every(w => w.value === false)).toBe(true);
+  });
+
+  it('leaves the direction it is already at with nothing to write', () => {
+    const allOn = toggleOf(deriveHomeActions([light('a', true), light('b', true)]), 'lights');
+    expect(allOn.state).toBe('on');
+    expect(allOn.onSteps.flatMap(s => s.writes)).toHaveLength(0);
+    expect(idsOf(allOn.offSteps)).toEqual(['a', 'b']);
+
+    const allOff = toggleOf(deriveHomeActions([light('a', false), light('b', false)]), 'lights');
+    expect(allOff.state).toBe('off');
+    expect(idsOf(allOff.onSteps)).toEqual(['a', 'b']);
+    expect(allOff.offSteps.flatMap(s => s.writes)).toHaveLength(0);
+  });
+
+  it('is never disabled, because neither end is the end of the road', () => {
+    // "All on" used to be nothing-to-do for the next press. A toggle can still
+    // go the other way, and dimming would strand the user at that end.
+    for (const lights of [[light('a', true)], [light('a', false)]]) {
+      expect(find(deriveHomeActions(lights), 'lights')!.disabled).toBe(false);
+    }
+  });
+
+  it('gives one to every pure power action, and to nothing else', () => {
+    const actions = deriveHomeActions([
+      light('a', true),
+      acc('f', [{ serviceType: 'fan', characteristics: [{ characteristicType: 'power_state', value: false }] }]),
+      acc('o', [{ serviceType: 'outlet', characteristics: [{ characteristicType: 'power_state', value: true }] }]),
+      blind('b', 0, 'Eve'),
+      lock('k', 0),
+      acc('t', [{ serviceType: 'thermostat', characteristics: [{ characteristicType: 'heating_cooling_target', value: 1 }] }]),
+      acc('s', [{ serviceType: 'security_system', characteristics: [
+        { characteristicType: 'security_system_current_state', value: 3 },
+        { characteristicType: 'security_system_target_state', value: 3 },
+      ] }]),
+    ]);
+
+    expect(actions.filter(a => a.toggle).map(a => a.id).sort())
+      .toEqual(['fans', 'lights', 'switches']);
+
+    // The rest are one-way by decision, not by omission: "open" is not "on",
+    // unlocking every door from a slider is not something we offer, there is no
+    // "everything on", and security keeps its confirmation on a deliberate press.
+    for (const id of ['blinds', 'locks', 'climate-off', 'security', 'everything-off']) {
+      expect(find(actions, id)!.toggle).toBeUndefined();
+    }
+  });
+
+  it('keeps `steps` as the single next-press direction the tab-bar pin runs', () => {
+    // A pinned tab has no switch to read a direction from, so it still runs the
+    // catalog's own choice — which must not have moved.
+    const actions = deriveHomeActions([light('a', true), light('b', false)]);
+    const lights = find(actions, 'lights')!;
+    expect(lights.turningOn).toBe(false);
+    expect(idsOf(lights.steps)).toEqual(['a']);
+    expect(idsOf(lights.steps)).toEqual(idsOf(lights.toggle!.offSteps));
+  });
+});

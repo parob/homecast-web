@@ -62,6 +62,13 @@ export interface RunHomeActionOverrides {
    * gives no way to tell that apart from nothing happening.
    */
   onProgress?: (done: number, total: number) => void;
+  /**
+   * Which way to run a two-way action, when the caller has a control that lets
+   * the user say. Omitted, the action runs its own `steps` — the single
+   * next-press direction the catalog chose, which is all a play button or a
+   * tab-bar pin can express.
+   */
+  direction?: boolean;
 }
 
 interface RunHomeActionArgs {
@@ -103,7 +110,13 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
       return;
     }
 
-    const writes = action.steps.flatMap(step => step.writes);
+    const steps = opts?.direction !== undefined && action.toggle
+      ? (opts.direction ? action.toggle.onSteps : action.toggle.offSteps)
+      : action.steps;
+
+    const writes = steps.flatMap(step => step.writes);
+    // Asking for an end it is already at is not an error — pressing "all on"
+    // when they all are should quietly do nothing, not report a failure.
     if (writes.length === 0) return;
 
     // 1. Optimistic pass — entirely synchronous, before any network work, so
@@ -119,7 +132,7 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // progress rather than restarting at zero on a composite action.
     opts?.onProgress?.(0, writes.length);
 
-    for (const step of action.steps) {
+    for (const step of steps) {
       if (step.writes.length > 0) {
         const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, async write => {
           try {

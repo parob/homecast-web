@@ -1,48 +1,60 @@
 import * as React from "react";
-import * as SwitchPrimitives from "@radix-ui/react-switch";
-import { cn } from "@/lib/utils";
+import { TriStateToggle } from "@/components/ui/tri-state-toggle";
+import type { TriState } from "./powerState";
 import { useWidgetColors } from '../WidgetCard';
 
-interface ColoredSwitchProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> {}
+/**
+ * The widget switch: a `TriStateToggle` wearing the service's colour.
+ *
+ * Colour is the only thing this adds, so it stays a wrapper rather than a
+ * second implementation — the version that hand-rolled its own Radix switch had
+ * already drifted from `ui/switch.tsx` in three details.
+ *
+ * `checked` is kept for the dozen widgets that control one accessory, which can
+ * only ever be on or off. `state` is for callers that aggregate — pass it and
+ * `checked` is ignored.
+ */
+interface ColoredSwitchProps {
+  checked?: boolean;
+  state?: TriState;
+  onCheckedChange?: (next: boolean) => void;
+  disabled?: boolean;
+  'aria-label'?: string;
+  /** Detail for the accessible description, e.g. "3 of 8 on". */
+  description?: string;
+  className?: string;
+}
 
-const ColoredSwitch = React.forwardRef<
-  React.ElementRef<typeof SwitchPrimitives.Root>,
-  ColoredSwitchProps
->(({ className, checked, ...props }, ref) => {
+const ColoredSwitch = ({
+  checked,
+  state,
+  onCheckedChange,
+  disabled,
+  description,
+  className,
+  'aria-label': ariaLabel,
+}: ColoredSwitchProps) => {
   const { colors, iconStyle } = useWidgetColors();
 
-  // Only use service-type colored switch in 'colourful' mode
-  // 'standard' uses default primary colors
-  // Use checked prop (not isOn from context) so coloring works even when unreachable
-  const useColored = iconStyle === 'colourful' && checked;
-  const bgClass = checked
-    ? (useColored ? colors.switchBg : 'bg-primary')
-    : 'bg-input';
+  const resolved: TriState = state ?? (checked ? 'on' : 'off');
 
-  // Use semi-opaque white for thumb when checked to appear as lighter tint
-  const thumbClass = checked ? 'bg-white/60' : 'bg-background';
+  // Service-type colour only in 'colourful' mode; 'standard' uses the primary.
+  // Keyed on the resolved state rather than the context's isOn so the colour is
+  // right even when the accessory is unreachable.
+  const useColored = iconStyle === 'colourful' && resolved !== 'off';
 
   return (
-    <SwitchPrimitives.Root
-      className={cn(
-        "peer inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full transition-[colors,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 active:scale-90",
-        bgClass,
-        className
-      )}
-      checked={checked}
-      onClick={(e) => e.stopPropagation()}
-      {...props}
-      ref={ref}
-    >
-      <SwitchPrimitives.Thumb
-        className={cn(
-          "pointer-events-none block h-4 w-4 rounded-full shadow-sm ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-1",
-          thumbClass
-        )}
-      />
-    </SwitchPrimitives.Root>
+    <TriStateToggle
+      state={resolved}
+      onCheckedChange={(next) => onCheckedChange?.(next)}
+      disabled={disabled}
+      label={ariaLabel}
+      description={description}
+      checkedColorClass={useColored ? colors.switchBg : 'bg-primary'}
+      className={className}
+    />
   );
-});
+};
 ColoredSwitch.displayName = "ColoredSwitch";
 
 export { ColoredSwitch };

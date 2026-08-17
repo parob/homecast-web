@@ -36,7 +36,7 @@ import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+import { isOn as isPowerOn } from '@/components/widgets/shared/powerState';
 import { SliderControl } from '@/components/widgets/shared/SliderControl';
 import {
   DropdownMenu,
@@ -879,8 +879,7 @@ export function CollectionDetail({
       for (const service of accessory.services || []) {
         for (const char of service.characteristics || []) {
           if (char.characteristicType === 'on' || char.characteristicType === 'power_state') {
-            const value = char.value;
-            if (value === true || value === 1 || value === '1' || value === 'true') return true;
+            if (isPowerOn(char.value)) return true;
           }
         }
       }
