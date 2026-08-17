@@ -133,11 +133,10 @@ export function AccountSection({
     // answer here, so ask for the account instead of flicking the switch on
     // and dragging it back when the refusal arrives.
     if (enabled && users.length === 0) {
-      setShowAddUser(true);
       toast({
         title: 'Create an account first',
         description:
-          'Authentication needs someone to sign in as. Add an account below, then turn it on.',
+          'Authentication needs someone to sign in as. Add an account under Users, then turn it on.',
       });
       return;
     }
@@ -199,6 +198,12 @@ export function AccountSection({
         });
         return;
       }
+      // The first account comes back with a session. Keep it, or the person
+      // who just set up the relay is still signed in as nobody — and turning
+      // authentication on would lock them out of this very screen.
+      const issued = result?.data?.createCommunityUser?.token;
+      if (issued) localStorage.setItem('homecast-token', issued);
+
       setNewUsername('');
       setNewPassword('');
       setNewRole('control');

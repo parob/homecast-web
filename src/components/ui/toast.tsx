@@ -14,7 +14,11 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse px-4 pb-4 pt-[calc(1rem+var(--safe-area-top)+var(--mac-app-inset,0px))] sm:p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      // Above dialogs (z-[10050]), not below them. Toasts usually report on
+      // something the user just did *inside* a dialog, and at z-[100] every
+      // one of those rendered underneath it — invisible exactly when it
+      // mattered most.
+      "fixed top-0 z-[10100] flex max-h-screen w-full flex-col-reverse px-4 pb-4 pt-[calc(1rem+var(--safe-area-top)+var(--mac-app-inset,0px))] sm:p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
       className,
     )}
     {...props}

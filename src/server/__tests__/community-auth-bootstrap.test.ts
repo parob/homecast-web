@@ -138,3 +138,58 @@ describe('enabling auth does not lock out the person enabling it', () => {
     expect(isAuthError(after)).toBe(false);
   });
 });
+
+describe('setting up authentication from scratch', () => {
+  beforeEach(() => {
+    mockDb.users.clear();
+    mockDb.settings.clear();
+  });
+
+  it('hands back a session for the first account, so enabling auth does not lock you out', async () => {
+    const auth = await import('@/server/local-auth');
+
+    // Auth is off. Create the first account, exactly as the settings screen does.
+    const created: any = await handleGraphQL({
+      operationName: 'CreateCommunityUser',
+      variables: { name: 'rob', password: 'pw-rob-12345', role: 'admin' },
+    });
+    const token = created.data?.createCommunityUser?.token;
+    expect(token).toBeTruthy();
+    expect(await auth.verifyToken(token)).not.toBeNull();
+
+    // Now turn authentication on, holding that session.
+    const enabled: any = await handleGraphQL({
+      operationName: 'SetAuthEnabled',
+      variables: { enabled: true },
+      authorization: `Bearer ${token}`,
+    });
+    expect(enabled.data?.setAuthEnabled?.success).toBe(true);
+
+    // And the screen still works afterwards — this is the whole point.
+    const after: any = await handleGraphQL({
+      operationName: 'GetCommunityUsers',
+      authorization: `Bearer ${token}`,
+    });
+    expect(isAuthError(after)).toBe(false);
+
+    const off: any = await handleGraphQL({
+      operationName: 'SetAuthEnabled',
+      variables: { enabled: false },
+      authorization: `Bearer ${token}`,
+    });
+    expect(isAuthError(off)).toBe(false);
+    expect(mockDb.settings.get('auth-enabled')).toBe('false');
+  });
+
+  it('does not hand out a session for later accounts', async () => {
+    await handleGraphQL({
+      operationName: 'CreateCommunityUser',
+      variables: { name: 'first', password: 'pw-first-1234', role: 'admin' },
+    });
+    const second: any = await handleGraphQL({
+      operationName: 'CreateCommunityUser',
+      variables: { name: 'second', password: 'pw-second-123', role: 'view' },
+    });
+    expect(second.data?.createCommunityUser?.token ?? null).toBeNull();
+  });
+});

@@ -330,12 +330,30 @@ async function resolveOperation(
       return { communityUsers: await auth.getUsers() };
 
     case 'CreateCommunityUser': {
+      // Whether this is the very first account has to be answered before we
+      // create it.
+      const wasFirstAccount = !(await auth.isOnboarded());
       const user = await auth.createUser(
         variables.name as string,
         variables.password as string,
         variables.role as 'admin' | 'control' | 'view'
       );
-      return { createCommunityUser: { id: user.id, name: user.name, role: user.role, createdAt: user.createdAt } };
+      // Hand back a session for the first account. Otherwise whoever set up
+      // the relay is still holding nothing, and the moment they switch
+      // authentication on they are locked out of the screen they did it from —
+      // they created the credentials and were never given them.
+      const session = wasFirstAccount
+        ? await auth.login(variables.name as string, variables.password as string)
+        : null;
+      return {
+        createCommunityUser: {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          createdAt: user.createdAt,
+          token: session?.token ?? null,
+        },
+      };
     }
 
     case 'DeleteCommunityUser': {
