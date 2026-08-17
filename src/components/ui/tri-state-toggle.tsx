@@ -15,9 +15,6 @@ import type { TriState } from "@/components/widgets/shared/powerState";
  * swallows the click to flip it, so splitting the hit target would mean fighting
  * the primitive for the one behaviour that matters here. `shared/VerticalToggle`
  * already hand-rolls `role="switch"` for the same reason.
- *
- * Geometry matches `ui/switch.tsx` exactly — h-6 w-10 track, h-4 w-4 thumb — so
- * this drops into a widget header without shifting anything beside it.
  */
 
 interface TriStateToggleProps {
@@ -34,18 +31,25 @@ interface TriStateToggleProps {
   className?: string;
 }
 
-/** Thumb offsets, in Tailwind translate steps. Mixed is the exact midpoint. */
-const THUMB_X: Record<TriState, string> = {
-  off: 'translate-x-1',
-  mixed: 'translate-x-3',
-  on: 'translate-x-5',
-};
+/**
+ * The track is `ui/switch.tsx`'s 24px tall and 16px thumb exactly, so this sits
+ * in a row of ordinary switches without shifting anything — but a quarter wider,
+ * 50px against 40px, because three positions in 40px put the thumb 13px from
+ * each end and the middle stopped reading as the middle.
+ */
+const TRACK_W = 50;
+const THUMB = 16;
+const PAD = 4;
+const MIN_X = PAD;                          // 4
+const MAX_X = TRACK_W - THUMB - PAD;        // 30
+const MID_X = (TRACK_W - THUMB) / 2;        // 17
 
-const FILL_WIDTH: Record<TriState, string> = {
-  off: '0%',
-  mixed: '50%',
-  on: '100%',
-};
+const THUMB_X: Record<TriState, number> = { off: MIN_X, mixed: MID_X, on: MAX_X };
+
+/** Past this the gesture is a swipe and the press that follows it is not a tap. */
+const SWIPE_SLOP = 6;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export function TriStateToggle({
   state,
@@ -60,6 +64,9 @@ export function TriStateToggle({
   const onButtonRef = React.useRef<HTMLButtonElement>(null);
   const switchRef = React.useRef<HTMLButtonElement>(null);
   const hasFocus = React.useRef(false);
+  /** Set by a swipe, read by the click it produces, so one gesture acts once. */
+  const justDragged = React.useRef(false);
+  const [dragX, setDragX] = React.useState<number | null>(null);
 
   // The DOM shape changes with the state, and the state changes when a device
   // does — so the press that resolves a mixed group unmounts the very element a
@@ -76,7 +83,9 @@ export function TriStateToggle({
     // Every control in a widget stops here: the card underneath is itself a
     // press target that expands the tile.
     e.stopPropagation();
-    if (!disabled) onCheckedChange(next);
+    if (disabled) return;
+    if (justDragged.current) return; // the swipe already said what it wanted
+    onCheckedChange(next);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -90,21 +99,72 @@ export function TriStateToggle({
     }
   };
 
+  /**
+   * Drag the thumb rather than aiming at a half.
+   *
+   * Move and release are taken from the window, not from a captured pointer:
+   * capturing retargets the click, and in the mixed state the click has to
+   * reach whichever half-button it started on.
+   */
+  const startDrag = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    justDragged.current = false;
+    if (disabled) return;
+
+    const startX = e.clientX;
+    const from = THUMB_X[state];
+    let moved = false;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (!moved && Math.abs(dx) > SWIPE_SLOP) moved = true;
+      if (moved) setDragX(clamp(from + dx, MIN_X, MAX_X));
+    };
+
+    const onEnd = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      setDragX(null);
+      if (!moved) return;
+
+      justDragged.current = true;
+      const next = ev.clientX - startX > 0;
+      // From an end, only the journey away from it means anything; a nudge
+      // back towards the end you are already at should not write to anybody.
+      if (state === 'mixed' || next !== (state === 'on')) onCheckedChange(next);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+
   const focusProps = {
     onFocus: () => { hasFocus.current = true; },
     onBlur: () => { hasFocus.current = false; },
   };
 
-  // Not rounded: the track clips it, so a half fill ends flush at the midpoint
-  // instead of tapering to a pill inside a pill.
+  const x = dragX ?? THUMB_X[state];
+  const dragging = dragX !== null;
+
+  /**
+   * The track's colour is the on colour laid over the off colour at the thumb's
+   * own progress, so the middle is literally halfway between the two ends
+   * rather than a half-filled bar — and a swipe blends continuously under the
+   * finger instead of snapping when it lands.
+   */
+  const fillOpacity = (x - MIN_X) / (MAX_X - MIN_X);
+
   const fill = (
     <span
       aria-hidden
       className={cn(
-        'absolute inset-y-0 left-0 transition-[width] duration-base ease-standard',
+        'absolute inset-0',
+        !dragging && 'transition-opacity duration-base ease-standard',
         checkedColorClass || 'bg-primary',
       )}
-      style={{ width: FILL_WIDTH[state] }}
+      style={{ opacity: fillOpacity }}
     />
   );
 
@@ -112,18 +172,22 @@ export function TriStateToggle({
     <span
       aria-hidden
       className={cn(
-        'pointer-events-none absolute left-0 top-1 block h-4 w-4 rounded-full shadow-sm transition-transform duration-base ease-standard',
-        state === 'off' ? 'bg-background' : 'bg-white/60',
-        THUMB_X[state],
+        'pointer-events-none absolute left-0 top-1 block rounded-full shadow-sm',
+        !dragging && 'transition-transform duration-base ease-standard',
+        state === 'off' && !dragging ? 'bg-background' : 'bg-white/60',
       )}
+      style={{ width: THUMB, height: THUMB, transform: `translateX(${x}px)` }}
     />
   );
 
   const trackClasses = cn(
-    'relative inline-flex h-6 w-10 shrink-0 items-center overflow-hidden rounded-full bg-input transition-colors duration-base ease-standard',
+    'relative inline-flex h-6 shrink-0 items-center overflow-hidden rounded-full bg-input',
     disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer active:scale-90',
     className,
   );
+  // touch-action keeps the page scrollable off a mis-grab: vertical still pans,
+  // horizontal is ours.
+  const trackStyle = { width: TRACK_W, touchAction: 'pan-y' as const };
 
   // Mixed genuinely is two commands, so it gets two buttons — and ARIA agrees:
   // aria-checked="mixed" is valid on checkbox, never on switch.
@@ -134,7 +198,8 @@ export function TriStateToggle({
         aria-label={label}
         aria-describedby={description ? descriptionId : undefined}
         className={cn(trackClasses, 'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background')}
-        onPointerDown={(e) => e.stopPropagation()}
+        style={trackStyle}
+        onPointerDown={startDrag}
         onKeyDown={handleKeyDown}
         {...focusProps}
       >
@@ -173,9 +238,10 @@ export function TriStateToggle({
       aria-describedby={description ? descriptionId : undefined}
       disabled={disabled}
       onClick={(e) => commit(!checked, e)}
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={startDrag}
       onKeyDown={handleKeyDown}
       className={cn(trackClasses, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background')}
+      style={trackStyle}
       {...focusProps}
     >
       {fill}

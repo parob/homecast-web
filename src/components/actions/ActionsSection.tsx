@@ -95,12 +95,17 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
   const [runningId, setRunningId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
+  // Which way the run in flight is going, so it can be narrated. A two-way
+  // action's own runningLabel follows the direction the *catalog* picked, which
+  // is the opposite of what the user chose exactly when they overrode it.
+  const [runningDirection, setRunningDirection] = useState<boolean | undefined>(undefined);
 
   const run = async (action: HomeAction, direction?: boolean) => {
     const total = direction === undefined || !action.toggle
       ? action.targetCount
       : (direction ? action.toggle.onSteps : action.toggle.offSteps).flatMap(s => s.writes).length;
     setRunningId(action.id);
+    setRunningDirection(direction);
     setProgress({ done: 0, total });
     try {
       await onRunAction(action, {
@@ -109,8 +114,18 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
       });
     } finally {
       setRunningId(null);
+      setRunningDirection(undefined);
       setProgress(null);
     }
+  };
+
+  /** What the card calls itself right now: the set, or the direction in flight. */
+  const titleOf = (action: HomeAction, running: boolean) => {
+    if (!running) return action.label;
+    if (action.toggle && runningDirection !== undefined) {
+      return runningDirection ? action.toggle.onRunning : action.toggle.offRunning;
+    }
+    return action.runningLabel;
   };
 
   const press = (action: HomeAction) => {
@@ -173,7 +188,7 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className={cn('text-sm font-medium break-words line-clamp-2 transition-colors duration-300', isDarkBackground && 'text-white')}>
-                        {running ? action.runningLabel : action.label}
+                        {titleOf(action, running)}
                       </p>
                       {/* While it runs the subtitle carries progress instead of
                           state: the state it describes is mid-change and about
@@ -221,9 +236,10 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
               // Editing: the same two buttons a tile carries. Hiding an action is
               // the only "get rid of this" there is — they are derived from what
               // the home contains, not authored, so there is nothing to delete.
-              // The pinned name comes from HOME_ACTION_NAMES, never action.label,
-              // which flips with live device state: a pin made while the lights
-              // were on would read "Turn all lights on" for ever.
+              // The pinned name comes from HOME_ACTION_NAMES, never action.label:
+              // a one-way action's label flips with live device state, so a pin
+              // made while the doors were open would read "Lock up" for ever, and
+              // a two-way one's names the set rather than the press.
               if (editMode && homeId && onHideAction) {
                 return (
                   <div key={action.id} className="relative">

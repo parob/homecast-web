@@ -26,7 +26,7 @@ type HomeAction = import('../catalog').HomeAction;
 function action(overrides: Partial<HomeAction> = {}): HomeAction {
   return {
     id: 'lights',
-    label: 'Turn all lights off',
+    label: 'All lights',
     runningLabel: 'Turning the lights off',
     subtitle: '2 of 2 on',
     icon: 'lightbulb',
@@ -135,7 +135,7 @@ describe('useRunHomeAction', () => {
 
     expect(updateCharacteristicInCache).toHaveBeenCalledWith('a', 'power_state', 'true');
     expect(updateCharacteristicInCache).toHaveBeenCalledWith('b', 'power_state', 'true');
-    expect(toastError).toHaveBeenCalledWith('Turn all lights off failed', expect.objectContaining({
+    expect(toastError).toHaveBeenCalledWith('All lights failed', expect.objectContaining({
       description: expect.stringContaining('relay offline'),
     }));
     expect(toastWarning).not.toHaveBeenCalled();
@@ -278,6 +278,8 @@ describe('running a chosen direction', () => {
       offSteps: [{ writes: [
         { accessoryId: 'a', characteristicType: 'power_state', reportedCharacteristicType: 'power_state', value: false, previousValue: true },
       ] }],
+      onRunning: 'Turning the lights on',
+      offRunning: 'Turning the lights off',
     },
   });
 
@@ -309,7 +311,11 @@ describe('running a chosen direction', () => {
   it('quietly does nothing when asked for the end it is already at', async () => {
     const { run } = setup();
     await run(action({
-      toggle: { state: 'on', onCount: 2, total: 2, onSteps: [{ writes: [] }], offSteps: [{ writes: [] }] },
+      toggle: {
+        state: 'on', onCount: 2, total: 2,
+        onSteps: [{ writes: [] }], offSteps: [{ writes: [] }],
+        onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
+      },
     }), { direction: true });
 
     expect(request).not.toHaveBeenCalled();

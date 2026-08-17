@@ -70,7 +70,7 @@ describe('ActionsSection', () => {
   it('renders one card per action, labelled by direction and subtitled by state', () => {
     renderSection([lightOn, lightOff]);
     expect(within(card('lights')).getByText('1 of 2 on')).toBeTruthy();
-    expect(screen.getByText('Turn all lights off')).toBeTruthy();
+    expect(screen.getByText('All lights')).toBeTruthy();
     // A lone pair of lights also earns the everything-off card
     expect(screen.getByText('Turn everything off')).toBeTruthy();
   });
@@ -146,9 +146,22 @@ describe('ActionsSection', () => {
 
     await act(async () => { release(); });
     // and it goes back to naming the direction once it is done
-    expect(screen.getByText('Turn all lights off')).toBeTruthy();
+    expect(screen.getByText('All lights')).toBeTruthy();
     fireEvent.click(switchOn('lights'));
     expect(onRunAction).toHaveBeenCalledTimes(2);
+  });
+
+  it('narrates the direction the user chose, not the one the catalog would have', async () => {
+    // With one light on and one off, the catalog's own next press is "off". Ask
+    // for on, and the card has to say so — its runningLabel would have claimed
+    // the opposite exactly when the user had just overridden it.
+    const onRunAction = vi.fn(() => new Promise<void>(() => {}));
+    render(
+      <ActionsSection accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
+    );
+    fireEvent.click(half('lights', 'on'));
+    expect(screen.getByText('Turning the lights on')).toBeTruthy();
+    expect(screen.queryByText('Turning the lights off')).toBeNull();
   });
 
   it('says what it is doing, and counts up as writes settle', async () => {
@@ -227,7 +240,7 @@ describe('ActionsSection', () => {
 
   it('omits actions hidden for this home', () => {
     renderSection([lightOn], { homeLayout: { visibility: { hiddenActions: ['lights'] } } });
-    expect(screen.queryByText('Turn all lights off')).toBeNull();
+    expect(screen.queryByText('All lights')).toBeNull();
     // everything-off is not hidden, so it survives
     expect(screen.getByText('Turn everything off')).toBeTruthy();
   });

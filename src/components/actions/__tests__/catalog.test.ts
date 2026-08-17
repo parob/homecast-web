@@ -66,7 +66,9 @@ describe('deriveHomeActions — lights', () => {
     const lights = find(actions, 'lights')!;
 
     expect(lights.turningOn).toBe(false);
-    expect(lights.label).toBe('Turn all lights off');
+    // The label names the set now, not the press: the toggle owns the direction
+    // and a title that flipped under it would describe the wrong half.
+    expect(lights.label).toBe('All lights');
     expect(lights.subtitle).toBe('2 of 3 on');
     expect(lights.disabled).toBe(false);
 
@@ -80,7 +82,7 @@ describe('deriveHomeActions — lights', () => {
     const actions = deriveHomeActions([light('a', false), light('b', false)]);
     const lights = find(actions, 'lights')!;
     expect(lights.turningOn).toBe(true);
-    expect(lights.label).toBe('Turn all lights on');
+    expect(lights.label).toBe('All lights');
     expect(lights.subtitle).toBe('All off');
     expect(writesOf(actions, 'lights').every(w => w.value === true)).toBe(true);
   });

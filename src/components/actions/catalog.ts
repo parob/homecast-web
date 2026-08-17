@@ -64,13 +64,26 @@ export interface HomeActionToggle {
   total: number;
   onSteps: HomeActionStep[];
   offSteps: HomeActionStep[];
+  /**
+   * In progress, per direction. `runningLabel` cannot serve here: it follows
+   * the catalog's chosen direction, so dragging a mixed group *on* would have
+   * announced "Turning the lights off" — the one thing the user had just said
+   * they did not want.
+   */
+  onRunning: string;
+  offRunning: string;
 }
 
 export interface HomeAction {
   id: HomeActionId;
-  /** Names the direction the next press goes: "Turn all lights off". */
+  /**
+   * What the card is called. A one-way action names the direction its press
+   * goes — "Lock up", "Turn everything off". A two-way one names only the set,
+   * "All lights", because the direction is now the user's to pick and a label
+   * that flipped under a toggle would be describing the wrong half of it.
+   */
   label: string;
-  /** The same, in progress: "Turning the lights off". Shown while it runs. */
+  /** The direction in progress: "Turning the lights off". Shown while it runs. */
   runningLabel: string;
   /** What the label elides: "8 of 12 on", "All locked". */
   subtitle: string;
@@ -97,10 +110,11 @@ export const HOME_ACTION_ORDER: HomeActionId[] = [
 
 /**
  * Stable names, for anywhere the action is being talked *about* rather than
- * pressed. `HomeAction.label` names the direction the next press would go and
- * so flips with live device state — which is right on a card and wrong in a
+ * pressed. A one-way action's `label` names the direction its press would go
+ * and so flips with live device state — which is right on a card and wrong in a
  * settings list, where a row that renames itself when someone turns a lamp on
- * is just confusing.
+ * is just confusing. (A two-way action's label no longer flips, but it still
+ * differs: "All lights" on the card, "Lights" in a list of settings.)
  */
 export const HOME_ACTION_NAMES: Record<HomeActionId, string> = {
   lights: 'Lights',
@@ -188,7 +202,8 @@ function buildPowerAction(
   types: string[],
   opts: {
     icon: HomeActionIcon; serviceType: string;
-    onLabel: string; offLabel: string;
+    /** Names the set, not a direction — the toggle owns the direction. */
+    label: string;
     onRunning: string; offRunning: string;
   },
 ): HomeAction | null {
@@ -201,7 +216,7 @@ function buildPowerAction(
 
   return {
     id,
-    label: turningOn ? opts.onLabel : opts.offLabel,
+    label: opts.label,
     runningLabel: turningOn ? opts.onRunning : opts.offRunning,
     subtitle: countLabel(onCount, targets.length, 'on'),
     icon: opts.icon,
@@ -221,6 +236,8 @@ function buildPowerAction(
       total: targets.length,
       onSteps: oneStep(powerWrites(targets, true)),
       offSteps: oneStep(powerWrites(targets, false)),
+      onRunning: opts.onRunning,
+      offRunning: opts.offRunning,
     },
   };
 }
@@ -474,19 +491,19 @@ export function deriveHomeActions(accessories: HomeKitAccessory[]): HomeAction[]
   const built: Array<HomeAction | null> = [
     buildPowerAction('lights', list, ['lightbulb'], {
       icon: 'lightbulb', serviceType: 'lightbulb',
-      onLabel: 'Turn all lights on', offLabel: 'Turn all lights off',
+      label: 'All lights',
       onRunning: 'Turning the lights on', offRunning: 'Turning the lights off',
     }),
     buildBlindsAction(list),
     buildLocksAction(list),
     buildPowerAction('fans', list, ['fan'], {
       icon: 'fan', serviceType: 'fan',
-      onLabel: 'Turn all fans on', offLabel: 'Turn all fans off',
+      label: 'All fans',
       onRunning: 'Turning the fans on', offRunning: 'Turning the fans off',
     }),
     buildPowerAction('switches', list, ['switch', 'outlet'], {
       icon: 'outlet', serviceType: 'outlet',
-      onLabel: 'Turn switches on', offLabel: 'Turn switches off',
+      label: 'All switches & outlets',
       onRunning: 'Turning the switches on', offRunning: 'Turning the switches off',
     }),
     buildClimateOffAction(list),
