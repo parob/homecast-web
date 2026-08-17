@@ -33,6 +33,18 @@ const GRAPHQL_PUBLIC_OPS = new Set([
 ]);
 
 /**
+ * Operations that stay open while auth is on but no owner exists yet.
+ *
+ * This is a recovery hatch, not a hole: with no users, a token cannot be
+ * issued to anybody, so requiring one makes the relay unrecoverable rather
+ * than secure. As soon as an owner exists these need credentials like
+ * everything else.
+ */
+const GRAPHQL_BOOTSTRAP_OPS = new Set([
+  'CreateCommunityUser', 'SetAuthEnabled',
+]);
+
+/**
  * Map a locally-stored HC automation row onto the cloud's StoredEntityInfo
  * shape, which is what the client documents select. Rows written before
  * `updatedAt` existed fall back to `createdAt`.
@@ -159,10 +171,22 @@ export async function handleGraphQL(request: GraphQLRequest): Promise<unknown> {
     if (operationName && !GRAPHQL_PUBLIC_OPS.has(operationName)) {
       const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
       if (authEnabled) {
-        const token = extractToken(authorization);
-        const payload = token ? await auth.verifyToken(token) : null;
-        if (!payload) {
-          return { data: null, errors: [{ message: 'Authentication required' }] };
+        // Auth can be on with nobody to authenticate as — switching it on
+        // invalidates every token, including the caller's, and the ops that
+        // would create the first account are not public. That left the relay
+        // permanently unreachable: no user could be made, and auth could not
+        // be switched back off, because both need a token that can no longer
+        // exist. While there is no owner, the bootstrap ops stay open; there
+        // is nothing yet for them to protect.
+        const onboarded = await auth.isOnboarded();
+        if (!onboarded && GRAPHQL_BOOTSTRAP_OPS.has(operationName)) {
+          // fall through — creating the owner or turning auth back off
+        } else {
+          const token = extractToken(authorization);
+          const payload = token ? await auth.verifyToken(token) : null;
+          if (!payload) {
+            return { data: null, errors: [{ message: 'Authentication required' }] };
+          }
         }
       }
     }
@@ -250,16 +274,30 @@ async function resolveOperation(
 
     case 'IsOnboarded': {
       const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
-      // If the server is running and handling this request, the relay is ready.
-      // Don't check localStorage — it may have been wiped during a mode reset.
+      // relayReady stays unconditional: if the server is handling this request
+      // the relay is ready, and localStorage may have been wiped by a mode
+      // reset. isOnboarded is a different question and must be answered
+      // honestly — reporting "yes" on a relay with no accounts told every
+      // client to show a sign-in form for credentials that cannot exist.
       return {
-        isOnboarded: true,
+        isOnboarded: await auth.isOnboarded(),
         relayReady: true,
         authEnabled,
       };
     }
 
     case 'SetAuthEnabled': {
+      // Turning auth on invalidates every token. With no owner there is nobody
+      // to sign back in as, so this would brick the relay rather than secure it.
+      if (variables.enabled && !(await auth.isOnboarded())) {
+        return {
+          setAuthEnabled: {
+            success: false,
+            enabled: false,
+            error: 'Create an account first — turning on authentication with no accounts would lock everyone out.',
+          },
+        };
+      }
       await db.setSetting('auth-enabled', variables.enabled ? 'true' : 'false');
       const { refreshAuthEnabled, clearAuthenticatedClients } = await import('./local-server');
       await refreshAuthEnabled();

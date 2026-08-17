@@ -104,6 +104,20 @@ export function initLocalServer(): void {
 
   if (!w.isHomeKitRelayCapable) return;
 
+  // This device is serving the relay, which is the whole of what the flag
+  // means. It used to be written only on the "auth is disabled" path in
+  // AuthContext, so switching authentication *on* made isRelaySetUp() false
+  // and the relay began answering every external GraphQL, REST and WebSocket
+  // call with "Server not configured" — the opposite of what enabling auth is
+  // supposed to do.
+  //
+  // Only the setup flag, and never `homecast-mode`: every Mac reports
+  // isHomeKitRelayCapable, including one pointed at somebody else's relay, and
+  // writing 'relay' there would drop it out of client mode.
+  if (localStorage.getItem('homecast-mode') !== 'client') {
+    localStorage.setItem('homecast-relay-setup', 'true');
+  }
+
   // Load auth-enabled flag from IndexedDB
   refreshAuthEnabled();
 

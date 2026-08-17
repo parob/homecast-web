@@ -9,7 +9,7 @@ import { Home, Loader2, Shield, Wifi } from 'lucide-react';
 import { useMutation } from '@apollo/client/react';
 import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 
-import { config, isCommunity, getCommunityMode, getRelayAddress, isRelaySetupComplete } from '@/lib/config';
+import { config, isCommunity, getCommunityMode, getRelayAddress } from '@/lib/config';
 
 const API_URL = config.apiUrl;
 
@@ -58,6 +58,9 @@ const Login = () => {
   const [relayAddress, setRelayAddress] = useState('http://localhost:5656');
   const [connectError, setConnectError] = useState('');
   const [connecting, setConnecting] = useState(false);
+  // Auth is on but the relay has no accounts. Nobody can sign in, so the form
+  // has to create the first account rather than ask for one that cannot exist.
+  const [needsOwner, setNeedsOwner] = useState(false);
 
   const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
   const isNativeApp = !!(window as any).isHomecastMacApp || !!(window as any).isHomecastIOSApp || !!(window as any).isHomecastAndroidApp;
@@ -78,11 +81,11 @@ const Login = () => {
       return;
     }
 
-    // Relay mode + setup complete → AuthContext auto-authenticates
-    if (mode === 'relay' && isRelaySetupComplete()) {
-      setCommunityChecked(true);
-      return;
-    }
+    // Relay mode + setup complete used to skip the poll here, on the grounds
+    // that AuthContext auto-authenticates. It only does that when auth is
+    // *off* — with auth on it hands over to this page, and skipping the poll
+    // meant we never learned there were no accounts to sign in as. The poll is
+    // one request; run it either way.
 
     // Show the form immediately — don't gate the UI on the relay poll.
     // Only flip to the "Relay not ready" screen after several consecutive
@@ -104,6 +107,9 @@ const Login = () => {
           const result = await r.json();
           const relayReady = result?.data?.relayReady ?? false;
           if (relayReady) {
+            setNeedsOwner(
+              (result?.data?.authEnabled ?? false) && !(result?.data?.isOnboarded ?? true),
+            );
             setRelayNotReady(false);
             return;
           }
@@ -224,9 +230,11 @@ const Login = () => {
     setError('');
     setResendMessage('');
     setIsLoading(true);
-    const result = await login(email, password);
+    const result = needsOwner
+      ? await signup(email, password)
+      : await login(email, password);
     if (!result.success) {
-      setError(result.error || 'Login failed');
+      setError(result.error || (needsOwner ? 'Could not create account' : 'Login failed'));
     }
     setIsLoading(false);
   };
@@ -366,11 +374,13 @@ const Login = () => {
         ) : isCommunity ? (
           <>
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl">Sign In</CardTitle>
+              <CardTitle className="text-2xl">{needsOwner ? 'Create your account' : 'Sign In'}</CardTitle>
               <CardDescription>
-                {getRelayAddress()
-                  ? <>Connected to <span className="font-mono text-foreground">{getRelayAddress()}</span></>
-                  : 'Authentication is enabled on this relay'}
+                {needsOwner
+                  ? 'This relay has authentication on but no accounts yet. Pick a username and password — this account will own the relay.'
+                  : getRelayAddress()
+                    ? <>Connected to <span className="font-mono text-foreground">{getRelayAddress()}</span></>
+                    : 'Authentication is enabled on this relay'}
               </CardDescription>
             </CardHeader>
             <form onSubmit={handleSubmit}>

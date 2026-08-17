@@ -91,6 +91,12 @@ describe('handleGraphQL auth gating', () => {
     });
 
     it('blocks sensitive mutations without a token', async () => {
+      // An owner has to exist for this gate to be meaningful. With no accounts
+      // there is nobody to issue a token to, so user creation stays open as a
+      // bootstrap hatch — same window Signup already has, and without it the
+      // relay cannot be recovered. See community-auth-bootstrap.test.ts.
+      await auth.createOwner('owner', 'pw-owner-1234');
+
       const result: any = await handleGraphQL({
         operationName: 'CreateCommunityUser',
         variables: { name: 'evil', password: 'x', role: 'admin' },
