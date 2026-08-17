@@ -1210,6 +1210,45 @@ export const ADMIN_HOME_ROTATION_HISTORY = gql`
   }
 `;
 
+// Webhooks and automations shown on a home's admin page. Both are user-owned and
+// merely *scoped* to a home, so the server resolves "belongs to this home" across
+// every member — see admin.py::admin_home_webhooks / admin_home_automations.
+export const ADMIN_HOME_WEBHOOKS = gql`
+  query AdminHomeWebhooks($homeId: String!) {
+    adminHomeWebhooks(homeId: $homeId) {
+      id
+      userEmail
+      name
+      url
+      status
+      eventTypes
+      homeIds
+      consecutiveFailures
+      lastTriggeredAt
+      lastSuccessAt
+      lastFailureAt
+      lastFailureReason
+      createdAt
+    }
+  }
+`;
+
+export const ADMIN_HOME_AUTOMATIONS = gql`
+  query AdminHomeAutomations($homeId: String!) {
+    adminHomeAutomations(homeId: $homeId) {
+      id
+      name
+      enabled
+      mode
+      triggerCount
+      actionCount
+      conditionCount
+      ownerEmail
+      updatedAt
+    }
+  }
+`;
+
 export const ADMIN_FLEET_RELIABILITY = gql`
   query AdminFleetReliability($days: Int) {
     adminFleetReliability(days: $days) {
