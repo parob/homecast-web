@@ -29,6 +29,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 interface SharedRoomViewProps {
@@ -209,7 +210,7 @@ export function SharedRoomView({
       setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -217,7 +218,7 @@ export function SharedRoomView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Revert on failure
@@ -254,7 +255,7 @@ export function SharedRoomView({
       setOptimisticValues((prev) => ({ ...prev, [key]: value }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -262,7 +263,7 @@ export function SharedRoomView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           toast.error('Failed to control accessory');
@@ -337,7 +338,7 @@ export function SharedRoomView({
       };
 
       try {
-        const res = await setServiceGroup({
+        const res = await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -345,7 +346,7 @@ export function SharedRoomView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
         if (!res.data?.publicEntitySetServiceGroup?.success) {
           revert();
           toast.error('Failed to control group');
@@ -381,7 +382,7 @@ export function SharedRoomView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -389,7 +390,7 @@ export function SharedRoomView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         // Keep optimistic values — WebSocket update will reconcile
       }

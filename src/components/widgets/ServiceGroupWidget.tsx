@@ -17,6 +17,8 @@ import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { getPrimaryServiceType } from '@/components/widgets/types';
 import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColors';
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
+import { PendingRing } from '@/components/widgets/shared/PendingRing';
+import { groupKey } from '@/lib/pending-writes';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
@@ -521,12 +523,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           >
             <div className="space-y-2">
               <div className="flex items-start justify-between">
-                <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
-                  {isBlindsGroup
-                    ? <Blinds className="h-4 w-4" />
-                    : <Lightbulb className="h-4 w-4" />
-                  }
-                </div>
+                <PendingRing pendingKey={groupKey(group.id)} className={`h-8 w-8 ${groupIconTextClass}`}>
+                  <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
+                    {isBlindsGroup
+                      ? <Blinds className="h-4 w-4" />
+                      : <Lightbulb className="h-4 w-4" />
+                    }
+                  </div>
+                </PendingRing>
                 {!isBlindsGroup && !editMode && (
                   <div
                     className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
@@ -572,12 +576,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               {...(dragHandle?.attributes || {})}
               {...(dragHandle?.listeners || {})}
             >
-              <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
-                {isBlindsGroup
-                  ? <Blinds className="h-4 w-4" />
-                  : <Lightbulb className="h-4 w-4" />
-                }
-              </div>
+              <PendingRing pendingKey={groupKey(group.id)} className={`h-8 w-8 ${groupIconTextClass}`}>
+                <div className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
+                  {isBlindsGroup
+                    ? <Blinds className="h-4 w-4" />
+                    : <Lightbulb className="h-4 w-4" />
+                  }
+                </div>
+              </PendingRing>
               <div className="min-w-0">
                 <CardTitle className={`truncate font-medium leading-tight text-sm `}>
                   {getDisplayName(group.name, roomName)}
@@ -826,12 +832,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       <CardHeader className={`p-5 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-5'}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center min-w-0 flex-1 gap-2.5 cursor-pointer">
-            <div className={`shrink-0 flex items-center justify-center h-11 w-11 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
-              {isBlindsGroup
-                ? <Blinds className="h-5 w-5" />
-                : <Lightbulb className="h-5 w-5" />
-              }
-            </div>
+            <PendingRing pendingKey={groupKey(group.id)} className={`h-11 w-11 ${groupIconTextClass}`}>
+              <div className={`shrink-0 flex items-center justify-center h-11 w-11 rounded-full ${groupIconBgClass} ${groupIconTextClass}`}>
+                {isBlindsGroup
+                  ? <Blinds className="h-5 w-5" />
+                  : <Lightbulb className="h-5 w-5" />
+                }
+              </div>
+            </PendingRing>
             <div className="min-w-0">
               <CardTitle className={`truncate font-medium leading-tight text-base `}>
                 {getDisplayName(group.name, roomName)}

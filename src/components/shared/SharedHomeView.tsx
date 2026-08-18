@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 // Matches the Dashboard's breadcrumb crumbs. Kept as a local copy rather than
@@ -453,7 +454,7 @@ export function SharedHomeView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -461,7 +462,7 @@ export function SharedHomeView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         setOptimisticValues((prev) => {
           const next = { ...prev };
@@ -499,7 +500,7 @@ export function SharedHomeView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -507,7 +508,7 @@ export function SharedHomeView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         // Keep optimistic values — WebSocket update will reconcile
       }
@@ -537,7 +538,7 @@ export function SharedHomeView({
       setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -545,7 +546,7 @@ export function SharedHomeView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Revert on failure
@@ -582,7 +583,7 @@ export function SharedHomeView({
       setOptimisticValues((prev) => ({ ...prev, [key]: value }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -590,7 +591,7 @@ export function SharedHomeView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           toast.error('Failed to control accessory');

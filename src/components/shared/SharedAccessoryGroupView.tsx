@@ -27,6 +27,7 @@ import {
   PackageX,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 
 interface SharedAccessoryGroupViewProps {
   entityData: SharedEntityData;
@@ -201,7 +202,7 @@ export function SharedAccessoryGroupView({
       setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -209,7 +210,7 @@ export function SharedAccessoryGroupView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Revert on failure
@@ -246,7 +247,7 @@ export function SharedAccessoryGroupView({
       setOptimisticValues((prev) => ({ ...prev, [key]: value }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -254,7 +255,7 @@ export function SharedAccessoryGroupView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           toast.error('Failed to control accessory');
@@ -323,7 +324,7 @@ export function SharedAccessoryGroupView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -331,7 +332,7 @@ export function SharedAccessoryGroupView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         // Revert optimistic flips on failure
         setOptimisticValues((prev) => {
@@ -371,7 +372,7 @@ export function SharedAccessoryGroupView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -379,7 +380,7 @@ export function SharedAccessoryGroupView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         // Keep optimistic values — WebSocket update will reconcile
       }

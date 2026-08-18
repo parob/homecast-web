@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 
 interface SharedCollectionViewProps {
   entityData: SharedEntityData;
@@ -274,7 +275,7 @@ export function SharedCollectionView({
       setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -282,7 +283,7 @@ export function SharedCollectionView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Revert on failure
@@ -319,7 +320,7 @@ export function SharedCollectionView({
       setOptimisticValues((prev) => ({ ...prev, [key]: value }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -327,7 +328,7 @@ export function SharedCollectionView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Don't revert slider - just show error
@@ -383,7 +384,7 @@ export function SharedCollectionView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -391,7 +392,7 @@ export function SharedCollectionView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         setOptimisticValues((prev) => {
           const next = { ...prev };
@@ -429,7 +430,7 @@ export function SharedCollectionView({
       }
 
       try {
-        await setServiceGroup({
+        await trackWrite([groupKey(group.id), ...group.accessoryIds.map(accessoryKey)], setServiceGroup({
           variables: {
             shareHash,
             groupId: group.id,
@@ -437,7 +438,7 @@ export function SharedCollectionView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
       } catch (err) {
         // Keep optimistic values — WebSocket update will reconcile
       }

@@ -42,6 +42,7 @@ import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeK
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { serverConnection, getDeviceId } from '@/server/connection';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
@@ -4252,10 +4253,11 @@ const Dashboard = () => {
 
   // Apply font size to root element
   useEffect(() => {
-    // Large was 18px — one step above medium and barely distinguishable from
-    // it. If someone has gone looking for the setting, they want to see a
-    // difference. Everything sized in rem follows.
-    const sizes = { small: '14px', medium: '16px', large: '20px' };
+    // Small was 14px, which is below the size anything should be offered at, so
+    // the browser default is now the floor. That left medium to fill the gap
+    // that used to make medium → large a 25% jump in one step. Everything sized
+    // in rem follows.
+    const sizes = { small: '16px', medium: '18px', large: '20px' };
     document.documentElement.style.fontSize = sizes[fontSize];
   }, [fontSize]);
 
@@ -4265,9 +4267,9 @@ const Dashboard = () => {
   // name that space back rather than making you guess which room you are hiding.
   const editingSidebar = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
-  const sidebarWidth = (fontSize === 'small' ? 200 : fontSize === 'large' ? 248 : 218)
+  const sidebarWidth = (fontSize === 'small' ? 218 : fontSize === 'large' ? 248 : 233)
     + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
-  const mobileSidebarWidth = (fontSize === 'small' ? 250 : fontSize === 'large' ? 296 : 266)
+  const mobileSidebarWidth = (fontSize === 'small' ? 266 : fontSize === 'large' ? 296 : 281)
     + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
 
   // Change font size (optimistic)
@@ -4368,7 +4370,9 @@ const Dashboard = () => {
     }
 
     // Mark this as a pending group update to prevent stale server updates from overwriting
-    markGroupPendingUpdate(groupId, 'on', newValue);
+    // 'power_state' is what the request below actually sends. Marking 'on'
+    // built a key nothing would ever echo, so the guard never fired.
+    markGroupPendingUpdate(groupId, 'power_state', newValue);
 
     // Find all accessories in this group and update cache optimistically
     const group = serviceGroups.find(g => g.id === groupId) || allServiceGroupsData?.find(g => g.id === groupId);
@@ -4381,12 +4385,16 @@ const Dashboard = () => {
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await serverConnection.request('serviceGroup.set', {
-        homeId: effectiveHomeId,
-        groupId,
-        characteristicType: 'power_state',
-        value: newValue
-      });
+      await trackWrite(
+        // Members too, so an expanded group's own tiles ring with it.
+        [groupKey(groupId), ...(group?.accessoryIds ?? []).map(accessoryKey)],
+        serverConnection.request('serviceGroup.set', {
+          homeId: effectiveHomeId,
+          groupId,
+          characteristicType: 'power_state',
+          value: newValue
+        }),
+      );
       // Real-time updates via WebSocket will sync the values
     } catch (error: any) {
       console.error('Failed to toggle group:', error);
@@ -4444,12 +4452,15 @@ const Dashboard = () => {
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await serverConnection.request('serviceGroup.set', {
-        homeId: effectiveHomeId,
-        groupId,
-        characteristicType,
-        value
-      });
+      await trackWrite(
+        [groupKey(groupId), ...group.accessoryIds.map(accessoryKey)],
+        serverConnection.request('serviceGroup.set', {
+          homeId: effectiveHomeId,
+          groupId,
+          characteristicType,
+          value
+        }),
+      );
       // Real-time updates via WebSocket will sync the values
     } catch (error: any) {
       console.error('Failed to set group slider:', error);
@@ -4905,12 +4916,12 @@ const Dashboard = () => {
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await serverConnection.request('characteristic.set', {
+      await trackWrite(accessoryKey(accessoryId), serverConnection.request('characteristic.set', {
         accessoryId,
         characteristicType,
         value: newValue,
         homeId
-      });
+      }));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
       const msg = error instanceof HomecastError
@@ -4947,12 +4958,12 @@ const Dashboard = () => {
 
     try {
       // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await serverConnection.request('characteristic.set', {
+      await trackWrite(accessoryKey(accessoryId), serverConnection.request('characteristic.set', {
         accessoryId,
         characteristicType,
         value,
         homeId
-      });
+      }));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
       const msg = error instanceof HomecastError
@@ -7957,17 +7968,16 @@ const Dashboard = () => {
                       <MasonryGrid
                         enabled={layoutMode === 'masonry' && !compactMode && !isMobile}
                         compact={compactMode}
-                        minColumnWidth={fontSize === 'small' ? 250 : 290}
+                        minColumnWidth={290}
+                        // One set of column widths for every text size: the
+                        // narrower set existed for the 14px setting, and the
+                        // smallest is now 16px — which always took these.
                         className={
                           layoutMode === 'masonry' && !compactMode && !isMobile
                             ? ''
                             : compactMode
-                              ? (fontSize === 'small'
-                                ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(155px,1fr))]'
-                                : 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]')
-                              : (fontSize === 'small'
-                                ? 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
-                                : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]')
+                              ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
+                              : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]'
                         }
                       >
                         {/* Unified rendering of groups and accessories - interleaved based on order */}

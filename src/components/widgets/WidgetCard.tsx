@@ -20,6 +20,8 @@ import type { HomeKitAccessory } from '@/lib/graphql/types';
 import { getDisplayName } from '@/lib/graphql/types';
 import { getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, getAccessoryDisplayName, ServiceType } from './types';
 import { getIconColor, IconStyle, IconColor, DEFAULT_ICON_COLOR } from './iconColors';
+import { PendingRing } from './shared/PendingRing';
+import { accessoryKey } from '@/lib/pending-writes';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
@@ -315,15 +317,24 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       : subtitle
   );
 
+  const iconSizeClass = effectiveCompact ? 'h-8 w-8' : (expanded ? 'h-11 w-11' : 'h-9 w-9');
+
   // Icon element (shared between compact and non-compact)
+  //
+  // PendingRing carries the size and the text colour but NOT the opacity: it
+  // draws on the circle's rim, and a No Response tile greys its icon to 20% —
+  // which is exactly the tile where "still sending" most needs to be legible.
   const iconElement = (
-    <div className={`shrink-0 items-center justify-center flex rounded-full ${
-      effectiveCompact ? 'h-8 w-8' : (expanded ? 'h-11 w-11' : 'h-9 w-9')
-    } ${iconBgClass} ${iconTextClass} ${iconShadowClass} ${iconOpacityClass}`}>
-      <div className={!effectiveCompact && expanded ? '[&>svg]:h-5 [&>svg]:w-5' : '[&>svg]:h-4 [&>svg]:w-4'}>
-        {icon}
+    <PendingRing
+      pendingKey={accessory ? accessoryKey(accessory.id) : undefined}
+      className={`${iconSizeClass} ${iconTextClass}`}
+    >
+      <div className={`shrink-0 items-center justify-center flex rounded-full ${iconSizeClass} ${iconBgClass} ${iconTextClass} ${iconShadowClass} ${iconOpacityClass}`}>
+        <div className={!effectiveCompact && expanded ? '[&>svg]:h-5 [&>svg]:w-5' : '[&>svg]:h-4 [&>svg]:w-4'}>
+          {icon}
+        </div>
       </div>
-    </div>
+    </PendingRing>
   );
 
   // Compact mode header content - vertical layout matching preview style

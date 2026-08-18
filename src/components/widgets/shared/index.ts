@@ -11,3 +11,4 @@ export { coveringStatusText, coveringMotion, isOpeningFromState, usesStandardPos
 export { SECURITY_STATE, SECURITY_STATE_NAMES, normalizeSecurityState, isSecurityArmed } from './securityState';
 export { isOn, triState, powerCountDescription } from './powerState';
 export type { TriState } from './powerState';
+export { PendingRing } from './PendingRing';

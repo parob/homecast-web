@@ -24,6 +24,7 @@ import {
   PackageX,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { trackWrite, accessoryKey } from '@/lib/pending-writes';
 
 interface SharedAccessoryViewProps {
   entityData: SharedEntityData;
@@ -185,7 +186,7 @@ export function SharedAccessoryView({
       setOptimisticValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -193,7 +194,7 @@ export function SharedAccessoryView({
             value: JSON.stringify(newValue),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           // Revert on failure
@@ -231,7 +232,7 @@ export function SharedAccessoryView({
       setOptimisticValues((prev) => ({ ...prev, [key]: value }));
 
       try {
-        const result = await setCharacteristic({
+        const result = await trackWrite(accessoryKey(accessoryId), setCharacteristic({
           variables: {
             shareHash,
             accessoryId,
@@ -239,7 +240,7 @@ export function SharedAccessoryView({
             value: JSON.stringify(value),
             passcode,
           },
-        });
+        }));
 
         if (!result.data?.publicEntitySetCharacteristic.success) {
           toast.error('Failed to control accessory');

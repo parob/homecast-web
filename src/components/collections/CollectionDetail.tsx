@@ -14,7 +14,8 @@ import type {
   HomeKitAccessory,
   HomeKitServiceGroup,
 } from '@/lib/graphql/types';
-import { useHomes, useAccessoriesForHomes, updateAccessoryCharacteristicInCache, setServiceGroupsInCache, normalizeAccessories } from '@/hooks/useHomeKitData';
+import { useHomes, useAccessoriesForHomes, updateAccessoryCharacteristicInCache, markGroupPendingUpdate, setServiceGroupsInCache, normalizeAccessories } from '@/hooks/useHomeKitData';
+import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { NoDeviceConnected } from '@/components/shared/NoDeviceConnected';
 import { ErrorWithTrace } from '@/components/shared/ErrorWithTrace';
 import { serverConnection } from '@/server/connection';
@@ -921,41 +922,52 @@ export function CollectionDetail({
     const newValue = !isOn;
 
     // Optimistic update - update all accessories in the group
+    // `false` for isServerUpdate: these are our own writes, and running them
+    // through the stale-echo guard let a pending mark from elsewhere swallow
+    // them outright. markGroupPendingUpdate to match the Dashboard's handler.
+    markGroupPendingUpdate(group.id, 'power_state', newValue);
     for (const accessoryId of group.accessoryIds) {
-      updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', newValue);
+      updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', newValue, false);
     }
 
     try {
       // Use relay WebSocket for proper broadcast handling
-      await serverConnection.request('serviceGroup.set', {
-        homeId,
-        groupId: group.id,
-        characteristicType: 'power_state',
-        value: newValue,
-      });
+      await trackWrite(
+        [groupKey(group.id), ...group.accessoryIds.map(accessoryKey)],
+        serverConnection.request('serviceGroup.set', {
+          homeId,
+          groupId: group.id,
+          characteristicType: 'power_state',
+          value: newValue,
+        }),
+      );
     } catch (err) {
       toast.error('Failed to control group');
       // Revert optimistic update on error
       for (const accessoryId of group.accessoryIds) {
-        updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', isOn);
+        updateAccessoryCharacteristicInCache(homeId, accessoryId, 'power_state', isOn, false);
       }
     }
   }, [isServiceGroupOn]);
 
   const handleServiceGroupSlider = useCallback(async (group: HomeKitServiceGroup, homeId: string, characteristicType: string, value: number) => {
     // Optimistic update - update all accessories in the group
+    markGroupPendingUpdate(group.id, characteristicType, value);
     for (const accessoryId of group.accessoryIds) {
-      updateAccessoryCharacteristicInCache(homeId, accessoryId, characteristicType, value);
+      updateAccessoryCharacteristicInCache(homeId, accessoryId, characteristicType, value, false);
     }
 
     try {
       // Use relay WebSocket for proper broadcast handling
-      await serverConnection.request('serviceGroup.set', {
-        homeId,
-        groupId: group.id,
-        characteristicType,
-        value,
-      });
+      await trackWrite(
+        [groupKey(group.id), ...group.accessoryIds.map(accessoryKey)],
+        serverConnection.request('serviceGroup.set', {
+          homeId,
+          groupId: group.id,
+          characteristicType,
+          value,
+        }),
+      );
     } catch (err) {
       toast.error('Failed to control group');
     }
