@@ -8,7 +8,7 @@
  */
 
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
-import { getCharacteristic, getPrimaryServiceType, hasServiceType } from '@/components/widgets/types';
+import { getCharacteristic, getPrimaryServiceType, hasServiceType, getAccessoryDisplayName } from '@/components/widgets/types';
 import { usesStandardPositionLogic, fromOpenness, toOpenness } from '@/components/widgets/shared/coveringStatus';
 import { SECURITY_STATE, normalizeSecurityState, isSecurityArmed } from '@/components/widgets/shared/securityState';
 import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
@@ -31,6 +31,17 @@ export interface HomeActionWrite {
   value: boolean | number;
   /** Current value, so a failed write can be reverted in the cache. */
   previousValue: unknown;
+  /**
+   * Whether the accessory could answer at all, and what to call it.
+   *
+   * Carried on the write so the executor can tell a bulb that is off at the
+   * wall from one that genuinely refused, without going back to the accessory
+   * list it no longer has. Optional because only the power actions populate
+   * it; absent reads as reachable, which reports a failure rather than
+   * excusing one.
+   */
+  reachable?: boolean;
+  name?: string;
 }
 
 /**
@@ -186,15 +197,54 @@ function countLabel(active: number, total: number, word: 'on' | 'open'): string 
  * current on/off reading. Used by lights, fans, switches and everything-off.
  */
 function powerTargets(accessories: HomeKitAccessory[], types: string[]) {
-  const out: Array<{ accessory: HomeKitAccessory; reported: string; value: unknown; on: boolean }> = [];
+  const out: Array<{ accessory: HomeKitAccessory; reported: string; value: unknown; on: boolean; reachable: boolean }> = [];
   for (const accessory of accessories) {
     const primary = getPrimaryServiceType(accessory);
     if (!primary || !types.includes(primary)) continue;
     const char = powerChar(accessory);
     if (!isWritable(char)) continue;
-    out.push({ accessory, reported: char!.type, value: char!.value, on: isOn(char!.value) });
+    out.push({
+      accessory, reported: char!.type, value: char!.value, on: isOn(char!.value),
+      // Absent reads as reachable: an accessory that has not said otherwise is
+      // not evidence of a problem, and treating unknown as unreachable would
+      // let a missing field quietly excuse a light that really did fail.
+      reachable: accessory.isReachable !== false,
+    });
   }
   return out;
+}
+
+/**
+ * The share of a set that must be on before the ones that cannot answer are
+ * allowed to stop counting.
+ *
+ * Without a floor, twenty lights on and two hundred unreachable would read as
+ * "All on", which is a lie with a straight face. With it, the rule only fires
+ * when the home has plainly done what was asked and a handful of bulbs simply
+ * are not there to confirm it.
+ */
+const SETTLED_ON_SHARE = 0.75;
+
+/**
+ * Is this set effectively all on?
+ *
+ * A Hue bulb switched off at the wall is unreachable, not disobedient — it can
+ * never report on, so a strict count leaves the toggle stuck at "mixed" for
+ * ever. Worse, the next press writes only what "needs changing", which is
+ * exactly the bulbs that cannot answer: the action nags, fails, and nags again.
+ *
+ * So once the reachable set is fully on and enough of the whole set is on to
+ * mean it, the unreachable remainder stops holding the toggle open. Same shape
+ * as the automation engine's group aggregate, which has always left unreachable
+ * members out.
+ */
+function settledOn(targets: ReturnType<typeof powerTargets>): boolean {
+  if (targets.length === 0) return false;
+  const onCount = targets.filter(t => t.on).length;
+  if (onCount === 0 || onCount >= targets.length) return false;
+  // Every one that is not on must be one that could not have said so.
+  if (targets.some(t => !t.on && t.reachable)) return false;
+  return onCount / targets.length >= SETTLED_ON_SHARE;
 }
 
 function powerWrites(
@@ -218,6 +268,8 @@ function powerWrites(
       // boolean, so the bridge coerces. Match that rather than inventing 1/0.
       value: turnOn,
       previousValue: t.value,
+      reachable: t.reachable,
+      name: getAccessoryDisplayName(t.accessory),
     }));
 }
 
@@ -240,14 +292,23 @@ function buildPowerAction(
   if (targets.length === 0) return null;
 
   const onCount = targets.filter(t => t.on).length;
+  // Settled counts as on: the next press should turn the house OFF, not try
+  // the unreachable few again.
+  const settled = settledOn(targets);
   const turningOn = onCount === 0;
   const writes = powerWrites(targets, turningOn);
+  const unreachableCount = targets.filter(t => !t.reachable).length;
 
   return {
     id,
     label: opts.label,
     runningLabel: turningOn ? opts.onRunning : opts.offRunning,
-    subtitle: countLabel(onCount, targets.length, 'on'),
+    // The count stays honest — it still says how many are actually on — but a
+    // settled set names the reason the rest never will be, so "218 of 223"
+    // reads as a house that is on rather than one that half failed.
+    subtitle: settled
+      ? `All on · ${unreachableCount} not responding`
+      : countLabel(onCount, targets.length, 'on'),
     icon: opts.icon,
     serviceType: opts.serviceType,
     targetCount: writes.length,
@@ -260,7 +321,7 @@ function buildPowerAction(
     // action by id and has no switch to read a direction from.
     steps: oneStep(writes),
     toggle: {
-      state: triState(onCount, targets.length),
+      state: settled ? 'on' : triState(onCount, targets.length),
       onCount,
       total: targets.length,
       onSteps: oneStep(powerWrites(targets, true)),

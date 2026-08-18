@@ -73,6 +73,21 @@ function isUnsupportedAction(error: unknown): boolean {
   return typeof message === 'string' && /unknown (action|method)/i.test(message);
 }
 
+/**
+ * Name the ones that could not answer, without turning a toast into a list.
+ *
+ * Three names is about what someone reads off a toast before it goes; past
+ * that a count carries more than a wall of text nobody finishes.
+ */
+function describeUnreachable(writes: HomeActionWrite[]): string {
+  const names = writes.map(w => w.name).filter((n): n is string => !!n);
+  if (names.length === 0) return 'They may be switched off at the wall.';
+  const shown = names.slice(0, 3).join(', ');
+  const rest = names.length - Math.min(3, names.length);
+  const list = rest > 0 ? `${shown} and ${rest} other${rest === 1 ? '' : 's'}` : shown;
+  return `${list} — they may be switched off at the wall.`;
+}
+
 /** Pairs a change back to the write that asked for it. */
 function writeKey(accessoryId: string, characteristicType: string): string {
   return `${accessoryId}\u0000${characteristicType}`;
@@ -398,11 +413,28 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // back to them as a fault.
     if (opts?.signal?.aborted) return;
 
-    if (failed.length === writes.length) {
+    // An accessory that cannot answer is not a fault to report. A Hue bulb
+    // switched off at the wall is unreachable by design, it is already greyed
+    // out as No Response on its tile, and an error toast about it is the app
+    // shouting about something the grid is showing calmly.
+    //
+    // So the split is by cause, not by count: writes that failed at an
+    // accessory nobody could have reached are stated, and only writes that
+    // failed for some other reason are warned about.
+    const unreachable = failed.filter(w => w.reachable === false);
+    const broken = failed.filter(w => w.reachable !== false);
+
+    if (broken.length > 0 && broken.length === writes.length) {
       toast.error(`${action.label} failed`, { description: describeError(firstError) });
-    } else if (failed.length > 0) {
-      toast.warning(`${writes.length - failed.length} of ${writes.length} changed`, {
-        description: `${failed.length} accessor${failed.length === 1 ? 'y' : 'ies'} did not respond`,
+    } else if (broken.length > 0) {
+      toast.warning(`${writes.length - broken.length} of ${writes.length} changed`, {
+        description: `${broken.length} accessor${broken.length === 1 ? 'y' : 'ies'} did not respond`,
+      });
+    } else if (unreachable.length > 0) {
+      // Plain, not red, and never the relay's own words: "did not confirm the
+      // write within 10s" is a sentence about our timeout, not about the light.
+      toast(`${unreachable.length} not responding`, {
+        description: describeUnreachable(unreachable),
       });
     }
   }, [homeId, isViewOnly, updateCharacteristicInCache]);

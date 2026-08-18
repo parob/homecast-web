@@ -372,3 +372,63 @@ describe('two-way actions carry both directions', () => {
     expect(idsOf(lights.steps)).toEqual(idsOf(lights.toggle!.offSteps));
   });
 });
+
+describe('lights that cannot answer stop holding the toggle open', () => {
+  // A Hue bulb switched off at the wall is unreachable, not disobedient. It can
+  // never report on, so a strict count leaves "All lights" stuck at mixed — and
+  // the next press writes only "what needs changing", which is exactly the
+  // bulbs that cannot answer. The action then nags, fails, and nags again.
+  const light = (id: string, on: boolean, reachable = true) => ({
+    id, name: id, isReachable: reachable,
+    services: [{
+      serviceType: 'lightbulb', name: id,
+      characteristics: [{ type: 'on', characteristicType: 'on', value: on, isWritable: true }],
+    }],
+  } as unknown as Parameters<typeof deriveHomeActions>[0][number]);
+
+  const lights = (a: ReturnType<typeof deriveHomeActions>) => a.find(x => x.id === 'lights')!;
+
+  it('reads as on when the rest are unreachable and enough are on', () => {
+    // 8 on, 2 off but unreachable = 80%, over the floor.
+    const on = Array.from({ length: 8 }, (_, i) => light(`on${i}`, true));
+    const dead = [light('dead1', false, false), light('dead2', false, false)];
+    const action = lights(deriveHomeActions([...on, ...dead]));
+
+    expect(action.toggle!.state).toBe('on');
+    expect(action.subtitle).toBe('All on · 2 not responding');
+    // and the next press turns the house OFF rather than retrying the dead two
+    expect(action.turningOn).toBe(false);
+  });
+
+  it('stays mixed when a reachable light is still off', () => {
+    // The rule is about accessories that COULD not answer, never about ones
+    // that simply have not been asked yet.
+    const action = lights(deriveHomeActions([
+      light('a', true), light('b', true), light('c', true), light('d', true),
+      light('e', true), light('f', true), light('g', true), light('h', true),
+      light('off', false),            // reachable and off
+      light('dead', false, false),
+    ]));
+
+    expect(action.toggle!.state).toBe('mixed');
+  });
+
+  it('stays mixed when too few are on to mean it', () => {
+    // Twenty on and two hundred unreachable must not read as "All on" — that
+    // is a lie with a straight face, and the floor exists to stop it.
+    const on = Array.from({ length: 2 }, (_, i) => light(`on${i}`, true));
+    const dead = Array.from({ length: 8 }, (_, i) => light(`dead${i}`, false, false));
+    const action = lights(deriveHomeActions([...on, ...dead]));
+
+    expect(action.toggle!.state).toBe('mixed');
+    expect(action.subtitle).toBe('2 of 10 on');
+  });
+
+  it('carries reachability onto the writes, so the executor can tell them apart', () => {
+    const action = lights(deriveHomeActions([light('a', false), light('dead', false, false)]));
+    const writes = action.steps.flatMap(s => s.writes);
+
+    expect(writes.find(w => w.accessoryId === 'dead')?.reachable).toBe(false);
+    expect(writes.find(w => w.accessoryId === 'a')?.reachable).toBe(true);
+  });
+});

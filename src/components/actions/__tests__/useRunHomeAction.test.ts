@@ -13,12 +13,13 @@ vi.mock('@/server/connection', () => ({
 vi.mock('@/hooks/useHomeKitData', () => ({
   markPendingUpdate: (...args: unknown[]) => markPendingUpdate(...args),
 }));
-vi.mock('sonner', () => ({
-  toast: {
-    error: (...args: unknown[]) => toastError(...args),
-    warning: (...args: unknown[]) => toastWarning(...args),
-  },
-}));
+const toastPlain = vi.fn();
+vi.mock('sonner', () => {
+  const toast = (...args: unknown[]) => toastPlain(...args);
+  toast.error = (...args: unknown[]) => toastError(...args);
+  toast.warning = (...args: unknown[]) => toastWarning(...args);
+  return { toast };
+});
 
 const { useRunHomeAction, __resetWriteQueue, __setBulkWriteSupport } = await import('../useRunHomeAction');
 type HomeAction = import('../catalog').HomeAction;
@@ -100,6 +101,7 @@ beforeEach(() => {
   markPendingUpdate.mockReset();
   toastError.mockReset();
   toastWarning.mockReset();
+  toastPlain.mockReset();
 });
 
 describe('useRunHomeAction', () => {
@@ -636,5 +638,39 @@ describe('reversing a run that is still going', () => {
 
     gates.forEach(release => release());
     await pending;
+  });
+});
+
+describe('a bulb off at the wall is not an error', () => {
+  const w = (id: string, reachable: boolean) => ({
+    accessoryId: id, characteristicType: 'power_state', reportedCharacteristicType: 'power_state',
+    value: true as const, previousValue: false, reachable, name: `Light ${id}`,
+  });
+
+  it('states the unreachable ones plainly instead of warning', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['dead1', 'dead2'] }));
+    const { run } = setup();
+    await run(action({ steps: [{ writes: [w('ok', true), w('dead1', false), w('dead2', false)] }] }));
+
+    // Not an error, and not a warning: the tiles already grey out as No
+    // Response, and the relay's own "did not confirm within 10s" is a sentence
+    // about our timeout rather than about the light.
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
+    expect(toastPlain).toHaveBeenCalledWith('2 not responding', expect.objectContaining({
+      description: expect.stringContaining('Light dead1'),
+    }));
+  });
+
+  it('still warns when something reachable refused', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['broken', 'dead1'] }));
+    const { run } = setup();
+    await run(action({ steps: [{ writes: [w('ok', true), w('broken', true), w('dead1', false)] }] }));
+
+    // The reachable failure is the one worth reporting, and it is counted on
+    // its own — lumping the unreachable in would inflate the number.
+    expect(toastWarning).toHaveBeenCalledWith('2 of 3 changed', expect.objectContaining({
+      description: '1 accessory did not respond',
+    }));
   });
 });
