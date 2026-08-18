@@ -162,6 +162,7 @@ export function HomeMQTTSection({
   });
   const [communityBrokers, setCommunityBrokers] = useState<MQTTBrokerConfig[]>([]);
   const [communityBrokersLoaded, setCommunityBrokersLoaded] = useState(false);
+  const [communityBrokersError, setCommunityBrokersError] = useState<string | null>(null);
 
   const refetchCommunityBrokers = useCallback(async () => {
     if (!isCommunity || !isMQTTAvailable()) {
@@ -171,8 +172,14 @@ export function HomeMQTTSection({
     try {
       const all = await getMQTTBrokers();
       setCommunityBrokers((all && all[home.id]) ?? []);
-    } catch (e) {
+      setCommunityBrokersError(null);
+    } catch (e: any) {
+      // A failed read is not an empty one. Reporting "no custom brokers" for a
+      // bridge that never answered hides the fault behind the right-looking
+      // empty state, and hands the user a list they can add to but that will
+      // never save.
       console.warn('[HomeMQTTSection] getMQTTBrokers failed', e);
+      setCommunityBrokersError(e?.message || 'Could not reach the MQTT bridge');
     } finally {
       setCommunityBrokersLoaded(true);
     }
@@ -190,6 +197,7 @@ export function HomeMQTTSection({
 
   const brokers: MQTTBrokerConfig[] = isCommunity ? communityBrokers : (brokersData?.homeMqttBrokers ?? []);
   const brokersLoading = isCommunity ? communityBrokersLoading : cloudBrokersLoading;
+  const brokersError = isCommunity ? communityBrokersError : null;
   const refetchBrokersAny = isCommunity ? refetchCommunityBrokers : refetchBrokers;
 
   const handleToggleMqtt = async (enabled: boolean) => {
@@ -299,6 +307,8 @@ export function HomeMQTTSection({
 
           {brokersLoading ? (
             <p className="text-xs text-muted-foreground py-2 text-center">Loading...</p>
+          ) : brokersError ? (
+            <p className="text-xs text-destructive py-2 text-center">{brokersError}</p>
           ) : brokers.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2 text-center">No custom brokers configured.</p>
           ) : (

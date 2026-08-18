@@ -42,7 +42,15 @@ function callMQTT(method: string, params: Record<string, any> = {}): Promise<any
     }
 
     const callbackId = `mqtt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    callbacks[callbackId] = resolve;
+    // Swift answers a call it cannot serve with `__mqttError` rather than
+    // dropping it. Surface that as a rejection — the callers already have
+    // error paths, and what they had before was a 15s wait ending in a
+    // successful-looking empty result.
+    callbacks[callbackId] = (data: any) => {
+      const failure = data && typeof data === 'object' ? data.__mqttError : undefined;
+      if (typeof failure === 'string') reject(new Error(failure));
+      else resolve(data);
+    };
 
     // Timeout after 15s
     setTimeout(() => {
