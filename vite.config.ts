@@ -27,12 +27,27 @@ function versionPlugin(sha: string, deployedAt: string): Plugin {
 function serviceWorkerPlugin(sha: string): Plugin {
   return {
     name: 'service-worker',
-    generateBundle() {
+    generateBundle(_options, bundle) {
       const src = fs.readFileSync(path.resolve(__dirname, 'service-worker.js'), 'utf-8');
       if (!src.includes('__BUILD_SHA__')) {
         this.error('service-worker.js has no __BUILD_SHA__ placeholder — updates would never install');
       }
-      this.emitFile({ type: 'asset', fileName: 'sw.js', source: src.replace(/__BUILD_SHA__/g, sha) });
+
+      // Stamp the worker with the entry chunk's content hash, NOT the commit
+      // SHA. GITHUB_SHA here is homecast-cloud's, because that is the repo the
+      // deploy workflow runs in — so a web-only change produced byte-identical
+      // sw.js, the browser saw no reason to reinstall the worker, and every
+      // client kept serving the previous shell until some unrelated server
+      // commit happened along. Shipped fixes silently failed to arrive.
+      //
+      // The entry hash changes when, and only when, the app content changes,
+      // which is exactly when the shell cache should be thrown away.
+      const entry = Object.values(bundle).find(
+        (chunk) => chunk.type === 'chunk' && (chunk as { isEntry?: boolean }).isEntry
+      ) as { fileName?: string } | undefined;
+      const stamp = entry?.fileName?.match(/-([A-Za-z0-9_-]{6,})\.js$/)?.[1] ?? sha;
+
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: src.replace(/__BUILD_SHA__/g, stamp) });
     },
   };
 }

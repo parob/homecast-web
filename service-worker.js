@@ -2,9 +2,12 @@
  * Homecast service worker.
  *
  * Emitted to /sw.js by `serviceWorkerPlugin` in vite.config.ts, which
- * substitutes __BUILD_SHA__. That substitution is load-bearing: a browser only
- * reinstalls a worker whose bytes changed, so a worker that didn't vary per
- * build would install once and serve the same shell forever.
+ * substitutes __BUILD_SHA__ with the entry chunk's content hash. That
+ * substitution is load-bearing: a browser only reinstalls a worker whose bytes
+ * changed, so a worker that didn't vary per build would install once and serve
+ * the same shell forever. It used to be stamped with the commit SHA — of
+ * homecast-cloud, the repo the deploy runs in — so a web-only change left this
+ * file byte-identical and shipped fixes never reached anyone.
  *
  * Why this exists: the Mac and iOS apps load the UI from homecast.cloud, so
  * every cold start used to be a network round trip before anything rendered,
