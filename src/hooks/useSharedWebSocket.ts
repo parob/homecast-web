@@ -385,9 +385,9 @@ export function applyCharacteristicUpdate(
     if (acc.id !== accessoryId) return acc;
     return {
       ...acc,
-      services: acc.services.map(service => ({
+      services: (acc.services || []).map(service => ({
         ...service,
-        characteristics: service.characteristics.map(char => {
+        characteristics: (service.characteristics || []).map(char => {
           if (char.characteristicType !== characteristicType) return char;
           return { ...char, value: parsed };
         })
@@ -438,9 +438,9 @@ export function applyServiceGroupUpdate(
     if (!memberIds.has(normalizedId)) return acc;
     return {
       ...acc,
-      services: acc.services.map(service => ({
+      services: (acc.services || []).map(service => ({
         ...service,
-        characteristics: service.characteristics.map(char => {
+        characteristics: (service.characteristics || []).map(char => {
           if (!charTypes.includes(char.characteristicType)) return char;
           return { ...char, value: parsed };
         })

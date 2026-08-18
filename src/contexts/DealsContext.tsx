@@ -34,29 +34,23 @@ interface DealsProviderProps {
 
 /**
  * Extract unique {manufacturer, model} pairs from accessories for server-side deal matching.
+ *
+ * Reads each identity through `getAccessoryIdentity` rather than walking the
+ * characteristics again. This was a second copy of that loop, and only the copy
+ * was missing its guards — so a malformed accessory crashed here while every
+ * other deal lookup shrugged it off.
  */
-function extractAccessoryInputs(accessories: HomeKitAccessory[]): Array<{ manufacturer: string; model: string }> {
+export function extractAccessoryInputs(accessories: HomeKitAccessory[]): Array<{ manufacturer: string; model: string }> {
   const seen = new Set<string>();
   const result: Array<{ manufacturer: string; model: string }> = [];
 
-  for (const acc of accessories) {
-    let manufacturer: string | null = null;
-    let model: string | null = null;
-    for (const svc of acc.services) {
-      for (const char of svc.characteristics) {
-        if (char.characteristicType === 'manufacturer' && char.value) {
-          manufacturer = String(char.value);
-        } else if (char.characteristicType === 'model' && char.value) {
-          model = String(char.value);
-        }
-      }
-    }
-    if (manufacturer && model) {
-      const key = `${manufacturer}|${model}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        result.push({ manufacturer, model });
-      }
+  for (const acc of accessories || []) {
+    const identity = getAccessoryIdentity(acc);
+    if (!identity) continue;
+    const key = `${identity.manufacturer}|${identity.model}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(identity);
     }
   }
 

@@ -36,14 +36,21 @@ export function atlIsMeaningful(pricePointCount: number | null | undefined): boo
 /**
  * Extract the HomeKit identity (manufacturer + model) of an accessory —
  * the same pair the server maps to a device.
+ *
+ * Tolerates a missing accessory and a missing `services`/`characteristics`.
+ * The type says both are required, but the persisted cache is restored from
+ * disk unvalidated, so a legacy or half-written record reaches the UI looking
+ * like an accessory without being one — and this used to whitescreen the
+ * dashboard on the first paint after login rather than simply not matching.
  */
 export function getAccessoryIdentity(
-  accessory: HomeKitAccessory,
+  accessory: HomeKitAccessory | undefined | null,
 ): { manufacturer: string; model: string } | null {
+  if (!accessory) return null;
   let manufacturer: string | null = null;
   let model: string | null = null;
-  for (const svc of accessory.services) {
-    for (const char of svc.characteristics) {
+  for (const svc of accessory.services || []) {
+    for (const char of svc.characteristics || []) {
       if (char.characteristicType === 'manufacturer' && char.value) {
         manufacturer = String(char.value);
       } else if (char.characteristicType === 'model' && char.value) {

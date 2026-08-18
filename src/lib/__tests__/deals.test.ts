@@ -69,7 +69,33 @@ describe('getAccessoryIdentity', () => {
     } as unknown as HomeKitAccessory;
     expect(getAccessoryIdentity(noModel)).toBeNull();
   });
+
+  // A malformed accessory must read as "no identity", not as a thrown error.
+  // The persisted HomeKit cache is restored from disk unvalidated, so a legacy
+  // or half-written record reaches the deals code looking like an accessory
+  // without being one — and this whitescreened the dashboard on first paint
+  // after login, because DealsProvider wraps the entire tree.
+  it('returns null for a malformed accessory instead of throwing', () => {
+    expect(getAccessoryIdentity(undefined)).toBeNull();
+    expect(getAccessoryIdentity(null)).toBeNull();
+    // The exact shape that crashed: `{...null}` from the cache aggregator.
+    expect(getAccessoryIdentity({} as unknown as HomeKitAccessory)).toBeNull();
+    expect(
+      getAccessoryIdentity({ id: 'a', name: 'No Services' } as unknown as HomeKitAccessory),
+    ).toBeNull();
+  });
+
+  it('tolerates a service with no characteristics', () => {
+    const noChars = {
+      id: 'a',
+      name: 'x',
+      services: [{ id: 's', serviceType: 'lightbulb' }],
+    } as unknown as HomeKitAccessory;
+
+    expect(getAccessoryIdentity(noChars)).toBeNull();
+  });
 });
+
 
 describe('findDealForAccessory', () => {
   const hueDeal = deal('d1', [{ manufacturer: 'Signify', model: 'LWA001' }]);

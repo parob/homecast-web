@@ -97,6 +97,24 @@ describe('HomeKit cache persistence', () => {
     expect(getCacheTimestamp('rooms:H1')).not.toBeNull();
   });
 
+  it('normalizes rehydrated accessories, so disk data passes the same shape gate as the wire', async () => {
+    // Everything off the relay goes through normalizeAccessories; this path
+    // used to skip it, which made the first paint after login the one frame
+    // where a legacy or half-written record could reach a widget that trusts
+    // the declared shape. JSON.stringify writes an array hole as `null`, so
+    // this is exactly what a poisoned persisted array looks like on the way in.
+    seed({
+      'accessories:H1': {
+        data: [{ id: 'A1', name: 'Lamp', isReachable: true, services: [] }, null],
+        timestamp: Date.now(),
+      },
+    });
+
+    const { getCachedListLength } = await freshCacheModule();
+
+    expect(getCachedListLength('accessories:H1')).toBe(1);
+  });
+
   it('writes only the prefixes the first screen needs, and coalesces the writes', async () => {
     vi.useFakeTimers();
     const { setServiceGroupsInCache } = await freshCacheModule();

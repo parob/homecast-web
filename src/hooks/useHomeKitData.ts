@@ -22,8 +22,22 @@ function withDerivedReachability(a: HomeKitAccessory): HomeKitAccessory {
   const derived = isAccessoryResponsive(a, a.isReachable);
   return a.isReachable === derived ? a : { ...a, isReachable: derived };
 }
+/**
+ * The shape gate for every accessory that reaches the UI.
+ *
+ * `services` is declared non-optional, so consumers reasonably write
+ * `acc.services` bare — this is what makes that declaration true at runtime.
+ * Entries that are not objects at all are dropped (a `null` in a persisted
+ * array spreads to `{}`, which looks like an accessory to every `.filter`
+ * downstream but has no `services`), and a missing `services` becomes `[]`
+ * rather than a crash three layers away in whichever consumer trusted it.
+ */
 export function normalizeAccessories(list: HomeKitAccessory[]): HomeKitAccessory[] {
-  return list.map(withDerivedReachability);
+  return (list || [])
+    .filter((a): a is HomeKitAccessory => !!a && typeof a === 'object')
+    // The filter has to come first: withDerivedReachability reads `.isReachable`
+    // off the accessory before anything guards it.
+    .map(a => withDerivedReachability(Array.isArray(a.services) ? a : { ...a, services: [] }));
 }
 
 // ============================================================================
@@ -107,10 +121,17 @@ class DataCache {
       for (const [key, entry] of Object.entries(parsed)) {
         if (!entry || typeof entry.timestamp !== 'number') continue;
         if (now - entry.timestamp > PERSIST_MAX_AGE) continue;
+        // Everything off the wire goes through normalizeAccessories; everything
+        // off disk used to skip it, which made the first paint after login the
+        // one frame where a legacy or half-written record could reach a widget
+        // still trusting the declared shape.
+        const data = key.startsWith('accessories:') && Array.isArray(entry.data)
+          ? normalizeAccessories(entry.data as HomeKitAccessory[])
+          : entry.data;
         // Rebuilt without any epoch, deliberately: restored data has never been
         // checked by THIS session, and its age was accumulated while the app
         // was not running to hear about changes.
-        this.cache.set(key, { data: entry.data, timestamp: entry.timestamp });
+        this.cache.set(key, { data, timestamp: entry.timestamp });
         this.hydratedCount++;
       }
     } catch {
@@ -1146,9 +1167,9 @@ function updateCharacteristicInCacheKey(
     if (!sameAccessoryId(acc.id, accessoryId)) return acc;
     const withValue = {
       ...acc,
-      services: acc.services.map(service => ({
+      services: (acc.services || []).map(service => ({
         ...service,
-        characteristics: service.characteristics.map(char => {
+        characteristics: (service.characteristics || []).map(char => {
           if (char.characteristicType !== characteristicType) return char;
           updated = true;
           return { ...char, value: jsonEncodedValue };
