@@ -10,6 +10,7 @@ import { StagingBanner } from "@/components/layout/StagingBanner";
 import { CookieConsent } from "@/components/layout/CookieConsent";
 import { apolloClient } from "@/lib/apollo";
 import { isInNativeAppShell } from "@/lib/platform";
+import { resolveOpenTarget } from "@/lib/open-target";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PushRegistration } from "@/components/PushRegistration";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
@@ -79,6 +80,21 @@ const ToPortal = () => <Navigate to="/portal" replace />;
  *  dashboard with no explanation. Mirrors HistoryRedirect above. */
 const ToPortalWithQuery = () => (
   <Navigate to={{ pathname: "/portal", search: window.location.search }} replace />
+);
+
+/** The doormat our emails point at.
+ *
+ *  Safari puts an "Open in the Homecast app" banner on whatever the app claims,
+ *  and that banner is chrome inside the layout viewport — it followed people
+ *  around the site and clipped the wallpaper behind it. So the AASA claims this
+ *  one path and nothing else: nobody browses here, so no page anyone reads
+ *  carries a banner, and an emailed link still opens the app.
+ *
+ *  Reached in a browser instead — no app installed, or a desktop — this just
+ *  forwards to wherever ?to= pointed. See lib/open-target.ts for why that value
+ *  is validated rather than trusted. */
+const OpenLink = () => (
+  <Navigate to={resolveOpenTarget(new URLSearchParams(window.location.search).get("to"))} replace />
 );
 
 /** A page of the website, not a screen of the app.
@@ -159,6 +175,7 @@ const MainRoutes = () => (
               <Route path="/history" element={<HistoryRedirect />} />
               <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/oauth/consent" element={<OAuthConsent />} />
+              <Route path="/open" element={<OpenLink />} />
               {devRoutes}
               <Route path="*" element={<NotFound />} />
             </>

@@ -11,12 +11,10 @@
             "comment": "Escape hatch: ?browser=1 on any URL keeps it in Safari."
           },
           {
-            "/": "/portal/admin/*",
-            "exclude": true,
-            "comment": "Admin is a desk job — leave it in the browser."
+            "/": "/open",
+            "comment": "The only claimed path, and it is a doormat rather than a page. Safari puts an \"Open in the Homecast app\" banner on whatever the app claims, and that banner is chrome inside the layout viewport — it followed people around the site and clipped the wallpaper behind it. Nobody browses to /open: it is where our emails point, so tapping one still opens the app, and every page anyone actually reads claims nothing and gets no banner."
           },
-          { "/": "/portal", "comment": "The dashboard itself. This is what our emails link to, so it is the one that has to open the app." },
-          { "/": "/portal/*", "comment": "Anything inside the dashboard." }
+          { "/": "/open/*", "comment": "Room for a future /open/<something> without touching the app." }
         ]
       }
     ]
