@@ -41,6 +41,25 @@ export function LocalModeSection() {
   const denied = blocked === 'no-permission' || blocked === 'restricted';
   const noHomes = blocked === 'no-homes';
 
+  // Why Local Mode is, or isn't, running. Every branch here names something
+  // the reader can act on — a blocker was once flattened into a generic "the
+  // relay has this home", which made a selected "Always on" look broken. When
+  // there is genuinely nothing to add beyond the Standby pill, the line is
+  // dropped rather than filled with a restatement of it.
+  const statusText = active
+    ? reason === 'manual' ? 'Controlling Apple Home from this device.'
+      : reason === 'no-relay-ever' ? "You haven't set up a relay yet, so this device is serving your home."
+      : reason === 'socket-down' ? "This device can't reach Homecast's servers, so it's serving your home itself."
+      : 'Your relay is offline, so this device is serving your home.'
+    : blocked === 'off' ? 'Turned off for this device.'
+    : blocked === 'is-relay' ? 'This Mac is the relay, so it already talks to Apple Home directly.'
+    : blocked === 'no-permission' ? "Homecast can't use Apple Home on this device."
+    : blocked === 'restricted' ? 'Access to Apple Home is restricted on this device.'
+    : blocked === 'no-homes' ? "No homes on this device's Apple Account."
+    : blocked === 'loading' ? 'Checking Apple Home on this device…'
+    : override === 'on' ? 'Ready — waiting for Apple Home.'
+    : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -109,24 +128,9 @@ export function LocalModeSection() {
             {active ? 'Active' : 'Standby'}
           </span>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          {active
-            ? reason === 'manual' ? 'Controlling Apple Home from this device.'
-              : reason === 'no-relay-ever' ? "You haven't set up a relay yet, so this device is serving your home."
-              : reason === 'socket-down' ? "This device can't reach Homecast's servers, so it's serving your home itself."
-              : 'Your relay is offline, so this device is serving your home.'
-            // Not active. Say what is actually stopping it — "your relay is
-            // handling this home" was shown even when the real blocker was
-            // permission, which made a selected "Always on" look broken.
-            : blocked === 'off' ? 'Turned off for this device.'
-            : blocked === 'is-relay' ? 'This Mac is the relay, so it already talks to Apple Home directly.'
-            : blocked === 'no-permission' ? "Homecast can't use Apple Home on this device."
-            : blocked === 'restricted' ? 'Access to Apple Home is restricted on this device.'
-            : blocked === 'no-homes' ? "No homes on this device's Apple Account."
-            : blocked === 'loading' ? 'Checking Apple Home on this device…'
-            : override === 'on' ? 'Ready — waiting for Apple Home.'
-            : 'Your relay is handling this home.'}
-        </p>
+        {statusText && (
+          <p className="text-[11px] text-muted-foreground">{statusText}</p>
+        )}
         {/* "Always on" cannot override a device that physically can't serve.
             Saying so is kinder than leaving the radio selected and inert. */}
         {override === 'on' && !active && blocked && blocked !== 'off' && (
