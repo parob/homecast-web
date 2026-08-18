@@ -298,8 +298,39 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       return false;
     };
 
+    // Anything painted ABOVE this overlay owns the events that land on it —
+    // they are not "outside", they belong to whatever is on top.
+    //
+    // The panel's own action bar opens dialogs (analytics, prices, share), and
+    // a dialog portals to the body at z-[10050], well clear of the dashboard's
+    // 10018. Without this, a tap on that dialog read as a tap on the backdrop:
+    // the panel dismissed — the blurred scrim vanishing out from under a window
+    // that was still there — and, worse, the dialog then would not close. Radix
+    // defers a TOUCH pointer-down-outside to the click that follows it, and the
+    // swallow armed below eats exactly that click from document capture, so the
+    // dialog never heard the tap meant to dismiss it. (With a mouse Radix acts
+    // on the pointerdown itself, which is why this only ever reproduced on a
+    // touch screen.)
+    //
+    // Nested overlays sit above their parent by the same rule: elevation, not
+    // DOM containment, is what decides — a nested panel is a portal sibling, so
+    // `contains` above can never see it.
+    const isAboveOverlay = (target: EventTarget | null): boolean => {
+      const node = target as Node | null;
+      let el: Element | null = node instanceof Element ? node : node?.parentElement ?? null;
+      while (el && el !== document.body && el !== document.documentElement) {
+        // 'auto' parses to NaN — an unpositioned wrapper says nothing about
+        // stacking, so keep walking up to a layer that does.
+        const z = Number(window.getComputedStyle(el).zIndex);
+        if (Number.isFinite(z) && z > baseZ + 1) return true;
+        el = el.parentElement;
+      }
+      return false;
+    };
+
     const handlePointerDown = (e: PointerEvent) => {
       if (isInsideOverlay(e.target)) return;
+      if (isAboveOverlay(e.target)) return;
       onClose();
       armClickSwallow();
     };
@@ -314,8 +345,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     let startY = 0;
     const handleScroll = (e: Event) => {
       // Scrolling within the overlay's own content (e.g. a long device list)
-      // must not dismiss it — only scrolling the page behind it should.
+      // must not dismiss it — only scrolling the page behind it should. A
+      // scrollable dialog above it is not the page behind it either.
       if (isInsideOverlay(e.target)) return;
+      if (isAboveOverlay(e.target)) return;
       if (startTarget === null) {
         startTarget = e.target;
         startY = getScrollY(e.target);
@@ -331,7 +364,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       document.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [isExpanded, onClose, armClickSwallow]);
+  }, [isExpanded, onClose, armClickSwallow, baseZ]);
 
   // Handle mouse leave - call immediately
   // Is the pointer genuinely away from both the panel and the tile it came from?
