@@ -188,15 +188,15 @@ describe('TriStateToggle — where the thumb sits', () => {
   it('barely moves across the rest of the range', () => {
     // The whole point of anchoring high and damping down: essentially one size
     // that nudges with the text, rather than a control that halves in area.
-    // Fully rem it would have run 35 / 40 / 50.
+    // Fully rem it would have run 40 / 45 / 50.
     const { container } = render(<TriStateToggle state="off" onCheckedChange={vi.fn()} />);
     const width = (container.firstElementChild as HTMLElement).style.width;
 
     expect(at(width, 20)).toBe(50);      // large — as it was before
-    expect(at(width, 16)).toBe(47.5);    // medium
-    expect(at(width, 14)).toBe(46.25);   // small
-    // under 10% across the whole range, against 43% for a fully-rem control
-    expect(at(width, 20) - at(width, 14)).toBeLessThan(at(width, 20) * 0.1);
+    expect(at(width, 18)).toBe(48.75);   // medium
+    expect(at(width, 16)).toBe(47.5);    // small
+    // 5% across the whole range, against 20% for a fully-rem control
+    expect(at(width, 20) - at(width, 16)).toBeLessThanOrEqual(at(width, 20) * 0.05);
   });
 
   it('only spreads while it is in the middle, and animates back', () => {

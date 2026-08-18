@@ -58,7 +58,7 @@ interface TriStateToggleProps {
  * Two failures bracket this. Sized in pixels, the toggle sat still while every
  * rem-sized switch around it grew with the Small/Medium/Large preference, and
  * looked shrunken on the large setting. Sized purely in rem it tracked them
- * exactly — and then a control that is 40px at medium becomes 35 at small,
+ * exactly — and then a control that is 45px at medium becomes 40 at small,
  * which is small for a thumb you are meant to hit, and 50 at large, which is a
  * lot of furniture for a tile.
  *
@@ -68,11 +68,11 @@ interface TriStateToggleProps {
  * The sizes below are quoted at the LARGE setting, not the middle one, and that
  * is deliberate: large is where the pre-existing switch was 50px, and that is
  * the size this control is meant to be. Anchoring there and damping downwards
- * makes it essentially one size that nudges with the text — 46.25 at small,
- * 47.5 at medium, 50 at large — rather than a control that halves in area
+ * makes it essentially one size that nudges with the text — 47.5 at small,
+ * 48.75 at medium, 50 at large — rather than a control that halves in area
  * across the range.
  *
- * The cost is real and worth knowing: at the medium setting this is 47.5px
+ * The cost is real and worth knowing: at the medium setting this is 48.75px
  * against `ui/switch.tsx`'s 40, so the two no longer match on the commonest
  * setting. That switch is a settings-screen control and this is a tile control,
  * so they are rarely in shot together, and they remain the same shape, height
