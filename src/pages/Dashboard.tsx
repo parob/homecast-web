@@ -6490,7 +6490,19 @@ const Dashboard = () => {
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        <div className={isInMobileApp || isInMacApp ? 'fixed inset-0' : 'relative bg-background'} style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}>
+        {/* No bg-background under a wallpaper. This box is 120vh of opaque
+            white spanning the whole document, so it is the surface a gap
+            actually exposes when Safari moves the viewport — the backdrop and
+            the wallpaper behind it already paint everything that should show.
+            Without a wallpaper it still needs the theme colour. */}
+        <div
+          className={
+            isInMobileApp || isInMacApp
+              ? 'fixed inset-0'
+              : hasBackground ? 'relative' : 'relative bg-background'
+          }
+          style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}
+        >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
               itself stays put so content clears the notch. Rendered in the

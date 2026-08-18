@@ -47,9 +47,17 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
     // The canvas takes its background from the ROOT element, and only falls
     // back to propagating from body when the root has none. Setting the root
     // directly is what actually paints the overscroll region.
+    //
+    // body gets it too, and that is not redundant. body carries bg-background —
+    // opaque white — across the whole document, so it is a second white surface
+    // sitting between the tinted canvas and the wallpaper. Any gap that opens
+    // above or below the fixed layer shows whichever of the two it lands in, so
+    // both have to agree or the bug just moves.
     document.documentElement.style.backgroundColor = tint;
+    document.body.style.backgroundColor = tint;
     return () => {
       document.documentElement.style.removeProperty('background-color');
+      document.body.style.removeProperty('background-color');
     };
   }, [tint, isNativeShell]);
 
