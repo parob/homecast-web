@@ -8,7 +8,7 @@
  * accessory behind it.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing/react';
 import type { MockLink } from '@apollo/client/testing';
 
@@ -146,5 +146,96 @@ describe('the merged Scenes grid', () => {
     renderSection([scene('s1', 'Movie Night')], [light], layout);
 
     expect(await names(1)).toEqual(['Movie Night']);
+  });
+});
+
+describe('hiding an Apple Home scene', () => {
+  afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
+
+  it('leaves a hidden scene off the grid', async () => {
+    const layout: HomeLayoutData = { visibility: { hiddenScenes: ['s2'] } };
+    renderSection([scene('s1', 'Movie Night'), scene('s2', 'Good Night')], [light], layout);
+
+    const order = await names(3);
+    expect(order).toContain('Movie Night');
+    expect(order).not.toContain('Good Night');
+  });
+
+  it('hides by id, so renaming the scene in Apple Home does not bring it back', async () => {
+    const layout: HomeLayoutData = { visibility: { hiddenScenes: ['s2'] } };
+    renderSection([scene('s1', 'Movie Night'), scene('s2', 'Renamed In Apple Home')], [light], layout);
+
+    const order = await names(3);
+    expect(order).not.toContain('Renamed In Apple Home');
+  });
+
+  it('does not touch the shortcuts', async () => {
+    const layout: HomeLayoutData = { visibility: { hiddenScenes: ['s1'] } };
+    renderSection([scene('s1', 'Movie Night')], [light], layout);
+
+    expect(await names(2)).toEqual(['All lights', 'Turn everything off']);
+  });
+});
+
+describe('bringing a hidden scene back', () => {
+  afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
+
+  function renderEditing(scenes: HomeKitScene[], layout: HomeLayoutData | null) {
+    const onToggleSceneHidden = vi.fn();
+    const mocks: MockLink.MockedResponse[] = [
+      { request: { query: GET_SCENES, variables: { homeId: HOME_ID } }, result: { data: { scenes } } },
+      {
+        request: { query: GET_HOMES },
+        result: { data: { homes: [{ id: HOME_ID, name: 'Test Home', isPrimary: true, role: 'owner', isAdmin: true }] } },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+      },
+    ];
+    const pins = { enabled: false, isPinned: () => false, isFull: false, toggle: () => {} };
+    render(
+      <MockedProvider mocks={mocks}>
+        <PinnedTabsProvider value={pins as never}>
+          <LayoutEditProvider value={{ touchMode: true, editMode: true }}>
+            <ScenesSection
+              homeId={HOME_ID}
+              accessories={[]}
+              homeLayout={layout}
+              open
+              onRunAction={async () => {}}
+              onToggleSceneHidden={onToggleSceneHidden}
+            />
+          </LayoutEditProvider>
+        </PinnedTabsProvider>
+      </MockedProvider>,
+    );
+    return { onToggleSceneHidden };
+  }
+
+  it('shows a hidden scene while editing, so there is something to press', async () => {
+    // Hidden scenes are gone from the dashboard by design, which would leave
+    // the only way back in Settings. Editing reveals them with their own button.
+    renderEditing([scene('s1', 'Movie Night')], { visibility: { hiddenScenes: ['s1'] } });
+
+    expect(await screen.findByRole('button', { name: 'Unhide Movie Night' })).toBeTruthy();
+  });
+
+  it('asks to bring it back, not to hide it again', async () => {
+    const { onToggleSceneHidden } = renderEditing(
+      [scene('s1', 'Movie Night')], { visibility: { hiddenScenes: ['s1'] } });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unhide Movie Night' }));
+    expect(onToggleSceneHidden).toHaveBeenCalledWith('s1', true);
+  });
+
+  it('offers to hide a shown one', async () => {
+    const { onToggleSceneHidden } = renderEditing([scene('s1', 'Movie Night')], null);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide Movie Night' }));
+    expect(onToggleSceneHidden).toHaveBeenCalledWith('s1', false);
   });
 });

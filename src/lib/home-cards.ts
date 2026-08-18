@@ -26,10 +26,10 @@ export function homeCardKey(kind: HomeCardKind, id: string): string {
  *
  * Two rules, both of which matter more than they look:
  *
- * - **A key that no longer resolves is skipped, not an error.** Shortcuts are
- *   derived from what the home currently contains, so one disappears the moment
- *   its last light does and comes back when the light does; a scene can be
- *   deleted from Apple Home entirely. The order outlives both.
+ * - **A key that no longer resolves is skipped, not an error.** A Homecast
+ *   scene is derived from what the home currently contains, so one disappears
+ *   the moment its last light does and comes back when the light does; an Apple
+ *   Home scene can be deleted, or hidden. The order outlives all of it.
  * - **Anything not named in the order goes last, keeping its natural order.**
  *   That is what makes a brand-new scene appear at all rather than silently
  *   ranking before everything, and it means an order array written before a

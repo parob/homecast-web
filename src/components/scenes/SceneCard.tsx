@@ -1,11 +1,11 @@
-import { Loader2, Play, Zap } from 'lucide-react';
+import { EyeOff, Loader2, Play, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  ContextMenu, ContextMenuContent, ContextMenuLabel,
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
   ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { TileEditActions } from '@/components/shared/EditActions';
+import { TileEditActions, HiddenLabel } from '@/components/shared/EditActions';
 import { getIconColor } from '@/components/widgets/iconColors';
 import { isBuiltInScene } from '@/lib/scenes';
 import type { HomeKitScene } from '@/lib/graphql/types';
@@ -31,15 +31,19 @@ function subtitleOf(scene: HomeKitScene): string {
  * its own — same look, different job.
  */
 export function SceneCard({
-  scene, homeId, isDarkBackground, editMode, running, onRun, onEdit,
+  scene, homeId, isDarkBackground, editMode, running, isHidden, onRun, onEdit, onToggleHidden,
 }: {
   scene: HomeKitScene;
   homeId?: string | null;
   isDarkBackground?: boolean;
   editMode: boolean;
   running: boolean;
+  /** Turned off for this home. Only rendered at all while editing. */
+  isHidden?: boolean;
   onRun: (scene: HomeKitScene) => void;
   onEdit: (scene: HomeKitScene) => void;
+  /** Absent where the layout cannot be written (a shared home, a view-only member). */
+  onToggleHidden?: (scene: HomeKitScene, visible: boolean) => void;
 }) {
   const card = (
     <div
@@ -52,6 +56,7 @@ export function SceneCard({
       className={cn(
         'relative rounded-2xl h-fit transition-all duration-300 ring-1 ring-inset',
         !editMode && 'cursor-pointer',
+        isHidden && 'opacity-40',
         isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
       )}
       style={{ contain: 'layout style paint' }}
@@ -95,13 +100,21 @@ export function SceneCard({
 
   const tab = { type: 'scene' as const, id: scene.id, name: scene.name, homeId: homeId ?? undefined };
 
-  // Editing carries the button on the tile; otherwise a long press
+  // Editing carries the buttons on the tile; otherwise a long press
   // reaches the same thing without entering a mode for it.
   if (editMode) {
     return (
       <div className="relative">
         {card}
-        <TileEditActions action={null} tab={tab} />
+        {/* Outside the card, so dimming a hidden one does not also grey out
+            the button that brings it back. */}
+        {isHidden && <HiddenLabel />}
+        <TileEditActions
+          action={onToggleHidden
+            ? { kind: 'hide', isHidden: !!isHidden, onToggle: () => onToggleHidden(scene, !!isHidden), name: scene.name }
+            : null}
+          tab={tab}
+        />
       </div>
     );
   }
@@ -114,6 +127,15 @@ export function SceneCard({
         </ContextMenuLabel>
         <ContextMenuSeparator />
         <PinTabMenuItem tab={tab} />
+        {/* Desktop has no edit mode, so hiding lives where every other desktop
+            hide does. A hidden scene has no card to right-click, which is why
+            Settings carries the list that brings one back. */}
+        {onToggleHidden && (
+          <ContextMenuItem onClick={() => onToggleHidden(scene, false)}>
+            <EyeOff className="mr-2 h-4 w-4" />
+            Hide Scene
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );

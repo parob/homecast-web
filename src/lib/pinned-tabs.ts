@@ -95,8 +95,8 @@ export const PIN_TYPE_LABELS: Record<PinnedTabType, string> = {
   room: 'Room',
   collection: 'Collection',
   collectionGroup: 'Room group',
-  action: 'Action',
-  scene: 'Scene',
+  action: 'Homecast scene',
+  scene: 'Apple Home scene',
   accessory: 'Accessory',
   serviceGroup: 'Service group',
 };

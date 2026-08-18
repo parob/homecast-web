@@ -56,8 +56,8 @@ export const SUMMARY_PILL_LABEL: Record<SummarySectionId, string> = {
 
 export const SUMMARY_SECTION_META: Record<SummarySectionId, { label: string; description: string }> = {
   actions: {
-    label: 'Shortcuts',
-    description: 'One-tap shortcuts — all lights off, close the blinds, lock up',
+    label: 'Homecast scenes',
+    description: 'Built for you from what this home contains — all lights off, close the blinds, lock up',
   },
   scenes: {
     label: 'Apple Home scenes',
@@ -78,6 +78,7 @@ interface VisibilityCarrier {
   visibility?: {
     hiddenSummarySections?: string[];
     hiddenActions?: string[];
+    hiddenScenes?: string[];
   };
 }
 
@@ -97,6 +98,14 @@ export function isSummarySectionVisible(
  */
 export function isScenesSectionVisible(layout: VisibilityCarrier | null | undefined): boolean {
   return isSummarySectionVisible(layout, 'scenes') || isSummarySectionVisible(layout, 'actions');
+}
+
+/** One Apple Home scene. Hidden by id, so a rename does not un-hide it. */
+export function isSceneVisible(
+  layout: VisibilityCarrier | null | undefined,
+  sceneId: string,
+): boolean {
+  return !layout?.visibility?.hiddenScenes?.includes(sceneId);
 }
 
 export function isHomeActionVisible(
@@ -128,10 +137,6 @@ export function withSummarySectionVisibility(
 }
 
 /**
- * Unlike the pills, the action order is the catalog's, not this module's — but
- * the catalog imports from here, so passing it in keeps the dependency one-way.
- */
-/**
  * Turn the whole Scenes pill on or off — both halves at once.
  *
  * The Edit Layout row has one eye per pill, so it cannot express "scenes but
@@ -147,6 +152,10 @@ export function withScenesSectionVisibility(
   return toggleIn(SUMMARY_SECTION_ORDER, afterScenes, 'actions', visible);
 }
 
+/**
+ * Unlike the pills, the action order is the catalog's, not this module's — but
+ * the catalog imports from here, so passing it in keeps the dependency one-way.
+ */
 export function withHomeActionVisibility(
   order: HomeActionId[],
   hidden: string[] | undefined,
@@ -154,4 +163,28 @@ export function withHomeActionVisibility(
   visible: boolean,
 ): HomeActionId[] {
   return toggleIn(order, hidden, id, visible);
+}
+
+/**
+ * Hide or show one Apple Home scene.
+ *
+ * Deliberately not `toggleIn`. That normalises through a canonical order, which
+ * works for the pills and the shortcuts because both are closed unions this
+ * build knows in full. A home's scenes are neither — they come from the relay,
+ * and the list is empty while it is offline or still answering. Filtering
+ * through it would quietly drop every hidden scene the moment someone toggled
+ * anything on a home that had not finished loading.
+ *
+ * Sorted instead, which is all the canonical order was really buying here: two
+ * writes of the same set produce the same JSON. The Set drops any duplicate.
+ */
+export function withSceneVisibility(
+  hidden: string[] | undefined,
+  sceneId: string,
+  visible: boolean,
+): string[] {
+  const set = new Set(hidden ?? []);
+  if (visible) set.delete(sceneId);
+  else set.add(sceneId);
+  return Array.from(set).sort();
 }

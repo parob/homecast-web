@@ -3,7 +3,9 @@ import {
   SUMMARY_SECTION_ORDER,
   SUMMARY_PILL_ORDER,
   isScenesSectionVisible,
+  isSceneVisible,
   isSummarySectionVisible,
+  withSceneVisibility,
   isHomeActionVisible,
   withSummarySectionVisibility,
   withHomeActionVisibility,
@@ -137,5 +139,49 @@ describe('the merged Scenes section', () => {
 
     expect(hidden).toContain('actions');
     expect(hidden).toContain('status');
+  });
+});
+
+describe('hiding an individual Apple Home scene', () => {
+  it('treats an absent list as everything shown', () => {
+    expect(isSceneVisible(null, 'scene-1')).toBe(true);
+    expect(isSceneVisible({ visibility: {} }, 'scene-1')).toBe(true);
+  });
+
+  it('hides only the scene named', () => {
+    const layout = { visibility: { hiddenScenes: ['scene-1'] } };
+
+    expect(isSceneVisible(layout, 'scene-1')).toBe(false);
+    expect(isSceneVisible(layout, 'scene-2')).toBe(true);
+  });
+
+  it('adds and removes without disturbing the rest', () => {
+    const hidden = withSceneVisibility(['scene-2'], 'scene-1', false);
+    expect(hidden).toEqual(['scene-1', 'scene-2']);
+
+    expect(withSceneVisibility(hidden, 'scene-1', true)).toEqual(['scene-2']);
+  });
+
+  it('produces the same JSON for the same set, whatever order it was built in', () => {
+    const a = withSceneVisibility(withSceneVisibility([], 'b', false), 'a', false);
+    const b = withSceneVisibility(withSceneVisibility([], 'a', false), 'b', false);
+
+    expect(a).toEqual(b);
+  });
+
+  it('does not duplicate a scene hidden twice', () => {
+    expect(withSceneVisibility(['scene-1'], 'scene-1', false)).toEqual(['scene-1']);
+  });
+
+  /**
+   * The reason this does not go through `toggleIn` like the pills and the
+   * shortcuts do. Those normalise against a closed union the build knows in
+   * full; a home's scenes come from the relay, so the list is empty while it is
+   * offline — and normalising against an empty list would drop the lot.
+   */
+  it('keeps a hidden scene the current list has never mentioned', () => {
+    const hidden = withSceneVisibility(['scene-from-an-offline-relay'], 'scene-1', false);
+
+    expect(hidden).toContain('scene-from-an-offline-relay');
   });
 });

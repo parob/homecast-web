@@ -391,12 +391,12 @@ describe('hiding an action', () => {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
   });
 
-  it('offers Hide Action on right-click, and reports which one', () => {
+  it('offers Hide Scene on right-click, and reports which one', () => {
     const onHideAction = vi.fn();
     renderSection([lightOn], { homeId: 'HOME-1', onHideAction });
 
     fireEvent.contextMenu(card('lights'));
-    fireEvent.click(screen.getByText('Hide Action'));
+    fireEvent.click(screen.getByText('Hide Scene'));
 
     expect(onHideAction).toHaveBeenCalledTimes(1);
     // The stable id, not the label — the label flips with live device state.
@@ -410,7 +410,7 @@ describe('hiding an action', () => {
       { touchMode: true, editMode: false },
     );
     fireEvent.contextMenu(card('lights'));
-    expect(screen.queryByText('Hide Action')).toBeNull();
+    expect(screen.queryByText('Hide Scene')).toBeNull();
   });
 
   it('offers nothing where there is nothing to write to', () => {
@@ -418,7 +418,7 @@ describe('hiding an action', () => {
     // withholds the handler rather than the menu offering a no-op.
     renderSection([lightOn], { homeId: 'HOME-1' });
     fireEvent.contextMenu(card('lights'));
-    expect(screen.queryByText('Hide Action')).toBeNull();
+    expect(screen.queryByText('Hide Scene')).toBeNull();
   });
 });
 
@@ -441,7 +441,7 @@ describe('pinning from a long press', () => {
     fireEvent.contextMenu(card('lights'));
     expect(screen.getByText('Pin to Tab Bar')).toBeTruthy();
     // Hiding is Edit Layout's job on touch — the menu must not offer it twice.
-    expect(screen.queryByText('Hide Action')).toBeNull();
+    expect(screen.queryByText('Hide Scene')).toBeNull();
   });
 
   it('offers both on the desktop, where there is no edit mode', () => {
@@ -453,7 +453,7 @@ describe('pinning from a long press', () => {
     );
 
     fireEvent.contextMenu(card('lights'));
-    expect(screen.getByText('Hide Action')).toBeTruthy();
+    expect(screen.getByText('Hide Scene')).toBeTruthy();
     expect(screen.getByText('Pin to Tab Bar')).toBeTruthy();
   });
 

@@ -142,6 +142,8 @@ export interface HomeLayoutData {
     hiddenSummarySections?: SummarySectionId[];
     /** Individual Actions turned off for this home. Absent = all shown. */
     hiddenActions?: HomeActionId[];
+    /** Individual Apple Home scenes turned off for this home, by scene id. */
+    hiddenScenes?: string[];
   };
   background?: BackgroundSettings;
 }

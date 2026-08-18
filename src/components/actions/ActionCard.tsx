@@ -201,7 +201,7 @@ export function ActionCard({
         {canHideHere && (
           <ContextMenuItem onClick={() => onHideAction!(action.id)}>
             <EyeOff className="mr-2 h-4 w-4" />
-            Hide Action
+            Hide Scene
           </ContextMenuItem>
         )}
       </ContextMenuContent>

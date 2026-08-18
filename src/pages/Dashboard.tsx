@@ -59,7 +59,7 @@ import { AreaSummary, StatusPill } from '@/components/summary';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
 import {
   isSummarySectionVisible, isScenesSectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
-  withScenesSectionVisibility,
+  withScenesSectionVisibility, withSceneVisibility,
   type HomeActionId, type SummarySectionId,
 } from '@/lib/summary-sections';
 import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
@@ -3397,14 +3397,14 @@ const Dashboard = () => {
 
   // Check if selected home's relay is offline (owner or shared).
   // Routing through SetupState pre-empts the accessoriesError path so the user
-  // sees the dedicated "Your Mac relay is offline" card instead of NO_DEVICE.
+  // sees the dedicated "Your relay is offline" card instead of NO_DEVICE.
   const selectedHomeRelayOffline = useMemo(() => {
     if (!selectedHomeId) return false;
     const home = homes.find(h => h.id === selectedHomeId);
     if (!home) return false;
     // On the Mac relay itself, the server's relayConnected flag is transient
     // during startup/reconnect — accessories come from the local bridge. Don't
-    // flash "Your Mac relay is offline" inside the relay app. Cloud-managed
+    // flash "Your relay is offline" inside the relay app. Cloud-managed
     // homes are served by a different relay, so the flag is still meaningful.
     if (isRelayCapable() && isRelayEnabled() && !home.isCloudManaged) return false;
     // Same reasoning one step further out: if this device is serving the home
@@ -4793,7 +4793,23 @@ const Dashboard = () => {
         ...prev?.visibility,
         hiddenActions: withHomeActionVisibility(HOME_ACTION_ORDER, prev?.visibility?.hiddenActions, id, false),
       },
-    })).catch(() => toast.error('Could not hide that action'));
+    })).catch(() => toast.error('Could not hide that scene'));
+  }, [updateHomeLayout]);
+
+  /**
+   * Turn one Apple Home scene off for this home, or back on.
+   *
+   * By scene id, so renaming one in Apple Home does not silently un-hide it.
+   * The same list Settings writes, so the two cannot disagree.
+   */
+  const handleToggleSceneHidden = useCallback((sceneId: string, visible: boolean) => {
+    void updateHomeLayout(prev => ({
+      ...prev,
+      visibility: {
+        ...prev?.visibility,
+        hiddenScenes: withSceneVisibility(prev?.visibility?.hiddenScenes, sceneId, visible),
+      },
+    })).catch(() => toast.error('Could not hide that scene'));
   }, [updateHomeLayout]);
 
   /**
@@ -7884,6 +7900,7 @@ const Dashboard = () => {
                       onRunAction={runHomeAction}
                       onHideAction={selectedHomeId && !isViewOnly ? handleHideHomeAction : undefined}
                       onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
+                      onToggleSceneHidden={selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined}
                     />}
                     {showAutomations && <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />}
                     {showStatus && <AnimatedCollapse open={statusOpen}>

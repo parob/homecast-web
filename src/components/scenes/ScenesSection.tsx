@@ -19,7 +19,7 @@ import { DraggableGrid } from '@/components/shared/DraggableGrid';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { DragHandleArea } from '@/components/shared/DragHandleArea';
 import {
-  isSummarySectionVisible, isHomeActionVisible, type HomeActionId,
+  isSummarySectionVisible, isHomeActionVisible, isSceneVisible, type HomeActionId,
 } from '@/lib/summary-sections';
 import { homeCardKey, applyHomeCardOrder } from '@/lib/home-cards';
 import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
@@ -36,16 +36,28 @@ import type { HomeKitScene } from '@/lib/graphql/types';
 /**
  * Scenes — one section holding two kinds of card.
  *
- * Shortcuts (derived from the home's accessories) and Apple Home scenes both
- * mean "run something in this home", so they share a pill, a grid and an
- * ordering. Each half has its own visibility switch; the section only
- * disappears when both are off.
+ * Homecast scenes (derived from the home's accessories) and Apple Home scenes
+ * both mean "run something in this home", so they share a pill, a grid and an
+ * ordering. Each half has its own visibility switch, and individual cards of
+ * either kind can be hidden; the section only disappears when both halves are
+ * off.
  */
 
-/** Scenes worth showing: older relays list unconfigured built-ins. */
-function visibleScenes(scenes: HomeKitScene[] | undefined, layout: HomeLayoutData | null | undefined) {
+/**
+ * Scenes worth showing: older relays list unconfigured built-ins, and the user
+ * can turn individual ones off.
+ *
+ * `showHidden` is what edit mode passes — you cannot bring back what you cannot
+ * see, and the hidden ones carry their own Unhide button there.
+ */
+function visibleScenes(
+  scenes: HomeKitScene[] | undefined,
+  layout: HomeLayoutData | null | undefined,
+  showHidden = false,
+) {
   if (!isSummarySectionVisible(layout, 'scenes')) return [];
-  return (scenes ?? []).filter(s => !isHiddenBuiltInScene(s));
+  return (scenes ?? []).filter(s =>
+    !isHiddenBuiltInScene(s) && (showHidden || isSceneVisible(layout, s.id)));
 }
 
 function visibleActions(accessories: HomeKitAccessory[], layout: HomeLayoutData | null | undefined) {
@@ -55,28 +67,31 @@ function visibleActions(accessories: HomeKitAccessory[], layout: HomeLayoutData 
 
 type Card =
   | { kind: 'action'; id: string; action: HomeAction }
-  | { kind: 'scene'; id: string; scene: HomeKitScene };
+  | { kind: 'scene'; id: string; scene: HomeKitScene; isHidden: boolean };
 
 const cardKey = (c: Card) => homeCardKey(c.kind, c.id);
 
 /**
  * The cards, in the user's order.
  *
- * Shortcuts lead before anything has been dragged: they are the same in every
- * home and the ones people reach for without looking.
+ * Homecast's own lead before anything has been dragged: they are the same in
+ * every home and the ones people reach for without looking.
  */
 function useOrderedCards(
   scenes: HomeKitScene[],
   actions: HomeAction[],
   order: string[] | undefined,
+  hiddenSceneIds: Set<string>,
 ): Card[] {
   return useMemo(() => {
     const cards: Card[] = [
       ...actions.map(action => ({ kind: 'action' as const, id: action.id, action })),
-      ...scenes.map(scene => ({ kind: 'scene' as const, id: scene.id, scene })),
+      ...scenes.map(scene => ({
+        kind: 'scene' as const, id: scene.id, scene, isHidden: hiddenSceneIds.has(scene.id),
+      })),
     ];
     return applyHomeCardOrder(cards, order, cardKey);
-  }, [scenes, actions, order]);
+  }, [scenes, actions, order, hiddenSceneIds]);
 }
 
 /**
@@ -144,11 +159,13 @@ interface ScenesSectionProps {
   onHideAction?: (id: HomeActionId) => void;
   /** Persist the card arrangement. Absent where the layout can't be written. */
   onReorderCards?: (order: string[]) => void;
+  /** Turn one Apple Home scene off for this home, or back on. */
+  onToggleSceneHidden?: (sceneId: string, visible: boolean) => void;
 }
 
 export function ScenesSection({
   homeId, accessories, homeLayout, compact, isDarkBackground, open, isViewOnly,
-  dndEnabled = true, onRunAction, onHideAction, onReorderCards,
+  dndEnabled = true, onRunAction, onHideAction, onReorderCards, onToggleSceneHidden,
 }: ScenesSectionProps) {
   const [runningSceneId, setRunningSceneId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<HomeKitScene | null>(null);
@@ -172,9 +189,15 @@ export function ScenesSection({
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
-  const scenes = visibleScenes(data?.scenes, homeLayout);
+  // Editing reveals the hidden ones so they can be brought back; the rest of
+  // the time they are simply not there.
+  const scenes = visibleScenes(data?.scenes, homeLayout, editMode);
   const actions = visibleActions(accessories, homeLayout);
-  const cards = useOrderedCards(scenes, actions, homeLayout?.sceneCardOrder);
+  const hiddenSceneIds = useMemo(
+    () => new Set(homeLayout?.visibility?.hiddenScenes ?? []),
+    [homeLayout?.visibility?.hiddenScenes],
+  );
+  const cards = useOrderedCards(scenes, actions, homeLayout?.sceneCardOrder, hiddenSceneIds);
 
   const runner = useHomeActionRunner(onRunAction);
 
@@ -237,8 +260,12 @@ export function ScenesSection({
       isDarkBackground={isDarkBackground}
       editMode={editMode}
       running={runningSceneId === card.scene.id}
+      isHidden={card.isHidden}
       onRun={handleRun}
       onEdit={openEditor}
+      onToggleHidden={onToggleSceneHidden
+        ? (scene, visible) => onToggleSceneHidden(scene.id, visible)
+        : undefined}
     />
   );
 

@@ -37,8 +37,8 @@ export const HOME_SETTINGS_SECTION_META: Record<HomeSettingsSectionId, { label: 
     description: 'Which pills the summary row shows for this home',
   },
   actions: {
-    label: 'Actions',
-    description: 'One-tap shortcuts built from what this home contains',
+    label: 'Scenes',
+    description: 'Which scenes this home shows, both Homecast\u2019s and Apple Home\u2019s',
   },
   notifications: {
     label: 'Notifications',
