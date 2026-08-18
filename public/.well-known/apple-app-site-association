@@ -15,11 +15,7 @@
             "exclude": true,
             "comment": "Admin is a desk job — leave it in the browser."
           },
-          {
-            "/": "/",
-            "comment": "Bare root. This is what our emails link to, so it is the one that has to open the app."
-          },
-          { "/": "/portal", "comment": "The dashboard itself." },
+          { "/": "/portal", "comment": "The dashboard itself. This is what our emails link to, so it is the one that has to open the app." },
           { "/": "/portal/*", "comment": "Anything inside the dashboard." }
         ]
       }
