@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { GET_VERSION } from '@/lib/graphql/queries';
+import { isMarketingPath } from '@/lib/marketing-routes';
 
 interface VersionEntry {
   label: string;
@@ -239,11 +240,9 @@ export function CommunityBadge({ isDarkBackground }: { isDarkBackground?: boolea
   );
 }
 
-const MARKETING_PATHS = ['/', '/how-it-works', '/pricing', '/terms', '/privacy', '/cookies'];
-
 export function StagingBanner() {
   const { pathname } = useLocation();
-  if (!config.isStaging || pathname.startsWith('/portal') || MARKETING_PATHS.includes(pathname)) return null;
+  if (!config.isStaging || pathname.startsWith('/portal') || isMarketingPath(pathname)) return null;
 
   const isMqtt = pathname === '/mqtt' || location.hostname.startsWith('mqtt.') || location.hostname.startsWith('staging.mqtt.');
   return (

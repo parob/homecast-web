@@ -9,13 +9,14 @@ import { ScrollToTop } from "@/components/ScrollToTop";
 import { StagingBanner } from "@/components/layout/StagingBanner";
 import { CookieConsent } from "@/components/layout/CookieConsent";
 import { apolloClient } from "@/lib/apollo";
+import { isInNativeAppShell } from "@/lib/platform";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PushRegistration } from "@/components/PushRegistration";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { DebugDock } from "@/components/debug/DebugDock";
 import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactElement } from "react";
 import { AppBootFallback } from "@/components/LoadingSkeletons";
 // Login stays eager: for a signed-out visitor it IS the first screen, and
 // making it a second round trip would just move the wait. The rest are not on
@@ -70,6 +71,33 @@ const queryClient = new QueryClient();
 // Redirect to portal — used for cloud-only routes in Community mode
 const ToPortal = () => <Navigate to="/portal" replace />;
 
+/** Same destination, but carrying the query along.
+ *
+ *  A link from an email lands on the bare root with the reason for the visit in
+ *  its query string — ?enrollment=, ?home=, ?checkout= are all read by the
+ *  dashboard. Dropping it would turn a working invitation into a plain
+ *  dashboard with no explanation. Mirrors HistoryRedirect above. */
+const ToPortalWithQuery = () => (
+  <Navigate to={{ pathname: "/portal", search: window.location.search }} replace />
+);
+
+/** A page of the website, not a screen of the app.
+ *
+ *  Safari offers "Open in the Homecast app" on homecast.cloud because the AASA
+ *  claims the bare root — the root is what our emails link to, so it has to stay
+ *  claimed. But the root also renders the marketing landing page, so the app
+ *  opened on its own advertising. Inside the native shell these pages collapse
+ *  to the dashboard instead.
+ *
+ *  These element expressions are evaluated when MainRoutes renders, not on each
+ *  navigation, so the flag has to be set before React's first render — which is
+ *  exactly what the shell does, injecting it .atDocumentStart. Setting it from
+ *  the console after load will NOT take effect; to reproduce this in a browser,
+ *  inject the flag at document start. See lib/marketing-routes.ts for which
+ *  paths these are and why /delete-account is not one of them. */
+const marketing = (page: ReactElement) =>
+  isInNativeAppShell() ? <ToPortalWithQuery /> : page;
+
 // Dev-only harness for the wallpaper-load → widget-recolour sequence.
 // import.meta.env.DEV is statically false in a production build, so both the
 // route and the lazy chunk drop out entirely.
@@ -110,13 +138,13 @@ const MainRoutes = () => (
             </>
           ) : (
             <>
-              <Route path="/" element={location.hostname.includes('mqtt.') ? <MQTTBrowser /> : <Index />} />
-              <Route path="/how-it-works" element={<HowItWorks />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/features" element={<Navigate to="/" replace />} />
-              <Route path="/terms" element={<Terms />} />
-              <Route path="/privacy" element={<Privacy />} />
-              <Route path="/cookies" element={<Cookies />} />
+              <Route path="/" element={location.hostname.includes('mqtt.') ? <MQTTBrowser /> : marketing(<Index />)} />
+              <Route path="/how-it-works" element={marketing(<HowItWorks />)} />
+              <Route path="/pricing" element={marketing(<Pricing />)} />
+              <Route path="/features" element={marketing(<Navigate to="/" replace />)} />
+              <Route path="/terms" element={marketing(<Terms />)} />
+              <Route path="/privacy" element={marketing(<Privacy />)} />
+              <Route path="/cookies" element={marketing(<Cookies />)} />
               <Route path="/delete-account" element={<DeleteAccount />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
