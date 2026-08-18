@@ -207,8 +207,9 @@ import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog'
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import PullToRefresh from 'react-simple-pull-to-refresh';
+import { useCanvasTint } from '@/hooks/useCanvasTint';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
-import { getAutoPresetId, PRESET_IMAGES, PRESET_SOLID_COLORS, PRESET_GRADIENTS, getDominantColor, applyBrightnessToHex } from '@/lib/colorUtils';
+import { getAutoPresetId } from '@/lib/colorUtils';
 // Cloud admin components — resolved at render time (not module-load time)
 // because initCloud() is async and hasn't completed when static imports run.
 import { OnboardingOverlay } from '@/components/OnboardingOverlay';
@@ -5369,45 +5370,15 @@ const Dashboard = () => {
     w.HomecastAndroid?.setStatusBarDarkIcons(!isDarkBackground);
   }, [isDarkBackground]);
 
-  // iOS 26 Safari Liquid Glass: set body background-color to match the active background.
-  // Safari's translucent system bars tint from the body's background-color.
-  const tintColor = useMemo(() => {
-    const bg = displayedBackground;
-    const brightness = bg?.brightness ?? 50;
-    if (bg?.type === 'preset' && bg.presetId) {
-      // Solid colors and gradients — weighted average + brightness
-      if (PRESET_SOLID_COLORS[bg.presetId] || PRESET_GRADIENTS[bg.presetId]) {
-        return getDominantColor(bg.presetId, brightness);
-      }
-      // Preset images — sampled top-5-rows color + brightness
-      if (PRESET_IMAGES[bg.presetId]) {
-        if (bgImageTopColor) return applyBrightnessToHex(bgImageTopColor, brightness);
-        return isDarkBackground ? '#333333' : '#aaaaaa';
-      }
-    }
-    if (bg?.type === 'custom') {
-      if (bgImageTopColor) return applyBrightnessToHex(bgImageTopColor, bg?.brightness ?? 50);
-      return isDarkBackground ? '#333333' : '#aaaaaa';
-    }
-    return '#ffffff';
-  }, [displayedBackground, bgImageTopColor, isDarkBackground]);
-
-  useEffect(() => {
-    if (isInMacApp || isInMobileApp) {
-      // Both native apps: tell the WKWebView the exact backdrop color so
-      // anything the page doesn't paint (safe areas, overscroll) matches.
-      const w = window as any;
-      w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor', color: tintColor });
-      return () => {
-        // Clear explicit color so backgroundDark fallback resumes
-        w.webkit?.messageHandlers?.homecast?.postMessage({ action: 'backgroundColor' });
-      };
-    }
-    document.body.style.backgroundColor = tintColor;
-    return () => {
-      document.body.style.removeProperty('background-color');
-    };
-  }, [tintColor, isInMacApp, isInMobileApp]);
+  // Paint the canvas to match the wallpaper. In a browser the wallpaper is a
+  // fixed layer that cannot reach the rubber-band strip, and in the native
+  // shells the WKWebView draws its own backdrop; useCanvasTint covers both.
+  useCanvasTint({
+    background: displayedBackground,
+    sampledTopColor: bgImageTopColor,
+    isDark: isDarkBackground,
+    isNativeShell: isInMacApp || isInMobileApp,
+  });
 
   // Helper to compute blur tint class for an accessory (used for ExpandedOverlay)
   const getAccessoryBlurTint = useCallback((accessory: HomeKitAccessory) => {
@@ -6508,12 +6479,21 @@ const Dashboard = () => {
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
         <div className={isInMobileApp || isInMacApp ? 'fixed inset-0' : 'relative bg-background'} style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}>
-          {/* In the native apps the backdrop color paints past the safe areas
-              (fixed inset-0 stops at them, leaving bars in landscape); the
-              container itself stays at inset-0 so content clears the notch. */}
-          {(isInMobileApp || isInMacApp) && (
-            <div aria-hidden className="fixed-full-screen pointer-events-none -z-10 bg-background" />
-          )}
+          {/* The backdrop colour paints past the safe areas — a plain inset-0
+              stops at them, leaving bars in landscape — while the container
+              itself stays put so content clears the notch. Rendered in the
+              browser too: Safari's app banner and its dynamic toolbars move the
+              viewport just as much as a notch does, and a missing backdrop
+              there is what showed as white above and below the wallpaper.
+              Matches MainLayout: over a dark wallpaper the backdrop has to be
+              black, not the theme's white. */}
+          <div
+            aria-hidden
+            className={cn(
+              "fixed-full-screen pointer-events-none -z-10",
+              hasBackground && isDarkBackground ? "bg-black" : "bg-background",
+            )}
+          />
           <BackgroundImage
             settings={activeBackground}
             entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}

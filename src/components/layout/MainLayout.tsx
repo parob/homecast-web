@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
+import { useCanvasTint } from '@/hooks/useCanvasTint';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -88,6 +89,18 @@ export function MainLayout({
   const contentPaddingBottom = isInMobileApp
     ? 'calc(16px + var(--safe-area-bottom, 0px))'
     : '64px';
+
+  // Same canvas paint the dashboard does. This layout scrolls inside itself
+  // rather than scrolling the document, so the canvas is rarely on show — but
+  // when it is, it should not be the theme's white over a dark wallpaper.
+  // No sampled colour here: this layout only tracks luminance, which is enough
+  // to land the tint in the right register.
+  useCanvasTint({
+    background,
+    sampledTopColor: null,
+    isDark: isDarkBackground,
+    isNativeShell: isInMacApp || isInMobileApp,
+  });
 
   return (
     <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>

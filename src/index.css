@@ -302,13 +302,27 @@ All colors MUST be HSL.
 /* Extends a fixed element behind safe areas (iOS Safari).
    On Safari, fixed inset-0 stops at safe area boundaries.
    Negative insets push past them to the true screen edge.
-   Uses pre-resolved CSS vars instead of env() inside calc() for Safari compat. */
+
+   Sized, not merely inset. Insets alone leave the box at the mercy of whatever
+   the layout viewport happens to be this instant, and Safari changes that under
+   you: its "Open in the Homecast app" banner sits inside the viewport, and when
+   it scrolls away — or the dynamic toolbars collapse — the viewport grows while
+   a purely-inset fixed layer does not. That is what clipped the wallpaper with
+   white strips above and below.
+
+   lvh is the *largest* viewport, so the layer is never the short one. The vh
+   line before it is the fallback for engines that predate the unit; on iOS
+   Safari vh already resolves to the large viewport, so nothing is lost there.
+
+   right/bottom are gone on purpose: with left and width both set, right is
+   ignored anyway, and carrying all six made the box over-constrained. */
 .fixed-full-screen {
   position: fixed;
   top: calc(var(--safe-area-top) * -1);
-  right: calc(var(--safe-area-right) * -1);
-  bottom: calc(var(--safe-area-bottom) * -1);
   left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom));
+  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
 }
 
 /* Corners are plain circular border-radius on purpose.
