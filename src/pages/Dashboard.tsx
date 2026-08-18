@@ -56,10 +56,10 @@ import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLa
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary, StatusPill } from '@/components/summary';
-import { ActionsPill, ActionsSection } from '@/components/actions/ActionsSection';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
 import {
-  isSummarySectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
+  isSummarySectionVisible, isScenesSectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
+  withScenesSectionVisibility,
   type HomeActionId, type SummarySectionId,
 } from '@/lib/summary-sections';
 import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
@@ -1413,9 +1413,8 @@ const Dashboard = () => {
       // Close what the tour opened. The enter branch expands Automations so the
       // spotlight has something to land on, and restoring only the *selection*
       // left it hanging open afterwards — which is why a first run ended with a
-      // pill expanded that the user never touched. All four, not just that one:
+      // pill expanded that the user never touched. All three, not just that one:
       // closed is their initial state, so this restores it whatever the tour did.
-      setActionsOpen(false);
       setScenesOpen(false);
       setAutomationsOpen(false);
       setStatusOpen(false);
@@ -1562,10 +1561,9 @@ const Dashboard = () => {
   // below that clears it on the way out, so the reveal can't leak into normal
   // browsing after you've finished arranging.
   const [showHiddenItems, setShowHiddenItems] = useState(false);
-  // Actions/Scenes/Automations/Status sections, toggled by the pills in the
-  // summary row — mutually exclusive, so opening one closes the other three.
-  // All are home-view only: room views keep the sensor bubbles inline.
-  const [actionsOpen, setActionsOpen] = useState(false);
+  // Scenes/Automations/Status sections, toggled by the pills in the summary
+  // row — mutually exclusive, so opening one closes the other two. All are
+  // home-view only: room views keep the sensor bubbles inline.
   const [scenesOpen, setScenesOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -4799,20 +4797,31 @@ const Dashboard = () => {
   }, [updateHomeLayout]);
 
   /**
-   * Which summary section is expanded, as one value. The four booleans are kept
+   * Persist the arrangement of the Scenes section's cards.
+   *
+   * The order arrives holding only what was on screen, exactly as the room and
+   * sidebar reorders do. A card that was absent at the time reappears at the end
+   * rather than in its old slot — the same trade those two already make, and
+   * `applyHomeCardOrder` is what makes an absent key harmless meanwhile.
+   */
+  const handleReorderSceneCards = useCallback((order: string[]) => {
+    void updateHomeLayout(prev => ({ ...prev, sceneCardOrder: order }))
+      .catch(() => toast.error('Could not save that arrangement'));
+  }, [updateHomeLayout]);
+
+  /**
+   * Which summary section is expanded, as one value. The three booleans are kept
    * mutually exclusive by their own handlers, so this is the same state read the
    * way the edit row needs it.
    */
   const openSummarySection: SummarySectionId | null =
-    actionsOpen ? 'actions'
-    : scenesOpen ? 'scenes'
+    scenesOpen ? 'scenes'
     : automationsOpen ? 'automations'
     : statusOpen ? 'status'
     : null;
 
   /** Open one and close the rest — the same exclusivity the live pills enforce. */
   const handleToggleSummaryOpen = useCallback((id: SummarySectionId) => {
-    setActionsOpen(id === 'actions' ? (o => !o) : false);
     setScenesOpen(id === 'scenes' ? (o => !o) : false);
     setAutomationsOpen(id === 'automations' ? (o => !o) : false);
     setStatusOpen(id === 'status' ? (o => !o) : false);
@@ -4829,13 +4838,17 @@ const Dashboard = () => {
       ...prev,
       visibility: {
         ...prev?.visibility,
-        hiddenSummarySections: withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, id, visible),
+        // Scenes is one pill over two flags, so the row's eye moves both. Its
+        // halves are separable only in Settings, which has a switch for each.
+        hiddenSummarySections: id === 'scenes'
+          ? withScenesSectionVisibility(prev?.visibility?.hiddenSummarySections, visible)
+          : withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, id, visible),
       },
     })).catch(() => toast.error('Could not save that'));
   }, [updateHomeLayout]);
 
-  const showActions = isSummarySectionVisible(homeLayout, 'actions');
-  const showScenes = isSummarySectionVisible(homeLayout, 'scenes');
+  // Scenes holds both kinds of card, so it survives while either half is on.
+  const showScenes = isScenesSectionVisible(homeLayout);
   const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
   const showStatus = isSummarySectionVisible(homeLayout, 'status');
 
@@ -5228,7 +5241,6 @@ const Dashboard = () => {
     // Collapse the summary sections either way. On the way in, the edit row
     // replaces the pills and opens nothing, so a section left expanded behind it
     // has no visible control; on the way out, closed is their initial state.
-    setActionsOpen(false);
     setScenesOpen(false);
     setAutomationsOpen(false);
     setStatusOpen(false);
@@ -7812,25 +7824,19 @@ const Dashboard = () => {
                     />
                   ) : isWholeHomeView ? (
                     <>
-                      {showActions && <ActionsPill
-                        accessories={actionAccessories}
-                        homeLayout={homeLayout}
-                        open={actionsOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(false); setActionsOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                        hideAccessoryCounts={hideAccessoryCounts}
-                      />}
                       {showScenes && <ScenesPill
                         homeId={selectedHomeId!}
+                        accessories={actionAccessories}
+                        homeLayout={homeLayout}
                         open={scenesOpen}
-                        onToggle={() => { setActionsOpen(false); setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
+                        onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         hideAccessoryCounts={hideAccessoryCounts}
                       />}
                       {showAutomations && <AutomationsPill
                         homeId={selectedHomeId!}
                         open={automationsOpen}
-                        onToggle={() => { setActionsOpen(false); setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
+                        onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                         hideAccessoryCounts={hideAccessoryCounts}
                         demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
@@ -7838,7 +7844,7 @@ const Dashboard = () => {
                       {showStatus && <StatusPill
                         accessories={summaryAccessories}
                         open={statusOpen}
-                        onToggle={() => { setActionsOpen(false); setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
+                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
                         isDarkBackground={isDarkBackground}
                       />}
                     </>
@@ -7854,18 +7860,19 @@ const Dashboard = () => {
                     live and could strand it open with no way to close it. */}
                 {isWholeHomeView && (
                   <>
-                    {showActions && <ActionsSection
+                    {showScenes && <ScenesSection
+                      homeId={selectedHomeId!}
                       accessories={actionAccessories}
                       homeLayout={homeLayout}
-                      homeId={selectedHomeId}
                       compact={compactMode}
                       isDarkBackground={isDarkBackground}
-                      open={actionsOpen}
+                      open={scenesOpen}
                       isViewOnly={isViewOnly}
+                      dndEnabled={dndEnabled}
                       onRunAction={runHomeAction}
                       onHideAction={selectedHomeId && !isViewOnly ? handleHideHomeAction : undefined}
+                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
                     />}
-                    {showScenes && <ScenesSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={scenesOpen} />}
                     {showAutomations && <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />}
                     {showStatus && <AnimatedCollapse open={statusOpen}>
                       <AreaSummary

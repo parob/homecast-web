@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { toast } from 'sonner';
-import { serverConnection } from '@/server/connection';
+import { serverConnection, invalidateCommunityAccessories } from '@/server/connection';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { VIRTUAL_ACCESSORIES } from '@/lib/graphql/queries';
 import { SAVE_VIRTUAL_ACCESSORY, DELETE_VIRTUAL_ACCESSORY } from '@/lib/graphql/mutations';
@@ -93,8 +93,19 @@ export function useVirtualAccessories(homeId: string | null, options: { active?:
    * Safe to do the moment a mutation resolves: the server acknowledges the
    * relay's `virtual_sync`/`virtual_unload` before returning, so by then the
    * relay is already answering `accessories.list` with the new set.
+   *
+   * Both caches, because they stack. Dropping only the HomeKit data cache made
+   * it re-read `accessories.list` — which in Community mode and Local Mode is
+   * answered from `communityCache`, a five-minute map that no virtual accessory
+   * write has ever touched. It handed back the identical pre-delete array, so
+   * the refetch changed nothing and a reload was the only cure.
+   *
+   * Deliberately unscoped: Local Mode translates the home id to this device's
+   * live HomeKit id before the request reaches that cache, so the id we hold
+   * here would match none of its keys. See invalidateCommunityAccessories.
    */
   const refreshAccessories = useCallback(() => {
+    invalidateCommunityAccessories();
     invalidateHomeKitCache('accessories', { prefix: true });
   }, []);
 

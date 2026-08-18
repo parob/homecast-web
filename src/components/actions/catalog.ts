@@ -18,7 +18,7 @@ import type { HomeActionId } from '@/lib/summary-sections';
 export type { HomeActionId };
 export { isOn };
 
-/** Key into the icon map in ActionsSection — keeps this module free of lucide imports. */
+/** Key into the icon map in ActionCard — keeps this module free of lucide imports. */
 export type HomeActionIcon =
   | 'lightbulb' | 'blinds' | 'lock' | 'fan' | 'outlet' | 'thermostat' | 'shield' | 'power';
 

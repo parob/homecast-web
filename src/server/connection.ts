@@ -126,6 +126,17 @@ const LAST_CONNECTED_AT_KEY = 'homecast-last-connected-at';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const communityCache = new Map<string, { data: unknown; timestamp: number; pending?: Promise<unknown> }>();
 
+/**
+ * Bumped by every invalidation, checked before every write-back.
+ *
+ * Clearing the map is not enough on its own: a read started before the
+ * invalidation resolves after it and writes its result in, restoring exactly
+ * the entry that was just dropped. The fetch is in flight for the whole of a
+ * relay round trip, which is far longer than the gap between "the mutation
+ * resolved" and "the UI re-reads" — so this is the common case, not a corner.
+ */
+let communityCacheGeneration = 0;
+
 // Actions that are safe to cache (read-only)
 const CACHEABLE_ACTIONS = new Set([
   'homes.list', 'rooms.list', 'zones.list', 'accessories.list',
@@ -158,6 +169,33 @@ const CACHE_INVALIDATING_ACTIONS = new Set([
  */
 export function clearCommunityCache(): void {
   communityCache.clear();
+  communityCacheGeneration++;
+}
+
+/**
+ * Drop the cached accessory reads, optionally for one home.
+ *
+ * The structural writes that travel as relay actions clear these entries
+ * themselves (see CACHE_INVALIDATING_ACTIONS). Virtual accessories do not:
+ * they are created and deleted over GraphQL, so nothing on that path ever
+ * reached this map, and a deleted one kept being served from here for the rest
+ * of the five minutes — which is why the tile only went away on a reload.
+ *
+ * Callers above the Local Mode id translation must pass no `homeId` at all.
+ * `LocalModeRouter.request` swaps the stable id for this device's live HomeKit
+ * id before calling in here, so the keys hold live ids while the dashboard
+ * holds stable ones; filtering on the id it has would match nothing and
+ * silently invalidate nothing.
+ */
+export function invalidateCommunityAccessories(homeId?: string): void {
+  for (const [key] of communityCache) {
+    if (!key.startsWith('accessories.list') && !key.startsWith('serviceGroups.list') &&
+        !key.startsWith('accessory.get') && !key.startsWith('automations.list')) continue;
+    // If we know which home, only invalidate that home's entries
+    if (homeId && !key.includes(`h:${homeId}`)) continue;
+    communityCache.delete(key);
+  }
+  communityCacheGeneration++;
 }
 
 function communityCacheKey(action: string, payload: Record<string, unknown>): string {
@@ -202,15 +240,10 @@ export async function communityRequest<T>(action: string, payload: Record<string
   // Scoped invalidation: only clear entries for the affected home (B10 fix — avoids full cache nuke).
   if (CACHE_INVALIDATING_ACTIONS.has(action)) {
     const result = await executeHomeKitAction(action, payload);
-    const homeId = payload.homeId as string | undefined;
-    for (const [key] of communityCache) {
-      if (key.startsWith('accessories.list') || key.startsWith('serviceGroups.list') ||
-          key.startsWith('accessory.get') || key.startsWith('automations.list')) {
-        // If we know which home, only invalidate that home's entries
-        if (homeId && !key.includes(`h:${homeId}`)) continue;
-        communityCache.delete(key);
-      }
-    }
+    // Scoped to the affected home when we know it (B10 fix — avoids a full
+    // cache nuke). This call site sits below the Local Mode id translation, so
+    // the id it holds is already in the same space as the keys.
+    invalidateCommunityAccessories(payload.homeId as string | undefined);
     return result as T;
   }
 
@@ -231,8 +264,14 @@ export async function communityRequest<T>(action: string, payload: Record<string
   // Stale cache hit: return stale data AND refresh in background
   if (cached) {
     if (!cached.pending) {
+      const gen = communityCacheGeneration;
       cached.pending = executeHomeKitAction(action, payload).then(result => {
-        communityCache.set(key, { data: result, timestamp: Date.now() });
+        // Anything invalidated while this was in flight was invalidated
+        // *because* the answer we are holding is out of date. Writing it back
+        // would undo the invalidation with the very data it was aimed at.
+        if (communityCacheGeneration === gen) {
+          communityCache.set(key, { data: result, timestamp: Date.now() });
+        }
         return result;
       }).finally(() => {
         const entry = communityCache.get(key);
@@ -243,8 +282,11 @@ export async function communityRequest<T>(action: string, payload: Record<string
   }
 
   // No cache: fetch and cache
+  const gen = communityCacheGeneration;
   const result = await executeHomeKitAction(action, payload);
-  communityCache.set(key, { data: result, timestamp: now });
+  if (communityCacheGeneration === gen) {
+    communityCache.set(key, { data: result, timestamp: now });
+  }
   return result as T;
 }
 

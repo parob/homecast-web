@@ -129,6 +129,13 @@ export function useEntityLayout<T extends object>(
 // Shared layout data type with background support
 export interface HomeLayoutData {
   roomOrder?: string[];
+  /**
+   * Arrangement of the Scenes section's cards, as prefixed keys
+   * (`action:lights`, `scene:<uuid>`). See lib/home-cards.ts — the two kinds
+   * share no id space, and a key that no longer resolves is skipped rather
+   * than pruned, because a shortcut comes and goes with the home's contents.
+   */
+  sceneCardOrder?: string[];
   visibility?: {
     hiddenRooms?: string[];
     /** Summary-row pills turned off for this home. Absent = all shown. */

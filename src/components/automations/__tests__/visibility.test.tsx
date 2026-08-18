@@ -70,7 +70,7 @@ describe('scenes/automations visibility with an empty list', () => {
   afterEach(() => cleanup());
 
   it('renders the Scenes pill when the home has no scenes', async () => {
-    renderWithApollo(<ScenesPill homeId={HOME_ID} open={false} onToggle={() => {}} />);
+    renderWithApollo(<ScenesPill homeId={HOME_ID} accessories={[]} homeLayout={null} open={false} onToggle={() => {}} />);
 
     const pill = await screen.findByRole('button', { name: /scenes/i });
     expect(pill).toBeTruthy();
@@ -87,7 +87,7 @@ describe('scenes/automations visibility with an empty list', () => {
   });
 
   it('keeps the "Create scene" button reachable with zero scenes', async () => {
-    renderWithApollo(<ScenesSection homeId={HOME_ID} open={true} />);
+    renderWithApollo(<ScenesSection homeId={HOME_ID} accessories={[]} homeLayout={null} open={true} onRunAction={async () => {}} />);
 
     expect(await screen.findByRole('button', { name: /create scene/i })).toBeTruthy();
   });
@@ -111,14 +111,14 @@ describe('scenes/automations visibility with an empty list', () => {
   });
 
   it('shows an empty-state explanation rather than a blank section', async () => {
-    renderWithApollo(<ScenesSection homeId={HOME_ID} open={true} />);
+    renderWithApollo(<ScenesSection homeId={HOME_ID} accessories={[]} homeLayout={null} open={true} onRunAction={async () => {}} />);
 
     expect(await screen.findByText(/no scenes yet/i)).toBeTruthy();
   });
 
   it('does not render a pill without a home', () => {
     const { container } = renderWithApollo(
-      <ScenesPill homeId="" open={false} onToggle={() => {}} />,
+      <ScenesPill homeId="" accessories={[]} homeLayout={null} open={false} onToggle={() => {}} />,
     );
     expect(container.querySelector('button')).toBeNull();
   });

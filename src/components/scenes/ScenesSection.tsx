@@ -1,44 +1,92 @@
-import { Fragment, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
-import { ChevronRight, Loader2, Play, Plus, Zap } from 'lucide-react';
+import { ChevronRight, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { getIconColor } from '@/components/widgets/iconColors';
 import { isBuiltInScene, isHiddenBuiltInScene } from '@/lib/scenes';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
-import {
-  ContextMenu, ContextMenuContent, ContextMenuLabel,
-  ContextMenuSeparator, ContextMenuTrigger,
-} from '@/components/ui/context-menu';
-import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { TileEditActions } from '@/components/shared/EditActions';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
 import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
 import { translateHomeKitError } from '@/lib/homekit-errors';
+import { DraggableGrid } from '@/components/shared/DraggableGrid';
+import { SortableItem } from '@/components/shared/SortableItem';
+import { DragHandleArea } from '@/components/shared/DragHandleArea';
+import {
+  isSummarySectionVisible, isHomeActionVisible, type HomeActionId,
+} from '@/lib/summary-sections';
+import { homeCardKey, applyHomeCardOrder } from '@/lib/home-cards';
+import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
+import { ActionCard } from '@/components/actions/ActionCard';
+import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
+import { useHomeActionRunner } from '@/components/actions/useHomeActionRunner';
+import type { RunHomeActionOverrides } from '@/components/actions/useRunHomeAction';
+import type { HomeLayoutData } from '@/hooks/useEntityLayout';
+import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { SceneFormDialog } from './SceneFormDialog';
+import { SceneCard } from './SceneCard';
 import type { HomeKitScene } from '@/lib/graphql/types';
 
-interface ScenesSectionProps {
-  homeId: string;
-  compact?: boolean;
-  isDarkBackground?: boolean;
-  /** Controlled expansion (pill in the summary row drives it). */
-  open: boolean;
+/**
+ * Scenes — one section holding two kinds of card.
+ *
+ * Shortcuts (derived from the home's accessories) and Apple Home scenes both
+ * mean "run something in this home", so they share a pill, a grid and an
+ * ordering. Each half has its own visibility switch; the section only
+ * disappears when both are off.
+ */
+
+/** Scenes worth showing: older relays list unconfigured built-ins. */
+function visibleScenes(scenes: HomeKitScene[] | undefined, layout: HomeLayoutData | null | undefined) {
+  if (!isSummarySectionVisible(layout, 'scenes')) return [];
+  return (scenes ?? []).filter(s => !isHiddenBuiltInScene(s));
+}
+
+function visibleActions(accessories: HomeKitAccessory[], layout: HomeLayoutData | null | undefined) {
+  if (!isSummarySectionVisible(layout, 'actions')) return [];
+  return deriveHomeActions(accessories).filter(a => isHomeActionVisible(layout, a.id));
+}
+
+type Card =
+  | { kind: 'action'; id: string; action: HomeAction }
+  | { kind: 'scene'; id: string; scene: HomeKitScene };
+
+const cardKey = (c: Card) => homeCardKey(c.kind, c.id);
+
+/**
+ * The cards, in the user's order.
+ *
+ * Shortcuts lead before anything has been dragged: they are the same in every
+ * home and the ones people reach for without looking.
+ */
+function useOrderedCards(
+  scenes: HomeKitScene[],
+  actions: HomeAction[],
+  order: string[] | undefined,
+): Card[] {
+  return useMemo(() => {
+    const cards: Card[] = [
+      ...actions.map(action => ({ kind: 'action' as const, id: action.id, action })),
+      ...scenes.map(scene => ({ kind: 'scene' as const, id: scene.id, scene })),
+    ];
+    return applyHomeCardOrder(cards, order, cardKey);
+  }, [scenes, actions, order]);
 }
 
 /**
  * Compact bubble button for the sensor-summary row. Toggles the
  * ScenesSection content rendered elsewhere on the page.
  */
-export function ScenesPill({ homeId, open, onToggle, isDarkBackground, hideAccessoryCounts }: {
+export function ScenesPill({ homeId, accessories, homeLayout, open, onToggle, isDarkBackground, hideAccessoryCounts }: {
   homeId: string;
+  accessories: HomeKitAccessory[];
+  homeLayout: HomeLayoutData | null | undefined;
   open: boolean;
   onToggle: () => void;
   isDarkBackground?: boolean;
@@ -54,7 +102,8 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground, hideAcces
   // Always render for a real home — hiding at zero made the section (and the
   // "Create scene" button inside it) unreachable, so a home with no scenes had no
   // way to create its first one.
-  const count = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s)).length;
+  const count = visibleScenes(data?.scenes, homeLayout).length
+    + visibleActions(accessories, homeLayout).length;
   if (!homeId) return null;
 
   return (
@@ -74,10 +123,34 @@ export function ScenesPill({ homeId, open, onToggle, isDarkBackground, hideAcces
   );
 }
 
-const sceneColors = getIconColor('scene');
+interface ScenesSectionProps {
+  homeId: string;
+  /** The whole home's accessories — shortcuts are home-wide, like their subtitles. */
+  accessories: HomeKitAccessory[];
+  homeLayout: HomeLayoutData | null | undefined;
+  compact?: boolean;
+  isDarkBackground?: boolean;
+  /** Controlled expansion (pill in the summary row drives it). */
+  open: boolean;
+  isViewOnly?: boolean;
+  /** Whether dragging is live here. Desktop always; touch only in Edit Layout. */
+  dndEnabled?: boolean;
+  onRunAction: (action: HomeAction, opts?: RunHomeActionOverrides) => Promise<void>;
+  /**
+   * Turn a shortcut off for this home. Writes the same per-home `hiddenActions`
+   * list Settings writes, so hiding one here unticks it there. Absent where
+   * there is nothing to write to (a shared home, a view-only member).
+   */
+  onHideAction?: (id: HomeActionId) => void;
+  /** Persist the card arrangement. Absent where the layout can't be written. */
+  onReorderCards?: (order: string[]) => void;
+}
 
-export function ScenesSection({ homeId, compact, isDarkBackground, open }: ScenesSectionProps) {
-  const [runningId, setRunningId] = useState<string | null>(null);
+export function ScenesSection({
+  homeId, accessories, homeLayout, compact, isDarkBackground, open, isViewOnly,
+  dndEnabled = true, onRunAction, onHideAction, onReorderCards,
+}: ScenesSectionProps) {
+  const [runningSceneId, setRunningSceneId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<HomeKitScene | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -95,22 +168,27 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
-  const { editMode } = useLayoutEdit();
+  const { editMode, touchMode } = useLayoutEdit();
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
-  // Filter here too — older relays list unconfigured built-ins
-  const scenes = (data?.scenes ?? []).filter(s => !isHiddenBuiltInScene(s));
+  const scenes = visibleScenes(data?.scenes, homeLayout);
+  const actions = visibleActions(accessories, homeLayout);
+  const cards = useOrderedCards(scenes, actions, homeLayout?.sceneCardOrder);
+
+  const runner = useHomeActionRunner(onRunAction);
+
+  const openEditor = (scene: HomeKitScene) => { setEditingScene(scene); setFormOpen(true); };
 
   const handleRun = async (scene: HomeKitScene) => {
-    setRunningId(scene.id);
+    setRunningSceneId(scene.id);
     try {
       await executeScene({ variables: { sceneId: scene.id, homeId } });
       toast.success(`Ran "${scene.name}"`);
     } catch (e: any) {
       toast.error('Scene failed', { description: String(e?.message ?? e) });
     } finally {
-      setRunningId(null);
+      setRunningSceneId(null);
     }
   };
 
@@ -137,101 +215,89 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
     }
   };
 
+  const renderCard = (card: Card) => card.kind === 'action' ? (
+    <ActionCard
+      action={card.action}
+      homeId={homeId}
+      isDarkBackground={isDarkBackground}
+      isViewOnly={isViewOnly}
+      editMode={editMode}
+      touchMode={touchMode}
+      running={runner.runningId === card.action.id}
+      progress={runner.runningId === card.action.id ? runner.progress : null}
+      runningTextOf={runner.runningTextOf}
+      onPress={runner.press}
+      onRun={runner.run}
+      onHideAction={onHideAction}
+    />
+  ) : (
+    <SceneCard
+      scene={card.scene}
+      homeId={homeId}
+      isDarkBackground={isDarkBackground}
+      editMode={editMode}
+      running={runningSceneId === card.scene.id}
+      onRun={handleRun}
+      onEdit={openEditor}
+    />
+  );
+
+  const canShowScenes = isSummarySectionVisible(homeLayout, 'scenes');
+  const itemIds = cards.map(cardKey);
+
   return (
     <>
       <AnimatedCollapse open={open}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
-          {scenes.length === 0 && (
+          {cards.length === 0 && canShowScenes && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               No scenes yet. A scene sets several accessories at once — create one to get started.
             </p>
           )}
-          <div className={
-            compact
-              ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
-              : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
-          }>
-            {scenes.map(scene => {
-              const tile = (
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={editMode ? undefined : () => { setEditingScene(scene); setFormOpen(true); }}
-                onKeyDown={(e) => { if (!editMode && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setEditingScene(scene); setFormOpen(true); } }}
-                className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`}
-                style={{ contain: 'layout style paint' }}
+          <DraggableGrid
+            itemIds={itemIds}
+            onReorder={(order) => onReorderCards?.(order)}
+            enabled={dndEnabled && !!onReorderCards}
+            touchMode={touchMode}
+            renderDragOverlay={(activeId) => {
+              const card = cards.find(c => cardKey(c) === activeId);
+              return card ? <div className="w-full opacity-90">{renderCard(card)}</div> : null;
+            }}
+          >
+            <div className={
+              compact
+                ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
+                : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
+            }>
+              {cards.map(card => (
+                <SortableItem key={cardKey(card)} id={cardKey(card)} disabled={!dndEnabled || !onReorderCards}>
+                  <DragHandleArea>{renderCard(card)}</DragHandleArea>
+                </SortableItem>
+              ))}
+              {!editMode && canShowScenes && <button
+                onClick={() => {
+                  if (relayCannotEdit) { setViewOnlyOpen(true); return; }
+                  setEditingScene(null);
+                  setFormOpen(true);
+                }}
+                className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
+                  isDarkBackground
+                    ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
+                    : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
+                }`}
               >
-                {/* Blur layer — matches WidgetWrapper */}
-                <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80'} transform-gpu`} />
-                <div className="relative z-[1] flex items-center gap-2 p-3">
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-sm ${sceneColors.bg} ${sceneColors.text}`}>
-                    <Zap className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium break-words line-clamp-2 transition-colors duration-300 ${isDarkBackground ? 'text-white' : ''}`}>{scene.name}</p>
-                    <p className={`text-[11px] transition-colors duration-300 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60'}`}>
-                      {scene.automationName
-                        ? `Used by automation "${scene.automationName}"`
-                        : isBuiltInScene(scene)
-                          ? `Built-in · ${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`
-                          : `${scene.actionCount} action${scene.actionCount === 1 ? '' : 's'}`}
-                    </p>
-                  </div>
-                  {!editMode && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleRun(scene); }}
-                    disabled={runningId === scene.id}
-                    title="Run scene"
-                    className={`shrink-0 rounded-lg p-1.5 transition-colors ${isDarkBackground ? 'hover:bg-white/10 text-white/70' : 'hover:bg-muted text-muted-foreground'}`}
-                  >
-                    {runningId === scene.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  )}
-                </div>
-              </div>
-              );
-              const tab = { type: 'scene' as const, id: scene.id, name: scene.name, homeId: homeId ?? undefined };
-
-              // Editing carries the button on the tile; otherwise a long press
-              // reaches the same thing without entering a mode for it.
-              if (editMode) {
-                return (
-                  <div key={scene.id} className="relative">
-                    {tile}
-                    <TileEditActions action={null} tab={tab} />
-                  </div>
-                );
-              }
-              return (
-                <ContextMenu key={scene.id}>
-                  <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
-                  <ContextMenuContent className="w-56">
-                    <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
-                      {scene.name}
-                    </ContextMenuLabel>
-                    <ContextMenuSeparator />
-                    <PinTabMenuItem tab={tab} />
-                  </ContextMenuContent>
-                </ContextMenu>
-              );
-            })}
-            {!editMode && <button
-              onClick={() => {
-                if (relayCannotEdit) { setViewOnlyOpen(true); return; }
-                setEditingScene(null);
-                setFormOpen(true);
-              }}
-              className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
-                isDarkBackground
-                  ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
-                  : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
-              }`}
-            >
-              <Plus className="h-3.5 w-3.5" /> Create scene
-            </button>}
-          </div>
+                <Plus className="h-3.5 w-3.5" /> Create scene
+              </button>}
+            </div>
+          </DraggableGrid>
         </div>
       </AnimatedCollapse>
+
+      <ActionConfirmDialog
+        action={runner.confirming}
+        onCancel={() => runner.setConfirming(null)}
+        onConfirm={(action) => { runner.setConfirming(null); runner.run(action); }}
+      />
 
       {viewOnlyOpen && (
         <ViewOnlyHomeDialog open onOpenChange={setViewOnlyOpen} homeId={homeId} subject="scene" />

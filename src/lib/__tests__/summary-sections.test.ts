@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   SUMMARY_SECTION_ORDER,
+  SUMMARY_PILL_ORDER,
+  isScenesSectionVisible,
   isSummarySectionVisible,
   isHomeActionVisible,
   withSummarySectionVisibility,
@@ -96,5 +98,44 @@ describe('merging into an existing layout', () => {
     expect(next.visibility.hiddenRooms).toEqual(['r3']);
     expect(next.background).toEqual(prev.background);
     expect(next.visibility.hiddenSummarySections).toEqual(['status']);
+  });
+});
+
+describe('the merged Scenes section', () => {
+  it('renders three pills, with Scenes leading', () => {
+    expect(SUMMARY_PILL_ORDER).toEqual(['scenes', 'automations', 'status']);
+  });
+
+  it('keeps `actions` in the canonical order even though it has no pill', () => {
+    // toggleIn filters every write through SUMMARY_SECTION_ORDER. Drop the id
+    // and the next toggle of anything silently un-hides a user's shortcuts.
+    expect(SUMMARY_SECTION_ORDER).toContain('actions');
+  });
+
+  it('shows the section while either half is on', () => {
+    expect(isScenesSectionVisible(null)).toBe(true);
+    expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['scenes'] } })).toBe(true);
+    expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['actions'] } })).toBe(true);
+  });
+
+  it('hides the section only when both halves are off', () => {
+    expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['scenes', 'actions'] } })).toBe(false);
+  });
+
+  it('leaves a pre-merge blob that hid Actions hiding only the shortcuts', () => {
+    const layout = { visibility: { hiddenSummarySections: ['actions'] } };
+
+    expect(isSummarySectionVisible(layout, 'actions')).toBe(false);
+    expect(isSummarySectionVisible(layout, 'scenes')).toBe(true);
+    expect(isScenesSectionVisible(layout)).toBe(true);
+  });
+
+  it('survives a round trip through a write', () => {
+    // The regression this guards: normalising through an order that had lost
+    // `actions` returned [] and turned the shortcuts back on.
+    const hidden = withSummarySectionVisibility(['actions'], 'status', false);
+
+    expect(hidden).toContain('actions');
+    expect(hidden).toContain('status');
   });
 });

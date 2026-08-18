@@ -34,8 +34,8 @@ const hidden = (...ids: SummarySectionId[]): HomeLayoutData =>
 
 describe('the edit-mode summary row', () => {
   it('shows every section, including the hidden ones', () => {
-    setup(hidden('scenes', 'status'));
-    for (const label of ['Actions', 'Scenes', 'Automations', 'Status']) {
+    setup(hidden('scenes', 'actions', 'status'));
+    for (const label of ['Scenes', 'Automations', 'Status']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
@@ -43,8 +43,8 @@ describe('the edit-mode summary row', () => {
   it('still opens and closes a section — editing does not freeze the row', () => {
     const { onToggleOpen, onToggleHidden } = setup();
 
-    fireEvent.click(screen.getByRole('button', { expanded: false, name: /Actions/ }));
-    expect(onToggleOpen).toHaveBeenCalledWith('actions');
+    fireEvent.click(screen.getByRole('button', { expanded: false, name: /Scenes/ }));
+    expect(onToggleOpen).toHaveBeenCalledWith('scenes');
     // Opening is not hiding.
     expect(onToggleHidden).not.toHaveBeenCalled();
   });
@@ -65,7 +65,9 @@ describe('the edit-mode summary row', () => {
   });
 
   it('turns a hidden section back on, and offers nothing to expand', () => {
-    const { onToggleOpen, onToggleHidden } = setup(hidden('scenes'));
+    // Both halves off — Scenes survives while either is on, so hiding the pill
+    // means hiding both.
+    const { onToggleOpen, onToggleHidden } = setup(hidden('scenes', 'actions'));
 
     // Nothing to open: the section does not render while hidden, so there is no
     // expand target that would do nothing.
@@ -78,7 +80,7 @@ describe('the edit-mode summary row', () => {
 
   it('treats a home with no stored layout as everything shown', () => {
     setup(null);
-    for (const label of ['Actions', 'Scenes', 'Automations', 'Status']) {
+    for (const label of ['Scenes', 'Automations', 'Status']) {
       expect(screen.getByRole('button', { name: `Hide ${label}` })).toBeTruthy();
     }
   });
@@ -86,8 +88,17 @@ describe('the edit-mode summary row', () => {
   it('says which way it goes in words, not by colour', () => {
     setup(hidden('status'));
     // The badge says which way it goes, in words, matching the tile buttons.
-    expect(screen.getByRole('button', { name: 'Hide Actions' }).textContent).toBe('Hide');
+    expect(screen.getByRole('button', { name: 'Hide Scenes' }).textContent).toBe('Hide');
     expect(screen.getByRole('button', { name: 'Unhide Status' }).textContent).toBe('Unhide');
+  });
+
+  it('keeps the Scenes pill while only one of its halves is off', () => {
+    // Shortcuts off, Apple Home scenes still on: the pill is still a pill, and
+    // its eye still offers to hide it — not to bring the other half back.
+    setup(hidden('actions'));
+
+    expect(screen.getByRole('button', { name: 'Hide Scenes' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Unhide Scenes' })).toBeNull();
   });
 });
 

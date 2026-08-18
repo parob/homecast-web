@@ -1,10 +1,67 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest';
+/**
+ * The shortcut cards, exercised where they actually live — inside the Scenes
+ * section, which holds them alongside Apple Home's scenes. The scenes query
+ * answers empty throughout, so only the shortcut half is under test here.
+ */
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react';
+import { MockedProvider } from '@apollo/client/testing/react';
+import type { MockLink } from '@apollo/client/testing';
+
+// config.ts reads localStorage at module scope, which jsdom doesn't provide here.
+vi.mock('@/lib/config', () => ({
+  isCommunity: false,
+  getCommunityMode: () => null,
+  isRelayMode: () => false,
+  isClientMode: () => false,
+  isRelaySetupComplete: () => false,
+  getRelayAddress: () => null,
+  config: { isCommunity: false, apiBase: 'https://api.test', graphqlUrl: 'https://api.test/', wsUrl: 'wss://api.test/ws' },
+}));
+
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
-import { ActionsSection } from '../ActionsSection';
+import { ScenesSection } from '@/components/scenes/ScenesSection';
+import { GET_SCENES, GET_HOMES } from '@/lib/graphql/queries';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
+
+const HOME_ID = 'HOME-1';
+
+// jsdom lacks this; AnimatedCollapse touches it on mount.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+/**
+ * ScenesSection with an empty scene list behind it. `homeId` is no longer
+ * optional in real use — the section is per-home — so it always has one here.
+ */
+function Shortcuts({ homeId = HOME_ID, ...props }: Partial<React.ComponentProps<typeof ScenesSection>> & {
+  accessories: HomeKitAccessory[];
+  onRunAction: React.ComponentProps<typeof ScenesSection>['onRunAction'];
+}) {
+  const mocks: MockLink.MockedResponse[] = [
+    {
+      request: { query: GET_SCENES, variables: { homeId } },
+      result: { data: { scenes: [] } },
+    },
+    // useRelayCannotEdit asks for these. It ignores its own errors, so an
+    // unmocked query would still pass — just noisily, on every render.
+    {
+      request: { query: GET_HOMES },
+      result: { data: { homes: [{ id: homeId, name: 'Test Home', isPrimary: true, role: 'owner', isAdmin: true }] } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+  ];
+  return (
+    <MockedProvider mocks={mocks}>
+      <ScenesSection homeLayout={null} {...props} homeId={homeId} open={props.open ?? true} />
+    </MockedProvider>
+  );
+}
 
 function acc(id: string, serviceType: string, chars: Array<[string, unknown]>): HomeKitAccessory {
   return {
@@ -47,7 +104,7 @@ const half = (id: string, direction: 'on' | 'off') =>
 
 function renderSection(
   accessories: HomeKitAccessory[],
-  props: Partial<React.ComponentProps<typeof ActionsSection>> = {},
+  props: Partial<React.ComponentProps<typeof Shortcuts>> = {},
   layoutEdit: { touchMode: boolean; editMode: boolean } = { touchMode: false, editMode: false },
   pins: Record<string, unknown> = { enabled: false, isPinned: () => false, isFull: false, toggle: () => {} },
 ) {
@@ -55,7 +112,7 @@ function renderSection(
   render(
     <PinnedTabsProvider value={pins as never}>
     <LayoutEditProvider value={layoutEdit}>
-      <ActionsSection
+      <Shortcuts
         accessories={accessories}
         homeLayout={null}
         open
@@ -68,8 +125,11 @@ function renderSection(
   return { onRunAction };
 }
 
-describe('ActionsSection', () => {
+describe('shortcut cards', () => {
   afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
 
   it('renders one card per action, labelled by direction and subtitled by state', () => {
     renderSection([lightOn, lightOff]);
@@ -145,7 +205,7 @@ describe('ActionsSection', () => {
       return new Promise<void>(resolve => { release = resolve; });
     });
     render(
-      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
@@ -166,7 +226,7 @@ describe('ActionsSection', () => {
     const resolvers: Array<() => void> = [];
     const onRunAction = vi.fn(() => new Promise<void>(resolve => { resolvers.push(resolve); }));
     render(
-      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
@@ -183,7 +243,7 @@ describe('ActionsSection', () => {
     const onRunAction = vi.fn((_a: unknown, _opts?: { signal?: AbortSignal }) =>
       new Promise<void>(resolve => { release = resolve; }));
     render(
-      <ActionsSection accessories={[lockOpen]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lockOpen]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(card('locks'));
@@ -201,7 +261,7 @@ describe('ActionsSection', () => {
     // the opposite exactly when the user had just overridden it.
     const onRunAction = vi.fn(() => new Promise<void>(() => {}));
     render(
-      <ActionsSection accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
     );
     fireEvent.click(half('lights', 'on'));
     expect(within(card('lights')).getByText(/Turning on/)).toBeTruthy();
@@ -228,7 +288,7 @@ describe('ActionsSection', () => {
     // enough to wrap into the two-line clamp and be cut off.
     const onRunAction = vi.fn(() => new Promise<void>(() => {}));
     render(
-      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
     fireEvent.click(switchOn('lights'));
 
@@ -244,7 +304,7 @@ describe('ActionsSection', () => {
       return new Promise<void>(resolve => { release = resolve; });
     });
     render(
-      <ActionsSection accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
@@ -319,7 +379,7 @@ describe('ActionsSection', () => {
   it('renders nothing for a home with no actionable accessories', () => {
     const sensor = acc('m', 'motion_sensor', [['motion_detected', true]]);
     const { container } = render(
-      <ActionsSection accessories={[sensor]} homeLayout={null} open onRunAction={vi.fn()} />
+      <Shortcuts accessories={[sensor]} homeLayout={null} open onRunAction={vi.fn()} />
     );
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });
@@ -327,6 +387,9 @@ describe('ActionsSection', () => {
 
 describe('hiding an action', () => {
   afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
 
   it('offers Hide Action on right-click, and reports which one', () => {
     const onHideAction = vi.fn();
@@ -361,6 +424,9 @@ describe('hiding an action', () => {
 
 describe('pinning from a long press', () => {
   afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
 
   const PINS_ON = { enabled: true, isPinned: () => false, isFull: false, toggle: vi.fn() };
 

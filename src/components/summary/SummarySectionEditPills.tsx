@@ -2,8 +2,9 @@ import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EditActionButton } from '@/components/shared/EditActions';
 import {
-  SUMMARY_SECTION_ORDER,
-  SUMMARY_SECTION_META,
+  SUMMARY_PILL_ORDER,
+  SUMMARY_PILL_LABEL,
+  isScenesSectionVisible,
   isSummarySectionVisible,
   type SummarySectionId,
 } from '@/lib/summary-sections';
@@ -12,7 +13,7 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 /**
  * The summary row while Edit Layout is running.
  *
- * A stand-in for the four live pills rather than a flag threaded through them,
+ * A stand-in for the live pills rather than a flag threaded through them,
  * because it has to do one thing they cannot: offer a *hidden* section back. A
  * hidden section renders no pill at all, and the live pills also hide themselves
  * when they have nothing to show — no scenes, no actions. Both are right in
@@ -40,16 +41,20 @@ export function SummarySectionEditPills({
 }: {
   layout: HomeLayoutData | null | undefined;
   isDarkBackground?: boolean;
-  /** Which section is expanded. The four are mutually exclusive. */
+  /** Which section is expanded. They are mutually exclusive. */
   openSection: SummarySectionId | null;
   onToggleOpen: (id: SummarySectionId) => void;
   onToggleHidden: (id: SummarySectionId, visible: boolean) => void;
 }) {
   return (
     <>
-      {SUMMARY_SECTION_ORDER.map((id) => {
-        const label = SUMMARY_SECTION_META[id].label;
-        const visible = isSummarySectionVisible(layout, id);
+      {SUMMARY_PILL_ORDER.map((id) => {
+        const label = SUMMARY_PILL_LABEL[id];
+        // Scenes holds two halves behind two switches, and survives while
+        // either is on — the eye here turns the pill off, not one half of it.
+        const visible = id === 'scenes'
+          ? isScenesSectionVisible(layout)
+          : isSummarySectionVisible(layout, id);
         const open = openSection === id;
 
         if (!visible) {

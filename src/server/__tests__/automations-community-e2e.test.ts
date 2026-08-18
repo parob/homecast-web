@@ -72,9 +72,39 @@ vi.mock('@/relay/local-handler', () => ({
 vi.mock('@/server/connection', () => ({ communityRequest: vi.fn(async () => null) }));
 
 // The engine reload is fire-and-forget; keep it out of these tests.
+/**
+ * The virtual accessory engine sync, held open on demand.
+ *
+ * `accessories.list` is answered from the running engine, so a resolver that
+ * fires this off without waiting can return while the engine still holds the
+ * helper — and the caller's own refetch, which happens immediately after, still
+ * sees it. `blockVirtualReload()` lets a test prove the resolver waits.
+ */
+let releaseVirtualReload: (() => void) | null = null;
+let announceStarted: (() => void) | null = null;
+const reloadCommunityVirtualAccessories = vi.fn(async () => {
+  announceStarted?.();
+  if (releaseVirtualReload) await new Promise<void>(resolve => { releaseVirtualReload = resolve; });
+});
+
+/**
+ * Hold the engine sync open. Await `started` rather than counting microtasks —
+ * the save path writes to IndexedDB on the way here, and how many ticks that
+ * takes is the storage layer's business, not this test's.
+ */
+function blockVirtualReload() {
+  releaseVirtualReload = () => {};
+  const started = new Promise<void>(resolve => { announceStarted = resolve; });
+  return {
+    started,
+    release: () => { const r = releaseVirtualReload; releaseVirtualReload = null; announceStarted = null; r?.(); },
+  };
+}
+
 vi.mock('@/server/community-automation', () => ({
   reloadCommunityAutomations: vi.fn(async () => {}),
   initCommunityAutomationEngine: vi.fn(async () => {}),
+  reloadCommunityVirtualAccessories: () => reloadCommunityVirtualAccessories(),
 }));
 
 import { handleGraphQL } from '@/server/local-graphql';
@@ -250,5 +280,89 @@ describe('Community mode — scenes', () => {
     const data = await gql('GetScenes', { homeId: HOME_A });
 
     expect(data.scenes[0].name).toBe('Movie Night');
+  });
+});
+
+/**
+ * A deleted virtual accessory survived on screen until the page was reloaded.
+ *
+ * Two things kept it alive; this suite guards the resolver's half. The tile is
+ * painted from `accessories.list`, which `listVirtualAccessories` answers from
+ * the *running engine* — so resolving the mutation before the engine has been
+ * told leaves the caller's own refetch reading the pre-delete set.
+ */
+describe('Community mode — virtual accessories', () => {
+  beforeEach(async () => {
+    reloadCommunityVirtualAccessories.mockClear();
+    releaseVirtualReload = null;
+    announceStarted = null;
+    for (const row of await db.getVirtualAccessories(HOME_A)) {
+      await db.deleteVirtualAccessory(row.id);
+    }
+  });
+
+  const helper = (name: string) =>
+    JSON.stringify({ type: 'switch', name, homeId: HOME_A, initialValue: false });
+
+  it('waits for the engine to drop the helper before resolving the delete', async () => {
+    const saved = await gql('SaveVirtualAccessory', {
+      homeId: HOME_A, accessoryId: null, data: helper('Away Mode'),
+    });
+    const id = saved.saveVirtualAccessory.entityId;
+
+    const gate = blockVirtualReload();
+    let resolved = false;
+    const pending = gql('DeleteVirtualAccessory', { accessoryId: id }).then(r => { resolved = true; return r; });
+
+    await gate.started;
+    // A macrotask, so every queued microtask drains first. If the resolver had
+    // fired this off with `void` it would have returned long before now, with
+    // the engine still holding the helper.
+    await new Promise(r => setTimeout(r, 0));
+    expect(resolved).toBe(false);
+
+    gate.release();
+    await pending;
+    expect(resolved).toBe(true);
+  });
+
+  it('waits for the engine sync before resolving a save', async () => {
+    const gate = blockVirtualReload();
+    let resolved = false;
+    const pending = gql('SaveVirtualAccessory', {
+      homeId: HOME_A, accessoryId: null, data: helper('Guest Mode'),
+    }).then(r => { resolved = true; return r; });
+
+    await gate.started;
+    await new Promise(r => setTimeout(r, 0));
+    expect(resolved).toBe(false);
+
+    gate.release();
+    await pending;
+    expect(resolved).toBe(true);
+  });
+
+  it('answers the delete with a scalar, the shape the client document selects', async () => {
+    const saved = await gql('SaveVirtualAccessory', {
+      homeId: HOME_A, accessoryId: null, data: helper('Holiday Mode'),
+    });
+
+    const data = await gql('DeleteVirtualAccessory', {
+      accessoryId: saved.saveVirtualAccessory.entityId,
+    });
+
+    // DELETE_VIRTUAL_ACCESSORY selects this field as a leaf — an object here is
+    // a shape only Community mode would ever put in the Apollo cache.
+    expect(data.deleteVirtualAccessory).toBe(true);
+  });
+
+  it('really removes the row', async () => {
+    const saved = await gql('SaveVirtualAccessory', {
+      homeId: HOME_A, accessoryId: null, data: helper('Night Mode'),
+    });
+    await gql('DeleteVirtualAccessory', { accessoryId: saved.saveVirtualAccessory.entityId });
+
+    const data = await gql('VirtualAccessories', { homeId: HOME_A });
+    expect(data.virtualAccessories).toHaveLength(0);
   });
 });

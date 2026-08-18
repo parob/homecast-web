@@ -14,7 +14,7 @@ import {
 import { describeError } from '@/lib/describe-error';
 
 /**
- * Which Actions sit inside this home's Actions pill.
+ * Which shortcuts sit inside this home's Scenes section.
  *
  * Actions are *derived* from the home's accessories, never authored, so there
  * is nothing to create or edit here — only the choice of which derived
@@ -25,9 +25,9 @@ import { describeError } from '@/lib/describe-error';
  * mutates, so a flip lands on the dashboard behind the dialog in the same tick.
  * Don't add a refetch.
  *
- * This page is always reachable, even when the Actions pill itself is switched
- * off — a navigation row that disappears when you flip a switch on a different
- * page is worse than a page that explains why it is empty.
+ * This page is always reachable, even when the shortcuts are switched off in
+ * the Scenes section — a navigation row that disappears when you flip a switch
+ * on a different page is worse than a page that explains why it is empty.
  */
 export function HomeActionsSection({ home }: { home: { id: string; name: string } }) {
   const { layout, updateLayout, loading } = useHomeLayout(home.id);
@@ -56,8 +56,8 @@ export function HomeActionsSection({ home }: { home: { id: string; name: string 
 
       {!actionsShown && (
         <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-          The Actions pill is turned off for this home, so none of these appear on the home screen.
-          Turn it back on under Home Screen.
+          Shortcuts are turned off for this home, so none of these appear on the home screen.
+          Turn them back on under Home Screen.
         </p>
       )}
 

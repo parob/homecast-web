@@ -563,14 +563,24 @@ async function resolveOperation(
       );
       // Same reason as automations: cloud gets a server push, Community has to
       // tell its own engine or the helper won't exist until the next restart.
-      void reloadCommunityVirtualAccessories();
+      //
+      // Awaited, not fired off: `accessories.list` reads the running engine, so
+      // resolving before the sync lands lets the very next list still answer
+      // with the old set — which is the caller's own refetch, every time.
+      await reloadCommunityVirtualAccessories();
       return { saveVirtualAccessory: toStoredVirtualAccessory(helper) };
     }
 
     case 'DeleteVirtualAccessory':
       await db.deleteVirtualAccessory(variables.accessoryId as string);
-      void reloadCommunityVirtualAccessories();
-      return { deleteVirtualAccessory: { success: true, __typename: 'DeleteResult' } };
+      // Awaited for the same reason as the save above — here it is what makes
+      // the deleted tile actually go away instead of surviving until a reload.
+      await reloadCommunityVirtualAccessories();
+      // A scalar, because the client document selects this field as a leaf
+      // (`mutations.ts` DELETE_VIRTUAL_ACCESSORY) — which is only valid against
+      // the cloud's `Boolean`. Answering with an object put a shape into the
+      // Apollo cache that CE alone would ever see.
+      return { deleteVirtualAccessory: true };
 
     // --- Execution History ---
     // GET_EXECUTION_HISTORY selects `hcExecutionTraces` with the StoredEntityInfo
