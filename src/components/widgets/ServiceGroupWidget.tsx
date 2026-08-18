@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useContext, useMemo } from 'react';
+import React, { useState, useCallback, useContext, useMemo, useLayoutEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TriStateToggle } from '@/components/ui/tri-state-toggle';
 import { isOn as isPowerOn, triState, powerCountDescription } from '@/components/widgets/shared/powerState';
@@ -61,6 +61,61 @@ import {
   LineChart,
   Tag,
 } from 'lucide-react';
+
+/** The member grid scrolls past this many rows — an expanded group that grows
+ *  with its membership stops being a panel and becomes a page. */
+const MEMBER_ROWS_VISIBLE = 2;
+const MEMBER_GRID_COLUMNS = 2;
+/** The inline (non-compact) card lists members one per row instead. */
+const MEMBER_LIST_COLUMNS = 1;
+
+/**
+ * Max-height of the first `visibleRows` rows of a grid, measured from the DOM
+ * rather than written down as a rem value.
+ *
+ * The tiles are not a uniform height — a light that is on carries a brightness
+ * slider and a switch does not — so any fixed height either clips a tall row or
+ * leaves a short one floating above dead space. Measuring to the top of the
+ * first row we mean to hide cuts exactly between two rows, whatever they are.
+ */
+function useGridRowCap(itemCount: number, columns: number, visibleRows: number) {
+  // A callback ref, not useRef: the grid lives inside a collapse and an overlay
+  // that mount it a render or two after the tile is asked to expand, and a
+  // plain ref would still be null the one time the effect ran.
+  const [grid, setGrid] = useState<HTMLDivElement | null>(null);
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const firstHiddenIndex = columns * visibleRows;
+    if (!grid || itemCount <= firstHiddenIndex) {
+      setMaxHeight(null);
+      return;
+    }
+    const measure = () => {
+      const visible = Array.from(grid.children).slice(0, firstHiddenIndex) as HTMLElement[];
+      if (!visible.length || !grid.children[firstHiddenIndex]) return;
+      // Bottom edge of the tallest tile in the last visible row, rather than
+      // the top of the first hidden one minus a gap: that arithmetic only works
+      // for a gap, and the list variant spaces its rows with margins.
+      const top = visible[0].offsetTop;
+      const bottom = Math.max(...visible.map(c => c.offsetTop + c.offsetHeight));
+      const style = getComputedStyle(grid);
+      // The cap is the element's own box, so its padding rides along with it.
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      const height = bottom - top + padding;
+      if (height > 0) setMaxHeight(height);
+    };
+    measure();
+    // Re-measure as tiles grow: switching a member on opens its slider, which
+    // makes its row taller than the one just measured.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    for (const child of Array.from(grid.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [grid, itemCount, columns, visibleRows]);
+
+  return [setGrid, maxHeight] as const;
+}
 
 export interface ServiceGroupWidgetProps {
   group: HomeKitServiceGroup;
@@ -142,6 +197,19 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const [expandedAccessoryId, setExpandedAccessoryId] = useState<string | null>(null);
   const [isWidgetExpanded, setIsWidgetExpanded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Two caps, because the expanded card has two shapes: a compact tile opens
+  // into an overlay with a two-column grid of member tiles, and the full-size
+  // card expands in place into a one-per-row list. Both stop at two rows.
+  const [membersGridRef, membersGridMaxHeight] = useGridRowCap(
+    accessories.length,
+    MEMBER_GRID_COLUMNS,
+    MEMBER_ROWS_VISIBLE,
+  );
+  const [membersListRef, membersListMaxHeight] = useGridRowCap(
+    accessories.length,
+    MEMBER_LIST_COLUMNS,
+    MEMBER_ROWS_VISIBLE,
+  );
   const { isDarkBackground } = useBackgroundContext();
 
   // Get drag handle from SortableItem context (if inside a sortable)
@@ -688,7 +756,11 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded && !showCompact}>
         <CardContent className={`relative px-3 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-          <div className={`space-y-2 pt-1 ${accessories.length > 6 ? 'max-h-[17rem] overflow-y-auto pr-1' : ''}`}>
+          <div
+            ref={membersListRef}
+            className={`space-y-2 pt-1 ${membersListMaxHeight !== null ? 'overflow-y-auto pr-1' : ''}`}
+            style={membersListMaxHeight !== null ? { maxHeight: membersListMaxHeight } : undefined}
+          >
             {accessories.map((accessory) => {
               const isBlind = accessory.services?.some(s => s.serviceType === 'window_covering');
               const serviceType = getPrimaryServiceType(accessory);
@@ -995,7 +1067,11 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               A list of name-plus-toggle rows could only ever switch a light on
               or off; a tile opens into the light's own expanded controls, which
               is what you want when one bulb in the group is wrong. */}
-          <div className={`grid grid-cols-2 gap-[10px] pt-1 ${accessories.length > 4 ? 'max-h-[19rem] overflow-y-auto pr-1' : ''}`}>
+          <div
+            ref={membersGridRef}
+            className={`grid grid-cols-2 gap-[10px] pt-1 ${membersGridMaxHeight !== null ? 'overflow-y-auto pr-1' : ''}`}
+            style={membersGridMaxHeight !== null ? { maxHeight: membersGridMaxHeight } : undefined}
+          >
             {accessories.map((accessory) => {
               const isAccessoryExpanded = expandedAccessoryId === accessory.id;
               return (
