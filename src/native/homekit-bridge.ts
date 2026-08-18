@@ -331,19 +331,30 @@ export function withCallReason<T>(reason: string, fn: () => T): T {
  *
  * Keep READ under `route_request`'s timeout and WRITE above Swift's write bound.
  * If either of those moves, these move with them.
+ *
+ * Correction, since this comment sent someone the wrong way once: the 10s above
+ * is NOT the ceiling on a client-routed request. `_route_to_device` calls
+ * `route_request` with no timeout argument and so takes its 30s default; the
+ * 10s belongs to the identity code's own `accessories.list` calls. The READ
+ * ceiling here is a watchdog against a wedged bridge, not a race against the
+ * cloud — treat it as a number chosen for that job, not one derived from this.
  */
 const BRIDGE_READ_TIMEOUT_MS = 8_000;
 const BRIDGE_WRITE_TIMEOUT_MS = 12_000;
 
 /**
- * Bulk writes get their own ceiling, between the other two.
+ * Bulk writes get their own ceiling, above the other two.
  *
  * A batch answers once for every accessory in it, and Swift bounds each write
- * inside it at `bulkWriteTimeoutSeconds` (7s) precisely so the answer beats
- * `route_request`'s 10s. This sits above that bound and below the cloud's, so
- * when something does go wrong the relay is still the one that names it.
+ * inside it at `bulkWriteTimeoutSeconds` (10s), with every timer starting
+ * together. So a batch can legitimately take the full 10s — this has to sit
+ * above that or it would cut off an answer that was about to arrive, and turn
+ * a batch of mostly-successful writes into a bare BRIDGE_TIMEOUT.
+ *
+ * Still under the client's own 30s request timeout, so the relay stays the one
+ * that names the failure.
  */
-const BRIDGE_BULK_WRITE_TIMEOUT_MS = 9_000;
+const BRIDGE_BULK_WRITE_TIMEOUT_MS = 15_000;
 
 /** Writes that carry many accessories in one call. */
 const BRIDGE_BULK_WRITE_METHODS = new Set(['characteristics.set']);

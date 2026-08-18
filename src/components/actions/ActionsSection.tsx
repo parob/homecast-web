@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { actionKey } from '@/lib/pending-writes';
+import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import { ActionConfirmDialog } from './ActionConfirmDialog';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
@@ -235,9 +237,16 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                       most names fit, and the ones that do not now trail off on
                       one line rather than losing their second. */}
                   <div className="relative z-[1] flex items-center gap-2 p-2.5">
-                    <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm', colors.bg, colors.text)}>
-                      <Icon className="h-3 w-3" />
-                    </div>
+                    {/* The ring rides this chip's rim while the action's
+                        writes are still travelling. It is the only thing on a
+                        two-way card that moves: the toggle's thumb follows the
+                        catalog, which follows the accessories, which do not
+                        change until the relay confirms. */}
+                    <PendingRing pendingKey={actionKey(action.id)} className={cn('h-6 w-6', colors.text)}>
+                      <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm', colors.bg, colors.text)}>
+                        <Icon className="h-3 w-3" />
+                      </div>
+                    </PendingRing>
                     <div className="min-w-0 flex-1">
                       <p
                         title={action.label}
@@ -264,10 +273,13 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                       </p>
                     </div>
                     {toggle ? (
-                      // No spinner swap: the run writes optimistically before it
-                      // touches the network and the catalog re-derives from the
-                      // accessories, so the thumb moves on its own. The subtitle
-                      // above is already carrying the progress count.
+                      // No spinner swap here, and the thumb does NOT move on
+                      // its own — a two-way action always supplies an
+                      // AbortSignal, which skips the optimistic pass, so
+                      // nothing moves until the relay confirms. That is why the
+                      // icon chip above carries a PendingRing: without it a
+                      // press of All lights showed no thumb, no spinner and no
+                      // ring for as long as the slowest accessory took.
                       <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                         <TriStateToggle
                           state={toggle.state}

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
-import { trackWrite, accessoryKey } from '@/lib/pending-writes';
+import { trackWrite, accessoryKey, actionKey } from '@/lib/pending-writes';
 import { markPendingUpdate } from '@/hooks/useHomeKitData';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { describeError } from '@/lib/describe-error';
@@ -271,7 +271,7 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
           // Deduped: a step that writes two characteristics on one accessory is
           // still one request, and should be one ring.
           return await trackWrite(
-            [...new Set(stepWrites.map(write => accessoryKey(write.accessoryId)))],
+            [actionKey(action.id), ...new Set(stepWrites.map(write => accessoryKey(write.accessoryId)))],
             serverConnection.request<BulkWriteResponse>('characteristics.set', {
               writes: stepWrites.map(write => ({
                 accessoryId: write.accessoryId,
@@ -350,7 +350,7 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
             // the whole point is to drop the ones that have not gone yet.
             if (opts?.signal?.aborted) return undefined;
             const result = await trackWrite(
-              accessoryKey(write.accessoryId),
+              [actionKey(action.id), accessoryKey(write.accessoryId)],
               serverConnection.request('characteristic.set', {
                 accessoryId: write.accessoryId,
                 characteristicType: write.characteristicType,

@@ -100,6 +100,16 @@ export const accessoryKey = (id: string): string => `acc:${id}`;
 /** The registry key for one service group. */
 export const groupKey = (id: string): string => `group:${id}`;
 
+/**
+ * A whole home action, so its own card can show the ring too.
+ *
+ * Not an accessory: an Action writes many of them at once, and the card is what
+ * the user is looking at when they press it. Without this an "All lights" press
+ * puts rings on forty tiles that may not even be on screen, and leaves the
+ * control that was actually pressed showing nothing at all.
+ */
+export const actionKey = (id: string): string => `action:${id}`;
+
 function ensure(key: string): Entry {
   let entry = entries.get(key);
   if (!entry) {
