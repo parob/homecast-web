@@ -887,6 +887,7 @@ export const GET_COMMUNITY_TELEMETRY = gql`
         maxAccessories
         actionsPerDay
         reportedTodayPercent
+        pendingInstalls
       }
       daily {
         date

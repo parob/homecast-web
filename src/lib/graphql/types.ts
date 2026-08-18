@@ -2317,6 +2317,12 @@ export interface CommunityKPIs {
   actionsPerDay: number;
   /** Share of known installs that have reported today, 0-100. */
   reportedTodayPercent: number;
+  /**
+   * Relays that have reported but not yet on two separate days, so they are
+   * excluded from every figure above. Lets an empty page distinguish
+   * "nothing arrived" from "arriving, not yet trusted".
+   */
+  pendingInstalls: number;
 }
 
 export interface CommunityDeployment {
