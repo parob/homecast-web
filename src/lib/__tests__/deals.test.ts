@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { atlIsMeaningful, findDealForAccessory, getAccessoryIdentity, pickDominantTrackedAccessory } from '../deals';
+import { atlIsMeaningful, findDealForAccessory, getAccessoryIdentity, pickDominantTrackedAccessory, pickGroupPriceAccessory } from '../deals';
 import type { DealInfo, HomeKitAccessory } from '../graphql/types';
 
 function accessory(manufacturer: string, model: string, name = 'Bulb'): HomeKitAccessory {
@@ -228,5 +228,60 @@ describe('pickDominantTrackedAccessory', () => {
       () => true,
     );
     expect(pick?.name).toBe('Bulb');
+  });
+});
+
+describe('pickGroupPriceAccessory', () => {
+  const tracked = (models: string[]) => (a: HomeKitAccessory) => {
+    const id = getAccessoryIdentity(a);
+    return !!id && models.includes(id.model);
+  };
+  const hueDeal = deal('hue', [{ manufacturer: 'Signify', model: 'LWA001' }]);
+  const lifxDeal = deal('lifx', [{ manufacturer: 'LIFX', model: 'LIFXA19' }]);
+
+  it('badges the member that is on offer, even when it is outnumbered', () => {
+    // The whole point: the members live inside the group, so if the group will
+    // not show this deal, nothing on the dashboard will.
+    const members = [
+      accessory('Acme', 'PLAIN1', 'Plain 1'),
+      accessory('Acme', 'PLAIN1', 'Plain 2'),
+      accessory('Acme', 'PLAIN1', 'Plain 3'),
+      accessory('Signify', 'LWA001', 'On offer'),
+    ];
+    const pick = pickGroupPriceAccessory(members, tracked(['PLAIN1', 'LWA001']), [hueDeal]);
+    expect(pick?.name).toBe('On offer');
+  });
+
+  it('lets dominance decide when more than one product is on offer', () => {
+    const members = [
+      accessory('LIFX', 'LIFXA19', 'Lifx'),
+      accessory('Signify', 'LWA001', 'Hue 1'),
+      accessory('Signify', 'LWA001', 'Hue 2'),
+    ];
+    const pick = pickGroupPriceAccessory(members, tracked(['LWA001', 'LIFXA19']), [hueDeal, lifxDeal]);
+    expect(pick?.name).toBe('Hue 1');
+  });
+
+  it('falls back to the dominant tracked member when nothing is on offer', () => {
+    const members = [
+      accessory('Signify', 'LWA001', 'Hue 1'),
+      accessory('Signify', 'LWA001', 'Hue 2'),
+      accessory('LIFX', 'LIFXA19', 'Lifx'),
+    ];
+    expect(pickGroupPriceAccessory(members, tracked(['LWA001', 'LIFXA19']), [])?.name).toBe('Hue 1');
+    // Deals exist, but none for anything in this group.
+    const other = deal('other', [{ manufacturer: 'Nanoleaf', model: 'NL29' }]);
+    expect(pickGroupPriceAccessory(members, tracked(['LWA001', 'LIFXA19']), [other])?.name).toBe('Hue 1');
+  });
+
+  it('trusts a deal over the tracked list, which polls separately and lags', () => {
+    const members = [accessory('Signify', 'LWA001', 'On offer, not yet in the tracked list')];
+    const pick = pickGroupPriceAccessory(members, tracked([]), [hueDeal]);
+    expect(pick?.name).toBe('On offer, not yet in the tracked list');
+  });
+
+  it('offers nothing for a group we know nothing about', () => {
+    expect(pickGroupPriceAccessory([accessory('Acme', 'UNKNOWN1')], tracked([]), [])).toBeNull();
+    expect(pickGroupPriceAccessory([], tracked(['LWA001']), [hueDeal])).toBeNull();
   });
 });

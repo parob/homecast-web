@@ -145,3 +145,34 @@ export function findDealForAccessory(
 
   return { deal: best };
 }
+
+/**
+ * The member a service group's price surfaces — badge, button, menu — should
+ * all speak for.
+ *
+ * Dominance decides, as it does for the price screen: a group is mostly one
+ * product, and that product's price is the group's. But a member that is
+ * actually on offer wins the job first, because a deal inside a group is
+ * otherwise invisible — the member tiles live inside the group, so if the
+ * group won't badge a deal, nothing will.
+ *
+ * Everything reads from this one function so the badge and the button can
+ * never point at two different products.
+ */
+export function pickGroupPriceAccessory(
+  accessories: HomeKitAccessory[],
+  isTracked: (accessory: HomeKitAccessory) => boolean,
+  deals: DealInfo[],
+): HomeKitAccessory | null {
+  const onOffer = deals.length
+    ? accessories.filter(a => findDealForAccessory(a, deals))
+    : [];
+  // A live deal is stronger evidence that we know this product than the tracked
+  // list is: they are two separate queries on a five-minute poll and can
+  // disagree for that long. An on-offer member does not have to be in it.
+  const dealIsProofEnough = () => true;
+  return (
+    pickDominantTrackedAccessory(onOffer, dealIsProofEnough) ??
+    pickDominantTrackedAccessory(accessories, isTracked)
+  );
+}

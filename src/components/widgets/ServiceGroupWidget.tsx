@@ -26,7 +26,9 @@ import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useDeals } from '@/contexts/DealsContext';
-import { pickDominantTrackedAccessory } from '@/lib/deals';
+import { findDealForAccessory, pickGroupPriceAccessory } from '@/lib/deals';
+// Direct from source, like AccessoryWidget above — the barrel export cycles.
+import { DealBadge } from '@/components/widgets/DealBadge';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import {
   ContextMenu,
@@ -410,10 +412,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // A group has no identity of its own — no manufacturer, no model — so prices
   // are those of the product it is mostly made of. Groups had no price surface
   // at all before this, even when every member was a product we track.
-  const { isTracked, openPriceHistory } = useDeals();
+  const { deals, isTracked, openPriceHistory } = useDeals();
   const priceMember = useMemo(
-    () => pickDominantTrackedAccessory(accessories, isTracked),
-    [accessories, isTracked],
+    () => pickGroupPriceAccessory(accessories, isTracked, deals),
+    [accessories, isTracked, deals],
+  );
+  // The member tiles live inside the group, so a member's own badge is not on
+  // the dashboard to be seen — the group has to carry it.
+  const groupDeal = useMemo(
+    () => (priceMember ? findDealForAccessory(priceMember, deals)?.deal ?? null : null),
+    [priceMember, deals],
   );
   const pins = usePinnedTabs();
   // On touch, hiding is Edit Layout's job — see WidgetCard.
@@ -496,7 +504,14 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           is 10.5/12/15px while a hard-coded 14px never moved. The two sat side by
           side in the same grid at visibly different sizes, and by a different
           amount at each setting. Same unit, same scaling, same tile. */}
-      <CardHeader className={showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}>
+      <CardHeader className={`relative ${showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}`}>
+        {/* On the header, not the Card: this card grows in place when the group
+            is opened inline, and a badge anchored to the Card would ride down
+            to the bottom of the member list. An accessory tile has no such
+            problem — it expands into an overlay and never changes size. */}
+        {groupDeal && priceMember && (
+          <DealBadge deal={groupDeal} onSeeFullHistory={() => openPriceHistory(priceMember)} />
+        )}
         {showCompact ? (
           // Compact mode - vertical layout matching preview style
           <div
