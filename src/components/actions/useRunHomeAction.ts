@@ -1,21 +1,25 @@
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
+import { trackWrite, accessoryKey } from '@/lib/pending-writes';
 import { markPendingUpdate } from '@/hooks/useHomeKitData';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { describeError } from '@/lib/describe-error';
+import type { BulkWriteResponse } from '@/native/homekit-bridge';
 import type { HomeAction, HomeActionWrite } from './catalog';
 
 /**
- * How many writes may be in flight at once.
+ * How many writes may be in flight at once, **on the fallback path only**.
  *
- * Nothing downstream serializes, so this cap is the only thing deciding how
- * long an action takes. The relay dispatches each request without awaiting it
- * (`local-server.ts`), and although HomeKitManager is `@MainActor` its
- * `writeValue` helper is deliberately `nonisolated` and awaited off-actor, so
- * concurrent writes genuinely overlap. Native fans out unbounded already —
- * `setServiceGroupCharacteristic` and `setState` both fire one TaskGroup over
- * every member.
+ * Relays that understand `characteristics.set` send the whole step as one
+ * request and never reach this. It governs older relays, where an action is
+ * still one request per accessory.
+ *
+ * Nothing downstream serializes, so on that path this cap is the only thing
+ * deciding how long an action takes. The relay dispatches each request without
+ * awaiting it (`local-server.ts`), and although HomeKitManager is `@MainActor`
+ * its `writeValue` helper is deliberately `nonisolated` and awaited off-actor,
+ * so concurrent writes genuinely overlap.
  *
  * It was 6, which made a 40-light home seven sequential waves. Worse than the
  * latency: a single wedged accessory pins its whole wave for
@@ -25,8 +29,54 @@ import type { HomeAction, HomeActionWrite } from './catalog';
  * Still bounded rather than unlimited — a 200-accessory home opening 200
  * simultaneous requests is a burst nobody benefits from — but high enough that
  * a normal home completes in one wave and one dead device blocks nothing.
+ *
+ * A big home is exactly where this is not enough, and why the bulk path exists:
+ * at 223 lights this is ten sequential waves, and pacing them also denies
+ * HomeKit's own daemon the simultaneity it needs to coalesce writes that share
+ * a bridge into one request.
  */
 const MAX_CONCURRENT_WRITES = 24;
+
+/**
+ * Whether this relay understands `characteristics.set`.
+ *
+ * `null` means untried. Probed once and remembered, because an older relay
+ * rejects every attempt and paying a doomed round trip before each fan-out
+ * would make the slow case slower. Module state, so it resets on reload —
+ * which is also when a relay may have been upgraded underneath us.
+ */
+let bulkWriteSupported: boolean | null = null;
+
+/**
+ * Test seam: say what we know about this relay, or `null` to forget.
+ *
+ * Takes a value rather than only clearing, so a test of the fallback does not
+ * have to spend a doomed probe getting there — the probe is its own test.
+ */
+export function __setBulkWriteSupport(state: boolean | null): void {
+  bulkWriteSupported = state;
+}
+
+/**
+ * An older relay saying it has never heard of this action.
+ *
+ * Two spellings, because there are two ages of relay: web code that predates
+ * the handler answers `UNKNOWN_ACTION`, and a Mac binary that predates the
+ * native method answers `UNKNOWN_METHOD`. In cloud mode the second is the
+ * common one — the relay loads today's web app from homecast.cloud but keeps
+ * whatever Swift it shipped with.
+ */
+function isUnsupportedAction(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'UNKNOWN_ACTION' || code === 'UNKNOWN_METHOD') return true;
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === 'string' && /unknown (action|method)/i.test(message);
+}
+
+/** Pairs a change back to the write that asked for it. */
+function writeKey(accessoryId: string, characteristicType: string): string {
+  return `${accessoryId}\u0000${characteristicType}`;
+}
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -42,6 +92,15 @@ const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
  * rather than likely.
  */
 const writeQueue = new Map<string, Promise<unknown>>();
+
+/**
+ * The chain key a bulk request uses.
+ *
+ * One key, not one per accessory: a batch is a single request, so there is
+ * nothing finer to order it by, and two batches to the same relay must still
+ * arrive in the order they were asked for.
+ */
+const BULK_QUEUE_KEY = '\u0000bulk';
 
 /**
  * Forget every chain. Only for tests: the map is module state, so one test
@@ -124,23 +183,24 @@ interface RunHomeActionArgs {
 /**
  * Run an Action: optimistically move every tile, then fan the writes out.
  *
- * Uses per-accessory `characteristic.set` rather than the bulk `state.set`,
- * which would be one round trip instead of N.
+ * Sends each step as one `characteristics.set`, falling back to a per-accessory
+ * fan-out on relays that predate it.
  *
- * Not for the reason first recorded here: `state.set`'s `changes[]` does carry
- * `accessoryId`, so failures *can* be mapped back. The actual blocker is
- * addressing. Native resolves its keys through `findAccessoryByKey`, which
- * matches sanitized room/accessory slugs and opens with
- * `guard let room = accessory.room else { continue }` — so an accessory with
- * no room (a virtual one, or anything in HomeKit's default room) cannot be
- * addressed at all and would be silently dropped from "all lights off". It
- * would also mean regenerating the relay's slugs client-side and keeping them
- * in step through renames.
+ * The bulk action is addressed by accessory id, which is what the older bulk
+ * `state.set` could not be: native resolves its keys through
+ * `findAccessoryByKey`, which matches sanitized room/accessory slugs and opens
+ * with `guard let room = accessory.room else { continue }` — so an accessory
+ * with no room (a virtual one, or anything in HomeKit's default room) cannot be
+ * addressed at all and would be silently dropped from "all lights off".
  *
- * The fix worth making is a relay action addressed by accessory id that fans
- * out in one native TaskGroup; that needs a Mac app release, so until then the
- * concurrency cap above is what keeps this quick. The relay's write fan-out
- * (MQTT publish, automation triggers) fires identically either way.
+ * One request also matters beyond the round trips it saves. HomeKit's daemon
+ * coalesces writes reaching the same accessory server together into a single
+ * HAP request, and a bridge is one accessory server — so a batch dispatched at
+ * once can become one write per bridge rather than one per bulb. Trickling the
+ * same writes out of a worker pool gives it nothing to coalesce.
+ *
+ * The relay's write fan-out (MQTT publish, automation triggers) fires
+ * identically either way.
  */
 export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCache }: RunHomeActionArgs) {
   return useCallback(async (action: HomeAction, opts?: RunHomeActionOverrides) => {
@@ -190,37 +250,138 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // progress rather than restarting at zero on a composite action.
     opts?.onProgress?.(0, writes.length);
 
-    for (const step of steps) {
-      if (step.writes.length > 0) {
-        const results = await runWithConcurrency(step.writes, MAX_CONCURRENT_WRITES, async write => {
-          try {
-            return await queueWrite(write.accessoryId, async () => {
-              // Checked here, inside the queue, rather than before joining it:
-              // a write can sit behind another device's turn for a while, and
-              // the whole point is to drop the ones that have not gone yet.
-              if (opts?.signal?.aborted) return undefined;
-              const result = await serverConnection.request('characteristic.set', {
+    /**
+     * One step as a single relay request.
+     *
+     * Returns the writes that did not land, or `null` if this relay cannot do
+     * bulk at all — which is the caller's signal to fan out instead. A request
+     * that fails for any *other* reason is a real failure and reported as one:
+     * falling back then would write the whole house a second time.
+     */
+    const runStepInOneRequest = async (stepWrites: HomeActionWrite[]): Promise<HomeActionWrite[] | null> => {
+      let response: BulkWriteResponse | undefined;
+      try {
+        // Chained like any other write, but on one key for the whole batch.
+        // Ordering still has to hold between runs: a reversal's batch must be
+        // applied after the batch it is reversing, and an abort cannot recall
+        // writes already travelling. Per-accessory chaining has nothing to
+        // grip here, because the batch is one request.
+        response = await queueWrite(BULK_QUEUE_KEY, async () => {
+          if (opts?.signal?.aborted) return undefined;
+          // Deduped: a step that writes two characteristics on one accessory is
+          // still one request, and should be one ring.
+          return await trackWrite(
+            [...new Set(stepWrites.map(write => accessoryKey(write.accessoryId)))],
+            serverConnection.request<BulkWriteResponse>('characteristics.set', {
+              writes: stepWrites.map(write => ({
+                accessoryId: write.accessoryId,
+                characteristicType: write.characteristicType,
+                value: write.value,
+              })),
+              homeId: effectiveHomeId,
+            }),
+          );
+        });
+      } catch (e) {
+        if (isUnsupportedAction(e)) {
+          bulkWriteSupported = false;
+          return null;
+        }
+        firstError ??= e;
+        settled += stepWrites.length;
+        opts?.onProgress?.(settled, writes.length);
+        return stepWrites;
+      }
+
+      // Aborted before it went out. Nothing was written, nothing failed, and
+      // nothing was learned — a request that never left says nothing about
+      // what the relay can do.
+      if (!response) return [];
+      bulkWriteSupported = true;
+
+      // A relay that answered, but not in a shape that says which accessories
+      // moved. We cannot know, so take its word for the whole step: assuming
+      // everything landed shows a state we are not sure of, and assuming
+      // nothing did reverts lights that are already off. Neither is good, but
+      // only one of them writes the house a second time.
+      if (!Array.isArray(response.changes)) {
+        const wholeStepLanded = response.success !== false;
+        if (wholeStepLanded && interruptible) {
+          for (const write of stepWrites) applyToCache(write, write.value, updateCharacteristicInCache);
+        }
+        settled += stepWrites.length;
+        opts?.onProgress?.(settled, writes.length);
+        return wholeStepLanded ? [] : stepWrites;
+      }
+
+      const landed = new Set(
+        response.changes
+          .filter(change => change.success)
+          .map(change => writeKey(change.accessoryId, change.characteristicType)),
+      );
+      const stepFailed: HomeActionWrite[] = [];
+      for (const write of stepWrites) {
+        if (landed.has(writeKey(write.accessoryId, write.characteristicType))) {
+          if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
+        } else {
+          stepFailed.push(write);
+        }
+      }
+      if (stepFailed.length > 0) {
+        firstError ??= new Error(
+          response.changes.find(change => !change.success)?.error ?? 'The relay did not confirm the write',
+        );
+      }
+
+      // One request, so one progress movement. There is nothing to count up
+      // through: the batch is answered all at once or not at all.
+      settled += stepWrites.length;
+      opts?.onProgress?.(settled, writes.length);
+      return stepFailed;
+    };
+
+    /** The pre-bulk path: one request per accessory, capped. */
+    const runStepPerAccessory = async (stepWrites: HomeActionWrite[]): Promise<HomeActionWrite[]> => {
+      const results = await runWithConcurrency(stepWrites, MAX_CONCURRENT_WRITES, async write => {
+        try {
+          return await queueWrite(write.accessoryId, async () => {
+            // Checked here, inside the queue, rather than before joining it:
+            // a write can sit behind another device's turn for a while, and
+            // the whole point is to drop the ones that have not gone yet.
+            if (opts?.signal?.aborted) return undefined;
+            const result = await trackWrite(
+              accessoryKey(write.accessoryId),
+              serverConnection.request('characteristic.set', {
                 accessoryId: write.accessoryId,
                 characteristicType: write.characteristicType,
                 value: write.value,
                 homeId: effectiveHomeId,
-              });
-              if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
-              return result;
-            });
-          } finally {
-            // `finally`, so a failure still advances the count — the point is
-            // "how many are resolved", not "how many worked". The toast at the
-            // end is what reports failures.
-            opts?.onProgress?.(++settled, writes.length);
-          }
-        });
-        results.forEach((result, i) => {
-          if (result.status === 'rejected') {
-            failed.push(step.writes[i]);
-            firstError ??= result.reason;
-          }
-        });
+              }),
+            );
+            if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
+            return result;
+          });
+        } finally {
+          // `finally`, so a failure still advances the count — the point is
+          // "how many are resolved", not "how many worked". The toast at the
+          // end is what reports failures.
+          opts?.onProgress?.(++settled, writes.length);
+        }
+      });
+      const stepFailed: HomeActionWrite[] = [];
+      results.forEach((result, i) => {
+        if (result.status === 'rejected') {
+          stepFailed.push(stepWrites[i]);
+          firstError ??= result.reason;
+        }
+      });
+      return stepFailed;
+    };
+
+    for (const step of steps) {
+      if (step.writes.length > 0) {
+        const inOneRequest = bulkWriteSupported === false ? null : await runStepInOneRequest(step.writes);
+        failed.push(...(inOneRequest ?? await runStepPerAccessory(step.writes)));
       }
       if (step.delayAfterMs) await delay(step.delayAfterMs);
     }

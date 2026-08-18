@@ -137,7 +137,7 @@ const CACHEABLE_ACTIONS = new Set([
 // Execute + broadcast, but do NOT clear the communityCache — the DataCache handles
 // real-time value updates via broadcasts, and the communityCache serves the list structure.
 const VALUE_WRITE_ACTIONS = new Set([
-  'characteristic.set', 'serviceGroup.set', 'state.set',
+  'characteristic.set', 'characteristics.set', 'serviceGroup.set', 'state.set',
 ]);
 
 // Structure-changing writes: may add/remove accessories or change state unpredictably.

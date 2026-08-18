@@ -20,8 +20,45 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const { useRunHomeAction, __resetWriteQueue } = await import('../useRunHomeAction');
+const { useRunHomeAction, __resetWriteQueue, __setBulkWriteSupport } = await import('../useRunHomeAction');
 type HomeAction = import('../catalog').HomeAction;
+
+interface Asked { accessoryId: string; characteristicType: string; value: unknown; homeId?: string }
+
+/**
+ * A relay that speaks the bulk action, answering per write the way
+ * local-handler does.
+ */
+function bulkRelay(opts: { failing?: string[] } = {}) {
+  const failing = new Set(opts.failing ?? []);
+  return async (name: string, payload: { writes?: Asked[] }) => {
+    if (name !== 'characteristics.set') return {};
+    const changes = (payload.writes ?? []).map(w => failing.has(w.accessoryId)
+      ? { accessoryId: w.accessoryId, characteristicType: w.characteristicType, success: false, error: 'no response' }
+      : { accessoryId: w.accessoryId, characteristicType: w.characteristicType, value: w.value, success: true });
+    const ok = changes.filter(c => c.success).length;
+    return { success: ok === changes.length, ok, total: changes.length, changes };
+  };
+}
+
+/**
+ * Everything the relay was actually asked to write, in order, whichever
+ * protocol carried it.
+ *
+ * Most of what these tests care about — which accessories, which values, which
+ * home — is true of both paths, and saying it once keeps the two from drifting.
+ */
+function asked(): Asked[] {
+  const out: Asked[] = [];
+  for (const [name, payload] of request.mock.calls as Array<[string, Record<string, unknown>]>) {
+    if (name === 'characteristics.set') {
+      for (const w of (payload.writes as Asked[])) out.push({ ...w, homeId: payload.homeId as string });
+    } else if (name === 'characteristic.set') {
+      out.push(payload as unknown as Asked);
+    }
+  }
+  return out;
+}
 
 function action(overrides: Partial<HomeAction> = {}): HomeAction {
   return {
@@ -56,27 +93,72 @@ function setup(opts: { isViewOnly?: boolean } = {}) {
 
 beforeEach(() => {
   __resetWriteQueue();
-  request.mockReset().mockResolvedValue({});
+  // Confirmed rather than unknown: the probe has its own tests, and every other
+  // test here is about what a current relay does.
+  __setBulkWriteSupport(true);
+  request.mockReset().mockImplementation(bulkRelay());
   markPendingUpdate.mockReset();
   toastError.mockReset();
   toastWarning.mockReset();
 });
 
 describe('useRunHomeAction', () => {
-  it('sends one characteristic.set per write, with canonical names and the homeId', async () => {
+  it('sends the whole step as one request, with canonical names and the homeId', async () => {
     const { run } = setup();
     await run(action());
 
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(request).toHaveBeenCalledWith('characteristic.set', {
-      accessoryId: 'a', characteristicType: 'power_state', value: false, homeId: 'home-1',
-    });
-    expect(request).toHaveBeenCalledWith('characteristic.set', {
-      // canonical on the wire even though this accessory reports `on`
-      accessoryId: 'b', characteristicType: 'power_state', value: false, homeId: 'home-1',
+    // One request, not one per accessory. That is the round trips saved, and
+    // also what lets HomeKit coalesce the writes that share a bridge.
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('characteristics.set', {
+      homeId: 'home-1',
+      writes: [
+        { accessoryId: 'a', characteristicType: 'power_state', value: false },
+        // canonical on the wire even though this accessory reports `on`
+        { accessoryId: 'b', characteristicType: 'power_state', value: false },
+      ],
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(toastWarning).not.toHaveBeenCalled();
+  });
+
+  it('falls back to one request per accessory on a relay too old to know it', async () => {
+    __setBulkWriteSupport(null);
+    request.mockImplementation(async (name: string) => {
+      if (name === 'characteristics.set') {
+        throw Object.assign(new Error('Unknown action: characteristics.set'), { code: 'UNKNOWN_ACTION' });
+      }
+      return {};
+    });
+    const { run } = setup();
+    await run(action());
+
+    expect(request).toHaveBeenCalledWith('characteristic.set', {
+      accessoryId: 'a', characteristicType: 'power_state', value: false, homeId: 'home-1',
+    });
+    const perAccessory = request.mock.calls.filter(([name]) => name === 'characteristic.set');
+    expect(perAccessory.map(([, p]) => (p as { accessoryId: string }).accessoryId)).toEqual(['a', 'b']);
+    // the whole point of falling back: it is not reported as a failure
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
+  });
+
+  it('probes an old relay once, then stops asking', async () => {
+    __setBulkWriteSupport(null);
+    request.mockImplementation(async (name: string) => {
+      if (name === 'characteristics.set') {
+        throw Object.assign(new Error('Unknown method: characteristics.set'), { code: 'UNKNOWN_METHOD' });
+      }
+      return {};
+    });
+    const { run } = setup();
+    await run(action());
+    await run(action());
+
+    // A relay that cannot do this will never be able to mid-session, and a
+    // doomed round trip before every press would make the slow case slower.
+    const probes = request.mock.calls.filter(([name]) => name === 'characteristics.set');
+    expect(probes).toHaveLength(1);
   });
 
   it('writes the cache under both names when the reported name differs', async () => {
@@ -111,10 +193,7 @@ describe('useRunHomeAction', () => {
   });
 
   it('reverts only the write that failed, and warns rather than errors', async () => {
-    request.mockImplementation(async (_action: string, payload: { accessoryId: string }) => {
-      if (payload.accessoryId === 'b') throw new Error('no response');
-      return {};
-    });
+    request.mockImplementation(bulkRelay({ failing: ['b'] }));
     const { run, updateCharacteristicInCache } = setup();
     await run(action());
 
@@ -142,20 +221,18 @@ describe('useRunHomeAction', () => {
     expect(toastWarning).not.toHaveBeenCalled();
   });
 
-  it('reports progress from zero, once per write, including failures', async () => {
-    request.mockImplementation(async (_a: string, payload: { accessoryId: string }) => {
-      if (payload.accessoryId === 'b') throw new Error('no response');
-      return {};
-    });
+  it('reports progress from zero, and completes the step in one movement', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['b'] }));
     const seen: Array<[number, number]> = [];
     const { run } = setup();
     await run(action(), { onProgress: (done, total) => seen.push([done, total]) });
 
     // Seeded at 0 before anything settles, so the card never shows a blank
-    // count; then one tick per write, the failed one included — the count says
-    // how many are resolved, not how many worked.
+    // count. A batch is answered all at once, so there is nothing to count up
+    // through — and the failed write still counts, because the number says how
+    // many are resolved, not how many worked.
     expect(seen[0]).toEqual([0, 2]);
-    expect(seen.map(([d]) => d)).toEqual([0, 1, 2]);
+    expect(seen.map(([d]) => d)).toEqual([0, 2]);
     expect(seen.every(([, total]) => total === 2)).toBe(true);
   });
 
@@ -177,7 +254,8 @@ describe('useRunHomeAction', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it('fans out widely enough that a normal home is one wave, but stays bounded', async () => {
+  it('fans the fallback out widely enough that a normal home is one wave, but stays bounded', async () => {
+    __setBulkWriteSupport(false);
     let inFlight = 0;
     let peak = 0;
     request.mockImplementation(async () => {
@@ -206,9 +284,6 @@ describe('useRunHomeAction', () => {
   });
 
   it('runs steps in order and honours a delay between them', async () => {
-    const seen: string[] = [];
-    request.mockImplementation(async (_a: string, p: { accessoryId: string }) => { seen.push(p.accessoryId); });
-
     const write = (id: string) => ({
       accessoryId: id, characteristicType: 'power_state', reportedCharacteristicType: 'power_state',
       value: false as const, previousValue: true,
@@ -219,7 +294,7 @@ describe('useRunHomeAction', () => {
       { writes: [write('second')] },
     ] }));
 
-    expect(seen).toEqual(['first', 'second']);
+    expect(asked().map(w => w.accessoryId)).toEqual(['first', 'second']);
   });
 });
 
@@ -230,10 +305,8 @@ describe('useRunHomeAction — per-call overrides', () => {
 
     await run(action(), { homeId: 'home-2' });
 
-    expect(request).toHaveBeenCalledTimes(2);
-    for (const [, payload] of request.mock.calls) {
-      expect((payload as { homeId: string }).homeId).toBe('home-2');
-    }
+    expect(asked()).toHaveLength(2);
+    expect(asked().every(w => w.homeId === 'home-2')).toBe(true);
   });
 
   it('keeps the hook-level home when no override is given', async () => {
@@ -241,10 +314,8 @@ describe('useRunHomeAction — per-call overrides', () => {
 
     await run(action());
 
-    expect(request).toHaveBeenCalledTimes(2);
-    for (const [, payload] of request.mock.calls) {
-      expect((payload as { homeId: string }).homeId).toBe('home-1');
-    }
+    expect(asked()).toHaveLength(2);
+    expect(asked().every(w => w.homeId === 'home-1')).toBe(true);
   });
 
   it('blocks on the target home being view-only even when the current one is not', async () => {
@@ -262,7 +333,7 @@ describe('useRunHomeAction — per-call overrides', () => {
 
     await run(action(), { homeId: 'home-2', isViewOnly: false });
 
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(asked()).toHaveLength(2);
     expect(toastError).not.toHaveBeenCalled();
   });
 });
@@ -296,16 +367,16 @@ describe('running a chosen direction', () => {
     const { run } = setup();
     await run(twoWay(), { direction: true });
 
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.calls[0][1]).toMatchObject({ accessoryId: 'b', value: true });
+    expect(asked()).toHaveLength(1);
+    expect(asked()[0]).toMatchObject({ accessoryId: 'b', value: true });
   });
 
   it('takes the other direction just as readily', async () => {
     const { run } = setup();
     await run(twoWay(), { direction: false });
 
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.calls[0][1]).toMatchObject({ accessoryId: 'a', value: false });
+    expect(asked()).toHaveLength(1);
+    expect(asked()[0]).toMatchObject({ accessoryId: 'a', value: false });
   });
 
   it('falls back to the action\'s own steps when no direction is asked for', async () => {
@@ -314,7 +385,7 @@ describe('running a chosen direction', () => {
     const { run } = setup();
     await run(twoWay());
 
-    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
+    expect(asked().map(w => w.accessoryId).sort()).toEqual(['a', 'b']);
   });
 
   it('quietly does nothing when asked for the end it is already at', async () => {
@@ -335,8 +406,8 @@ describe('running a chosen direction', () => {
   it('ignores a direction on a one-way action, which has no other steps to run', async () => {
     const { run } = setup();
     await run(action({ id: 'everything-off' }), { direction: true });
-    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
-    expect(request.mock.calls.every(c => c[1].value === false)).toBe(true);
+    expect(asked().map(w => w.accessoryId).sort()).toEqual(['a', 'b']);
+    expect(asked().every(w => w.value === false)).toBe(true);
   });
 });
 
@@ -367,8 +438,10 @@ describe('a run the user can call off', () => {
     // would turn off lights that never came on.
     const order: string[] = [];
     const updateCharacteristicInCache = vi.fn((id: string) => { order.push(`cache:${id}`); });
-    request.mockImplementation(async (_a: string, p: { accessoryId: string }) => {
-      order.push(`request:${p.accessoryId}`);
+    const relay = bulkRelay();
+    request.mockImplementation(async (name: string, payload: { writes?: Asked[] }) => {
+      for (const w of payload.writes ?? []) order.push(`request:${w.accessoryId}`);
+      return relay(name, payload);
     });
     const { result } = renderHook(() => useRunHomeAction({
       homeId: 'home-1', isViewOnly: false, updateCharacteristicInCache,
@@ -394,6 +467,10 @@ describe('a run the user can call off', () => {
   });
 
   it('drops the queue mid-flight, keeping what already landed', async () => {
+    // A fallback-path property: only there is a step still a queue of separate
+    // requests with something left in it to drop. A bulk step is one request —
+    // by the time it can be called off it has already gone.
+    __setBulkWriteSupport(false);
     const controller = new AbortController();
     // The first write lands, and calls the rest off on its way out — standing in
     // for the user reaching for the toggle while the fan-out is still draining.
@@ -468,8 +545,8 @@ describe('reversing a run that is still going', () => {
     const { run } = setup();
     await run(twoWay(), { direction: false, supersedes: true, signal: new AbortController().signal });
 
-    expect(request.mock.calls.map(c => c[1].accessoryId).sort()).toEqual(['a', 'b']);
-    expect(request.mock.calls.every(c => c[1].value === false)).toBe(true);
+    expect(asked().map(w => w.accessoryId).sort()).toEqual(['a', 'b']);
+    expect(asked().every(w => w.value === false)).toBe(true);
   });
 
   it('still writes only what needs changing when nothing is in flight', async () => {
@@ -480,9 +557,41 @@ describe('reversing a run that is still going', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('sends a device its second write only after its first has landed', async () => {
+  it('sends the reversing batch only after the batch it reverses has landed', async () => {
     // Otherwise reversing is a race: the "on" is already travelling and
-    // whichever the relay finishes last is the state the light keeps.
+    // whichever the relay finishes last is the state the light keeps. An abort
+    // cannot recall a request already in flight, so ordering is the only thing
+    // that makes last-write-wins true rather than likely.
+    const order: string[] = [];
+    const gates: Array<() => void> = [];
+    const relay = bulkRelay();
+    request.mockImplementation(async (name: string, payload: { writes?: Asked[] }) => {
+      const value = payload.writes?.[0]?.value;
+      order.push(`start:${value}`);
+      if (value === true) await new Promise<void>(r => gates.push(r));
+      order.push(`done:${value}`);
+      return relay(name, payload);
+    });
+    const { run } = setup();
+
+    const first = run(twoWay(), { direction: true, signal: new AbortController().signal });
+    await Promise.resolve();
+    const second = run(twoWay(), { direction: false, supersedes: true, signal: new AbortController().signal });
+
+    // the "off" cannot have gone out yet — the batch before it is still busy
+    expect(order).not.toContain('start:false');
+
+    gates.forEach(release => release());
+    await Promise.all([first, second]);
+
+    expect(order.indexOf('start:false')).toBeGreaterThan(order.indexOf('done:true'));
+    expect(order.indexOf('done:true')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('sends a device its second write only after its first has landed, on the fallback', async () => {
+    // The same guarantee, one layer down: where a step is N requests, the chain
+    // has to be per accessory to give it.
+    __setBulkWriteSupport(false);
     const order: string[] = [];
     const gates: Array<() => void> = [];
     request.mockImplementation(async (_a: string, p: { accessoryId: string; value: boolean }) => {
@@ -507,9 +616,10 @@ describe('reversing a run that is still going', () => {
     expect(order.indexOf('done:a=true')).toBeGreaterThanOrEqual(0);
   });
 
-  it('lets different accessories go at once', async () => {
+  it('lets different accessories go at once on the fallback', async () => {
     // The chain is per device, not global — a slow bulb must not hold up the
-    // rest of the house.
+    // rest of the house. (A bulk step gets this for nothing: one request.)
+    __setBulkWriteSupport(false);
     const started: string[] = [];
     const gates: Array<() => void> = [];
     request.mockImplementation(async (_a: string, p: { accessoryId: string }) => {

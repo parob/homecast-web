@@ -8,7 +8,7 @@
 
 import { HomeKit } from '../native/homekit-bridge';
 import { isHiddenBuiltInScene } from '@/lib/scenes';
-import { announceRelayWrite, announceRelayGroupWrite } from './relay-write';
+import { announceRelayWrite, announceRelayGroupWrite, type RelayWriteChange } from './relay-write';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
@@ -252,7 +252,7 @@ export async function executeHomeKitAction(
   // Same funnel, same reasoning: counted here rather than in the switch so a
   // new write action cannot be added without being counted. Counts only — the
   // accessory, the value and the scene never leave this line.
-  if (action === 'characteristic.set' || action === 'state.set') {
+  if (action === 'characteristic.set' || action === 'state.set' || action === 'characteristics.set') {
     bumpTelemetry('characteristicWrites');
   } else if (action === 'scene.execute') {
     bumpTelemetry('sceneRuns');
@@ -456,6 +456,73 @@ async function executeHomeKitActionInner(
       const confirmed = (setResult as { value?: unknown } | undefined)?.value ?? value;
       announceRelayWrite([{ accessoryId, characteristicType, value: confirmed, homeId }], 'client');
       return setResult;
+    }
+
+    case 'characteristics.set': {
+      const { writes, homeId } = payload as {
+        writes: Array<{ accessoryId: string; characteristicType: string; value: unknown }>;
+        homeId?: string;
+      };
+      if (!Array.isArray(writes) || writes.length === 0) {
+        return { success: true, ok: 0, total: 0, changes: [] };
+      }
+
+      // Canonicalised at the door, for the same reason as characteristic.set:
+      // the bridge accepts `on` and `power_state` but only ever reports
+      // `power_state`, and a write announced under a name nothing else uses is
+      // a write nothing else sees.
+      const requested = writes.map(w => ({
+        accessoryId: w.accessoryId,
+        characteristicType: canonicalCharacteristic(w.characteristicType),
+        value: w.value,
+      }));
+
+      // Helper accessories are serviced by the engine rather than by HomeKit.
+      // They are peeled off here rather than inside the batch because they are
+      // not HomeKit writes at all — the same split state.set makes.
+      const { applyVirtualWrite } = await import('./virtual-accessories');
+      const changes: Array<{ accessoryId: string; characteristicType: string; value?: unknown; success: boolean; error?: string }> = [];
+      const announce: RelayWriteChange[] = [];
+      const forHomeKit: typeof requested = [];
+
+      for (const write of requested) {
+        if (!isAccessoryAllowed(write.accessoryId)) {
+          changes.push({ ...write, success: false, error: 'Accessory not included in your plan' });
+          continue;
+        }
+        const helperWrite = applyVirtualWrite(write.accessoryId, write.value);
+        if (helperWrite) {
+          changes.push({ ...write, value: helperWrite.value, success: true });
+          announce.push({ ...write, value: helperWrite.value, homeId });
+          continue;
+        }
+        forHomeKit.push(write);
+      }
+
+      if (forHomeKit.length > 0) {
+        const result = await HomeKit.setCharacteristics(forHomeKit);
+        for (const change of result.changes) {
+          changes.push(change);
+          // Announce only what landed. Telling every client a light came on
+          // when it did not leaves the whole house displaying a state it is
+          // not in, and nothing later corrects it.
+          if (change.success) {
+            announce.push({
+              accessoryId: change.accessoryId,
+              characteristicType: change.characteristicType,
+              value: change.value,
+              homeId,
+            });
+          }
+        }
+      }
+
+      // One announcement for the batch. relay-write.ts has always taken an
+      // array; this is the shape it was built for.
+      announceRelayWrite(announce, 'client');
+
+      const ok = changes.filter(c => c.success).length;
+      return { success: ok === changes.length, ok, total: changes.length, changes };
     }
 
     case 'scenes.list': {

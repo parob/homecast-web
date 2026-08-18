@@ -75,6 +75,30 @@ export interface HomeKitAccessory {
   services: HomeKitService[];
 }
 
+/** One entry's outcome in a bulk characteristic write. */
+export interface BulkWriteChange {
+  accessoryId: string;
+  characteristicType: string;
+  /** The value HomeKit confirmed. Absent when the write did not land. */
+  value?: unknown;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * The answer to one `characteristics.set`.
+ *
+ * `success` is all-or-nothing, so callers that care which accessories moved
+ * must read `changes` — which is the whole reason this exists rather than
+ * `state.set`, whose failures come back keyed by slug.
+ */
+export interface BulkWriteResponse {
+  success: boolean;
+  ok: number;
+  total: number;
+  changes: BulkWriteChange[];
+}
+
 export interface HomeKitScene {
   id: string;
   name: string;
@@ -312,6 +336,19 @@ const BRIDGE_READ_TIMEOUT_MS = 8_000;
 const BRIDGE_WRITE_TIMEOUT_MS = 12_000;
 
 /**
+ * Bulk writes get their own ceiling, between the other two.
+ *
+ * A batch answers once for every accessory in it, and Swift bounds each write
+ * inside it at `bulkWriteTimeoutSeconds` (7s) precisely so the answer beats
+ * `route_request`'s 10s. This sits above that bound and below the cloud's, so
+ * when something does go wrong the relay is still the one that names it.
+ */
+const BRIDGE_BULK_WRITE_TIMEOUT_MS = 9_000;
+
+/** Writes that carry many accessories in one call. */
+const BRIDGE_BULK_WRITE_METHODS = new Set(['characteristics.set']);
+
+/**
  * Methods that change something, and so are bounded by Swift's own write
  * ceiling rather than by ours. Everything not listed is treated as a read —
  * the stricter default, so a newly added method is bounded tightly by omission
@@ -345,6 +382,7 @@ const UNBOUNDED_BRIDGE_METHODS = new Set(['notification.requestPermission']);
 
 /** The ceiling that applies to `method`, in milliseconds. */
 function bridgeTimeoutFor(method: string): number {
+  if (BRIDGE_BULK_WRITE_METHODS.has(method)) return BRIDGE_BULK_WRITE_TIMEOUT_MS;
   return BRIDGE_WRITE_METHODS.has(method) ? BRIDGE_WRITE_TIMEOUT_MS : BRIDGE_READ_TIMEOUT_MS;
 }
 
@@ -595,6 +633,25 @@ export const HomeKit = {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call('characteristic.set', { accessoryId, characteristicType, value, ...(homeId && { homeId }) });
+  },
+
+  /**
+   * Set many characteristics as one operation.
+   *
+   * Addressed by accessory id, so — unlike the bulk `state.set` — it can reach
+   * an accessory with no room. Native resolves the whole batch in one pass and
+   * dispatches it as one unbounded TaskGroup, which is what lets HomeKit's own
+   * daemon coalesce the writes that share an accessory server.
+   *
+   * Reports per entry rather than throwing: the caller needs to know which
+   * accessories moved, not merely that something did not.
+   */
+  async setCharacteristics(
+    writes: Array<{ accessoryId: string; characteristicType: string; value: unknown }>,
+  ): Promise<BulkWriteResponse> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<BulkWriteResponse>('characteristics.set', { writes });
   },
 
   /**
