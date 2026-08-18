@@ -21,6 +21,7 @@ import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import { groupKey } from '@/lib/pending-writes';
 import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
@@ -1122,6 +1123,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                   Share Accessory Group
                 </ContextMenuItem>
               )}
+              <PinTabMenuItem
+                tab={{
+                  type: 'serviceGroup',
+                  id: group.id,
+                  name: group.name,
+                  // A group carries its own homeId when the relay sent one;
+                  // otherwise its members all share one, so any will do.
+                  homeId: group.homeId ?? accessories[0]?.homeId,
+                }}
+              />
               {onDebug && (
                 <ContextMenuItem onClick={onDebug}>
                   <Bug className="h-4 w-4 mr-2" />

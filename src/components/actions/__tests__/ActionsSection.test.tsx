@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, within, act } from '@testing-librar
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { ActionsSection } from '../ActionsSection';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
+import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
 
 function acc(id: string, serviceType: string, chars: Array<[string, unknown]>): HomeKitAccessory {
   return {
@@ -48,9 +49,11 @@ function renderSection(
   accessories: HomeKitAccessory[],
   props: Partial<React.ComponentProps<typeof ActionsSection>> = {},
   layoutEdit: { touchMode: boolean; editMode: boolean } = { touchMode: false, editMode: false },
+  pins: Record<string, unknown> = { enabled: false, isPinned: () => false, isFull: false, toggle: () => {} },
 ) {
   const onRunAction = vi.fn().mockResolvedValue(undefined);
   render(
+    <PinnedTabsProvider value={pins as never}>
     <LayoutEditProvider value={layoutEdit}>
       <ActionsSection
         accessories={accessories}
@@ -60,6 +63,7 @@ function renderSection(
         {...props}
       />
     </LayoutEditProvider>
+    </PinnedTabsProvider>
   );
   return { onRunAction };
 }
@@ -352,5 +356,59 @@ describe('hiding an action', () => {
     renderSection([lightOn], { homeId: 'HOME-1' });
     fireEvent.contextMenu(card('lights'));
     expect(screen.queryByText('Hide Action')).toBeNull();
+  });
+});
+
+describe('pinning from a long press', () => {
+  afterEach(cleanup);
+
+  const PINS_ON = { enabled: true, isPinned: () => false, isFull: false, toggle: vi.fn() };
+
+  it('offers Pin to Tab Bar on a phone, where Edit Layout owns hiding', () => {
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { touchMode: true, editMode: false },
+      PINS_ON,
+    );
+
+    fireEvent.contextMenu(card('lights'));
+    expect(screen.getByText('Pin to Tab Bar')).toBeTruthy();
+    // Hiding is Edit Layout's job on touch — the menu must not offer it twice.
+    expect(screen.queryByText('Hide Action')).toBeNull();
+  });
+
+  it('offers both on the desktop, where there is no edit mode', () => {
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { touchMode: false, editMode: false },
+      PINS_ON,
+    );
+
+    fireEvent.contextMenu(card('lights'));
+    expect(screen.getByText('Hide Action')).toBeTruthy();
+    expect(screen.getByText('Pin to Tab Bar')).toBeTruthy();
+  });
+
+  it('pins under the stable name, not the label that follows device state', () => {
+    const toggle = vi.fn();
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { touchMode: true, editMode: false },
+      { ...PINS_ON, toggle },
+    );
+
+    fireEvent.contextMenu(card('lights'));
+    fireEvent.click(screen.getByText('Pin to Tab Bar'));
+    // "Turn all lights off" would freeze today's state into the tab for ever.
+    expect(toggle).toHaveBeenCalledWith(expect.objectContaining({ id: 'lights', name: 'Lights' }));
+  });
+
+  it('shows no pin item where there is no tab bar to pin to', () => {
+    renderSection([lightOn], { homeId: 'HOME-1', onHideAction: vi.fn() });
+    fireEvent.contextMenu(card('lights'));
+    expect(screen.queryByText('Pin to Tab Bar')).toBeNull();
   });
 });

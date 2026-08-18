@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
@@ -736,6 +737,16 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share Accessory
                 </ContextMenuItem>
+              )}
+              {canPin && accessory && (
+                <PinTabMenuItem
+                  tab={{
+                    type: 'accessory',
+                    id: accessory.id,
+                    name: accessory.name,
+                    homeId: accessory.homeId,
+                  }}
+                />
               )}
               {canShowHistory && accessory && (
                 <ContextMenuItem onClick={() => openHistory(accessory)}>

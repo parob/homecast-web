@@ -132,6 +132,7 @@ import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { RowEditActions } from '@/components/shared/EditActions';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -454,6 +455,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
             Share Room
           </ContextMenuItem>
         )}
+        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {analyticsAvailableFor(homeId) && (
           <ContextMenuItem onClick={() => openAnalytics({ level: 'category', category: 'climate', room: room.name, homeId })}>
             <LineChart className="h-4 w-4 mr-2" />
@@ -849,6 +851,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
               Share Home
             </ContextMenuItem>
           )}
+          {pinTab && <PinTabMenuItem tab={pinTab} />}
           {analyticsAvailableFor(home.id) && (
             <ContextMenuItem onClick={() => openAnalytics({ level: 'home', homeId: home.id })}>
               <LineChart className="h-4 w-4 mr-2" />
@@ -1013,6 +1016,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
             Share Group
           </ContextMenuItem>
         )}
+        {pinTab && <PinTabMenuItem tab={pinTab} />}
         {onSelectAccessories && (
           <ContextMenuItem onClick={onSelectAccessories}>
             <Plus className="h-4 w-4 mr-2" />

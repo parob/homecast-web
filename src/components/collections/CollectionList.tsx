@@ -8,6 +8,7 @@ import { CreateCollectionDialog } from './CreateCollectionDialog';
 import { Button } from '@/components/ui/button';
 import { Plus, Folder, Loader2, Layers, Pencil, Trash2, FolderPlus, Share2, ImageIcon } from 'lucide-react';
 import { RowEditActions } from '@/components/shared/EditActions';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import {
@@ -154,6 +155,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
               Share Collection
             </ContextMenuItem>
           )}
+          {pinTab && <PinTabMenuItem tab={pinTab} />}
           {onSelectAccessories && (
             <ContextMenuItem onClick={onSelectAccessories}>
               <Plus className="h-4 w-4 mr-2" />

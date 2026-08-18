@@ -11,6 +11,7 @@ import {
   ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { EyeOff } from 'lucide-react';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions } from '@/components/shared/EditActions';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { type HomeActionId } from '@/lib/summary-sections';
@@ -311,9 +312,12 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                 );
               }
 
-              // Desktop has no edit mode, so hiding lives where every other
-              // desktop hide does: the right-click menu.
-              if (touchMode || !homeId || !onHideAction) return <Fragment key={action.id}>{card}</Fragment>;
+              // Two different menus in one, by platform. Desktop has no edit
+              // mode, so hiding lives where every other desktop hide does — the
+              // right-click menu. A phone hides from Edit Layout, but a long
+              // press is still the quick way onto the tab bar.
+              const canHideHere = !touchMode && !!homeId && !!onHideAction;
+              if (!canHideHere && !homeId) return <Fragment key={action.id}>{card}</Fragment>;
               return (
                 <ContextMenu key={action.id}>
                   <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
@@ -322,10 +326,19 @@ export function ActionsSection({ accessories, homeLayout, homeId, compact, isDar
                       {HOME_ACTION_NAMES[action.id]}
                     </ContextMenuLabel>
                     <ContextMenuSeparator />
-                    <ContextMenuItem onClick={() => onHideAction(action.id)}>
-                      <EyeOff className="mr-2 h-4 w-4" />
-                      Hide Action
-                    </ContextMenuItem>
+                    {/* The stored name is HOME_ACTION_NAMES, never action.label:
+                        the label flips with live device state, so a pin made
+                        while the lights were on would read "Turn all lights on"
+                        for ever. */}
+                    <PinTabMenuItem
+                      tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
+                    />
+                    {canHideHere && (
+                      <ContextMenuItem onClick={() => onHideAction!(action.id)}>
+                        <EyeOff className="mr-2 h-4 w-4" />
+                        Hide Action
+                      </ContextMenuItem>
+                    )}
                   </ContextMenuContent>
                 </ContextMenu>
               );

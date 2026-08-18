@@ -12,6 +12,11 @@ import { getIconColor } from '@/components/widgets/iconColors';
 import { isBuiltInScene, isHiddenBuiltInScene } from '@/lib/scenes';
 import { GET_SCENES } from '@/lib/graphql/queries';
 import { EXECUTE_SCENE, DELETE_SCENE } from '@/lib/graphql/mutations';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuLabel,
+  ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions } from '@/components/shared/EditActions';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
@@ -185,16 +190,29 @@ export function ScenesSection({ homeId, compact, isDarkBackground, open }: Scene
                 </div>
               </div>
               );
-              // Pinning is an Edit Layout job now — see ActionsSection.
-              if (!editMode) return <Fragment key={scene.id}>{tile}</Fragment>;
+              const tab = { type: 'scene' as const, id: scene.id, name: scene.name, homeId: homeId ?? undefined };
+
+              // Editing carries the button on the tile; otherwise a long press
+              // reaches the same thing without entering a mode for it.
+              if (editMode) {
+                return (
+                  <div key={scene.id} className="relative">
+                    {tile}
+                    <TileEditActions action={null} tab={tab} />
+                  </div>
+                );
+              }
               return (
-                <div key={scene.id} className="relative">
-                  {tile}
-                  <TileEditActions
-                    action={null}
-                    tab={{ type: 'scene', id: scene.id, name: scene.name, homeId: homeId ?? undefined }}
-                  />
-                </div>
+                <ContextMenu key={scene.id}>
+                  <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+                      {scene.name}
+                    </ContextMenuLabel>
+                    <ContextMenuSeparator />
+                    <PinTabMenuItem tab={tab} />
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
             {!editMode && <button
