@@ -5154,6 +5154,7 @@ const Dashboard = () => {
             group={group}
             accessories={members}
             compact={false}
+            expanded
             homeName={getHomeName(group.homeId ?? members[0]?.homeId)}
             onToggle={(checked) => handleGroupToggle(group.id, checked, group.homeId ?? members[0]?.homeId)}
             onSlider={(charType, value) => handleGroupSlider(group.id, charType, value, group.homeId ?? members[0]?.homeId)}

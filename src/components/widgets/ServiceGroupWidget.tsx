@@ -121,6 +121,16 @@ export interface ServiceGroupWidgetProps {
   group: HomeKitServiceGroup;
   accessories: HomeKitAccessory[];
   compact?: boolean;
+  /**
+   * Render the big card this widget normally shows inside its own overlay —
+   * larger icon and title, the hero controls, no tile chrome.
+   *
+   * For a caller that is already a panel and supplies its own overlay, which is
+   * the pinned tab bar. Without it a pin got the plain inline tile, which is a
+   * smaller thing wearing the same colours: the icon dropped from h-11 to h-9,
+   * the title from text-base to text-sm, and the hero never appeared at all.
+   */
+  expanded?: boolean;
   roomName?: string;
   homeName?: string;
   onToggle: (checked: boolean) => void;
@@ -161,6 +171,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   group,
   accessories,
   compact = false,
+  expanded = false,
   roomName,
   homeName,
   onToggle,
@@ -1152,6 +1163,19 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   const wiggleOffset = editMode ? { '--wiggle-offset': `${(group.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
   const wiggleClass = editMode ? 'wiggle' : '';
+
+  // Already inside somebody else's panel: hand back the big card on its own.
+  // No context menu (the panel is not a tile to right-click) and no nested
+  // ExpandedOverlay (this IS the expansion).
+  if (expanded) {
+    return (
+      <WidgetColorContext.Provider value={colorContextValue}>
+        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+          {expandedCardContent}
+        </WidgetWrapper>
+      </WidgetColorContext.Provider>
+    );
+  }
 
   if (hasContextMenu) {
     return (

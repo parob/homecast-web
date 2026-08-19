@@ -378,8 +378,14 @@ export function MobileTabBar({
               ? 'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg'
               // Otherwise a row that grows sideways for the one tab that is lit.
               : cn(
-                  'flex flex-row items-center rounded-full overflow-hidden shrink-0',
-                  expanded ? 'px-3 py-2' : 'px-2.5 py-2',
+                  'flex flex-row items-center rounded-full overflow-hidden',
+                  // The icon-only tabs are a fixed size and hold it. The lit one
+                  // is the only elastic thing in the row, so it is the one that
+                  // gives when a long name would otherwise push the row wider
+                  // than the bar — `min-w-0` because a flex item defaults to
+                  // `min-width: auto` and will not shrink below its content
+                  // however small you let it get.
+                  expanded ? 'px-3 py-2 min-w-0 shrink' : 'px-2.5 py-2 shrink-0',
                 ),
             !editMode && lit && 'bg-primary text-primary-foreground',
             !editMode && !lit && 'active:bg-white/10',
@@ -427,7 +433,11 @@ export function MobileTabBar({
             <span
               aria-hidden
               className={cn(
-                'text-[13px] font-semibold leading-none whitespace-nowrap overflow-hidden',
+                'text-[13px] font-semibold leading-none whitespace-nowrap',
+                // Ellipsis, not overflow: "Annex Lights" pinned beside four
+                // others is wider than a phone, and a label that refuses to
+                // shrink took the row off the side of the screen.
+                'overflow-hidden text-ellipsis min-w-0',
                 'transition-[max-width,margin,opacity] duration-base ease-standard',
                 expanded ? 'max-w-[120px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0',
               )}
@@ -477,11 +487,17 @@ export function MobileTabBar({
       // handler per button would lose the gesture in those gaps.
       onPointerDown={editMode ? undefined : beginGesture}
       className={cn(
-        'pointer-events-auto flex gap-1 transition-colors duration-300',
+        // `min-w-0` on the bar itself as well as on the tab that gives: a flex
+        // item's automatic minimum size is its content, and that beats
+        // `max-width` — so without it the bar simply refused to come down to
+        // the width it had been told it could have.
+        'pointer-events-auto flex gap-1 min-w-0 transition-colors duration-300',
         editMode
           ? 'items-start px-2 py-1.5 rounded-2xl overflow-x-auto scrollbar-hidden'
-          // A row of capsules wants a capsule around it.
-          : 'items-center p-1.5 rounded-full touch-none',
+          // A row of capsules wants a capsule around it. `overflow-hidden` so
+          // the glass always contains the tabs: without it a row too wide for
+          // the bar simply drew past the ends of its own background.
+          : 'items-center p-1.5 rounded-full touch-none overflow-hidden',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
       )}
       style={{ maxWidth: 'calc(100% - 32px)' }}
