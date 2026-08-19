@@ -394,6 +394,70 @@ export function buildJourney(
   };
 }
 
+/**
+ * Where each stage physically runs.
+ *
+ * Eleven stages in a flat row gave no sense of place — you could not tell which
+ * part was the phone in your hand, which was a pod in europe-west1 and which was
+ * a Mac in someone's kitchen. Grouping by machine is what makes the picture
+ * readable, and it mirrors how the public /how-it-works diagram is arranged.
+ */
+export type PlaceId = 'client' | 'cloud' | 'relay' | 'home';
+
+export interface Place {
+  id: PlaceId;
+  label: string;
+  stages: Stage[];
+  /** Sum of what was genuinely measured here. Null when nothing reported. */
+  measuredMs: number | null;
+  /** When the request first reached this machine. */
+  startMs: number | null;
+  anyObserved: boolean;
+}
+
+const STAGE_PLACE: Record<StageId, PlaceId> = {
+  client: 'client',
+  edge: 'cloud',
+  ingress: 'cloud',
+  core: 'cloud',
+  routing: 'cloud',
+  peer: 'cloud',
+  relay_socket: 'relay',
+  relay_web: 'relay',
+  bridge: 'relay',
+  homekit: 'home',
+  accessory: 'home',
+};
+
+const PLACE_LABELS: Record<PlaceId, string> = {
+  client: 'Your device',
+  cloud: 'homecast.cloud',
+  relay: 'Your Mac',
+  home: 'Your home',
+};
+
+/** Group the drawn stages by the machine they run on, in journey order. */
+export function placesOf(journey: TraceJourney): Place[] {
+  const order: PlaceId[] = ['client', 'cloud', 'relay', 'home'];
+  return order.map((id) => {
+    const stages = visibleStages(journey).filter((s) => STAGE_PLACE[s.id] === id);
+    const measured = stages
+      .map((s) => s.measuredMs)
+      .filter((n): n is number => n !== null);
+    const starts = stages
+      .map((s) => s.startMs)
+      .filter((n): n is number => n !== null);
+    return {
+      id,
+      label: PLACE_LABELS[id],
+      stages,
+      measuredMs: measured.length ? measured.reduce((a, b) => a + b, 0) : null,
+      startMs: starts.length ? Math.min(...starts) : null,
+      anyObserved: stages.some((s) => s.status === 'observed' || s.status === 'failed'),
+    };
+  });
+}
+
 /** The stages a journey should actually draw, given how it was routed. */
 export function visibleStages(journey: TraceJourney): Stage[] {
   return journey.stages.filter((s) => s.status !== 'skipped');

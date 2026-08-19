@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildJourney,
+  placesOf,
   reasonLabel,
   stepsFromSpan,
   visibleStages,
@@ -342,5 +343,48 @@ describe('merged step lists', () => {
     });
     const stage = buildJourney([twoHops]).stages.find((s) => s.id === 'relay_socket')!;
     expect(stage.steps).toHaveLength(2);
+  });
+});
+
+describe('placesOf — grouping by the machine a stage runs on', () => {
+  it('splits the journey into the four real places, in order', () => {
+    // Eleven stages in a flat row gave no sense of place: which part is the
+    // phone, which is a pod in europe-west1, which is a Mac in a kitchen.
+    const places = placesOf(buildJourney(SERVER_ONLY));
+    expect(places.map((p) => p.id)).toEqual(['client', 'cloud', 'relay', 'home']);
+    expect(places.map((p) => p.label)).toEqual([
+      'Your device', 'homecast.cloud', 'Your Mac', 'Your home',
+    ]);
+  });
+
+  it('puts every stage somewhere', () => {
+    const journey = buildJourney(SERVER_ONLY);
+    const grouped = placesOf(journey).flatMap((p) => p.stages.map((s) => s.id));
+    expect(grouped.sort()).toEqual(visibleStages(journey).map((s) => s.id).sort());
+  });
+
+  it('sums only measured time, so a place cannot invent a total', () => {
+    const cloud = placesOf(buildJourney(SERVER_ONLY)).find((p) => p.id === 'cloud')!;
+    // Nothing in the cloud group measured its own duration on this trace.
+    expect(cloud.measuredMs).toBeNull();
+    expect(cloud.anyObserved).toBe(true);
+
+    const relay = placesOf(buildJourney(SERVER_ONLY)).find((p) => p.id === 'relay')!;
+    expect(relay.measuredMs).toBe(170); // the relay round trip
+  });
+
+  it('reports a place as unobserved when none of its stages reported', () => {
+    const client = placesOf(buildJourney(SERVER_ONLY)).find((p) => p.id === 'client')!;
+    expect(client.anyObserved).toBe(false);
+    expect(client.startMs).toBeNull();
+  });
+
+  it('drops a skipped stage from its place', () => {
+    const local = [
+      span({ offsetMs: 0, spanName: 'server_received' }),
+      span({ offsetMs: 5, spanName: 'route_decision', routingMode: 'local' }),
+    ];
+    const cloud = placesOf(buildJourney(local)).find((p) => p.id === 'cloud')!;
+    expect(cloud.stages.map((s) => s.id)).not.toContain('peer');
   });
 });
