@@ -22,16 +22,21 @@ export function PinnedControl({ context, children }: {
   if (!context) return <>{children}</>;
 
   return (
-    // The padding is the point. This sits on the overlay's own glass, and at
-    // `px-1` with nothing above it the line was jammed into the panel's top-left
-    // corner and read as something that had escaped rather than a caption. The
-    // glass is `inset-0` of this box, so the padding grows the panel with it.
-    <div className="flex flex-col gap-2 px-1.5 pt-1.5">
+    // The padding is the point, and it is split deliberately. The vertical
+    // padding is on this box, because the overlay's glass is `inset-0` of it
+    // and so grows with it — that is what puts space above the caption rather
+    // than jamming it into the panel's top corner. The horizontal inset is on
+    // the caption itself, because padding here would narrow the widget below
+    // instead, and the card is not what needed moving.
+    //
+    // Lands ~22px down and ~26px in from the panel edge, on top of the
+    // overlay's own 10px ring.
+    <div className="flex flex-col gap-2 px-1.5 pt-3">
       <p
         className={cn(
           // No surface of its own — a second panel above the panel would read
           // as two things being open at once.
-          'px-1 text-[11px] font-medium leading-none truncate',
+          'px-2.5 text-[11px] font-medium leading-none truncate',
           isDarkBackground ? 'text-white/70' : 'text-muted-foreground',
         )}
       >
