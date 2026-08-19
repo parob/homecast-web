@@ -29,6 +29,9 @@ const authenticatedClients = new Set<string>();
 
 // Cached auth-enabled flag (async IndexedDB read, refreshed on change)
 let authEnabledCache = false;
+// What the user calls this relay. Empty means "no custom name", and the native
+// side falls back to the hostname rather than advertising a blank row.
+let relayNameCache = '';
 
 /** Refresh the cached auth-enabled flag from IndexedDB. */
 export async function refreshAuthEnabled(): Promise<void> {
@@ -37,6 +40,23 @@ export async function refreshAuthEnabled(): Promise<void> {
     authEnabledCache = (await getSetting('auth-enabled')) === 'true';
   } catch {
     authEnabledCache = false;
+  }
+  publishAuthState();
+}
+
+/**
+ * Refresh the relay's display name from IndexedDB and re-advertise it.
+ *
+ * Clients used to have only the Bonjour instance name, which a relay reached
+ * by a typed address never carries — so a relay on a VPN was nameless. Like the
+ * auth flag, the setting lives in IndexedDB where Swift cannot read it.
+ */
+export async function refreshRelayName(): Promise<void> {
+  try {
+    const { getSetting } = await import('./local-db');
+    relayNameCache = (await getSetting('relay-name')) || '';
+  } catch {
+    relayNameCache = '';
   }
   publishAuthState();
 }
@@ -55,6 +75,7 @@ function publishAuthState(): void {
   win.webkit?.messageHandlers?.localServer?.postMessage({
     action: 'advertise',
     authEnabled: authEnabledCache,
+    name: relayNameCache,
   });
 }
 
@@ -118,8 +139,10 @@ export function initLocalServer(): void {
     localStorage.setItem('homecast-relay-setup', 'true');
   }
 
-  // Load auth-enabled flag from IndexedDB
+  // Load auth-enabled flag and relay name from IndexedDB. Both are pushed down
+  // to Swift, which cannot read IndexedDB itself.
   refreshAuthEnabled();
+  refreshRelayName();
 
   // Anonymous usage reporting. Started here rather than in main.tsx because
   // this is the one point that has already established the relay gate — a

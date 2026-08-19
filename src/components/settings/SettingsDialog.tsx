@@ -36,6 +36,7 @@ import {
   visibleHomeSettingsSections,
   type HomeSettingsSectionId,
 } from '@/lib/home-settings-sections';
+import { Input } from '@/components/ui/input';
 import { getCloud } from '@/lib/cloud';
 import {
   AlertDialog,
@@ -187,6 +188,39 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // browser pointed at the relay over the LAN. A client with no paired relay
   // has no portal address to offer, and shows no card rather than a wrong one.
   const clientRelayOrigin = isCommunity && !isRelayCapable() ? getRelayAddress() : null;
+  // What this relay calls itself. Goes through the local resolver rather than
+  // touching IndexedDB directly, so the write also re-advertises — and so the
+  // same path is reachable over HTTP, which is the only way any of this is
+  // testable without driving the Mac's own window.
+  const [relayName, setRelayName] = useState('');
+  const [relayNameSaved, setRelayNameSaved] = useState(false);
+  const canNameRelay = isCommunity && isRelayCapable();
+  useEffect(() => {
+    if (!canNameRelay) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { handleGraphQL } = await import('@/server/local-graphql');
+        const res = await handleGraphQL({ operationName: 'GetRelayName', variables: {} });
+        if (!cancelled) setRelayName(res?.data?.relayName || '');
+      } catch { /* leave blank; the relay falls back to its hostname */ }
+    })();
+    return () => { cancelled = true; };
+  }, [canNameRelay]);
+
+  const saveRelayName = async (value: string) => {
+    const trimmed = value.trim();
+    try {
+      // Through the resolver, not straight to IndexedDB: it re-advertises for
+      // us, so Bonjour TXT and /health change without a restart. A rename
+      // nobody else can see is worse than no rename at all.
+      const { handleGraphQL } = await import('@/server/local-graphql');
+      await handleGraphQL({ operationName: 'SetRelayName', variables: { name: trimmed } });
+      setRelayNameSaved(true);
+      setTimeout(() => setRelayNameSaved(false), 2000);
+    } catch { /* the field keeps what was typed; nothing else to undo */ }
+  };
+
   const portalUrl =
     lanOrigin ??
     clientRelayOrigin ??
@@ -346,6 +380,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 You're running the Community edition — fully local, no cloud dependency, unlimited accessories.
               </p>
             </div>
+            {canNameRelay && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Relay name</p>
+                  {relayNameSaved && <span className="text-xs text-muted-foreground">Saved</span>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  What this Mac is called on your other devices. Leave it blank to use the
+                  computer's name.
+                </p>
+                <Input
+                  value={relayName}
+                  onChange={(e) => setRelayName(e.target.value)}
+                  onBlur={(e) => saveRelayName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  placeholder={(window as any).homecastHostName || "This Mac"}
+                  className="h-8 text-sm"
+                  maxLength={60}
+                />
+              </div>
+            )}
             {portalUrl && (
               <div className="rounded-lg border p-3 space-y-2">
                 <p className="text-sm font-medium">Local portal</p>

@@ -339,6 +339,23 @@ async function resolveOperation(
       return { authEnabled: enabled };
     }
 
+    case 'GetRelayName': {
+      // Empty means "no custom name" — the native side answers with the
+      // computer's hostname instead, so callers get a name either way.
+      return { relayName: (await db.getSetting('relay-name')) || '' };
+    }
+
+    case 'SetRelayName': {
+      // Stored here rather than in Swift because IndexedDB is the relay's
+      // settings store; Swift keeps a mirror purely so /health can answer on a
+      // cold start, before this web app has loaded to tell it anything.
+      const name = String(variables.name ?? '').trim().slice(0, 60);
+      await db.setSetting('relay-name', name);
+      const { refreshRelayName } = await import('./local-server');
+      await refreshRelayName();
+      return { setRelayName: { success: true, name, error: null } };
+    }
+
     // --- Community User Management ---
     case 'GetCommunityUsers':
       return { communityUsers: await auth.getUsers() };
