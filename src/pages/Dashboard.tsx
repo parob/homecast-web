@@ -1211,6 +1211,7 @@ const Dashboard = () => {
   const AdminTasks = _cloud?.AdminTasks ?? null;
   const AdminApprovals = _cloud?.AdminApprovals ?? null;
   const AdminLogs = _cloud?.AdminLogs ?? null;
+  const AdminTraceVisualiser = _cloud?.AdminTraceVisualiser ?? null;
   const AdminReliability = _cloud?.AdminReliability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
@@ -9153,6 +9154,10 @@ const Dashboard = () => {
                 {adminSubPath === '/infrastructure/mqtt' && AdminInfrastructureMqtt && <AdminInfrastructureMqtt />}
                 {adminSubPath === '/infrastructure/database' && AdminInfrastructureDatabase && <AdminInfrastructureDatabase />}
                 {adminSubPath === '/logs' && <AdminLogs />}
+                {/* One trace, full width. The log explorer embeds the same
+                    visualiser; this is for studying a journey without
+                    losing room to the search around it. */}
+                {adminSubPath.startsWith('/trace/') && <AdminTraceVisualiser />}
                 {adminSubPath === '/debug' && (
                   <AdminDebugInfo
                     backgroundSettings={activeBackground}
