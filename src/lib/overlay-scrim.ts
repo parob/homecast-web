@@ -12,8 +12,15 @@
  * changes, which is what actually makes the surfaces feel like one system.
  */
 
-/** The shared blur. Every scrim in the app uses exactly this. */
-export const OVERLAY_SCRIM_BLUR = 'backdrop-blur-md';
+/**
+ * The shared blur. Every scrim in the app uses exactly this.
+ *
+ * 4px, not 12px. A heavy blur reads as a modal takeover, which is right for
+ * almost nothing here: most of these overlays sit over a photo wallpaper, and
+ * at 12px the wallpaper turned to soup behind a menu you were only using to
+ * pick "Rename".
+ */
+export const OVERLAY_SCRIM_BLUR = 'backdrop-blur-sm';
 
 /**
  * Full scrim classes.

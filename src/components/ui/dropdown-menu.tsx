@@ -23,7 +23,12 @@ const DropdownMenuTrigger = React.forwardRef<
     className={cn(
       "transition-colors duration-fast",
       "data-[state=open]:!bg-white data-[state=open]:!text-black",
-      "data-[state=open]:shadow-sm data-[state=open]:z-[10061]",
+      // z-index does nothing on a static element, so the trigger has to be
+      // positioned before it can climb over the scrim. Only while open — a
+      // permanently positioned trigger would change how every call site lays
+      // its button out.
+      "data-[state=open]:relative data-[state=open]:z-[10002]",
+      "data-[state=open]:shadow-sm",
       className,
     )}
     {...props}
@@ -103,7 +108,15 @@ const DropdownMenuContent = React.forwardRef<
         <div
           aria-hidden
           className={cn(
-            "fixed inset-0 z-[10059] animate-in fade-in-0 duration-base",
+            // Under the app chrome, not over it.
+            //
+            // AppHeader is `fixed z-[10001]` and the tab bar likewise — both
+            // are stacking contexts, so a scrim above them covers everything
+            // inside them and nothing within can climb back out. The header's
+            // own ⋮ went white and then disappeared under the dim. Below them
+            // the chrome and its lit trigger stay visible, and a trigger in
+            // ordinary page flow still lifts clear on its own.
+            "fixed inset-0 z-[10000] animate-in fade-in-0 duration-base",
             OVERLAY_SCRIM,
           )}
         />
