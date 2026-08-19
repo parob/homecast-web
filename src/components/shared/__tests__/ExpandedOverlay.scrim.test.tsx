@@ -16,6 +16,8 @@ import { ExpandedOverlay } from '../ExpandedOverlay';
  * widget underneath. What is pinned here is the thing hit testing depends on:
  * the scrim is interactive exactly while the overlay is up, and a pointerdown
  * on it dismisses.
+ *
+ * Every overlay has one, including a nested one — see the last two cases.
  */
 
 if (!globalThis.ResizeObserver) {
@@ -245,6 +247,67 @@ describe('ExpandedOverlay backdrop', () => {
     expect(underneath).not.toHaveBeenCalled();
 
     tile.remove();
+  });
+
+  /**
+   * A per-accessory panel opened from inside an expanded service group used to
+   * draw no scrim at all, so the group's panel sat fully lit directly under the
+   * panel that had taken over from it. Every overlay draws one now, and because
+   * a nested overlay inherits its parent's elevation + 2, the new scrim lands in
+   * the gap: over the group's panel, under its own.
+   */
+  it('draws its own scrim over the panel it was opened from', async () => {
+    render(
+      <ExpandedOverlay isExpanded onClose={() => {}}>
+        <ExpandedOverlay isExpanded onClose={() => {}}>
+          <div>inner</div>
+        </ExpandedOverlay>
+      </ExpandedOverlay>,
+    );
+    await waitFor(() => {
+      expect(document.body.querySelectorAll('.fixed-full-screen')).toHaveLength(2);
+    });
+
+    const zOf = (sel: string) =>
+      Array.from(document.body.querySelectorAll<HTMLElement>(sel))
+        .map(el => Number(el.style.zIndex))
+        .sort((a, b) => a - b);
+    const [outerScrim, innerScrim] = zOf('.fixed-full-screen');
+    const [outerPanel, innerPanel] = zOf('[data-expandable-widget]');
+
+    // scrim, panel, scrim, panel — each panel lit against its own backdrop.
+    expect(outerScrim).toBeLessThan(outerPanel);
+    expect(outerPanel).toBeLessThan(innerScrim);
+    expect(innerScrim).toBeLessThan(innerPanel);
+  });
+
+  /**
+   * ...and the extra layer must not cost the group its panel. The nested scrim
+   * clears the group's `z > baseZ + 1` test, so the group reads a tap on it as
+   * something on top rather than as the background.
+   */
+  it('closes only the overlay it belongs to', async () => {
+    const closeOuter = vi.fn();
+    const closeInner = vi.fn();
+    render(
+      <ExpandedOverlay isExpanded onClose={closeOuter}>
+        <ExpandedOverlay isExpanded onClose={closeInner}>
+          <div>inner</div>
+        </ExpandedOverlay>
+      </ExpandedOverlay>,
+    );
+    await waitFor(() => {
+      expect(document.body.querySelectorAll('.fixed-full-screen')).toHaveLength(2);
+    });
+
+    const nested = Array.from(document.body.querySelectorAll<HTMLElement>('.fixed-full-screen'))
+      .sort((a, b) => Number(a.style.zIndex) - Number(b.style.zIndex))[1];
+    act(() => {
+      nested.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    });
+
+    expect(closeInner).toHaveBeenCalledTimes(1);
+    expect(closeOuter).not.toHaveBeenCalled();
   });
 
   it('goes inert for the close animation, so the next tap is not eaten', async () => {

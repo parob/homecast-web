@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
 import { Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { OVERLAY_SCRIM } from '@/lib/overlay-scrim';
 import { Input } from '@/components/ui/input';
 import { AccessoryWidget, ServiceGroupWidget } from '@/components/widgets';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
@@ -366,6 +367,9 @@ export function AccessorySearch({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        // Search is a takeover, not a form: the page behind goes back rather
+        // than dark, matching the left menu and the card menus.
+        overlayClassName={OVERLAY_SCRIM}
         className="flex flex-col gap-0 p-0 overflow-hidden transition-all duration-200 !rounded-3xl"
         style={{ maxWidth: totalResults > 0 ? '75vw' : '40rem' }}
         hideCloseButton

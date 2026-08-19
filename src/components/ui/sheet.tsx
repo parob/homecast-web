@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { useSwipeToClose } from "@/hooks/useDrawerSwipe";
 import { cn } from "@/lib/utils";
+import { OVERLAY_SCRIM } from "@/lib/overlay-scrim";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -20,7 +21,10 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-[10010] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:pointer-events-none",
+      // Was a flat bg-black/80, which switched the wallpaper off rather than
+      // pushing it back. See lib/overlay-scrim.ts.
+      "fixed inset-0 z-[10010] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:pointer-events-none",
+      OVERLAY_SCRIM,
       className,
     )}
     {...props}

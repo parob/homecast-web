@@ -30,10 +30,17 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean }
->(({ className, children, style, hideCloseButton, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    hideCloseButton?: boolean;
+    /** Restyle the backdrop, the same way SheetContent already allows. */
+    overlayClassName?: string;
+  }
+>(({ className, children, style, hideCloseButton, overlayClassName, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay style={style?.zIndex ? { zIndex: style.zIndex } : undefined} />
+    <DialogOverlay
+      className={overlayClassName}
+      style={style?.zIndex ? { zIndex: style.zIndex } : undefined}
+    />
     <DialogPrimitive.Content
       ref={ref}
       aria-describedby={undefined}

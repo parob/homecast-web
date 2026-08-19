@@ -2,6 +2,7 @@ import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useE
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { overlayScrim } from '@/lib/overlay-scrim';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -33,11 +34,9 @@ export interface ExpandedOverlayProps {
 /** Dashboard default: above the widget grid, below dialogs. */
 const DEFAULT_Z = 10017;
 
-// Portals preserve React context, so a per-accessory overlay opened from inside
-// an already-open group overlay sees depth 1 and skips its scrim.
-const OverlayDepthContext = createContext(0);
-
-// Carries the caller's elevation down to nested overlays, for the same reason.
+// Carries the caller's elevation down to nested overlays. Portals preserve React
+// context, so a per-accessory overlay opened from inside an already-open group
+// overlay stacks above it instead of dropping back to the dashboard default.
 const OverlayZContext = createContext<number | null>(null);
 
 // Portrait panels are narrower so the hero control reads as a tall bar; on
@@ -121,7 +120,6 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const onMouseLeaveRef = useRef<(() => void) | undefined>(undefined);
   const isPointerOutsideRef = useRef<(x: number, y: number) => boolean>(() => true);
   const { isDarkBackground } = useBackgroundContext();
-  const depth = useContext(OverlayDepthContext);
   const isMobile = useIsMobile();
 
   // Clamp before the position math so narrow viewports get correct alignment,
@@ -218,9 +216,8 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   // that its pointerdown is about to produce. This lives at component scope
   // rather than inside the dismissal effect below because onClose() flips
   // isExpanded, which tears that effect down in a microtask — long before the
-  // click lands. It is a document listener rather than a handler on the scrim
-  // for the same reason the scrim cannot do it: a nested overlay draws no scrim
-  // of its own, and it has the same tap to spend.
+  // click lands — and for the same reason it cannot live on the scrim, which
+  // goes inert for its close animation in that very tick.
   const swallowTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const swallowClick = useCallback((ev: MouseEvent) => {
     ev.stopPropagation();
@@ -464,21 +461,26 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               happened to dismiss over — a blurred, unreachable-looking backdrop
               that still actuated devices. One tap now means one thing.
               Interactive only once it is actually painted, so the 150ms close
-              animation doesn't eat the next tap. Only the outermost overlay
-              dims — nested overlays (group → accessory) skip it. */}
-          {depth === 0 && (
-            <div
-              aria-hidden
-              style={{ zIndex: baseZ }}
-              // Blocking the pointer also blocks scrolling the page behind, and
-              // the scroll-past-40px dismissal with it. A wheel over the
-              // backdrop means the same thing a tap does.
-              onWheel={() => onClose()}
-              className={`fixed-full-screen backdrop-blur-[1px] transition-opacity duration-fast ease-standard ${
-                isDarkBackground ? 'bg-black/15' : 'bg-black/[0.07]'
-              } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-            />
-          )}
+              animation doesn't eat the next tap.
+
+              Every overlay draws one, at its own elevation: a nested panel sits
+              two above its parent, so its scrim lands between them. Expanding a
+              member of an already-expanded service group therefore pushes the
+              group's panel back exactly the way the group pushed the wallpaper
+              back — the alternative was a lit, fully legible panel directly
+              under a panel that had taken over from it. The wallpaper ends up
+              under both, which is the point: it is two rooms away now. */}
+          <div
+            aria-hidden
+            style={{ zIndex: baseZ }}
+            // Blocking the pointer also blocks scrolling the page behind, and
+            // the scroll-past-40px dismissal with it. A wheel over the
+            // backdrop means the same thing a tap does.
+            onWheel={() => onClose()}
+            className={`fixed-full-screen transition-opacity duration-fast ease-standard ${
+              overlayScrim(isDarkBackground)
+            } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          />
           <div
             // Marks this as expanded-widget content even though the portal puts
             // it outside the widget's own subtree. Dashboard's collapse-on-
@@ -545,15 +547,15 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                 <div className={`relative transition-opacity duration-fast ease-standard ${
                   ready && !isClosing ? 'opacity-100' : 'opacity-0'
                 }`}>
-                  <OverlayDepthContext.Provider value={depth + 1}>
-                    {/* Nested overlays inherit the elevation rather than dropping
-                        back to the dashboard default — a group expanded inside a
-                        dialog would otherwise send its per-accessory overlay
-                        behind that dialog, which is the bug this prop fixes. */}
-                    <OverlayZContext.Provider value={baseZ + 2}>
-                      {children}
-                    </OverlayZContext.Provider>
-                  </OverlayDepthContext.Provider>
+                  {/* Nested overlays inherit the elevation rather than dropping
+                      back to the dashboard default — a group expanded inside a
+                      dialog would otherwise send its per-accessory overlay
+                      behind that dialog, which is the bug this prop fixes. The
+                      +2 leaves the nested scrim a rung of its own at baseZ + 2,
+                      directly over this panel at baseZ + 1. */}
+                  <OverlayZContext.Provider value={baseZ + 2}>
+                    {children}
+                  </OverlayZContext.Provider>
                 </div>
               </div>
             </div>
