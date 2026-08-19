@@ -359,7 +359,7 @@ export function BackgroundSettingsDialog({
           <DialogTitle>{entityTypeLabel} Background</DialogTitle>
           <DialogDescription>
             {entityName
-              ? `Set a custom background for "${entityName}" (${entityLabel}). This background will be visible when viewing this ${entityLabel}.`
+              ? `Set a custom background for "${entityName}".`
               : `Set a custom background for this ${entityLabel}.`
             }
           </DialogDescription>
@@ -676,16 +676,15 @@ export function BackgroundSettingsDialog({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button
-            variant="ghost"
-            onClick={handleClearBackground}
-            disabled={isSaving || isUploading || settings.type === 'none'}
-            className="sm:mr-auto"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset to Default
-          </Button>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleClearBackground}
+              disabled={isSaving || isUploading || settings.type === 'none'}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset to Default
+            </Button>
             <Button variant="outline" onClick={handleClose} disabled={isSaving || isUploading}>
               Cancel
             </Button>
