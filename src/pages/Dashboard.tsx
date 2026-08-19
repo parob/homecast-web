@@ -9175,7 +9175,8 @@ const Dashboard = () => {
                 {/* One trace, full width. The log explorer embeds the same
                     visualiser; this is for studying a journey without
                     losing room to the search around it. */}
-                {adminSubPath.startsWith('/trace/') && <AdminTraceVisualiser />}
+                {(adminSubPath === '/trace' || adminSubPath.startsWith('/trace/'))
+                  && <AdminTraceVisualiser />}
                 {adminSubPath === '/debug' && (
                   <AdminDebugInfo
                     backgroundSettings={activeBackground}
