@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Upload, RotateCcw, Check, Lightbulb, Power, ChevronDown, X } from 'lucide-react';
+import { Loader2, Upload, Check, Lightbulb, Power, ChevronDown, X } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -682,8 +682,7 @@ export function BackgroundSettingsDialog({
               onClick={handleClearBackground}
               disabled={isSaving || isUploading || settings.type === 'none'}
             >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset to Default
+              Reset
             </Button>
             <Button variant="outline" onClick={handleClose} disabled={isSaving || isUploading}>
               Cancel
