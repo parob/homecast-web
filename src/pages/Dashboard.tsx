@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
+import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
@@ -5959,26 +5959,34 @@ const Dashboard = () => {
             ? "Still starting up. If this Mac has just woken, give it a moment."
             : "Still signing in. Check your connection."}
         stuckActions={
+          // This screen is hard black in both themes, so these cannot use the
+          // themed variants: `secondary` renders a light pill, and `ghost`'s
+          // themed hover background sticks after a tap on iOS — which is how
+          // Sign out became a solid white pill with white/60 text on it.
           <div className="flex flex-wrap justify-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+            <Button
+              size="sm"
+              className="bg-white text-black hover:bg-white/90"
+              onClick={() => window.location.reload()}
+            >
               Try again
             </Button>
             {relayAddress && (
               <Button
                 size="sm"
-                variant="secondary"
-                onClick={() => {
-                  // Back to the chooser on Login, with the old address forgotten.
-                  localStorage.removeItem('homecast-relay-address');
-                  localStorage.removeItem('homecast-relay-setup');
-                  localStorage.removeItem('homecast-mode');
-                  window.location.href = '/login';
-                }}
+                variant="outline"
+                className="border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={forgetRelay}
               >
                 Change host
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="text-white/60 hover:text-white" onClick={logout}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-white/60 hover:bg-white/10 hover:text-white"
+              onClick={logout}
+            >
               Sign out
             </Button>
           </div>
@@ -6198,7 +6206,7 @@ const Dashboard = () => {
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[200px]">
+      <DropdownMenuContent scrim align="end" className="min-w-[200px]">
         {selectedCollectionId && selectedCollectionGroupId && hasContentAccess ? (
           <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2">

@@ -227,7 +227,7 @@ export function WebhookListView({ onClose }: WebhookListViewProps) {
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent scrim align="end">
               <DropdownMenuItem onClick={() => setEditingWebhook(selectedWebhook)}>
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
@@ -486,7 +486,7 @@ export function WebhookListView({ onClose }: WebhookListViewProps) {
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent scrim align="end">
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation();

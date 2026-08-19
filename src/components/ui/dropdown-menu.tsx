@@ -3,10 +3,33 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { OVERLAY_SCRIM } from "@/lib/overlay-scrim";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
-const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+/**
+ * The trigger, which goes solid white while its menu is open.
+ *
+ * `asChild` is the norm at these call sites (the trigger is a `Button`), and
+ * Radix's Slot concatenates className onto the child — so this lands on the
+ * real button rather than replacing whatever it already wore.
+ */
+const DropdownMenuTrigger = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      "transition-colors duration-fast",
+      "data-[state=open]:!bg-white data-[state=open]:!text-black",
+      "data-[state=open]:shadow-sm data-[state=open]:z-[10061]",
+      className,
+    )}
+    {...props}
+  />
+));
+DropdownMenuTrigger.displayName = DropdownMenuPrimitive.Trigger.displayName;
 
 const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
@@ -54,19 +77,64 @@ DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayNam
 
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> & {
+    /**
+     * Draw the app's blurred scrim behind the menu, and grow the menu out of
+     * its trigger rather than fading it in alongside.
+     *
+     * For the card menus — the `⋮` ones — where the menu is the only thing
+     * that matters while it is up. Left off for the incidental dropdowns (a
+     * sort order, a picker) where blurring the whole page to choose "Name"
+     * would be a lot of ceremony.
+     */
+    scrim?: boolean;
+  }
+>(({ className, sideOffset = 4, scrim, ...props }, ref) => (
+  <>
+    {/* Its own portal, not a sibling of the content inside one.
+        Radix's Portal renders `<Primitive.div asChild>`, which is
+        `Children.only` — and a `{cond && ...}` that evaluates to `false`
+        still counts as a second child, so every menu WITHOUT a scrim threw.
+        One child each. It mounts and unmounts with the menu, so it needs no
+        open state of its own; Radix already blocks outside interaction while a
+        menu is up, leaving this with nothing to do but be seen. */}
+    {scrim && (
+      <DropdownMenuPrimitive.Portal>
+        <div
+          aria-hidden
+          className={cn(
+            "fixed inset-0 z-[10059] animate-in fade-in-0 duration-base",
+            OVERLAY_SCRIM,
+          )}
+        />
+      </DropdownMenuPrimitive.Portal>
+    )}
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
+      // Radix computes the corner nearest the trigger. Scaling from there is
+      // what makes the menu look like it unfolded out of the button; the
+      // default origin scales it from its own middle, which reads as a
+      // separate object arriving.
+      style={scrim ? { transformOrigin: "var(--radix-dropdown-menu-content-transform-origin)" } : undefined}
       className={cn(
         "z-[10060] min-w-[8rem] overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        scrim && [
+          "border-0 shadow-2xl duration-base",
+          // Overrides the 95% above — a menu that grows from 75% at the
+          // trigger's corner is legible as one movement out of the button.
+          "data-[state=open]:zoom-in-75 data-[state=closed]:zoom-out-75",
+          // It is coming OUT of the button, not sliding in beside it.
+          "data-[side=bottom]:slide-in-from-top-0 data-[side=top]:slide-in-from-bottom-0",
+          "data-[side=left]:slide-in-from-right-0 data-[side=right]:slide-in-from-left-0",
+        ],
         className,
       )}
       {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
+      />
+    </DropdownMenuPrimitive.Portal>
+  </>
 ));
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 

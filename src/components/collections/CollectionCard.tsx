@@ -89,7 +89,7 @@ export function CollectionCard({ collection, onClick, onUpdate }: CollectionCard
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent scrim align="end">
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setShareDialogOpen(true); }}>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share
