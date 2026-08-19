@@ -14,6 +14,15 @@ import { serverConnection } from '@/server/connection';
 import { formatLastOnline } from '@/lib/relay-last-seen';
 import { buildDiagnosticsBundle, buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
 
+// The relay-offline sentences render from two places each (the GetStarted inset
+// and the RelayOfflineState card), and drifted apart before. One copy only.
+const RELAY_OFFLINE_OWNER =
+  "It looks like you had a relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.";
+const RELAY_OFFLINE_CLOUD =
+  "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Accessories will appear when it's back online.";
+const RELAY_OFFLINE_SHARED =
+  "The home owner's relay isn't connected right now. Accessories will appear when it comes back online.";
+
 function openExternalUrl(url: string) {
   const w = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; url?: string }) => void } } } };
   if (w.webkit?.messageHandlers?.homecast) {
@@ -469,7 +478,7 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
                 <div className={`mt-3 ml-11 flex items-start gap-2 rounded-md border px-2.5 py-2 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
                   <Monitor className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
                   <p className={`text-xs ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
-                    It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.{' '}
+                    {RELAY_OFFLINE_OWNER}{' '}
                     <span className="opacity-75">{formatLastOnline(relayLastSeenAt)}.</span>
                   </p>
                 </div>
@@ -671,9 +680,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
             {isCloudRelayOffline ? 'Cloud relay offline' : 'Home relay is offline'}
           </h3>
           <p className={`text-center text-sm ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
-            {isCloudRelayOffline
-              ? "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Devices will appear when it's back online."
-              : "The home owner's relay isn't connected right now. Devices will appear when it comes back online."}
+            {isCloudRelayOffline ? RELAY_OFFLINE_CLOUD : RELAY_OFFLINE_SHARED}
           </p>
           <p className={`mt-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
             {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(sharedHomes))}.
@@ -695,12 +702,10 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
           <Monitor className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
         )}
         <h3 className="mb-2 text-lg font-semibold">
-          {isCloudRelayOffline ? 'Cloud relay offline' : 'Your Mac relay is offline'}
+          {isCloudRelayOffline ? 'Cloud relay offline' : 'Your relay is offline'}
         </h3>
         <p className={`text-center text-sm mb-4 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
-          {isCloudRelayOffline
-            ? "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Devices will appear when it's back online."
-            : "It looks like you had a Mac relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect."}
+          {isCloudRelayOffline ? RELAY_OFFLINE_CLOUD : RELAY_OFFLINE_OWNER}
         </p>
         <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
           {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.

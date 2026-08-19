@@ -1518,7 +1518,7 @@ export function CollectionDetail({
             title={hasStaleHomes ? "Home not connected" : "Relay offline"}
             message={hasStaleHomes
               ? "These items belong to a home no connected relay is serving right now — switching between a self-hosted and a cloud relay does this. They come back on their own when that relay reconnects."
-              : "The relay is not connected. Accessories will be available when the Mac comes back online."}
+              : "The relay is not connected. Accessories will be available when it comes back online."}
             className={isDarkBackground ? "bg-black/30 border-white/20" : ""}
             isDarkBackground={isDarkBackground}
             actions={staleItemCount > 0 ? (

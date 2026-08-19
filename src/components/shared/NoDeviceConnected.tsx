@@ -87,9 +87,9 @@ export function NoDeviceConnected({ variant = 'inline', sessions = [], onRefetch
     return (
       <div className={cn("flex flex-col items-center justify-center py-12 text-center", isDarkBackground && "text-white")}>
         <Icon className={cn("mb-4 h-12 w-12", checking ? 'animate-spin' : '', isDarkBackground ? "text-white/60" : "text-muted-foreground")} />
-        <p className="font-semibold mb-2">No Device Connected</p>
+        <p className="font-semibold mb-2">Relay not connected</p>
         <p className={cn("text-sm max-w-md", isDarkBackground ? "text-white/70" : "text-muted-foreground")}>
-          Open the Homecast app on your Mac to control your accessories remotely.
+          Make sure the Homecast relay is running and connected to control your accessories remotely.
         </p>
       </div>
     );
@@ -103,9 +103,9 @@ export function NoDeviceConnected({ variant = 'inline', sessions = [], onRefetch
       <Card className={cn("max-w-md", isDarkBackground && "bg-black/30 border-white/20")}>
         <CardContent className={cn("flex flex-col items-center py-12", isDarkBackground && "text-white")}>
           <Icon className={cn("mb-4 h-16 w-16", checking ? 'animate-spin' : '', isDarkBackground ? "text-white/60" : "text-muted-foreground")} />
-          <h2 className="mb-2 text-xl font-semibold">No Device Connected</h2>
+          <h2 className="mb-2 text-xl font-semibold">Relay not connected</h2>
           <p className={cn("mb-6 text-center", isDarkBackground ? "text-white/70" : "text-muted-foreground")}>
-            Open the Homecast app on your Mac to control your accessories remotely.
+            Make sure the Homecast relay is running and connected to control your accessories remotely.
           </p>
           <div className={cn("flex flex-col items-center gap-1 text-sm", isDarkBackground ? "text-white/70" : "text-muted-foreground")}>
             <div className="flex items-center gap-2">
