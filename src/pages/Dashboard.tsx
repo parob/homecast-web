@@ -2592,9 +2592,21 @@ const Dashboard = () => {
     else handlePinTab(tab);
   }, [isTabPinned, handleUnpinTab, handlePinTab]);
 
-  const handleUpdateTabName = useCallback((target: PinTarget, customName: string | undefined) => {
+  /**
+   * Both of a pin's overrides, written together.
+   *
+   * One call rather than one per field: this rewrites the whole `pinnedTabs`
+   * blob from `pinnedTabs`, so two calls in a row would each start from the
+   * same snapshot and the second would drop the first's change.
+   */
+  const handleUpdateTabOverrides = useCallback((
+    target: PinTarget,
+    next: { customName?: string; customIcon?: string },
+  ) => {
     const key = pinKey(target);
-    const newPins = pinnedTabs.map(t => pinKey(t) === key ? { ...t, customName } : t);
+    const newPins = pinnedTabs.map(t => pinKey(t) === key
+      ? { ...t, customName: next.customName, customIcon: next.customIcon }
+      : t);
     setPinnedTabs(newPins);
     saveSettings({ pinnedTabs: newPins }, 'pinnedTabs');
   }, [pinnedTabs, saveSettings]);
@@ -7094,7 +7106,7 @@ const Dashboard = () => {
           isDarkBackground={isDarkBackground}
           editMode={isTouchDevice && editMode}
           onReorder={handleReorderTabs}
-          onRename={handleUpdateTabName}
+          onRename={handleUpdateTabOverrides}
           onUnpin={handleUnpinTab}
         />
       )}

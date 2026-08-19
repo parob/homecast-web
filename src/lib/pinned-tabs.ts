@@ -21,6 +21,13 @@ export interface PinnedTab {
   name: string;
   /** User-defined label override for tab bar display. */
   customName?: string;
+  /**
+   * User-chosen glyph, as a key from `lib/tab-icons.ts` — never a component
+   * name and never a lucide export, both of which can be renamed out from
+   * under a value already sitting in someone's settings blob. Absent, or no
+   * longer in the vocabulary, means derive it from the pin's type as before.
+   */
+  customIcon?: string;
   /** Required for room, action, scene, accessory and serviceGroup. */
   homeId?: string;
   /** Required for collectionGroup (navigate to the parent collection first). */

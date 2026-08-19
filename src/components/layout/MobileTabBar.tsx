@@ -26,6 +26,8 @@ import { HOME_ACTION_TAB_ICONS } from '@/components/actions/icons';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { EditBadge } from '@/components/shared/EditBadge';
 import { MAX_PINNED_TABS, pinBehaviour, pinKey, type PinnedTab, type PinTarget } from '@/lib/pinned-tabs';
+import { TabEditSheet } from './TabEditSheet';
+import { tabIconComponent } from './tabIconComponents';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import type { HomeActionId } from '@/lib/summary-sections';
 
@@ -43,9 +45,6 @@ export type PinnedTabStatus = 'ready' | 'loading' | 'missing';
 
 /** Height reserved above the bar so a control panel never sits under it. */
 const TAB_BAR_INSET = 76;
-
-/** Longest a custom tab label may be — the bar has room for about this much. */
-const MAX_LABEL_LENGTH = 20;
 
 interface MobileTabBarProps {
   pinnedTabs: PinnedTab[];
@@ -77,7 +76,12 @@ interface MobileTabBarProps {
    */
   editMode?: boolean;
   onReorder?: (reordered: PinnedTab[]) => void;
-  onRename?: (target: PinTarget, customName: string | undefined) => void;
+  /**
+   * Both overrides at once. They travel together because the receiver rewrites
+   * the whole `pinnedTabs` blob — two calls would each save from their own
+   * copy of state and the second would undo the first.
+   */
+  onRename?: (target: PinTarget, next: { customName?: string; customIcon?: string }) => void;
   onUnpin?: (target: PinTarget) => void;
 }
 
@@ -105,8 +109,8 @@ export function MobileTabBar({
   const [openKey, setOpenKey] = useState<string | null>(null);
   /** Which run tab is mid-flight, by pin key. */
   const [runningKey, setRunningKey] = useState<string | null>(null);
-  /** Which tab's label is currently an input, by pin key. Edit mode only. */
-  const [renamingKey, setRenamingKey] = useState<string | null>(null);
+  /** Which tab the edit dialog is open for, by pin key. Edit mode only. */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   /**
    * The tab the finger is currently over, mid-press. Null when idle.
    *
@@ -153,7 +157,11 @@ export function MobileTabBar({
 
   if (pinnedTabs.length === 0) return null;
 
-  const getIcon = (tab: PinnedTab): LucideIcon => {
+  const getIcon = (tab: PinnedTab): LucideIcon =>
+    tabIconComponent(tab.customIcon) ?? derivedIcon(tab);
+
+  /** What the tab wears with no override — and the reset target in the editor. */
+  const derivedIcon = (tab: PinnedTab): LucideIcon => {
     switch (tab.type) {
       case 'home': return House;
       case 'room': return getRoomIcon(tab.name);
@@ -195,10 +203,11 @@ export function MobileTabBar({
   };
 
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus) => {
-    // While editing, a tap renames. Navigating away mid-edit would drop you into
-    // another room with the toolbar still up and nothing explaining the move.
+    // While editing, a tap opens the tab's editor — name and icon. Navigating
+    // away mid-edit would drop you into another room with the toolbar still up
+    // and nothing explaining the move.
     if (editMode) {
-      setRenamingKey(pinKey(tab));
+      setEditingKey(pinKey(tab));
       return;
     }
 
@@ -269,12 +278,7 @@ export function MobileTabBar({
     window.addEventListener('pointercancel', done);
   };
 
-  const commitRename = (tab: PinnedTab, raw: string) => {
-    const trimmed = raw.trim();
-    const next = trimmed || undefined;
-    if (next !== (tab.customName ?? undefined)) onRename?.(tab, next);
-    setRenamingKey(null);
-  };
+
 
   const activeKey = pinnedTabs.find(isActive) ? pinKey(pinnedTabs.find(isActive)!) : null;
   const expandedKey = dragKey ?? activeKey;
@@ -296,7 +300,7 @@ export function MobileTabBar({
     const label = tab.customName || tab.name;
 
     return (
-      <TabSlot key={key} id={key} sortable={editMode && renamingKey !== key}>
+      <TabSlot key={key} id={key} sortable={editMode}>
         {(dragProps) => (<>
         <button
           {...dragProps}
@@ -351,30 +355,7 @@ export function MobileTabBar({
           >
             <Icon className="h-5 w-5 shrink-0" />
           </PendingRing>
-          {editMode && renamingKey === key ? (
-            <input
-              autoFocus
-              defaultValue={tab.customName ?? ''}
-              placeholder={tab.name}
-              maxLength={MAX_LABEL_LENGTH}
-              aria-label={`Rename ${tab.name}`}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onBlur={(e) => commitRename(tab, e.currentTarget.value)}
-              // Space and Enter are dnd-kit's keyboard drag activators, and the
-              // handle is the button this field sits inside. Without this, typing
-              // a space in a label starts a reorder.
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === 'Enter') e.currentTarget.blur();
-                if (e.key === 'Escape') setRenamingKey(null);
-              }}
-              className={cn(
-                'w-full text-[10px] font-medium text-center rounded bg-white/80 text-black',
-                'px-1 py-px outline-none ring-1 ring-primary',
-              )}
-            />
-          ) : editMode ? (
+          {editMode ? (
             // Two lines, then ellipsis. A long room name truncated to "Livin…"
             // on one line is a worse tab than one wrapped over two — and while
             // arranging, every label is on show at once.
@@ -408,7 +389,9 @@ export function MobileTabBar({
             size="sm"
             label={`Unpin ${tab.customName || tab.name}`}
             onClick={() => {
-              if (renamingKey === key) setRenamingKey(null);
+              // Unpinning the tab whose editor is open would leave the
+              // dialog pointing at something that no longer exists.
+              if (editingKey === key) setEditingKey(null);
               onUnpin(tab);
             }}
             // Inside the slot's box, not overhanging it: the pill scrolls
@@ -453,8 +436,21 @@ export function MobileTabBar({
     </div>
   );
 
+  const editingTab = editingKey ? pinnedTabs.find(t => pinKey(t) === editingKey) : undefined;
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
+      {editingTab && (
+        <TabEditSheet
+          open
+          onOpenChange={(next) => { if (!next) setEditingKey(null); }}
+          derivedName={editingTab.name}
+          DerivedIcon={derivedIcon(editingTab)}
+          customName={editingTab.customName}
+          customIcon={editingTab.customIcon}
+          onSave={(next) => onRename?.(editingTab, next)}
+        />
+      )}
       <div className="flex justify-center px-4 pb-2">
         {editMode ? (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

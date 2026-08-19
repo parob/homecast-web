@@ -211,34 +211,86 @@ describe('labels and identity', () => {
 });
 
 describe('edit mode', () => {
-  it('renames on tap, and clears the override when the field is emptied', () => {
+  it('renames from the editor, and clears the override when the field is emptied', () => {
     const onRename = vi.fn();
     setup([{ ...TABS.room, customName: 'Kitch' }], { editMode: true, onRename });
 
-    // A tap opens the field instead of navigating — you are arranging the bar,
+    // A tap opens the editor instead of navigating — you are arranging the bar,
     // not using it.
     fireEvent.click(screen.getByRole('button', { name: 'Kitch' }));
-    const field = screen.getByRole('textbox', { name: 'Rename Kitchen' });
-    expect((field as HTMLInputElement).value).toBe('Kitch');
+    const field = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(field.value).toBe('Kitch');
 
     fireEvent.change(field, { target: { value: 'Cook' } });
-    fireEvent.blur(field);
-    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ id: 'ROOM-1' }), 'Cook');
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onRename).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ROOM-1' }),
+      { customName: 'Cook', customIcon: undefined },
+    );
 
     // Emptying it must send `undefined`, not '' — that is what falls back to the
     // real name rather than rendering a blank tab.
     onRename.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Kitch' }));
-    const again = screen.getByRole('textbox', { name: 'Rename Kitchen' });
-    fireEvent.change(again, { target: { value: '   ' } });
-    fireEvent.blur(again);
-    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ id: 'ROOM-1' }), undefined);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onRename).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ROOM-1' }),
+      { customName: undefined, customIcon: undefined },
+    );
+  });
+
+  it('gives a tab a hand-picked icon, and hands back the key that was stored', () => {
+    const onRename = vi.fn();
+    setup([TABS.room], { editMode: true, onRename });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'cooking pot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onRename).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ROOM-1' }),
+      { customName: undefined, customIcon: 'cooking-pot' },
+    );
+  });
+
+  it('sends both overrides in one call, so setting an icon cannot drop a rename', () => {
+    const onRename = vi.fn();
+    setup([TABS.room], { editMode: true, onRename });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Galley' } });
+    fireEvent.click(screen.getByRole('button', { name: 'cooking pot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ROOM-1' }),
+      { customName: 'Galley', customIcon: 'cooking-pot' },
+    );
+  });
+
+  it('goes back to the derived icon when the default is picked again', () => {
+    const onRename = vi.fn();
+    setup([{ ...TABS.room, customIcon: 'cooking-pot' }], { editMode: true, onRename });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    fireEvent.click(screen.getByRole('button', { name: /Default icon for Kitchen/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onRename).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ROOM-1' }),
+      { customName: undefined, customIcon: undefined },
+    );
   });
 
   it('never navigates or runs while editing', () => {
     const props = setup([TABS.room, TABS.scene], { editMode: true });
 
+    // One at a time: the editor is modal, so the second tab is not reachable
+    // until the first is dismissed.
     fireEvent.click(screen.getByRole('button', { name: 'Kitchen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     fireEvent.click(screen.getByRole('button', { name: 'Movie night' }));
 
     expect(props.onSelectRoom).not.toHaveBeenCalled();
