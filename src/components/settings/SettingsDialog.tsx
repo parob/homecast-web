@@ -201,7 +201,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     (async () => {
       try {
         const { handleGraphQL } = await import('@/server/local-graphql');
-        const res = await handleGraphQL({ operationName: 'GetRelayName', variables: {} });
+        // handleGraphQL is typed Promise<unknown> — it answers every operation,
+        // so it has no single return shape. Narrow at the call site.
+        const res = await handleGraphQL({ operationName: 'GetRelayName', variables: {} }) as
+          { data?: { relayName?: string } } | null;
         if (!cancelled) setRelayName(res?.data?.relayName || '');
       } catch { /* leave blank; the relay falls back to its hostname */ }
     })();
