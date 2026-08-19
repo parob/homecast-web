@@ -7,20 +7,18 @@ import {
 import { Button } from '../button';
 
 /**
- * The scrim's elevation is load-bearing and looks like a typo.
+ * The trigger of an open menu must not be buried by its own scrim.
  *
- * `AppHeader` and `MobileTabBar` are both `fixed z-[10001]`, which makes each a
- * stacking context: a scrim painted above them covers everything inside them,
- * and nothing within can climb back out. The header's own ⋮ went white on open
- * and then disappeared under the dim, because no z-index on the trigger can
- * escape its own stacking context.
+ * Two attempts failed before this one, both trying to raise the trigger above
+ * the scrim with z-index. That can never work: `AppHeader` and `MobileTabBar`
+ * are `fixed z-[10001]`, a dnd-kit drag transform and a `backdrop-filter` glass
+ * tile each open a stacking context, and nothing inside one paints above
+ * something outside it whatever z-index it carries.
  *
- * So the scrim sits *below* the app chrome, and a trigger in ordinary page flow
- * lifts over it under its own steam. Both halves are asserted here so a later
- * "tidy the z-indexes" cannot quietly restore the bug.
+ * Nothing is reordered now — the scrim is clipped so it never paints over the
+ * trigger at all (see `scrimCutout`). What is asserted here is that no z-index
+ * race has crept back in, since reaching for one is the obvious wrong move.
  */
-const APP_CHROME_Z = 10001; // AppHeader, MobileTabBar
-
 function zOf(className: string): number | undefined {
   const m = className.match(/z-\[(\d+)\]/);
   return m ? Number(m[1]) : undefined;
@@ -47,20 +45,20 @@ function open(scrim: boolean) {
 const scrimEl = () => document.body.querySelector<HTMLElement>('[aria-hidden="true"].fixed.inset-0');
 
 describe('context-menu scrim', () => {
-  it('sits below the app chrome, so a header trigger is not buried by it', () => {
+  it('renders a scrim under the menu', () => {
     open(true);
     const z = zOf(scrimEl()?.className ?? '');
     expect(z).toBeDefined();
-    expect(z!).toBeLessThan(APP_CHROME_Z);
+    // Under the menu itself, which portals to 10060.
+    expect(z!).toBeLessThan(10060);
   });
 
-  it('positions the trigger while open, or its z-index would do nothing', () => {
+  it('does not try to win a z-index race with the trigger', () => {
     const trigger = open(true);
-    // z-index has no effect on a static element — the class pair has to travel
-    // together or the lift silently does nothing.
-    expect(trigger.className).toContain('data-[state=open]:relative');
-    const triggerZ = zOf(trigger.className);
-    expect(triggerZ!).toBeGreaterThan(zOf(scrimEl()?.className ?? '')!);
+    // Both halves of the old attempt. Either one returning is the bug coming
+    // back: the button goes white and then vanishes under the dim.
+    expect(trigger.className).not.toContain('data-[state=open]:relative');
+    expect(zOf(trigger.className)).toBeUndefined();
   });
 
   it('draws no scrim for an ordinary dropdown', () => {

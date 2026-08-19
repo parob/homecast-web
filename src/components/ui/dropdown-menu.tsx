@@ -3,7 +3,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { OVERLAY_SCRIM } from "@/lib/overlay-scrim";
+import { OVERLAY_SCRIM, scrimCutout } from "@/lib/overlay-scrim";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
@@ -23,11 +23,9 @@ const DropdownMenuTrigger = React.forwardRef<
     className={cn(
       "transition-colors duration-fast",
       "data-[state=open]:!bg-white data-[state=open]:!text-black",
-      // z-index does nothing on a static element, so the trigger has to be
-      // positioned before it can climb over the scrim. Only while open — a
-      // permanently positioned trigger would change how every call site lays
-      // its button out.
-      "data-[state=open]:relative data-[state=open]:z-[10002]",
+      // No z-index here on purpose. Lifting the trigger over the scrim cannot
+      // work — see MenuScrim — so the scrim is cut open around it instead, and
+      // the button stays exactly where its call site put it.
       "data-[state=open]:shadow-sm",
       className,
     )}
@@ -37,6 +35,51 @@ const DropdownMenuTrigger = React.forwardRef<
 DropdownMenuTrigger.displayName = DropdownMenuPrimitive.Trigger.displayName;
 
 const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+
+/**
+ * The dim behind a card menu, with the trigger punched out of it.
+ *
+ * Two earlier attempts failed for the same reason. Raising the trigger over the
+ * scrim needs it to win a z-index race, and it cannot: `AppHeader` and the tab
+ * bar are `fixed z-[10001]`, a dnd-kit drag transform and a `backdrop-filter`
+ * glass tile each establish a stacking context of their own, and nothing inside
+ * one can be painted above something outside it no matter what z-index it
+ * carries. The button went white and stayed under the blur.
+ *
+ * So nothing is reordered. The scrim is clipped so the trigger's own patch of
+ * screen is never painted over in the first place — no dim there and, because
+ * `backdrop-filter` only applies where the element actually paints, no blur
+ * either. The real button shows through, crisp and lit, wherever it happens to
+ * live in the tree. This is what an iOS context menu does.
+ *
+ * A browser without `clip-path: path()` gets an uncut scrim, which is the old
+ * behaviour rather than a broken one.
+ */
+function MenuScrim({ className }: { className?: string }) {
+  const [clip, setClip] = React.useState<string | undefined>(undefined);
+
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      // Radix keeps exactly one menu open at a time, so this is unambiguous.
+      const trigger = document.querySelector<HTMLElement>(
+        '[aria-haspopup="menu"][data-state="open"]',
+      );
+      const rect = trigger?.getBoundingClientRect();
+      setClip(scrimCutout(window.innerWidth, window.innerHeight, rect));
+    };
+    measure();
+    // The scrim is `fixed`, so its coordinates are the viewport's: anything
+    // that moves the trigger within it has to move the hole too.
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, []);
+
+  return <div aria-hidden style={{ clipPath: clip }} className={className} />;
+}
 
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 
@@ -105,8 +148,7 @@ const DropdownMenuContent = React.forwardRef<
         menu is up, leaving this with nothing to do but be seen. */}
     {scrim && (
       <DropdownMenuPrimitive.Portal>
-        <div
-          aria-hidden
+        <MenuScrim
           className={cn(
             // Under the app chrome, not over it.
             //
