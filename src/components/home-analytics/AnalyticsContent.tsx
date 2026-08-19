@@ -263,9 +263,8 @@ export default function AnalyticsContent({
           side="left"
           className="z-[10060] w-72 md:hidden"
           overlayClassName="z-[10055]"
-          // Choosing a room closes it, and tapping outside closes it. A ✕ in
-          // the corner is a third way out of a menu you leave by using it.
-          hideCloseButton
+          // No ✕ here — SheetContent leaves it off every left sheet, because a
+          // menu you leave by using it does not need a third way out.
           // Opening a menu should not summon the keyboard: Radix focuses the
           // first thing it finds, which here is the filter box.
           onOpenAutoFocus={(e) => e.preventDefault()}

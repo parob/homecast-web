@@ -65,3 +65,25 @@ describe('SheetContent swipe-to-close', () => {
     expect(screen.queryAllByRole('button', { name: /close/i })).toHaveLength(0);
   });
 });
+
+describe('the ✕ in the corner', () => {
+  const closeButtons = () => screen.queryAllByRole('button', { name: /close/i });
+
+  it('is off by default on a left sheet', () => {
+    // A left sheet is a menu: it opens onto its nav, so the ✕ lands on the
+    // first row. This is a default rather than four call sites remembering —
+    // the ✕ came back once already because one of them did not.
+    renderSheet({ side: 'left' });
+    expect(closeButtons()).toHaveLength(0);
+  });
+
+  it('is still on by default everywhere else', () => {
+    renderSheet({ side: 'right' });
+    expect(closeButtons()).toHaveLength(1);
+  });
+
+  it('comes back for a left sheet that asks', () => {
+    renderSheet({ side: 'left', hideCloseButton: false });
+    expect(closeButtons()).toHaveLength(1);
+  });
+});

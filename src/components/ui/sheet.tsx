@@ -61,8 +61,17 @@ interface SheetContentProps
    * both need to clear the dialog, and only the caller knows that.
    */
   overlayClassName?: string;
-  /** Drop the built-in ✕ — for a sheet whose content offers its own way out
-   *  (picking something), where a close button is one more thing in a corner. */
+  /**
+   * Drop the built-in ✕ — for a sheet whose content offers its own way out
+   * (picking something), where a close button is one more thing in a corner.
+   *
+   * Defaults to ON for `side="left"`, because a left sheet is a menu: it opens
+   * straight onto its nav, so the ✕ lands on top of the first row, and picking
+   * a row, tapping the page behind, swiping back out or Esc all already close
+   * it. That default is the rule rather than a habit at four call sites —
+   * which is how the ✕ came back the last time. A left sheet that genuinely
+   * wants one says `hideCloseButton={false}`.
+   */
   hideCloseButton?: boolean;
   /**
    * Turn off drag-to-dismiss. A left sheet is a menu, and a menu you swiped in
@@ -80,6 +89,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     const [panel, setPanel] = React.useState<HTMLDivElement | null>(null);
     const swipeCloseRef = React.useRef<HTMLButtonElement>(null);
     const swipeable = side === "left" && !disableSwipeToClose;
+    const showClose = hideCloseButton === undefined ? side !== "left" : !hideCloseButton;
 
     const setRefs = React.useCallback(
       (node: HTMLDivElement | null) => {
@@ -110,7 +120,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
           {/* A side sheet reaches the top of the screen, so its close button is
               the thing most likely to end up under a notch. Anchor it below the
               inset; a bottom sheet starts mid-screen and keeps its own 12px. */}
-          {!hideCloseButton && (
+          {showClose && (
           <SheetPrimitive.Close
             className={cn(
               "absolute right-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
