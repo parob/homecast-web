@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ChevronRight, Loader2, Plus } from 'lucide-react';
@@ -173,6 +173,20 @@ export function ScenesSection({
   const [formOpen, setFormOpen] = useState(false);
   const [editingScene, setEditingScene] = useState<HomeKitScene | null>(null);
   const [viewOnlyOpen, setViewOnlyOpen] = useState(false);
+  /**
+   * The arrangement you just dragged, held until the saved one catches up.
+   *
+   * Not a nicety — it is what makes the drop animation land. `updateHomeLayout`
+   * writes the Apollo cache optimistically, but the re-render that follows is
+   * scheduled by Apollo's broadcast rather than batched with the drag-end
+   * event. dnd-kit measures the dragged node the moment the drag ends, so it
+   * still found it in its old slot: the card flew back to where it started and
+   * only then slid across. Reordering in React state puts the card where it was
+   * dropped in the same commit, and dnd-kit has nothing left to animate.
+   *
+   * The same trick the sidebar plays with `optimisticSidebarOrder`.
+   */
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
   // Creating a scene writes to the HomeKit database, so it needs edit access
   // the relay may not have. Checked up front — the form is long enough that
@@ -197,7 +211,11 @@ export function ScenesSection({
     () => new Set(homeLayout?.visibility?.hiddenScenes ?? []),
     [homeLayout?.visibility?.hiddenScenes],
   );
-  const cards = useOrderedCards(scenes, actions, homeLayout?.sceneCardOrder, hiddenSceneIds);
+  const savedOrder = homeLayout?.sceneCardOrder;
+  const cards = useOrderedCards(scenes, actions, optimisticOrder ?? savedOrder, hiddenSceneIds);
+
+  // Let go once the saved order is the source of truth again.
+  useEffect(() => { setOptimisticOrder(null); }, [savedOrder]);
 
   const runner = useHomeActionRunner(onRunAction);
 
@@ -283,7 +301,7 @@ export function ScenesSection({
           )}
           <DraggableGrid
             itemIds={itemIds}
-            onReorder={(order) => onReorderCards?.(order)}
+            onReorder={(order) => { setOptimisticOrder(order); onReorderCards?.(order); }}
             enabled={dndEnabled && !!onReorderCards}
             touchMode={touchMode}
             renderDragOverlay={(activeId) => {
