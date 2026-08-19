@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Wifi, Globe, Router, Lock, LockOpen, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getRelayAddress } from '@/lib/config';
+import { getRelayAddress, isCommunity } from '@/lib/config';
 import { probeRelay, describeRoute, ROUTE_LABELS, type RelayHealth, type RelayRoute } from '@/lib/relay-probe';
 import { serverConnection } from '@/server/connection';
 
@@ -30,8 +30,24 @@ const STATE_TONE: Record<ConnState, { dot: string; label: string }> = {
   disconnected: { dot: 'bg-muted-foreground/40', label: 'Not connected' },
 };
 
+/**
+ * The relay this page is talking to.
+ *
+ * `getRelayAddress()` answers for a client that was pointed at a relay — the
+ * iOS app, or a browser that typed an address. It answers *null* for the most
+ * ordinary case of all: a browser the relay is itself serving, which has no
+ * stored address because it never needed one. There the page's own origin is
+ * the relay, and falling back to it is what makes the card appear at all.
+ *
+ * Never reached on the relay Mac, where the card is not rendered — there the
+ * page origin is loopback and would be a lie.
+ */
+function activeRelayOrigin(): string | null {
+  return getRelayAddress() ?? (isCommunity ? window.location.origin : null);
+}
+
 export function RelayInfoCard() {
-  const [origin, setOrigin] = useState<string | null>(getRelayAddress());
+  const [origin, setOrigin] = useState<string | null>(activeRelayOrigin());
   const [health, setHealth] = useState<RelayHealth | null>(null);
   const [checking, setChecking] = useState(false);
   const [state, setState] = useState<ConnState>('disconnected');
@@ -45,7 +61,7 @@ export function RelayInfoCard() {
     return () => clearInterval(id);
   }, []);
 
-  const refresh = async (target = getRelayAddress()) => {
+  const refresh = async (target = activeRelayOrigin()) => {
     setOrigin(target);
     if (!target) { setHealth(null); return; }
     setChecking(true);
