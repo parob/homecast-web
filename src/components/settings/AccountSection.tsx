@@ -19,7 +19,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2, BookOpen } from 'lucide-react';
 import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
 
 interface CommunityUser {
@@ -133,11 +133,7 @@ export function AccountSection({
     // answer here, so ask for the account instead of flicking the switch on
     // and dragging it back when the refusal arrives.
     if (enabled && users.length === 0) {
-      toast({
-        title: 'Create an account first',
-        description:
-          'Authentication needs someone to sign in as. Add an account under Users, then turn it on.',
-      });
+      toast('Create an account first', { description: 'Authentication needs someone to sign in as. Add an account under Users, then turn it on.' });
       return;
     }
 
@@ -149,11 +145,7 @@ export function AccountSection({
       result = await communityGraphQL('SetAuthEnabled', { enabled });
     } catch (e: any) {
       setAuthPending(false);
-      toast({
-        variant: 'destructive',
-        title: 'Could not reach the relay',
-        description: e?.message || 'The relay did not respond.',
-      });
+      toast.error('Could not reach the relay', { description: e?.message || 'The relay did not respond.' });
       return;
     }
     setAuthPending(false);
@@ -162,11 +154,7 @@ export function AccountSection({
           ? result.data.setAuthEnabled.error || 'Could not change this setting.'
           : null);
     if (failed) {
-      toast({
-        variant: 'destructive',
-        title: enabled ? 'Could not turn authentication on' : 'Could not turn authentication off',
-        description: failed,
-      });
+      toast.error(enabled ? 'Could not turn authentication on' : 'Could not turn authentication off', { description: failed });
       return;
     }
     setAuthEnabled(enabled);
@@ -191,11 +179,7 @@ export function AccountSection({
         role: newRole,
       });
       if (result?.errors?.[0]) {
-        toast({
-          variant: 'destructive',
-          title: 'Could not create the account',
-          description: result.errors[0].message,
-        });
+        toast.error('Could not create the account', { description: result.errors[0].message });
         return;
       }
       // The first account comes back with a session. Keep it, or the person
@@ -210,22 +194,14 @@ export function AccountSection({
       setShowAddUser(false);
       loadAuthState();
     } catch (e: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not create the account',
-        description: e?.message || 'The relay did not respond.',
-      });
+      toast.error('Could not create the account', { description: e?.message || 'The relay did not respond.' });
     }
   };
 
   const deleteUser = async (userId: string) => {
     const result: any = await communityGraphQL('DeleteCommunityUser', { userId });
     if (result?.errors?.[0]) {
-      toast({
-        variant: 'destructive',
-        title: 'Could not delete the account',
-        description: result.errors[0].message,
-      });
+      toast.error('Could not delete the account', { description: result.errors[0].message });
     }
     loadAuthState();
   };

@@ -7,7 +7,7 @@ import { isCommunity } from '@/lib/config';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { saveTextFile } from '@/lib/saveFile';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import type { HistoryStorageStatsData } from '@/lib/graphql/types';
 
 /**
@@ -46,7 +46,7 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
       const result = await exportHistory({ variables: { homeId: home.id } });
       const csv = result.data?.exportHistory;
       if (!csv) {
-        toast({ title: 'Nothing to export', description: 'No data recorded for this home yet.' });
+        toast('Nothing to export', { description: 'No data recorded for this home yet.' });
         return;
       }
       const filename = `homecast-analytics-${home.name.toLowerCase().replace(/\s+/g, '-')}.csv`;
@@ -54,16 +54,13 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
       // the helper picks a path that actually works there.
       const outcome = await saveTextFile(filename, csv, 'text/csv');
       if (outcome === 'copied') {
-        toast({
-          title: 'Copied to clipboard',
-          description: 'This app build can\'t save files directly — paste into a spreadsheet or text file.',
-        });
+        toast('Copied to clipboard', { description: 'This app build can\'t save files directly — paste into a spreadsheet or text file.' });
       } else if (outcome === 'failed') {
-        toast({ title: 'Export failed', description: 'Could not save or copy the data.', variant: 'destructive' });
+        toast.error('Export failed', { description: 'Could not save or copy the data.' });
       }
     } catch (e) {
       console.error('[HomeHistorySettings] export failed', e);
-      toast({ title: 'Export failed', description: String(e), variant: 'destructive' });
+      toast.error('Export failed', { description: String(e) });
     }
   };
 
