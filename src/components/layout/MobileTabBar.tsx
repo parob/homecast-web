@@ -220,39 +220,6 @@ export function MobileTabBar({
     };
   }, [measureScroll]);
 
-  /**
-   * Bring the active tab into view when you navigate somewhere.
-   *
-   * A pin you cannot see is one you will not use, and with five long names only
-   * about one and a half chips fit at once — so arriving in a room whose tab is
-   * off the end of the row would look like the pin had been lost.
-   *
-   * Navigation only, and that is the whole of it:
-   *
-   * - A **popover** pin is one you just pressed, so it is already under your
-   *   thumb and needs no finding. Scrolling it anyway moved it out from under
-   *   the panel that had just been anchored to it, which is what put the widget
-   *   off the side of the screen.
-   * - **Closing** that panel hands "active" back to the page you were already
-   *   on. The bar was already showing it, and sliding back to it made shutting
-   *   a panel look like navigation nobody asked for.
-   * - Not while a finger is down: moving the row under a gesture is the one
-   *   thing guaranteed to make it land somewhere else.
-   */
-  const lastScrolledToRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (editMode || dragKey !== null || !activeKey) return;
-    const activeTab = pinnedTabs.find(t => pinKey(t) === activeKey);
-    if (!activeTab || pinBehaviour(activeTab.type) !== 'navigate') return;
-    if (lastScrolledToRef.current === activeKey) return;
-    lastScrolledToRef.current = activeKey;
-    const el = scrollerRef.current;
-    // Matched by dataset rather than a selector: a pin key is `type:scope:id`
-    // and those colons need escaping, which jsdom has no CSS.escape for.
-    const chip = el && [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
-      .find(n => n.dataset.tabKey === activeKey);
-    chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
-  }, [activeKey, dragKey, editMode, pinnedTabs]);
 
   const itemIds = pinnedTabs.map(pinKey);
 
@@ -287,6 +254,26 @@ export function MobileTabBar({
   };
 
 
+  /**
+   * Put the tab you pressed in the middle of the bar.
+   *
+   * Driven by the press rather than by whatever became active, which is the
+   * only version that behaves: keyed off "active" it also fired when a panel
+   * closed and handed that state back to the page you were already on, so
+   * shutting a panel slid the bar as though you had navigated somewhere.
+   *
+   * The panel opened by that same press travels with the chip — see
+   * ExpandedOverlay, which repositions on a scroll that carries its trigger
+   * instead of reading it as the page moving out from under it.
+   */
+  const centreTab = (key: string) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
+      .find(n => n.dataset.tabKey === key);
+    chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  };
+
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus) => {
     // While editing, a tap opens the tab's editor — name and icon. Navigating
     // away mid-edit would drop you into another room with the toolbar still up
@@ -295,6 +282,8 @@ export function MobileTabBar({
       setEditingKey(pinKey(tab));
       return;
     }
+
+    centreTab(pinKey(tab));
 
     if (status === 'missing') {
       void onActivate(tab); // Dashboard explains what's gone.

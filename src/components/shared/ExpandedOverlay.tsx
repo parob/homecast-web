@@ -2,7 +2,7 @@ import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useE
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { overlayScrim, scrimCutout } from '@/lib/overlay-scrim';
+import { overlayScrim, SCRIM_HOLE_PADDING } from '@/lib/overlay-scrim';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -112,6 +112,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
   const [coords, setCoords] = useState({ x: 0, y: 0 });
@@ -119,8 +120,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
-  /** The scrim's hole, when the caller wants its trigger left lit. */
-  const [scrimClip, setScrimClip] = useState<string | undefined>(undefined);
+  /**
+   * The trigger's box in the scrim's own coordinates, when the caller wants it
+   * left lit. The scrim is drawn as four panes around this rather than one
+   * pane clipped through it — see the render.
+   */
+  const [hole, setHole] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
@@ -161,22 +166,43 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     }
   }, [isExpanded, shouldRender]);
 
+  /**
+   * Place the panel and the scrim's hole against the trigger, wherever it is
+   * now. Called when the overlay opens and again whenever the trigger moves.
+   */
+  const placeAgainstTrigger = useCallback(() => {
+    const parent = parentRef.current?.parentElement ?? null;
+    if (!parent) return;
+    const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
+    setPosition(pos);
+    setCoords({ x, y });
+    // In the scrim's own frame, not the window's: `.fixed-full-screen` starts
+    // at `-safe-area-top` and runs past the bottom of the screen so it can
+    // reach behind the notch, so window coordinates are wrong by exactly the
+    // safe-area insets — which put the hole a notch-height off the trigger and
+    // left an unpainted strip along the bottom.
+    const scrimBox = scrimRef.current?.getBoundingClientRect();
+    const triggerBox = parent.getBoundingClientRect();
+    setHole(cutOutTrigger && scrimBox && triggerBox.width > 0
+      ? {
+          left: triggerBox.left - scrimBox.left - SCRIM_HOLE_PADDING,
+          top: triggerBox.top - scrimBox.top - SCRIM_HOLE_PADDING,
+          width: triggerBox.width + SCRIM_HOLE_PADDING * 2,
+          height: triggerBox.height + SCRIM_HOLE_PADDING * 2,
+        }
+      : null);
+  }, [effectiveWidth, cutOutTrigger]);
+
   // Calculate position on mount, before animation
   useLayoutEffect(() => {
     if (isExpanded && shouldRender && parentRef.current) {
-      const parent = parentRef.current.parentElement;
-      const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
-      setPosition(pos);
-      setCoords({ x, y });
-      setScrimClip(cutOutTrigger
-        ? scrimCutout(window.innerWidth, window.innerHeight, parent?.getBoundingClientRect())
-        : undefined);
+      placeAgainstTrigger();
       // Trigger ready state after position is set
       requestAnimationFrame(() => {
         setReady(true);
       });
     }
-  }, [isExpanded, shouldRender, effectiveWidth, cutOutTrigger]);
+  }, [isExpanded, shouldRender, placeAgainstTrigger]);
 
   // Measure the panel: a portrait panel with a hero control is tall enough to
   // run off the bottom of a phone, and top-aligning to the trigger would leave
@@ -363,6 +389,18 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       // scrollable dialog above it is not the page behind it either.
       if (isInsideOverlay(e.target)) return;
       if (isAboveOverlay(e.target)) return;
+
+      // A scroller that CONTAINS the trigger is not the page sliding out from
+      // under this panel — it is the trigger being carried somewhere, and the
+      // panel's job is to go with it. The pinned tab bar centres the chip you
+      // pressed, and the widget rides across as it travels; dismissing on that
+      // would close the panel the same press had just opened.
+      const node = e.target as Node | null;
+      if (triggerEl && node && node !== triggerEl && 'contains' in node &&
+          (node as Element).contains(triggerEl)) {
+        placeAgainstTrigger();
+        return;
+      }
       if (startTarget === null) {
         startTarget = e.target;
         startY = getScrollY(e.target);
@@ -378,7 +416,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       document.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [isExpanded, onClose, armClickSwallow, baseZ]);
+  }, [isExpanded, onClose, armClickSwallow, baseZ, placeAgainstTrigger]);
 
   // Handle mouse leave - call immediately
   // Is the pointer genuinely away from both the panel and the tile it came from?
@@ -488,19 +526,45 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               under a panel that had taken over from it. The wallpaper ends up
               under both, which is the point: it is two rooms away now. */}
           <div
+            ref={scrimRef}
             aria-hidden
             // Blocking the pointer also blocks scrolling the page behind, and
             // the scroll-past-40px dismissal with it. A wheel over the
             // backdrop means the same thing a tap does.
             onWheel={() => onClose()}
-            // The hole also lets the pointer through, which is what makes the
-            // chip still pressable while its own panel is open — pressing it
-            // again is how you close it.
-            style={{ zIndex: baseZ, clipPath: scrimClip }}
+            style={{ zIndex: baseZ }}
+            // The dim and the blur live on the panes below when there is a hole
+            // to leave, and on this element itself when there is not. Hit
+            // testing stays here either way, so a tap anywhere — including over
+            // the trigger — still means "close", and nothing reaches whatever
+            // is underneath.
             className={`fixed-full-screen transition-opacity duration-fast ease-standard ${
-              overlayScrim(isDarkBackground)
+              hole ? '' : overlayScrim(isDarkBackground)
             } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          />
+          >
+            {/* Four panes around the trigger rather than one pane with a hole
+                clipped through it.
+                
+                `clip-path` removes an element's background but NOT its
+                `backdrop-filter`: the filter applies to the whole border box
+                regardless, so a clipped scrim left the chip unblurred of dim
+                and still blurred of focus — which is exactly what "the tab bar
+                item is still behind the blurred background" looked like. An
+                element that does not overlap the chip cannot blur it, so the
+                scrim simply stops short of it on all four sides. */}
+            {hole && (
+              <>
+                <div className={`absolute left-0 right-0 top-0 ${overlayScrim(isDarkBackground)}`}
+                     style={{ height: Math.max(0, hole.top) }} />
+                <div className={`absolute left-0 right-0 bottom-0 ${overlayScrim(isDarkBackground)}`}
+                     style={{ top: hole.top + hole.height }} />
+                <div className={`absolute left-0 ${overlayScrim(isDarkBackground)}`}
+                     style={{ top: hole.top, height: hole.height, width: Math.max(0, hole.left) }} />
+                <div className={`absolute right-0 ${overlayScrim(isDarkBackground)}`}
+                     style={{ top: hole.top, height: hole.height, left: hole.left + hole.width }} />
+              </>
+            )}
+          </div>
           <div
             // Marks this as expanded-widget content even though the portal puts
             // it outside the widget's own subtree. Dashboard's collapse-on-

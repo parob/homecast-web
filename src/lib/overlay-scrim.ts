@@ -46,7 +46,15 @@ export const SCRIM_HOLE_PADDING = 5;
 export const SCRIM_HOLE_RADIUS = 11;
 
 /**
- * A `clip-path` covering the viewport except for a rounded rectangle at `rect`.
+ * A `clip-path` covering a scrim except for a rounded rectangle at `rect`.
+ *
+ * **Every coordinate here is in the scrim's own border box, not the viewport.**
+ * They are the same thing for a `fixed inset-0` scrim and emphatically not for
+ * `.fixed-full-screen`, which is inset by `-safe-area-top`/`-left` and is
+ * larger than the viewport so it can reach behind the notch. Passing viewport
+ * numbers there put the hole a notch-height away from the trigger and left an
+ * unpainted strip along the bottom of the screen — which, being unpainted, also
+ * let taps through. Measure the scrim and subtract its origin.
  *
  * This is how the trigger of an open menu stays lit. Raising it over the scrim
  * cannot work: `AppHeader` and the tab bar are `fixed z-[10001]`, a dnd-kit
@@ -60,8 +68,8 @@ export const SCRIM_HOLE_RADIUS = 11;
  * measure renders an uncut scrim rather than an empty clip that hides it.
  */
 export function scrimCutout(
-  viewportWidth: number,
-  viewportHeight: number,
+  scrimWidth: number,
+  scrimHeight: number,
   rect: { left: number; top: number; width: number; height: number } | null | undefined,
 ): string | undefined {
   if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
@@ -72,7 +80,7 @@ export function scrimCutout(
   const h = rect.height + SCRIM_HOLE_PADDING * 2;
   const a = Math.max(0, Math.min(SCRIM_HOLE_RADIUS, w / 2, h / 2));
 
-  const outer = `M0,0 H${viewportWidth} V${viewportHeight} H0 Z`;
+  const outer = `M0,0 H${scrimWidth} V${scrimHeight} H0 Z`;
   const inner = [
     `M${x + a},${y}`,
     `H${x + w - a}`, `A${a},${a} 0 0 1 ${x + w},${y + a}`,

@@ -57,6 +57,7 @@ const DropdownMenuGroup = DropdownMenuPrimitive.Group;
  */
 function MenuScrim({ className }: { className?: string }) {
   const [clip, setClip] = React.useState<string | undefined>(undefined);
+  const ref = React.useRef<HTMLDivElement>(null);
 
   React.useLayoutEffect(() => {
     const measure = () => {
@@ -64,8 +65,16 @@ function MenuScrim({ className }: { className?: string }) {
       const trigger = document.querySelector<HTMLElement>(
         '[aria-haspopup="menu"][data-state="open"]',
       );
-      const rect = trigger?.getBoundingClientRect();
-      setClip(scrimCutout(window.innerWidth, window.innerHeight, rect));
+      const t = trigger?.getBoundingClientRect();
+      // This scrim is `fixed inset-0`, so its box is the viewport — but it is
+      // measured rather than assumed, because the one that is not (see
+      // ExpandedOverlay) cost a misplaced hole and a gap along the bottom.
+      const box = ref.current?.getBoundingClientRect();
+      setClip(box && t
+        ? scrimCutout(box.width, box.height, {
+            left: t.left - box.left, top: t.top - box.top, width: t.width, height: t.height,
+          })
+        : undefined);
     };
     measure();
     // The scrim is `fixed`, so its coordinates are the viewport's: anything
@@ -78,7 +87,7 @@ function MenuScrim({ className }: { className?: string }) {
     };
   }, []);
 
-  return <div aria-hidden style={{ clipPath: clip }} className={className} />;
+  return <div ref={ref} aria-hidden style={{ clipPath: clip }} className={className} />;
 }
 
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal;

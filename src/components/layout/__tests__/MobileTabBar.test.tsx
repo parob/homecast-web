@@ -598,42 +598,55 @@ describe('scroll fades', () => {
 });
 
 /**
- * What the bar does when a panel opens and closes.
+ * Centring the tab you pressed.
  *
- * Both of these were reported together and share one cause: the bar treated
- * opening an accessory's panel as navigation, so it scrolled the chip out from
- * under the panel that had just been anchored to it, and then scrolled back
- * again on close as though you had gone somewhere.
+ * Driven by the press, not by whatever became active. Keyed off "active" it
+ * also fired when a panel closed and handed that state back to the page you
+ * were already on, so shutting a panel slid the bar as though you had
+ * navigated somewhere.
  */
-describe('opening a control panel', () => {
-  const scrolls = () => (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length;
+describe('centring the pressed tab', () => {
+  const spy = () => Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+  const centred = () =>
+    spy().mock.instances.map(el => (el as HTMLElement).dataset?.tabKey).filter(Boolean);
 
-  it('does not scroll the row when a popover pin is pressed', () => {
+  it('centres a navigation tab when you press it', () => {
+    setup([TABS.home, TABS.room]);
+    spy().mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /Kitchen/ }));
+
+    expect(centred()).toEqual(['room:HOME-1:ROOM-1']);
+  });
+
+  it('centres a popover tab too, and its panel rides across with it', () => {
     setup([TABS.home, TABS.accessory]);
-    (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
+    spy().mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
 
-    // The chip you just pressed is already under your thumb. Moving it took the
-    // panel's anchor with it and put the widget off the side of the screen.
-    expect(scrolls()).toBe(0);
+    // The panel keeping up is ExpandedOverlay's half of this — it repositions
+    // on a scroll that carries its trigger rather than dismissing on it.
+    expect(centred()).toEqual(['accessory:HOME-1:ACC-1']);
   });
 
-  it('does not slide back to the page you were already on when the panel closes', () => {
+  it('centres the chip you pressed to close, never the page behind it', () => {
     setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
 
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
-    (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
-
-    // Closing hands "active" back to the room, which the bar never left.
+    spy().mockClear();
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
 
-    expect(scrolls()).toBe(0);
+    // Closing hands "active" back to the room. The bar must not chase it.
+    expect(centred()).not.toContain('room:HOME-1:ROOM-1');
   });
 
-  it('still finds the tab for a room you navigate to', () => {
-    setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
-    // The case the scrolling exists for: a navigate pin that is newly current.
-    expect(scrolls()).toBeGreaterThan(0);
+  it('leaves the bar alone while arranging, where a tap opens the editor', () => {
+    setup([TABS.home, TABS.room], { editMode: true });
+    spy().mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /Kitchen/ }));
+
+    expect(centred()).toEqual([]);
   });
 });

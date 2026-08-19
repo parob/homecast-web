@@ -58,3 +58,28 @@ describe('scrim classes', () => {
     expect(overlayScrim(false)).toContain('bg-black/20');
   });
 });
+
+/**
+ * `scrimCutout` is no longer how the widget overlay leaves its trigger lit.
+ *
+ * `clip-path` removes an element's background but NOT its `backdrop-filter` —
+ * the filter applies across the whole border box whatever the clip says. So a
+ * clipped scrim left the chip undimmed and still *blurred*, which is what "the
+ * tab bar item is still behind the blurred background" looked like. The overlay
+ * draws four panes around the trigger instead; nothing overlaps it, so nothing
+ * can blur it.
+ *
+ * The path is kept for the card menus, whose trigger goes solid white — an
+ * opaque fill hides the residual blur behind it — and this pins the geometry
+ * contract that bit at us: the numbers are the scrim's, not the window's.
+ */
+describe('scrimCutout coordinate frame', () => {
+  it('sizes the outer ring to the scrim it is given, not the viewport', () => {
+    // A `.fixed-full-screen` scrim on a notched phone is taller than the
+    // viewport and starts above it. Handing it window numbers cut the bottom
+    // off — and an unpainted scrim is one taps go straight through.
+    const path = scrimCutout(390, 900, { left: 10, top: 10, width: 40, height: 40 })!;
+    expect(path).toContain('M0,0 H390 V900 H0 Z');
+    expect(path).not.toContain('V844');
+  });
+});
