@@ -132,4 +132,30 @@ describe('an expanded group', () => {
     expect(list.getAttribute('style')).toBeNull();
     expect(list.className).not.toContain('overflow-y-auto');
   });
+
+  // The panel is a fixed 360px box whose insets are rem, so a section that
+  // disagrees about its margin by one rung is off by 4-5px depending on the
+  // text-size setting — and the members section used to, with a pr-1 on the
+  // scroller that made the right edge line up while the left sat proud.
+  //
+  // Compared as Tailwind rungs rather than measured: jsdom lays nothing out,
+  // and the rung is the thing that has to agree anyway.
+  const horizontalRung = (el: HTMLElement) => {
+    const rung = el.className
+      .split(/\s+/)
+      .map(c => /^p(x)?-(\d+(?:\.\d+)?)$/.exec(c))
+      .filter(Boolean)
+      .pop();
+    return rung?.[2] ?? null;
+  };
+
+  it.each([[false], [true]])('insets its members the same as its header (compact: %s)', (compact) => {
+    const container = expandGroup(5, compact);
+    const members = container.closest('.p-6') as HTMLElement;
+    const header = members.closest('.rounded-2xl')!.querySelector('.flex.flex-col') as HTMLElement;
+    expect(horizontalRung(members)).toBe(horizontalRung(header));
+    // Whatever the scroller reserves for a scrollbar, it reserves on both
+    // edges — a one-sided allowance is what pushed the tiles off centre.
+    expect(container.className).not.toMatch(/(^|\s)-?p[lr]-/);
+  });
 });

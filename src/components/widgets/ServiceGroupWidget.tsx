@@ -571,8 +571,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
       onClick={handleCardClick}
     >
       {/* p-3, not a fixed 14px. An accessory tile uses p-3 — 0.75rem — and the
-          text-size setting drives the root font size (14/16/20px), so its padding
-          is 10.5/12/15px while a hard-coded 14px never moved. The two sat side by
+          text-size setting drives the root font size (16/18/20px), so its padding
+          is 12/13.5/15px while a hard-coded 14px never moved. The two sat side by
           side in the same grid at visibly different sizes, and by a different
           amount at each setting. Same unit, same scaling, same tile. */}
       <CardHeader className={`relative ${showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}`}>
@@ -755,10 +755,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
         </CardContent>
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded && !showCompact}>
-        <CardContent className={`relative px-3 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+        {/* px-4 to match this card's own header and slider content — the same
+            one-margin rule as the overlay panel, one rung down. */}
+        <CardContent className={`relative px-4 pb-3 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           <div
             ref={membersListRef}
-            className={`space-y-2 pt-1 ${membersListMaxHeight !== null ? 'overflow-y-auto pr-1' : ''}`}
+            className={`space-y-2 pt-1 ${membersListMaxHeight !== null ? 'overflow-y-auto [scrollbar-gutter:stable_both-edges]' : ''}`}
             style={membersListMaxHeight !== null ? { maxHeight: membersListMaxHeight } : undefined}
           >
             {accessories.map((accessory) => {
@@ -1062,14 +1064,27 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
         </CardContent>
       </AnimatedCollapse>
       <AnimatedCollapse open={isExpanded}>
-        <CardContent className={`relative px-4 pb-4 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+        {/* px-5, the same inset as the header above and the bars between them.
+            This was px-4 with a pr-1 on the grid below, and 16 + 4 happens to
+            equal 20 — so the right edge lined up by accident while the left sat
+            a rung proud of the title, and the action cluster, which gets no
+            pr-1, stuck out on the right instead. Three sections of one panel
+            need one margin. */}
+        <CardContent className={`relative px-5 pb-4 pt-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
           {/* The members are the same compact tiles as the dashboard, in a grid.
               A list of name-plus-toggle rows could only ever switch a light on
               or off; a tile opens into the light's own expanded controls, which
               is what you want when one bulb in the group is wrong. */}
           <div
             ref={membersGridRef}
-            className={`grid grid-cols-2 gap-[10px] pt-1 ${membersGridMaxHeight !== null ? 'overflow-y-auto pr-1' : ''}`}
+            // A scrollbar allowance belongs on both edges or neither: padding
+            // only the right shifts the tiles off the panel's centre line even
+            // where the scrollbar is an overlay and costs no width at all —
+            // which is every Mac. `stable both-edges` reserves the gutter
+            // symmetrically where one is really taken, and nothing where it is
+            // not. Ignored on WebKit before 18.2, which lands back on "no
+            // gutter" — still centred, which is the half that mattered.
+            className={`grid grid-cols-2 gap-[10px] pt-1 ${membersGridMaxHeight !== null ? 'overflow-y-auto [scrollbar-gutter:stable_both-edges]' : ''}`}
             style={membersGridMaxHeight !== null ? { maxHeight: membersGridMaxHeight } : undefined}
           >
             {accessories.map((accessory) => {
