@@ -342,52 +342,181 @@ describe('edit mode', () => {
  * Sliding along the bar before letting go.
  *
  * The bar is a row of small targets at the bottom edge of a phone, so a press
- * is not committed until it is released: whatever is under the thumb at
- * release is what runs, and releasing off the bar runs nothing.
+ * is not committed until it is released: whatever the thumb is nearest at
+ * release is what runs.
  *
- * jsdom has no layout, so `elementFromPoint` always returns null on its own —
- * stub it to answer with whichever tab the test says the finger is over.
+ * Nearest, not underneath. The lit tab is the wide one, so the bar re-lays
+ * itself out as the finger crosses it and a swipe aimed at either end used to
+ * run out of bar before it ran out of thumb. Now x alone decides and y is
+ * ignored entirely.
+ *
+ * jsdom lays nothing out, so every rect is zero — stand in a real row: 40px
+ * capsules on a 50px pitch, so tab 0 spans 0–40 and tab 1 spans 50–90.
  */
 describe('press and slide', () => {
-  const fingerOver = (el: Element | null) => {
-    document.elementFromPoint = vi.fn(() => el as Element);
+  const PITCH = 50;
+  const CAPSULE = 40;
+
+  /** Give the rendered tabs a geometry to be near. */
+  const layOutBar = () => {
+    document.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((slot, i) => {
+      const left = i * PITCH;
+      slot.getBoundingClientRect = () => ({
+        left, right: left + CAPSULE, top: 0, bottom: 44,
+        x: left, y: 0, width: CAPSULE, height: 44, toJSON: () => ({}),
+      }) as DOMRect;
+    });
   };
+
   const bar = () => screen.getByRole('button', { name: /Beach House/ }).parentElement!.parentElement!;
+
+  /** Press, optionally slide, and let go. */
+  const slide = (from: number, to = from, y = 0) => {
+    fireEvent.pointerDown(bar(), { clientX: from, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: to, clientY: y }));
+    fireEvent(window, new PointerEvent('pointerup', { clientX: to, clientY: y }));
+  };
 
   it('acts on the tab under the finger at release, not the one pressed', () => {
     const props = setup([TABS.home, TABS.room]);
-    const home = screen.getByRole('button', { name: /Beach House/ });
-    const kitchen = screen.getByRole('button', { name: /Kitchen/ });
+    layOutBar();
 
-    fingerOver(home);
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    fingerOver(kitchen);
-    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
-    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+    slide(10, 60);
 
     expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
     expect(props.onSelectHome).not.toHaveBeenCalled();
   });
 
-  it('picks nothing when the finger leaves the bar before release', () => {
+  it('picks the nearer capsule when the finger is in the gap between two', () => {
     const props = setup([TABS.home, TABS.room]);
+    layOutBar();
 
-    fingerOver(screen.getByRole('button', { name: /Beach House/ }));
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    fingerOver(null); // dragged off the bar
-    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: -400 }));
+    // 47 is 7px past the end of tab 0 and 3px short of tab 1.
+    slide(10, 47);
 
-    expect(props.onSelectHome).not.toHaveBeenCalled();
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+  });
+
+  /**
+   * The three ways the old hit test came back with nothing, and the swipe died.
+   */
+  it('holds the left-most tab when the finger runs off the left end', () => {
+    const props = setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    slide(60, -400);
+
+    expect(props.onSelectHome).toHaveBeenCalledWith('HOME-1');
     expect(props.onSelectRoom).not.toHaveBeenCalled();
+  });
+
+  it('holds the right-most tab when the finger runs off the right end', () => {
+    const props = setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    slide(10, 400);
+
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+    expect(props.onSelectHome).not.toHaveBeenCalled();
+  });
+
+  it('holds its tab when the finger slides above or below the bar', () => {
+    const props = setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    slide(60, 60, -400); // dragged up over the dashboard
+
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+  });
+
+  it('lights the tab it would commit to while the finger is still down', () => {
+    setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 999, clientY: -400 }));
+
+    // Only one tab is lit at a time, and it is the one the release would take.
+    // (The label is no signal — it is always rendered, collapsed to max-w-0.)
+    expect(screen.getByRole('button', { name: /Kitchen/ }).className).toContain('bg-primary');
+    expect(screen.getByRole('button', { name: /Beach House/ }).className).not.toContain('bg-primary');
+  });
+
+  /**
+   * The name belongs above the bar, not under the thumb covering it.
+   *
+   * The capsule that grows its label is the one you are pressing, so the label
+   * arrives exactly where it cannot be read — and widens the bar on its way.
+   * The callout says it where there is nothing in front of it, and the capsule
+   * underneath stops growing at all once the finger aims past the open tab.
+   */
+  const callout = () => screen.queryByTestId('tab-callout');
+  /** Is this tab wearing its label? Collapsed ones are still rendered, at max-w-0. */
+  const labelled = (name: RegExp) =>
+    !screen.getByRole('button', { name }).querySelector('span[aria-hidden]')!
+      .className.includes('max-w-0');
+
+  it('names the tab under the finger above the bar, where it can be read', () => {
+    setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    expect(callout()?.textContent).toContain('Beach House');
+
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+    expect(callout()?.textContent).toContain('Kitchen');
+  });
+
+  it('names the end tab the finger has run past, same as the release would pick', () => {
+    setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 999, clientY: -400 }));
+
+    expect(callout()?.textContent).toContain('Kitchen');
+  });
+
+  it('takes the callout away again once the finger lifts', () => {
+    setup([TABS.home, TABS.room]);
+    layOutBar();
+
+    slide(10, 60);
+
+    expect(callout()).toBeNull();
+  });
+
+  it('leaves the open tab labelled while the finger is still on it', () => {
+    setup([TABS.home, TABS.room], { selectedHomeId: 'HOME-1' });
+    layOutBar();
+
+    // Every ordinary tap of the view you are already in: nothing may move.
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+
+    expect(labelled(/Beach House/)).toBe(true);
+  });
+
+  it('drops the labels once the finger aims past the open tab', () => {
+    setup([TABS.home, TABS.room], { selectedHomeId: 'HOME-1' });
+    layOutBar();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+
+    // Nothing widens the bar mid-slide; the callout is doing the naming.
+    expect(labelled(/Beach House/)).toBe(false);
+    expect(labelled(/Kitchen/)).toBe(false);
+    expect(callout()?.textContent).toContain('Kitchen');
+    // ...but the fill still says which one a release would take.
+    expect(screen.getByRole('button', { name: /Kitchen/ }).className).toContain('bg-primary');
   });
 
   it('does not fire twice when the release is followed by its own click', () => {
     const props = setup([TABS.home]);
+    layOutBar();
     const home = screen.getByRole('button', { name: /Beach House/ });
 
-    fingerOver(home);
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: 0 }));
+    slide(10);
     fireEvent.click(home); // the click the browser sends after every tap
 
     expect(props.onSelectHome).toHaveBeenCalledTimes(1);
@@ -401,10 +530,9 @@ describe('press and slide', () => {
 
   it('leaves the gesture alone while arranging, so dnd-kit keeps the pointer', () => {
     const props = setup([TABS.home, TABS.room], { editMode: true });
+    layOutBar();
 
-    fingerOver(screen.getByRole('button', { name: /Kitchen/ }));
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+    slide(10, 60);
 
     expect(props.onSelectRoom).not.toHaveBeenCalled();
     expect(props.onSelectHome).not.toHaveBeenCalled();

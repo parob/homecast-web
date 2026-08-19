@@ -238,10 +238,37 @@ export function MobileTabBar({
     }
   };
 
-  /** Which tab, if any, sits under a viewport point. */
-  const keyAtPoint = (x: number, y: number): string | null =>
-    (document.elementFromPoint(x, y) as HTMLElement | null)
-      ?.closest<HTMLElement>('[data-tab-key]')?.dataset.tabKey ?? null;
+  /**
+   * Which tab a gesture at this x belongs to — the nearest one, never nothing.
+   *
+   * Hit testing the point was the obvious way and the wrong one. The lit tab is
+   * the wide one, so every step along the bar re-lays the bar out underneath the
+   * finger: the tab you just reached puts its label on, its neighbour takes one
+   * off, the pill changes width and re-centres. Aim at the last tab and the end
+   * of the bar arrives before your thumb does — the finger is off the end of
+   * something that moved, the point hits nothing, and the swipe dies exactly
+   * where it was going.
+   *
+   * So the bar keeps the gesture it started, and distance along x picks the tab.
+   * One rule settles all three ways a point misses: the gap between two capsules
+   * goes to the nearer of them, past either end goes to the tab at that end, and
+   * y is not consulted at all — sliding up over the dashboard or down into the
+   * home indicator holds the selection rather than dropping it.
+   */
+  const nearestKey = (bar: Element, x: number): string | null => {
+    let nearest: string | null = null;
+    let shortest = Infinity;
+    for (const slot of bar.querySelectorAll<HTMLElement>('[data-tab-key]')) {
+      const { left, right } = slot.getBoundingClientRect();
+      const distance = x < left ? left - x : x > right ? x - right : 0;
+      if (distance < shortest) {
+        shortest = distance;
+        nearest = slot.dataset.tabKey ?? null;
+      }
+      if (distance === 0) break; // Inside one; nothing can be nearer.
+    }
+    return nearest;
+  };
 
   /**
    * Track a press across the bar and act on where it is released.
@@ -250,14 +277,21 @@ export function MobileTabBar({
    * redirect the click to the element that took it, and the buttons still need
    * their own click for the keyboard path. Instead the release does the work
    * and flags the click that follows it as already spent.
+   *
+   * Once it has begun, the press always lands on a tab — there is no dragging
+   * it off to think better of it. pointercancel is still the way out, and it is
+   * the one the system uses.
    */
   const beginGesture = (e: React.PointerEvent) => {
     if (editMode) return; // dnd-kit owns the pointer while arranging.
-    const start = keyAtPoint(e.clientX, e.clientY);
-    if (!start) return;
+    // Read now, synchronously: React clears currentTarget once dispatch ends,
+    // and every listener below outlives this handler.
+    const bar = e.currentTarget;
+    const start = nearestKey(bar, e.clientX);
+    if (!start) return; // Nothing pinned to aim at.
     setDragKey(start);
 
-    const move = (ev: PointerEvent) => setDragKey(keyAtPoint(ev.clientX, ev.clientY));
+    const move = (ev: PointerEvent) => setDragKey(nearestKey(bar, ev.clientX));
     const done = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -265,10 +299,9 @@ export function MobileTabBar({
       setDragKey(null);
     };
     const up = (ev: PointerEvent) => {
-      const end = keyAtPoint(ev.clientX, ev.clientY);
+      const end = nearestKey(bar, ev.clientX);
       done();
-      // Released off the bar: the press is abandoned, not redirected.
-      if (!end) return;
+      if (!end) return; // The last pin was removed mid-press.
       suppressClickRef.current = true;
       const tab = pinnedTabs.find(t => pinKey(t) === end);
       if (tab) handleTap(tab, resolveStatus(tab));
@@ -281,7 +314,26 @@ export function MobileTabBar({
 
 
   const activeKey = pinnedTabs.find(isActive) ? pinKey(pinnedTabs.find(isActive)!) : null;
-  const expandedKey = dragKey ?? activeKey;
+
+  /** The fill follows the finger: it is what letting go would commit to. */
+  const litKey = dragKey ?? activeKey;
+
+  /**
+   * The label does not follow it. A capsule that grows its name under a thumb
+   * has put that name in the one place on the screen it cannot be read — and
+   * moved the rest of the bar sideways to do it.
+   *
+   * So the moment a finger aims past the tab that is already open, the bar
+   * drops its labels and the callout above takes over the naming. That is one
+   * shrink, at the point you leave, rather than a reflow at every tab you cross.
+   * Aimed at the open tab — which is every ordinary tap of the view you are
+   * already in — nothing moves at all.
+   */
+  const labelKey = dragKey !== null && dragKey !== activeKey ? null : activeKey;
+
+  /** What the callout says: the tab a release would land on. */
+  const aimedAt = dragKey ? pinnedTabs.find(t => pinKey(t) === dragKey) : undefined;
+  const AimedIcon = aimedAt ? getIcon(aimedAt) : undefined;
 
   const tabs = pinnedTabs.map((tab) => {
     const key = pinKey(tab);
@@ -296,7 +348,9 @@ export function MobileTabBar({
     // points, so the pill's height was set by whichever pin had the longest
     // name. Arranging needs them all, though — you cannot reorder or rename
     // what you cannot read.
-    const expanded = editMode || expandedKey === key;
+    const expanded = editMode || labelKey === key;
+    // Which is not the same as wearing the fill, once a finger is involved.
+    const lit = litKey === key;
     const label = tab.customName || tab.name;
 
     return (
@@ -327,8 +381,8 @@ export function MobileTabBar({
                   'flex flex-row items-center rounded-full overflow-hidden shrink-0',
                   expanded ? 'px-3 py-2' : 'px-2.5 py-2',
                 ),
-            !editMode && expanded && 'bg-primary text-primary-foreground',
-            !editMode && !expanded && 'active:bg-white/10',
+            !editMode && lit && 'bg-primary text-primary-foreground',
+            !editMode && !lit && 'active:bg-white/10',
             editMode && active && (isDarkBackground ? 'bg-white/20' : 'bg-black/10'),
             missing && !editMode && 'opacity-50',
           )}
@@ -348,7 +402,7 @@ export function MobileTabBar({
               'h-5 w-5 shrink-0',
               // On the filled capsule the icon is on primary, so it takes the
               // capsule's own foreground rather than the wallpaper's.
-              !editMode && expanded
+              !editMode && lit
                 ? 'text-primary-foreground'
                 : isDarkBackground ? 'text-white' : active ? 'text-foreground' : 'text-muted-foreground',
             )}
@@ -450,6 +504,35 @@ export function MobileTabBar({
           customIcon={editingTab.customIcon}
           onSave={(next) => onRename?.(editingTab, next)}
         />
+      )}
+      {/* The name of the tab under the finger, put where the finger is not.
+          It reads the same wherever along the bar you are, so a slide does not
+          drag a moving target across the screen to be read — and it never runs
+          off the edge the way a callout pinned over the last tab would. Which
+          tab it belongs to is already answered underneath: exactly one capsule
+          is filled, and it is this one.
+
+          aria-hidden, like the capsule's own label: every tab is a button that
+          already says its name, and a live readout of a gesture in progress is
+          something to announce to a pointer, not to a screen reader. */}
+      {aimedAt && !editMode && (
+        <div className="flex justify-center px-4 pb-2">
+          <div
+            aria-hidden
+            data-testid="tab-callout"
+            className={cn(
+              'flex max-w-full items-center gap-2 rounded-full px-3 py-1.5',
+              // The same glass as the pill below it, so the two read as one
+              // control rather than a tooltip that happened to land there.
+              isDarkBackground ? 'material-regular-dark text-white' : 'material-regular text-foreground',
+            )}
+          >
+            {AimedIcon && <AimedIcon className="h-4 w-4 shrink-0" />}
+            <span className="min-w-0 truncate text-[13px] font-semibold leading-none">
+              {aimedAt.customName || aimedAt.name}
+            </span>
+          </div>
+        </div>
       )}
       <div className="flex justify-center px-4 pb-2">
         {editMode ? (
