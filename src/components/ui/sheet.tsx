@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useSwipeToClose } from "@/hooks/useDrawerSwipe";
 import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
@@ -59,35 +60,67 @@ interface SheetContentProps
   /** Drop the built-in ✕ — for a sheet whose content offers its own way out
    *  (picking something), where a close button is one more thing in a corner. */
   hideCloseButton?: boolean;
+  /**
+   * Turn off drag-to-dismiss. A left sheet is a menu, and a menu you swiped in
+   * is a menu you should be able to swipe back out, so it is on by default
+   * there — but a sheet whose content owns horizontal drags of its own can say
+   * so here rather than tagging every child `data-no-swipe`.
+   */
+  disableSwipeToClose?: boolean;
 }
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, overlayClassName, hideCloseButton, children, ...props }, ref) => (
-    <SheetPortal>
-      <SheetOverlay className={overlayClassName} />
-      <SheetPrimitive.Content
-        ref={ref}
-        className={cn(sheetVariants({ side }), className)}
-        {...props}
-      >
-        {children}
-        {/* A side sheet reaches the top of the screen, so its close button is
-            the thing most likely to end up under a notch. Anchor it below the
-            inset; a bottom sheet starts mid-screen and keeps its own 12px. */}
-        {!hideCloseButton && (
-        <SheetPrimitive.Close
-          className={cn(
-            "absolute right-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
-            side === "bottom" ? "top-3" : "top-[calc(0.75rem+var(--safe-area-top,0px))]",
-          )}
+  ({ side = "right", className, overlayClassName, hideCloseButton, disableSwipeToClose, children, ...props }, ref) => {
+    // State, not a ref: the panel does not exist until the sheet opens, and a
+    // ref assignment would not re-run the effect that attaches the listeners.
+    const [panel, setPanel] = React.useState<HTMLDivElement | null>(null);
+    const swipeCloseRef = React.useRef<HTMLButtonElement>(null);
+    const swipeable = side === "left" && !disableSwipeToClose;
+
+    const setRefs = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        setPanel(node);
+        if (typeof ref === "function") ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      },
+      [ref],
+    );
+
+    // Closing goes through Radix's own Close rather than an onOpenChange we do
+    // not have: Content cannot reach the Root's state, and every caller here is
+    // controlled by something different.
+    useSwipeToClose(swipeable ? panel : null, () => swipeCloseRef.current?.click());
+
+    return (
+      <SheetPortal>
+        <SheetOverlay className={overlayClassName} />
+        <SheetPrimitive.Content
+          ref={setRefs}
+          className={cn(sheetVariants({ side }), className)}
+          {...props}
         >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
-        )}
-      </SheetPrimitive.Content>
-    </SheetPortal>
-  ),
+          {children}
+          {swipeable && (
+            <SheetPrimitive.Close ref={swipeCloseRef} className="hidden" tabIndex={-1} aria-hidden />
+          )}
+          {/* A side sheet reaches the top of the screen, so its close button is
+              the thing most likely to end up under a notch. Anchor it below the
+              inset; a bottom sheet starts mid-screen and keeps its own 12px. */}
+          {!hideCloseButton && (
+          <SheetPrimitive.Close
+            className={cn(
+              "absolute right-3 rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-secondary hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none",
+              side === "bottom" ? "top-3" : "top-[calc(0.75rem+var(--safe-area-top,0px))]",
+            )}
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+          )}
+        </SheetPrimitive.Content>
+      </SheetPortal>
+    );
+  },
 );
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 

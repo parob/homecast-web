@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { getRecordableCharacteristics, hvacModeOf, type WritableChar } from '@/components/automations/characteristics';
 import { resolveWidgetType } from '@/components/widgets/resolve-widget-type';
@@ -6,6 +6,8 @@ import { getAccessoryDisplayName } from '@/components/widgets/types';
 import { isHiddenRoom, type AccessoryInfoEntry } from '@/history/categories';
 import { isMockHistoryEnabled, mockAccessories, mockRoomGroups, mockServiceGroups } from '@/history/mock';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
 import ScopeDashboard from './ScopeDashboard';
 import ScopeHeader from './ScopeHeader';
 import ScopeTree from './ScopeTree';
@@ -89,6 +91,17 @@ export default function AnalyticsContent({
   const mock = isMockHistoryEnabled();
   const effectiveHomeId = mock ? 'MOCK-HOME' : homeId;
   const [navOpen, setNavOpen] = useState(false);
+  const isMobile = useIsMobile();
+  // Scoped to this screen rather than the window: analytics is usually a dialog
+  // over the dashboard, and an unscoped swipe would open the dashboard's menu
+  // behind it. On the standalone /analytics page there is no dialog to be
+  // inside of, and the swipe is the page's — useEdgeSwipeOpen resolves which.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEdgeSwipeOpen({
+    enabled: isMobile && !navOpen,
+    onOpen: () => setNavOpen(true),
+    container: rootRef,
+  });
   const { recorded, loading: seriesLoading, error: seriesError, refetch } = useRecordedSeries(effectiveHomeId, mock);
 
   const accessoryInfo = useMemo(() => {
@@ -229,7 +242,7 @@ export default function AnalyticsContent({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col gap-3">
       <ScopeHeader
         title={title}
         onOpenNav={() => setNavOpen(true)}

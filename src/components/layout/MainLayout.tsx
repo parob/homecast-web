@@ -6,6 +6,7 @@ import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import { useCanvasTint } from '@/hooks/useCanvasTint';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
@@ -65,6 +66,15 @@ export function MainLayout({
   // painted over bg-background yet. Gating on top of that could only ever be a
   // no-op or a regression.
   const { hasBackground, isDarkBackground } = useBackgroundDarkness(background, bgImageLuminance);
+
+  // Swipe in from the left edge to open the menu — the same gesture that closes
+  // it again from inside the sheet (see SheetContent). Only where the menu is
+  // collapsed behind a button in the first place: on md and up the sidebar is a
+  // permanent column, and there is nothing to open.
+  useEdgeSwipeOpen({
+    enabled: !!sidebar && isMobile && !sidebarOpen,
+    onOpen: () => setSidebarOpen(true),
+  });
 
   // Android Tauri app: sync status bar icon color with background darkness.
   // Calls the @JavascriptInterface directly (registered on WebView creation,

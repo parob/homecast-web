@@ -193,6 +193,7 @@ import {
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile, useIsPhone } from '@/hooks/use-mobile';
+import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
 import { CollectionList, CollectionDetail } from '@/components/collections';
 import { ShareDialog } from '@/components/shared/ShareDialog';
 import { SettingsDialog, type SettingsTab } from '@/components/settings/SettingsDialog';
@@ -2020,6 +2021,10 @@ const Dashboard = () => {
   const isAdminRoute = location.pathname.startsWith('/portal/admin');
   const adminSubPath = isAdminRoute ? location.pathname.replace('/portal/admin', '') || '/' : '/';
   const [adminSidebarOpen, setAdminSidebarOpen] = useState(false);
+  // The admin panel is a near-full-screen dialog with a menu of its own, so its
+  // edge swipe is scoped to the dialog: measured from the dialog's left edge
+  // (24px in from the window), and deaf to touches outside it.
+  const adminDialogRef = useRef<HTMLDivElement>(null);
 
   // Get auth token from localStorage for WebSocket connection
   const authToken = localStorage.getItem('homecast-token');
@@ -3026,6 +3031,22 @@ const Dashboard = () => {
   const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
   const anyRelayConnected = homes.some(h => h.relayConnected === true);
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
+
+  // Swipe in from the left edge to open the navigation drawer, and back out of
+  // the open drawer to close it (that half lives in SheetContent). Gated the
+  // same way the menu button is: on md and up the sidebar is a permanent
+  // column, and during onboarding the drawer has nothing in it. The gesture
+  // stands down whenever a dialog is over the page — including the admin panel,
+  // which runs its own scoped swipe below.
+  useEdgeSwipeOpen({
+    enabled: isMobile && hasContentAccess && !sidebarOpen,
+    onOpen: () => setSidebarOpen(true),
+  });
+  useEdgeSwipeOpen({
+    enabled: isMobile && isAdminRoute && !!_cloud && !adminSidebarOpen,
+    onOpen: () => setAdminSidebarOpen(true),
+    container: adminDialogRef,
+  });
 
   // Onboarding: check if user has completed onboarding (cloud mode only)
   useEffect(() => {
@@ -9016,6 +9037,7 @@ const Dashboard = () => {
       {/* Admin Panel Dialog - Nearly Full Screen */}
       <Dialog open={isAdminRoute && !!_cloud} onOpenChange={(open) => !open && navigate('/portal')}>
         <DialogContent
+          ref={adminDialogRef}
           className="!max-w-[calc(100vw-48px)] !w-[calc(100vw-48px)] p-0 flex flex-col overflow-hidden"
           style={{
             zIndex: 10010,
