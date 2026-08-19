@@ -102,6 +102,36 @@ export function getRelayAddress(): string | null {
   return raw ? normalizeRelayOrigin(raw) : null;
 }
 
+/**
+ * Forget the relay this device is paired with, and go back to choosing one.
+ *
+ * Clearing localStorage is not enough inside the native shell. There the
+ * address is injected from UserDefaults as `__HOMECAST_RELAY_ORIGIN__`, which
+ * `getRelayAddress` reads *ahead of* localStorage — so a web-only clear forgot
+ * nothing, the reload returned to the same unreachable host, and because the
+ * shell still held an address it never offered the picker. That is the stuck
+ * spinner "Change host" used to produce.
+ *
+ * Only the shell can drop its own copy, and only the shell can put the picker
+ * back on screen, so when the bridge is there the job is handed over and this
+ * does not navigate. In a browser there is no shell and the keys are the whole
+ * story, so /login (which doubles as the relay chooser) is the way back.
+ */
+export function forgetRelay(): void {
+  localStorage.removeItem('homecast-relay-override');
+  localStorage.removeItem('homecast-relay-address');
+  localStorage.removeItem('homecast-relay-ws-port');
+  localStorage.removeItem('homecast-relay-setup');
+  localStorage.removeItem('homecast-mode');
+
+  const handler = (window as any).webkit?.messageHandlers?.homecast;
+  if (handler) {
+    handler.postMessage({ action: 'forgetRelay' });
+    return;
+  }
+  window.location.href = '/login';
+}
+
 /** The relay's real WebSocket port, as reported by /health or Bonjour TXT. */
 export function getRelayWsPort(): number | null {
   const raw = localStorage.getItem('homecast-relay-ws-port');

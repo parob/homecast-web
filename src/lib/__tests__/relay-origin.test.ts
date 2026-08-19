@@ -22,7 +22,7 @@ vi.hoisted(() => {
   });
 });
 
-import { communityWsUrl, normalizeRelayOrigin, getCommunityMode, getRelayAddress } from '../config';
+import { communityWsUrl, normalizeRelayOrigin, getCommunityMode, getRelayAddress, forgetRelay } from '../config';
 
 describe('normalizeRelayOrigin', () => {
   it('reads a bare host:port as http, the way it was stored before HTTPS was possible', () => {
@@ -122,5 +122,42 @@ describe('native relay origin', () => {
     localStorage.setItem('homecast-relay-address', '10.0.0.9:5656');
     expect(getCommunityMode()).toBe('client');
     expect(getRelayAddress()).toBe('http://10.0.0.9:5656');
+  });
+});
+
+describe('forgetRelay', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    delete (window as any).__HOMECAST_RELAY_ORIGIN__;
+    delete (window as any).webkit;
+  });
+
+  it('hands the job to the shell, and does not navigate itself', () => {
+    const posted: any[] = [];
+    (window as any).webkit = { messageHandlers: { homecast: { postMessage: (m: any) => posted.push(m) } } };
+    localStorage.setItem('homecast-relay-address', 'http://10.0.0.9:5656');
+
+    forgetRelay();
+
+    expect(posted).toEqual([{ action: 'forgetRelay' }]);
+    // The shell swaps the picker in. Navigating as well would reload the
+    // WebView out from under it.
+    expect(localStorage.getItem('homecast-relay-address')).toBeNull();
+  });
+
+  it('clears every key getRelayAddress reads, not just the stored address', () => {
+    // The override is read *first*, so leaving it behind would keep answering
+    // with the host the user is trying to get away from.
+    localStorage.setItem('homecast-relay-override', 'http://10.0.0.9:5656');
+    localStorage.setItem('homecast-relay-address', 'http://10.0.0.8:5656');
+    localStorage.setItem('homecast-relay-ws-port', '5657');
+    localStorage.setItem('homecast-relay-setup', '1');
+    localStorage.setItem('homecast-mode', 'client');
+    (window as any).webkit = { messageHandlers: { homecast: { postMessage: () => {} } } };
+
+    forgetRelay();
+
+    expect(getRelayAddress()).toBeNull();
+    expect(getCommunityMode()).toBeNull();
   });
 });
