@@ -503,6 +503,32 @@ export class ServerWebSocket {
   }
 
   /**
+   * Move this socket to a different address for the *same* relay.
+   *
+   * Community's version of a pod handoff: the relay has not changed, only
+   * which of its addresses reaches it — the phone left the house, or came
+   * back. Deliberately does not remember an affinity target, which is a cloud
+   * concept and host-locked besides; the relay store already knows where it
+   * got through.
+   */
+  switchEndpoint(wsUrl: string): void {
+    if (!wsUrl || wsUrl === this.config.wsUrl) return;
+    console.log(`[ServerWS] Relay address changed, moving socket to ${wsUrl}`);
+    this.cleanup();
+    this.config.wsUrl = wsUrl;
+    // The front door moves with it, or the silence-fallback at the end of
+    // connect() would drag the socket back to the address we just left.
+    this.frontDoorWsUrl = wsUrl;
+    this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+    // Same reasoning as a pod handoff: the socket is being moved on purpose
+    // and is back in well under a second, so telling the user their connection
+    // dropped would describe a fault that did not happen.
+    this.handingOff = true;
+    this.setState('reconnecting');
+    this.establishConnection();
+  }
+
+  /**
    * Redirect to a specific server endpoint (GKE pod affinity).
    * Overrides the WebSocket URL and reconnects immediately.
    */

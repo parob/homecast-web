@@ -64,6 +64,34 @@ function isCGNAT(host: string): boolean {
   return n[0] === 100 && n[1] >= 64 && n[1] <= 127;
 }
 
+/** How a client is reaching the relay, in words a person would use. */
+export type RelayRoute = 'lan' | 'mesh' | 'remote';
+
+/**
+ * Which kind of route an address represents.
+ *
+ * Shares the classifiers with ranking rather than restating them: the UI
+ * calling one thing "your local network" while the race treats it as remote
+ * would be worse than either being wrong on its own.
+ */
+export function describeRoute(origin: string): RelayRoute {
+  let host: string;
+  try {
+    host = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return 'remote';
+  }
+  if (isPrivateLAN(host)) return 'lan';
+  if (isCGNAT(host)) return 'mesh';
+  return 'remote';
+}
+
+export const ROUTE_LABELS: Record<RelayRoute, string> = {
+  lan: 'Local network',
+  mesh: 'VPN',
+  remote: 'Remote',
+};
+
 export function rankAddress(origin: string, preferOrigin?: string | null): AddressRank {
   if (preferOrigin && origin === preferOrigin) return AddressRank.Preferred;
   let host: string;

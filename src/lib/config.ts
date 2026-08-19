@@ -223,11 +223,41 @@ function resolveWsUrl(): string {
   return `${WS_BASE}/ws`;
 }
 
+// Where we are actually talking to right now.
+//
+// This used to be frozen at import, which meant the only way to change relay
+// was to write localStorage and reload the whole page. That is fine for
+// "connect to a different Mac" and much too heavy for "the phone moved from
+// Wi-Fi to cellular and the mesh address is now the one that works" — a
+// network change would blank the screen and lose the user's place.
+let activeApiBase = API_BASE;
+let activeWsUrl = resolveWsUrl();
+
+/**
+ * Re-point at a different address for the *same* relay, without a reload.
+ *
+ * Returns false when nothing changed, so callers can skip the reconnect and
+ * the banner. Everything downstream reads `config.apiUrl` / `config.wsUrl` at
+ * call time, so this is enough to move the HTTP side; the WebSocket has to be
+ * told separately because a socket is already open on the old address.
+ */
+export function setActiveRelayOrigin(origin: string): boolean {
+  const normalized = normalizeRelayOrigin(origin);
+  if (!normalized || normalized === activeApiBase) return false;
+  activeApiBase = normalized;
+  activeWsUrl = communityWsUrl(normalized);
+  // Keep the stored value in step, or a later reload would undo the switch.
+  try { localStorage.setItem('homecast-relay-address', normalized); } catch { /* private mode */ }
+  return true;
+}
+
 export const config = {
-  apiUrl: API_BASE,
+  // Getters, not values: every existing `config.apiUrl` reader becomes
+  // dynamic without touching a single call site.
+  get apiUrl() { return activeApiBase; },
+  get graphqlUrl() { return `${activeApiBase}/`; },
+  get wsUrl() { return activeWsUrl; },
   webUrl: WEB_BASE,
-  wsUrl: resolveWsUrl(),
-  graphqlUrl: `${API_BASE}/`,
   isStaging: window.location.hostname.includes('staging'),
   isCommunity,
   version: import.meta.env.VITE_COMMIT_SHA || 'dev',

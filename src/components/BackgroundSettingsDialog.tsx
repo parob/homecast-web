@@ -31,7 +31,9 @@ import { cn } from '@/lib/utils';
 
 import { config } from '@/lib/config';
 
-const API_URL = config.apiUrl;
+// Read through a getter rather than snapshotted at import: the relay's
+// address can change while the app is running.
+const API_URL = () => config.apiUrl;
 
 interface BackgroundSettingsDialogProps {
   open: boolean;
@@ -198,7 +200,7 @@ export function BackgroundSettingsDialog({
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_URL}/rest/background`, {
+      const response = await fetch(`${API_URL()}/rest/background`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('homecast-token')}`,
@@ -214,7 +216,7 @@ export function BackgroundSettingsDialog({
       const result = await response.json();
 
       // Ensure the URL is absolute (server may return relative path)
-      const imageUrl = result.url.startsWith('http') ? result.url : `${API_URL}${result.url}`;
+      const imageUrl = result.url.startsWith('http') ? result.url : `${API_URL()}${result.url}`;
 
       setSettings(prev => ({
         ...prev,
@@ -245,7 +247,7 @@ export function BackgroundSettingsDialog({
 
   const handleDeleteBackground = useCallback(async (filename: string, url: string) => {
     try {
-      const response = await fetch(`${API_URL}/rest/background?filename=${encodeURIComponent(filename)}`, {
+      const response = await fetch(`${API_URL()}/rest/background?filename=${encodeURIComponent(filename)}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('homecast-token')}`,

@@ -12,7 +12,9 @@ import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 import { config, isCommunity, getCommunityMode, getRelayAddress } from '@/lib/config';
 import { HomecastMark } from '@/components/HomecastMark';
 
-const API_URL = config.apiUrl;
+// Read through a getter rather than snapshotted at import: the relay's
+// address can change while the app is running.
+const API_URL = () => config.apiUrl;
 
 const isInNativeApp = !!(window as any).webkit?.messageHandlers?.homecast;
 const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
@@ -236,7 +238,7 @@ const Login = () => {
       const params = new URLSearchParams(oauthParams);
       params.set('response_type', 'code');
       params.set('_token', token);
-      window.location.href = `${API_URL}/oauth/authorize?${params.toString()}`;
+      window.location.href = `${API_URL()}/oauth/authorize?${params.toString()}`;
     }
   }, [isAuthenticated, isOAuthFlow, oauthParams, token]);
 

@@ -37,6 +37,7 @@ import {
   type HomeSettingsSectionId,
 } from '@/lib/home-settings-sections';
 import { Input } from '@/components/ui/input';
+import { RelayInfoCard } from './RelayInfoCard';
 import { getCloud } from '@/lib/cloud';
 import {
   AlertDialog,
@@ -383,6 +384,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 You're running the Community edition — fully local, no cloud dependency, unlimited accessories.
               </p>
             </div>
+            {isCommunity && !isRelayCapable() && <RelayInfoCard />}
             {canNameRelay && (
               <div className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-center justify-between">

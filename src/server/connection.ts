@@ -111,10 +111,12 @@ export function getBrowserSessionId(): string | undefined {
   return sessionId;
 }
 
-import { config, isCommunity, isClientMode } from '@/lib/config';
+import { config, isCommunity, isClientMode, setActiveRelayOrigin } from '@/lib/config';
 import { randomUUID } from '@/lib/uuid';
 
-const WS_URL = config.wsUrl;
+// Read at call time, not captured: the relay's address can change under a
+// running app when the network moves.
+const wsUrl = () => config.wsUrl;
 
 const LAST_CONNECTED_AT_KEY = 'homecast-last-connected-at';
 
@@ -433,6 +435,16 @@ class ServerConnection {
   }
 
   /**
+   * Move the open socket to a different address for the same relay.
+   *
+   * No-op when nothing is connected: the next connect will read the new URL
+   * from config anyway, so there is nothing to move.
+   */
+  switchWebSocketEndpoint(url: string): void {
+    this.websocket?.switchEndpoint(url);
+  }
+
+  /**
    * Get current state
    */
   getState(): ServerConnectionState {
@@ -587,7 +599,7 @@ class ServerConnection {
       return;
     }
 
-    if (import.meta.env.DEV) console.log(`[ServerConnection] Activating... (${WS_URL})`);
+    if (import.meta.env.DEV) console.log(`[ServerConnection] Activating... (${wsUrl()})`);
 
     try {
       const deviceId = getDeviceId();
@@ -595,7 +607,7 @@ class ServerConnection {
       const browserSessionId = getBrowserSessionId();
 
       this.websocket = new ServerWebSocket(
-        { token, deviceId, deviceName, browserSessionId, wsUrl: WS_URL },
+        { token, deviceId, deviceName, browserSessionId, wsUrl: wsUrl() },
         {
           onStateChange: (connectionState, opts) => {
             // In community mode, authenticate with the relay as soon as connected
@@ -996,5 +1008,30 @@ class ServerConnection {
 
 // Export singleton instance
 export const serverConnection = new ServerConnection();
+
+/**
+ * The relay is now reachable at a different one of its addresses.
+ *
+ * Called by the native shell when the phone changes network and the address
+ * race picks a different winner. Everything here is deliberately in-place: the
+ * shell used to recreate the whole WebView, which blanked the screen and lost
+ * the user's position for what is, from their point of view, nothing more than
+ * a change of route.
+ *
+ * Returns false when the address was already the one in use, so the caller can
+ * skip announcing a change that did not happen.
+ */
+export function relayAddressChanged(origin: string): boolean {
+  if (!setActiveRelayOrigin(origin)) return false;
+  // HTTP follows the getter on its own; the socket is already open on the old
+  // address and has to be moved.
+  serverConnection.switchWebSocketEndpoint(config.wsUrl);
+  window.dispatchEvent(new CustomEvent('homecast:relay-address-changed', { detail: { origin } }));
+  return true;
+}
+
+// The shell has no module graph, so this is how it reaches the function above.
+(window as unknown as { __homecastRelayMoved?: (o: string) => boolean }).__homecastRelayMoved =
+  relayAddressChanged;
 
 export default serverConnection;

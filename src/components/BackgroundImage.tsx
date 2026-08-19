@@ -5,7 +5,9 @@ import type { BackgroundSettings } from '@/lib/graphql/types';
 
 import { config } from '@/lib/config';
 
-const API_URL = config.apiUrl;
+// Read through a getter rather than snapshotted at import: the relay's
+// address can change while the app is running.
+const API_URL = () => config.apiUrl;
 
 // Simple in-memory image cache to prevent repeated network requests
 const imageCache = new Map<string, HTMLImageElement>();
@@ -37,7 +39,7 @@ function isImageCached(url: string): boolean {
 function toAbsoluteUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http')) return url;
-  return `${API_URL}${url}`;
+  return `${API_URL()}${url}`;
 }
 
 interface BackgroundImageProps {

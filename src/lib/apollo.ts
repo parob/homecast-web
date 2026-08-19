@@ -46,7 +46,10 @@ const fetchWithTimeout: typeof fetch = (input, init) => {
 };
 
 const httpLink = createHttpLink({
-  uri: config.graphqlUrl,
+  // A function, not a string: the relay's address can change under a running
+  // app when the network moves, and a captured URL would keep posting to the
+  // address we just left.
+  uri: () => config.graphqlUrl,
   fetch: fetchWithTimeout,
 });
 

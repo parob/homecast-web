@@ -18,6 +18,7 @@ import { isCommunity } from "@/lib/config";
 import { hasCloud } from "@/lib/cloud";
 import { lazy, Suspense, type ReactElement } from "react";
 import { AppBootFallback } from "@/components/LoadingSkeletons";
+import { RelayRouteBanner } from "@/components/layout/RelayRouteBanner";
 // Login stays eager: for a signed-out visitor it IS the first screen, and
 // making it a second round trip would just move the wait. The rest are not on
 // any first-paint path — a signed-in user going straight to /portal was paying
@@ -192,6 +193,7 @@ const App = () => (
       <TooltipProvider>
         <MacAppInsetVar />
         <Toaster />
+        <RelayRouteBanner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ScrollToTop />
           <StagingBanner />

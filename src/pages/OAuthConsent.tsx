@@ -12,7 +12,9 @@ import { WELL_KNOWN_CLIENTS } from '@/lib/oauth-clients';
 import { config } from '@/lib/config';
 import { HomecastMark } from '@/components/HomecastMark';
 
-const API_URL = config.apiUrl;
+// Read through a getter rather than snapshotted at import: the relay's
+// address can change while the app is running.
+const API_URL = () => config.apiUrl;
 
 interface OAuthParams {
   client_id: string;
@@ -160,7 +162,7 @@ const OAuthConsent = () => {
       .reduce((acc, hp) => ({ ...acc, [hp.homeId]: hp.role }), {} as Record<string, string>);
 
     try {
-      const response = await fetch(`${API_URL}/oauth/authorize/callback`, {
+      const response = await fetch(`${API_URL()}/oauth/authorize/callback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -196,7 +198,7 @@ const OAuthConsent = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/oauth/authorize/callback`, {
+      const response = await fetch(`${API_URL()}/oauth/authorize/callback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
