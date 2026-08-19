@@ -1369,3 +1369,151 @@ export const RELOAD_RELAY = gql`
     reloadRelay(deviceId: $deviceId)
   }
 `;
+
+/**
+ * Every field on a log row. Used by both `logSearch` and `logTrace` so the
+ * detail panel and the trace waterfall render identical records.
+ */
+const LOG_ROW_FIELDS = `
+  id
+  timestamp
+  severity
+  message
+  env
+  traceId
+  spanId
+  spanName
+  source
+  logger
+  action
+  userId
+  userEmail
+  deviceId
+  homeId
+  accessoryId
+  accessoryName
+  success
+  error
+  latencyMs
+  instanceId
+  podName
+  logName
+  slotName
+  sourceSlot
+  targetSlot
+  routingMode
+  clientType
+  recipientCount
+  stackTrace
+  sourceFile
+  sourceLine
+  sourceFunction
+  textPayload
+  payload
+`;
+
+/**
+ * The log explorer's single query: rows, volume histogram, facet counts and a
+ * real total, all from one BigQuery job.
+ *
+ * Deliberately NOT paired per environment. Prod and staging write to the same
+ * Cloud Logging bucket, so one query returns both tagged by `env` — running the
+ * usual two Apollo clients would double the work for identical results.
+ */
+export const LOG_SEARCH = gql`
+  query LogSearch(
+    $startTime: String!
+    $endTime: String!
+    $text: String
+    $filters: [LogFilterArgInput!]
+    $limit: Int
+    $cursor: String
+    $facetFields: [String!]
+    $histogramBuckets: Int
+  ) {
+    logSearch(
+      startTime: $startTime
+      endTime: $endTime
+      text: $text
+      filters: $filters
+      limit: $limit
+      cursor: $cursor
+      facetFields: $facetFields
+      histogramBuckets: $histogramBuckets
+    ) {
+      rows { ${LOG_ROW_FIELDS} }
+      histogram { bucket severity count }
+      facets { field values { value count } }
+      totalCount
+      tookMs
+      scannedBytes
+      bucketSeconds
+      nextCursor
+      error
+      notice
+    }
+  }
+`;
+
+/** Every log line for one trace, oldest first — the waterfall's input. */
+export const LOG_TRACE = gql`
+  query LogTrace($traceId: String!, $startTime: String, $endTime: String) {
+    logTrace(traceId: $traceId, startTime: $startTime, endTime: $endTime) {
+      traceId
+      rows { ${LOG_ROW_FIELDS} }
+      error
+    }
+  }
+`;
+
+/** Trace summaries, grouped and counted in SQL rather than sampled. */
+export const LOG_TRACE_SEARCH = gql`
+  query LogTraceSearch(
+    $startTime: String!
+    $endTime: String!
+    $action: String
+    $userId: String
+    $success: Boolean
+    $env: String
+    $text: String
+    $limit: Int
+    $cursor: String
+  ) {
+    logTraceSearch(
+      startTime: $startTime
+      endTime: $endTime
+      action: $action
+      userId: $userId
+      success: $success
+      env: $env
+      text: $text
+      limit: $limit
+      cursor: $cursor
+    ) {
+      traces {
+        traceId
+        startTime
+        endTime
+        hopCount
+        usedPubsub
+        classification
+        env
+        success
+        action
+        accessoryName
+        userEmail
+        userId
+        deviceId
+        totalLatencyMs
+        relayLatencyMs
+        error
+        clientType
+        originInstance
+      }
+      totalCount
+      tookMs
+      nextCursor
+      error
+    }
+  }
+`;

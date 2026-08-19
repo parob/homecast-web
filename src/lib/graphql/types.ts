@@ -2477,3 +2477,135 @@ export interface HistorySeriesRefInput {
   accessoryId: string;
   characteristicType: string;
 }
+
+/**
+ * One log line from the BigQuery log explorer (`logSearch` / `logTrace`).
+ *
+ * Supersedes {@link AdminLogEntry}, which kept an allowlist of fields and
+ * collapsed everything else into a `metadata` string that was null for almost
+ * every row — so `logger`, `sourceLocation` and `stackTrace` were fetched and
+ * discarded. `payload` here carries the complete jsonPayload, so the detail
+ * panel can render the whole record.
+ */
+export interface LogRow {
+  id: string;
+  timestamp: string;
+  severity: string;
+  message: string;
+  /** 'production' | 'staging' — both come back from one query. */
+  env: string;
+  traceId: string | null;
+  spanId: string | null;
+  spanName: string | null;
+  source: string | null;
+  logger: string | null;
+  action: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  deviceId: string | null;
+  homeId: string | null;
+  accessoryId: string | null;
+  accessoryName: string | null;
+  success: boolean | null;
+  error: string | null;
+  latencyMs: number | null;
+  instanceId: string | null;
+  podName: string | null;
+  logName: string | null;
+  slotName: string | null;
+  sourceSlot: string | null;
+  targetSlot: string | null;
+  routingMode: string | null;
+  clientType: string | null;
+  recipientCount: number | null;
+  stackTrace: string | null;
+  sourceFile: string | null;
+  sourceLine: number | null;
+  sourceFunction: string | null;
+  textPayload: string | null;
+  /** The complete jsonPayload, as JSON text. */
+  payload: string | null;
+}
+
+export interface LogHistogramBucket {
+  bucket: string;
+  severity: string;
+  count: number;
+}
+
+export interface LogFacetValue {
+  value: string;
+  count: number;
+}
+
+export interface LogFacet {
+  field: string;
+  values: LogFacetValue[];
+}
+
+export interface LogSearchResult {
+  rows: LogRow[];
+  histogram: LogHistogramBucket[];
+  facets: LogFacet[];
+  /** A real count, not the old fabricated estimate. */
+  totalCount: number;
+  tookMs: number;
+  scannedBytes: number;
+  bucketSeconds: number;
+  nextCursor: string | null;
+  /**
+   * Set when the query failed. The page must render this rather than an empty
+   * table — the old resolver swallowed every failure into zero rows, so a
+   * timeout was indistinguishable from "no logs matched".
+   */
+  error: string | null;
+  /**
+   * Set when the answer is complete but qualified — currently only when the
+   * window predates Log Analytics coverage. Not an error: rows are real, there
+   * are just fewer of them than the range implies.
+   */
+  notice: string | null;
+}
+
+export interface LogSearchResponse {
+  logSearch: LogSearchResult;
+}
+
+export interface LogTraceSummary {
+  traceId: string;
+  startTime: string;
+  endTime: string | null;
+  hopCount: number;
+  usedPubsub: boolean;
+  classification: string;
+  env: string;
+  success: boolean | null;
+  action: string | null;
+  accessoryName: string | null;
+  userEmail: string | null;
+  userId: string | null;
+  deviceId: string | null;
+  totalLatencyMs: number | null;
+  relayLatencyMs: number | null;
+  error: string | null;
+  clientType: string | null;
+  originInstance: string | null;
+}
+
+export interface LogTraceSearchResponse {
+  logTraceSearch: {
+    traces: LogTraceSummary[];
+    totalCount: number;
+    tookMs: number;
+    nextCursor: string | null;
+    error: string | null;
+  };
+}
+
+export interface LogTraceResponse {
+  logTrace: {
+    traceId: string;
+    rows: LogRow[];
+    error: string | null;
+  };
+}

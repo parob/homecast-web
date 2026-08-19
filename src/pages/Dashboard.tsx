@@ -1211,7 +1211,6 @@ const Dashboard = () => {
   const AdminTasks = _cloud?.AdminTasks ?? null;
   const AdminApprovals = _cloud?.AdminApprovals ?? null;
   const AdminLogs = _cloud?.AdminLogs ?? null;
-  const AdminObservability = _cloud?.AdminObservability ?? null;
   const AdminReliability = _cloud?.AdminReliability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
@@ -9139,7 +9138,11 @@ const Dashboard = () => {
                 {adminSubPath === '/deals/active' && <AdminActiveDeals />}
                 {adminSubPath === '/tasks' && <AdminTasks />}
                 {adminSubPath === '/approvals' && <AdminApprovals />}
-                {(adminSubPath === '/traces' || adminSubPath === '/observability') && <AdminObservability />}
+                {/* Traces merged into the log explorer — a trace is logs grouped by
+                    trace_id. These paths stay routable so existing bookmarks and the
+                    Reliability drill-ins keep working; AdminLogs opens on its Traces
+                    view and rewrites the URL to /logs?view=traces. */}
+                {(adminSubPath === '/traces' || adminSubPath === '/observability') && <AdminLogs />}
                 {adminSubPath === '/reliability' && AdminReliability && <AdminReliability />}
                 {/* Overview now also serves the old /infrastructure/pods path
                     (the standalone Pods page was merged into it). */}
