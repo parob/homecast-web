@@ -473,46 +473,72 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </a>
               </div>
             )}
-            <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-sm font-medium">Want remote access & cloud features?</p>
-              <p className="text-xs text-muted-foreground">
-                Switch to Homecast Cloud for remote access, sharing, and more. You'll need to reset
-                this app and sign in with a Cloud account.
-              </p>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                  >
-                    Reset & uninstall →
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Reset Homecast?</AlertDialogTitle>
-                    <AlertDialogDescription asChild>
-                      <div className="space-y-2 text-sm">
-                        <p>This will:</p>
-                        <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                          <li>Sign you out of the Community account on this Mac</li>
-                          <li>Erase all local Community data (homes, settings, automations, accessory layouts)</li>
-                          <li>Stop the local relay server and clear cached web content</li>
-                          <li>Return to the mode-selector screen, where you can pick Homecast Cloud</li>
-                        </ul>
-                        <p className="text-foreground font-medium pt-1">This cannot be undone.</p>
-                      </div>
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => props.resetAndUninstall?.()}>
-                      Reset & uninstall
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
+            {(() => {
+              // "Want remote access?" was the old pitch, and it stopped being
+              // true: Community reaches a home from anywhere over a VPN or a
+              // tunnel, and the card above this one shows exactly that. Cloud's
+              // case is that you do not have to set any of it up — and the
+              // things a relay on its own cannot do.
+              //
+              // It was also ungated, so a phone was being told to reset "this
+              // Mac", and offered to stop a relay server it is not running.
+              const onRelay = isRelayCapable();
+              return (
+                <div className="rounded-lg border p-3 space-y-2">
+                  <p className="text-sm font-medium">Homecast Cloud</p>
+                  <p className="text-xs text-muted-foreground">
+                    Community reaches your home from anywhere once you have set up a VPN or a
+                    tunnel. Cloud needs none of that, and adds sharing with other people, push
+                    notifications and webhooks.
+                  </p>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                      >
+                        Switch {onRelay ? 'this Mac' : 'this device'} to Cloud →
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Switch {onRelay ? 'this Mac' : 'this device'} to Homecast Cloud?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                          <div className="space-y-2 text-sm">
+                            <p>This will:</p>
+                            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                              {onRelay ? (
+                                <>
+                                  <li>Sign you out of the Community account on this Mac</li>
+                                  <li>Erase all local Community data (homes, settings, automations, accessory layouts)</li>
+                                  <li>Stop the local relay server and clear cached web content</li>
+                                </>
+                              ) : (
+                                <>
+                                  <li>Disconnect this device from your relay</li>
+                                  <li>Erase this device's local Community data (settings and accessory layouts)</li>
+                                  <li>Leave the relay itself untouched — other devices keep working</li>
+                                </>
+                              )}
+                              <li>Return to the mode-selector screen, where you can pick Homecast Cloud</li>
+                            </ul>
+                            <p className="text-foreground font-medium pt-1">This cannot be undone.</p>
+                          </div>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => props.resetAndUninstall?.()}>
+                          Switch to Cloud
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              );
+            })()}
             <p className="text-[11px] text-muted-foreground text-center pt-1">
               <a
                 href="https://homecast.cloud/terms"

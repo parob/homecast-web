@@ -10,7 +10,9 @@ import { ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION } from '@/lib/graphql/mu
 import { GET_PENDING_INVITATIONS } from '@/lib/graphql/queries';
 import type { GetPendingInvitationsResponse, PendingInvitation } from '@/lib/graphql/types';
 import { toast } from 'sonner';
-import { config } from '@/lib/config';
+import { config, isCommunity, getRelayAddress } from '@/lib/config';
+import { probeRelay, type RelayHealth } from '@/lib/relay-probe';
+import { isRelayCapable } from '@/native/homekit-bridge';
 
 export type SetupPath = 'mac-relay' | 'cloud-relay' | 'shared-home' | 'skipped';
 
@@ -564,6 +566,93 @@ const stepDescriptions: Record<WizardStep, string> = {
   'shared-home': 'Check for home invitations',
 };
 
+
+/**
+ * First run, Community edition.
+ *
+ * The wizard below this one asks which cloud plan you want and how your Mac
+ * should reach the cloud relay. In Community none of that exists: there is no
+ * account, no subscription, no accessory limit, and the relay is the machine
+ * you are already looking at. Showing someone a price list for something they
+ * have already installed for free is worse than showing them nothing.
+ *
+ * So this says the two things that are actually true and actionable on day
+ * one: here is the address your other devices need, and your home currently
+ * has no password on it.
+ */
+function CommunitySetupStep({ onComplete, onOpenSettings }: {
+  onComplete: () => void;
+  onOpenSettings?: () => void;
+}) {
+  const onRelay = isRelayCapable();
+  const [health, setHealth] = useState<RelayHealth | null>(null);
+
+  useEffect(() => {
+    // On the relay the page origin is loopback, which /health answers for —
+    // and its `addresses` are the ones another device can actually use.
+    const target = getRelayAddress() ?? window.location.origin;
+    void probeRelay(target, 4000).then(setHealth);
+  }, []);
+
+  const address = health?.addresses?.[0] ?? getRelayAddress() ?? null;
+  const unprotected = health?.authEnabled === false;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {onRelay
+          ? 'Everything runs on this Mac. No account, no subscription, no limit on accessories.'
+          : `You're connected to ${health?.name || 'your relay'}. Everything runs on that Mac — nothing leaves your network.`}
+      </p>
+
+      {onRelay && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-sm font-medium">Add your other devices</p>
+          <p className="text-xs text-muted-foreground">
+            Open Homecast on an iPhone or iPad and pick this Mac from the list — there is
+            nothing to type. In a browser, use this address:
+          </p>
+          {address ? (
+            <div className="flex items-center gap-2">
+              <code className="text-xs font-mono truncate">{address}</code>
+              <CopyButton text={address} />
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Starting the local server…</p>
+          )}
+        </div>
+      )}
+
+      {unprotected && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+          <p className="text-sm font-medium">Set a password</p>
+          <p className="text-xs text-muted-foreground">
+            Anyone who can reach {onRelay ? 'this Mac' : 'your relay'} on the network can control
+            your home. That is fine at home on your own Wi-Fi, and not fine anywhere else.
+          </p>
+          {onOpenSettings && (
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => { onComplete(); onOpenSettings(); }}>
+              Open settings
+            </Button>
+          )}
+        </div>
+      )}
+
+      {onRelay && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-sm font-medium">Away from home</p>
+          <p className="text-xs text-muted-foreground">
+            Run a mesh VPN like Tailscale on this Mac and your phone, and Homecast will find
+            its way over it on its own — it learns the address the first time you connect here.
+          </p>
+        </div>
+      )}
+
+      <Button className="w-full" onClick={onComplete}>Done</Button>
+    </div>
+  );
+}
+
 export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard, userEmail, onInvalidateHomes, cloudSignupsAvailable = true, accountType, initialStep = 'intent', hasHomes, onAddHomeInSettings }: OnboardingOverlayProps) {
   const [step, setStep] = useState<WizardStep>(initialStep);
   const pricing = usePricing();
@@ -590,6 +679,31 @@ export function OnboardingOverlay({ isInMacApp, isInMobileApp, onComplete, onUpg
   const handleSharedComplete = useCallback(() => {
     onComplete('shared-home');
   }, [onComplete]);
+
+  // Community has no plan to choose and no price to wait for, so it branches
+  // out before the pricing gate below — which would otherwise hold this dialog
+  // closed forever on a build with no StoreKit prices to load.
+  if (isCommunity) {
+    return (
+      <Dialog open onOpenChange={() => onComplete('skipped')}>
+        <DialogContent
+          className="sm:max-w-md overflow-y-auto overscroll-contain"
+          style={{ zIndex: 10050, ...(isInMacApp ? { marginTop: 33, maxHeight: 'calc(100dvh - 4rem)' } : null) }}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-center text-lg">Homecast Community</DialogTitle>
+            <DialogDescription className="text-center text-sm text-muted-foreground">
+              Your home, on your own hardware
+            </DialogDescription>
+          </DialogHeader>
+          <CommunitySetupStep
+            onComplete={() => onComplete('skipped')}
+            onOpenSettings={onAddHomeInSettings}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   // Inside the App Store WKWebView, native StoreKit prices haven't loaded yet
   // on first render. Don't show the dialog with web prices baked in.
