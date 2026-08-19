@@ -37,6 +37,7 @@ export type StageStatus = 'observed' | 'inferred' | 'not-reporting' | 'skipped' 
 export type MissingReason =
   | 'activity-logs-off'
   | 'never-instrumented'
+  | 'not-measurable'
   | 'not-on-this-path';
 
 export interface TraceSpanInput {
@@ -73,9 +74,23 @@ export interface Stage {
   runtime: string;
   status: StageStatus;
   reason?: MissingReason;
-  /** ms from the first span in the trace. Null when nothing reported. */
+  /**
+   * ms from the first span in the trace to this stage's first span — i.e. when
+   * the request *reached* here. This is a real, observed instant.
+   */
   startMs: number | null;
   endMs: number | null;
+  /**
+   * A genuinely measured duration for this stage, or null.
+   *
+   * Deliberately not `endMs - startMs`. Most stages emit one span on the way
+   * out and another on the way back, so that difference is the bracket around
+   * everything downstream, not the stage's own cost — which is how the server
+   * stage came to claim it took the entire request. Only two durations in the
+   * system are real: the relay round trip, and the HomeKit call the relay
+   * itself times.
+   */
+  measuredMs: number | null;
   /** Spans attributed to this stage. */
   spans: TraceSpanInput[];
   /** Sub-steps, from the RequestTrace step list where one exists. */
@@ -218,6 +233,7 @@ export function buildJourney(
         reason: NEVER_INSTRUMENTED.has(d.id) ? 'never-instrumented' : 'not-on-this-path',
         startMs: null,
         endMs: null,
+        measuredMs: null,
         spans: [],
         steps: [],
         error: null,
@@ -259,15 +275,26 @@ export function buildJourney(
     spansByStage.set(stage, list);
   }
 
+  // A routed request produces a RequestTrace on the origin pod AND on the pod
+  // that served it, and the two are merged before being logged — so the same
+  // step can arrive twice, milliseconds apart and out of order. Keep the first
+  // of each (name, offset) pair and sort, or the step list reads as a stutter.
+  const seenSteps = new Set<string>();
   for (const span of ordered) {
     if (span.spanName !== 'request_trace') continue;
     for (const step of stepsFromSpan(span)) {
       const stage = STEP_STAGE[step.name];
       if (!stage) continue;
+      const key = `${step.name}@${step.offsetMs ?? '?'}:${step.detail ?? ''}`;
+      if (seenSteps.has(key)) continue;
+      seenSteps.add(key);
       const list = stepsByStage.get(stage) ?? [];
       list.push(step);
       stepsByStage.set(stage, list);
     }
+  }
+  for (const list of stepsByStage.values()) {
+    list.sort((a, b) => (a.offsetMs ?? 0) - (b.offsetMs ?? 0));
   }
 
   const stages: Stage[] = STAGE_DEFS.map((def) => {
@@ -290,10 +317,11 @@ export function buildJourney(
     if (times.length) {
       status = failed ? 'failed' : 'observed';
     } else if (NEVER_INSTRUMENTED.has(def.id)) {
-      // The edge is still real even with no telemetry — a request that reached
-      // the server necessarily crossed it.
+      // The edge is real even with no telemetry — a request that reached the
+      // server necessarily crossed it. The accessory is different: it sits
+      // behind Apple's stack and nothing we ship could ever measure it.
       status = def.id === 'edge' ? 'inferred' : 'not-reporting';
-      reason = 'never-instrumented';
+      reason = def.id === 'edge' ? 'never-instrumented' : 'not-measurable';
     } else if (def.id === 'peer') {
       // Only crossed on a `direct` route, and the decision span proves it even
       // when the peer itself reported nothing.
@@ -314,12 +342,28 @@ export function buildJourney(
       reason = 'not-on-this-path';
     }
 
+    // Only trust a latency the emitter actually measured, and only where it
+    // describes this stage rather than the whole request. `response_sent`
+    // carries the end-to-end total and belongs at the top of the view, not on
+    // the server card.
+    let measuredMs: number | null = null;
+    const roundTrip = stageSpans.find((s) => s.spanName === 'relay_response');
+    if (roundTrip?.latencyMs != null) {
+      measuredMs = roundTrip.latencyMs;
+    } else {
+      const timed = stageSteps.find((s) => /^\d+ms/.test(s.detail ?? '')
+        || /\b(\d+)ms\b/.test(s.detail ?? ''));
+      const match = timed?.detail?.match(/(\d+)\s*ms/);
+      if (match) measuredMs = Number(match[1]);
+    }
+
     return {
       ...def,
       status,
       reason,
       startMs: times.length ? Math.min(...times) : null,
       endMs: times.length ? Math.max(...times) : null,
+      measuredMs,
       spans: stageSpans,
       steps: stageSteps,
       error,
@@ -361,7 +405,9 @@ export function reasonLabel(reason: MissingReason | undefined): string {
     case 'activity-logs-off':
       return 'Activity logs are off for this device';
     case 'never-instrumented':
-      return 'Not instrumented — inferred from surrounding spans';
+      return 'Not instrumented — inferred from the spans either side';
+    case 'not-measurable':
+      return 'Outside our code — nothing here can report';
     case 'not-on-this-path':
       return 'Not part of this request';
     default:

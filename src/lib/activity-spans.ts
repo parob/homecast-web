@@ -79,3 +79,51 @@ export function traceClientRequest(action: string): {
     },
   };
 }
+
+/**
+ * Relay-side spans.
+ *
+ * The relay is the one place that knows what HomeKit actually cost. The server
+ * can only see the round trip to the relay and back; everything between — the
+ * dispatch, the native bridge, Apple's own write — is inside this process and
+ * has never reported anything. `homekit_call` already existed as a step on the
+ * ephemeral `_trace` blob, but that blob is only ever looked at when a request
+ * fails, so in practice the relay was silent.
+ *
+ * The trace id arrives on every request the server sends and had never been
+ * read. These spans use it, which is what joins them to the rest of the journey
+ * rather than leaving them as an unattached island.
+ */
+export function traceRelayRequest(action: string, traceId: string | undefined): {
+  dispatched: () => void;
+  done: (outcome: { success: boolean; error?: string }) => void;
+} {
+  const noop = { dispatched: () => {}, done: () => {} };
+  if (!traceId || !activityLoggingEnabled()) return noop;
+
+  const startedAt = Date.now();
+  emit('relay_received', `${action} received by relay`, {
+    action, traceId, transport: 'relay',
+  });
+
+  return {
+    dispatched: () => {
+      emit('relay_dispatch', `${action} → HomeKit`, {
+        action,
+        traceId,
+        latencyMs: Date.now() - startedAt,
+        transport: 'relay',
+      });
+    },
+    done: ({ success, error }) => {
+      emit('relay_responded', `${action} ← HomeKit (${Date.now() - startedAt}ms)`, {
+        action,
+        traceId,
+        latencyMs: Date.now() - startedAt,
+        success,
+        error,
+        transport: 'relay',
+      });
+    },
+  };
+}

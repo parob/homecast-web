@@ -73,10 +73,12 @@ describe('buildJourney — the honest baseline', () => {
     expect(stage.reason).toBe('not-on-this-path');
   });
 
-  it('reports the accessory as permanently uninstrumented', () => {
+  it('reports the accessory as unmeasurable, not merely uninstrumented', () => {
+    // It sits behind Apple's stack. "Not instrumented" implies someone could
+    // fix that; nothing we ship ever could.
     const stage = stageById(SERVER_ONLY, 'accessory');
     expect(stage.status).toBe('not-reporting');
-    expect(stage.reason).toBe('never-instrumented');
+    expect(stage.reason).toBe('not-measurable');
   });
 
   it('infers the edge, which is real but silent', () => {
@@ -267,7 +269,78 @@ describe('reasonLabel', () => {
   it('explains each absence in words', () => {
     expect(reasonLabel('activity-logs-off')).toMatch(/Activity logs/);
     expect(reasonLabel('never-instrumented')).toMatch(/inferred/);
+    expect(reasonLabel('not-measurable')).toMatch(/Outside our code/);
     expect(reasonLabel('not-on-this-path')).toMatch(/Not part/);
     expect(reasonLabel(undefined)).toBe('No data');
+  });
+});
+
+describe('measuredMs — only durations somebody actually measured', () => {
+  it('takes the relay round trip from relay_response', () => {
+    expect(stageById(SERVER_ONLY, 'relay_socket').measuredMs).toBe(170);
+  });
+
+  it('does NOT claim the server took the whole request', () => {
+    // server_received and response_sent bracket everything downstream. Their
+    // difference is the total, not the server's own cost — reporting it on the
+    // server card is what made a 4s trace look like 4s of server time.
+    const ingress = stageById(SERVER_ONLY, 'ingress');
+    expect(ingress.measuredMs).toBeNull();
+    expect(ingress.startMs).toBe(0);
+  });
+
+  it('takes the HomeKit call duration from the relay-reported step', () => {
+    const traceSpan = span({
+      offsetMs: 2,
+      spanName: 'request_trace',
+      payload: JSON.stringify({
+        metadata: { steps: [{ name: 'homekit_call', ms: 60, status: 'ok', detail: 'write 41ms' }] },
+      }),
+    });
+    expect(stageById([...SERVER_ONLY, traceSpan], 'homekit').measuredMs).toBe(41);
+  });
+});
+
+describe('merged step lists', () => {
+  it('dedupes and orders steps merged from two pods', () => {
+    // A routed request builds a RequestTrace on the origin pod and on the pod
+    // that served it; the two are merged before logging, so the same step
+    // arrives twice, milliseconds apart and out of order. The screenshot that
+    // prompted this showed lock_acquire listed twice at +2080ms and +2079ms.
+    const merged = span({
+      offsetMs: 0,
+      spanName: 'request_trace',
+      payload: JSON.stringify({
+        metadata: {
+          steps: [
+            { name: 'relay_send', ms: 2082, status: 'ok', detail: 'WS send 1ms' },
+            { name: 'lock_acquire', ms: 2080, status: 'ok', detail: '0ms' },
+            { name: 'lock_acquire', ms: 2080, status: 'ok', detail: '0ms' },
+          ],
+        },
+      }),
+    });
+    const stage = buildJourney([merged]).stages.find((s) => s.id === 'relay_socket')!;
+    expect(stage.steps.map((s) => `${s.name}@${s.offsetMs}`)).toEqual([
+      'lock_acquire@2080', 'relay_send@2082',
+    ]);
+  });
+
+  it('keeps genuinely distinct repeats of the same step', () => {
+    // Two relay hops in one request really do acquire the lock twice.
+    const twoHops = span({
+      offsetMs: 0,
+      spanName: 'request_trace',
+      payload: JSON.stringify({
+        metadata: {
+          steps: [
+            { name: 'lock_acquire', ms: 10, status: 'ok', detail: '0ms' },
+            { name: 'lock_acquire', ms: 90, status: 'ok', detail: '0ms' },
+          ],
+        },
+      }),
+    });
+    const stage = buildJourney([twoHops]).stages.find((s) => s.id === 'relay_socket')!;
+    expect(stage.steps).toHaveLength(2);
   });
 });

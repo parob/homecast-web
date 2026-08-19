@@ -13,6 +13,7 @@ import { preferredWsUrl, rememberAffinityTarget, forgetAffinityTarget } from './
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
+import { traceRelayRequest } from '../lib/activity-spans';
 import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
 import type { NotifyDelivery } from '../automation';
 import { resolveHomeLocation } from '../automation/location';
@@ -1625,6 +1626,12 @@ export class ServerWebSocket {
     const trace = message._trace;
     const t0 = Date.now();
 
+    // The server has always sent trace_id on every request and the relay has
+    // never read it. Reading it is what lets the relay's own spans join the
+    // journey instead of forming an unattached island — this is the only part
+    // of the system that knows what HomeKit itself cost.
+    const span = traceRelayRequest(message.action, message.trace_id);
+
     try {
       // Add HomeKit call step to trace
       if (trace) {
@@ -1637,7 +1644,9 @@ export class ServerWebSocket {
         });
       }
 
+      span.dispatched();
       const result = await executeHomeKitAction(message.action, message.payload || {}, 'cloud');
+      span.done({ success: true });
 
       // Update trace with completed homekit_call timing
       if (trace) {
@@ -1684,6 +1693,7 @@ export class ServerWebSocket {
         }
       }
 
+      span.done({ success: false, error: `${code}: ${errorMessage}` });
       this.sendErrorResponse(message.id, message.action, code, errorMessage, trace);
     }
   }
