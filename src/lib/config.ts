@@ -121,6 +121,9 @@ export function forgetRelay(): void {
   localStorage.removeItem('homecast-relay-override');
   localStorage.removeItem('homecast-relay-address');
   localStorage.removeItem('homecast-relay-ws-port');
+  // Read by communityWsUrl ahead of everything else, so a stale one left
+  // behind here would keep pointing the WebSocket at the relay being escaped.
+  localStorage.removeItem('homecast-relay-ws-url');
   localStorage.removeItem('homecast-relay-setup');
   localStorage.removeItem('homecast-mode');
 
