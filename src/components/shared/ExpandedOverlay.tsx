@@ -2,7 +2,7 @@ import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useE
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { overlayScrim } from '@/lib/overlay-scrim';
+import { overlayScrim, scrimCutout } from '@/lib/overlay-scrim';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -28,6 +28,18 @@ export interface ExpandedOverlayProps {
    * first place when a tab is the trigger.
    */
   bottomInset?: number;
+  /**
+   * Leave the trigger itself unblurred, by cutting it out of the scrim.
+   *
+   * For a trigger that stays on screen beside the panel and still means
+   * something while it is open — a pinned tab, which is both the thing you
+   * pressed and the thing you press again to close. Dimming it made the bar
+   * look switched off at the moment it was most in use.
+   *
+   * Off by default: a widget tile's panel is drawn over the tile, so a hole
+   * there would sit behind the panel and only show as a bright rim.
+   */
+  cutOutTrigger?: boolean;
   children: React.ReactNode;
 }
 
@@ -96,7 +108,7 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, cutOutTrigger = false, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
@@ -107,6 +119,8 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
+  /** The scrim's hole, when the caller wants its trigger left lit. */
+  const [scrimClip, setScrimClip] = useState<string | undefined>(undefined);
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
@@ -154,12 +168,15 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
       setPosition(pos);
       setCoords({ x, y });
+      setScrimClip(cutOutTrigger
+        ? scrimCutout(window.innerWidth, window.innerHeight, parent?.getBoundingClientRect())
+        : undefined);
       // Trigger ready state after position is set
       requestAnimationFrame(() => {
         setReady(true);
       });
     }
-  }, [isExpanded, shouldRender, effectiveWidth]);
+  }, [isExpanded, shouldRender, effectiveWidth, cutOutTrigger]);
 
   // Measure the panel: a portrait panel with a hero control is tall enough to
   // run off the bottom of a phone, and top-aligning to the trigger would leave
@@ -472,11 +489,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               under both, which is the point: it is two rooms away now. */}
           <div
             aria-hidden
-            style={{ zIndex: baseZ }}
             // Blocking the pointer also blocks scrolling the page behind, and
             // the scroll-past-40px dismissal with it. A wheel over the
             // backdrop means the same thing a tap does.
             onWheel={() => onClose()}
+            // The hole also lets the pointer through, which is what makes the
+            // chip still pressable while its own panel is open — pressing it
+            // again is how you close it.
+            style={{ zIndex: baseZ, clipPath: scrimClip }}
             className={`fixed-full-screen transition-opacity duration-fast ease-standard ${
               overlayScrim(isDarkBackground)
             } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}

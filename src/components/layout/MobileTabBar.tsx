@@ -43,8 +43,14 @@ export { MAX_PINNED_TABS };
  */
 export type PinnedTabStatus = 'ready' | 'loading' | 'missing';
 
-/** Height reserved above the bar so a control panel never sits under it. */
-const TAB_BAR_INSET = 76;
+/**
+ * Height kept clear at the bottom for a control panel opened from the bar.
+ *
+ * More than the bar is tall: a panel that stopped just short of the chips sat
+ * in the very bottom of the screen, which is the hardest part of a phone to
+ * read and the easiest to cover with a thumb. This lifts it clear of both.
+ */
+const TAB_BAR_INSET = 124;
 
 interface MobileTabBarProps {
   pinnedTabs: PinnedTab[];
@@ -215,23 +221,38 @@ export function MobileTabBar({
   }, [measureScroll]);
 
   /**
-   * Bring the active tab into view when it changes.
+   * Bring the active tab into view when you navigate somewhere.
    *
    * A pin you cannot see is one you will not use, and with five long names only
    * about one and a half chips fit at once — so arriving in a room whose tab is
-   * off the end of the row would look like the pin had been lost. Not while a
-   * finger is down: moving the row under a gesture is the one thing guaranteed
-   * to make it land somewhere else.
+   * off the end of the row would look like the pin had been lost.
+   *
+   * Navigation only, and that is the whole of it:
+   *
+   * - A **popover** pin is one you just pressed, so it is already under your
+   *   thumb and needs no finding. Scrolling it anyway moved it out from under
+   *   the panel that had just been anchored to it, which is what put the widget
+   *   off the side of the screen.
+   * - **Closing** that panel hands "active" back to the page you were already
+   *   on. The bar was already showing it, and sliding back to it made shutting
+   *   a panel look like navigation nobody asked for.
+   * - Not while a finger is down: moving the row under a gesture is the one
+   *   thing guaranteed to make it land somewhere else.
    */
+  const lastScrolledToRef = useRef<string | null>(null);
   useEffect(() => {
     if (editMode || dragKey !== null || !activeKey) return;
+    const activeTab = pinnedTabs.find(t => pinKey(t) === activeKey);
+    if (!activeTab || pinBehaviour(activeTab.type) !== 'navigate') return;
+    if (lastScrolledToRef.current === activeKey) return;
+    lastScrolledToRef.current = activeKey;
     const el = scrollerRef.current;
     // Matched by dataset rather than a selector: a pin key is `type:scope:id`
     // and those colons need escaping, which jsdom has no CSS.escape for.
     const chip = el && [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
       .find(n => n.dataset.tabKey === activeKey);
     chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
-  }, [activeKey, dragKey, editMode]);
+  }, [activeKey, dragKey, editMode, pinnedTabs]);
 
   const itemIds = pinnedTabs.map(pinKey);
 
@@ -423,7 +444,14 @@ export function MobileTabBar({
               // Heating" stays readable at all.
               : 'flex shrink-0 flex-row items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5',
             !editMode && lit && 'bg-primary text-primary-foreground',
-            !editMode && !lit && 'active:bg-white/10',
+            // The bar's glass follows the wallpaper — white over a light one,
+            // black over a dark one — so the text on it has to as well. An
+            // unlit chip carried no colour at all and inherited the page's,
+            // which is black, and vanished into the dark bar.
+            !editMode && !lit && cn(
+              'active:bg-white/10',
+              isDarkBackground ? 'text-white/85' : 'text-foreground/80',
+            ),
             editMode && active && (isDarkBackground ? 'bg-white/20' : 'bg-black/10'),
             missing && !editMode && 'opacity-50',
           )}
@@ -439,14 +467,11 @@ export function MobileTabBar({
           <PendingRing
             pending={running}
             outset
-            className={cn(
-              'h-5 w-5 shrink-0',
-              // On the filled capsule the icon is on primary, so it takes the
-              // capsule's own foreground rather than the wallpaper's.
-              !editMode && lit
-                ? 'text-primary-foreground'
-                : isDarkBackground ? 'text-white' : active ? 'text-foreground' : 'text-muted-foreground',
-            )}
+            // Inherits the chip's colour rather than working it out again:
+            // they were computed from different rules and drifted apart, which
+            // is how the label ended up black on a dark bar while the glyph
+            // beside it stayed white.
+            className="h-5 w-5 shrink-0"
           >
             <Icon className="h-5 w-5 shrink-0" />
           </PendingRing>
@@ -491,6 +516,7 @@ export function MobileTabBar({
             isExpanded
             onClose={() => setOpenKey(null)}
             bottomInset={TAB_BAR_INSET}
+            cutOutTrigger
           >
             {renderControl(tab)}
           </ExpandedOverlay>

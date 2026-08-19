@@ -596,3 +596,44 @@ describe('scroll fades', () => {
     expect(metrics(300, 300, 0).className).toContain('touch-none');
   });
 });
+
+/**
+ * What the bar does when a panel opens and closes.
+ *
+ * Both of these were reported together and share one cause: the bar treated
+ * opening an accessory's panel as navigation, so it scrolled the chip out from
+ * under the panel that had just been anchored to it, and then scrolled back
+ * again on close as though you had gone somewhere.
+ */
+describe('opening a control panel', () => {
+  const scrolls = () => (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('does not scroll the row when a popover pin is pressed', () => {
+    setup([TABS.home, TABS.accessory]);
+    (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+
+    // The chip you just pressed is already under your thumb. Moving it took the
+    // panel's anchor with it and put the widget off the side of the screen.
+    expect(scrolls()).toBe(0);
+  });
+
+  it('does not slide back to the page you were already on when the panel closes', () => {
+    setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+    (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
+
+    // Closing hands "active" back to the room, which the bar never left.
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+
+    expect(scrolls()).toBe(0);
+  });
+
+  it('still finds the tab for a room you navigate to', () => {
+    setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
+    // The case the scrolling exists for: a navigate pin that is newly current.
+    expect(scrolls()).toBeGreaterThan(0);
+  });
+});
