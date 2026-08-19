@@ -11,6 +11,18 @@ vi.mock('@/components/shared/ExpandedOverlay', () => ({
     isExpanded ? <div data-testid="control-popover">{children}</div> : null,
 }));
 
+// jsdom has no ResizeObserver, and the bar watches its own row so the end
+// fades stay right when a pin is renamed. Same stub the scenes tests use.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+
+// Nor scrollIntoView, which the bar calls to bring the active chip into view.
+Element.prototype.scrollIntoView = vi.fn();
+
 const TABS: Record<string, PinnedTab> = {
   home: { type: 'home', id: 'HOME-1', name: 'Beach House' },
   room: { type: 'room', id: 'ROOM-1', name: 'Kitchen', homeId: 'HOME-1' },
@@ -450,40 +462,24 @@ describe('press and slide', () => {
    * The callout says it where there is nothing in front of it, and the capsule
    * underneath stops growing at all once the finger aims past the open tab.
    */
-  const callout = () => screen.queryByTestId('tab-callout');
   /** Is this tab wearing its label? Collapsed ones are still rendered, at max-w-0. */
   const labelled = (name: RegExp) =>
     !screen.getByRole('button', { name }).querySelector('span[aria-hidden]')!
       .className.includes('max-w-0');
 
-  it('names the tab under the finger above the bar, where it can be read', () => {
+  it('keeps every name on show throughout the slide, not just the one aimed at', () => {
     setup([TABS.home, TABS.room]);
     layOutBar();
 
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    expect(callout()?.textContent).toContain('Beach House');
+    const named = () => screen.getAllByRole('button').map(b => b.textContent);
+    expect(named()).toEqual(expect.arrayContaining(['Beach House', 'Kitchen']));
 
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
     fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
-    expect(callout()?.textContent).toContain('Kitchen');
-  });
 
-  it('names the end tab the finger has run past, same as the release would pick', () => {
-    setup([TABS.home, TABS.room]);
-    layOutBar();
-
-    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
-    fireEvent(window, new PointerEvent('pointermove', { clientX: 999, clientY: -400 }));
-
-    expect(callout()?.textContent).toContain('Kitchen');
-  });
-
-  it('takes the callout away again once the finger lifts', () => {
-    setup([TABS.home, TABS.room]);
-    layOutBar();
-
-    slide(10, 60);
-
-    expect(callout()).toBeNull();
+    // The old bar hid the labels here and named the aimed-at tab in a callout
+    // above itself. Nothing is hidden now, so there is nothing to restore.
+    expect(named()).toEqual(expect.arrayContaining(['Beach House', 'Kitchen']));
   });
 
   it('leaves the open tab labelled while the finger is still on it', () => {
@@ -496,19 +492,20 @@ describe('press and slide', () => {
     expect(labelled(/Beach House/)).toBe(true);
   });
 
-  it('drops the labels once the finger aims past the open tab', () => {
+  it('moves only the fill as the finger crosses tabs — the labels stay put', () => {
     setup([TABS.home, TABS.room], { selectedHomeId: 'HOME-1' });
     layOutBar();
 
     fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
     fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
 
-    // Nothing widens the bar mid-slide; the callout is doing the naming.
-    expect(labelled(/Beach House/)).toBe(false);
-    expect(labelled(/Kitchen/)).toBe(false);
-    expect(callout()?.textContent).toContain('Kitchen');
-    // ...but the fill still says which one a release would take.
+    // Both still named — the row does not reflow under the thumb, which is
+    // what the labels appearing and disappearing used to cause.
+    expect(labelled(/Beach House/)).toBe(true);
+    expect(labelled(/Kitchen/)).toBe(true);
+    // The fill is the only thing that follows, and it says what a release takes.
     expect(screen.getByRole('button', { name: /Kitchen/ }).className).toContain('bg-primary');
+    expect(screen.getByRole('button', { name: /Beach House/ }).className).not.toContain('bg-primary');
   });
 
   it('does not fire twice when the release is followed by its own click', () => {
@@ -536,5 +533,66 @@ describe('press and slide', () => {
 
     expect(props.onSelectRoom).not.toHaveBeenCalled();
     expect(props.onSelectHome).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The end fades.
+ *
+ * A fade on an end you have already reached claims there is more that way when
+ * there is not, which reads as a rendering fault rather than an affordance —
+ * so each end is masked only while something is actually beyond it. jsdom
+ * reports every box as zero, so the scroller's metrics are stubbed.
+ */
+describe('scroll fades', () => {
+  // Each tab sits in its own TabSlot wrapper, so the scroller is a level
+  // further up than the button's parent.
+  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+
+  const metrics = (scrollWidth: number, clientWidth: number, scrollLeft: number) => {
+    const el = scroller();
+    Object.defineProperty(el, 'scrollWidth', { value: scrollWidth, configurable: true });
+    Object.defineProperty(el, 'clientWidth', { value: clientWidth, configurable: true });
+    el.scrollLeft = scrollLeft;
+    fireEvent.scroll(el);
+    return el;
+  };
+
+  it('fades neither end when the whole row fits', () => {
+    setup([TABS.home, TABS.room]);
+    const el = metrics(200, 200, 0);
+    expect(el.className).not.toContain('tab-fade-left');
+    expect(el.className).not.toContain('tab-fade-right');
+  });
+
+  it('fades only the right at the start of a row that overflows', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    const el = metrics(600, 300, 0);
+    expect(el.className).not.toContain('tab-fade-left');
+    expect(el.className).toContain('tab-fade-right');
+  });
+
+  it('fades only the left once the far end is reached', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    const el = metrics(600, 300, 300);
+    expect(el.className).toContain('tab-fade-left');
+    expect(el.className).not.toContain('tab-fade-right');
+  });
+
+  it('fades both ends in the middle', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    const el = metrics(600, 300, 150);
+    expect(el.className).toContain('tab-fade-both');
+  });
+
+  /**
+   * While the row overflows the browser owns this axis as a pan — it takes the
+   * pointer and cancels our gesture, so a swipe scrolls and only a tap picks.
+   * With nothing to pan, the axis goes back to slide-to-select.
+   */
+  it('hands the axis to the browser only while there is something to scroll', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    expect(metrics(600, 300, 0).className).toContain('touch-pan-x');
+    expect(metrics(300, 300, 0).className).toContain('touch-none');
   });
 });

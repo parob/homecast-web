@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Folder, House, Layers, Zap } from 'lucide-react';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
@@ -124,6 +124,28 @@ export function MobileTabBar({
   /** Set by the gesture below so the click it also produces does nothing. */
   const suppressClickRef = useRef(false);
 
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  /** Whether the row is wider than the bar, and which ends have more beyond them. */
+  const [scrollable, setScrollable] = useState(false);
+  const [fadeLeft, setFadeLeft] = useState(false);
+  const [fadeRight, setFadeRight] = useState(false);
+
+  /**
+   * Which ends of the row have more beyond them.
+   *
+   * Directional on purpose: a fade on an end you have already reached claims
+   * there is more that way when there is not, which is worse than no fade at
+   * all — it reads as a rendering fault rather than an affordance.
+   */
+  const measureScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setScrollable(max > 1);
+    setFadeLeft(el.scrollLeft > 1);
+    setFadeRight(el.scrollLeft < max - 1);
+  }, []);
+
   const runTab = useCallback(async (tab: PinnedTab) => {
     const key = pinKey(tab);
     setRunningKey(key);
@@ -143,6 +165,73 @@ export function MobileTabBar({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  /**
+   * Three different meanings of "active", which is the whole point of the bar
+   * holding three kinds of pin:
+   *
+   * - navigate — you are looking at it.
+   * - popover  — its panel is open.
+   * - run      — never latches. A tab that stayed lit after running "Everything
+   *              off" would be claiming to be a place you are, which it isn't.
+   *
+   * None of them apply while editing: the bar is the subject then, not a
+   * pointer at somewhere else.
+   */
+  const isActive = (tab: PinnedTab): boolean => {
+    if (editMode) return false;
+    switch (tab.type) {
+      case 'home': return selectedHomeId === tab.id && !selectedRoomId && !selectedCollectionId;
+      case 'room': return selectedRoomId === tab.id;
+      case 'collection': return selectedCollectionId === tab.id && !selectedCollectionGroupId;
+      case 'collectionGroup': return selectedCollectionGroupId === tab.id;
+      case 'accessory':
+      case 'serviceGroup': return openKey === pinKey(tab);
+      case 'action':
+      case 'scene': return runningKey === pinKey(tab);
+    }
+  };
+
+  const activeKey = pinnedTabs.find(isActive) ? pinKey(pinnedTabs.find(isActive)!) : null;
+
+  // Layout effect, not an effect: the fade must be right on the first paint,
+  // or the bar flashes an end-cap it is about to remove.
+  useLayoutEffect(() => { measureScroll(); });
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', measureScroll, { passive: true });
+    window.addEventListener('resize', measureScroll);
+    // The row's own width changes when a pin is renamed or its icon swapped,
+    // neither of which is a scroll or a resize.
+    const observer = new ResizeObserver(measureScroll);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener('scroll', measureScroll);
+      window.removeEventListener('resize', measureScroll);
+      observer.disconnect();
+    };
+  }, [measureScroll]);
+
+  /**
+   * Bring the active tab into view when it changes.
+   *
+   * A pin you cannot see is one you will not use, and with five long names only
+   * about one and a half chips fit at once — so arriving in a room whose tab is
+   * off the end of the row would look like the pin had been lost. Not while a
+   * finger is down: moving the row under a gesture is the one thing guaranteed
+   * to make it land somewhere else.
+   */
+  useEffect(() => {
+    if (editMode || dragKey !== null || !activeKey) return;
+    const el = scrollerRef.current;
+    // Matched by dataset rather than a selector: a pin key is `type:scope:id`
+    // and those colons need escaping, which jsdom has no CSS.escape for.
+    const chip = el && [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
+      .find(n => n.dataset.tabKey === activeKey);
+    chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [activeKey, dragKey, editMode]);
 
   const itemIds = pinnedTabs.map(pinKey);
 
@@ -176,31 +265,6 @@ export function MobileTabBar({
     }
   };
 
-  /**
-   * Three different meanings of "active", which is the whole point of the bar
-   * holding three kinds of pin:
-   *
-   * - navigate — you are looking at it.
-   * - popover  — its panel is open.
-   * - run      — never latches. A tab that stayed lit after running "Everything
-   *              off" would be claiming to be a place you are, which it isn't.
-   *
-   * None of them apply while editing: the bar is the subject then, not a
-   * pointer at somewhere else.
-   */
-  const isActive = (tab: PinnedTab): boolean => {
-    if (editMode) return false;
-    switch (tab.type) {
-      case 'home': return selectedHomeId === tab.id && !selectedRoomId && !selectedCollectionId;
-      case 'room': return selectedRoomId === tab.id;
-      case 'collection': return selectedCollectionId === tab.id && !selectedCollectionGroupId;
-      case 'collectionGroup': return selectedCollectionGroupId === tab.id;
-      case 'accessory':
-      case 'serviceGroup': return openKey === pinKey(tab);
-      case 'action':
-      case 'scene': return runningKey === pinKey(tab);
-    }
-  };
 
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus) => {
     // While editing, a tap opens the tab's editor — name and icon. Navigating
@@ -313,27 +377,9 @@ export function MobileTabBar({
 
 
 
-  const activeKey = pinnedTabs.find(isActive) ? pinKey(pinnedTabs.find(isActive)!) : null;
 
   /** The fill follows the finger: it is what letting go would commit to. */
   const litKey = dragKey ?? activeKey;
-
-  /**
-   * The label does not follow it. A capsule that grows its name under a thumb
-   * has put that name in the one place on the screen it cannot be read — and
-   * moved the rest of the bar sideways to do it.
-   *
-   * So the moment a finger aims past the tab that is already open, the bar
-   * drops its labels and the callout above takes over the naming. That is one
-   * shrink, at the point you leave, rather than a reflow at every tab you cross.
-   * Aimed at the open tab — which is every ordinary tap of the view you are
-   * already in — nothing moves at all.
-   */
-  const labelKey = dragKey !== null && dragKey !== activeKey ? null : activeKey;
-
-  /** What the callout says: the tab a release would land on. */
-  const aimedAt = dragKey ? pinnedTabs.find(t => pinKey(t) === dragKey) : undefined;
-  const AimedIcon = aimedAt ? getIcon(aimedAt) : undefined;
 
   const tabs = pinnedTabs.map((tab) => {
     const key = pinKey(tab);
@@ -343,13 +389,8 @@ export function MobileTabBar({
     const running = runningKey === key;
     const isOpen = openKey === key && !editMode;
     const missing = status === 'missing';
-    // Only one tab wears its label at a time outside edit mode. Five labels in
-    // a row is what made the bar ragged: they wrapped to two lines at different
-    // points, so the pill's height was set by whichever pin had the longest
-    // name. Arranging needs them all, though — you cannot reorder or rename
-    // what you cannot read.
-    const expanded = editMode || labelKey === key;
-    // Which is not the same as wearing the fill, once a finger is involved.
+    // The fill is the only thing that moves with a finger now; every chip
+    // carries its own name the whole time.
     const lit = litKey === key;
     const label = tab.customName || tab.name;
 
@@ -376,17 +417,11 @@ export function MobileTabBar({
               // Arranging keeps the old stacked form: the label is the thing
               // being renamed, so it needs a line of its own under the icon.
               ? 'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg'
-              // Otherwise a row that grows sideways for the one tab that is lit.
-              : cn(
-                  'flex flex-row items-center rounded-full overflow-hidden',
-                  // The icon-only tabs are a fixed size and hold it. The lit one
-                  // is the only elastic thing in the row, so it is the one that
-                  // gives when a long name would otherwise push the row wider
-                  // than the bar — `min-w-0` because a flex item defaults to
-                  // `min-width: auto` and will not shrink below its content
-                  // however small you let it get.
-                  expanded ? 'px-3 py-2 min-w-0 shrink' : 'px-2.5 py-2 shrink-0',
-                ),
+              // Otherwise a chip: icon then name, always both. Nothing shrinks
+              // and nothing truncates — a row too wide for the bar scrolls
+              // instead, which is the only way a name like "Ensuite Underfloor
+              // Heating" stays readable at all.
+              : 'flex shrink-0 flex-row items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5',
             !editMode && lit && 'bg-primary text-primary-foreground',
             !editMode && !lit && 'active:bg-white/10',
             editMode && active && (isDarkBackground ? 'bg-white/20' : 'bg-black/10'),
@@ -426,22 +461,7 @@ export function MobileTabBar({
               {label}
             </span>
           ) : (
-            // Collapsed to nothing rather than unmounted: animating max-width
-            // is what makes the capsule look like it grew the label, and an
-            // element that is not there has no width to animate from. The
-            // margin goes with it so a collapsed tab is a clean circle.
-            <span
-              aria-hidden
-              className={cn(
-                'text-[13px] font-semibold leading-none whitespace-nowrap',
-                // Ellipsis, not overflow: "Annex Lights" pinned beside four
-                // others is wider than a phone, and a label that refuses to
-                // shrink took the row off the side of the screen.
-                'overflow-hidden text-ellipsis min-w-0',
-                'transition-[max-width,margin,opacity] duration-base ease-standard',
-                expanded ? 'max-w-[120px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0',
-              )}
-            >
+            <span aria-hidden className="whitespace-nowrap text-[12.5px] font-semibold leading-none">
               {label}
             </span>
           )}
@@ -480,6 +500,31 @@ export function MobileTabBar({
     );
   });
 
+  const row = editMode ? tabs : (
+    <div
+      ref={scrollerRef}
+      // The scroller sits INSIDE the glass rather than being it, so the fade
+      // below can mask the tabs at the ends without eating the bar's own
+      // rounded background along with them.
+      //
+      // `touch-action` is the whole arbitration between the two gestures that
+      // want this axis. While the row overflows, a horizontal drag belongs to
+      // the browser as a pan: it takes the pointer, we get a pointercancel, and
+      // `beginGesture` abandons the selection it had started — so a swipe
+      // scrolls and only a tap picks. While it all fits there is nothing to
+      // pan, so the axis goes back to slide-to-select.
+      className={cn(
+        'flex min-w-0 max-w-full items-center gap-1 overflow-x-auto scrollbar-hidden scroll-smooth',
+        scrollable ? 'touch-pan-x' : 'touch-none',
+        fadeLeft && fadeRight && 'tab-fade-both',
+        fadeLeft && !fadeRight && 'tab-fade-left',
+        !fadeLeft && fadeRight && 'tab-fade-right',
+      )}
+    >
+      {tabs}
+    </div>
+  );
+
   const pill = (
     <div
       // The whole bar takes the press, not each tab: a finger that starts on
@@ -494,15 +539,14 @@ export function MobileTabBar({
         'pointer-events-auto flex gap-1 min-w-0 transition-colors duration-300',
         editMode
           ? 'items-start px-2 py-1.5 rounded-2xl overflow-x-auto scrollbar-hidden'
-          // A row of capsules wants a capsule around it. `overflow-hidden` so
-          // the glass always contains the tabs: without it a row too wide for
-          // the bar simply drew past the ends of its own background.
-          : 'items-center p-1.5 rounded-full touch-none overflow-hidden',
+          // A row of capsules wants a capsule around it. The scroller inside
+          // is what keeps the tabs within it.
+          : 'items-center p-1.5 rounded-full overflow-hidden',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
       )}
       style={{ maxWidth: 'calc(100% - 32px)' }}
     >
-      {tabs}
+      {row}
     </div>
   );
 
@@ -520,35 +564,6 @@ export function MobileTabBar({
           customIcon={editingTab.customIcon}
           onSave={(next) => onRename?.(editingTab, next)}
         />
-      )}
-      {/* The name of the tab under the finger, put where the finger is not.
-          It reads the same wherever along the bar you are, so a slide does not
-          drag a moving target across the screen to be read — and it never runs
-          off the edge the way a callout pinned over the last tab would. Which
-          tab it belongs to is already answered underneath: exactly one capsule
-          is filled, and it is this one.
-
-          aria-hidden, like the capsule's own label: every tab is a button that
-          already says its name, and a live readout of a gesture in progress is
-          something to announce to a pointer, not to a screen reader. */}
-      {aimedAt && !editMode && (
-        <div className="flex justify-center px-4 pb-2">
-          <div
-            aria-hidden
-            data-testid="tab-callout"
-            className={cn(
-              'flex max-w-full items-center gap-2 rounded-full px-3 py-1.5',
-              // The same glass as the pill below it, so the two read as one
-              // control rather than a tooltip that happened to land there.
-              isDarkBackground ? 'material-regular-dark text-white' : 'material-regular text-foreground',
-            )}
-          >
-            {AimedIcon && <AimedIcon className="h-4 w-4 shrink-0" />}
-            <span className="min-w-0 truncate text-[13px] font-semibold leading-none">
-              {aimedAt.customName || aimedAt.name}
-            </span>
-          </div>
-        </div>
       )}
       <div className="flex justify-center px-4 pb-2">
         {editMode ? (

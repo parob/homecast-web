@@ -464,3 +464,21 @@ html.ios-app .selectable {
 @keyframes flow-dash {
   to { stroke-dashoffset: -10; }
 }
+
+/* The pinned tab bar's row fades at whichever end still has tabs beyond it.
+   A mask rather than a gradient overlay: the bar sits on the wallpaper, so
+   there is no colour an overlay could fade to. Applied to the scroller inside
+   the glass, never the glass itself — masking that would fade its own rounded
+   ends into nothing. */
+.tab-fade-left {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+}
+.tab-fade-right {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent 100%);
+}
+.tab-fade-both {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
