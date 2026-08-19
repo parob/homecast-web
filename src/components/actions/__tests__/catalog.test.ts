@@ -395,7 +395,8 @@ describe('lights that cannot answer stop holding the toggle open', () => {
     const action = lights(deriveHomeActions([...on, ...dead]));
 
     expect(action.toggle!.state).toBe('on');
-    expect(action.subtitle).toBe('All on · 2 not responding');
+    expect(action.subtitle).toBe('All on');
+    expect(action.detail).toBe('8 of 10 on · 2 not responding');
     // and the next press turns the house OFF rather than retrying the dead two
     expect(action.turningOn).toBe(false);
   });
@@ -475,7 +476,10 @@ describe('George Street, as production actually reports it', () => {
     expect(action.toggle!.onCount).toBe(131);
     expect(action.toggle!.total).toBe(136);
     expect(action.toggle!.state).toBe('on');
-    expect(action.subtitle).toBe('All on · 5 not responding');
+    // The card says the conclusion...
+    expect(action.subtitle).toBe('All on');
+    // ...and the hover carries the arithmetic behind it.
+    expect(action.detail).toBe('131 of 136 on · 5 not responding');
     expect(action.turningOn).toBe(false);
   });
 

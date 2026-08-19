@@ -116,6 +116,14 @@ export interface HomeAction {
   runningLabel: string;
   /** What the label elides: "8 of 12 on", "All locked". */
   subtitle: string;
+  /**
+   * The same reading, spelled out, for a hover.
+   *
+   * The subtitle is one short line on a small card, so it says the conclusion —
+   * "All on". The arithmetic behind it belongs where someone has gone looking
+   * for it, not in the space reserved for the answer.
+   */
+  detail?: string;
   icon: HomeActionIcon;
   /** Feeds getIconColor() so the chip matches the matching accessory widget. */
   serviceType: string;
@@ -319,12 +327,14 @@ function buildPowerAction(
     id,
     label: opts.label,
     runningLabel: turningOn ? opts.onRunning : opts.offRunning,
-    // The count stays honest — it still says how many are actually on — but a
-    // settled set names the reason the rest never will be, so "218 of 223"
-    // reads as a house that is on rather than one that half failed.
-    subtitle: settled
-      ? `All on · ${unreachableCount} not responding`
-      : countLabel(onCount, targets.length, 'on'),
+    // The card says the conclusion; the hover says how it got there. A settled
+    // set is "All on", because that is what the house is doing — the five that
+    // cannot answer are a footnote, not a qualifier, and putting them on the
+    // card made a house that had done exactly what was asked look half broken.
+    subtitle: settled ? 'All on' : countLabel(onCount, targets.length, 'on'),
+    detail: unreachableCount > 0
+      ? `${onCount} of ${targets.length} on · ${unreachableCount} not responding`
+      : `${onCount} of ${targets.length} on`,
     icon: opts.icon,
     serviceType: opts.serviceType,
     targetCount: writes.length,

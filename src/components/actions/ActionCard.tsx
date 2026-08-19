@@ -75,6 +75,10 @@ export function ActionCard({
         toggle ? 'cursor-default' : (inert ? 'cursor-default' : 'cursor-pointer'),
       )}
       style={{ contain: 'layout style paint' }}
+      // The arithmetic the subtitle no longer carries. Native title rather than
+      // a Radix tooltip: this card is a press target on touch, and Radix closes
+      // on pointerdown, so a tooltip here would fight the thing it sits on.
+      title={action.detail}
     >
       {/* Blur layer — matches WidgetWrapper */}
       <div className={cn(
@@ -133,7 +137,10 @@ export function ActionCard({
           // icon chip above carries a PendingRing: without it a
           // press of All lights showed no thumb, no spinner and no
           // ring for as long as the slowest accessory took.
-          <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          // `flex items-center`, not a bare span: blockified as a flex item it
+          // still builds a line box around the toggle, and the leading under
+          // the button pushed it visibly above the row's centre line.
+          <span className="shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
             <TriStateToggle
               state={toggle.state}
               wide
@@ -150,7 +157,7 @@ export function ActionCard({
         ) : (
           /* Decorative: the whole card is the button, since a
              one-way action has nothing to open or edit. */
-          <span className={cn('shrink-0 rounded-lg p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
+          <span className={cn('shrink-0 flex items-center rounded-lg p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           </span>
         )}
