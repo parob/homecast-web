@@ -432,3 +432,36 @@ describe('lights that cannot answer stop holding the toggle open', () => {
     expect(writes.find(w => w.accessoryId === 'a')?.reachable).toBe(true);
   });
 });
+
+describe('George Street, as production actually reports it', () => {
+  // The case that prompted the rule: 131 lights on and 5 Hue lamps switched
+  // off at the wall. HomeKit strips every characteristic value from an
+  // accessory it cannot read, which is the signal the derived reachability in
+  // useHomeKitData keys on — so these arrive with a null value and
+  // isReachable false, and must not hold the toggle at mixed.
+  const lit = (id: string) => ({
+    id, name: id, isReachable: true,
+    services: [{ serviceType: 'lightbulb', name: id, characteristics: [
+      { type: 'on', characteristicType: 'on', value: true, isWritable: true, isReadable: true },
+    ] }],
+  });
+  const stripped = (id: string) => ({
+    id, name: id, isReachable: false,
+    services: [{ serviceType: 'lightbulb', name: id, characteristics: [
+      { type: 'on', characteristicType: 'on', value: null, isWritable: true, isReadable: true },
+    ] }],
+  });
+
+  it('131 on and 5 stripped reads as all on, not 131 of 136', () => {
+    const action = deriveHomeActions([
+      ...Array.from({ length: 131 }, (_, i) => lit(`on${i}`)),
+      ...Array.from({ length: 5 }, (_, i) => stripped(`hue${i}`)),
+    ] as never).find(a => a.id === 'lights')!;
+
+    expect(action.toggle!.onCount).toBe(131);
+    expect(action.toggle!.total).toBe(136);
+    expect(action.toggle!.state).toBe('on');
+    expect(action.subtitle).toBe('All on · 5 not responding');
+    expect(action.turningOn).toBe(false);
+  });
+});
