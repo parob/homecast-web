@@ -43,6 +43,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
+import { setActivityLoggingFlags } from '@/lib/activity-logging';
 import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
@@ -1536,6 +1537,7 @@ const Dashboard = () => {
   const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(true);
   const [fullWidth, setFullWidth] = useState<boolean>(true);
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
+  const [sendActivityLogs, setSendActivityLogs] = useState<boolean>(false);
   const [roomOrderByHome, setRoomOrderByHome] = useState<Record<string, string[]>>({});
   const [homeOrder, setHomeOrder] = useState<string[]>([]);
 
@@ -2341,6 +2343,7 @@ const Dashboard = () => {
         if (Array.isArray(parsed.homeOrder)) setHomeOrder(parsed.homeOrder);
         if (parsed.roomOrderByHome && typeof parsed.roomOrderByHome === 'object') setRoomOrderByHome(parsed.roomOrderByHome);
         if (typeof parsed.developerMode === 'boolean') setDeveloperMode(parsed.developerMode);
+        if (typeof parsed.sendActivityLogs === 'boolean') setSendActivityLogs(parsed.sendActivityLogs);
 
         // Load unified item order (or migrate from legacy deviceOrder/groupOrder)
         if (parsed.itemOrder && typeof parsed.itemOrder === 'object') {
@@ -2517,7 +2520,7 @@ const Dashboard = () => {
     // Current global state
     const currentGlobalSettings = {
       homeOrder, roomOrderByHome, itemOrder, collectionItemOrder,
-      visibility, includedAccessoryIds, includedServiceGroupIds, developerMode,
+      visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs,
     };
 
     // Merge: global at top level, device settings nested under devices[deviceId].
@@ -2556,7 +2559,7 @@ const Dashboard = () => {
       }
       return false;
     }
-  }, [compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, lastView, settingsData, updateSettingsMutation]);
+  }, [compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs, lastView, settingsData, updateSettingsMutation]);
 
   // Keep saveSettingsRef in sync so debouncedSaveLastView (defined early) can call it
   saveSettingsRef.current = saveSettings;
@@ -4288,6 +4291,18 @@ const Dashboard = () => {
     setDeveloperMode(value);
     saveSettings({ developerMode: value }, 'developerMode');
   }, [saveSettings]);
+
+  const toggleSendActivityLogs = useCallback((value: boolean) => {
+    setSendActivityLogs(value);
+    saveSettings({ sendActivityLogs: value }, 'sendActivityLogs');
+  }, [saveSettings]);
+
+  // Push both flags down to the activity-logging gate. The emitters that ask it
+  // — the connection router, the relay socket — are plain modules outside React
+  // and are asked on every request, so they cannot read this state directly.
+  useEffect(() => {
+    setActivityLoggingFlags({ developerMode, sendActivityLogs });
+  }, [developerMode, sendActivityLogs]);
 
   // Apply font size to root element
   useEffect(() => {
@@ -7020,6 +7035,8 @@ const Dashboard = () => {
               settingSaveError={settingSaveError}
               developerMode={developerMode}
               toggleDeveloperMode={toggleDeveloperMode}
+              sendActivityLogs={sendActivityLogs}
+              toggleSendActivityLogs={toggleSendActivityLogs}
               logout={logout}
               resetAndUninstall={resetAndUninstall}
               serverVersion={serverVersion}

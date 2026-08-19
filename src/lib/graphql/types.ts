@@ -698,6 +698,9 @@ export interface UserSettingsData {
   };
   // Developer mode: show API access, webhooks, and developer tools in settings
   developerMode?: boolean;
+  /** Ship per-request trace spans from this device. Requires developerMode
+   *  and analytics consent as well — see lib/activity-logging.ts. */
+  sendActivityLogs?: boolean;
   // Smart Deals preferences
   smartDealsEnabled?: boolean;
   smartDealsMinTier?: 'good' | 'great' | 'hot';

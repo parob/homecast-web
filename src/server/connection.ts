@@ -13,6 +13,7 @@ import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
+import { traceClientRequest } from '../lib/activity-spans';
 import { toastConnection } from '../lib/toast-bus';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -745,12 +746,25 @@ class ServerConnection {
     // own errors, which are exactly the ones worth seeing.
     const log = beginRequest(action, summarisePayload(payload));
     const via = { transport: 'ws' };
+
+    // Same reasoning for the trace span: this is the one funnel, so the client
+    // half of the journey is measured once, here. Off unless the device has
+    // opted in — see lib/activity-logging.ts — and the id is threaded onto the
+    // wire so the server's spans join these rather than starting afresh.
+    const span = traceClientRequest(action);
+
     try {
-      const result = await this.routeRequest<T>(action, payload, via);
+      const result = await this.routeRequest<T>(action, payload, via, span.traceId);
       log.ok(via.transport);
+      span.done({ success: true, transport: via.transport });
       return result;
     } catch (err) {
       log.fail(err);
+      span.done({
+        success: false,
+        transport: via.transport,
+        error: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
   }
@@ -759,6 +773,7 @@ class ServerConnection {
     action: string,
     payload: Record<string, unknown>,
     via: { transport: string },
+    traceId?: string,
   ): Promise<T> {
     // Community mode on relay Mac: execute HomeKit actions directly, with cache
     if (isCommunity && communityRelayConfirmed) {
@@ -786,7 +801,7 @@ class ServerConnection {
       }
       throw new Error('[ServerConnection] Not active - cannot make request');
     }
-    return this.websocket.request<T>(action, payload);
+    return this.websocket.request<T>(action, payload, traceId);
   }
 
   /**

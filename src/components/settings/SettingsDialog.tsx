@@ -127,7 +127,9 @@ export interface SettingsDialogProps {
   settingSaveError: string | null;
   // Developer
   developerMode: boolean;
+  sendActivityLogs: boolean;
   toggleDeveloperMode: (value: boolean) => void;
+  toggleSendActivityLogs: (value: boolean) => void;
   // Auth
   logout: () => void;
   resetAndUninstall?: () => Promise<void>;
@@ -654,6 +656,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
             userEmail={props.userEmail}
             developerMode={props.developerMode}
             toggleDeveloperMode={props.toggleDeveloperMode}
+            sendActivityLogs={props.sendActivityLogs}
+            toggleSendActivityLogs={props.toggleSendActivityLogs}
             settingSaveError={props.settingSaveError}
             logout={props.logout}
             resetAndUninstall={props.resetAndUninstall}

@@ -32,7 +32,9 @@ interface CommunityUser {
 interface AccountSectionProps {
   userEmail: string | undefined;
   developerMode: boolean;
+  sendActivityLogs: boolean;
   toggleDeveloperMode: (value: boolean) => void;
+  toggleSendActivityLogs: (value: boolean) => void;
   settingSaveError: string | null;
   logout: () => void;
   resetAndUninstall?: () => Promise<void>;
@@ -85,7 +87,9 @@ async function communityGraphQL(operationName: string, variables: Record<string,
 export function AccountSection({
   userEmail,
   developerMode,
+  sendActivityLogs,
   toggleDeveloperMode,
+  toggleSendActivityLogs,
   settingSaveError,
   logout,
   resetAndUninstall,
@@ -440,6 +444,29 @@ export function AccountSection({
         </div>
         {/* Only meaningful with the developer tools on, and hidden otherwise so
             it can't be switched on by someone who has no use for it. */}
+        {developerMode && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Send activity logs</p>
+              <p className="text-xs text-muted-foreground">
+                Report each step a request takes through the system, so its full
+                journey shows in the trace visualiser. Off by default — this is
+                per-request detail, and only useful while you are debugging.
+              </p>
+            </div>
+            <div className="relative flex items-center">
+              {settingSaveError === 'sendActivityLogs' && (
+                <div className="absolute right-full mr-2 whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
+                  Failed to save
+                </div>
+              )}
+              <Switch
+                checked={sendActivityLogs}
+                onCheckedChange={toggleSendActivityLogs}
+              />
+            </div>
+          </div>
+        )}
         {developerMode && (
           <div className="flex items-center justify-between">
             <div>

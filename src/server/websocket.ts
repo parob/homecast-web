@@ -51,6 +51,8 @@ import { NativeRelayWebSocket, shouldUseNativeRelayWs } from './native-relay-ws'
 interface ProtocolMessage {
   id: string;
   type: 'request' | 'response' | 'event';
+  /** Client-originated trace id, so the server joins this journey. */
+  trace_id?: string;
   action: string;
   payload?: Record<string, unknown>;
   error?: {
@@ -655,7 +657,11 @@ export class ServerWebSocket {
    * In relay mode: loopback path, handled locally via native bridge.
    * In browser mode: sent over WebSocket to server, which routes to connected relay.
    */
-  async request<T = unknown>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  async request<T = unknown>(
+    action: string,
+    payload: Record<string, unknown> = {},
+    traceId?: string,
+  ): Promise<T> {
     // Check if we are the active relay — handle locally via native bridge
     // Standby relay-capable devices send requests over WebSocket like browsers
     // homes.list always goes through the server for cloud-managed home deduplication
@@ -777,6 +783,11 @@ export class ServerWebSocket {
         action,
         payload,
       };
+      // Carry the client's trace id so the server continues that journey rather
+      // than minting its own. Outbound frames used to carry none at all, which
+      // is why nothing a client did could ever be joined to what the server
+      // then went and did about it.
+      if (traceId) message.trace_id = traceId;
       this.send(message);
     });
 
