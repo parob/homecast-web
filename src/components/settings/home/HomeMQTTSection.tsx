@@ -231,7 +231,13 @@ export function HomeMQTTSection({
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
+      {/* Community has only one thing under MQTT — its own brokers — so this
+          outer heading would sit directly above a second one saying the same.
+          Cloud earns it: the managed broker and custom brokers are two
+          different things that both belong under it. */}
+      {!isCommunity && (
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
+      )}
 
       {/* Homecast MQTT Broker (cloud only) */}
       {!isCommunity && (() => {
@@ -298,8 +304,12 @@ export function HomeMQTTSection({
       {/* Custom MQTT Brokers */}
       {(!isCommunity || isMQTTAvailable()) && (
         <>
-          <div className="flex items-center justify-between pt-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom MQTT Brokers</p>
+          <div className={`flex items-center justify-between ${isCommunity ? '' : 'pt-2'}`}>
+            {/* "Custom" only means something next to the managed broker, which
+                Community doesn't have. There, these are simply the brokers. */}
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {isCommunity ? 'MQTT' : 'Custom MQTT Brokers'}
+            </p>
             {isAdmin && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddOpen(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Add
             </Button>}
@@ -310,7 +320,9 @@ export function HomeMQTTSection({
           ) : brokersError ? (
             <p className="text-xs text-destructive py-2 text-center">{brokersError}</p>
           ) : brokers.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2 text-center">No custom brokers configured.</p>
+            <p className="text-xs text-muted-foreground py-2 text-center">
+              {isAdmin ? 'Add a broker with + to publish this home to MQTT.' : 'No MQTT brokers configured.'}
+            </p>
           ) : (
             brokers.map((broker: any) => (
               <BrokerCard key={broker.id} broker={broker} homeId={home.id} onRefresh={() => refetchBrokersAny()} onRemove={handleRemoveBroker} />

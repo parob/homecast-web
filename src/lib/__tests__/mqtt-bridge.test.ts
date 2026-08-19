@@ -48,8 +48,8 @@ describe('mqtt bridge', () => {
 
   it('rejects with the reason the native side reports', async () => {
     const promise = getMQTTBrokers();
-    reply(posted[0].callbackId, { __mqttError: 'The MQTT bridge is only available in Community mode' });
-    await expect(promise).rejects.toThrow('The MQTT bridge is only available in Community mode');
+    reply(posted[0].callbackId, { __mqttError: 'This Mac is in Cloud mode — MQTT brokers are stored in your account, not on the Mac' });
+    await expect(promise).rejects.toThrow('This Mac is in Cloud mode — MQTT brokers are stored in your account, not on the Mac');
   });
 
   it('does not mistake a home called __mqttError for a failure', async () => {
