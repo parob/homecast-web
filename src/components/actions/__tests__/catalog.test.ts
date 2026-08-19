@@ -445,7 +445,21 @@ describe('George Street, as production actually reports it', () => {
       { type: 'on', characteristicType: 'on', value: true, isWritable: true, isReadable: true },
     ] }],
   });
+  // isReachable TRUE on purpose. This is the shape that actually broke it: the
+  // Hue bridge still answers for a lamp switched off at the wall, so the
+  // derived reachability in useHomeKitData (raw flag OR any live value) comes
+  // back true while the power value itself is stripped.
   const stripped = (id: string) => ({
+    id, name: id, isReachable: true,
+    services: [{ serviceType: 'lightbulb', name: id, characteristics: [
+      { type: 'on', characteristicType: 'on', value: null, isWritable: true, isReadable: true },
+      // something the bridge still answers for, which is what made it derive
+      // as reachable in the first place
+      { type: 'status_fault', characteristicType: 'status_fault', value: 0, isReadable: true },
+    ] }],
+  });
+
+  const strippedAndUnreachable = (id: string) => ({
     id, name: id, isReachable: false,
     services: [{ serviceType: 'lightbulb', name: id, characteristics: [
       { type: 'on', characteristicType: 'on', value: null, isWritable: true, isReadable: true },
@@ -463,5 +477,33 @@ describe('George Street, as production actually reports it', () => {
     expect(action.toggle!.state).toBe('on');
     expect(action.subtitle).toBe('All on · 5 not responding');
     expect(action.turningOn).toBe(false);
+  });
+
+  it('works too when the flag does say unreachable', () => {
+    const action = deriveHomeActions([
+      ...Array.from({ length: 131 }, (_, i) => lit(`on${i}`)),
+      ...Array.from({ length: 5 }, (_, i) => strippedAndUnreachable(`hue${i}`)),
+    ] as never).find(a => a.id === 'lights')!;
+
+    expect(action.toggle!.state).toBe('on');
+  });
+
+  it('a light that really is off still holds the toggle at mixed', () => {
+    // The whole rule turns on being able to tell "said off" from "said
+    // nothing". A readable light reporting false is the first, and must keep
+    // the toggle honest.
+    const off = {
+      id: 'off', name: 'off', isReachable: true,
+      services: [{ serviceType: 'lightbulb', name: 'off', characteristics: [
+        { type: 'on', characteristicType: 'on', value: false, isWritable: true, isReadable: true },
+      ] }],
+    };
+    const action = deriveHomeActions([
+      ...Array.from({ length: 131 }, (_, i) => lit(`on${i}`)),
+      ...Array.from({ length: 4 }, (_, i) => stripped(`hue${i}`)),
+      off,
+    ] as never).find(a => a.id === 'lights')!;
+
+    expect(action.toggle!.state).toBe('mixed');
   });
 });

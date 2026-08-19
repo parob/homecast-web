@@ -197,7 +197,7 @@ function countLabel(active: number, total: number, word: 'on' | 'open'): string 
  * current on/off reading. Used by lights, fans, switches and everything-off.
  */
 function powerTargets(accessories: HomeKitAccessory[], types: string[]) {
-  const out: Array<{ accessory: HomeKitAccessory; reported: string; value: unknown; on: boolean; reachable: boolean }> = [];
+  const out: Array<{ accessory: HomeKitAccessory; reported: string; value: unknown; on: boolean; reachable: boolean; known: boolean }> = [];
   for (const accessory of accessories) {
     const primary = getPrimaryServiceType(accessory);
     if (!primary || !types.includes(primary)) continue;
@@ -209,6 +209,11 @@ function powerTargets(accessories: HomeKitAccessory[], types: string[]) {
       // not evidence of a problem, and treating unknown as unreachable would
       // let a missing field quietly excuse a light that really did fail.
       reachable: accessory.isReachable !== false,
+      // Whether it said ANYTHING about its power. HomeKit strips `value` from a
+      // characteristic it cannot currently read, and `isOn` collapses that to
+      // false — so without this an unreadable light is indistinguishable from
+      // one that is genuinely off.
+      known: char!.value !== undefined && char!.value !== null,
     });
   }
   return out;
@@ -242,8 +247,16 @@ function settledOn(targets: ReturnType<typeof powerTargets>): boolean {
   if (targets.length === 0) return false;
   const onCount = targets.filter(t => t.on).length;
   if (onCount === 0 || onCount >= targets.length) return false;
-  // Every one that is not on must be one that could not have said so.
-  if (targets.some(t => !t.on && t.reachable)) return false;
+  // Every one that is not on must be one that could not have said so — either
+  // HomeKit calls it unreachable, or it has no readable power value at all.
+  //
+  // The second test is the load-bearing one, and the first alone was not
+  // enough: a Hue lamp switched off at the wall sits behind a bridge that
+  // still answers for it, so `isReachable` derives TRUE from some other
+  // characteristic still holding a value, while the power value itself is
+  // stripped. That lamp then reads as "reachable and off" — a light that
+  // deliberately refused — and held the toggle at mixed for ever.
+  if (targets.some(t => !t.on && t.reachable && t.known)) return false;
   return onCount / targets.length >= SETTLED_ON_SHARE;
 }
 
@@ -268,7 +281,10 @@ function powerWrites(
       // boolean, so the bridge coerces. Match that rather than inventing 1/0.
       value: turnOn,
       previousValue: t.value,
-      reachable: t.reachable,
+      // Same test the settled rule uses: a light that cannot say what it is
+      // doing cannot be blamed for not doing it, whichever way the reachability
+      // flag happens to have derived.
+      reachable: t.reachable && t.known,
       name: getAccessoryDisplayName(t.accessory),
     }));
 }
@@ -297,7 +313,7 @@ function buildPowerAction(
   const settled = settledOn(targets);
   const turningOn = onCount === 0;
   const writes = powerWrites(targets, turningOn);
-  const unreachableCount = targets.filter(t => !t.reachable).length;
+  const unreachableCount = targets.filter(t => !t.reachable || !t.known).length;
 
   return {
     id,
