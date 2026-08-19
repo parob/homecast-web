@@ -128,6 +128,8 @@ import { getIconColor, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColor
 import { WidgetColorContext } from '@/components/widgets/WidgetCard';
 import { WebhookListView } from '@/components/webhooks';
 import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
+import { PinnedControl } from '@/components/layout/PinnedControl';
+import { pinnedContextLabel } from '@/lib/pinned-context';
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
@@ -5104,18 +5106,23 @@ const Dashboard = () => {
       const accessory = resolvePinnedAccessory(tab);
       if (!accessory) return null;
       return (
-        <AccessoryWidget
-          homeName={getHomeName(accessory.homeId)}
-          accessory={accessory}
-          onToggle={handleToggle}
-          onSlider={handleSlider}
-          onSetValue={writeCharacteristic}
-          getEffectiveValue={getEffectiveValue}
-          onFinishEditing={() => {}}
-          compact={false}
-          expanded
-          iconStyle={activeIconStyle}
-        />
+        <PinnedControl context={pinnedContextLabel({
+          homeName: getHomeName(accessory.homeId),
+          roomNames: [accessory.roomName],
+        })}>
+          <AccessoryWidget
+            homeName={getHomeName(accessory.homeId)}
+            accessory={accessory}
+            onToggle={handleToggle}
+            onSlider={handleSlider}
+            onSetValue={writeCharacteristic}
+            getEffectiveValue={getEffectiveValue}
+            onFinishEditing={() => {}}
+            compact={false}
+            expanded
+            iconStyle={activeIconStyle}
+          />
+        </PinnedControl>
       );
     }
     if (tab.type === 'serviceGroup') {
@@ -5123,18 +5130,24 @@ const Dashboard = () => {
       if (!group) return null;
       const members = getAccessoriesInGroupAllHomes(group);
       return (
-        <ServiceGroupWidget
-          group={group}
-          accessories={members}
-          compact={false}
-          homeName={getHomeName(group.homeId ?? members[0]?.homeId)}
-          onToggle={(checked) => handleGroupToggle(group.id, checked, group.homeId ?? members[0]?.homeId)}
-          onSlider={(charType, value) => handleGroupSlider(group.id, charType, value, group.homeId ?? members[0]?.homeId)}
-          onAccessoryToggle={handleToggle}
-          onAccessorySlider={handleSlider}
-          getEffectiveValue={getEffectiveValue}
-          iconStyle={activeIconStyle}
-        />
+        <PinnedControl context={pinnedContextLabel({
+          // A group has no room of its own — its members carry them.
+          homeName: getHomeName(group.homeId ?? members[0]?.homeId),
+          roomNames: members.map(m => m.roomName),
+        })}>
+          <ServiceGroupWidget
+            group={group}
+            accessories={members}
+            compact={false}
+            homeName={getHomeName(group.homeId ?? members[0]?.homeId)}
+            onToggle={(checked) => handleGroupToggle(group.id, checked, group.homeId ?? members[0]?.homeId)}
+            onSlider={(charType, value) => handleGroupSlider(group.id, charType, value, group.homeId ?? members[0]?.homeId)}
+            onAccessoryToggle={handleToggle}
+            onAccessorySlider={handleSlider}
+            getEffectiveValue={getEffectiveValue}
+            iconStyle={activeIconStyle}
+          />
+        </PinnedControl>
       );
     }
     return null;
