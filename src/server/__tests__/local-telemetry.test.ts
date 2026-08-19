@@ -132,3 +132,41 @@ describe('buildSnapshot', () => {
     expect(JSON.stringify(snapshot)).not.toMatch(/host|username|password|topic/i);
   });
 });
+
+describe('relay response envelopes', () => {
+  // The bug this exists for: every relay action answers with a named wrapper,
+  // never a bare array. collectSnapshot read them as arrays, so `for...of`
+  // threw outside the per-call guard and the whole census was lost — silently,
+  // because pushSnapshot swallows by design. A relay reported real request
+  // counts alongside a completely empty topology for two days.
+  const ENVELOPES: Array<[string, string, unknown]> = [
+    ['homes.list', 'homes', { homes: [{ id: 'A' }, { id: 'B' }] }],
+    ['accessories.list', 'accessories', { accessories: [{}, {}, {}] }],
+    ['automations.list', 'automations', { automations: [{}] }],
+  ];
+
+  it.each(ENVELOPES)('%s unwraps its %s array', async (_action, key, response) => {
+    const { listOf } = await import('../local-telemetry');
+    expect(listOf(response, key)).toHaveLength(
+      ((response as Record<string, unknown[]>)[key]).length,
+    );
+  });
+
+  it('iterating the raw envelope throws — which is what went wrong', () => {
+    const response: unknown = { homes: [{ id: 'A' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => { for (const _ of response as any) { /* consume */ } }).toThrow(TypeError);
+  });
+
+  it('still accepts a bare array, if an action is ever unwrapped', async () => {
+    const { listOf } = await import('../local-telemetry');
+    expect(listOf([{ id: 'A' }, { id: 'B' }], 'homes')).toHaveLength(2);
+  });
+
+  it('yields an empty list for a failed or unexpected response', async () => {
+    const { listOf } = await import('../local-telemetry');
+    for (const bad of [null, undefined, {}, { homes: null }, 'nope', 42]) {
+      expect(listOf(bad, 'homes')).toEqual([]);
+    }
+  });
+});

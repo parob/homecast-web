@@ -235,6 +235,20 @@ async function attempt<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 }
 
 /**
+ * The array inside a relay action's response envelope, or an empty one.
+ *
+ * Relay actions answer `{homes: [...]}`, `{accessories: [...]}` and so on — a
+ * named wrapper, never a bare array. Reading one as an array yields an object,
+ * and iterating an object throws. Tolerating a bare array too means this keeps
+ * working if an action is ever unwrapped.
+ */
+export function listOf<T>(response: unknown, key: string): T[] {
+  if (Array.isArray(response)) return response as T[];
+  const inner = (response as Record<string, unknown> | null)?.[key];
+  return Array.isArray(inner) ? (inner as T[]) : [];
+}
+
+/**
  * Take the census. Every source is independently guarded, so a relay whose
  * HomeKit is unavailable still reports its IndexedDB counts and vice versa.
  */
@@ -253,24 +267,31 @@ export async function collectSnapshot(): Promise<TelemetrySnapshot | null> {
   // Accessories and HomeKit automations are per-home, so the home list comes
   // first. `communityRequest` is the cached path the dashboard already uses —
   // going direct to the bridge would double the HomeKit work.
-  const homes = await attempt(
-    () => communityRequest<Array<{ id: string }>>('homes.list', {}),
-    [] as Array<{ id: string }>,
+  //
+  // Every relay action answers with a NAMED WRAPPER, never a bare array:
+  // `homes.list` -> {homes}, `accessories.list` -> {accessories},
+  // `automations.list` -> {automations}. Reading them as arrays made
+  // `for...of` throw outside the per-call guard below, which rejected the whole
+  // census — silently, because pushSnapshot swallows by design. The result was
+  // a relay reporting real request counts and a completely empty topology.
+  const homes = listOf<{ id: string }>(
+    await attempt(() => communityRequest<unknown>('homes.list', {}), null),
+    'homes',
   );
 
   const accessoryTypes: string[] = [];
   let hkAutomations = 0;
   for (const home of homes) {
-    const accessories = await attempt(
-      () => communityRequest<Array<Record<string, unknown>>>('accessories.list', { homeId: home.id }),
-      [] as Array<Record<string, unknown>>,
+    const accessories = listOf<Record<string, unknown>>(
+      await attempt(() => communityRequest<unknown>('accessories.list', { homeId: home.id }), null),
+      'accessories',
     );
     for (const accessory of accessories) {
       accessoryTypes.push(rest.getDeviceType(accessory));
     }
-    const automations = await attempt(
-      () => communityRequest<unknown[]>('automations.list', { homeId: home.id }),
-      [] as unknown[],
+    const automations = listOf<unknown>(
+      await attempt(() => communityRequest<unknown>('automations.list', { homeId: home.id }), null),
+      'automations',
     );
     hkAutomations += automations.length;
   }
