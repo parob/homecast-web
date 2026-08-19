@@ -87,6 +87,28 @@ describe('run tabs', () => {
 
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
+
+  // A spinner used to replace the tab's icon while it ran, which cost the one
+  // thing the row is for: with more than one pin going you could not tell which
+  // tab you had pressed. The ring goes around the icon instead.
+  it('keeps the tab icon visible while the run is in flight, and rings it', () => {
+    const onActivate = vi.fn(() => new Promise<void>(() => {}));
+    setup([TABS.action], { onActivate });
+
+    const tab = screen.getByRole('button', { name: /Everything off/ });
+    const iconOf = (el: HTMLElement) => el.querySelector('svg.lucide');
+
+    expect(iconOf(tab)).toBeTruthy();
+    expect(tab.querySelector('[aria-busy="true"]')).toBeNull();
+
+    fireEvent.click(tab);
+
+    expect(iconOf(tab)).toBeTruthy();
+    // Specifically not the loader glyph standing in for the tab's own icon.
+    expect(tab.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(tab.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(tab.querySelector('span.animate-spin')).toBeTruthy();
+  });
 });
 
 describe('popover tabs', () => {
@@ -261,5 +283,78 @@ describe('edit mode', () => {
   it('latches nothing active while editing', () => {
     setup([TABS.home], { editMode: true, selectedHomeId: 'HOME-1' });
     expect(screen.getByRole('button', { name: 'Beach House' }).getAttribute('aria-current')).toBeNull();
+  });
+});
+
+/**
+ * Sliding along the bar before letting go.
+ *
+ * The bar is a row of small targets at the bottom edge of a phone, so a press
+ * is not committed until it is released: whatever is under the thumb at
+ * release is what runs, and releasing off the bar runs nothing.
+ *
+ * jsdom has no layout, so `elementFromPoint` always returns null on its own —
+ * stub it to answer with whichever tab the test says the finger is over.
+ */
+describe('press and slide', () => {
+  const fingerOver = (el: Element | null) => {
+    document.elementFromPoint = vi.fn(() => el as Element);
+  };
+  const bar = () => screen.getByRole('button', { name: /Beach House/ }).parentElement!.parentElement!;
+
+  it('acts on the tab under the finger at release, not the one pressed', () => {
+    const props = setup([TABS.home, TABS.room]);
+    const home = screen.getByRole('button', { name: /Beach House/ });
+    const kitchen = screen.getByRole('button', { name: /Kitchen/ });
+
+    fingerOver(home);
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fingerOver(kitchen);
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+    expect(props.onSelectHome).not.toHaveBeenCalled();
+  });
+
+  it('picks nothing when the finger leaves the bar before release', () => {
+    const props = setup([TABS.home, TABS.room]);
+
+    fingerOver(screen.getByRole('button', { name: /Beach House/ }));
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fingerOver(null); // dragged off the bar
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: -400 }));
+
+    expect(props.onSelectHome).not.toHaveBeenCalled();
+    expect(props.onSelectRoom).not.toHaveBeenCalled();
+  });
+
+  it('does not fire twice when the release is followed by its own click', () => {
+    const props = setup([TABS.home]);
+    const home = screen.getByRole('button', { name: /Beach House/ });
+
+    fingerOver(home);
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: 0 }));
+    fireEvent.click(home); // the click the browser sends after every tap
+
+    expect(props.onSelectHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('still works from the keyboard, where no pointer gesture happens', () => {
+    const props = setup([TABS.home]);
+    fireEvent.click(screen.getByRole('button', { name: /Beach House/ }));
+    expect(props.onSelectHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the gesture alone while arranging, so dnd-kit keeps the pointer', () => {
+    const props = setup([TABS.home, TABS.room], { editMode: true });
+
+    fingerOver(screen.getByRole('button', { name: /Kitchen/ }));
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+
+    expect(props.onSelectRoom).not.toHaveBeenCalled();
+    expect(props.onSelectHome).not.toHaveBeenCalled();
   });
 });

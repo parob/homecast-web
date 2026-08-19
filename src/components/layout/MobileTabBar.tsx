@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Folder, House, Layers, Loader2, Zap } from 'lucide-react';
+import { Folder, House, Layers, Zap } from 'lucide-react';
+import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import type { LucideIcon } from 'lucide-react';
 import {
   DndContext,
@@ -106,6 +107,18 @@ export function MobileTabBar({
   const [runningKey, setRunningKey] = useState<string | null>(null);
   /** Which tab's label is currently an input, by pin key. Edit mode only. */
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
+  /**
+   * The tab the finger is currently over, mid-press. Null when idle.
+   *
+   * The bar is a row of small targets at the bottom edge of a phone, which is
+   * the worst place to have to hit something first time. So a press is not
+   * committed until it is released: slide along the bar and the tab under your
+   * thumb is the one that expands, and that is the one you get. Sliding off the
+   * bar and letting go picks nothing, which is how you back out.
+   */
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  /** Set by the gesture below so the click it also produces does nothing. */
+  const suppressClickRef = useRef(false);
 
   const runTab = useCallback(async (tab: PinnedTab) => {
     const key = pinKey(tab);
@@ -216,12 +229,55 @@ export function MobileTabBar({
     }
   };
 
+  /** Which tab, if any, sits under a viewport point. */
+  const keyAtPoint = (x: number, y: number): string | null =>
+    (document.elementFromPoint(x, y) as HTMLElement | null)
+      ?.closest<HTMLElement>('[data-tab-key]')?.dataset.tabKey ?? null;
+
+  /**
+   * Track a press across the bar and act on where it is released.
+   *
+   * Listens on the window rather than capturing the pointer: capture would
+   * redirect the click to the element that took it, and the buttons still need
+   * their own click for the keyboard path. Instead the release does the work
+   * and flags the click that follows it as already spent.
+   */
+  const beginGesture = (e: React.PointerEvent) => {
+    if (editMode) return; // dnd-kit owns the pointer while arranging.
+    const start = keyAtPoint(e.clientX, e.clientY);
+    if (!start) return;
+    setDragKey(start);
+
+    const move = (ev: PointerEvent) => setDragKey(keyAtPoint(ev.clientX, ev.clientY));
+    const done = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', done);
+      setDragKey(null);
+    };
+    const up = (ev: PointerEvent) => {
+      const end = keyAtPoint(ev.clientX, ev.clientY);
+      done();
+      // Released off the bar: the press is abandoned, not redirected.
+      if (!end) return;
+      suppressClickRef.current = true;
+      const tab = pinnedTabs.find(t => pinKey(t) === end);
+      if (tab) handleTap(tab, resolveStatus(tab));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', done);
+  };
+
   const commitRename = (tab: PinnedTab, raw: string) => {
     const trimmed = raw.trim();
     const next = trimmed || undefined;
     if (next !== (tab.customName ?? undefined)) onRename?.(tab, next);
     setRenamingKey(null);
   };
+
+  const activeKey = pinnedTabs.find(isActive) ? pinKey(pinnedTabs.find(isActive)!) : null;
+  const expandedKey = dragKey ?? activeKey;
 
   const tabs = pinnedTabs.map((tab) => {
     const key = pinKey(tab);
@@ -231,37 +287,70 @@ export function MobileTabBar({
     const running = runningKey === key;
     const isOpen = openKey === key && !editMode;
     const missing = status === 'missing';
+    // Only one tab wears its label at a time outside edit mode. Five labels in
+    // a row is what made the bar ragged: they wrapped to two lines at different
+    // points, so the pill's height was set by whichever pin had the longest
+    // name. Arranging needs them all, though — you cannot reorder or rename
+    // what you cannot read.
+    const expanded = editMode || expandedKey === key;
+    const label = tab.customName || tab.name;
 
     return (
       <TabSlot key={key} id={key} sortable={editMode && renamingKey !== key}>
         {(dragProps) => (<>
         <button
           {...dragProps}
-          onClick={() => handleTap(tab, status)}
+          data-tab-key={key}
+          // The release does the work (see beginGesture); this is the keyboard
+          // path, and the flag stops a committed press from firing twice.
+          onClick={() => {
+            if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+            handleTap(tab, status);
+          }}
           aria-current={active ? 'true' : undefined}
           aria-disabled={missing || undefined}
-          // Fixed width, not content width: five pins of wildly different name
-          // lengths otherwise gave "Kitchen" three times the room of "Study",
-          // and the bar read as a ragged row rather than a set of tabs.
+          // Icon-only tabs still have to say what they are.
+          aria-label={label}
+          title={editMode ? undefined : label}
           className={cn(
-            'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg transition-colors',
-            active
-              ? isDarkBackground ? 'bg-white/20' : 'bg-black/10'
-              : 'active:bg-white/10',
+            'transition-[background-color,color,width] duration-base ease-standard',
+            editMode
+              // Arranging keeps the old stacked form: the label is the thing
+              // being renamed, so it needs a line of its own under the icon.
+              ? 'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg'
+              // Otherwise a row that grows sideways for the one tab that is lit.
+              : cn(
+                  'flex flex-row items-center rounded-full overflow-hidden shrink-0',
+                  expanded ? 'px-3 py-2' : 'px-2.5 py-2',
+                ),
+            !editMode && expanded && 'bg-primary text-primary-foreground',
+            !editMode && !expanded && 'active:bg-white/10',
+            editMode && active && (isDarkBackground ? 'bg-white/20' : 'bg-black/10'),
             missing && !editMode && 'opacity-50',
           )}
         >
-          {running ? (
-            <Loader2 className={cn(
-              'h-5 w-5 shrink-0 animate-spin',
-              isDarkBackground ? 'text-white' : 'text-foreground',
-            )} />
-          ) : (
-            <Icon className={cn(
+          {/* The icon stays put and the ring goes round it, rather than the
+              spinner replacing it. Swapping it out cost the one thing the row
+              is for: with five pins running you could not tell which tab was
+              the one you pressed. Same ring the tiles and the Actions cards
+              use, so "still working" reads the same everywhere.
+
+              Driven by `running` rather than a registry key: a pin can be a
+              scene or a room, and only actions have writes to track. */}
+          <PendingRing
+            pending={running}
+            outset
+            className={cn(
               'h-5 w-5 shrink-0',
-              isDarkBackground ? 'text-white' : active ? 'text-foreground' : 'text-muted-foreground'
-            )} />
-          )}
+              // On the filled capsule the icon is on primary, so it takes the
+              // capsule's own foreground rather than the wallpaper's.
+              !editMode && expanded
+                ? 'text-primary-foreground'
+                : isDarkBackground ? 'text-white' : active ? 'text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            <Icon className="h-5 w-5 shrink-0" />
+          </PendingRing>
           {editMode && renamingKey === key ? (
             <input
               autoFocus
@@ -285,14 +374,30 @@ export function MobileTabBar({
                 'px-1 py-px outline-none ring-1 ring-primary',
               )}
             />
-          ) : (
+          ) : editMode ? (
             // Two lines, then ellipsis. A long room name truncated to "Livin…"
-            // on one line is a worse tab than one wrapped over two.
+            // on one line is a worse tab than one wrapped over two — and while
+            // arranging, every label is on show at once.
             <span className={cn(
               'w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2',
               isDarkBackground ? 'text-white/80' : active ? 'text-foreground' : 'text-muted-foreground'
             )}>
-              {tab.customName || tab.name}
+              {label}
+            </span>
+          ) : (
+            // Collapsed to nothing rather than unmounted: animating max-width
+            // is what makes the capsule look like it grew the label, and an
+            // element that is not there has no width to animate from. The
+            // margin goes with it so a collapsed tab is a clean circle.
+            <span
+              aria-hidden
+              className={cn(
+                'text-[13px] font-semibold leading-none whitespace-nowrap overflow-hidden',
+                'transition-[max-width,margin,opacity] duration-base ease-standard',
+                expanded ? 'max-w-[120px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0',
+              )}
+            >
+              {label}
             </span>
           )}
         </button>
@@ -330,11 +435,17 @@ export function MobileTabBar({
 
   const pill = (
     <div
+      // The whole bar takes the press, not each tab: a finger that starts on
+      // one tab and ends on another crosses the gaps between them, and a
+      // handler per button would lose the gesture in those gaps.
+      onPointerDown={editMode ? undefined : beginGesture}
       className={cn(
-        'pointer-events-auto flex items-start gap-1 px-2 py-1.5 rounded-2xl transition-colors duration-300',
+        'pointer-events-auto flex gap-1 transition-colors duration-300',
+        editMode
+          ? 'items-start px-2 py-1.5 rounded-2xl overflow-x-auto scrollbar-hidden'
+          // A row of capsules wants a capsule around it.
+          : 'items-center p-1.5 rounded-full touch-none',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
-        // Badges and a rename field don't fit five tabs at phone widths.
-        editMode && 'overflow-x-auto scrollbar-hidden',
       )}
       style={{ maxWidth: 'calc(100% - 32px)' }}
     >
