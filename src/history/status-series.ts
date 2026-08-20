@@ -28,6 +28,10 @@ export interface StatusSeriesRef {
   homeId?: string;
   accessoryId: string;
   characteristicType: string;
+  /** What this sensor is called, for when the aggregate is split apart. */
+  accessoryName: string;
+  /** Where it is — two "Motion" sensors are only telling apart by room. */
+  roomName?: string;
 }
 
 export interface StatusHistoryCategory {
@@ -180,7 +184,13 @@ export function buildStatusCategories(
       const key = `${reading.accessoryId.toUpperCase()}|${characteristicType}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      all.push({ homeId: reading.homeId, accessoryId: reading.accessoryId, characteristicType });
+      all.push({
+        homeId: reading.homeId,
+        accessoryId: reading.accessoryId,
+        characteristicType,
+        accessoryName: reading.accessoryName,
+        roomName: reading.roomName,
+      });
     }
 
     const truncated = Math.max(0, all.length - maxRefsPerCategory);
@@ -207,4 +217,32 @@ export function buildStatusCategories(
   }
 
   return out;
+}
+
+/** "a, b and c" — an Oxford-free list, which is how the UI reads elsewhere. */
+function formatList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * The line under the dialog's title: what is in here, and how much of it.
+ *
+ * "Status" on its own says nothing you did not already know from the pill
+ * you pressed — the useful part is which readings it gathered and how many
+ * sensors are behind them.
+ */
+export function describeStatusCategories(categories: StatusHistoryCategory[]): string {
+  const sensors = new Set<string>();
+  for (const category of categories) {
+    for (const ref of category.refs) sensors.add(ref.accessoryId.toUpperCase());
+  }
+  const count = `${sensors.size} sensor${sensors.size === 1 ? '' : 's'}`;
+  if (categories.length <= 1) return count;
+
+  const names = categories.map(c => c.title.toLowerCase());
+  const list = names.length <= 3
+    ? formatList(names)
+    : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  return `${list} · ${count}`;
 }

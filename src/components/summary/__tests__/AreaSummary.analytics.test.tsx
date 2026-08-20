@@ -82,6 +82,47 @@ describe('AreaSummary analytics buttons', () => {
     expect(scope.categories.map((c: { key: string }) => c.key)).toEqual(['temperature', 'motion']);
   });
 
+  it('names the area and says what is inside, not just "Status"', async () => {
+    render(<AreaSummary accessories={[sensor]} areaName="Hallway" />);
+
+    await act(async () => {
+      fireEvent.click(rowButton());
+    });
+
+    const [, scope] = history.openStatusHistory.mock.calls[0];
+    expect(scope.title).toBe('Status · Hallway');
+    // One accessory reporting both — one sensor, two categories.
+    expect(scope.subtitle).toBe('temperature and motion · 1 sensor');
+  });
+
+  it('names the area on a single bubble too', async () => {
+    render(<AreaSummary accessories={[sensor]} areaName="Hallway" />);
+
+    const bubble = screen.getByRole('button', { name: /21\.4/ });
+    await act(async () => {
+      fireEvent.pointerDown(bubble, { pointerType: 'mouse', button: 0 });
+      fireEvent.click(bubble, { detail: 1 });
+    });
+    const [inPanel] = screen.getAllByRole('button', { name: 'Analytics for 21.4°C' });
+    await act(async () => {
+      fireEvent.click(inPanel);
+    });
+
+    const [, scope] = history.openStatusHistory.mock.calls[0];
+    expect(scope.title).toBe('Temperature · Hallway');
+    expect(scope.subtitle).toBe('1 sensor');
+  });
+
+  it('falls back to the bare name when the area is unknown', async () => {
+    render(<AreaSummary accessories={[sensor]} />);
+
+    await act(async () => {
+      fireEvent.click(rowButton());
+    });
+
+    expect(history.openStatusHistory.mock.calls[0][1].title).toBe('Status');
+  });
+
   it('passes the caller-supplied scope through to "Open in Analytics"', async () => {
     const analyticsScope = { level: 'category' as const, category: 'climate' as const, room: 'Hallway' };
     render(<AreaSummary accessories={[sensor]} analyticsScope={analyticsScope} />);

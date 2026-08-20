@@ -45,8 +45,12 @@ interface HistoryContextValue {
   analyticsAvailableFor: (homeId: string | undefined | null) => boolean;
   /** Open the compact history popup for one accessory. */
   openHistory: (accessory: HomeKitAccessory) => void;
-  /** Open the compact history popup for a group (aggregated members). */
-  openGroupHistory: (group: HomeKitServiceGroup) => void;
+  /**
+   * Open the compact history popup for a group (aggregated members).
+   * `members` is only used to name the lines when an aggregate is split
+   * apart — the recorded-series listing carries no names.
+   */
+  openGroupHistory: (group: HomeKitServiceGroup, members?: HomeKitAccessory[]) => void;
   /** Open the compact history popup for the Status bubbles of an area. */
   openStatusHistory: (homeId: string, status: StatusHistoryScope) => void;
   /** Open Home Analytics, scoped. Defaults to the overview. */
@@ -141,12 +145,15 @@ export function HistoryProvider({
     onOpenHistory({ homeId: accessory.homeId ?? homeId, accessory });
   }, [homeId, onOpenHistory]);
 
-  const openGroupHistory = useCallback((group: HomeKitServiceGroup) => {
+  const openGroupHistory = useCallback((group: HomeKitServiceGroup, members?: HomeKitAccessory[]) => {
     const groupHomeId = group.homeId ?? homeId;
     if (!groupHomeId || !onOpenHistory) return;
+    const memberNames = members?.length
+      ? Object.fromEntries(members.map(a => [a.id.toUpperCase(), a.name]))
+      : undefined;
     onOpenHistory({
       homeId: groupHomeId,
-      group: { id: group.id, name: group.name, memberIds: group.accessoryIds },
+      group: { id: group.id, name: group.name, memberIds: group.accessoryIds, memberNames },
     });
   }, [homeId, onOpenHistory]);
 

@@ -6,7 +6,8 @@ import { stateValueLabel } from '@/history/labels';
 import ChartSkeleton from './ChartSkeleton';
 import { SETPOINT_STATE_TYPES } from '@/history/categories';
 import StateTimeline from '@/components/widgets/StateTimeline';
-import AggregateSeriesSection from './AggregateSeriesSection';
+import AggregateSeriesSection, { type AggregateEntry } from './AggregateSeriesSection';
+import { disambiguateSeriesLabels } from '@/history/labels';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
@@ -17,6 +18,12 @@ export interface GroupRef {
   id: string;
   name: string;
   memberIds: string[];
+  /**
+   * Member id (UPPERCASE) → name. Only needed to label the lines when an
+   * aggregate is split apart; the recorded-series listing carries no names,
+   * so whoever opened this passes what it already had on screen.
+   */
+  memberNames?: Record<string, string>;
 }
 
 /**
@@ -104,15 +111,26 @@ export default function GroupHistorySections({
   return (
     <div className="space-y-5">
       {sections.map(section => {
-        const entries = section.list
-          .map(s => entryOf(s))
-          .filter((d): d is HistorySeriesData => !!d);
+        const label = charLabel(section.type);
+        const nameOf = (accessoryId: string, index: number) =>
+          group.memberNames?.[accessoryId.toUpperCase()] ?? `Member ${index + 1}`;
+        const labels = disambiguateSeriesLabels(section.list.map((s, i) => ({
+          key: `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`,
+          room: null,
+          accessoryName: nameOf(s.accessoryId, i),
+          charLabel: label,
+        })));
+        const entries: AggregateEntry[] = section.list.flatMap((s, i) => {
+          const data = entryOf(s);
+          const key = `${s.accessoryId.toUpperCase()}|${canonicalHistoryType(s.characteristicType)}`;
+          return data ? [{ data, label: labels.get(key)?.short ?? nameOf(s.accessoryId, i) }] : [];
+        });
         if (entries.length === 0) return null;
         const numeric = section.kind === 'numeric';
         return (
           <AggregateSeriesSection
             key={section.type}
-            title={charLabel(section.type)}
+            title={label}
             source={numeric
               ? `average of ${entries.length} member${entries.length === 1 ? '' : 's'} · shaded = spread`
               : `how many of ${entries.length} are on`}

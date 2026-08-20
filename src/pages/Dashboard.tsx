@@ -4859,6 +4859,14 @@ const Dashboard = () => {
     };
   }, [isWholeHomeView, rooms, selectedRoomId, selectedHomeId]);
 
+  // What the Status row is summarising, for the analytics dialog's title.
+  const statusAreaName = useMemo(() => {
+    if (selectedRoomGroup) return selectedRoomGroup.name;
+    const room = rooms.find(r => r.id === selectedRoomId);
+    if (room) return room.name;
+    return homes.find(h => h.id === selectedHomeId)?.name;
+  }, [selectedRoomGroup, rooms, selectedRoomId, homes, selectedHomeId]);
+
   // Which summary-row pills this home shows. Stored as a hidden-list in the
   // home layout blob, so a home that predates the setting shows all four.
   /**
@@ -8023,6 +8031,7 @@ const Dashboard = () => {
                       accessories={summaryAccessories}
                       isDarkBackground={isDarkBackground}
                       analyticsScope={statusAnalyticsScope}
+                      areaName={statusAreaName}
                     />
                   )}
                 </div>
@@ -8051,6 +8060,7 @@ const Dashboard = () => {
                         accessories={summaryAccessories}
                         isDarkBackground={isDarkBackground}
                         className={compactMode ? 'mb-3' : 'mb-6'}
+                        areaName={statusAreaName}
                       />
                     </AnimatedCollapse>}
                   </>

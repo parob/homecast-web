@@ -18,7 +18,12 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSensorAggregation, type SensorReading } from '@/hooks/useSensorAggregation';
 import { useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
-import { buildStatusCategories, STATUS_CATEGORY_TITLE, type StatusCategoryKey } from '@/history/status-series';
+import {
+  buildStatusCategories,
+  describeStatusCategories,
+  STATUS_CATEGORY_TITLE,
+  type StatusCategoryKey,
+} from '@/history/status-series';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +41,11 @@ interface AreaSummaryProps {
    * gets the home.
    */
   analyticsScope?: AnalyticsScope;
+  /**
+   * What this row is summarising — a room, a home, a collection. Names the
+   * analytics dialog, which otherwise just says "Status" at you.
+   */
+  areaName?: string;
 }
 
 // ============================================================================
@@ -321,6 +331,7 @@ export function AreaSummary({
   isDarkBackground = false,
   className,
   analyticsScope,
+  areaName,
 }: AreaSummaryProps) {
   const sensorData = useSensorAggregation(accessories);
   const { defaultHomeId, analyticsAvailableFor, openStatusHistory } = useHistory();
@@ -351,12 +362,14 @@ export function AreaSummary({
     if (categories.length === 0) return;
     const homeId = categories[0].refs[0]?.homeId ?? defaultHomeId;
     if (!homeId) return;
+    const what = only ? STATUS_CATEGORY_TITLE[only] : 'Status';
     openStatusHistory(homeId, {
-      title: only ? STATUS_CATEGORY_TITLE[only] : 'Status',
+      title: areaName ? `${what} · ${areaName}` : what,
+      subtitle: describeStatusCategories(categories),
       categories,
       analyticsScope,
     });
-  }, [sensorData, isHomeRecording, defaultHomeId, openStatusHistory, analyticsScope]);
+  }, [sensorData, isHomeRecording, defaultHomeId, openStatusHistory, analyticsScope, areaName]);
 
   const analyticsFor = useCallback(
     (key: StatusCategoryKey) => (chartable.has(key) ? () => openAnalytics(key) : undefined),

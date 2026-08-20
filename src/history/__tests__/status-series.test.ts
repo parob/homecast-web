@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildStatusCategories,
+  describeStatusCategories,
   DEFAULT_MAX_REFS_PER_CATEGORY,
   STATUS_CATEGORY_TITLE,
 } from '../status-series';
@@ -68,10 +69,26 @@ describe('buildStatusCategories', () => {
 
     // Two distinct canonical types — merging them into one would silently
     // chart the wrong series for occupancy sensors.
-    expect(motion.refs).toEqual([
-      { homeId: undefined, accessoryId: 'a', characteristicType: 'motion_detected' },
-      { homeId: undefined, accessoryId: 'b', characteristicType: 'occupancy_detected' },
+    expect(motion.refs.map(r => [r.accessoryId, r.characteristicType])).toEqual([
+      ['a', 'motion_detected'],
+      ['b', 'occupancy_detected'],
     ]);
+  });
+
+  it('carries the name and room each reading came from', () => {
+    // The labels a split-apart chart puts on its lines.
+    const [temperature] = buildStatusCategories({
+      ...EMPTY,
+      temperature: numeric([
+        reading('a', 'current_temperature', { accessoryName: 'Bookshelf', roomName: 'Living Room' }),
+      ]),
+      hasData: true,
+    });
+
+    expect(temperature.refs[0]).toMatchObject({
+      accessoryName: 'Bookshelf',
+      roomName: 'Living Room',
+    });
   });
 
   it('canonicalises the alias forms older relays report', () => {
@@ -192,5 +209,45 @@ describe('buildStatusCategories', () => {
 
     expect(temperature.truncated).toBe(1);
     expect(temperature.homeIds).toEqual(['HOME-A']);
+  });
+});
+
+describe('describeStatusCategories', () => {
+  const build = (data: Partial<AggregatedSensorData>) =>
+    buildStatusCategories({ ...EMPTY, ...data, hasData: true });
+
+  it('counts the distinct sensors, not the series', () => {
+    // One accessory reporting both temperature and humidity is one sensor.
+    const categories = build({
+      temperature: numeric([reading('a', 'current_temperature')]),
+      humidity: numeric([reading('a', 'relative_humidity')]),
+    });
+
+    expect(describeStatusCategories(categories)).toBe('temperature and humidity · 1 sensor');
+  });
+
+  it('gives just the count for a single category', () => {
+    const categories = build({
+      temperature: numeric([reading('a', 'current_temperature'), reading('b', 'current_temperature')]),
+    });
+
+    expect(describeStatusCategories(categories)).toBe('2 sensors');
+  });
+
+  it('stops listing after three and says how many are left', () => {
+    const categories = build({
+      temperature: numeric([reading('a', 'current_temperature')]),
+      humidity: numeric([reading('b', 'relative_humidity')]),
+      motion: { activeCount: 0, totalCount: 1, readings: [reading('c', 'motion_detected')] },
+      locks: { lockedCount: 1, unlockedCount: 0, jammedCount: 0, readings: [reading('d', 'lock_current_state')] },
+      contacts: { openCount: 0, closedCount: 1, readings: [reading('e', 'contact_state')] },
+    });
+
+    expect(describeStatusCategories(categories))
+      .toBe('temperature, humidity, motion and 2 more · 5 sensors');
+  });
+
+  it('says nothing about categories when there are none', () => {
+    expect(describeStatusCategories([])).toBe('0 sensors');
   });
 });

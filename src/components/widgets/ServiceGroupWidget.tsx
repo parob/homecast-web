@@ -904,7 +904,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Group panels carry the same corner cluster as accessory panels.
   const groupActions: ExpandedAction[] = [];
   if (canShowHistory) {
-    groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group) });
+    groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group, accessories) });
   }
   if (priceMember) {
     groupActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
@@ -1221,7 +1221,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               )}
               <ContextMenuSeparator />
               {canShowHistory && (
-                <ContextMenuItem onClick={() => openGroupHistory(group)}>
+                <ContextMenuItem onClick={() => openGroupHistory(group, accessories)}>
                   <LineChart className="h-4 w-4 mr-2" />
                   Analytics
                 </ContextMenuItem>

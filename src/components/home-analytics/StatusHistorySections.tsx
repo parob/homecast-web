@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import AggregateSeriesSection from './AggregateSeriesSection';
+import AggregateSeriesSection, { type AggregateEntry } from './AggregateSeriesSection';
+import { disambiguateSeriesLabels } from '@/history/labels';
 import ChartSkeleton from './ChartSkeleton';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import type { StatusHistoryCategory } from '@/history/status-series';
-import type { HistorySeriesData } from '@/lib/graphql/types';
 
 /**
  * The Status bubbles, over time.
@@ -40,16 +40,27 @@ export default function StatusHistorySections({
 
   const sections = useMemo(
     () => categories.map(category => {
-      const entries = category.refs
-        .map(ref => data.get(`${ref.accessoryId.toUpperCase()}|${ref.characteristicType}`)?.main)
-        .filter((d): d is HistorySeriesData => !!d);
+      // Every sensor in a category reports the same characteristic, so the
+      // name that tells them apart is the room and the accessory — which is
+      // exactly what disambiguateSeriesLabels trims down to.
+      const labels = disambiguateSeriesLabels(category.refs.map(ref => ({
+        key: `${ref.accessoryId.toUpperCase()}|${ref.characteristicType}`,
+        room: ref.roomName ?? null,
+        accessoryName: ref.accessoryName,
+        charLabel: category.title,
+      })));
+      const entries: AggregateEntry[] = category.refs.flatMap(ref => {
+        const key = `${ref.accessoryId.toUpperCase()}|${ref.characteristicType}`;
+        const main = data.get(key)?.main;
+        return main ? [{ data: main, label: labels.get(key)?.short ?? ref.accessoryName }] : [];
+      });
       return { category, entries };
     }),
     [categories, data],
   );
 
   const hasAnyData = sections.some(({ entries }) => entries.some(
-    e => e.points.length > 0 || e.states.length > 0 || e.stateBuckets.length > 0,
+    ({ data: d }) => d.points.length > 0 || d.states.length > 0 || d.stateBuckets.length > 0,
   ));
 
   if (loading && data.size === 0) {
@@ -70,6 +81,7 @@ export default function StatusHistorySections({
       {sections.map(({ category, entries }) => {
         const numeric = category.kind === 'numeric';
         const count = entries.length;
+        const unit = entries.find(e => e.data.unit)?.data.unit ?? category.unit;
         return (
           <AggregateSeriesSection
             key={category.key}
@@ -79,7 +91,7 @@ export default function StatusHistorySections({
               : `how many of ${count} are ${category.onLabel ?? 'on'}`}
             entries={entries}
             kind={category.kind}
-            unit={entries.find(e => e.unit)?.unit ?? category.unit}
+            unit={unit}
             isOn={category.isOn}
             onLabel={category.onLabel}
             note={category.truncated > 0

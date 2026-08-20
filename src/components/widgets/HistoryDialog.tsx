@@ -19,6 +19,7 @@ import type {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -46,8 +47,10 @@ const RANGES = [
 
 /** Status mode: the sensor categories behind a Status bubble or its row. */
 export interface StatusHistoryScope {
-  /** "Status" for the whole row, or the bubble's own name for one category. */
+  /** "Status · Kitchen", or the bubble's own name with the area. */
   title: string;
+  /** What is in here — "temperature, humidity and motion · 11 sensors". */
+  subtitle?: string;
   categories: StatusHistoryCategory[];
   /** Where "Open in Analytics" lands. Defaults to the home. */
   analyticsScope?: AnalyticsScope;
@@ -58,7 +61,7 @@ export interface HistoryTarget {
   /** Accessory mode: per-characteristic charts for one accessory. */
   accessory?: HomeKitAccessory;
   /** Group mode: the same layout, aggregated across the group's members. */
-  group?: { id: string; name: string; memberIds: string[] };
+  group?: { id: string; name: string; memberIds: string[]; memberNames?: Record<string, string> };
   /** Status mode: one aggregate chart per Status bubble. */
   status?: StatusHistoryScope;
 }
@@ -182,6 +185,11 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               Open in Analytics <ExternalLink className="h-3 w-3" />
             </button>
           </DialogTitle>
+          {target?.status?.subtitle && (
+            <DialogDescription className="text-xs">
+              {target.status.subtitle}
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="flex gap-1">

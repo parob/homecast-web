@@ -1,11 +1,22 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing/react';
 import StatusHistorySections from '../StatusHistorySections';
 import { buildStatusCategories } from '@/history/status-series';
 import { GET_HISTORY } from '@/lib/graphql/queries';
 import type { AggregatedSensorData, SensorReading } from '@/hooks/useSensorAggregation';
+
+// ECharts needs a real canvas; the split-apart view only has to prove it
+// hands the right lines over, which the stub reports as text.
+vi.mock('../EChartsTimeChart', () => ({
+  default: ({ series, bandLabel }: { series: Array<{ label: string }>; bandLabel?: string }) => (
+    <div data-testid="echarts">
+      {series.map(s => <span key={s.label}>{s.label}</span>)}
+      <span>band:{bandLabel}</span>
+    </div>
+  ),
+}));
 
 // Recharts measures its container; jsdom has no ResizeObserver.
 class ResizeObserverStub {
@@ -28,8 +39,13 @@ function renderSections(props: Parameters<typeof StatusHistorySections>[0]) {
   );
 }
 
-function reading(accessoryId: string, characteristicType: string): SensorReading {
-  return { accessoryId, accessoryName: accessoryId, value: 0, characteristicType };
+function reading(
+  accessoryId: string,
+  characteristicType: string,
+  accessoryName = accessoryId,
+  roomName?: string,
+): SensorReading {
+  return { accessoryId, accessoryName, value: 0, characteristicType, roomName };
 }
 
 const EMPTY: AggregatedSensorData = {
@@ -43,13 +59,13 @@ const CATEGORIES = buildStatusCategories({
   temperature: {
     avg: 21, min: 20.8, max: 21.2,
     readings: [
-      reading('MOCK-LR-SENSOR', 'current_temperature'),
-      reading('MOCK-LR-SENSOR2', 'current_temperature'),
+      reading('MOCK-LR-SENSOR', 'current_temperature', 'Living Room Sensor', 'Living Room'),
+      reading('MOCK-LR-SENSOR2', 'current_temperature', 'Bookshelf Sensor', 'Living Room'),
     ],
   },
   contacts: {
     openCount: 0, closedCount: 1,
-    readings: [reading('MOCK-DOOR', 'contact_state')],
+    readings: [reading('MOCK-DOOR', 'contact_state', 'Front Door', 'Hallway')],
   },
   hasData: true,
 });
@@ -83,6 +99,37 @@ describe('StatusHistorySections', () => {
     // State: how many are open, phrased from the category, not "on".
     expect(screen.getByText('how many of 1 are open')).toBeTruthy();
     expect(screen.getByText(/^open for .* in total · \d+ changes?$/)).toBeTruthy();
+  });
+
+  it('can split an average into a line per sensor, over the same band', async () => {
+    const toTs = 1_700_000_000_000;
+    renderSections({
+      homeId: 'MOCK-HOME',
+      mock: true,
+      categories: CATEGORIES,
+      fromTs: toTs - 24 * HOUR,
+      toTs,
+    });
+
+    await waitFor(() => expect(screen.getByText('Temperature')).toBeTruthy());
+    // Two temperature sensors can be split; the lone contact sensor cannot.
+    const buttons = screen.getAllByRole('button', { name: 'Separate' });
+    expect(buttons).toHaveLength(1);
+
+    await act(async () => {
+      fireEvent.click(buttons[0]);
+    });
+
+    const chart = await screen.findByTestId('echarts');
+    expect(chart.textContent).toContain('band:average');
+    // Named by accessory, trimmed to what tells them apart — the same
+    // shortening the Analytics legend uses: "Living Room Sensor" in the
+    // Living Room is "Sensor", and the shared "Sensor" token drops off the
+    // other one.
+    expect(chart.textContent).toContain('Sensor');
+    expect(chart.textContent).toContain('Bookshelf');
+    // And it goes back.
+    expect(screen.getByRole('button', { name: 'Combine' })).toBeTruthy();
   });
 
   it('says so when it had to leave sensors out', async () => {
