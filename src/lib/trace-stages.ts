@@ -700,7 +700,10 @@ export function stageFacts(stage: Stage, journey: TraceJourney): StageFact[] {
       facts.push(
         ...fact('Pod', shortInstance(journey.instanceId), journey.instanceId),
         ...fact('Action', journey.action),
-        ...fact('Round trip', ms(spanNamed(stage, 'response_sent')?.latencyMs ?? null)),
+        // The whole request, not this stage's own cost — `response_sent` brackets
+        // everything downstream. Named apart from the relay's round trip so the
+        // two numbers are never read as the same measurement.
+        ...fact('Total', ms(spanNamed(stage, 'response_sent')?.latencyMs ?? null)),
       );
       break;
     case 'core':
