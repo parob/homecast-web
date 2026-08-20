@@ -40,13 +40,17 @@ export function overlayScrim(isDarkBackground?: boolean): string {
  */
 export const OVERLAY_SCRIM = `${OVERLAY_SCRIM_BLUR} bg-black/30`;
 
-/** Breathing room left around the trigger inside the hole. */
-export const SCRIM_HOLE_PADDING = 5;
-/** Corner rounding of the hole, clamped to the trigger's own size. */
+/**
+ * Corner rounding used only when the trigger's own could not be read.
+ *
+ * Every real caller passes the measured radius; this is the jsdom/oddity
+ * fallback, and it is a squircle rather than a circle because squaring a round
+ * hole off is the more visible of the two mistakes.
+ */
 export const SCRIM_HOLE_RADIUS = 11;
 
 /**
- * A `clip-path` covering a scrim except for a rounded rectangle at `rect`.
+ * A `clip-path` covering a scrim except for the trigger's own footprint.
  *
  * **Every coordinate here is in the scrim's own border box, not the viewport.**
  * They are the same thing for a `fixed inset-0` scrim and emphatically not for
@@ -64,6 +68,13 @@ export const SCRIM_HOLE_RADIUS = 11;
  * over that patch, and since `backdrop-filter` only applies where an element
  * paints, the hole has no blur either.
  *
+ * The hole is the trigger's box exactly, `radius` and all. It used to be 5px
+ * larger on every side with a fixed 11px rounding, which around the header's
+ * 40px `rounded-full` ⋮ drew a 50px squircle: a halo of undimmed, still-blurred
+ * wallpaper in a visibly different shape from the button sitting in it. Sized
+ * to the button, the button's own opaque fill covers the hole and there is no
+ * halo left to be the wrong shape.
+ *
  * Returns undefined for a rect with no area, so a caller with nothing to
  * measure renders an uncut scrim rather than an empty clip that hides it.
  */
@@ -71,14 +82,21 @@ export function scrimCutout(
   scrimWidth: number,
   scrimHeight: number,
   rect: { left: number; top: number; width: number; height: number } | null | undefined,
+  /**
+   * The trigger's own corner radius in px, already resolved from any
+   * percentage. Clamped here the way CSS clamps it, so the 9999px that
+   * `rounded-full` computes to arrives as "circle" rather than as nonsense.
+   */
+  radius?: number,
 ): string | undefined {
   if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
 
-  const x = rect.left - SCRIM_HOLE_PADDING;
-  const y = rect.top - SCRIM_HOLE_PADDING;
-  const w = rect.width + SCRIM_HOLE_PADDING * 2;
-  const h = rect.height + SCRIM_HOLE_PADDING * 2;
-  const a = Math.max(0, Math.min(SCRIM_HOLE_RADIUS, w / 2, h / 2));
+  const x = rect.left;
+  const y = rect.top;
+  const w = rect.width;
+  const h = rect.height;
+  const r = radius === undefined || !Number.isFinite(radius) ? SCRIM_HOLE_RADIUS : radius;
+  const a = Math.max(0, Math.min(r, w / 2, h / 2));
 
   const outer = `M0,0 H${scrimWidth} V${scrimHeight} H0 Z`;
   const inner = [

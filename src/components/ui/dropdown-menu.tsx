@@ -55,6 +55,22 @@ const DropdownMenuGroup = DropdownMenuPrimitive.Group;
  * A browser without `clip-path: path()` gets an uncut scrim, which is the old
  * behaviour rather than a broken one.
  */
+/**
+ * The trigger's own corner rounding, in px, so the hole is the same shape as
+ * the button rather than a squircle drawn around a circle.
+ *
+ * `rounded-full` computes to `9999px` — a real value, not a keyword, and only
+ * "circle" once `scrimCutout` clamps it to half the box. A percentage has to be
+ * resolved against the box first. Undefined when there is nothing to read
+ * (jsdom reports an empty string), which leaves the default rounding in place.
+ */
+function triggerRadius(el: HTMLElement, box: DOMRect): number | undefined {
+  const raw = getComputedStyle(el).borderTopLeftRadius;
+  const v = parseFloat(raw);
+  if (!Number.isFinite(v)) return undefined;
+  return raw.trimEnd().endsWith('%') ? (v / 100) * box.width : v;
+}
+
 function MenuScrim({ className }: { className?: string }) {
   const [clip, setClip] = React.useState<string | undefined>(undefined);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -70,10 +86,10 @@ function MenuScrim({ className }: { className?: string }) {
       // measured rather than assumed, because the one that is not (see
       // ExpandedOverlay) cost a misplaced hole and a gap along the bottom.
       const box = ref.current?.getBoundingClientRect();
-      setClip(box && t
+      setClip(box && t && trigger
         ? scrimCutout(box.width, box.height, {
             left: t.left - box.left, top: t.top - box.top, width: t.width, height: t.height,
-          })
+          }, triggerRadius(trigger, t))
         : undefined);
     };
     measure();

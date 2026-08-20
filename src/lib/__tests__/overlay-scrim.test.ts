@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scrimCutout, SCRIM_HOLE_PADDING, OVERLAY_SCRIM, overlayScrim } from '../overlay-scrim';
+import { scrimCutout, SCRIM_HOLE_RADIUS, OVERLAY_SCRIM, overlayScrim } from '../overlay-scrim';
 
 const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height });
 
@@ -17,20 +17,38 @@ describe('scrimCutout', () => {
     expect(scrimCutout(1000, 800, rect(100, 100, 30, 30))).toContain('M0,0 H1000 V800 H0 Z');
   });
 
-  it('insets the hole by the padding on every side', () => {
-    const path = scrimCutout(1000, 800, rect(100, 200, 30, 40))!;
-    // Top-left corner of the hole starts at (left - pad, top - pad), offset
-    // along x by the corner radius.
-    const x = 100 - SCRIM_HOLE_PADDING;
-    const y = 200 - SCRIM_HOLE_PADDING;
-    expect(path).toContain(`M${x + 11},${y}`);
+  /**
+   * The hole is the trigger's box, not a padded box around it. The 5px of
+   * "breathing room" it used to leave was a ring of undimmed, still-blurred
+   * wallpaper — visible precisely because it was a different shape from the
+   * button lit inside it.
+   */
+  it('cuts the trigger\'s own box, with no padding around it', () => {
+    const path = scrimCutout(1000, 800, rect(100, 200, 30, 40), 0)!;
+    expect(path).toContain('M100,200');
+    expect(path).toContain('H130');
+    expect(path).toContain('V240');
+  });
+
+  /**
+   * A round button gets a round hole. `rounded-full` computes to 9999px, so
+   * the clamp to half the box is what turns it into a circle — without it the
+   * header's 40px circle sat inside an 11px squircle.
+   */
+  it('rounds the hole the way the trigger is rounded', () => {
+    const path = scrimCutout(1000, 800, rect(0, 0, 40, 40), 9999)!;
+    expect(path).toContain('A20,20');
   });
 
   it('clamps the corner radius so a short trigger cannot invert its own corners', () => {
-    // 8px tall + 2*5 padding = 18 high, so the radius must come down to 9.
-    const path = scrimCutout(1000, 800, rect(0, 0, 200, 8))!;
-    expect(path).toContain('A9,9');
-    expect(path).not.toContain('A11,11');
+    const path = scrimCutout(1000, 800, rect(0, 0, 200, 8), 16)!;
+    expect(path).toContain('A4,4');
+    expect(path).not.toContain('A16,16');
+  });
+
+  it('falls back to the default rounding when the trigger\'s is unreadable', () => {
+    const path = scrimCutout(1000, 800, rect(0, 0, 200, 40))!;
+    expect(path).toContain(`A${SCRIM_HOLE_RADIUS},${SCRIM_HOLE_RADIUS}`);
   });
 
   /**
