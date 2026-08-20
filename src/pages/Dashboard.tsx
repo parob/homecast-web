@@ -130,6 +130,7 @@ import { WidgetColorContext } from '@/components/widgets/WidgetCard';
 import { WebhookListView } from '@/components/webhooks';
 import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
 import { PinnedControl } from '@/components/layout/PinnedControl';
+import { PinnedActionCard, PinnedSceneCard } from '@/components/layout/PinnedRunCard';
 import { pinnedContextLabel } from '@/lib/pinned-context';
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
@@ -5166,10 +5167,42 @@ const Dashboard = () => {
         </PinnedControl>
       );
     }
+    if (tab.type === 'action') {
+      // Rebuilt from the pin's own home, not the one on screen: the same
+      // shortcut can be pinned in two homes and they derive differently.
+      const homeAccessories = (allAccessoriesData || [])
+        .filter(a => a.homeId === tab.homeId) as import('@/native/homekit-bridge').HomeKitAccessory[];
+      const action = deriveHomeActions(homeAccessories).find(a => a.id === tab.id);
+      if (!action || !tab.homeId) return null;
+      return (
+        <PinnedControl context={pinnedContextLabel({ homeName: getHomeName(tab.homeId) })}>
+          <PinnedActionCard
+            action={action}
+            homeId={tab.homeId}
+            isViewOnly={isHomeViewOnly(tab.homeId)}
+            onRunAction={runHomeAction}
+          />
+        </PinnedControl>
+      );
+    }
+
+    if (tab.type === 'scene') {
+      if (!tab.homeId) return null;
+      return (
+        <PinnedControl context={pinnedContextLabel({ homeName: getHomeName(tab.homeId) })}>
+          <PinnedSceneCard
+            sceneId={tab.id}
+            homeId={tab.homeId}
+            name={tab.customName || tab.name}
+          />
+        </PinnedControl>
+      );
+    }
+
     return null;
   }, [resolvePinnedAccessory, resolvePinnedGroup, handleToggle, handleSlider, writeCharacteristic,
       getEffectiveValue, handleGroupToggle, handleGroupSlider, getAccessoriesInGroupAllHomes,
-      activeIconStyle, getHomeName]);
+      activeIconStyle, getHomeName, allAccessoriesData, isHomeViewOnly, runHomeAction]);
 
   /**
    * An action awaiting its confirm dialog, raised from the tab bar.

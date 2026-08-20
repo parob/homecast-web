@@ -49,15 +49,22 @@ export const MAX_PINNED_TABS = 5;
 export const NAV_PIN_TYPES = ['home', 'room', 'collection', 'collectionGroup'] as const;
 
 /**
- * Tapping one does something and you stay put. These must never latch selected —
- * a bar that claims you are "in" Everything Off is lying about where you are.
+ * Nothing fires straight from the bar any more.
+ *
+ * A scene or an action used to run on touch, which made the two most
+ * consequential things you can pin — "Everything off", "Lock up" — the two
+ * easiest to set off by accident, from a row of small targets along the bottom
+ * edge of a phone. They open their own card now, the same as an accessory, and
+ * the card is what runs them. The confirmation that used to guard the
+ * destructive ones is no longer the only thing between a brush of the thumb and
+ * the whole house going dark.
  */
-export const RUN_PIN_TYPES = ['action', 'scene'] as const;
+export const RUN_PIN_TYPES = [] as const;
 
 /**
  * Tapping one opens its control panel above the bar. Active only while open.
  */
-export const POPOVER_PIN_TYPES = ['accessory', 'serviceGroup'] as const;
+export const POPOVER_PIN_TYPES = ['accessory', 'serviceGroup', 'action', 'scene'] as const;
 
 export type PinBehaviour = 'navigate' | 'run' | 'popover';
 

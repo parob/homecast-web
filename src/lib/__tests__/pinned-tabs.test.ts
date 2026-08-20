@@ -65,8 +65,10 @@ describe('pinBehaviour', () => {
     expect(pinBehaviour('room')).toBe('navigate');
     expect(pinBehaviour('collection')).toBe('navigate');
     expect(pinBehaviour('collectionGroup')).toBe('navigate');
-    expect(pinBehaviour('action')).toBe('run');
-    expect(pinBehaviour('scene')).toBe('run');
+    // Both used to be 'run' and fired on touch. The two most consequential
+    // things you can pin were the two easiest to set off by accident.
+    expect(pinBehaviour('action')).toBe('popover');
+    expect(pinBehaviour('scene')).toBe('popover');
     expect(pinBehaviour('accessory')).toBe('popover');
     expect(pinBehaviour('serviceGroup')).toBe('popover');
   });

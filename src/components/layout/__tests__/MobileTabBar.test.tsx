@@ -72,54 +72,62 @@ describe('navigation tabs', () => {
   });
 });
 
-describe('run tabs', () => {
-  it('runs a scene without ever latching as the current view', async () => {
-    let release!: () => void;
-    const onActivate = vi.fn(() => new Promise<void>(res => { release = res; }));
-    setup([TABS.scene], { onActivate });
+/**
+ * Scenes and shortcuts no longer fire from the bar.
+ *
+ * They used to run the moment you touched the chip, which made the two most
+ * consequential things you can pin — "Everything off", "Lock up" — the two
+ * easiest to set off by accident, from a row of small targets along the bottom
+ * edge of a phone. They open their own card now and the card runs them.
+ */
+describe('scene and shortcut tabs', () => {
+  it('opens a scene\'s card instead of running it', () => {
+    const props = setup([TABS.scene]);
 
-    const button = screen.getByRole('button', { name: /Movie night/ });
-    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
 
-    expect(onActivate).toHaveBeenCalledWith(TABS.scene);
-
-    release();
-    // Once the run settles the tab must not be left looking selected — it is
-    // something you did, not somewhere you are.
-    await waitFor(() => expect(button.getAttribute('aria-current')).toBeNull());
+    expect(screen.getByTestId('control-popover')).toBeTruthy();
+    expect(props.onActivate).not.toHaveBeenCalled();
   });
 
-  it('ignores a second press while a run is still in flight', () => {
-    const onActivate = vi.fn(() => new Promise<void>(() => {}));
-    setup([TABS.scene, TABS.action], { onActivate });
+  it('opens a shortcut\'s card instead of running it', () => {
+    const props = setup([TABS.action]);
 
-    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
     fireEvent.click(screen.getByRole('button', { name: /Everything off/ }));
 
-    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('control-popover')).toBeTruthy();
+    expect(props.onActivate).not.toHaveBeenCalled();
   });
 
-  // A spinner used to replace the tab's icon while it ran, which cost the one
-  // thing the row is for: with more than one pin going you could not tell which
-  // tab you had pressed. The ring goes around the icon instead.
-  it('keeps the tab icon visible while the run is in flight, and rings it', () => {
-    const onActivate = vi.fn(() => new Promise<void>(() => {}));
-    setup([TABS.action], { onActivate });
+  it('closes the card on a second press, like any other panel', () => {
+    setup([TABS.scene]);
+    const button = screen.getByRole('button', { name: /Movie night/ });
 
-    const tab = screen.getByRole('button', { name: /Everything off/ });
-    const iconOf = (el: HTMLElement) => el.querySelector('svg.lucide');
+    fireEvent.click(button);
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
 
-    expect(iconOf(tab)).toBeTruthy();
-    expect(tab.querySelector('[aria-busy="true"]')).toBeNull();
+    fireEvent.click(button);
+    expect(screen.queryByTestId('control-popover')).toBeNull();
+  });
 
-    fireEvent.click(tab);
+  it('latches only while its card is open — it is not somewhere you are', () => {
+    setup([TABS.scene]);
+    const button = screen.getByRole('button', { name: /Movie night/ });
 
-    expect(iconOf(tab)).toBeTruthy();
-    // Specifically not the loader glyph standing in for the tab's own icon.
-    expect(tab.querySelector('svg.lucide-loader-circle')).toBeNull();
-    expect(tab.querySelector('[aria-busy="true"]')).toBeTruthy();
-    expect(tab.querySelector('span.animate-spin')).toBeTruthy();
+    expect(button.getAttribute('aria-current')).toBeNull();
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-current')).toBe('true');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('still reports a pin whose target has gone, rather than opening nothing', () => {
+    const props = setup([TABS.scene], { resolveStatus: () => 'missing' as PinnedTabStatus });
+
+    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
+
+    expect(props.onActivate).toHaveBeenCalledWith(TABS.scene);
+    expect(screen.queryByTestId('control-popover')).toBeNull();
   });
 });
 
@@ -196,14 +204,16 @@ describe('labels and identity', () => {
 
   it('renders the same action pinned in two homes as two independent tabs', () => {
     // The pinKey collision this feature had to fix: both were `action-…`.
-    const onActivate = vi.fn().mockResolvedValue(undefined);
+    const renderControl = vi.fn((tab: PinnedTab) => <div>control for {tab.homeId}</div>);
     setup([
       { type: 'action', id: 'everything-off', name: 'Upstairs off', homeId: 'HOME-1' },
       { type: 'action', id: 'everything-off', name: 'Cottage off', homeId: 'HOME-2' },
-    ], { onActivate });
+    ], { renderControl });
 
     fireEvent.click(screen.getByRole('button', { name: /Cottage off/ }));
-    expect(onActivate.mock.calls[0][0].homeId).toBe('HOME-2');
+
+    // Each opens its own home's card; a shared key would have opened the first.
+    expect(screen.getByTestId('control-popover').textContent).toContain('HOME-2');
   });
 
   it('renders nothing at all when there are no pins', () => {

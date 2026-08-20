@@ -322,10 +322,7 @@ All colors MUST be HSL.
   left: calc(var(--safe-area-left) * -1);
   width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
   height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom));
-  /* --ffs-bottom-inset lets a caller keep the layer clear of the bottom of
-     the screen — the pinned tab bar, which has to stay legible while its own
-     panel is open. Defaults to nothing, so every other user is unchanged. */
-  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom) - var(--ffs-bottom-inset, 0px));
+  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
 }
 
 /* Corners are plain circular border-radius on purpose.

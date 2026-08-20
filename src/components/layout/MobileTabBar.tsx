@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { Folder, House, Layers, Zap } from 'lucide-react';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
@@ -32,18 +33,6 @@ import type { HomeKitAccessory } from '@/lib/graphql/types';
 import type { HomeActionId } from '@/lib/summary-sections';
 
 export { MAX_PINNED_TABS };
-
-/**
- * What the bar occupies at the bottom of the screen: the pill, the 8px under
- * it, and the home indicator below that.
- *
- * The scrim stops here so the bar stays legible while a panel is open. Two
- * other approaches failed first and both for the same reason — z-index cannot
- * lift the bar out of a stacking context it does not share with the scrim, and
- * `clip-path` cuts a hole in a scrim's paint but not in its `backdrop-filter`,
- * so the chip stayed blurred inside its own cut-out. Geometry always works.
- */
-const BAR_FOOTPRINT = 'calc(62px + var(--safe-area-bottom, 0px))';
 
 /** How long a chip takes to reach the middle. */
 const CENTRE_MS = 220;
@@ -244,10 +233,13 @@ export function MobileTabBar({
       case 'room': return selectedRoomId === tab.id;
       case 'collection': return selectedCollectionId === tab.id && !selectedCollectionGroupId;
       case 'collectionGroup': return selectedCollectionGroupId === tab.id;
+      // Every non-navigation pin now opens a panel, scenes and shortcuts
+      // included — none of them latch as somewhere you are, only as something
+      // that is open.
       case 'accessory':
-      case 'serviceGroup': return openKey === pinKey(tab);
+      case 'serviceGroup':
       case 'action':
-      case 'scene': return runningKey === pinKey(tab);
+      case 'scene': return openKey === pinKey(tab);
     }
   };
 
@@ -272,7 +264,6 @@ export function MobileTabBar({
       observer.disconnect();
     };
   }, [measureScroll]);
-
 
   const itemIds = pinnedTabs.map(pinKey);
 
@@ -305,7 +296,6 @@ export function MobileTabBar({
       case 'serviceGroup': return Layers;
     }
   };
-
 
   /**
    * Put the tab you pressed in the middle of the bar.
@@ -444,9 +434,6 @@ export function MobileTabBar({
     window.addEventListener('pointercancel', done);
   };
 
-
-
-
   /** The fill follows the finger: it is what letting go would commit to. */
   const litKey = dragKey ?? activeKey;
 
@@ -564,10 +551,8 @@ export function MobileTabBar({
             isExpanded
             onClose={() => setOpenKey(null)}
             bottomInset={TAB_BAR_INSET}
-            // The blur stops above the bar rather than trying to sit behind it.
-            scrimBottomInset={BAR_FOOTPRINT}
-            // Still below the bar's own 10001, which keeps the panel out of the
-            // bar's way even where the two would otherwise meet.
+            // Below the bar's own 10001. That comparison only means anything
+            // because the bar is portalled to the body as well — see the render.
             zIndex={9990}
           >
             {renderControl(tab)}
@@ -630,7 +615,26 @@ export function MobileTabBar({
 
   const editingTab = editingKey ? pinnedTabs.find(t => pinKey(t) === editingKey) : undefined;
 
-  return (
+  /*
+   * Portalled to the body, and that is what makes the chip float over the blur.
+   *
+   * The bar is `fixed z-[10001]` and the panel's scrim is 9990, so the bar
+   * should simply win — but z-index only compares within a stacking context,
+   * and rendered in place the bar sits inside the dashboard's while the scrim,
+   * being portalled, sits in the body's. The two numbers were never being
+   * compared at all, which is why lowering the scrim under the bar changed
+   * nothing. Same parent, same context, and 10001 beats 9990.
+   *
+   * Two approaches were tried and abandoned before this. `clip-path` cuts a
+   * hole in a scrim's paint but not in its `backdrop-filter`, so the chip
+   * stayed blurred inside its own cut-out. Stopping the scrim short of the
+   * bottom of the screen did work, but left a clear band the full width of the
+   * phone rather than a floating pill.
+   *
+   * The bar is `position: fixed` already, so moving it in the tree costs no
+   * layout, and portals carry React context so everything it reads still works.
+   */
+  return createPortal(
     <div className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
       {editingTab && (
         <TabEditSheet
@@ -654,7 +658,8 @@ export function MobileTabBar({
           pill
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
