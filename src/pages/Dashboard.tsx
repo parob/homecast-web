@@ -44,6 +44,7 @@ import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
+import { TEXT_SCALE_BASE_PX, TEXT_SCALES } from '@/lib/text-scale';
 import { HomecastError } from '@/server/websocket';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
@@ -4314,26 +4315,35 @@ const Dashboard = () => {
     setActivityLoggingFlags({ developerMode, sendActivityLogs });
   }, [developerMode, sendActivityLogs]);
 
-  // Apply font size to root element
+  // Apply the text size setting.
+  //
+  // This used to move the root font size (16/18/20px), which made every rem in
+  // the app move with it — button heights, the tab bar, icons, padding, the
+  // sidebar. "Small" shrank the interface rather than the type in it, which is
+  // not what the setting says it does.
+  //
+  // So the root font size is now fixed, at the rung the default (large) sat on,
+  // and the setting drives `--text-scale` instead. Only Tailwind's `text-*`
+  // tokens and the inherited body size multiply by it (see tailwind.config.ts
+  // and index.css), so type is the same size at every rung as it was before
+  // — 0.875rem × 20px × 0.8 is the same 14px it was at a 16px root — while
+  // everything around it holds still.
   useEffect(() => {
-    // Small was 14px, which is below the size anything should be offered at, so
-    // the browser default is now the floor. That left medium to fill the gap
-    // that used to make medium → large a 25% jump in one step. Everything sized
-    // in rem follows.
-    const sizes = { small: '16px', medium: '18px', large: '20px' };
-    document.documentElement.style.fontSize = sizes[fontSize];
+    document.documentElement.style.fontSize = `${TEXT_SCALE_BASE_PX}px`;
+    document.documentElement.style.setProperty('--text-scale', String(TEXT_SCALES[fontSize]));
   }, [fontSize]);
 
-  // Sidebar widths scale with font size
   // Editing adds two action buttons to the trailing edge of every row, which
   // eats into the space the home or room name had. Widening the panel gives the
   // name that space back rather than making you guess which room you are hiding.
+  //
+  // One width at every text size: the panel is chrome, and it stopped tracking
+  // the setting when the setting stopped resizing chrome. These are the numbers
+  // large used, which is the default and so what almost everyone already had.
   const editingSidebar = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
-  const sidebarWidth = (fontSize === 'small' ? 218 : fontSize === 'large' ? 248 : 233)
-    + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
-  const mobileSidebarWidth = (fontSize === 'small' ? 266 : fontSize === 'large' ? 296 : 281)
-    + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
 
   // Change font size (optimistic)
   const changeFontSize = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -7240,8 +7250,8 @@ const Dashboard = () => {
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
           // Nudged 5px in and down from the window edge — the panel reads as
-          // floating rather than tucked into the corner. Written as calc so it
-          // still tracks the text-size setting.
+          // floating rather than tucked into the corner. Written as calc so the
+          // rem stays the rem the rest of the padding uses.
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
           style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
         >

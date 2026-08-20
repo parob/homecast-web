@@ -26,6 +26,38 @@ export default {
       ],
     },
     extend: {
+      // Text size is a type-only scale.
+      //
+      // It used to be the root font size (16/18/20px), which meant every rem in
+      // the app moved with it — button heights, the tab bar, icons, padding,
+      // gaps. Picking "Small" shrank the whole interface rather than the words
+      // in it. The root font size is now fixed at TEXT_SCALE_BASE_PX, so chrome
+      // is the same size at every setting, and only these tokens multiply by
+      // `--text-scale` (0.8 / 0.9 / 1, set on <html> from the setting).
+      //
+      // The rem values are Tailwind's own, so `text-sm` at 20px root × 0.8 is
+      // the same 14px it was at a 16px root — every rung renders type at
+      // exactly the size it did before, without the chrome coming with it.
+      //
+      // Line heights are deliberately NOT scaled: they are what keeps a row of
+      // text the height it was, which is the whole point of the setting now.
+      // Anything hard-coded in px (`text-[10px]`) never tracked this and still
+      // does not.
+      fontSize: {
+        xs: ["calc(0.75rem * var(--text-scale))", { lineHeight: "1rem" }],
+        sm: ["calc(0.875rem * var(--text-scale))", { lineHeight: "1.25rem" }],
+        base: ["calc(1rem * var(--text-scale))", { lineHeight: "1.5rem" }],
+        lg: ["calc(1.125rem * var(--text-scale))", { lineHeight: "1.75rem" }],
+        xl: ["calc(1.25rem * var(--text-scale))", { lineHeight: "1.75rem" }],
+        "2xl": ["calc(1.5rem * var(--text-scale))", { lineHeight: "2rem" }],
+        "3xl": ["calc(1.875rem * var(--text-scale))", { lineHeight: "2.25rem" }],
+        "4xl": ["calc(2.25rem * var(--text-scale))", { lineHeight: "2.5rem" }],
+        "5xl": ["calc(3rem * var(--text-scale))", { lineHeight: "1" }],
+        "6xl": ["calc(3.75rem * var(--text-scale))", { lineHeight: "1" }],
+        "7xl": ["calc(4.5rem * var(--text-scale))", { lineHeight: "1" }],
+        "8xl": ["calc(6rem * var(--text-scale))", { lineHeight: "1" }],
+        "9xl": ["calc(8rem * var(--text-scale))", { lineHeight: "1" }],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

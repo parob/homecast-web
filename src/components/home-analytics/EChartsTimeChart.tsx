@@ -12,6 +12,7 @@ import type { HistorySeriesData } from '@/lib/graphql/types';
 import type { AggregatePoint } from '@/history/aggregate';
 import { normalizeValue } from '@/history/aggregate';
 import { coverageStart, withCarryIn } from '@/history/carry';
+import { textScalePx } from '@/lib/text-scale';
 import { seriesColor } from './chartColors';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import type { ChartSeries } from './chartColors';
@@ -70,17 +71,20 @@ function linearPix(probe: (v: number) => number, a: number, b: number): ((v: num
 /**
  * The text-size setting, as a multiplier. Canvas text is painted in pixels and
  * cannot inherit anything, so a chart kept its 11px axis labels while every
- * label around it grew — the only way to follow the setting is to read the
- * root font-size and scale by hand.
+ * label around it grew — the only way to follow the setting is to read what a
+ * 1rem font currently comes to and scale by hand.
+ *
+ * That is the root font size times `--text-scale`, not the root font size: the
+ * root is fixed now and the scale is what moves (see lib/text-scale.ts). The
+ * numbers this returns are unchanged — the two together still come to
+ * 16 / 18 / 20 over the 16px these sizes were drawn against.
  *
  * Observed rather than read at render: the setting is applied by writing
  * `style` on <html>, which is not a React update, so a chart that only looked
  * when something else re-rendered it would change size late or not at all.
  */
 function useRootFontScale(): number {
-  const read = () => (typeof document === 'undefined'
-    ? 1
-    : (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16);
+  const read = () => (typeof document === 'undefined' ? 1 : textScalePx() / 16);
   const [scale, setScale] = useState(read);
   useEffect(() => {
     const update = () => setScale(prev => {
