@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildJourney,
+  placeIdentity,
   placesOf,
   reasonLabel,
+  shortDevice,
+  shortInstance,
+  stageFacts,
+  stageNodeValues,
   stepsFromSpan,
   visibleStages,
   type TraceSpanInput,
@@ -386,5 +391,193 @@ describe('placesOf — grouping by the machine a stage runs on', () => {
     ];
     const cloud = placesOf(buildJourney(local)).find((p) => p.id === 'cloud')!;
     expect(cloud.stages.map((s) => s.id)).not.toContain('peer');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real values in the drill-down
+// ---------------------------------------------------------------------------
+
+/** A production trace, copied field-for-field off a `sibling` request. */
+const REAL_TRACE: TraceSpanInput[] = [
+  span({
+    offsetMs: 0,
+    spanName: 'server_received',
+    action: 'automation.virtual_states',
+    clientType: 'web',
+    deviceId: 'web_560005e3-1ae9-4fb2-9c6a-5859a874da59',
+    instanceId: 'homecast-prod-786fc87f4b-6dm4f',
+  }),
+  span({
+    offsetMs: 33,
+    spanName: 'relay_sent',
+    action: 'automation.virtual_states',
+    deviceId: 'mac_8ca2d5a2-36f2-4c7a-aa34-941ae9e698d9',
+    instanceId: 'homecast-prod-786fc87f4b-6dm4f',
+  }),
+  span({
+    offsetMs: 71,
+    spanName: 'relay_response',
+    latencyMs: 38,
+    success: true,
+    deviceId: 'mac_8ca2d5a2-36f2-4c7a-aa34-941ae9e698d9',
+  }),
+  span({ offsetMs: 72, spanName: 'route_decision', routingMode: 'sibling' }),
+  span({ offsetMs: 73, spanName: 'response_sent', latencyMs: 72, success: true }),
+  span({
+    offsetMs: 73,
+    spanName: 'request_trace',
+    action: 'automation.virtual_states',
+    instanceId: 'homecast-prod-786fc87f4b-6dm4f',
+    payload: JSON.stringify({
+      metadata: {
+        routing: {
+          mode: 'sibling',
+          sourceInstance: null,
+          sourceSlot: null,
+          targetInstance: null,
+          targetSlot: null,
+          retried: false,
+        },
+        steps: [
+          { name: 'received', ms: 0, detail: 'automation.virtual_states', status: 'ok' },
+          { name: 'auth', ms: 23, detail: 'admin', status: 'ok' },
+          { name: 'home_lookup', ms: 23, detail: 'device=mac_8ca2d5a2', status: 'ok' },
+          { name: 'route_decision', ms: 71, detail: 'sibling worker (same pod)', status: 'ok' },
+        ],
+      },
+    }),
+  }),
+];
+
+describe('journey identity fields', () => {
+  it('separates the relay from the caller — both are device ids', () => {
+    const j = buildJourney(REAL_TRACE);
+    expect(j.clientDeviceId).toBe('web_560005e3-1ae9-4fb2-9c6a-5859a874da59');
+    expect(j.relayDeviceId).toBe('mac_8ca2d5a2-36f2-4c7a-aa34-941ae9e698d9');
+    expect(j.instanceId).toBe('homecast-prod-786fc87f4b-6dm4f');
+  });
+
+  it('reads the routing block off the request_trace span', () => {
+    expect(buildJourney(REAL_TRACE).routing).toEqual({
+      mode: 'sibling',
+      sourceInstance: null,
+      sourceSlot: null,
+      targetInstance: null,
+      targetSlot: null,
+      retried: false,
+    });
+  });
+
+  it('has no routing block when no request_trace span arrived', () => {
+    expect(buildJourney(SERVER_ONLY).routing).toBeNull();
+  });
+});
+
+describe('shortening ids', () => {
+  it('keeps the pod suffix, which is what tells two pods apart', () => {
+    expect(shortInstance('homecast-prod-786fc87f4b-6dm4f')).toBe('6dm4f');
+  });
+
+  it('shortens a device id the way the server logs it', () => {
+    expect(shortDevice('mac_8ca2d5a2-36f2-4c7a-aa34-941ae9e698d9')).toBe('mac_8ca2d5a2');
+  });
+
+  it('passes nulls through rather than inventing a placeholder', () => {
+    expect(shortInstance(null)).toBeNull();
+    expect(shortDevice(null)).toBeNull();
+  });
+});
+
+describe('stageNodeValues', () => {
+  const journey = buildJourney(REAL_TRACE);
+  const stage = (id: string) => journey.stages.find((s) => s.id === id)!;
+
+  it('captions the relay socket with the measured round trip', () => {
+    expect(stageNodeValues(stage('relay_socket'), journey)).toEqual({
+      server: '6dm4f',
+      socket: '38ms',
+      relay: 'mac_8ca2d5a2',
+    });
+  });
+
+  it('lights only the routing branch that was taken', () => {
+    const values = stageNodeValues(stage('routing'), journey);
+    expect(values.sibling).toBe('same pod');
+    expect(values.local).toBeNull();
+    expect(values.direct).toBeNull();
+  });
+
+  it('strips the device= prefix the step detail carries', () => {
+    expect(stageNodeValues(stage('core'), journey).home).toBe('mac_8ca2d5a2');
+  });
+
+  it('leaves an opt-in stage blank rather than guessing', () => {
+    expect(stageNodeValues(stage('bridge'), journey)).toEqual({
+      js: null,
+      native: null,
+      homekit: null,
+    });
+  });
+});
+
+describe('stageFacts', () => {
+  const journey = buildJourney(REAL_TRACE);
+  const stage = (id: string) => journey.stages.find((s) => s.id === id)!;
+  const labels = (id: string) => stageFacts(stage(id), journey).map((f) => f.label);
+
+  it('reports the relay, the round trip and nothing it cannot measure', () => {
+    expect(stageFacts(stage('relay_socket'), journey)).toEqual([
+      { label: 'Relay', value: 'mac_8ca2d5a2', full: 'mac_8ca2d5a2-36f2-4c7a-aa34-941ae9e698d9' },
+      { label: 'Round trip', value: '38ms' },
+    ]);
+  });
+
+  it('keeps the full pod name available behind the short one', () => {
+    const pod = stageFacts(stage('ingress'), journey).find((f) => f.label === 'Pod');
+    expect(pod).toEqual({
+      label: 'Pod',
+      value: '6dm4f',
+      full: 'homecast-prod-786fc87f4b-6dm4f',
+    });
+  });
+
+  it('omits a fact entirely when the trace has no value for it', () => {
+    // No affinity slot was recorded, so the Edge stage says only where it landed.
+    expect(labels('edge')).toEqual(['Landed on']);
+  });
+
+  it('says nothing at all for a stage nothing reported', () => {
+    expect(stageFacts(stage('accessory'), journey)).toEqual([]);
+  });
+
+  it('flags a failed span as a result', () => {
+    const failed = buildJourney([
+      ...REAL_TRACE.filter((s) => s.spanName !== 'relay_response'),
+      span({ offsetMs: 71, spanName: 'relay_response', latencyMs: 38, success: false }),
+    ]);
+    const relay = failed.stages.find((s) => s.id === 'relay_socket')!;
+    expect(stageFacts(relay, failed)).toContainEqual({ label: 'Result', value: 'failed' });
+  });
+});
+
+describe('placeIdentity', () => {
+  const journey = buildJourney(REAL_TRACE);
+
+  it('names the machine each card stands for', () => {
+    expect(placeIdentity('client', journey)).toBe('web_560005e3');
+    expect(placeIdentity('cloud', journey)).toBe('6dm4f');
+    expect(placeIdentity('relay', journey)).toBe('mac_8ca2d5a2');
+  });
+
+  it('has nothing to say about the home, which is never named', () => {
+    expect(placeIdentity('home', journey)).toBeNull();
+  });
+
+  it('falls back to the client type when no device id was logged', () => {
+    const j = buildJourney([
+      span({ offsetMs: 0, spanName: 'server_received', clientType: 'homeassistant' }),
+    ]);
+    expect(placeIdentity('client', j)).toBe('homeassistant');
   });
 });

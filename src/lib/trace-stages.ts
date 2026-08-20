@@ -98,6 +98,16 @@ export interface Stage {
   error: string | null;
 }
 
+/** The routing block `RequestTrace` carries. Real values, straight off the wire. */
+export interface RoutingInfo {
+  mode: RoutingMode | null;
+  sourceInstance: string | null;
+  sourceSlot: string | null;
+  targetInstance: string | null;
+  targetSlot: string | null;
+  retried: boolean;
+}
+
 export interface TraceJourney {
   stages: Stage[];
   /** Wall-clock span of everything observed. */
@@ -108,6 +118,14 @@ export interface TraceJourney {
   /** What started this, for server-initiated work. */
   trigger: string | null;
   clientType: string | null;
+  /** The pod that took the request. */
+  instanceId: string | null;
+  /** The relay this request was for, as its device id. */
+  relayDeviceId: string | null;
+  /** The device that asked, as its device id. */
+  clientDeviceId: string | null;
+  /** Routing metadata, when a `request_trace` span carried it. */
+  routing: RoutingInfo | null;
   /** Unaccounted time between adjacent observed stages — where latency hides. */
   gaps: Array<{ afterStage: StageId; ms: number }>;
   ok: boolean;
@@ -203,6 +221,24 @@ export function stepsFromSpan(span: TraceSpanInput): StageStep[] {
   });
 }
 
+/** Pull the routing block out of a `request_trace` span. camelCase on the wire. */
+export function routingFromSpan(span: TraceSpanInput): RoutingInfo | null {
+  const metadata = parsePayload(span.payload).metadata as
+    { routing?: Record<string, unknown> } | undefined;
+  const r = metadata?.routing;
+  if (!r || typeof r !== 'object') return null;
+  const str = (k: string): string | null =>
+    typeof r[k] === 'string' && r[k] !== '' ? (r[k] as string) : null;
+  return {
+    mode: normaliseRoutingMode(str('mode')),
+    sourceInstance: str('sourceInstance'),
+    sourceSlot: str('sourceSlot'),
+    targetInstance: str('targetInstance'),
+    targetSlot: str('targetSlot'),
+    retried: r.retried === true,
+  };
+}
+
 function normaliseRoutingMode(value: string | null): RoutingMode | null {
   if (value === 'local' || value === 'sibling' || value === 'direct') return value;
   if (value === 'unknown') return 'unknown';
@@ -244,6 +280,10 @@ export function buildJourney(
       action: null,
       trigger: null,
       clientType: null,
+      instanceId: null,
+      relayDeviceId: null,
+      clientDeviceId: null,
+      routing: null,
       gaps: [],
       ok: true,
     };
@@ -258,10 +298,21 @@ export function buildJourney(
   const action = ordered.find((s) => s.action)?.action ?? null;
   const clientType = ordered.find((s) => s.clientType)?.clientType ?? null;
 
+  const instanceId = ordered.find((s) => s.instanceId)?.instanceId ?? null;
+  // The relay is named on the spans that talk to it; the caller on the spans
+  // that bracket the request. Both are device ids and they are easy to swap.
+  const relayDeviceId = ordered.find(
+    (s) => s.deviceId && (s.spanName === 'relay_sent' || s.spanName === 'relay_response'),
+  )?.deviceId ?? null;
+  const clientDeviceId = ordered.find(
+    (s) => s.deviceId && (s.spanName === 'server_received' || s.spanName === 'response_sent'),
+  )?.deviceId ?? null;
+
   const traceSpan = ordered.find((s) => s.spanName === 'request_trace');
   const trigger = traceSpan
     ? ((parsePayload(traceSpan.payload).trigger as string | undefined) ?? null)
     : ((parsePayload(ordered[0].payload).trigger as string | undefined) ?? null);
+  const routing = traceSpan ? routingFromSpan(traceSpan) : null;
 
   // Bucket spans and RequestTrace steps by stage.
   const spansByStage = new Map<StageId, TraceSpanInput[]>();
@@ -389,6 +440,10 @@ export function buildJourney(
     action,
     trigger,
     clientType,
+    instanceId,
+    relayDeviceId,
+    clientDeviceId,
+    routing,
     gaps,
     ok: !stages.some((s) => s.status === 'failed'),
   };
@@ -476,5 +531,250 @@ export function reasonLabel(reason: MissingReason | undefined): string {
       return 'Not part of this request';
     default:
       return 'No data';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Real values, for the drill-down
+// ---------------------------------------------------------------------------
+
+/**
+ * What this trace actually did inside one stage.
+ *
+ * The first drill-down was a paragraph of prose per stage — the same words for
+ * every request, which told you how the system works and nothing about the
+ * request in front of you. These pull the values out of the spans instead: the
+ * pod that took it, the worker it routed to, the relay it went to, the round
+ * trip it measured. Static explanation is a caption on the picture, not the
+ * content of the panel.
+ *
+ * Absent means absent. Nothing here substitutes a plausible-looking default,
+ * because a made-up pod name in a debugging tool is worse than a blank.
+ */
+export interface StageFact {
+  label: string;
+  value: string;
+  /** The untruncated form, when `value` had to be shortened to fit. */
+  full?: string;
+}
+
+/** `homecast-prod-786fc87f4b-6dm4f` → `6dm4f`. The suffix is what identifies it. */
+export function shortInstance(id: string | null): string | null {
+  if (!id) return null;
+  const parts = id.split('-');
+  return parts.length > 1 ? (parts[parts.length - 1] as string) : id;
+}
+
+/** `mac_8ca2d5a2-36f2-…` → `mac_8ca2d5a2`. Matches how the server logs them. */
+export function shortDevice(id: string | null): string | null {
+  if (!id) return null;
+  const underscore = id.indexOf('_');
+  if (underscore === -1) return id.slice(0, 12);
+  return id.slice(0, underscore + 9);
+}
+
+function ms(value: number | null): string | null {
+  if (value === null) return null;
+  return value < 1000 ? `${Math.round(value)}ms` : `${(value / 1000).toFixed(2)}s`;
+}
+
+function stepDetail(stage: Stage, name: string): string | null {
+  return stage.steps.find((s) => s.name === name)?.detail ?? null;
+}
+
+function spanNamed(stage: Stage, name: string): TraceSpanInput | undefined {
+  return stage.spans.find((s) => s.spanName === name);
+}
+
+function fact(label: string, value: string | null, full?: string | null): StageFact[] {
+  if (!value) return [];
+  return [{ label, value, ...(full && full !== value ? { full } : {}) }];
+}
+
+/**
+ * Live values for the nodes of a stage's sub-diagram, keyed by node.
+ *
+ * The keys are part of the contract with `StageDiagram` — a node whose key is
+ * missing here simply draws without a caption, which is the honest rendering
+ * for a stage that reports nothing.
+ */
+export function stageNodeValues(
+  stage: Stage,
+  journey: TraceJourney,
+): Record<string, string | null> {
+  const pod = shortInstance(journey.instanceId);
+  const relay = shortDevice(journey.relayDeviceId);
+  const routing = journey.routing;
+  const mode = journey.routingMode;
+
+  switch (stage.id) {
+    case 'client':
+      return {
+        app: journey.clientType ?? shortDevice(journey.clientDeviceId),
+        router: journey.action,
+        cloud: pod,
+      };
+    case 'edge':
+      return {
+        lb: null,
+        envoy: routing?.targetSlot ?? null,
+        pod,
+      };
+    case 'ingress':
+      return {
+        worker: pod,
+        trace: stepDetail(stage, 'received') ? 'established' : null,
+        handler: journey.action,
+      };
+    case 'core':
+      return {
+        auth: stepDetail(stage, 'auth'),
+        home: (stepDetail(stage, 'home_lookup') ?? '').replace(/^device=/, '') || null,
+        translate: relay,
+      };
+    case 'routing':
+      return {
+        owner: relay,
+        local: mode === 'local' ? (pod ?? 'this worker') : null,
+        sibling: mode === 'sibling' ? 'same pod' : null,
+        direct: mode === 'direct'
+          ? (shortInstance(routing?.targetInstance ?? null) ?? routing?.targetSlot ?? 'peer')
+          : null,
+      };
+    case 'peer':
+      return {
+        from: shortInstance(routing?.sourceInstance ?? null) ?? pod,
+        post: routing?.retried ? 'retried' : null,
+        to: shortInstance(routing?.targetInstance ?? null) ?? routing?.targetSlot ?? null,
+      };
+    case 'relay_socket':
+      return {
+        server: pod,
+        socket: ms(stage.measuredMs),
+        relay,
+      };
+    case 'relay_web':
+      return {
+        dispatch: spanNamed(stage, 'relay_received') ? 'received' : null,
+        decide: spanNamed(stage, 'relay_dispatch')?.action ?? null,
+        bridge: ms(spanNamed(stage, 'relay_responded')?.latencyMs ?? null),
+      };
+    case 'bridge':
+      return {
+        js: spanNamed(stage, 'bridge_in') ? 'called' : null,
+        native: ms(spanNamed(stage, 'bridge_out')?.latencyMs ?? null),
+        homekit: null,
+      };
+    case 'homekit':
+      return {
+        write: ms(spanNamed(stage, 'homekit_write')?.latencyMs ?? stage.measuredMs),
+        hub: null,
+        accessory: null,
+      };
+    default:
+      return {};
+  }
+}
+
+/** The values worth reading in full, above the picture. */
+export function stageFacts(stage: Stage, journey: TraceJourney): StageFact[] {
+  const routing = journey.routing;
+  const facts: StageFact[] = [];
+
+  switch (stage.id) {
+    case 'client':
+      facts.push(
+        ...fact('Client', journey.clientType),
+        ...fact('Device', shortDevice(journey.clientDeviceId), journey.clientDeviceId),
+        ...fact('Asked for', journey.action),
+        ...fact('Started by', journey.trigger),
+      );
+      break;
+    case 'edge':
+      facts.push(
+        ...fact('Landed on', shortInstance(journey.instanceId), journey.instanceId),
+        ...fact('Affinity slot', routing?.targetSlot ?? null),
+      );
+      break;
+    case 'ingress':
+      facts.push(
+        ...fact('Pod', shortInstance(journey.instanceId), journey.instanceId),
+        ...fact('Action', journey.action),
+        ...fact('Round trip', ms(spanNamed(stage, 'response_sent')?.latencyMs ?? null)),
+      );
+      break;
+    case 'core':
+      facts.push(
+        ...fact('Auth', stepDetail(stage, 'auth')),
+        ...fact('Resolved', (stepDetail(stage, 'home_lookup') ?? '').replace(/^device=/, '') || null),
+      );
+      break;
+    case 'routing':
+      facts.push(
+        ...fact('Mode', journey.routingMode),
+        ...fact('Decision', stepDetail(stage, 'route_decision')),
+        ...fact(
+          'Target',
+          shortInstance(routing?.targetInstance ?? null) ?? routing?.targetSlot ?? null,
+          routing?.targetInstance ?? null,
+        ),
+        ...(routing?.retried ? [{ label: 'Retried', value: 'yes' }] : []),
+      );
+      break;
+    case 'peer':
+      facts.push(
+        ...fact('From', shortInstance(routing?.sourceInstance ?? journey.instanceId),
+          routing?.sourceInstance ?? journey.instanceId),
+        ...fact('To', shortInstance(routing?.targetInstance ?? null) ?? routing?.targetSlot ?? null,
+          routing?.targetInstance ?? null),
+      );
+      break;
+    case 'relay_socket':
+      facts.push(
+        ...fact('Relay', shortDevice(journey.relayDeviceId), journey.relayDeviceId),
+        ...fact('Round trip', ms(stage.measuredMs)),
+        ...fact('Queued for', ms(stepDetailMs(stage, 'lock_acquire'))),
+      );
+      break;
+    case 'homekit':
+      facts.push(...fact('HomeKit call', ms(stage.measuredMs)));
+      break;
+    default:
+      break;
+  }
+
+  // Whatever else the spans measured, said once and only when it is real.
+  const failed = stage.spans.find((s) => s.success === false);
+  if (failed) facts.push({ label: 'Result', value: 'failed' });
+
+  return facts;
+}
+
+/** `lock_acquire` and friends record their cost inside the step detail text. */
+function stepDetailMs(stage: Stage, name: string): number | null {
+  const detail = stepDetail(stage, name);
+  const match = detail?.match(/(\d+(?:\.\d+)?)\s*ms/);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Which machine this actually was.
+ *
+ * The place cards say "Your Mac" and "homecast.cloud", which is the right
+ * headline but tells you nothing about the request in front of you. This is the
+ * concrete identity underneath: the client that asked, the pod that took it,
+ * the relay it reached. Null where the trace never names one — the home, in
+ * particular, is only ever known by the accessory it touched.
+ */
+export function placeIdentity(place: PlaceId, journey: TraceJourney): string | null {
+  switch (place) {
+    case 'client':
+      return shortDevice(journey.clientDeviceId) ?? journey.clientType;
+    case 'cloud':
+      return shortInstance(journey.instanceId);
+    case 'relay':
+      return shortDevice(journey.relayDeviceId);
+    default:
+      return null;
   }
 }
