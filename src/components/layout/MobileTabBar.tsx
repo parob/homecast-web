@@ -27,6 +27,7 @@ import { HOME_ACTION_TAB_ICONS } from '@/components/actions/icons';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { EditBadge } from '@/components/shared/EditBadge';
 import { MAX_PINNED_TABS, pinBehaviour, pinKey, type PinnedTab, type PinTarget } from '@/lib/pinned-tabs';
+import { DEFAULT_TAB_BAR_MODE, tabBarScrolls, type TabBarMode } from '@/lib/tab-bar-mode';
 import { TabEditSheet } from './TabEditSheet';
 import { tabIconComponent } from './tabIconComponents';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -36,12 +37,6 @@ export { MAX_PINNED_TABS };
 
 /** How long a chip takes to reach the middle. */
 const CENTRE_MS = 220;
-
-/**
- * How long the label takes to appear, matching `duration-base`. The row's
- * width is not final until then.
- */
-const LABEL_MS = 220;
 
 /**
  * Where the row must scroll for `key` to sit in the middle of it.
@@ -140,13 +135,13 @@ interface MobileTabBarProps {
   resolveAccessory: (tab: PinnedTab) => HomeKitAccessory | undefined;
   isDarkBackground?: boolean;
   /**
-   * Chips carry their icon only, except the one that is current.
+   * How much of each pin to draw. A Display setting; see lib/tab-bar-mode.ts.
    *
-   * A Display setting. Five names is the honest default — you chose these pins
-   * and their names are why — but it is a wide bar, and someone who knows their
-   * own five glyphs would rather have the room back.
+   * Arranging always uses `compact` whatever this says — five chips at their
+   * full width do not fit a phone, and a row you have to scroll is a row you
+   * cannot see to reorder.
    */
-  collapseNames?: boolean;
+  mode?: TabBarMode;
   /**
    * Edit Layout is running. The bar stops navigating and becomes the thing being
    * arranged: drag to reorder, ⊗ to unpin, tap a label to rename it.
@@ -182,7 +177,7 @@ export function MobileTabBar({
   resolveStatus,
   resolveAccessory,
   isDarkBackground,
-  collapseNames = false,
+  mode = DEFAULT_TAB_BAR_MODE,
   editMode = false,
   onReorder,
   onRename,
@@ -357,6 +352,14 @@ export function MobileTabBar({
   };
 
   /**
+   * The shape actually drawn. Arranging overrides the setting: it needs every
+   * name legible and every chip on screen at once, which is what compact is.
+   */
+  const shape: TabBarMode = editMode ? 'compact' : mode;
+  /** Only `regular` may be wider than the bar; the others are sized to fit. */
+  const scrolls = tabBarScrolls(shape);
+
+  /**
    * Put the tab you pressed in the middle of the bar.
    *
    * Driven by the press rather than by whatever became active, which is the
@@ -369,6 +372,8 @@ export function MobileTabBar({
    * instead of reading it as the page moving out from under it.
    */
   const centreTab = (key: string) => {
+    // Compact never scrolls, so there is no middle to bring anything to.
+    if (!scrolls) return;
     const el = scrollerRef.current;
     if (!el) return;
     const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
@@ -376,32 +381,7 @@ export function MobileTabBar({
     if (!chip) return;
     const target = targetFor(el, key);
     cancelCentreRef.current();
-    const stopScroll = animateScrollTo(el, target);
-
-    /*
-     * And again once the chip has finished growing.
-     *
-     * Taking its name widens the chip, and with names collapsed that happens
-     * over the label's own transition — so the geometry this just measured is
-     * out of date by the time the row settles. On the last pin it showed as
-     * both symptoms at once: the row could now scroll further than it had been
-     * told, so the chip sat short of the end with its icon clipped, and the
-     * end-fade stayed on because there was suddenly more to the right.
-     *
-     * Cheap to do unconditionally: if nothing moved, `animateScrollTo` sees
-     * less than a pixel to travel and returns without a frame.
-     */
-    let stopCorrection = () => {};
-    const correct = window.setTimeout(() => {
-      const settled = scrollerRef.current;
-      if (settled) stopCorrection = animateScrollTo(settled, targetFor(settled, key));
-    }, LABEL_MS);
-
-    cancelCentreRef.current = () => {
-      stopScroll();
-      stopCorrection();
-      window.clearTimeout(correct);
-    };
+    cancelCentreRef.current = animateScrollTo(el, target);
   };
 
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus, centre = true) => {
@@ -506,7 +486,7 @@ export function MobileTabBar({
      */
     const openedRef = { current: null as string | null };
     const openLive = (key: string | null) => {
-      if (!collapseNames || !key || key === openedRef.current) return;
+      if (shape !== 'icon' || !key || key === openedRef.current) return;
       openedRef.current = key;
       const tab = pinnedTabs.find(t => pinKey(t) === key);
       if (tab) handleTap(tab, resolveStatus(tab), false);
@@ -564,7 +544,7 @@ export function MobileTabBar({
    * takes over the naming instead — one shrink at the point you leave, rather
    * than a reflow at every chip you cross.
    */
-  const namedKey = editMode || !collapseNames
+  const namedKey = shape !== 'icon'
     ? 'all' as const
     // Nothing at all while a finger is down. Swiping opens each pin as it
     // reaches it, so the chip under the thumb IS the active one — and naming it
@@ -578,7 +558,7 @@ export function MobileTabBar({
     : (dragKey !== null ? null : litKey);
 
   /** What the callout says: the tab a release would land on. */
-  const aimedAt = collapseNames && !editMode && dragKey
+  const aimedAt = shape === 'icon' && dragKey
     ? pinnedTabs.find(t => pinKey(t) === dragKey)
     : undefined;
   const AimedIcon = aimedAt ? getIcon(aimedAt) : undefined;
@@ -616,15 +596,20 @@ export function MobileTabBar({
           title={editMode ? undefined : label}
           className={cn(
             'transition-[background-color,color,width] duration-base ease-standard',
-            editMode
-              // Arranging stacks the name under the icon. Five chips at their
-              // full width do not fit a phone, and a row you have to scroll is
-              // a row you cannot see to reorder — the whole point of the screen
-              // is having all of them in front of you at once.
-              ? 'flex shrink-0 w-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
+            shape === 'compact'
+              // The name under the icon. Five chips at their full width do not
+              // fit a phone, so these give instead: 64px where there is room,
+              // narrower where there is not, and the name wraps and then
+              // truncates inside its own chip.
+              ? 'flex min-w-0 shrink basis-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
               : cn(
-                  'flex shrink-0 flex-row items-center rounded-full py-2',
+                  'flex flex-row items-center rounded-full py-2',
                   named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
+                  // Compact: the icons hold their size and the named chip gives,
+                  // so a long name costs its own tail rather than the row's
+                  // width. Otherwise every chip holds its full name and the row
+                  // scrolls to suit.
+                  shape === 'icon' && named ? 'min-w-0 shrink' : 'shrink-0',
                 ),
             lit && 'bg-primary text-primary-foreground',
             // The bar's glass follows the wallpaper — white over a light one,
@@ -657,7 +642,7 @@ export function MobileTabBar({
           >
             <Icon className="h-5 w-5 shrink-0" />
           </PendingRing>
-          {editMode ? (
+          {shape === 'compact' ? (
             // Two lines, then ellipsis. A long room name truncated to "Livin…"
             // on one line is a worse tab than one wrapped over two, and while
             // arranging every name is on show at once. No colour of its own:
@@ -675,6 +660,9 @@ export function MobileTabBar({
                 'overflow-hidden whitespace-nowrap text-[12.5px] font-semibold leading-none',
                 'transition-[max-width,opacity] duration-base ease-standard',
                 named ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0',
+                // `min-w-0` because a flex item will not shrink below its own
+                // content without it, whatever the ellipsis says.
+                shape === 'icon' && 'min-w-0 text-ellipsis',
               )}
             >
               {label}
@@ -735,12 +723,23 @@ export function MobileTabBar({
       // `beginGesture` abandons the selection it had started — so a swipe
       // scrolls and only a tap picks. While it all fits there is nothing to
       // pan, so the axis goes back to slide-to-select.
+      data-tab-row
       className={cn(
-        'flex min-w-0 max-w-full items-center gap-1 overflow-x-auto scrollbar-hidden',
-        scrollable ? 'touch-pan-x' : 'touch-none',
-        fadeLeft && fadeRight && 'tab-fade-both',
-        fadeLeft && !fadeRight && 'tab-fade-left',
-        !fadeLeft && fadeRight && 'tab-fade-right',
+        'flex min-w-0 max-w-full gap-1 scrollbar-hidden',
+        shape === 'compact' ? 'items-start' : 'items-center',
+        // Only `regular` may outgrow the bar. The other two are sized to fit,
+        // so there is nothing to scroll and nothing to fade — a name too long
+        // for the room it has left truncates inside its own chip rather than
+        // pushing the row wider than the phone.
+        scrolls
+          ? cn(
+              'overflow-x-auto',
+              scrollable ? 'touch-pan-x' : 'touch-none',
+              fadeLeft && fadeRight && 'tab-fade-both',
+              fadeLeft && !fadeRight && 'tab-fade-left',
+              !fadeLeft && fadeRight && 'tab-fade-right',
+            )
+          : 'overflow-hidden touch-none',
       )}
     >
       {tabs}
@@ -759,7 +758,7 @@ export function MobileTabBar({
         // `max-width` — so without it the bar simply refused to come down to
         // the width it had been told it could have.
         'pointer-events-auto flex gap-1 min-w-0 overflow-hidden transition-colors duration-300',
-        editMode
+        shape === 'compact'
           // Stacked tabs make a taller row, where a full stadium reads as a
           // lozenge — but it keeps the real bar's roundness as far as it can.
           ? 'items-start rounded-3xl px-2 py-1.5'

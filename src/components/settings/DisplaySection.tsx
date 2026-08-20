@@ -1,5 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import {
+  TAB_BAR_MODES, TAB_BAR_MODE_LABELS, TAB_BAR_MODE_HINTS, type TabBarMode,
+} from '@/lib/tab-bar-mode';
 
 interface DisplaySectionProps {
   hideInfoDevices: boolean;
@@ -14,8 +17,8 @@ interface DisplaySectionProps {
   toggleFullWidth: (value: boolean) => void;
   compactMode: boolean;
   toggleCompactMode: (value: boolean) => void;
-  collapseTabNames: boolean;
-  toggleCollapseTabNames: (value: boolean) => void;
+  tabBarMode: TabBarMode;
+  changeTabBarMode: (mode: TabBarMode) => void;
   fontSize: 'small' | 'medium' | 'large';
   changeFontSize: (size: 'small' | 'medium' | 'large') => void;
   iconStyle: 'standard' | 'colourful';
@@ -40,8 +43,8 @@ export function DisplaySection({
   toggleFullWidth,
   compactMode,
   toggleCompactMode,
-  collapseTabNames,
-  toggleCollapseTabNames,
+  tabBarMode,
+  changeTabBarMode,
   fontSize,
   changeFontSize,
   iconStyle,
@@ -179,24 +182,34 @@ export function DisplaySection({
           />
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">Compact tab bar</p>
-          <p className="text-xs text-muted-foreground">
-            Show icons only, and swipe along the bar to move between them
-          </p>
-        </div>
-        <div className="relative flex items-center">
-          {settingSaveError === 'collapseTabNames' && (
-            <div className="absolute right-full mr-2 whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Tab bar</p>
+            <p className="text-xs text-muted-foreground">
+              How much of each pinned tab to show
+            </p>
+          </div>
+          {settingSaveError === 'tabBarMode' && (
+            <div className="whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
               Failed to save
             </div>
           )}
-          <Switch
-            checked={collapseTabNames}
-            onCheckedChange={toggleCollapseTabNames}
-          />
         </div>
+        <div className="flex gap-2">
+          {TAB_BAR_MODES.map(mode => (
+            <Button
+              key={mode}
+              variant={tabBarMode === mode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => changeTabBarMode(mode)}
+              className="flex-1"
+            >
+              {TAB_BAR_MODE_LABELS[mode]}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">{TAB_BAR_MODE_HINTS[tabBarMode]}</p>
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between">

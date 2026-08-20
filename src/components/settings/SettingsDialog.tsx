@@ -54,6 +54,7 @@ import {
 // Cloud components — resolved at render time (not module-load time)
 // because initCloud() is async and hasn't completed when static imports run.
 import { DisplaySection } from './DisplaySection';
+import type { TabBarMode } from '@/lib/tab-bar-mode';
 
 import { ApiAccessSection } from './ApiAccessSection';
 import { WebhooksSection } from './WebhooksSection';
@@ -118,8 +119,8 @@ export interface SettingsDialogProps {
   toggleFullWidth: (value: boolean) => void;
   compactMode: boolean;
   toggleCompactMode: (value: boolean) => void;
-  collapseTabNames: boolean;
-  toggleCollapseTabNames: (value: boolean) => void;
+  tabBarMode: TabBarMode;
+  changeTabBarMode: (mode: TabBarMode) => void;
   fontSize: 'small' | 'medium' | 'large';
   changeFontSize: (size: 'small' | 'medium' | 'large') => void;
   iconStyle: 'standard' | 'colourful';
@@ -605,8 +606,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
             toggleFullWidth={props.toggleFullWidth}
             compactMode={props.compactMode}
             toggleCompactMode={props.toggleCompactMode}
-            collapseTabNames={props.collapseTabNames}
-            toggleCollapseTabNames={props.toggleCollapseTabNames}
+            tabBarMode={props.tabBarMode}
+            changeTabBarMode={props.changeTabBarMode}
             fontSize={props.fontSize}
             changeFontSize={props.changeFontSize}
             iconStyle={props.iconStyle}

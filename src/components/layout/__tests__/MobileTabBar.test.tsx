@@ -557,7 +557,7 @@ describe('press and slide', () => {
 describe('scroll fades', () => {
   // Each tab sits in its own TabSlot wrapper, so the scroller is a level
   // further up than the button's parent.
-  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const scroller = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
 
   const metrics = (scrollWidth: number, clientWidth: number, scrollLeft: number) => {
     const el = scroller();
@@ -622,7 +622,7 @@ describe('scroll fades', () => {
  * make the move land in one tick.
  */
 describe('centring the pressed tab', () => {
-  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const scroller = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
 
   /**
    * 100px chips in a window `clientWidth` wide; chip n starts at n*100 in the
@@ -704,7 +704,7 @@ describe('centring the pressed tab', () => {
   it('leaves the bar where it is while arranging, where a tap opens the editor', () => {
     setup([TABS.home, TABS.room], { editMode: true });
     // Edit mode has no inner scroller; the pill itself is the scrollable one.
-    const pill = document.querySelector<HTMLElement>('.overflow-x-auto')!;
+    const pill = document.querySelector<HTMLElement>('[data-tab-row]')!;
     pill.scrollLeft = 42;
 
     fireEvent.click(screen.getByRole('button', { name: /Kitchen/ }));
@@ -722,7 +722,7 @@ describe('centring the pressed tab', () => {
  * looks exactly like a chip that refuses to stay lit.
  */
 describe('a scene chip pressed the way a finger presses it', () => {
-  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const bar = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
   const chip = (name: RegExp) => screen.getByRole('button', { name });
 
   const press = (name: RegExp) => {
@@ -810,7 +810,7 @@ describe('the fill when a page and a panel are both live', () => {
  * put that name in the one place on screen it cannot be read.
  */
 describe('collapsed tab names', () => {
-  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const bar = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
   const named = (re: RegExp) => {
     const span = screen.getByRole('button', { name: re }).querySelector('span[aria-hidden]');
     return !span?.className.includes('max-w-0');
@@ -833,7 +833,7 @@ describe('collapsed tab names', () => {
   };
 
   it('names only the tab you are on', () => {
-    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    setup([TABS.home, TABS.room], { mode: 'icon' as const, selectedHomeId: 'HOME-1' });
     expect(named(/Beach House/)).toBe(true);
     expect(named(/Kitchen/)).toBe(false);
   });
@@ -845,13 +845,13 @@ describe('collapsed tab names', () => {
   });
 
   it('names all of them while arranging, whatever the setting says', () => {
-    setup([TABS.home, TABS.room], { collapseNames: true, editMode: true });
+    setup([TABS.home, TABS.room], { mode: 'icon' as const, editMode: true });
     expect(named(/Beach House/)).toBe(true);
     expect(named(/Kitchen/)).toBe(true);
   });
 
   it('hands the naming to a callout while a finger travels', () => {
-    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    setup([TABS.home, TABS.room], { mode: 'icon' as const, selectedHomeId: 'HOME-1' });
     layOut();
 
     expect(callout()).toBeNull();
@@ -866,7 +866,7 @@ describe('collapsed tab names', () => {
   });
 
   it('takes the callout away once the finger lifts', () => {
-    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    setup([TABS.home, TABS.room], { mode: 'icon' as const, selectedHomeId: 'HOME-1' });
     layOut();
 
     fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
@@ -894,7 +894,7 @@ describe('collapsed tab names', () => {
  * until you let go, because the names are right there to aim at.
  */
 describe('swiping through collapsed pins', () => {
-  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const bar = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
 
   /** Chips 40px wide, 50px apart: chip n spans n*50 .. n*50+40. */
   const layOut = () => {
@@ -908,7 +908,7 @@ describe('swiping through collapsed pins', () => {
   };
 
   it('opens each pin as the finger reaches it', () => {
-    const props = setup([TABS.home, TABS.room], { collapseNames: true });
+    const props = setup([TABS.home, TABS.room], { mode: 'icon' as const });
     layOut();
 
     fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
@@ -919,7 +919,7 @@ describe('swiping through collapsed pins', () => {
   });
 
   it('opens each pin once, not on every frame it is under', () => {
-    const props = setup([TABS.home, TABS.room], { collapseNames: true });
+    const props = setup([TABS.home, TABS.room], { mode: 'icon' as const });
     layOut();
 
     fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
@@ -930,7 +930,7 @@ describe('swiping through collapsed pins', () => {
   });
 
   it('does not toggle a panel shut again on release', () => {
-    setup([TABS.home, TABS.accessory], { collapseNames: true });
+    setup([TABS.home, TABS.accessory], { mode: 'icon' as const });
     layOut();
 
     fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
@@ -972,13 +972,16 @@ describe('the shape of the bar while arranging', () => {
   it('stacks the name under the icon, so five fit across', () => {
     setup([TABS.home, TABS.room], { editMode: true });
     expect(tab(/Kitchen/).className).toContain('flex-col');
-    expect(tab(/Kitchen/).className).toContain('w-16');
+    // Sized to 64px where there is room and narrower where there is not, so
+    // five always fit rather than the row scrolling.
+    expect(tab(/Kitchen/).className).toContain('basis-16');
+    expect(tab(/Kitchen/).className).toContain('shrink');
   });
 
   it('is a row of chips the rest of the time', () => {
     setup([TABS.home, TABS.room]);
     expect(tab(/Kitchen/).className).toContain('flex-row');
-    expect(tab(/Kitchen/).className).not.toContain('w-16');
+    expect(tab(/Kitchen/).className).not.toContain('basis-16');
   });
 
   it('lets the name take the chip colour rather than one of its own', () => {
@@ -1004,7 +1007,7 @@ describe('which collapsed chip is named', () => {
   };
 
   it('moves the name off the page you are on when a panel opens', () => {
-    setup([TABS.room, TABS.accessory], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    setup([TABS.room, TABS.accessory], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
     expect(named(/Kitchen/)).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
@@ -1014,7 +1017,7 @@ describe('which collapsed chip is named', () => {
   });
 
   it('gives it back when the panel closes', () => {
-    setup([TABS.room, TABS.accessory], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    setup([TABS.room, TABS.accessory], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
     const lamp = screen.getByRole('button', { name: /Lamp/ });
 
     fireEvent.click(lamp);
@@ -1025,7 +1028,7 @@ describe('which collapsed chip is named', () => {
   });
 
   it('names exactly one chip at a time', () => {
-    setup([TABS.room, TABS.accessory, TABS.scene], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    setup([TABS.room, TABS.accessory, TABS.scene], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
     fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
 
     const lit = [/Kitchen/, /Lamp/, /Movie night/].filter(named);
@@ -1033,52 +1036,6 @@ describe('which collapsed chip is named', () => {
   });
 });
 
-/**
- * Centring corrects itself once the chip has finished growing.
- *
- * Taking its name widens the chip, and with names collapsed that happens over
- * the label's own transition — so the geometry measured at the press is out of
- * date by the time the row settles. On the LAST pin that showed as both
- * symptoms at once: the row could scroll further than it had been told, so the
- * chip sat short of the end with its icon clipped, and the end-fade stayed on
- * because there was suddenly more to the right.
- */
-describe('centring the last pin as it grows', () => {
-  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
-  });
-  afterEach(() => { vi.useRealTimers(); });
-
-  it('scrolls again once the row has widened under it', () => {
-    setup([TABS.home, TABS.room, TABS.action], { collapseNames: true });
-    const el = scroller();
-    Object.defineProperty(el, 'clientWidth', { value: 150, configurable: true });
-    el.getBoundingClientRect = () => ({
-      left: 0, right: 150, top: 0, bottom: 44, x: 0, y: 0, width: 150, height: 44, toJSON: () => ({}),
-    }) as DOMRect;
-    el.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
-      chip.getBoundingClientRect = () => {
-        const left = n * 50 - el.scrollLeft;
-        return { left, right: left + 40, top: 0, bottom: 44,
-          x: left, y: 0, width: 40, height: 44, toJSON: () => ({}) } as DOMRect;
-      };
-    });
-
-    // Narrow row to begin with: the last chip's centre is barely past the edge.
-    Object.defineProperty(el, 'scrollWidth', { value: 160, configurable: true });
-    fireEvent.click(screen.getByRole('button', { name: /Everything off/ }));
-    const first = el.scrollLeft;
-
-    // The label lands and the row grows; the end moves further right.
-    Object.defineProperty(el, 'scrollWidth', { value: 260, configurable: true });
-    act(() => { vi.advanceTimersByTime(300); });
-
-    expect(el.scrollLeft).toBeGreaterThan(first);
-  });
-});
 
 /**
  * A pinned accessory keeps its glyph across a home change.
@@ -1118,5 +1075,53 @@ describe('a pinned accessory while the data reloads', () => {
     rerender(bar());
 
     expect(glyph()).toBe(before);
+  });
+});
+
+/**
+ * Only `regular` may outgrow the bar.
+ *
+ * The other two are sized to always fit, which is what lets them do without a
+ * scroller — and a bar you scroll is a bar whose far end you have to remember
+ * is there. A name too long for the room it has left truncates inside its own
+ * chip rather than pushing the row wider than the phone.
+ */
+describe('which modes scroll', () => {
+  const row = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
+
+  it('lets the regular bar scroll', () => {
+    setup([TABS.home, TABS.room]);
+    expect(row().className).toContain('overflow-x-auto');
+  });
+
+  it('never scrolls in compact', () => {
+    setup([TABS.home, TABS.room], { mode: 'compact' });
+    expect(row().className).toContain('overflow-hidden');
+    expect(row().className).not.toContain('overflow-x-auto');
+  });
+
+  it('never scrolls in icons', () => {
+    setup([TABS.home, TABS.room], { mode: 'icon' });
+    expect(row().className).toContain('overflow-hidden');
+    expect(row().className).not.toContain('overflow-x-auto');
+  });
+
+  it('never scrolls while arranging, whatever the setting says', () => {
+    setup([TABS.home, TABS.room], { mode: 'regular', editMode: true });
+    expect(row().className).toContain('overflow-hidden');
+  });
+
+  it('truncates the one name that is on show rather than widening the row', () => {
+    setup([TABS.home, TABS.room], { mode: 'icon', selectedHomeId: 'HOME-1' });
+    const label = screen.getByRole('button', { name: /Beach House/ })
+      .querySelector('span[aria-hidden]')!;
+    expect(label.className).toContain('text-ellipsis');
+    expect(label.className).toContain('min-w-0');
+  });
+
+  it('arranges in the compact shape whatever the setting says', () => {
+    setup([TABS.home, TABS.room], { mode: 'icon', editMode: true });
+    // Every name legible, stacked — you cannot reorder what you cannot read.
+    expect(screen.getByRole('button', { name: /Kitchen/ }).className).toContain('flex-col');
   });
 });

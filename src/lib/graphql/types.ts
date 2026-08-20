@@ -612,6 +612,7 @@ export interface UpdateCollectionResponse {
 // callers already reach for it from this file.
 export type { PinnedTab, PinnedTabType, PinTarget } from '@/lib/pinned-tabs';
 import type { PinnedTab } from '@/lib/pinned-tabs';
+import type { TabBarMode } from '@/lib/tab-bar-mode';
 
 // Per-device display/layout settings (stored under devices[deviceId] in settings blob)
 export interface DeviceDisplaySettings {
@@ -624,8 +625,8 @@ export interface DeviceDisplaySettings {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
-  /** Tab bar chips carry only their icon, except the one that is current. */
-  collapseTabNames?: boolean;
+  /** How the pinned tab bar draws itself. See lib/tab-bar-mode.ts. */
+  tabBarMode?: TabBarMode;
   pinnedTabs?: PinnedTab[];
   lastView?:
     | { type: 'home'; homeId: string; roomId?: string }
@@ -636,7 +637,7 @@ export interface DeviceDisplaySettings {
 export const DEVICE_SETTING_KEYS: readonly (keyof DeviceDisplaySettings)[] = [
   'compactMode', 'hideInfoDevices', 'hideAccessoryCounts',
   'layoutMode', 'groupByRoom', 'iconStyle',
-  'fontSize', 'autoBackgrounds', 'fullWidth', 'collapseTabNames', 'pinnedTabs', 'lastView',
+  'fontSize', 'autoBackgrounds', 'fullWidth', 'tabBarMode', 'pinnedTabs', 'lastView',
 ] as const;
 
 // Get display settings for a specific device, falling back to legacy flat fields
@@ -669,8 +670,8 @@ export interface UserSettingsData {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
-  /** Tab bar chips carry only their icon, except the one that is current. */
-  collapseTabNames?: boolean;
+  /** How the pinned tab bar draws itself. See lib/tab-bar-mode.ts. */
+  tabBarMode?: TabBarMode;
   pinnedTabs?: PinnedTab[];
   lastView?:
     | { type: 'home'; homeId: string; roomId?: string }
