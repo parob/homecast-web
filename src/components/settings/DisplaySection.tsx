@@ -14,6 +14,8 @@ interface DisplaySectionProps {
   toggleFullWidth: (value: boolean) => void;
   compactMode: boolean;
   toggleCompactMode: (value: boolean) => void;
+  collapseTabNames: boolean;
+  toggleCollapseTabNames: (value: boolean) => void;
   fontSize: 'small' | 'medium' | 'large';
   changeFontSize: (size: 'small' | 'medium' | 'large') => void;
   iconStyle: 'standard' | 'colourful';
@@ -38,6 +40,8 @@ export function DisplaySection({
   toggleFullWidth,
   compactMode,
   toggleCompactMode,
+  collapseTabNames,
+  toggleCollapseTabNames,
   fontSize,
   changeFontSize,
   iconStyle,
@@ -172,6 +176,25 @@ export function DisplaySection({
           <Switch
             checked={compactMode}
             onCheckedChange={toggleCompactMode}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Collapse tab names</p>
+          <p className="text-xs text-muted-foreground">
+            Show only icons in the tab bar, and name the one you are on
+          </p>
+        </div>
+        <div className="relative flex items-center">
+          {settingSaveError === 'collapseTabNames' && (
+            <div className="absolute right-full mr-2 whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
+              Failed to save
+            </div>
+          )}
+          <Switch
+            checked={collapseTabNames}
+            onCheckedChange={toggleCollapseTabNames}
           />
         </div>
       </div>

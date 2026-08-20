@@ -112,6 +112,14 @@ interface MobileTabBarProps {
   resolveAccessory: (tab: PinnedTab) => HomeKitAccessory | undefined;
   isDarkBackground?: boolean;
   /**
+   * Chips carry their icon only, except the one that is current.
+   *
+   * A Display setting. Five names is the honest default — you chose these pins
+   * and their names are why — but it is a wide bar, and someone who knows their
+   * own five glyphs would rather have the room back.
+   */
+  collapseNames?: boolean;
+  /**
    * Edit Layout is running. The bar stops navigating and becomes the thing being
    * arranged: drag to reorder, ⊗ to unpin, tap a label to rename it.
    *
@@ -146,6 +154,7 @@ export function MobileTabBar({
   resolveStatus,
   resolveAccessory,
   isDarkBackground,
+  collapseNames = false,
   editMode = false,
   onReorder,
   onRename,
@@ -453,6 +462,29 @@ export function MobileTabBar({
    */
   const litKey = dragKey ?? (!editMode && openKey) ?? activeKey;
 
+  /**
+   * Which chips show their name.
+   *
+   * Everything, unless the setting says otherwise — and then only the one that
+   * is current, so the bar still says where you are. Arranging always shows
+   * them all: you cannot reorder or rename what you cannot read.
+   *
+   * Mid-slide the lit chip's name comes off too. A capsule that grows its name
+   * under a thumb has put that name in the one place on screen it cannot be
+   * read, and moved the rest of the bar sideways to do it. The callout above
+   * takes over the naming instead — one shrink at the point you leave, rather
+   * than a reflow at every chip you cross.
+   */
+  const namedKey = editMode || !collapseNames
+    ? 'all' as const
+    : (dragKey !== null && dragKey !== activeKey ? null : activeKey);
+
+  /** What the callout says: the tab a release would land on. */
+  const aimedAt = collapseNames && !editMode && dragKey
+    ? pinnedTabs.find(t => pinKey(t) === dragKey)
+    : undefined;
+  const AimedIcon = aimedAt ? getIcon(aimedAt) : undefined;
+
   const tabs = pinnedTabs.map((tab) => {
     const key = pinKey(tab);
     const status = resolveStatus(tab);
@@ -465,6 +497,7 @@ export function MobileTabBar({
     // carries its own name the whole time.
     const lit = litKey === key;
     const label = tab.customName || tab.name;
+    const named = namedKey === 'all' || namedKey === key;
 
     return (
       <TabSlot key={key} id={key} sortable={editMode}>
@@ -485,25 +518,22 @@ export function MobileTabBar({
           title={editMode ? undefined : label}
           className={cn(
             'transition-[background-color,color,width] duration-base ease-standard',
-            editMode
-              // Arranging keeps the old stacked form: the label is the thing
-              // being renamed, so it needs a line of its own under the icon.
-              ? 'flex w-16 flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg'
-              // Otherwise a chip: icon then name, always both. Nothing shrinks
-              // and nothing truncates — a row too wide for the bar scrolls
-              // instead, which is the only way a name like "Ensuite Underfloor
-              // Heating" stays readable at all.
-              : 'flex shrink-0 flex-row items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5',
-            !editMode && lit && 'bg-primary text-primary-foreground',
+            // One chip, arranging or not. The stacked 64px column that edit
+            // mode used to keep was left over from when the bar looked like
+            // that everywhere; carrying it made arranging a bar you could not
+            // recognise, at a size that told you nothing about how the result
+            // would sit.
+            'flex shrink-0 flex-row items-center rounded-full py-2',
+            named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
+            lit && 'bg-primary text-primary-foreground',
             // The bar's glass follows the wallpaper — white over a light one,
             // black over a dark one — so the text on it has to as well. An
             // unlit chip carried no colour at all and inherited the page's,
             // which is black, and vanished into the dark bar.
-            !editMode && !lit && cn(
+            !lit && cn(
               'active:bg-white/10',
               isDarkBackground ? 'text-white/85' : 'text-foreground/80',
             ),
-            editMode && active && (isDarkBackground ? 'bg-white/20' : 'bg-black/10'),
             missing && !editMode && 'opacity-50',
           )}
         >
@@ -526,21 +556,19 @@ export function MobileTabBar({
           >
             <Icon className="h-5 w-5 shrink-0" />
           </PendingRing>
-          {editMode ? (
-            // Two lines, then ellipsis. A long room name truncated to "Livin…"
-            // on one line is a worse tab than one wrapped over two — and while
-            // arranging, every label is on show at once.
-            <span className={cn(
-              'w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2',
-              isDarkBackground ? 'text-white/80' : active ? 'text-foreground' : 'text-muted-foreground'
-            )}>
-              {label}
-            </span>
-          ) : (
-            <span aria-hidden className="whitespace-nowrap text-[12.5px] font-semibold leading-none">
-              {label}
-            </span>
-          )}
+          {/* Collapsed to nothing rather than unmounted: animating a width is
+              what makes the capsule look like it grew the name, and an element
+              that is not there has no width to animate from. */}
+          <span
+            aria-hidden
+            className={cn(
+              'overflow-hidden whitespace-nowrap text-[12.5px] font-semibold leading-none',
+              'transition-[max-width,opacity] duration-base ease-standard',
+              named ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0',
+            )}
+          >
+            {label}
+          </span>
         </button>
 
         {editMode && onUnpin && (
@@ -583,7 +611,7 @@ export function MobileTabBar({
     );
   });
 
-  const row = editMode ? tabs : (
+  const row = (
     <div
       ref={scrollerRef}
       // The scroller sits INSIDE the glass rather than being it, so the fade
@@ -619,12 +647,9 @@ export function MobileTabBar({
         // item's automatic minimum size is its content, and that beats
         // `max-width` — so without it the bar simply refused to come down to
         // the width it had been told it could have.
-        'pointer-events-auto flex gap-1 min-w-0 transition-colors duration-300',
-        editMode
-          ? 'items-start px-2 py-1.5 rounded-2xl overflow-x-auto scrollbar-hidden'
-          // A row of capsules wants a capsule around it. The scroller inside
-          // is what keeps the tabs within it.
-          : 'items-center p-1.5 rounded-full overflow-hidden',
+        // A row of capsules wants a capsule around it, arranging or not. The
+        // scroller inside is what keeps the tabs within it.
+        'pointer-events-auto flex gap-1 min-w-0 items-center p-1.5 rounded-full overflow-hidden transition-colors duration-300',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
       )}
       style={{ maxWidth: 'calc(100% - 32px)' }}
@@ -666,6 +691,32 @@ export function MobileTabBar({
           customIcon={editingTab.customIcon}
           onSave={(next) => onRename?.(editingTab, next)}
         />
+      )}
+      {/* The name of the tab a release would land on, while the chips are
+          collapsed and a finger is travelling. Above the bar because that is
+          the one place a thumb is not covering.
+
+          aria-hidden, like the chips' own labels: every tab is a button that
+          already says its name, and a live readout of a gesture in progress is
+          something to announce to a pointer, not to a screen reader. */}
+      {aimedAt && (
+        <div className="flex justify-center px-4 pb-2">
+          <div
+            aria-hidden
+            data-testid="tab-callout"
+            className={cn(
+              'flex max-w-full items-center gap-2 rounded-full px-3 py-1.5',
+              // The same glass as the bar below it, so the two read as one
+              // control rather than a tooltip that happened to land there.
+              isDarkBackground ? 'material-regular-dark text-white' : 'material-regular text-foreground',
+            )}
+          >
+            {AimedIcon && <AimedIcon className="h-4 w-4 shrink-0" />}
+            <span className="min-w-0 truncate text-[13px] font-semibold leading-none">
+              {aimedAt.customName || aimedAt.name}
+            </span>
+          </div>
+        </div>
       )}
       <div className="flex justify-center px-4 pb-2">
         {editMode ? (

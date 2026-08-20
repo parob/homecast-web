@@ -1528,6 +1528,8 @@ const Dashboard = () => {
   const [expandedWidgetId, setExpandedWidgetId] = useState<string | null>(null);
   // All user settings - loaded from backend, defaults applied until loaded
   const [compactMode, setCompactModeRaw] = useState<boolean>(true);
+  /** Tab bar chips show icons only, bar the current one. Off by default. */
+  const [collapseTabNames, setCollapseTabNames] = useState<boolean>(false);
   const [isCompactModeTransitioning, startCompactModeTransition] = useTransition();
   const [hideInfoDevices, setHideInfoDevices] = useState<boolean>(true);
   const [hideAccessoryCounts, setHideAccessoryCounts] = useState<boolean>(true);
@@ -2323,6 +2325,7 @@ const Dashboard = () => {
         // Read per-device display settings (falls back to legacy flat fields for migration)
         const display = getDeviceSettings(parsed, getDeviceId());
         if (typeof display.compactMode === 'boolean') setCompactModeRaw(display.compactMode);
+        if (typeof display.collapseTabNames === 'boolean') setCollapseTabNames(display.collapseTabNames);
         if (typeof display.hideInfoDevices === 'boolean') setHideInfoDevices(display.hideInfoDevices);
         if (typeof display.hideAccessoryCounts === 'boolean') setHideAccessoryCounts(display.hideAccessoryCounts);
         // Layout picker hidden — always masonry for now (may reintroduce later)
@@ -2513,7 +2516,7 @@ const Dashboard = () => {
 
     // Current device display state
     const currentDeviceSettings = {
-      compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode,
+      compactMode, collapseTabNames, hideInfoDevices, hideAccessoryCounts, layoutMode,
       groupByRoom, iconStyle, fontSize, autoBackgrounds,
       fullWidth, pinnedTabs, lastView,
     };
@@ -2560,7 +2563,7 @@ const Dashboard = () => {
       }
       return false;
     }
-  }, [compactMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs, lastView, settingsData, updateSettingsMutation]);
+  }, [compactMode, collapseTabNames, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs, lastView, settingsData, updateSettingsMutation]);
 
   // Keep saveSettingsRef in sync so debouncedSaveLastView (defined early) can call it
   saveSettingsRef.current = saveSettings;
@@ -4262,6 +4265,11 @@ const Dashboard = () => {
       setCompactModeRaw(value);
     });
     saveSettings({ compactMode: value }, 'compactMode');
+  }, [saveSettings]);
+
+  const toggleCollapseTabNames = useCallback((value: boolean) => {
+    setCollapseTabNames(value);
+    saveSettings({ collapseTabNames: value }, 'collapseTabNames');
   }, [saveSettings]);
 
   // Toggle hide info devices (optimistic)
@@ -7060,6 +7068,8 @@ const Dashboard = () => {
               toggleFullWidth={toggleFullWidth}
               compactMode={compactMode}
               toggleCompactMode={toggleCompactMode}
+              collapseTabNames={collapseTabNames}
+              toggleCollapseTabNames={toggleCollapseTabNames}
               fontSize={fontSize}
               changeFontSize={changeFontSize}
               iconStyle={iconStyle}
@@ -7141,6 +7151,7 @@ const Dashboard = () => {
       {isPhone && pinnedTabs.length > 0 && (
         <MobileTabBar
           pinnedTabs={pinnedTabs}
+          collapseNames={collapseTabNames}
           selectedHomeId={selectedHomeId}
           selectedRoomId={selectedRoomId}
           selectedCollectionId={selectedCollectionId}

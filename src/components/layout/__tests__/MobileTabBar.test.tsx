@@ -799,3 +799,89 @@ describe('the fill when a page and a panel are both live', () => {
     expect(screen.getByRole('button', { name: /Kitchen/ }).className).not.toContain('bg-primary');
   });
 });
+
+/**
+ * Collapsed names — the Display setting.
+ *
+ * Five names is the honest default, but it is a wide bar, and someone who knows
+ * their own five glyphs would rather have the room back. Collapsed, only the
+ * chip you are on is named, and a callout above the bar does the naming while
+ * a finger travels — because a capsule that grows its name under a thumb has
+ * put that name in the one place on screen it cannot be read.
+ */
+describe('collapsed tab names', () => {
+  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const named = (re: RegExp) => {
+    const span = screen.getByRole('button', { name: re }).querySelector('span[aria-hidden]');
+    return !span?.className.includes('max-w-0');
+  };
+  const callout = () => screen.queryByTestId('tab-callout');
+
+  /**
+   * The slide picks the chip nearest along x, so it needs real horizontal
+   * extents. jsdom reports every rect as zero, which makes the first chip the
+   * nearest to everything.
+   */
+  const layOut = () => {
+    document.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
+      const left = n * 50;
+      chip.getBoundingClientRect = () => ({
+        left, right: left + 40, top: 0, bottom: 44,
+        x: left, y: 0, width: 40, height: 44, toJSON: () => ({}),
+      }) as DOMRect;
+    });
+  };
+
+  it('names only the tab you are on', () => {
+    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    expect(named(/Beach House/)).toBe(true);
+    expect(named(/Kitchen/)).toBe(false);
+  });
+
+  it('names all of them when the setting is off', () => {
+    setup([TABS.home, TABS.room], { selectedHomeId: 'HOME-1' });
+    expect(named(/Beach House/)).toBe(true);
+    expect(named(/Kitchen/)).toBe(true);
+  });
+
+  it('names all of them while arranging, whatever the setting says', () => {
+    setup([TABS.home, TABS.room], { collapseNames: true, editMode: true });
+    expect(named(/Beach House/)).toBe(true);
+    expect(named(/Kitchen/)).toBe(true);
+  });
+
+  it('hands the naming to a callout while a finger travels', () => {
+    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    layOut();
+
+    expect(callout()).toBeNull();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+
+    expect(callout()?.textContent).toContain('Kitchen');
+    // The bar itself goes quiet: nothing reflows under the thumb.
+    expect(named(/Beach House/)).toBe(false);
+    expect(named(/Kitchen/)).toBe(false);
+  });
+
+  it('takes the callout away once the finger lifts', () => {
+    setup([TABS.home, TABS.room], { collapseNames: true, selectedHomeId: 'HOME-1' });
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+
+    expect(callout()).toBeNull();
+  });
+
+  it('shows no callout at all when names are not collapsed', () => {
+    setup([TABS.home, TABS.room], { selectedHomeId: 'HOME-1' });
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+
+    expect(callout()).toBeNull();
+  });
+});

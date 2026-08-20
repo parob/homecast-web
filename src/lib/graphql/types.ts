@@ -624,6 +624,8 @@ export interface DeviceDisplaySettings {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
+  /** Tab bar chips carry only their icon, except the one that is current. */
+  collapseTabNames?: boolean;
   pinnedTabs?: PinnedTab[];
   lastView?:
     | { type: 'home'; homeId: string; roomId?: string }
@@ -634,7 +636,7 @@ export interface DeviceDisplaySettings {
 export const DEVICE_SETTING_KEYS: readonly (keyof DeviceDisplaySettings)[] = [
   'compactMode', 'hideInfoDevices', 'hideAccessoryCounts',
   'layoutMode', 'groupByRoom', 'iconStyle',
-  'fontSize', 'autoBackgrounds', 'fullWidth', 'pinnedTabs', 'lastView',
+  'fontSize', 'autoBackgrounds', 'fullWidth', 'collapseTabNames', 'pinnedTabs', 'lastView',
 ] as const;
 
 // Get display settings for a specific device, falling back to legacy flat fields
@@ -667,6 +669,8 @@ export interface UserSettingsData {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
+  /** Tab bar chips carry only their icon, except the one that is current. */
+  collapseTabNames?: boolean;
   pinnedTabs?: PinnedTab[];
   lastView?:
     | { type: 'home'; homeId: string; roomId?: string }
