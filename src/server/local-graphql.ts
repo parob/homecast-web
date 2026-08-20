@@ -46,6 +46,183 @@ interface GraphQLRequest {
  * GraphQL operations that never require authentication — they're either used
  * before a user is onboarded, or expose non-sensitive capability data.
  */
+/**
+ * What a share link expands to, asked of HomeKit directly.
+ *
+ * A share names an entity, not a list of accessories, and for a room or a
+ * service group only HomeKit knows the members. Community Edition IS the
+ * relay, so unlike the cloud there is no round trip to budget for — but there
+ * must still be exactly ONE definition of "what may this link see", or the
+ * accessory list and the analytics gate can disagree about it. Both read this.
+ */
+async function resolveShareAccessories(access: any): Promise<{
+  accessories: any[];
+  serviceGroups: any[];
+}> {
+      // Fetch accessory + service group data from HomeKit based on entity type
+      let accessories: any[] = [];
+      let serviceGroups: any[] = [];
+      if (access.entityType === 'accessory') {
+        const result = await executeHomeKitAction('accessory.get', { accessoryId: access.entityId }) as any;
+        if (result?.accessory) accessories = [result.accessory];
+      } else if (access.entityType === 'home') {
+        const [accResult, sgResult] = await Promise.all([
+          executeHomeKitAction('accessories.list', { homeId: access.entityId, includeValues: true, includeAll: true }) as Promise<any>,
+          executeHomeKitAction('serviceGroups.list', { homeId: access.entityId }).catch(() => ({ serviceGroups: [] })) as Promise<any>,
+        ]);
+        accessories = accResult?.accessories || [];
+        serviceGroups = sgResult?.serviceGroups || [];
+      } else if (access.entityType === 'room') {
+        const result = await executeHomeKitAction('accessories.list', { roomId: access.entityId, includeValues: true, includeAll: true }) as any;
+        accessories = result?.accessories || [];
+        if (access.homeId) {
+          const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: access.homeId }).catch(() => ({ serviceGroups: [] })) as any;
+          const roomAccIds = new Set(
+            accessories.map((a: any) => String(a.id || '').toLowerCase().replace(/-/g, ''))
+          );
+          serviceGroups = (sgResult?.serviceGroups || []).filter((g: any) =>
+            (g.accessoryIds || []).some((id: string) =>
+              roomAccIds.has(String(id || '').toLowerCase().replace(/-/g, ''))
+            )
+          );
+        }
+      } else if (access.entityType === 'accessory_group') {
+        // Fetch service group from HomeKit to get member accessory IDs
+        // Search the specified home, or all homes if homeId is missing
+        try {
+          const homeIds: string[] = [];
+          if (access.homeId) {
+            homeIds.push(access.homeId);
+          } else {
+            const homesResult = await executeHomeKitAction('homes.list') as any;
+            homeIds.push(...(homesResult?.homes || []).map((h: any) => h.id));
+          }
+          for (const hid of homeIds) {
+            const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: hid }) as any;
+            const group = (sgResult?.serviceGroups || []).find((g: any) => g.id === access.entityId);
+            if (group?.accessoryIds?.length) {
+              const results = await Promise.all(
+                group.accessoryIds.map((id: string) =>
+                  executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
+                )
+              );
+              accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
+              serviceGroups = [group];
+              break;
+            }
+          }
+        } catch {}
+        // Fallback: try stored entity data
+        if (accessories.length === 0) {
+          const entities = await db.getStoredEntities();
+          const entity = entities.find(e => e.entityId === access.entityId);
+          if (entity?.data) {
+            try {
+              const parsed = JSON.parse(entity.data);
+              const accessoryIds = parsed.accessoryIds || parsed.items?.map((i: any) => i.accessoryId) || [];
+              const results = await Promise.all(
+                accessoryIds.map((id: string) =>
+                  executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
+                )
+              );
+              accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
+            } catch {}
+          }
+        }
+      } else if (access.entityType === 'collection') {
+        const entities = await db.getStoredEntities();
+        const entity = entities.find(e => e.entityId === access.entityId);
+        if (entity?.data) {
+          try {
+            const parsed = JSON.parse(entity.data);
+            const accessoryIds = parsed.accessoryIds || parsed.items?.map((i: any) => i.accessoryId) || [];
+            const results = await Promise.all(
+              accessoryIds.map((id: string) =>
+                executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
+              )
+            );
+            accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
+          } catch {}
+        }
+      }
+  return { accessories, serviceGroups };
+}
+
+/**
+ * Resolve a share hash to the access row it grants, honouring the passcode.
+ *
+ * Mirrors the check GetPublicEntity already performs, rather than the looser
+ * hash-only lookup GetPublicEntityAccessories does: a passcode-gated share
+ * must not hand its analytics to someone holding only the hash. Returns null
+ * when the hash matches nothing, or when a passcode is required and the one
+ * supplied is absent or wrong.
+ */
+async function verifyShareAccess(shareHash: unknown, passcode: unknown): Promise<any | null> {
+  const allAccess = await db.getEntityAccess();
+  const matching = allAccess.filter(a => a.shareHash === shareHash);
+  if (matching.length === 0) return null;
+
+  const baseAccess = matching.find(a => a.accessType !== 'passcode') || matching[0];
+  const passcodeAccess = matching.find(a => a.accessType === 'passcode');
+
+  if (passcodeAccess) {
+    if (passcode && passcodeAccess.passcode === passcode) return passcodeAccess;
+    // No open access alongside it — the passcode is the only way in.
+    if (!baseAccess || baseAccess.accessType === 'passcode') return null;
+  }
+  return baseAccess;
+}
+
+/**
+ * The home a share belongs to. A home share names it directly; everything else
+ * carries it on the access row. A collection can span homes and so has none —
+ * it never offers Analytics rather than picking a winner among homes that may
+ * disagree about sharing.
+ */
+function shareHomeId(access: any): string | null {
+  if (!access) return null;
+  if (access.entityType === 'home') return access.entityId ?? null;
+  if (access.entityType === 'collection' || access.entityType === 'collection_group') return null;
+  return access.homeId ?? null;
+}
+
+/**
+ * Both opt-ins, on the share's home: it records AND its owner published that
+ * to link holders. One answer, deliberately — a link holder has no remedy for
+ * either half, and telling them apart would leak whether a home records.
+ */
+async function shareAnalyticsEnabled(access: any): Promise<boolean> {
+  const homeId = shareHomeId(access);
+  if (!homeId) return false;
+  try {
+    const { getHistoryHomeConfigs } = await import('./local-history');
+    const config = (await getHistoryHomeConfigs())[homeId.toUpperCase()];
+    return !!(config?.enabled && config?.sharedAnalytics);
+  } catch {
+    // Fail closed. Resolving a share must not depend on the history store
+    // being reachable — GetPublicEntity answers before any of it is needed,
+    // and off is the safe answer when the setting cannot be read.
+    return false;
+  }
+}
+
+/**
+ * The accessory ids a share may read, for scope-checking client input.
+ * `null` means "could not be determined" and callers must fail closed.
+ */
+async function shareAccessoryIdSet(access: any): Promise<Set<string> | null> {
+  try {
+    const { accessories } = await resolveShareAccessories(access);
+    return new Set(
+      accessories
+        .map((a: any) => String(a?.id || '').replace(/-/g, '').toLowerCase())
+        .filter(Boolean),
+    );
+  } catch {
+    return null;
+  }
+}
+
 const GRAPHQL_PUBLIC_OPS = new Set([
   'IsOnboarded', 'GetVersion', 'Login', 'Signup', 'GetAuthEnabled',
   // Share links. These carry their own access control — an unguessable hash,
@@ -55,6 +232,10 @@ const GRAPHQL_PUBLIC_OPS = new Set([
   // already have an account here", which is not sharing.
   'GetPublicEntity', 'GetPublicEntityAccessories',
   'PublicEntitySetCharacteristic', 'PublicEntitySetServiceGroup',
+  // Analytics over a share link. Same reasoning, plus two more gates of their
+  // own: the home must record AND its owner must have opted the link in, and
+  // every accessory asked for is checked against what the link expands to.
+  'GetPublicEntityHistorySeries', 'GetPublicEntityHistory',
 ]);
 
 /**
@@ -1268,7 +1449,7 @@ async function resolveOperation(
           requiresPasscode = true;
           if (variables.passcode) {
             // Wrong passcode provided
-            return { publicEntity: { requiresPasscode: true, entityType: baseAccess.entityType, entityId: baseAccess.entityId, entityName: baseAccess.entityName, role: null, data: null, canUpgradeWithPasscode: false, __typename: 'PublicEntity' } };
+            return { publicEntity: { requiresPasscode: true, entityType: baseAccess.entityType, entityId: baseAccess.entityId, entityName: baseAccess.entityName, role: null, data: null, canUpgradeWithPasscode: false, analyticsEnabled: false, __typename: 'PublicEntity' } };
           }
         }
       }
@@ -1282,6 +1463,9 @@ async function resolveOperation(
           requiresPasscode,
           canUpgradeWithPasscode,
           data: null,
+          // Off unless a passcode-gated share was actually unlocked — a page
+          // still asking for a passcode must not advertise Analytics.
+          analyticsEnabled: requiresPasscode ? false : await shareAnalyticsEnabled(baseAccess),
           __typename: 'PublicEntity',
         },
       };
@@ -1293,98 +1477,14 @@ async function resolveOperation(
       if (!access) return { publicEntityAccessories: '[]' };
 
       try {
-        // Fetch accessory + service group data from HomeKit based on entity type
-        let accessories: any[] = [];
-        let serviceGroups: any[] = [];
-        if (access.entityType === 'accessory') {
-          const result = await executeHomeKitAction('accessory.get', { accessoryId: access.entityId }) as any;
-          if (result?.accessory) accessories = [result.accessory];
-        } else if (access.entityType === 'home') {
-          const [accResult, sgResult] = await Promise.all([
-            executeHomeKitAction('accessories.list', { homeId: access.entityId, includeValues: true, includeAll: true }) as Promise<any>,
-            executeHomeKitAction('serviceGroups.list', { homeId: access.entityId }).catch(() => ({ serviceGroups: [] })) as Promise<any>,
-          ]);
-          accessories = accResult?.accessories || [];
-          serviceGroups = sgResult?.serviceGroups || [];
-        } else if (access.entityType === 'room') {
-          const result = await executeHomeKitAction('accessories.list', { roomId: access.entityId, includeValues: true, includeAll: true }) as any;
-          accessories = result?.accessories || [];
-          if (access.homeId) {
-            const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: access.homeId }).catch(() => ({ serviceGroups: [] })) as any;
-            const roomAccIds = new Set(
-              accessories.map((a: any) => String(a.id || '').toLowerCase().replace(/-/g, ''))
-            );
-            serviceGroups = (sgResult?.serviceGroups || []).filter((g: any) =>
-              (g.accessoryIds || []).some((id: string) =>
-                roomAccIds.has(String(id || '').toLowerCase().replace(/-/g, ''))
-              )
-            );
-          }
-        } else if (access.entityType === 'accessory_group') {
-          // Fetch service group from HomeKit to get member accessory IDs
-          // Search the specified home, or all homes if homeId is missing
-          try {
-            const homeIds: string[] = [];
-            if (access.homeId) {
-              homeIds.push(access.homeId);
-            } else {
-              const homesResult = await executeHomeKitAction('homes.list') as any;
-              homeIds.push(...(homesResult?.homes || []).map((h: any) => h.id));
-            }
-            for (const hid of homeIds) {
-              const sgResult = await executeHomeKitAction('serviceGroups.list', { homeId: hid }) as any;
-              const group = (sgResult?.serviceGroups || []).find((g: any) => g.id === access.entityId);
-              if (group?.accessoryIds?.length) {
-                const results = await Promise.all(
-                  group.accessoryIds.map((id: string) =>
-                    executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
-                  )
-                );
-                accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
-                serviceGroups = [group];
-                break;
-              }
-            }
-          } catch {}
-          // Fallback: try stored entity data
-          if (accessories.length === 0) {
-            const entities = await db.getStoredEntities();
-            const entity = entities.find(e => e.entityId === access.entityId);
-            if (entity?.data) {
-              try {
-                const parsed = JSON.parse(entity.data);
-                const accessoryIds = parsed.accessoryIds || parsed.items?.map((i: any) => i.accessoryId) || [];
-                const results = await Promise.all(
-                  accessoryIds.map((id: string) =>
-                    executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
-                  )
-                );
-                accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
-              } catch {}
-            }
-          }
-        } else if (access.entityType === 'collection') {
-          const entities = await db.getStoredEntities();
-          const entity = entities.find(e => e.entityId === access.entityId);
-          if (entity?.data) {
-            try {
-              const parsed = JSON.parse(entity.data);
-              const accessoryIds = parsed.accessoryIds || parsed.items?.map((i: any) => i.accessoryId) || [];
-              const results = await Promise.all(
-                accessoryIds.map((id: string) =>
-                  executeHomeKitAction('accessory.get', { accessoryId: id }).catch(() => null)
-                )
-              );
-              accessories = results.filter(Boolean).map((r: any) => r?.accessory).filter(Boolean);
-            } catch {}
-          }
-        }
+        const { accessories, serviceGroups } = await resolveShareAccessories(access);
         return { publicEntityAccessories: JSON.stringify({ accessories, serviceGroups, layout: null }) };
       } catch (e) {
         console.error('[LocalGraphQL] Failed to fetch accessories for shared entity:', e);
         return { publicEntityAccessories: '[]' };
       }
     }
+
 
     case 'PublicEntitySetCharacteristic': {
       // Validate the share hash and role — check passcode-gated access too
@@ -1550,6 +1650,126 @@ async function resolveOperation(
       return { history: results };
     }
 
+    /*
+     * Analytics over a share link, Community Edition.
+     *
+     * Mirrors the cloud's public_entity_history_series / public_entity_history
+     * field for field — the CE/cloud parity contract. Three gates, in order:
+     * the hash must match a share, the home must have both opt-ins, and every
+     * accessory must be inside what the share expands to.
+     *
+     * There is deliberately no public ExportHistory / PurgeHistory /
+     * SetHistorySeriesConfig: the first escapes the share's scope by design
+     * and the other two are administration.
+     */
+    case 'GetPublicEntityHistorySeries': {
+      const access = await verifyShareAccess(variables.shareHash, variables.passcode);
+      if (!access) throw new Error('Access denied');
+      if (!(await shareAnalyticsEnabled(access))) {
+        throw new Error('Analytics is not available for this share.');
+      }
+      const allowed = await shareAccessoryIdSet(access);
+      // Fail closed: not knowing the scope is not permission to ignore it.
+      if (!allowed) throw new Error('Access denied');
+      if (allowed.size === 0) return { publicEntityHistorySeries: [] };
+
+      const homeId = shareHomeId(access) as string;
+      const [{ getProfile }, rows] = await Promise.all([
+        import('../history/policy'),
+        db.getHistorySeries(homeId),
+      ]);
+      const out = [];
+      for (const row of rows) {
+        const key = String(row.accessoryId || '').replace(/-/g, '').toLowerCase();
+        if (!allowed.has(key)) continue;
+        const profile = getProfile(row.characteristicType);
+        const first = await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1);
+        const last = await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER);
+        out.push({
+          accessoryId: row.accessoryId,
+          characteristicType: row.characteristicType,
+          kind: row.kind,
+          unit: row.unit ?? null,
+          enabled: row.enabled ?? profile?.record ?? false,
+          minIntervalS: row.minIntervalS ?? profile?.minIntervalS ?? null,
+          deadband: row.deadband ?? profile?.deadband ?? null,
+          firstTs: first[0]?.ts ?? null,
+          lastTs: last?.ts ?? null,
+          sampleCount: await db.countHistorySamples(row.id),
+          __typename: 'HistorySeriesInfo',
+        });
+      }
+      return { publicEntityHistorySeries: out };
+    }
+
+    case 'GetPublicEntityHistory': {
+      const access = await verifyShareAccess(variables.shareHash, variables.passcode);
+      if (!access) throw new Error('Access denied');
+      if (!(await shareAnalyticsEnabled(access))) {
+        throw new Error('Analytics is not available for this share.');
+      }
+
+      const refs = (variables.series as Array<{ accessoryId: string; characteristicType: string }> | undefined) ?? [];
+      const from = Number(variables.fromTs);
+      const to = Number(variables.toTs);
+      const maxPoints = Math.min(Math.max(Number(variables.maxPoints) || 500, 10), 2000);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) {
+        throw new Error('fromTs/toTs must be epoch milliseconds');
+      }
+      if (refs.length === 0 || refs.length > 6) {
+        throw new Error('history queries take 1-6 series');
+      }
+
+      // The refs came from the client, so they are input, not authority.
+      // Refused rather than skipped: an empty answer reads as "nothing
+      // recorded" and would let a link holder enumerate a home by asking.
+      const allowed = await shareAccessoryIdSet(access);
+      if (!allowed) throw new Error('Access denied');
+      for (const ref of refs) {
+        const key = String(ref.accessoryId || '').replace(/-/g, '').toLowerCase();
+        if (!allowed.has(key)) throw new Error('Accessory is not part of this share.');
+      }
+
+      const homeId = shareHomeId(access) as string;
+      const [{ seriesKey }, { queryHistorySeries }, { getProfile }] = await Promise.all([
+        import('../history/keys'),
+        import('../history/query'),
+        import('../history/policy'),
+      ]);
+      const store = idbHistoryStore();
+
+      const results = [];
+      for (const ref of refs) {
+        const sid = seriesKey(homeId, ref.accessoryId, ref.characteristicType);
+        const row = await db.getHistorySeriesById(sid);
+        const profile = getProfile(ref.characteristicType);
+        const kind = row?.kind ?? profile?.kind;
+        if (!kind) continue; // unrecordable characteristic — nothing to serve
+        const data = await queryHistorySeries(store, sid, kind, from, to, maxPoints);
+        results.push({
+          accessoryId: ref.accessoryId,
+          characteristicType: row?.characteristicType ?? ref.characteristicType,
+          kind,
+          unit: row?.unit ?? profile?.unit ?? null,
+          resolution: data.resolution,
+          prevValue: data.prevValue,
+          prevValueText: data.prevValueText ?? null,
+          points: data.points.map(p => ({ ...p, __typename: 'HistoryPoint' })),
+          states: data.states.map(s => ({ ...s, valueText: s.valueText ?? null, __typename: 'HistoryStateSpan' })),
+          stateBuckets: data.stateBuckets.map(b => ({
+            ts: b.ts,
+            dominant: b.dominant,
+            dominantText: b.dominantText ?? null,
+            stateMsJson: JSON.stringify(b.stateMs),
+            transitions: b.transitions,
+            __typename: 'HistoryStateBucket',
+          })),
+          __typename: 'HistorySeriesData',
+        });
+      }
+      return { publicEntityHistory: results };
+    }
+
     case 'GetHistoryStorageStats': {
       const homeId = variables.homeId as string;
       const [{ getHistoryHomeConfigs }, stats] = await Promise.all([
@@ -1569,6 +1789,7 @@ async function resolveOperation(
           rollupRows: stats.rollupRows,
           estBytes,
           oldestTs: stats.oldestSampleTs,
+          sharedAnalyticsEnabled: config?.sharedAnalytics ?? false,
           __typename: 'HistoryStorageStats',
         },
       };
@@ -1581,8 +1802,24 @@ async function resolveOperation(
       await history.setHistoryHomeConfig(homeId, {
         enabled: variables.enabled as boolean,
         rawRetentionDays: existing?.rawRetentionDays ?? history.DEFAULT_RAW_RETENTION_DAYS,
+        // Carried, not defaulted: turning recording off must not silently
+        // discard a separate decision about sharing. The two are ANDed when
+        // read, so switching recording back on cannot re-publish by surprise.
+        sharedAnalytics: existing?.sharedAnalytics ?? false,
       });
       return { setHomeHistoryEnabled: true };
+    }
+
+    case 'SetHomeSharedAnalyticsEnabled': {
+      const history = await import('./local-history');
+      const homeId = variables.homeId as string;
+      const existing = (await history.getHistoryHomeConfigs())[homeId.toUpperCase()];
+      await history.setHistoryHomeConfig(homeId, {
+        enabled: existing?.enabled ?? false,
+        rawRetentionDays: existing?.rawRetentionDays ?? history.DEFAULT_RAW_RETENTION_DAYS,
+        sharedAnalytics: variables.enabled as boolean,
+      });
+      return { setHomeSharedAnalyticsEnabled: true };
     }
 
     case 'SetHistorySeriesConfig': {

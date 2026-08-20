@@ -37,6 +37,13 @@ export interface HistoryHomeConfig {
   enabled: boolean;
   /** Legacy field, no longer applied: history is kept indefinitely. */
   rawRetentionDays: number;
+  /**
+   * May public share links read this home's analytics? Optional so every blob
+   * written before the setting existed reads back as undefined — falsy, i.e.
+   * off — and no migration is needed. Governs reads only; recording is
+   * unaffected.
+   */
+  sharedAnalytics?: boolean;
 }
 
 export const DEFAULT_RAW_RETENTION_DAYS = 0;

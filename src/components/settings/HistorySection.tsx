@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react';
 import { Download, Loader2 } from 'lucide-react';
 import { GET_HISTORY_STORAGE_STATS, EXPORT_HISTORY } from '@/lib/graphql/queries';
-import { SET_HOME_HISTORY_ENABLED, PURGE_HISTORY } from '@/lib/graphql/mutations';
+import {
+  SET_HOME_HISTORY_ENABLED, SET_HOME_SHARED_ANALYTICS_ENABLED, PURGE_HISTORY,
+} from '@/lib/graphql/mutations';
 import { isCommunity } from '@/lib/config';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -25,7 +27,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function HomeHistorySettings({ home }: { home: { id: string; name: string } }) {
+export function HomeHistorySettings({
+  home, isAdmin = true,
+}: {
+  home: { id: string; name: string };
+  /**
+   * Both mutations here require home-admin server-side. The master toggle has
+   * always been admin-only and the UI simply never said so; a member with
+   * control rights got a switch that failed on click.
+   */
+  isAdmin?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -36,6 +48,7 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
   const stats = data?.historyStorageStats;
 
   const [setEnabled] = useMutation(SET_HOME_HISTORY_ENABLED);
+  const [setSharedAnalytics] = useMutation(SET_HOME_SHARED_ANALYTICS_ENABLED);
   const [purge] = useMutation(PURGE_HISTORY);
   const [exportHistory, { loading: exporting }] = useLazyQuery<{ exportHistory: string }>(EXPORT_HISTORY, {
     fetchPolicy: 'network-only',
@@ -100,12 +113,40 @@ export function HomeHistorySettings({ home }: { home: { id: string; name: string
             </div>
             <Switch
               checked={stats.enabled}
-              disabled={busy}
+              disabled={busy || !isAdmin}
               onCheckedChange={(checked) =>
                 run(() => setEnabled({ variables: { homeId: home.id, enabled: checked } }))
               }
             />
           </div>
+
+          {/*
+            Shown only while recording is on, and nested under it, because
+            there is nothing to share when nothing is being recorded — the
+            same reason Export and Delete live inside this branch. Turning
+            recording off does NOT clear this flag server-side: the two are
+            ANDed at read time, so switching recording back on cannot silently
+            re-publish, and a deliberate choice is not destroyed by an
+            unrelated one.
+          */}
+          {stats.enabled && (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="min-w-0">
+                <p className="text-sm">Analytics on shared links</p>
+                <p className="text-xs text-muted-foreground">
+                  Anyone with a share link for this home can open Analytics for
+                  what that link shows — nothing else. Off by default.
+                </p>
+              </div>
+              <Switch
+                checked={stats.sharedAnalyticsEnabled ?? false}
+                disabled={busy || !isAdmin}
+                onCheckedChange={(checked) =>
+                  run(() => setSharedAnalytics({ variables: { homeId: home.id, enabled: checked } }))
+                }
+              />
+            </div>
+          )}
 
           {stats.enabled && (
             <div className="flex items-center gap-2 pt-1">

@@ -1,9 +1,18 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@apollo/client/react';
-import { GET_PUBLIC_ENTITY } from '@/lib/graphql/queries';
-import type { SharedEntityData, GetPublicEntityResponse, BackgroundSettings } from '@/lib/graphql/types';
+import { GET_PUBLIC_ENTITY, GET_PUBLIC_ENTITY_ACCESSORIES } from '@/lib/graphql/queries';
+import { SharedHistoryProvider, type AnalyticsScope } from '@/contexts/HistoryContext';
+import { HistoryDialog, type HistoryTarget } from '@/components/widgets/HistoryDialog';
+import { useAnalyticsScope } from '@/components/home-analytics/scope';
+import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types';
+
+const AnalyticsContent = lazy(() => import('@/components/home-analytics/AnalyticsContent'));
+import type {
+  SharedEntityData, GetPublicEntityResponse, GetPublicEntityAccessoriesResponse,
+  BackgroundSettings,
+} from '@/lib/graphql/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -264,6 +273,56 @@ export default function SharedEntityPage() {
     setWsSubscribed(subscribed);
   }, []);
 
+  // --- Analytics, when the home's owner has opened it to share links -------
+  const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const analyticsNav = useAnalyticsScope();
+  const { setScope: analyticsGoTo } = analyticsNav;
+
+  // Only fetched once Analytics is opened. The shared views already issue this
+  // exact document with these exact variables, so in practice Apollo answers
+  // from cache and the dialog costs no extra round trip — and a viewer who
+  // never opens Analytics pays nothing at all.
+  const { data: sharedAccessoriesData } = useQuery<GetPublicEntityAccessoriesResponse>(
+    GET_PUBLIC_ENTITY_ACCESSORIES,
+    {
+      variables: { shareHash: hash, passcode: submittedPasscode },
+      skip: !hash || !analyticsOpen,
+    },
+  );
+
+  const sharedTopology = useMemo(() => {
+    const raw = sharedAccessoriesData?.publicEntityAccessories;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as {
+        accessories?: HomeKitAccessory[];
+        serviceGroups?: HomeKitServiceGroup[];
+      };
+      return {
+        accessories: parsed.accessories ?? [],
+        serviceGroups: parsed.serviceGroups ?? [],
+      };
+    } catch {
+      return null;
+    }
+  }, [sharedAccessoriesData]);
+
+  const openAnalyticsScoped = useCallback((scope: AnalyticsScope) => {
+    // The same scope→level mapping the dashboard uses, so a widget menu opens
+    // on the thing it was clicked from rather than on the overview.
+    if (scope.level === 'accessory') {
+      analyticsGoTo({ level: 'accessory', accessoryId: scope.accessory.id });
+    } else if (scope.level === 'group') {
+      analyticsGoTo({ level: 'group', groupId: scope.groupId });
+    } else if (scope.level === 'category') {
+      analyticsGoTo(scope.room ? { level: 'room', room: scope.room } : { level: 'home' });
+    } else {
+      analyticsGoTo({ level: 'home' });
+    }
+    setAnalyticsOpen(true);
+  }, [analyticsGoTo]);
+
   useEffect(() => {
     const check = () => {
       const macResult = checkIsInMacApp();
@@ -504,7 +563,25 @@ export default function SharedEntityPage() {
     />
   );
 
+  // The home this share belongs to. Accessories off the public document carry
+  // it; the entity itself does for a home share.
+  const sharedHomeId = entity.entityType === 'home'
+    ? entity.entityId
+    : (sharedTopology?.accessories.find(a => a.homeId)?.homeId ?? entity.homeId ?? null);
+
   return (
+    <SharedHistoryProvider
+      shareHash={hash!}
+      passcode={submittedPasscode}
+      homeId={sharedHomeId}
+      // The server's single answer: this home records AND its owner opened
+      // that to link holders. False — the default for every home — makes every
+      // analytics affordance on this page disappear, by the gate rather than
+      // by the absence of a provider.
+      enabled={!!entity.analyticsEnabled}
+      onOpenHistory={setHistoryTarget}
+      onOpenAnalytics={openAnalyticsScoped}
+    >
     <MainLayout
       headerContent={headerContent}
       headerBadge={statusBar}
@@ -589,5 +666,61 @@ export default function SharedEntityPage() {
         </Card>
       )}
     </MainLayout>
+
+    <HistoryDialog target={historyTarget} onClose={() => setHistoryTarget(null)} />
+
+    {/* Home Analytics, scoped to the share. Same frame as the dashboard's
+        dialog — two full-screen surfaces that sit differently read as two
+        different apps.
+
+        A dialog rather than a route: /s/:hash sits outside MainRoutes, and
+        /s/:hash/:action is already the share-control deep link, so
+        /s/:hash/analytics would be swallowed by it. */}
+    <Dialog open={analyticsOpen} onOpenChange={(open) => {
+      setAnalyticsOpen(open);
+      if (!open) analyticsGoTo({ level: 'home' });
+    }}>
+      <DialogContent
+        hideCloseButton
+        className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
+          isInMacApp
+            ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'
+            : 'sm:!max-w-[calc(100vw-48px)] sm:!w-[calc(100vw-48px)] sm:!rounded-2xl sm:!h-[calc(100dvh-48px)] sm:!max-h-[calc(100dvh-48px)]'
+        }`}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Analytics</DialogTitle>
+        </DialogHeader>
+        <div
+          className="flex-1 min-h-0 overflow-hidden"
+          style={{
+            paddingTop: 'calc(var(--safe-area-top, 0px) + 0.25rem)',
+            paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 1rem)',
+            paddingLeft: 'calc(var(--safe-area-left, 0px) + 1rem)',
+            paddingRight: 'calc(var(--safe-area-right, 0px) + 1rem)',
+          }}
+        >
+          {analyticsOpen && (
+            <Suspense fallback={<div className="h-[300px]" />}>
+              <AnalyticsContent
+                title="Analytics"
+                onClose={() => setAnalyticsOpen(false)}
+                homeId={sharedHomeId}
+                homeName={entity.entityName || 'Shared'}
+                // No `homes` and no `onSelectHome`: the tree renders a single
+                // root for the current home when the list is empty, so there
+                // is no switcher and no way out of the share. The server
+                // enforces the same boundary; this is the UI not offering it.
+                accessories={sharedTopology?.accessories ?? null}
+                serviceGroups={sharedTopology?.serviceGroups ?? null}
+                recordingEnabled={!!entity.analyticsEnabled}
+                nav={analyticsNav}
+              />
+            </Suspense>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </SharedHistoryProvider>
   );
 }

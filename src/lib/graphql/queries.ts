@@ -508,6 +508,7 @@ export const GET_PUBLIC_ENTITY = gql`
       requiresPasscode
       canUpgradeWithPasscode
       data
+      analyticsEnabled
     }
   }
 `;
@@ -1108,6 +1109,67 @@ export const GET_HISTORY = gql`
   }
 `;
 
+/**
+ * Analytics over a share link. Same fields as GET_HISTORY_SERIES / GET_HISTORY
+ * above — deliberately identical shapes, so the hooks swap the document and
+ * nothing further down knows which one answered.
+ *
+ * There is no public counterpart to ExportHistory, PurgeHistory or
+ * SetHistorySeriesConfig, and there should never be: the first dumps a whole
+ * home past the share's scope, and the other two are administration. A share
+ * hash is not an admin credential.
+ */
+export const GET_PUBLIC_ENTITY_HISTORY_SERIES = gql`
+  query GetPublicEntityHistorySeries($shareHash: String!, $passcode: String) {
+    publicEntityHistorySeries(shareHash: $shareHash, passcode: $passcode) {
+      accessoryId
+      characteristicType
+      kind
+      unit
+      enabled
+      minIntervalS
+      deadband
+      firstTs
+      lastTs
+      sampleCount
+    }
+  }
+`;
+
+export const GET_PUBLIC_ENTITY_HISTORY = gql`
+  query GetPublicEntityHistory($shareHash: String!, $series: [HistorySeriesRefInput!]!, $fromTs: Float!, $toTs: Float!, $passcode: String, $maxPoints: Int) {
+    publicEntityHistory(shareHash: $shareHash, series: $series, fromTs: $fromTs, toTs: $toTs, passcode: $passcode, maxPoints: $maxPoints) {
+      accessoryId
+      characteristicType
+      kind
+      unit
+      resolution
+      prevValue
+      prevValueText
+      points {
+        ts
+        min
+        avg
+        max
+        last
+        count
+      }
+      states {
+        ts
+        value
+        valueText
+      }
+      stateBuckets {
+        ts
+        dominant
+        dominantText
+        stateMsJson
+        transitions
+      }
+    }
+  }
+`;
+
 export const GET_HISTORY_STORAGE_STATS = gql`
   query GetHistoryStorageStats($homeId: String!) {
     historyStorageStats(homeId: $homeId) {
@@ -1118,6 +1180,7 @@ export const GET_HISTORY_STORAGE_STATS = gql`
       rollupRows
       estBytes
       oldestTs
+      sharedAnalyticsEnabled
     }
   }
 `;

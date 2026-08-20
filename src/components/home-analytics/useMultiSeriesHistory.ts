@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApolloClient } from '@apollo/client/react';
-import { GET_HISTORY } from '@/lib/graphql/queries';
+import { GET_HISTORY, GET_PUBLIC_ENTITY_HISTORY } from '@/lib/graphql/queries';
+import { useHistory } from '@/contexts/HistoryContext';
 import { mockHistoryData } from '@/history/mock';
 import type { HistorySeriesData, HistorySeriesRefInput } from '@/lib/graphql/types';
 
@@ -31,6 +32,8 @@ export function useMultiSeriesHistory(
   opts?: { maxPoints?: number; enabled?: boolean },
 ) {
   const client = useApolloClient();
+  const { transport } = useHistory();
+  const shared = transport?.kind === 'share' ? transport : null;
   const [data, setData] = useState<Map<string, MultiSeriesEntry>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +47,9 @@ export function useMultiSeriesHistory(
 
   useEffect(() => {
     // A per-ref home is enough on its own — the hook-level one is the default,
-    // not a requirement.
-    const anyHome = homeId || refs.some(r => r.homeId);
+    // not a requirement. A share needs neither: the hash names the scope, and
+    // a shared accessory does not always arrive carrying a homeId.
+    const anyHome = shared || homeId || refs.some(r => r.homeId);
     if (!enabled || !anyHome || refs.length === 0) {
       setData(new Map());
       return;
@@ -56,9 +60,13 @@ export function useMultiSeriesHistory(
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
       // Group by home first — GetHistory takes one home — then into the
       // 6-ref wire batches. The homeId never travels in the variables.
+      //
+      // A share never spans homes (the hash names one entity), so in share
+      // mode the per-ref home is dropped and everything batches together; the
+      // chunk's homeId is then unused by the query variables.
       const byHome = new Map<string, HistorySeriesRefInput[]>();
       for (const ref of refs) {
-        const home = ref.homeId ?? homeId;
+        const home = shared ? '@share' : (ref.homeId ?? homeId);
         if (!home) continue;
         const list = byHome.get(home) ?? [];
         list.push({ accessoryId: ref.accessoryId, characteristicType: ref.characteristicType });
@@ -83,12 +91,20 @@ export function useMultiSeriesHistory(
           const index = next++;
           if (index >= chunks.length || cancelled) return;
           const chunk = chunks[index];
-          const result = await client.query<{ history: HistorySeriesData[] }>({
-            query: GET_HISTORY,
-            variables: { homeId: chunk.homeId, series: chunk.refs, fromTs: from, toTs: to, maxPoints },
+          const result = await client.query<{
+            history?: HistorySeriesData[];
+            publicEntityHistory?: HistorySeriesData[];
+          }>({
+            query: shared ? GET_PUBLIC_ENTITY_HISTORY : GET_HISTORY,
+            variables: shared
+              ? {
+                  shareHash: shared.shareHash, passcode: shared.passcode ?? null,
+                  series: chunk.refs, fromTs: from, toTs: to, maxPoints,
+                }
+              : { homeId: chunk.homeId, series: chunk.refs, fromTs: from, toTs: to, maxPoints },
             fetchPolicy: 'network-only',
           });
-          out.push(...(result.data?.history ?? []));
+          out.push(...(result.data?.publicEntityHistory ?? result.data?.history ?? []));
           done += chunk.refs.length;
           if (!cancelled) setProgress(p => ({ ...p, done: Math.min(done, p.total) }));
         }
@@ -118,7 +134,8 @@ export function useMultiSeriesHistory(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, homeId, refsKey, fromTs, toTs, mock, client, retryNonce, maxPoints]);
+  }, [enabled, homeId, refsKey, fromTs, toTs, mock, client, retryNonce, maxPoints,
+      shared?.shareHash, shared?.passcode]);
 
   return { data, loading, error, progress, retry: () => setRetryNonce(n => n + 1) };
 }

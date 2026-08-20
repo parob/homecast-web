@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
-import { GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES } from '@/lib/graphql/queries';
+import {
+  GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES, GET_PUBLIC_ENTITY_HISTORY_SERIES,
+} from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
 import { useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
@@ -78,7 +80,7 @@ interface HistoryDialogProps {
 
 
 export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialogProps) {
-  const { openAnalytics } = useHistory();
+  const { openAnalytics, transport, analyticsAvailable } = useHistory();
   const [rangeMs, setRangeMs] = useState<number>(24 * 3_600_000);
   const [showAll, setShowAll] = useState(false);
   useEffect(() => { setShowAll(false); }, [target]);
@@ -110,20 +112,38 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
     [recordable, target],
   );
 
+  // Both queries below are authenticated. On a share page there is no session,
+  // so they must not merely fail quietly — they must not be issued. The share
+  // already knows whether analytics is available (the server told it once, in
+  // publicEntity.analyticsEnabled) and its series listing has a public
+  // document of its own.
+  const shared = transport?.kind === 'share' ? transport : null;
+
   const { data: statsData } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
     GET_HISTORY_STORAGE_STATS,
-    { variables: { homeId: target?.homeId }, skip: !target || mock },
+    { variables: { homeId: target?.homeId }, skip: !target || mock || !!shared },
   );
-  const historyEnabled = mock || (statsData?.historyStorageStats?.enabled ?? true);
+  const historyEnabled = mock
+    ? true
+    : shared
+      ? analyticsAvailable
+      : (statsData?.historyStorageStats?.enabled ?? true);
 
   // Group mode needs the home's recorded-series listing for member lookup.
-  const { data: recordedData } = useQuery<{ historySeries: HistorySeriesInfo[] }>(GET_HISTORY_SERIES, {
-    variables: { homeId: target?.homeId },
+  const { data: recordedData } = useQuery<{
+    historySeries?: HistorySeriesInfo[];
+    publicEntityHistorySeries?: HistorySeriesInfo[];
+  }>(shared ? GET_PUBLIC_ENTITY_HISTORY_SERIES : GET_HISTORY_SERIES, {
+    variables: shared
+      ? { shareHash: shared.shareHash, passcode: shared.passcode ?? null }
+      : { homeId: target?.homeId },
     skip: !target?.group || mock || !historyEnabled,
     fetchPolicy: 'cache-and-network',
   });
   const recorded = useMemo<HistorySeriesInfo[]>(
-    () => (mock ? mockRecordedSeries() : (recordedData?.historySeries ?? [])),
+    () => (mock
+      ? mockRecordedSeries()
+      : (recordedData?.publicEntityHistorySeries ?? recordedData?.historySeries ?? [])),
     [mock, recordedData],
   );
 

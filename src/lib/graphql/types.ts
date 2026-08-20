@@ -801,6 +801,13 @@ export interface SharedEntityData {
   isOwner: boolean;  // True if the authenticated user owns this entity
   homeId?: string | null;  // For room/accessory/group entities, the parent home ID
   data?: string | null;  // JSON string with entity-specific data
+  // May this viewer open Analytics? The home records AND its owner published
+  // that to link holders. Optional so an older server (which does not send it)
+  // reads as off rather than undefined-and-truthy-looking.
+  // NB: isOwner and homeId above are declared here but exist in neither the
+  // Python dataclass nor GET_PUBLIC_ENTITY, so they are always undefined.
+  // analyticsEnabled is wired in all three places — do not follow their lead.
+  analyticsEnabled?: boolean;
 }
 
 export interface CreateEntityAccessResult {
@@ -2484,6 +2491,8 @@ export interface HistoryStorageStatsData {
   rollupRows: number;
   estBytes: number;
   oldestTs: number | null;
+  /** May public share links read this home's analytics? Off by default. */
+  sharedAnalyticsEnabled: boolean;
 }
 
 export interface HistorySeriesRefInput {

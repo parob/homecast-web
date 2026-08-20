@@ -29,6 +29,21 @@ export type AnalyticsScope = (
   homeId?: string;
 };
 
+/**
+ * Where Analytics reads its history from.
+ *
+ * `null` means the authenticated documents, which is every signed-in surface.
+ * A share link has no session — the hash is the whole credential — so it reads
+ * through the `publicEntity*` documents instead. Putting this on the context
+ * rather than threading a prop keeps the two analytics hooks as the only code
+ * that knows there is more than one transport at all.
+ */
+export interface AnalyticsTransport {
+  kind: 'share';
+  shareHash: string;
+  passcode?: string | null;
+}
+
 interface HistoryContextValue {
   /**
    * The selected home. Accessories off the wire do not always carry a
@@ -55,6 +70,8 @@ interface HistoryContextValue {
   openStatusHistory: (homeId: string, status: StatusHistoryScope) => void;
   /** Open Home Analytics, scoped. Defaults to the overview. */
   openAnalytics: (scope?: AnalyticsScope) => void;
+  /** Which documents the analytics hooks should use. null = authenticated. */
+  transport: AnalyticsTransport | null;
 }
 
 const HistoryContext = createContext<HistoryContextValue>({
@@ -66,6 +83,7 @@ const HistoryContext = createContext<HistoryContextValue>({
   openGroupHistory: () => {},
   openStatusHistory: () => {},
   openAnalytics: () => {},
+  transport: null,
 });
 
 interface HistoryProviderProps {
@@ -171,8 +189,112 @@ export function HistoryProvider({
       defaultHomeId: homeId,
       historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor,
       openHistory, openGroupHistory, openStatusHistory, openAnalytics,
+      transport: null,
     }),
     [homeId, historyAvailable, enabled, analyticsAvailableFor, openHistory, openGroupHistory, openStatusHistory, openAnalytics],
+  );
+
+  return (
+    <HistoryContext.Provider value={value}>
+      {children}
+    </HistoryContext.Provider>
+  );
+}
+
+interface SharedHistoryProviderProps {
+  /** The share this page was opened with — the whole credential. */
+  shareHash: string;
+  passcode?: string | null;
+  /** The shared entity's home, for the popup's per-home queries. */
+  homeId: string | null;
+  /**
+   * `publicEntity.analyticsEnabled` — the home records AND its owner chose to
+   * publish that to link holders. One boolean, because a link holder has no
+   * remedy for either half and telling them apart would leak whether a home
+   * records at all.
+   */
+  enabled: boolean;
+  onOpenHistory?: (target: HistoryTarget) => void;
+  onOpenAnalytics?: (scope: AnalyticsScope) => void;
+  children: React.ReactNode;
+}
+
+/**
+ * The Analytics gate for a public share page.
+ *
+ * A second provider rather than a mode flag on HistoryProvider, for one
+ * structural reason: HistoryProvider polls GET_HISTORY_STORAGE_STATS, an
+ * authenticated query, every five minutes. On an anonymous page that must not
+ * merely be skipped — it must be absent, so no future edit can reintroduce it
+ * behind a condition. This provider simply has no query in it.
+ *
+ * It writes the SAME context, which is the point. Until now a shared page had
+ * no provider at all, so `useHistory()` fell through to the module default and
+ * every affordance vanished — correct behaviour that nobody had decided and no
+ * test covered. Every consumer (WidgetCard's context menu and expanded-panel
+ * button, ServiceGroupWidget's, AreaSummary's status chart, HistoryDialog's
+ * "Open in Analytics") now reads a real answer, and anything added later
+ * inherits the gate without being touched.
+ */
+export function SharedHistoryProvider({
+  shareHash, passcode, homeId, enabled, onOpenHistory, onOpenAnalytics, children,
+}: SharedHistoryProviderProps) {
+  const analyticsAvailableFor = useCallback(
+    // Not per-home: a share names one home, and `enabled` was computed for it
+    // server-side. Accepting any id and answering the same thing keeps the
+    // shape identical to HistoryProvider's for every consumer.
+    (_forHomeId: string | undefined | null) => enabled,
+    [enabled],
+  );
+
+  const historyAvailable = useCallback((accessory: HomeKitAccessory) => {
+    if (!enabled) return false;
+    return getRecordableCharacteristics(accessory).length > 0;
+  }, [enabled]);
+
+  // Each opener re-checks `enabled` rather than trusting that it was never
+  // rendered: a callback captured before the flag changed must not still open
+  // a surface the owner has since closed.
+  const openHistory = useCallback((accessory: HomeKitAccessory) => {
+    if (!enabled || !onOpenHistory) return;
+    const target = accessory.homeId ?? homeId;
+    if (!target) return;
+    onOpenHistory({ homeId: target, accessory });
+  }, [enabled, homeId, onOpenHistory]);
+
+  const openGroupHistory = useCallback((group: HomeKitServiceGroup) => {
+    if (!enabled || !onOpenHistory) return;
+    const groupHomeId = group.homeId ?? homeId;
+    if (!groupHomeId) return;
+    onOpenHistory({
+      homeId: groupHomeId,
+      group: { id: group.id, name: group.name, memberIds: group.accessoryIds },
+    });
+  }, [enabled, homeId, onOpenHistory]);
+
+  const openStatusHistory = useCallback((statusHomeId: string, status: StatusHistoryScope) => {
+    if (!enabled || !onOpenHistory || status.categories.length === 0) return;
+    onOpenHistory({ homeId: statusHomeId, status });
+  }, [enabled, onOpenHistory]);
+
+  const openAnalytics = useCallback((scope?: AnalyticsScope) => {
+    if (!enabled) return;
+    onOpenAnalytics?.(scope ?? { level: 'home' });
+  }, [enabled, onOpenAnalytics]);
+
+  const value = useMemo(
+    () => ({
+      defaultHomeId: homeId,
+      historyAvailable,
+      analyticsAvailable: enabled,
+      analyticsAvailableFor,
+      openHistory, openGroupHistory, openStatusHistory, openAnalytics,
+      // No transport while the gate is shut, so a stray query cannot be built
+      // from it either.
+      transport: enabled ? { kind: 'share' as const, shareHash, passcode } : null,
+    }),
+    [homeId, historyAvailable, enabled, analyticsAvailableFor, openHistory,
+     openGroupHistory, openStatusHistory, openAnalytics, shareHash, passcode],
   );
 
   return (

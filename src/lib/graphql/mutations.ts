@@ -1050,6 +1050,13 @@ export const SET_HOME_HISTORY_ENABLED = gql`
   }
 `;
 
+/** Admin-only, like the recording toggle: it widens who can read the data. */
+export const SET_HOME_SHARED_ANALYTICS_ENABLED = gql`
+  mutation SetHomeSharedAnalyticsEnabled($homeId: String!, $enabled: Boolean!) {
+    setHomeSharedAnalyticsEnabled(homeId: $homeId, enabled: $enabled)
+  }
+`;
+
 export const SET_HISTORY_SERIES_CONFIG = gql`
   mutation SetHistorySeriesConfig($homeId: String!, $accessoryId: String!, $characteristicType: String!, $enabled: Boolean, $minIntervalS: Int, $deadband: Float) {
     setHistorySeriesConfig(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType, enabled: $enabled, minIntervalS: $minIntervalS, deadband: $deadband)

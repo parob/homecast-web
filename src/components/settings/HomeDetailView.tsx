@@ -89,7 +89,7 @@ export function HomeDetailView({
       case 'reliability':
         return isCommunity ? null : <UptimeSection homeId={home.id} />;
       case 'analytics':
-        return <HomeHistorySettings home={home} />;
+        return <HomeHistorySettings home={home} isAdmin={isAdmin} />;
       case 'mqtt':
         return (
           <HomeMQTTSection
