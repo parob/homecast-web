@@ -115,3 +115,26 @@ describe('rangeLabel', () => {
     expect(rangeLabel({ kind: 'relative', seconds: 90 })).toBe('Last 2m');
   });
 });
+
+describe('resolveRange snaps a relative window', () => {
+  it('lands both edges on the tick grid so a repeat is recognisable', () => {
+    const a = resolveRange({ kind: 'relative', seconds: 3600 }, 1_700_000_000_123);
+    const b = resolveRange({ kind: 'relative', seconds: 3600 }, 1_700_000_001_987);
+    // Two renders 1.8s apart ask the identical question.
+    expect(a).toEqual(b);
+    expect(a.endMs % 2000).toBe(0);
+    expect(a.endMs - a.startMs).toBe(3600 * 1000);
+  });
+
+  it('still advances once the grid moves on', () => {
+    const a = resolveRange({ kind: 'relative', seconds: 60 }, 1_700_000_000_000);
+    const b = resolveRange({ kind: 'relative', seconds: 60 }, 1_700_000_002_000);
+    expect(b.endMs).toBe(a.endMs + 2000);
+  });
+
+  it('leaves an absolute window exactly as given — it is already precise', () => {
+    const r = resolveRange({ kind: 'absolute', startMs: 1_700_000_000_123, endMs: 1_700_000_001_987 });
+    expect(r.startMs).toBe(1_700_000_000_123);
+    expect(r.endMs).toBe(1_700_000_001_987);
+  });
+});

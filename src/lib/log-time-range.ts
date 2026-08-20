@@ -51,6 +51,9 @@ export const DEFAULT_RANGE: TimeRange = { kind: 'relative', seconds: 3600 };
  */
 export const MAX_LOOKBACK_SECONDS = 2592000;
 
+/** The grid a relative window's edges land on. Matches the live tail's tick. */
+const SNAP_MS = 2000;
+
 export function resolveRange(range: TimeRange, now = Date.now()): ResolvedRange {
   if (range.kind === 'absolute') {
     const startMs = Math.min(range.startMs, range.endMs);
@@ -58,8 +61,14 @@ export function resolveRange(range: TimeRange, now = Date.now()): ResolvedRange 
     return { startMs, endMs, startIso: iso(startMs), endIso: iso(endMs) };
   }
   const seconds = Math.min(range.seconds, MAX_LOOKBACK_SECONDS);
-  const startMs = now - seconds * 1000;
-  return { startMs, endMs: now, startIso: iso(startMs), endIso: iso(now) };
+  // Snapped to a whole tick, not to the millisecond. The window is inlined into
+  // the SQL, so a `now` that moves every render makes every query unique and
+  // nothing downstream can ever recognise a repeat — not the server's result
+  // cache, not two admins watching the same tail, not the two workers in a pod.
+  // Rounding costs at most one tick of freshness on a view that re-asks anyway.
+  const endMs = Math.floor(now / SNAP_MS) * SNAP_MS;
+  const startMs = endMs - seconds * 1000;
+  return { startMs, endMs, startIso: iso(startMs), endIso: iso(endMs) };
 }
 
 function iso(ms: number): string {
