@@ -208,6 +208,8 @@ export function MobileTabBar({
   const suppressClickRef = useRef(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
+  /** The last glyph each accessory pin actually resolved to. */
+  const iconMemoRef = useRef(new Map<string, LucideIcon>());
   /** Stops an in-flight centring when a second press starts another. */
   const cancelCentreRef = useRef<() => void>(() => {});
   /** Whether the row is wider than the bar, and which ends have more beyond them. */
@@ -329,7 +331,27 @@ export function MobileTabBar({
       // Keyed, not derived: the tab has to draw itself before the home's
       // accessories have loaded, and deriving would leave it blank until then.
       case 'action': return HOME_ACTION_TAB_ICONS[tab.id as HomeActionId] ?? Zap;
-      case 'accessory': return getAccessoryIcon(resolveAccessory(tab));
+      // Remembered, not just derived.
+      //
+      // `getAccessoryIcon` answers CircleDot for an accessory it cannot see,
+      // and switching home empties the list for a moment while the new one
+      // loads — so a pinned accessory blinked into a plain circle and back
+      // every time you changed home. Its glyph has not changed; the data
+      // describing it went away and came back.
+      //
+      // Same reasoning as HOME_ACTION_TAB_ICONS being keyed rather than
+      // derived: a tab has to draw itself before the home's accessories have
+      // arrived, and deriving alone leaves it wrong until they do.
+      case 'accessory': {
+        const accessory = resolveAccessory(tab);
+        const key = pinKey(tab);
+        if (accessory) {
+          const icon = getAccessoryIcon(accessory);
+          iconMemoRef.current.set(key, icon);
+          return icon;
+        }
+        return iconMemoRef.current.get(key) ?? getAccessoryIcon(undefined);
+      }
       case 'serviceGroup': return Layers;
     }
   };

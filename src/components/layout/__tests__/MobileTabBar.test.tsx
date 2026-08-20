@@ -1079,3 +1079,44 @@ describe('centring the last pin as it grows', () => {
     expect(el.scrollLeft).toBeGreaterThan(first);
   });
 });
+
+/**
+ * A pinned accessory keeps its glyph across a home change.
+ *
+ * `getAccessoryIcon` answers CircleDot for an accessory it cannot see, and
+ * switching home empties the list for a moment while the new one loads — so the
+ * pin blinked into a plain circle and back every time. Its glyph has not
+ * changed; the data describing it went away and came back.
+ */
+describe('a pinned accessory while the data reloads', () => {
+  const glyph = () =>
+    screen.getByRole('button', { name: /Lamp/ }).querySelector('svg')?.getAttribute('class') ?? '';
+
+  it('holds the glyph it had while the accessory is briefly unresolvable', () => {
+    const lamp = { id: 'ACC-1', services: [{ serviceType: 'lightbulb' }] };
+    let resolved: unknown = lamp;
+    const bar = () => (
+      <MobileTabBar
+        pinnedTabs={[TABS.accessory]}
+        selectedHomeId={null} selectedRoomId={null}
+        selectedCollectionId={null} selectedCollectionGroupId={null}
+        onSelectHome={vi.fn()} onSelectRoom={vi.fn()}
+        onSelectCollection={vi.fn()} onSelectCollectionGroup={vi.fn()}
+        onActivate={vi.fn().mockResolvedValue(undefined)}
+        renderControl={() => <div />}
+        resolveStatus={() => 'ready' as PinnedTabStatus}
+        resolveAccessory={() => resolved as never}
+      />
+    );
+    const { rerender } = render(bar());
+
+    const before = glyph();
+    expect(before).not.toContain('circle-dot');
+
+    // The home changed: the list is empty until the new one lands.
+    resolved = undefined;
+    rerender(bar());
+
+    expect(glyph()).toBe(before);
+  });
+});
