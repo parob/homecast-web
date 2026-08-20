@@ -502,6 +502,20 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     : anchoredTop;
   const top = Math.max(8, Math.min(anchoredTop, Math.max(8, lowestTop)));
 
+  /**
+   * How tall the panel may be before it has to scroll.
+   *
+   * `top` is clamped to stay on screen, but nothing clamped the height — so a
+   * panel taller than the room above `bottomInset` simply ran past it. From the
+   * pinned tab bar that put its bottom edge under the bar, which is painted
+   * above it, and a tap meant for the widget pressed a tab instead. It showed
+   * on service groups and shortcuts because their cards are tall; an accessory
+   * panel was never long enough to reach.
+   */
+  const maxPanelHeight = viewportH
+    ? Math.max(160, viewportH - top - PADDING * 2 - 8 - bottomInset)
+    : undefined;
+
   const transformOrigin = position === 'left'
     ? 'top left'
     : position === 'right'
@@ -599,7 +613,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                     ? 'scale-100'
                     : 'scale-[0.82]'
                 }`}
-                style={{ transformOrigin, width: effectiveWidth }}
+                style={{ transformOrigin, width: effectiveWidth, maxHeight: maxPanelHeight }}
                 onClick={(e) => {
                   if (e.target === e.currentTarget) {
                     e.stopPropagation();
@@ -614,9 +628,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                   ready && !isClosing ? 'opacity-100' : 'opacity-0'
                 }`} />
                 {/* Content layer - no opacity animation to preserve backdrop-blur */}
-                <div className={`relative transition-opacity duration-fast ease-standard ${
-                  ready && !isClosing ? 'opacity-100' : 'opacity-0'
-                }`}>
+                <div
+                  // Scrolls rather than overflowing: whatever it holds, the
+                  // panel stops where `bottomInset` says it must.
+                  className={`relative overflow-y-auto scrollbar-hidden transition-opacity duration-fast ease-standard ${
+                    ready && !isClosing ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  style={{ maxHeight: maxPanelHeight }}
+                >
                   {/* Nested overlays inherit the elevation rather than dropping
                       back to the dashboard default — a group expanded inside a
                       dialog would otherwise send its per-accessory overlay

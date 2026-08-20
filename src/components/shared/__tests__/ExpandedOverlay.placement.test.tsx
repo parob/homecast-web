@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { render, act, cleanup } from '@testing-library/react';
 import React from 'react';
 import { ExpandedOverlay } from '../ExpandedOverlay';
 
@@ -111,5 +111,59 @@ describe('a centred panel', () => {
     expect(centredLeftFor(-60)).toBeCloseTo(expected, 0);
     expect(centredLeftFor(340)).toBeCloseTo(expected, 0);
     expect(centredLeftFor(120)).toBeCloseTo(expected, 0);
+  });
+});
+
+/**
+ * A panel never runs past the space it was given at the bottom.
+ *
+ * `top` was clamped to keep the panel on screen but nothing clamped its height,
+ * so a tall one simply ran past `bottomInset`. Opened from the pinned tab bar
+ * that put its bottom edge under the bar — which is painted above it — and a
+ * tap meant for the widget pressed a tab instead. It showed on service groups
+ * and shortcuts because their cards are tall; an accessory panel was never long
+ * enough to reach.
+ */
+describe('a panel taller than the room above the bar', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+  });
+
+  const panelFor = (bottomInset: number) => {
+    const { container } = render(
+      <div>
+        <ExpandedOverlay isExpanded onClose={vi.fn()} bottomInset={bottomInset} centred>
+          <div>content</div>
+        </ExpandedOverlay>
+      </div>,
+    );
+    const trigger = container.querySelector<HTMLElement>('.hidden')!.parentElement!;
+    trigger.getBoundingClientRect = () => ({
+      left: 40, right: 180, top: 700, bottom: 744,
+      x: 40, y: 700, width: 140, height: 44, toJSON: () => ({}),
+    }) as DOMRect;
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    const outer = document.body.querySelector<HTMLElement>('[data-expandable-widget]')!;
+    const inner = outer.querySelector<HTMLElement>('[style*="max-height"]');
+    return { outer, inner };
+  };
+
+  it('caps its height so the bottom of it clears the bar', () => {
+    const { outer, inner } = panelFor(140);
+    const top = parseFloat(outer.style.top);
+    const cap = parseFloat(inner!.style.maxHeight);
+
+    expect(cap).toBeGreaterThan(0);
+    // Bottom edge = top + height + the wrapper's own 10px ring, and it must
+    // land above the reserved strip.
+    expect(top + cap).toBeLessThanOrEqual(844 - 140);
+  });
+
+  it('leaves more room when less is reserved', () => {
+    const tight = parseFloat(panelFor(300).inner!.style.maxHeight);
+    cleanup();
+    const roomy = parseFloat(panelFor(100).inner!.style.maxHeight);
+    expect(roomy).toBeGreaterThan(tight);
   });
 });
