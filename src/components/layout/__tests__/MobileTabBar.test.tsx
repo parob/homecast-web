@@ -624,14 +624,31 @@ describe('scroll fades', () => {
 describe('centring the pressed tab', () => {
   const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
 
-  /** Five 100px chips in a 300px window. Centre of chip n is n*100 + 50. */
+  /**
+   * 100px chips in a window `clientWidth` wide; chip n starts at n*100 in the
+   * row, so its centre is n*100 + 50.
+   *
+   * Stubbed through `getBoundingClientRect`, which is what the code reads —
+   * and reads for a reason. `offsetLeft` is measured from the offsetParent,
+   * and every chip's is its own `TabSlot` wrapper (`position: relative`, so it
+   * can anchor the unpin badge), so `offsetLeft` is about zero for all of them.
+   * Stubbing that instead let a version through that never moved the bar.
+   */
   const layOut = (clientWidth = 300) => {
     const el = scroller();
     Object.defineProperty(el, 'clientWidth', { value: clientWidth, configurable: true });
     Object.defineProperty(el, 'scrollWidth', { value: 500, configurable: true });
+    el.getBoundingClientRect = () => ({
+      left: 0, right: clientWidth, top: 0, bottom: 44,
+      x: 0, y: 0, width: clientWidth, height: 44, toJSON: () => ({}),
+    }) as DOMRect;
     el.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
-      Object.defineProperty(chip, 'offsetLeft', { value: n * 100, configurable: true });
-      Object.defineProperty(chip, 'offsetWidth', { value: 100, configurable: true });
+      // Scroll-aware, like a real rect: the row slides under the window.
+      chip.getBoundingClientRect = () => {
+        const left = n * 100 - el.scrollLeft;
+        return { left, right: left + 100, top: 0, bottom: 44,
+          x: left, y: 0, width: 100, height: 44, toJSON: () => ({}) } as DOMRect;
+      };
     });
     return el;
   };

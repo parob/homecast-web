@@ -315,8 +315,16 @@ export function MobileTabBar({
     const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
       .find(n => n.dataset.tabKey === key);
     if (!chip) return;
+    // Measured, not `offsetLeft`. Every chip sits in a `TabSlot`, which is
+    // `position: relative` so it can anchor the unpin badge — which makes it
+    // the chip's offsetParent, so `offsetLeft` is the chip's position inside
+    // its own wrapper: about zero, for all of them. The target came out at 0
+    // every time and the bar never moved.
+    const chipBox = chip.getBoundingClientRect();
+    const elBox = el.getBoundingClientRect();
+    const centreWithinRow = el.scrollLeft + (chipBox.left - elBox.left) + chipBox.width / 2;
     const target = Math.max(0, Math.min(
-      chip.offsetLeft + chip.offsetWidth / 2 - el.clientWidth / 2,
+      centreWithinRow - el.clientWidth / 2,
       el.scrollWidth - el.clientWidth,
     ));
     cancelCentreRef.current();
