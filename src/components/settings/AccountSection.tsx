@@ -71,6 +71,7 @@ async function communityGraphQL(operationName: string, variables: Record<string,
       operationName,
       variables,
       authorization: token ? `Bearer ${token}` : undefined,
+      local: true,   // relay Mac, in-process — see isRelayCapable() above
     });
   }
   const resp = await fetch(config.graphqlUrl, {

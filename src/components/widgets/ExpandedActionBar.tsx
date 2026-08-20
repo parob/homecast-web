@@ -1,8 +1,8 @@
-import { LineChart, Pencil, Share2, Tag } from 'lucide-react';
+import { LineChart, Pencil, Pin, PinOff, Share2, Tag } from 'lucide-react';
 
 /**
  * The action row in an expanded widget panel: small round icon buttons in
- * the corner — analytics, prices, edit, share — rather than a full-width bar
+ * the corner — analytics, prices, edit, share, pin — rather than a full-width bar
  * or a header icon.
  *
  * A header icon competed with the widget's own control for the top-right
@@ -17,7 +17,7 @@ import { LineChart, Pencil, Share2, Tag } from 'lucide-react';
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'prices' | 'edit' | 'share';
+  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin';
   label: string;
   onClick: () => void;
 }
@@ -25,11 +25,17 @@ export interface ExpandedAction {
 // `prices` takes the same Tag as the context menu's Price & Deals item — the
 // cluster and the menu offer the same actions and should be recognisable as
 // each other.
+// `pin`/`unpin` moved here when touch lost its context menus: pinning to the tab
+// bar was a menu item, and Edit Layout's badge is the only other route. The
+// expanded panel is where a person is already studying the accessory, so it is
+// where the rest of the menu's actions went too.
 const ICONS = {
   analytics: LineChart,
   prices: Tag,
   edit: Pencil,
   share: Share2,
+  pin: Pin,
+  unpin: PinOff,
 } as const;
 
 export default function ExpandedActionBar({

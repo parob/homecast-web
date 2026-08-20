@@ -15,6 +15,13 @@ const DragHandleContext = createContext<DragHandleContextType | null>(null);
 export const useDragHandle = () => useContext(DragHandleContext);
 
 // Sortable wrapper for cards - used by both Dashboard and CollectionDetail
+//
+// Both branches carry `data-draggable-item`, on the element that owns the drag,
+// so a press can be told apart from a press on the page behind it. The
+// background long-press (lib/long-press.ts) needs to know "is there a tile under
+// this finger?" and had nothing to ask: sidebar rows have `data-sortable-id`,
+// but a grid tile rendered nothing but a bare div. A marker beats matching class
+// names, which change whenever the layout does.
 export interface SortableItemProps {
   id: string;
   children: React.ReactNode;
@@ -53,13 +60,13 @@ export const SortableItem: React.FC<SortableItemProps> = memo(({ id, children, d
 
   // When disabled, just render without drag functionality
   if (disabled) {
-    return <div ref={setNodeRef} style={style}>{children}</div>;
+    return <div ref={setNodeRef} style={style} data-draggable-item="">{children}</div>;
   }
 
   // Provide drag handle context so children (WidgetCard) can apply listeners to specific areas
   return (
     <DragHandleContext.Provider value={contextValue}>
-      <div ref={setNodeRef} style={style}>
+      <div ref={setNodeRef} style={style} data-draggable-item="">
         {children}
       </div>
     </DragHandleContext.Provider>

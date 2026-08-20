@@ -495,6 +495,22 @@ export function MobileTabBar({
     // Read now, synchronously: React clears currentTarget once dispatch ends,
     // and every listener below outlives this handler.
     const bar = e.currentTarget;
+
+    /*
+     * Only presses that actually landed on the bar.
+     *
+     * A pin's control panel is rendered by this component and portalled to the
+     * body — but React dispatches through the component tree, not the DOM one,
+     * so a pointerdown anywhere inside that panel arrives here as though it had
+     * been made on the bar. The slide then tracked a finger that was working a
+     * slider, and on release picked whichever chip its x had ended up over:
+     * the panel closed and something behind it changed. A tap survived it,
+     * which is why the toggle looked fine and only the sliders did not.
+     *
+     * The portalled panel is not a DOM descendant of the bar, so `contains`
+     * separates the two cleanly.
+     */
+    if (!(e.target instanceof Node) || !bar.contains(e.target)) return;
     const start = nearestKey(bar, e.clientX);
     if (!start) return; // Nothing pinned to aim at.
     setDragKey(start);

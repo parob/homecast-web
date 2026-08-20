@@ -209,7 +209,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         const { handleGraphQL } = await import('@/server/local-graphql');
         // handleGraphQL is typed Promise<unknown> — it answers every operation,
         // so it has no single return shape. Narrow at the call site.
-        const res = await handleGraphQL({ operationName: 'GetRelayName', variables: {} }) as
+        const res = await handleGraphQL({ operationName: 'GetRelayName', variables: {}, local: true }) as
           { data?: { relayName?: string } } | null;
         if (!cancelled) setRelayName(res?.data?.relayName || '');
       } catch { /* leave blank; the relay falls back to its hostname */ }
@@ -224,7 +224,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       // us, so Bonjour TXT and /health change without a restart. A rename
       // nobody else can see is worse than no rename at all.
       const { handleGraphQL } = await import('@/server/local-graphql');
-      await handleGraphQL({ operationName: 'SetRelayName', variables: { name: trimmed } });
+      await handleGraphQL({ operationName: 'SetRelayName', variables: { name: trimmed }, local: true });
       setRelayNameSaved(true);
       setTimeout(() => setRelayNameSaved(false), 2000);
     } catch { /* the field keeps what was typed; nothing else to undo */ }

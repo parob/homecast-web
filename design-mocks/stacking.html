@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8"><title>stacking</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;font:13px -apple-system,system-ui,sans-serif;background:#111;color:#fff}
+  .screen{position:relative;width:340px;height:260px;overflow:hidden;margin:14px;display:inline-block;
+    background:linear-gradient(160deg,#1e3a5f,#2d5a87 40%,#d98f6b);vertical-align:top;border-radius:14px}
+  .lab{position:absolute;top:6px;left:8px;z-index:99999;font-size:11px;background:rgba(0,0,0,.6);
+    padding:3px 7px;border-radius:6px}
+  /* The app root. `isolation:isolate` is one of the many things that makes a
+     stacking context — a transform or a backdrop-filter ancestor does too. */
+  .app{position:absolute;inset:0}
+  .app.ctx{isolation:isolate}
+  .bar{position:absolute;left:0;right:0;bottom:10px;z-index:10001;display:flex;justify-content:center}
+  .pill{display:flex;gap:6px;padding:6px;border-radius:9999px;background:rgba(0,0,0,.4);
+    backdrop-filter:blur(14px) saturate(150%)}
+  .chip{background:#3b82f6;color:#fff;padding:8px 14px;border-radius:9999px;font-weight:600}
+  .chip.dim{background:transparent;color:rgba(255,255,255,.75)}
+  .scrim{position:absolute;inset:0;z-index:9990;background:rgba(0,0,0,.30);
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  pre{color:#9ae6b4;font:11px ui-monospace,Menlo,monospace;margin:0 14px}
+</style>
+<div class="screen" id="a"><span class="lab">bar INSIDE a stacking context</span>
+  <div class="app ctx"><div class="bar"><div class="pill">
+    <div class="chip">Annex Lights</div><div class="chip dim">Home</div></div></div></div>
+  <div class="scrim"></div></div>
+<div class="screen" id="b"><span class="lab">bar as a body-level sibling</span>
+  <div class="app"><!-- nothing --></div>
+  <div class="scrim"></div>
+  <div class="bar"><div class="pill">
+    <div class="chip">Annex Lights</div><div class="chip dim">Home</div></div></div></div>
+<pre id="out"></pre>
+<script>
+addEventListener('load',()=>{
+  const rows=[];
+  for(const id of ['a','b']){
+    const s=document.getElementById(id);
+    const chip=s.querySelector('.chip'), scrim=s.querySelector('.scrim');
+    // Which one is painted on top at the chip's centre?
+    const r=chip.getBoundingClientRect();
+    const top=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2);
+    rows.push(`${id}: topmost at the chip = ${top===scrim?'THE SCRIM (chip is blurred)':top.className||top.tagName}`);
+  }
+  document.getElementById('out').textContent=rows.join('\n');
+});
+</script>

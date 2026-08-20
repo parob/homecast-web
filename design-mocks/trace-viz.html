@@ -1,0 +1,1195 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trace visualisation — 24 options</title>
+<style>
+  :root{
+    --bg:#fff; --fg:#0f172a; --mut:#64748b; --line:#e2e8f0; --card:#fff;
+    --pri:#2563eb; --warn:#f59e0b; --bad:#dc2626; --ok:#16a34a; --soft:#f8fafc;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0b1120; --fg:#e2e8f0; --mut:#94a3b8; --line:#1e293b; --card:#0f172a;
+           --pri:#3b82f6; --soft:#0d1526; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .num{font-variant-numeric:tabular-nums}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);
+         border-bottom:1px solid var(--line);padding:14px 24px}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:12px}
+  .picker{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .picker button{font:inherit;font-size:12px;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+  .picker button[aria-pressed=true]{background:var(--pri);border-color:var(--pri);color:#fff}
+  .picker b{font-weight:600}
+  .picker small{opacity:.75;margin-left:6px}
+  main{padding:24px;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+  .card>h2{font-size:13px;margin:0;padding:11px 16px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:10px;background:var(--soft)}
+  .card>h2 .n{color:var(--mut);font-weight:600;font-size:11px;min-width:18px}
+  .card>h2 .why{font-weight:400;color:var(--mut);font-size:11.5px;margin-left:auto;text-align:right;max-width:58%}
+  .body{padding:16px;overflow-x:auto}
+  .verdict{border-top:1px solid var(--line);padding:8px 16px;font-size:11.5px;color:var(--mut);
+    display:flex;gap:18px;flex-wrap:wrap;background:var(--soft)}
+  .verdict b{color:var(--fg);font-weight:600}
+  .chip{display:inline-block;padding:1px 6px;border-radius:5px;background:var(--soft);
+    border:1px solid var(--line);font-size:11px}
+  .bad{color:var(--bad)} .warn{color:var(--warn)} .ok{color:var(--ok)} .mut{color:var(--mut)}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  td,th{padding:3px 8px;text-align:left;vertical-align:top}
+  th{color:var(--mut);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr+tr td{border-top:1px solid var(--line)}
+</style>
+
+<header>
+  <h1>Trace visualisation — 24 options</h1>
+  <div class="sub">Every option below renders the <b>same real production trace</b>. Switch traces to see which designs survive.</div>
+  <div class="picker" id="picker"></div>
+</header>
+<main id="out"></main>
+
+<script src="trace-viz-data.js"></script>
+<script>
+// ---------------------------------------------------------------- helpers
+const fmt = (ms) => ms == null ? '—'
+  : ms < 1000 ? Math.round(ms) + 'ms'
+  : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const isErr = (e) => !!e.e || e.sev === 'ERROR';
+const isWarn = (e) => e.sev === 'WARNING';
+
+/** Who each event happens on, and (for a message) who it travels between. */
+const POD = (e) => 'pod ' + (e.i || '?');
+function arrowOf(e) {
+  switch (e.n) {
+    case 'server_received': return ['client', POD(e)];
+    case 'response_sent':   return [POD(e), 'client'];
+    case 'relay_sent':      return [POD(e), 'relay'];
+    case 'relay_response':  return ['relay', POD(e)];
+    case 'route_decision':  return [POD(e), POD(e)];
+    default:
+      if (/internal\/route/.test(e.m)) return ['pod 5hdrz', 'pod x6tb9'];
+      return [POD(e), POD(e)];
+  }
+}
+function lanes(tr) {
+  const seen = [];
+  const add = (x) => { if (x && !seen.includes(x)) seen.push(x); };
+  add('client');
+  tr.events.forEach((e) => { const [a, b] = arrowOf(e); add(a); add(b); });
+  add('relay');
+  const order = ['client', 'pod 5hdrz', 'pod x6tb9', 'relay'];
+  return seen.sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+}
+
+/** The intervals between events, which is where the time actually is. */
+function phases(tr) {
+  const out = [];
+  const label = (prev) => {
+    if (!prev) return 'before the first log line';
+    switch (prev.n) {
+      case 'server_received': return 'auth, home lookup, routing decision';
+      case 'route_decision':  return 'handing off to the owning pod';
+      case 'relay_sent':      return 'waiting for the relay Mac';
+      case 'relay_response':  return 'building and sending the reply';
+      default: return 'in ' + (prev.n || prev.s);
+    }
+  };
+  for (let i = 0; i < tr.events.length - 1; i++) {
+    const a = tr.events[i], b = tr.events[i + 1];
+    const ms = b.t - a.t;
+    if (ms <= 0) continue;
+    out.push({ from: a, to: b, ms, at: a.t, label: label(a) });
+  }
+  return out;
+}
+/** A burst carries many logical calls under one id. This is the honest unit. */
+function calls(tr) {
+  const by = new Map();
+  tr.events.forEach((e) => {
+    if (!e.call) return;
+    const k = e.call + '#' + (by.get(e.call + '#open') ?? '');
+    const list = by.get(e.call) ?? [];
+    list.push(e); by.set(e.call, list);
+  });
+  const rows = [];
+  const open = new Map();
+  tr.events.forEach((e) => {
+    if (e.n === 'relay_sent' && e.call) {
+      const r = { call: e.call, sent: e.t, back: null, ms: null };
+      rows.push(r);
+      const q = open.get(e.call) ?? []; q.push(r); open.set(e.call, q);
+    }
+    if (e.n === 'relay_response' && e.call) {
+      const q = open.get(e.call) ?? [];
+      const r = q.shift();
+      if (r) { r.back = e.t; r.ms = e.l ?? (e.t - r.sent); }
+    }
+  });
+  return rows;
+}
+
+
+/**
+ * The time axis, which is the real enemy.
+ *
+ * No linear scale can show a 36ms span and a 30s stall in the same picture —
+ * one of them is a hairline. Elision keeps every event where it belongs in
+ * ORDER and in relative size, but squashes any interval big enough to dominate
+ * down to a fixed sliver marked with what it cost. You lose true proportion and
+ * gain the ability to see structure. It is a toggle because both are sometimes
+ * what you want.
+ */
+function makeScale(tr, elide) {
+  const total = tr.totalMs || 1;
+  if (!elide) return { x: (t) => Math.max(0, Math.min(1, t / total)), cuts: [], elided: false };
+  const times = [...new Set(tr.events.map((e) => e.t))].sort((a, b) => a - b);
+  const THRESH = Math.max(400, total * 0.06);
+  const segs = [];
+  let prev = 0;
+  for (const t of times) {
+    const real = t - prev;
+    if (real > 0) segs.push({ t0: prev, t1: t, real, big: real > THRESH });
+    prev = t;
+  }
+  if (!segs.length) return { x: () => 0, cuts: [], elided: false };
+  segs.forEach((sg) => { sg.disp = sg.big ? THRESH * 0.12 : sg.real; });
+  let acc = 0;
+  segs.forEach((sg) => { sg.d0 = acc; acc += sg.disp; sg.d1 = acc; });
+  const dt = acc || 1;
+  const x = (t) => {
+    if (t <= 0) return 0;
+    for (const sg of segs) {
+      if (t <= sg.t1) { const f = sg.real ? (t - sg.t0) / sg.real : 1; return (sg.d0 + f * sg.disp) / dt; }
+    }
+    return 1;
+  };
+  return { x, cuts: segs.filter((sg) => sg.big).map((sg) => ({ a: sg.d0 / dt, b: sg.d1 / dt, ms: sg.real })), elided: true };
+}
+
+/** Which machine is responsible during an interval. */
+function ownerOf(prev) {
+  if (!prev) return 'client';
+  switch (prev.n) {
+    case 'server_received': return 'pod ' + (prev.i || '?');
+    case 'route_decision':  return 'pod ' + (prev.i || '?');
+    case 'relay_sent':      return 'relay';
+    case 'relay_response':  return 'pod ' + (prev.i || '?');
+    case 'response_sent':   return 'client';
+    default: return 'pod ' + (prev.i || '?');
+  }
+}
+const LANE_COL = { 'client': '#8b5cf6', 'pod 5hdrz': 'var(--pri)', 'pod x6tb9': '#0891b2', 'relay': '#f59e0b' };
+const colOf = (lane) => LANE_COL[lane] || 'var(--mut)';
+
+
+/** Consecutive intervals merged by whoever held the request. */
+function batons(tr) {
+  const out = [];
+  for (const p of phases(tr)) {
+    const lane = ownerOf(p.from);
+    const last = out[out.length - 1];
+    if (last && last.lane === lane) { last.ms += p.ms; last.to = p.at + p.ms; last.n++; }
+    else out.push({ lane, at: p.at, to: p.at + p.ms, ms: p.ms, n: 1 });
+  }
+  return out;
+}
+
+/** Call depth, so the sequence relationship can be indentation instead of a lane. */
+function nested(tr) {
+  let d = 0;
+  return phases(tr).map((p) => {
+    const n = p.from.n; let cur = d;
+    if (n === 'server_received') { cur = 0; d = 1; }
+    else if (n === 'route_decision') { cur = d; d = Math.min(d + 1, 3); }
+    else if (n === 'relay_sent') { cur = d; d = Math.min(d + 1, 4); }
+    else if (n === 'relay_response') { d = Math.max(0, d - 1); cur = d; }
+    else if (n === 'response_sent') { cur = 0; d = 0; }
+    return { ...p, depth: cur };
+  });
+}
+
+/** Request/response pairs — the exchanges whose flight time a ladder can slope. */
+function exchanges(tr) {
+  const out = [], open = [];
+  for (const e of tr.events) {
+    if (e.n === 'relay_sent') open.push({ send: e, key: e.call || tr.action });
+    if (e.n === 'relay_response') {
+      const i = open.findIndex((o) => o.key === (e.call || tr.action));
+      const o = i >= 0 ? open.splice(i, 1)[0] : open.shift();
+      if (o) out.push({ key: o.key, t0: o.send.t, t1: e.t, ms: e.l ?? e.t - o.send.t, err: e.e, from: 'pod ' + (o.send.i || '?'), to: 'relay' });
+    }
+  }
+  open.forEach((o) => out.push({ key: o.key, t0: o.send.t, t1: null, ms: null, err: 'never answered', from: 'pod ' + (o.send.i || '?'), to: 'relay' }));
+  return out;
+}
+
+/** The repeating unit: one per retry attempt, or one per call in a burst. */
+function units(tr) {
+  if (tr.events.some((e) => e.call)) {
+    const map = new Map();
+    for (const e of tr.events) {
+      if (!e.call) continue;
+      const k = e.call + '·' + (e.n === 'relay_response' ? 'r' : 's');
+      void k;
+    }
+    const ex = exchanges(tr);
+    return ex.map((x, i) => ({ label: x.key, i, t0: x.t0, ms: x.ms, err: x.err }));
+  }
+  const decs = tr.events.filter((e) => e.n === 'route_decision');
+  if (decs.length > 1) {
+    return decs.map((d, i) => {
+      const next = decs[i + 1];
+      const end = next ? next.t : tr.totalMs;
+      return { label: 'attempt ' + (i + 1), i, t0: d.t, ms: end - d.t, err: i === decs.length - 1 ? (tr.events.find((e) => e.n === 'response_sent')?.e) : 'worker busy' };
+    });
+  }
+  const rs = tr.events.find((e) => e.n === 'response_sent');
+  return [{ label: tr.action, i: 0, t0: 0, ms: tr.totalMs, err: rs?.e }];
+}
+
+
+/** Lowest sub-row where an interval does not overlap — lets one lane show concurrency. */
+function pack(items) {
+  const rows = [];
+  for (const it of items) {
+    let r = rows.findIndex((row) => row[row.length - 1].end <= it.at);
+    if (r < 0) { rows.push([it]); it.row = rows.length - 1; }
+    else { rows[r].push(it); it.row = r; }
+  }
+  return Math.max(1, rows.length);
+}
+/** One gutter width, so a route strip and a row list can share an X axis exactly. */
+const GUT = 258;
+
+// ---------------------------------------------------------------- designs
+const DESIGNS = [];
+const D = (title, why, good, bad, render) => DESIGNS.push({ title, why, good, bad, render });
+
+/* 1 ------------------------------------------------------------- waterfall */
+D('Waterfall', 'Spans as bars on one time axis — the Chrome DevTools / Jaeger primitive.',
+  'Time is the layout, so a 30s stall is 30s wide. Scales to 88 spans.',
+  'Says nothing about <em>where</em> code ran.',
+  (tr) => {
+    const ph = phases(tr), max = tr.totalMs || 1, sc = makeScale(tr, ELIDE);
+    return `<div style="display:flex;flex-direction:column;gap:2px">` + ph.map((p) => {
+      const left = sc.x(p.at) * 100, w = Math.max(0.6, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+      const hot = p.ms > max * 0.25;
+      return `<div style="display:flex;align-items:center;gap:10px;font-size:11.5px">
+        <span class="mono mut" style="width:190px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span>
+        <span style="position:relative;flex:1;height:15px;background:var(--soft);border-radius:3px">
+          <span style="position:absolute;top:2px;bottom:2px;left:${left}%;width:${w}%;border-radius:3px;
+            background:${hot ? 'var(--bad)' : 'var(--pri)'}"></span>
+        </span>
+        <span class="mono num ${hot ? 'bad' : 'mut'}" style="width:62px;flex:none;text-align:right">${fmt(p.ms)}</span>
+      </div>`;
+    }).join('') + `</div>`;
+  });
+
+/* 2 ------------------------------------------------------- sequence diagram */
+D('Sequence diagram', 'Vertical lifelines per machine; every span is an arrow between two of them.',
+  'Shows the cross-pod hop and repeated attempts as literal repetition.',
+  'Gets tall fast; 25 arrows is a lot of scrolling.',
+  (tr) => {
+    const L = lanes(tr), W = 190;
+    const head = L.map((l) => `<div class="mono" style="width:${W}px;flex:none;text-align:center;font-size:11px;
+        padding:4px 0;border:1px solid var(--line);border-radius:6px;background:var(--soft)">${esc(l)}</div>`).join('');
+    const rows = tr.events.map((e) => {
+      const [a, b] = arrowOf(e);
+      const ia = L.indexOf(a), ib = L.indexOf(b);
+      const lo = Math.min(ia, ib), hi = Math.max(ia, ib);
+      const col = isErr(e) ? 'var(--bad)' : isWarn(e) ? 'var(--warn)' : 'var(--pri)';
+      const self = ia === ib;
+      const bar = self
+        ? `<span style="position:absolute;left:${ia * W + W / 2 - 22}px;width:44px;height:0;border-top:1.5px dashed ${col}"></span>`
+        : `<span style="position:absolute;left:${lo * W + W / 2}px;width:${(hi - lo) * W}px;height:0;border-top:1.5px solid ${col}"></span>
+           <span style="position:absolute;left:${(ib > ia ? hi * W + W / 2 - 5 : lo * W + W / 2)}px;color:${col};top:-9px">${ib > ia ? '▶' : '◀'}</span>`;
+      return `<div style="position:relative;height:26px">
+        ${L.map((_, i) => `<span style="position:absolute;left:${i * W + W / 2}px;top:-4px;bottom:-4px;width:1px;background:var(--line)"></span>`).join('')}
+        ${bar}
+        <span class="mono" style="position:absolute;left:${lo * W + W / 2 + 8}px;top:-15px;font-size:10.5px;color:${col};
+          background:var(--card);padding:0 4px">${esc(e.n || e.s)}${e.l != null ? ' · ' + fmt(e.l) : ''}</span>
+        <span class="mono num mut" style="position:absolute;right:0;top:2px;font-size:10.5px">+${fmt(e.t)}</span>
+      </div>`;
+    }).join('');
+    return `<div style="min-width:${L.length * W + 70}px">
+      <div style="display:flex;margin-bottom:12px">${head}</div>${rows}</div>`;
+  });
+
+/* 3 --------------------------------------------------------- one time budget */
+D('Time budget', 'One bar, 100% wide, segmented by where the time went.',
+  'Answers “what dominated?” before you read anything.',
+  'Order only; no sense of who talked to whom.',
+  (tr) => {
+    const ph = phases(tr).slice().sort((a, b) => b.ms - a.ms);
+    const total = ph.reduce((n, p) => n + p.ms, 0) || 1;
+    const cols = ['var(--bad)', 'var(--warn)', 'var(--pri)', '#8b5cf6', '#0891b2', '#64748b'];
+    return `<div style="display:flex;height:30px;border-radius:6px;overflow:hidden;margin-bottom:12px">` +
+      ph.map((p, i) => `<span title="${esc(p.label)} — ${fmt(p.ms)}"
+        style="width:${(p.ms / total) * 100}%;background:${cols[Math.min(i, cols.length - 1)]}"></span>`).join('') +
+      `</div><table>` + ph.map((p, i) => `<tr>
+        <td style="width:14px"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;
+          background:${cols[Math.min(i, cols.length - 1)]}"></span></td>
+        <td>${esc(p.label)}</td>
+        <td class="mono num" style="text-align:right;width:70px">${fmt(p.ms)}</td>
+        <td class="mono num mut" style="text-align:right;width:52px">${((p.ms / total) * 100).toFixed(0)}%</td>
+      </tr>`).join('') + `</table>`;
+  });
+
+/* 4 ----------------------------------------------------------- typed log */
+D('Typed event log', 'No diagram at all. The spans, well set, with a delta column.',
+  'Fastest to scan, never distorts, identical at 8 or 88 spans.',
+  'You have to read it — nothing is visible at a glance.',
+  (tr) => `<table><tr><th>at</th><th>+Δ</th><th>span</th><th>where</th><th>message</th></tr>` +
+    tr.events.map((e, i) => {
+      const d = i ? e.t - tr.events[i - 1].t : 0;
+      const big = d > (tr.totalMs || 1) * 0.2;
+      return `<tr${isErr(e) ? ' style="background:color-mix(in srgb,var(--bad) 8%,transparent)"' : ''}>
+        <td class="mono num mut" style="width:64px">${fmt(e.t)}</td>
+        <td class="mono num ${big ? 'bad' : 'mut'}" style="width:60px">${d ? '+' + fmt(d) : ''}</td>
+        <td class="mono" style="width:130px;color:${isErr(e) ? 'var(--bad)' : 'inherit'}">${esc(e.n || '·')}</td>
+        <td class="mono mut" style="width:74px">${esc(e.i || '')}</td>
+        <td>${esc(e.m)}</td></tr>`;
+    }).join('') + `</table>`);
+
+/* 5 ------------------------------------------------------------- narrative */
+D('Narrative', 'The trace written out as English, generated from the spans.',
+  'Needs no training. Explains a failure in one sentence.',
+  'Every new failure mode needs new prose written for it.',
+  (tr) => {
+    const g = (n) => tr.events.find((e) => e.n === n);
+    const rd = g('route_decision'), rr = g('relay_response'), rs = g('response_sent');
+    const attempts = tr.events.filter((e) => e.n === 'route_decision').length;
+    const sent = tr.events.filter((e) => e.n === 'relay_sent').length;
+    const back = tr.events.filter((e) => e.n === 'relay_response').length;
+    const C = (s) => `<span class="chip mono">${esc(s)}</span>`;
+    let p = [];
+    if (tr.id.startsWith('06cef7ff')) {
+      p.push(`This is not one request. A relay ${C('mac_8ca2d5a2')} reconnected and registered ${C('3 homes')},
+        and the server fanned out ${C(sent + ' calls')} across them over ${C(fmt(tr.totalMs))}.`);
+      p.push(`<b class="bad">${back} of ${sent} came back.</b> The other ${sent - back} were sent and never answered —
+        no error was logged for any of them.`);
+    } else {
+      p.push(`A ${C('web')} client asked for ${C(tr.action)}. Pod ${C(g('server_received')?.i)} took it
+        ${rd ? `and decided the relay's socket lived on pod ${C('x6tb9')}, so it forwarded the call` : ''}.`);
+      if (attempts > 1) p.push(`It then tried <b class="bad">${attempts} times</b>, roughly 5 seconds apart —
+        each attempt found the owning worker still busy with the previous one.`);
+      if (rr?.e === 'TIMEOUT') p.push(`The relay never answered. After ${C('30.0s')} the wait was abandoned
+        ${tr.id.startsWith('2c1d') ? `— and that timeout landed <b class="bad">8.2s after the client had already been given an error</b>.` : '.'}`);
+      if (rs?.e) p.push(`The client got <b class="bad">${esc(rs.e)}</b> after ${C(fmt(rs.l))}.`);
+      else if (rs) p.push(`The client got its answer after ${C(fmt(rs.l))}, of which ${C(fmt(rr?.l))} was the relay round trip.`);
+    }
+    return p.map((s) => `<p style="margin:0 0 10px;max-width:70ch;line-height:1.65">${s}</p>`).join('');
+  });
+
+/* 6 ------------------------------------------------------------ gaps first */
+D('Gaps first', 'Ranks the intervals by size and shows nothing else.',
+  'The 30s stall is the headline instead of a subtle stretch of axis.',
+  'Discards order entirely.',
+  (tr) => {
+    const ph = phases(tr).slice().sort((a, b) => b.ms - a.ms).slice(0, 6);
+    const max = ph[0]?.ms || 1;
+    return ph.map((p, i) => `<div style="display:flex;align-items:center;gap:12px;padding:6px 0;
+        ${i ? 'border-top:1px solid var(--line)' : ''}">
+      <span class="mono num" style="width:74px;flex:none;font-size:${i ? 13 : 19}px;
+        color:${i ? 'var(--fg)' : 'var(--bad)'};font-weight:${i ? 400 : 600}">${fmt(p.ms)}</span>
+      <span style="flex:1">
+        <div style="font-size:12.5px">${esc(p.label)}</div>
+        <div style="height:5px;border-radius:3px;margin-top:4px;background:var(--soft)">
+          <span style="display:block;height:5px;border-radius:3px;width:${(p.ms / max) * 100}%;
+            background:${i ? 'var(--pri)' : 'var(--bad)'}"></span></div>
+      </span>
+      <span class="mono num mut" style="width:60px;flex:none;text-align:right;font-size:11px">at +${fmt(p.at)}</span>
+    </div>`).join('');
+  });
+
+/* 7 ------------------------------------------------------------- vs normal */
+D('Compared to normal', 'This trace against the usual shape of the same action.',
+  'The only option that answers “is this actually bad?”.',
+  'Needs a baseline the backend does not compute yet.',
+  (tr) => {
+    const base = { 'auth, home lookup, routing decision': 22, 'handing off to the owning pod': 7,
+      'waiting for the relay Mac': 38, 'building and sending the reply': 4 };
+    const ph = phases(tr);
+    const rows = Object.keys(base).map((k) => {
+      const mine = ph.filter((p) => p.label === k).reduce((n, p) => n + p.ms, 0);
+      const norm = base[k], ratio = norm ? mine / norm : 1;
+      const off = mine && ratio > 2;
+      return `<tr><td style="width:44%">${esc(k)}</td>
+        <td class="mono num" style="width:74px;text-align:right;color:${off ? 'var(--bad)' : 'inherit'}">${mine ? fmt(mine) : '—'}</td>
+        <td class="mono num mut" style="width:74px;text-align:right">${fmt(norm)}</td>
+        <td style="padding-left:14px"><span style="display:inline-block;height:7px;border-radius:4px;
+          width:${Math.min(100, ratio * 12)}%;min-width:3px;background:${off ? 'var(--bad)' : 'var(--ok)'}"></span>
+          <span class="mono num" style="font-size:11px;margin-left:6px;color:${off ? 'var(--bad)' : 'var(--mut)'}">
+          ${mine ? (ratio >= 1 ? (ratio > 50 ? '&gt;50× slower' : ratio.toFixed(1) + '× slower')
+                                : (1 / ratio).toFixed(1) + '× faster') : ''}</span></td></tr>`;
+    }).join('');
+    return `<table><tr><th>phase</th><th style="text-align:right">this</th>
+      <th style="text-align:right">typical</th><th style="padding-left:14px">vs typical</th></tr>${rows}</table>
+      <p class="mut" style="font-size:11.5px;margin:12px 0 0">“Typical” is the p50 for
+      <span class="mono">${esc(tr.action)}</span> over the last hour. Not computed today — this is the shape it would take.</p>`;
+  });
+
+/* 8 ------------------------------------------------------------- swimlanes */
+D('Swimlanes', 'A lane per machine, time across. Place and time in one picture.',
+  'Shows two pods working at once, which every serial view hides.',
+  'Mostly empty when only one machine is involved.',
+  (tr) => {
+    const L = lanes(tr), max = tr.totalMs || 1;
+    return L.map((lane) => {
+      const mine = tr.events.filter((e) => { const [a, b] = arrowOf(e); return a === lane || b === lane; });
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+        <span class="mono mut" style="width:96px;flex:none;font-size:11px">${esc(lane)}</span>
+        <span style="position:relative;flex:1;height:24px;background:var(--soft);border-radius:4px">
+          ${mine.map((e) => `<span title="${esc(e.n || e.s)} +${fmt(e.t)}"
+            style="position:absolute;left:${(e.t / max) * 100}%;top:4px;width:6px;height:16px;margin-left:-3px;
+            border-radius:2px;background:${isErr(e) ? 'var(--bad)' : isWarn(e) ? 'var(--warn)' : 'var(--pri)'}"></span>`).join('')}
+        </span></div>`;
+    }).join('') + `<div style="display:flex;gap:10px;margin-top:8px">
+      <span style="width:96px;flex:none"></span>
+      <span class="mono num mut" style="flex:1;display:flex;justify-content:space-between;font-size:10.5px">
+        <span>0</span><span>${fmt(max / 2)}</span><span>${fmt(max)}</span></span></div>`;
+  });
+
+/* 9 --------------------------------------------------------- state machine */
+D('Lifecycle', 'The request as states, with the path it took drawn bold.',
+  'A retry loop is a literal loop. Where it died is a position, not a colour.',
+  'Fixed vocabulary — a new state means a code change.',
+  (tr) => {
+    const S = ['received', 'routed', 'sent to relay', 'awaiting relay', 'answered'];
+    const decisions = tr.events.filter((e) => e.n === 'route_decision');
+    // Repeats of the SAME call are retries. Repeats of different calls are a
+    // burst, and calling those "attempts" would be a straight lie.
+    const distinct = new Set(decisions.map((e) => e.call || tr.action)).size;
+    const attempts = distinct === 1 ? decisions.length : 1;
+    const fanout = distinct > 1 ? decisions.length : 0;
+    const died = tr.events.find((e) => e.e && e.n === 'response_sent');
+    const stopAt = died ? 3 : 4;
+    return `<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">` + S.map((s, i) => {
+      const on = i <= stopAt, end = died && i === stopAt;
+      return `${i ? `<span style="width:34px;height:0;border-top:2px ${on ? 'solid' : 'dashed'};
+          border-color:${on ? 'var(--pri)' : 'var(--line)'}"></span>` : ''}
+        <span style="padding:7px 13px;border-radius:8px;font-size:12px;
+          border:1.5px solid ${end ? 'var(--bad)' : on ? 'var(--pri)' : 'var(--line)'};
+          background:${end ? 'color-mix(in srgb,var(--bad) 12%,transparent)' : on ? 'color-mix(in srgb,var(--pri) 10%,transparent)' : 'transparent'};
+          color:${end ? 'var(--bad)' : on ? 'var(--fg)' : 'var(--mut)'}">${esc(s)}</span>`;
+    }).join('') + `</div>` +
+    (attempts > 1 ? `<div style="margin-top:14px;padding:9px 12px;border:1px solid var(--bad);border-radius:8px;
+        background:color-mix(in srgb,var(--bad) 8%,transparent);font-size:12.5px">
+        ↻ <b>routed → sent</b> repeated <b class="bad">${attempts}×</b>, ~5s apart, each time finding the owning worker busy</div>` : '') +
+    (fanout ? `<div style="margin-top:14px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
+        background:var(--soft);font-size:12.5px">
+        ⑂ Not one request — <b>${fanout}</b> separate calls ran this lifecycle concurrently.
+        A single path cannot describe them, which is this design's limit.</div>` : '') +
+    (died ? `<div style="margin-top:10px;font-size:12.5px">Stopped at <b>awaiting relay</b> with
+        <span class="chip mono bad">${esc(died.e)}</span> after ${fmt(died.l)}</div>` : '');
+  });
+
+/* 10 ------------------------------------------------------------- requests */
+D('Requests, not spans', 'Treats a trace as the N calls it contains, one row each.',
+  'The only option that is honest about a burst: it counts what never came back.',
+  'Collapses a single request to one uninformative row.',
+  (tr) => {
+    const rows = calls(tr);
+    if (!rows.length) {
+      const rr = tr.events.find((e) => e.n === 'relay_response');
+      const rs = tr.events.find((e) => e.n === 'response_sent');
+      return `<table><tr><th>call</th><th>sent</th><th>back</th><th>result</th></tr>
+        <tr><td class="mono">${esc(tr.action)}</td>
+        <td class="mono num mut">+${fmt(tr.events.find((e) => e.n === 'relay_sent')?.t)}</td>
+        <td class="mono num mut">${rr && !rr.e ? '+' + fmt(rr.t) : '<span class="bad">never</span>'}</td>
+        <td class="mono ${rs?.e ? 'bad' : 'ok'}">${esc(rs?.e || 'ok · ' + fmt(rs?.l))}</td></tr></table>`;
+    }
+    const lost = rows.filter((r) => r.back == null).length;
+    return `<div style="display:flex;gap:22px;margin-bottom:12px;font-size:12.5px">
+        <span><b class="mono num" style="font-size:19px">${rows.length}</b> <span class="mut">sent</span></span>
+        <span><b class="mono num ok" style="font-size:19px">${rows.length - lost}</b> <span class="mut">answered</span></span>
+        <span><b class="mono num bad" style="font-size:19px">${lost}</b> <span class="mut">never came back</span></span>
+      </div><table><tr><th>call</th><th>sent</th><th>back</th><th>took</th></tr>` +
+      rows.map((r) => `<tr><td class="mono">${esc(r.call)}</td>
+        <td class="mono num mut" style="width:70px">+${fmt(r.sent)}</td>
+        <td class="mono num ${r.back == null ? 'bad' : 'mut'}" style="width:80px">${r.back == null ? 'never' : '+' + fmt(r.back)}</td>
+        <td class="mono num" style="width:70px">${r.ms == null ? '<span class="bad">—</span>' : fmt(r.ms)}</td></tr>`).join('') +
+      `</table>`;
+  });
+
+
+// ============================================================ 1 + 2 combined
+// Waterfall says WHEN and HOW LONG. Sequence says WHO and TO WHOM. They fight
+// over the time axis, so there are exactly three honest merges: put time on Y
+// and lanes on X, put time on X and lanes in the rows, or keep two views and
+// link them. One of each.
+
+/* 11 --------------------------- time on Y: activation boxes, drawn to scale */
+D('① Activation sequence <span class="mut">(1+2, time on Y)</span>',
+  'A sequence diagram whose vertical axis is real time. Bars are who was busy; arrows are handoffs.',
+  'Topology and duration in one picture, no second view to correlate.',
+  'A 30s wait is 30s of vertical space, so it needs the elide toggle to stay readable.',
+  (tr) => {
+    const L = lanes(tr), W = 168, H = 460;
+    const sc = makeScale(tr, ELIDE);
+    const ph = phases(tr);
+    const head = L.map((l) => `<div class="mono" style="width:${W}px;flex:none;text-align:center;font-size:11px;
+        padding:4px 0;border:1px solid ${colOf(l)};color:${colOf(l)};border-radius:6px">${esc(l)}</div>`).join('');
+    const rails = L.map((_, i) => `<span style="position:absolute;left:${i * W + W / 2}px;top:0;height:${H}px;
+        width:1px;background:var(--line)"></span>`).join('');
+    // A bar per interval, in the lane that was busy for it.
+    const bars = ph.map((p) => {
+      const lane = ownerOf(p.from); const i = L.indexOf(lane);
+      if (i < 0) return '';
+      const y0 = sc.x(p.at) * H, y1 = sc.x(p.at + p.ms) * H;
+      const h = Math.max(3, y1 - y0);
+      return `<span title="${esc(lane)} — ${esc(p.label)} — ${fmt(p.ms)}"
+        style="position:absolute;left:${i * W + W / 2 - 6}px;top:${y0}px;width:12px;height:${h}px;
+        border-radius:3px;background:${colOf(lane)};opacity:.85"></span>
+        ${h > 16 ? `<span class="mono num" style="position:absolute;left:${i * W + W / 2 + 11}px;top:${y0 + h / 2 - 7}px;
+          font-size:10px;color:${colOf(lane)}">${fmt(p.ms)}</span>` : ''}`;
+    }).join('');
+    const arrows = tr.events.map((e) => {
+      const [a, b] = arrowOf(e); const ia = L.indexOf(a), ib = L.indexOf(b);
+      if (ia < 0 || ib < 0 || ia === ib) return '';
+      const y = sc.x(e.t) * H, lo = Math.min(ia, ib), hi = Math.max(ia, ib);
+      const col = isErr(e) ? 'var(--bad)' : isWarn(e) ? 'var(--warn)' : 'var(--mut)';
+      return `<span style="position:absolute;left:${lo * W + W / 2}px;top:${y}px;width:${(hi - lo) * W}px;
+          height:0;border-top:1.5px solid ${col}"></span>
+        <span style="position:absolute;left:${(ib > ia ? hi * W + W / 2 - 5 : lo * W + W / 2 - 1)}px;top:${y - 8}px;
+          color:${col};font-size:11px">${ib > ia ? '▶' : '◀'}</span>
+        <span class="mono" style="position:absolute;left:${lo * W + W / 2 + 10}px;top:${y - 14}px;font-size:10px;
+          color:${col};background:var(--card);padding:0 3px">${esc(e.n || e.s)}</span>`;
+    }).join('');
+    const cuts = sc.cuts.map((c) => `<span style="position:absolute;left:0;right:0;top:${c.a * H}px;
+        height:${Math.max(2, (c.b - c.a) * H)}px;background:repeating-linear-gradient(45deg,
+        transparent,transparent 3px,var(--line) 3px,var(--line) 6px);border-top:1px dashed var(--line);
+        border-bottom:1px dashed var(--line)"></span>
+      <span class="mono num" style="position:absolute;right:2px;top:${c.a * H - 6}px;font-size:10px;
+        color:var(--mut);background:var(--card);padding:0 4px">⋯ ${fmt(c.ms)} ⋯</span>`).join('');
+    return `<div style="min-width:${L.length * W + 40}px">
+      <div style="display:flex;margin-bottom:10px">${head}</div>
+      <div style="position:relative;height:${H}px">${rails}${cuts}${bars}${arrows}</div></div>`;
+  });
+
+/* 12 --------------------------- time on X: waterfall rows, coloured by lane */
+D('② Laned waterfall <span class="mut">(1+2, time on X)</span>',
+  'The waterfall, with every row assigned to the machine that owned it and a mark where work changes hands.',
+  'Scales to 88 rows and still says where the time was spent. The shape most APMs converge on.',
+  '“Who called whom” is implied by colour, not drawn.',
+  (tr) => {
+    const ph = phases(tr), sc = makeScale(tr, ELIDE);
+    const L = lanes(tr);
+    const key = L.map((l) => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">
+        <span style="width:9px;height:9px;border-radius:2px;background:${colOf(l)}"></span>
+        <span class="mono" style="font-size:11px">${esc(l)}</span></span>`).join('');
+    const cuts = sc.cuts.map((c) => `<span style="position:absolute;top:0;bottom:0;left:${c.a * 100}%;
+        width:${Math.max(0.4, (c.b - c.a) * 100)}%;background:repeating-linear-gradient(45deg,
+        transparent,transparent 3px,var(--line) 3px,var(--line) 6px)"></span>`).join('');
+    const rows = ph.map((p, i) => {
+      const lane = ownerOf(p.from), prevLane = i ? ownerOf(ph[i - 1].from) : null;
+      const handoff = prevLane && prevLane !== lane;
+      const left = sc.x(p.at) * 100, w = Math.max(0.5, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+      return `<div style="display:flex;align-items:center;gap:9px;font-size:11.5px;
+          ${handoff ? 'border-top:1px dashed var(--line);padding-top:3px;margin-top:2px' : ''}">
+        <span class="mono" style="width:84px;flex:none;font-size:10.5px;color:${colOf(lane)};
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${handoff ? '↳ ' : ''}${esc(lane)}</span>
+        <span class="mut" style="width:170px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span>
+        <span style="position:relative;flex:1;height:14px;background:var(--soft);border-radius:3px">
+          <span style="position:absolute;top:2px;bottom:2px;left:${left}%;width:${w}%;border-radius:3px;
+            background:${colOf(lane)}"></span></span>
+        <span class="mono num mut" style="width:58px;flex:none;text-align:right">${fmt(p.ms)}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:9px">${key}</div>
+      <div style="position:relative">
+        <div style="position:absolute;left:271px;right:66px;top:0;bottom:0;pointer-events:none">${cuts}</div>
+        <div style="position:relative;display:flex;flex-direction:column;gap:1px">${rows}</div></div>`;
+  });
+
+/* 13 ------------------------------ keep both, and link them by what you hover */
+D('③ Waterfall + live topology <span class="mut">(1+2, linked)</span>',
+  'Two views that stay honest: a to-scale waterfall, and a schematic map that lights up for the row under your cursor.',
+  'Neither view is distorted to accommodate the other. Hovering answers “where was it then?”.',
+  'Needs interaction — useless in a screenshot or a printout.',
+  (tr) => {
+    const ph = phases(tr), sc = makeScale(tr, ELIDE), L = lanes(tr);
+    const worst = ph.reduce((a, b) => (b.ms > (a?.ms ?? -1) ? b : a), null);
+    const rows = ph.map((p, i) => {
+      const lane = ownerOf(p.from);
+      const left = sc.x(p.at) * 100, w = Math.max(0.6, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+      return `<div class="wfrow" data-lane="${esc(lane)}" data-i="${i}"
+        style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:1px 4px;border-radius:4px;cursor:default">
+        <span class="mut" style="width:168px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span>
+        <span style="position:relative;flex:1;height:13px;background:var(--soft);border-radius:3px">
+          <span style="position:absolute;top:2px;bottom:2px;left:${left}%;width:${w}%;border-radius:3px;
+            background:${colOf(lane)}"></span></span>
+        <span class="mono num mut" style="width:56px;flex:none;text-align:right">${fmt(p.ms)}</span></div>`;
+    }).join('');
+    const nodes = L.map((l) => `<div class="topo" data-lane="${esc(l)}"
+        style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;
+        border:1.5px solid var(--line);transition:all .12s">
+        <span style="width:9px;height:9px;border-radius:50%;background:${colOf(l)}"></span>
+        <span class="mono" style="font-size:11.5px">${esc(l)}</span>
+      </div>`).join('<div style="text-align:center;color:var(--mut);font-size:12px;line-height:1">↓</div>');
+    return `<div style="display:flex;gap:22px;align-items:flex-start">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px" id="wf">${rows}</div>
+      <div style="width:190px;flex:none;display:flex;flex-direction:column;gap:4px">${nodes}
+        <div class="mut" style="font-size:11px;margin-top:8px" id="topohint">
+          Hover a row. Longest: <b>${esc(worst?.label || '—')}</b> (${fmt(worst?.ms)}).</div>
+      </div></div>`;
+  });
+
+
+/* 14 --------------------- fuse into ONE bar: segments are who held the request */
+D('④ Baton pass <span class="mut">(1+2, fused into one bar)</span>',
+  'One bar spanning the trace, cut into segments by whoever was holding the request. Handoffs are the seams.',
+  'Collapses to a single line, so it fits in a trace <em>list</em> — you can triage before opening anything.',
+  'Concurrency is unrepresentable: it assumes one machine holds it at a time.',
+  (tr) => {
+    const bs = batons(tr), sc = makeScale(tr, ELIDE), tot = bs.reduce((n, b) => n + b.ms, 0) || 1;
+    const bar = (h, labels) => `<div style="position:relative;display:flex;height:${h}px;border-radius:5px;overflow:hidden">` +
+      bs.map((b) => `<span title="${esc(b.lane)} — ${fmt(b.ms)}"
+        style="width:${((sc.x(b.to) - sc.x(b.at)) * 100).toFixed(3)}%;background:${colOf(b.lane)};
+        border-right:1.5px solid var(--card)"></span>`).join('') + `</div>` +
+      (labels ? `<div style="position:relative;height:34px;margin-top:3px">` + bs.map((b) => {
+        const l = sc.x(b.at) * 100, w = (sc.x(b.to) - sc.x(b.at)) * 100;
+        return w < 6 ? '' : `<span style="position:absolute;left:${l}%;width:${w}%;text-align:center;font-size:10px;
+          color:${colOf(b.lane)};line-height:1.25"><span class="mono">${esc(b.lane)}</span><br>
+          <span class="mono num mut">${fmt(b.ms)}</span></span>`;
+      }).join('') + `</div>` : '');
+    return bar(26, true) +
+      `<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+        <div class="mut" style="font-size:11.5px;margin-bottom:7px">…and the same bar at list size, which is the point:</div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:12px">
+          <span class="mono" style="width:180px;flex:none">${esc(tr.action)}</span>
+          <span style="width:230px;flex:none">${bar(8, false)}</span>
+          <span class="mono num" style="width:64px;flex:none;text-align:right">${fmt(tr.totalMs)}</span>
+          <span class="chip mono ${tr.ok ? 'ok' : 'bad'}">${tr.ok ? 'ok' : 'failed'}</span>
+        </div></div>`;
+  });
+
+/* 15 ------------------------ the sequence relation as INDENTATION, not a lane */
+D('⑤ Nested waterfall <span class="mut">(1+2, sequence as depth)</span>',
+  'Rows indented by call depth, so “who called whom” is the shape of the left edge instead of a second axis.',
+  'One axis does both jobs. This is what Jaeger and Datadog actually ship.',
+  'Depth is a guess unless the server emits real parent span ids — which it does not yet.',
+  (tr) => {
+    const rows = nested(tr), sc = makeScale(tr, ELIDE);
+    return rows.map((p) => {
+      const lane = ownerOf(p.from);
+      const left = sc.x(p.at) * 100, w = Math.max(0.6, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px">
+        <span style="width:250px;flex:none;display:flex;align-items:center;gap:0">
+          ${Array.from({ length: p.depth }, () => `<span style="width:13px;flex:none;border-left:1px solid var(--line);height:17px"></span>`).join('')}
+          <span class="mut" style="padding-left:${p.depth ? 5 : 0}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${p.depth ? '└ ' : ''}${esc(p.label)}</span></span>
+        <span style="position:relative;flex:1;height:13px;background:var(--soft);border-radius:3px">
+          <span style="position:absolute;top:2px;bottom:2px;left:${left}%;width:${w}%;border-radius:3px;
+            background:${colOf(lane)}"></span></span>
+        <span class="mono num mut" style="width:58px;flex:none;text-align:right">${fmt(p.ms)}</span></div>`;
+    }).join('');
+  });
+
+/* 16 ------------------------------ the ARROW carries the duration, as a slope */
+D('⑥ Ladder diagram <span class="mut">(1+2, slope = latency)</span>',
+  'A sequence diagram where arrows slant: the vertical drop of each arrow is how long that exchange took.',
+  'A slow call <em>looks</em> slow — a near-flat arrow. The TCP-ladder idiom, and it reads instantly.',
+  'Only says anything about request/response pairs; local work has no arrow to slope.',
+  (tr) => {
+    const L = lanes(tr), W = 190, H = 300;
+    const ex = exchanges(tr), sc = makeScale(tr, ELIDE);
+    if (!ex.length) return `<p class="mut" style="font-size:12px">No request/response pairs in this trace — nothing to slope.</p>`;
+    const rails = L.map((l, i) => `<span style="position:absolute;left:${i * W + W / 2}px;top:0;height:${H}px;width:1px;
+      background:var(--line)"></span><span class="mono" style="position:absolute;left:${i * W}px;width:${W}px;
+      top:-22px;text-align:center;font-size:11px;color:${colOf(l)}">${esc(l)}</span>`).join('');
+    const arcs = ex.map((x) => {
+      const ia = L.indexOf(x.from), ib = L.indexOf(x.to);
+      if (ia < 0 || ib < 0) return '';
+      const x0 = ia * W + W / 2, x1 = ib * W + W / 2;
+      const y0 = sc.x(x.t0) * H, y1 = x.t1 == null ? H : sc.x(x.t1) * H;
+      const col = x.err ? 'var(--bad)' : 'var(--pri)';
+      const dx = x1 - x0, dy = Math.max(1, y1 - y0);
+      const len = Math.sqrt(dx * dx + dy * dy), ang = Math.atan2(dy, dx) * 180 / Math.PI;
+      return `<span style="position:absolute;left:${x0}px;top:${y0}px;width:${len}px;height:0;
+          border-top:1.5px ${x.t1 == null ? 'dashed' : 'solid'} ${col};transform:rotate(${ang}deg);
+          transform-origin:0 0"></span>
+        <span class="mono" style="position:absolute;left:${x0 + dx / 2 - 26}px;top:${y0 + dy / 2 - 15}px;font-size:10px;
+          color:${col};background:var(--card);padding:0 3px">${x.ms == null ? 'never' : fmt(x.ms)}</span>`;
+    }).join('');
+    return `<div style="min-width:${L.length * W + 30}px;padding-top:24px">
+      <div style="position:relative;height:${H}px">${rails}${arcs}</div>
+      <p class="mut" style="font-size:11.5px;margin:10px 0 0">Steeper is faster. A flat arrow is a slow exchange;
+      a dashed one never came back.</p></div>`;
+  });
+
+/* 17 --------------------------------- overview always visible, detail on demand */
+D('⑦ Minimap + detail <span class="mut">(1+2, overview then zoom)</span>',
+  'The whole trace as a strip that never scrolls, and a sequence view of just the slice you pick.',
+  'The only combination that handles 88 spans <em>and</em> a 30s stall without compromise.',
+  'Two-step: you have to choose a window before you learn anything.',
+  (tr) => {
+    const N = 48, max = tr.totalMs || 1;
+    const buckets = Array.from({ length: N }, () => ({ n: 0, err: false, lanes: new Set() }));
+    tr.events.forEach((e) => {
+      const b = buckets[Math.min(N - 1, Math.floor((e.t / max) * N))];
+      b.n++; if (isErr(e) || isWarn(e)) b.err = true;
+      const [a, c] = arrowOf(e); b.lanes.add(a); b.lanes.add(c);
+    });
+    const peak = Math.max(1, ...buckets.map((b) => b.n));
+    // Default focus: the busiest slice, which is where the story usually is.
+    const focus = buckets.reduce((bi, b, i, arr) => (b.n > arr[bi].n ? i : bi), 0);
+    const t0 = (focus / N) * max, t1 = ((focus + 1) / N) * max;
+    const inWin = tr.events.filter((e) => e.t >= t0 && e.t <= t1);
+    return `<div style="display:flex;align-items:flex-end;gap:1px;height:46px;margin-bottom:4px">` +
+      buckets.map((b, i) => `<span title="+${fmt((i / N) * max)} · ${b.n} events"
+        style="flex:1;height:${Math.max(6, (b.n / peak) * 100)}%;border-radius:2px 2px 0 0;
+        background:${b.err ? 'var(--bad)' : b.n ? 'var(--pri)' : 'var(--line)'};
+        outline:${i === focus ? '2px solid var(--fg)' : 'none'};outline-offset:1px"></span>`).join('') +
+      `</div><div class="mono num mut" style="display:flex;justify-content:space-between;font-size:10.5px">
+        <span>0</span><span>${fmt(max)}</span></div>
+      <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <div class="mut" style="font-size:11.5px;margin-bottom:8px">Selected slice
+          <span class="mono">+${fmt(t0)} → +${fmt(t1)}</span> · ${inWin.length} events</div>` +
+      inWin.map((e) => {
+        const [a, b] = arrowOf(e);
+        return `<div style="display:flex;gap:10px;font-size:11.5px;padding:2px 0">
+          <span class="mono num mut" style="width:62px;flex:none">+${fmt(e.t)}</span>
+          <span class="mono" style="width:190px;flex:none;color:${isErr(e) ? 'var(--bad)' : 'inherit'}">
+            ${esc(a)} <span class="mut">→</span> ${esc(b)}</span>
+          <span class="mono mut">${esc(e.n || e.s)}</span></div>`;
+      }).join('') + `</div>`;
+  });
+
+/* 18 ------------------------------- one continuous path that changes lines */
+D('⑧ Subway map <span class="mut">(1+2, the request as a route)</span>',
+  'Each machine is a line. The request is a single journey along them, changing at interchanges.',
+  'Keeps the “journey” idea people already have, but handoffs become interchanges instead of decoration.',
+  'One journey only — a burst of 25 concurrent calls has no single route.',
+  (tr) => {
+    const L = lanes(tr), bs = batons(tr), sc = makeScale(tr, ELIDE);
+    const H = L.length * 42, y = (l) => L.indexOf(l) * 42 + 21;
+    const track = L.map((l) => `<span style="position:absolute;left:0;right:0;top:${y(l)}px;height:2px;
+        background:var(--line)"></span>
+      <span class="mono" style="position:absolute;left:0;top:${y(l) - 20}px;font-size:10.5px;color:${colOf(l)}">${esc(l)}</span>`).join('');
+    let path = '';
+    bs.forEach((b, i) => {
+      const x0 = sc.x(b.at) * 100, x1 = sc.x(b.to) * 100;
+      path += `<span style="position:absolute;left:${x0}%;width:${Math.max(0.4, x1 - x0)}%;top:${y(b.lane) - 3}px;
+        height:8px;border-radius:4px;background:${colOf(b.lane)}"></span>
+        <span class="mono num" style="position:absolute;left:${x0}%;top:${y(b.lane) + 8}px;font-size:9.5px;
+          color:${colOf(b.lane)}">${fmt(b.ms)}</span>`;
+      const nx = bs[i + 1];
+      if (nx) {  // the interchange
+        const yA = y(b.lane), yB = y(nx.lane);
+        path += `<span style="position:absolute;left:${x1}%;top:${Math.min(yA, yB)}px;
+          height:${Math.abs(yB - yA)}px;width:2px;background:var(--mut);opacity:.55"></span>
+          <span style="position:absolute;left:${x1}%;top:${yB - 4}px;width:9px;height:9px;margin-left:-4px;
+          border-radius:50%;background:var(--card);border:2px solid ${colOf(nx.lane)}"></span>`;
+      }
+    });
+    return `<div style="position:relative;height:${H}px;margin-top:6px">${track}${path}</div>`;
+  });
+
+/* 19 ------------------------- split by repetition instead of stacking in time */
+D('⑨ Small multiples <span class="mut">(1+2, one tile per attempt)</span>',
+  'One miniature timeline per attempt or per call, in a grid, all on a shared scale.',
+  'Repetition becomes comparison — the attempt that differs is the one that looks different.',
+  'Pointless for a trace that happened once.',
+  (tr) => {
+    const us = units(tr);
+    if (us.length < 2) return `<p class="mut" style="font-size:12px">One attempt, one call — a grid of one tile.
+      This design only earns its space when something repeated.</p>`;
+    const worst = Math.max(...us.map((u) => u.ms || 0)) || 1;
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:9px">` +
+      us.map((u) => `<div style="border:1px solid ${u.err ? 'var(--bad)' : 'var(--line)'};border-radius:8px;padding:8px 9px;
+          background:${u.err ? 'color-mix(in srgb,var(--bad) 6%,transparent)' : 'transparent'}">
+        <div class="mono" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.label)}</div>
+        <div style="height:6px;border-radius:3px;background:var(--soft);margin:6px 0 5px">
+          <span style="display:block;height:6px;border-radius:3px;width:${Math.min(100, ((u.ms || worst) / worst) * 100)}%;
+            background:${u.err ? 'var(--bad)' : 'var(--pri)'}"></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px">
+          <span class="mono num mut">+${fmt(u.t0)}</span>
+          <span class="mono num ${u.err ? 'bad' : 'mut'}">${u.ms == null ? 'never' : fmt(u.ms)}</span></div>
+        ${u.err ? `<div class="mono bad" style="font-size:9.5px;margin-top:4px;overflow:hidden;
+          text-overflow:ellipsis;white-space:nowrap">${esc(u.err)}</div>` : ''}
+      </div>`).join('') + `</div>`;
+  });
+
+/* 20 ------------------------------ lanes on Y, real duration bars inside them */
+D('⑩ Lane-major waterfall <span class="mut">(1+2, four rows, whatever the size)</span>',
+  'A row per machine with real duration bars on it — not the event dots of option 8.',
+  'Fixed height no matter how many spans, and overlapping bars <em>are</em> concurrency.',
+  'Sequence within one lane is lost once bars touch.',
+  (tr) => {
+    const L = lanes(tr), sc = makeScale(tr, ELIDE), ph = phases(tr);
+    return L.map((lane) => {
+      const mine = ph.filter((p) => ownerOf(p.from) === lane);
+      const sum = mine.reduce((n, p) => n + p.ms, 0);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span class="mono" style="width:88px;flex:none;font-size:11px;color:${colOf(lane)}">${esc(lane)}</span>
+        <span style="position:relative;flex:1;height:22px;background:var(--soft);border-radius:4px">
+          ${mine.map((p) => {
+            const l = sc.x(p.at) * 100, w = Math.max(0.5, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+            return `<span title="${esc(p.label)} — ${fmt(p.ms)}" style="position:absolute;left:${l}%;width:${w}%;
+              top:4px;height:14px;border-radius:3px;background:${colOf(lane)};opacity:.9"></span>`;
+          }).join('')}
+          ${tr.events.filter((e) => { const [a, b] = arrowOf(e); return a !== b && (a === lane || b === lane); })
+            .map((e) => `<span style="position:absolute;left:${sc.x(e.t) * 100}%;top:-3px;bottom:-3px;width:1px;
+              background:${isErr(e) ? 'var(--bad)' : 'var(--mut)'};opacity:.45"></span>`).join('')}
+        </span>
+        <span class="mono num" style="width:62px;flex:none;text-align:right;color:${sum ? 'var(--fg)' : 'var(--mut)'}">
+          ${sum ? fmt(sum) : '—'}</span></div>`;
+    }).join('') + `<p class="mut" style="font-size:11.5px;margin:8px 0 0">Faint verticals are handoffs.
+      Bars overlapping across rows would be genuine concurrency.</p>`;
+  });
+
+
+/* 21 ------------------------------ 12+18: route on top, detail below, one axis */
+D('Ⓐ Route + detail <span class="mut">(12+18, shared axis)</span>',
+  'The subway map becomes a header strip; the laned waterfall keeps its rows underneath, locked to the same time axis.',
+  'Shape at a glance and substance below it, and a plumb line connects them. Neither view gives anything up.',
+  'Two things to read. The strip is redundant once you know the trace.',
+  (tr) => {
+    const sc = makeScale(tr, ELIDE), L = lanes(tr), bs = batons(tr), ph = phases(tr);
+    const TH = 22, H = L.length * TH;
+    const yOf = (l) => L.indexOf(l) * TH + TH / 2;
+    const strip = L.map((l) => `<span style="position:absolute;left:0;right:0;top:${yOf(l)}px;height:2px;background:var(--line)"></span>
+        <span class="mono" style="position:absolute;right:calc(100% + 8px);top:${yOf(l) - 7}px;font-size:10px;
+          color:${colOf(l)};white-space:nowrap">${esc(l)}</span>`).join('')
+      + bs.map((b, i) => {
+        const x0 = sc.x(b.at) * 100, x1 = sc.x(b.to) * 100, nx = bs[i + 1];
+        return `<span style="position:absolute;left:${x0}%;width:${Math.max(0.4, x1 - x0)}%;top:${yOf(b.lane) - 3}px;
+            height:8px;border-radius:4px;background:${colOf(b.lane)}"></span>` +
+          (nx ? `<span style="position:absolute;left:${x1}%;top:${Math.min(yOf(b.lane), yOf(nx.lane))}px;
+            height:${Math.abs(yOf(nx.lane) - yOf(b.lane))}px;width:2px;background:var(--mut);opacity:.5"></span>
+            <span style="position:absolute;left:${x1}%;top:${yOf(nx.lane) - 4}px;width:9px;height:9px;margin-left:-4px;
+            border-radius:50%;background:var(--card);border:2px solid ${colOf(nx.lane)}"></span>` : '');
+      }).join('');
+    const rows = ph.map((p, i) => {
+      const lane = ownerOf(p.from), prev = i ? ownerOf(ph[i - 1].from) : null, ho = prev && prev !== lane;
+      const x0 = sc.x(p.at) * 100, w = Math.max(0.5, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100);
+      return `<div style="display:flex;align-items:center;font-size:11.5px;${ho ? 'margin-top:3px' : ''}">
+        <span style="width:${GUT}px;flex:none;display:flex;gap:8px;align-items:center">
+          <span class="mono" style="width:80px;flex:none;font-size:10.5px;color:${colOf(lane)};
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ho ? '↳ ' : ''}${esc(lane)}</span>
+          <span class="mut" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span>
+        </span>
+        <span style="position:relative;flex:1;height:13px;background:var(--soft);border-radius:3px">
+          <span style="position:absolute;left:${x0}%;width:${w}%;top:2px;bottom:2px;border-radius:3px;
+            background:${colOf(lane)}"></span></span>
+        <span class="mono num mut" style="width:58px;flex:none;text-align:right">${fmt(p.ms)}</span></div>`;
+    }).join('');
+    return `<div style="display:flex"><span style="width:${GUT}px;flex:none"></span>
+        <span style="flex:1;position:relative;height:${H}px">${strip}</span>
+        <span style="width:58px;flex:none"></span></div>
+      <div style="display:flex;margin:6px 0 8px"><span style="width:${GUT}px;flex:none"></span>
+        <span style="flex:1;border-top:1px dashed var(--line)"></span>
+        <span style="width:58px;flex:none"></span></div>
+      <div style="display:flex;flex-direction:column;gap:1px">${rows}</div>`;
+  });
+
+/* 22 ---------------- 12+18: the rows ARE the tracks, stacked where they overlap */
+D('Ⓑ Tracked waterfall <span class="mut">(12+18, rows placed by machine)</span>',
+  'Every phase keeps its bar and label, but sits at its machine’s height — and stacks into sub-rows when calls overlap.',
+  'The most fused of the four: one picture, no redundancy, and concurrency is visible as stacking.',
+  'Labels only fit on wide bars; everything else needs a hover.',
+  (tr) => {
+    const sc = makeScale(tr, ELIDE), L = lanes(tr), ph = phases(tr);
+    const RH = 17, PAD = 9;
+    const perLane = L.map((l) => {
+      const items = ph.filter((p) => ownerOf(p.from) === l)
+        .map((p) => ({ ...p, end: p.at + p.ms })).sort((a, b) => a.at - b.at);
+      return { lane: l, items, rows: pack(items) };
+    });
+    let top = 0; const tops = {};
+    perLane.forEach((g) => { tops[g.lane] = top; top += g.rows * RH + PAD; });
+    const H = Math.max(60, top);
+    const body = perLane.map((g) => {
+      const base = tops[g.lane];
+      const band = `<span style="position:absolute;left:0;right:0;top:${base - 3}px;height:${g.rows * RH}px;
+          background:color-mix(in srgb, ${colOf(g.lane)} 5%, transparent);border-radius:5px"></span>
+        <span class="mono" style="position:absolute;right:calc(100% + 8px);top:${base}px;font-size:10.5px;
+          color:${colOf(g.lane)};white-space:nowrap">${esc(g.lane)}</span>`;
+      const bars = g.items.map((p) => {
+        const x0 = sc.x(p.at) * 100, w = Math.max(0.4, (sc.x(p.end) - sc.x(p.at)) * 100);
+        const y = base + p.row * RH;
+        return `<span title="${esc(p.label)} — ${fmt(p.ms)}" style="position:absolute;left:${x0}%;width:${w}%;
+            top:${y}px;height:13px;border-radius:3px;background:${colOf(g.lane)};overflow:hidden;
+            display:flex;align-items:center">
+            ${w > 13 ? `<span class="mono" style="font-size:9.5px;color:#fff;padding:0 5px;white-space:nowrap;
+              opacity:.95">${esc(p.label)} · ${fmt(p.ms)}</span>` : ''}</span>`;
+      }).join('');
+      return band + bars;
+    }).join('');
+    // The interchanges, drawn between whoever hands off to whoever.
+    const bs = batons(tr);
+    const links = bs.map((b, i) => {
+      const nx = bs[i + 1]; if (!nx) return '';
+      const x = sc.x(b.to) * 100, yA = tops[b.lane], yB = tops[nx.lane];
+      return `<span style="position:absolute;left:${x}%;top:${Math.min(yA, yB)}px;
+        height:${Math.abs(yB - yA) || 2}px;width:2px;background:var(--mut);opacity:.4"></span>`;
+    }).join('');
+    return `<div style="display:flex"><span style="width:96px;flex:none"></span>
+      <span style="position:relative;flex:1;height:${H}px">${body}${links}</span>
+      <span style="width:10px;flex:none"></span></div>`;
+  });
+
+/* 23 -------------------------- 12+18: tracks with station names written on them */
+D('Ⓒ Annotated line <span class="mut">(12+18, stations named)</span>',
+  'The subway map alone, but each segment is captioned the way a transit map names its stops.',
+  'Fixed height, no rows at all, and still says what happened in each leg.',
+  'Only room for the merged legs — the per-phase detail is gone.',
+  (tr) => {
+    const sc = makeScale(tr, ELIDE), L = lanes(tr), bs = batons(tr), ph = phases(tr);
+    const TH = 58, H = L.length * TH, yOf = (l) => L.indexOf(l) * TH + 20;
+    const tracks = L.map((l) => `<span style="position:absolute;left:0;right:0;top:${yOf(l)}px;height:2px;
+        background:var(--line)"></span>
+      <span class="mono" style="position:absolute;left:0;top:${yOf(l) - 17}px;font-size:10.5px;
+        color:${colOf(l)}">${esc(l)}</span>`).join('');
+    const legs = bs.map((b, i) => {
+      const x0 = sc.x(b.at) * 100, x1 = sc.x(b.to) * 100, w = Math.max(0.5, x1 - x0);
+      const nx = bs[i + 1];
+      const inside = ph.filter((p) => ownerOf(p.from) === b.lane && p.at >= b.at && p.at < b.to);
+      const what = inside.length === 1 ? inside[0].label
+        : inside.length > 1 ? inside.length + ' steps' : b.lane;
+      return `<span style="position:absolute;left:${x0}%;width:${w}%;top:${yOf(b.lane) - 4}px;height:10px;
+          border-radius:5px;background:${colOf(b.lane)}"></span>
+        ${w > 7 ? `<span style="position:absolute;left:${x0}%;width:${w}%;top:${yOf(b.lane) + 10}px;
+          font-size:9.5px;line-height:1.3;padding:0 3px;color:${colOf(b.lane)};text-align:center">
+          <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(what)}</span>
+          <span class="mono num mut">${fmt(b.ms)}</span></span>` : ''}
+        ${nx ? `<span style="position:absolute;left:${x1}%;top:${Math.min(yOf(b.lane), yOf(nx.lane))}px;
+          height:${Math.abs(yOf(nx.lane) - yOf(b.lane))}px;width:2px;background:var(--mut);opacity:.5"></span>
+          <span style="position:absolute;left:${x1}%;top:${yOf(nx.lane) - 5}px;width:11px;height:11px;margin-left:-5px;
+          border-radius:50%;background:var(--card);border:2.5px solid ${colOf(nx.lane)}"></span>` : ''}`;
+    }).join('');
+    return `<div style="position:relative;height:${H}px">${tracks}${legs}</div>`;
+  });
+
+/* 24 ------------------------------- 12+18: the strip IS the collapsed waterfall */
+D('Ⓓ Expandable route <span class="mut">(12+18, one widget, two states)</span>',
+  'Collapsed it is a captioned route; unfolded it is a waterfall. Any bar opens the log lines behind it.',
+  'Reads without interaction, rewards it with detail, and never becomes a dead end — every mark names its evidence.',
+  'Hides by default — you can miss something you never expanded.',
+  (tr) => {
+    const sc = makeScale(tr, ELIDE), L = lanes(tr), bs = batons(tr), ph = phases(tr);
+    const GW = 118, RW = 64, KID = 15, GAP = 3;
+
+    // Positions are computed, not flowed: the connectors have to reach between
+    // rows whose distance changes every time something unfolds.
+    const layout = []; let y = 0;
+    for (const lane of L) {
+      const mine = ph.filter((p) => ownerOf(p.from) === lane);
+      const legs = bs.filter((b) => b.lane === lane);
+      const open = OPEN.has(lane) && mine.length > 0;
+      // A collapsed lane needs room under its bar for the caption; an unfolded
+      // one does not, because the rows below carry their own labels.
+      const head = (legs.length && !open) ? 40 : 24;
+      layout.push({ lane, mine, legs, open, top: y, head, trackY: y + 11 });
+      y += head + (open ? mine.length * KID : 0) + GAP;
+    }
+    const H = y, at = (l) => layout.find((g) => g.lane === l).trackY;
+    const sel = SEL;
+
+    const bands = sc.cuts.map((c) => `<span style="position:absolute;top:0;height:${H}px;left:${c.a * 100}%;
+      width:${Math.max(0.4, (c.b - c.a) * 100)}%;background:repeating-linear-gradient(45deg,transparent,
+      transparent 3px,var(--line) 3px,var(--line) 6px)"></span>`).join('');
+
+    // The handoff lines are the most interesting moments in the trace, so they
+    // are targets too: clicking one opens both machines it connects and pulls
+    // up whatever was logged at that instant.
+    const links = bs.map((b, i) => {
+      const nx = bs[i + 1]; if (!nx) return '';
+      const x = sc.x(b.to) * 100, yA = at(b.lane), yB = at(nx.lane);
+      const lo = Math.min(yA, yB), hi = Math.max(yA, yB);
+      const on = sel && Math.abs(sel.at - b.to) < 1 && sel.at === sel.to;
+      const go = `onclick="expandHandoff('${encodeURIComponent(b.lane)}','${encodeURIComponent(nx.lane)}',${b.to},
+        '${encodeURIComponent(b.lane + ' → ' + nx.lane)}')"`;
+      return `<span style="position:absolute;left:${x}%;top:0;height:${H}px;width:1px;background:var(--mut);opacity:.14"></span>
+        <span style="position:absolute;left:${x}%;top:${lo}px;height:${Math.max(2, hi - lo)}px;width:2px;
+          margin-left:-1px;background:${on ? 'var(--fg)' : 'var(--mut)'};opacity:${on ? 1 : .65}"></span>
+        <span style="position:absolute;left:${x}%;top:${yB - 4.5}px;width:9px;height:9px;margin-left:-4.5px;
+          border-radius:50%;background:var(--card);border:2px solid ${on ? 'var(--fg)' : colOf(nx.lane)}"></span>
+        <span ${go} title="handoff ${esc(b.lane)} → ${esc(nx.lane)} at +${fmt(b.to)} — click to open both"
+          style="position:absolute;left:${x}%;top:${lo - 7}px;height:${Math.max(16, hi - lo + 14)}px;width:13px;
+          margin-left:-6.5px;cursor:pointer"></span>`;
+    }).join('');
+
+    const isSel = (a, b) => sel && Math.abs(sel.at - a) < 1 && Math.abs(sel.to - b) < 1;
+    // Attributes only — no `style` here. Emitting one made every clickable
+    // element carry two style attributes, and the first one wins, which threw
+    // away all the positioning.
+    const pick = (a, b, label) =>
+      `onclick="selectSpan(${a},${b},'${encodeURIComponent(label)}')"`;
+
+    const tracks = layout.map((g) => {
+      const rail = `<span style="position:absolute;left:0;right:0;top:${g.trackY - 1}px;height:2px;
+        background:var(--line)"></span>`;
+      const legs = g.legs.map((b) => {
+        const x0 = sc.x(b.at) * 100, w = Math.max(0.5, (sc.x(b.to) - sc.x(b.at)) * 100);
+        // What this leg was doing, for the caption. One phase names itself;
+        // several are only honestly summarised by a count.
+        const inside = ph.filter((p) => ownerOf(p.from) === g.lane && p.at >= b.at && p.at < b.to);
+        const what = inside.length === 1 ? inside[0].label : inside.length + ' steps';
+        const on = isSel(b.at, b.to);
+        return `<span ${pick(b.at, b.to, what)} title="${esc(what)} — ${fmt(b.ms)}"
+            style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY - 4}px;height:8px;cursor:pointer;
+            border-radius:4px;background:${colOf(g.lane)};outline:${on ? '2px solid var(--fg)' : 'none'};
+            outline-offset:2px"></span>
+          ${(!g.open && w > 6) ? `<span ${pick(b.at, b.to, what)}
+            title="${esc(what)} — ${fmt(b.ms)}"
+            style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY + 8}px;font-size:9.5px;line-height:1.25;
+            text-align:center;color:${colOf(g.lane)};padding:0 2px;cursor:pointer;overflow:hidden">
+            <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(what)}</span>
+            <span class="mono num mut">${fmt(b.ms)}</span></span>` : ''}`;
+      }).join('');
+      const brace = g.open ? `<span style="position:absolute;left:0;top:${g.trackY}px;
+        height:${g.mine.length * KID}px;width:2px;background:${colOf(g.lane)};opacity:.3"></span>` : '';
+      const kids = g.open ? g.mine.map((p, i) => {
+        const ky = g.top + g.head + i * KID, on = isSel(p.at, p.at + p.ms);
+        return `<span ${pick(p.at, p.at + p.ms, p.label)} title="${esc(p.label)} — ${fmt(p.ms)}"
+          style="position:absolute;left:${sc.x(p.at) * 100}%;
+          width:${Math.max(0.5, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100)}%;top:${ky + 3}px;height:9px;
+          border-radius:2px;background:${colOf(g.lane)};opacity:${on ? 1 : .75};cursor:pointer;
+          outline:${on ? '2px solid var(--fg)' : 'none'};outline-offset:2px"></span>`;
+      }).join('') : '';
+      return rail + legs + brace + kids;
+    }).join('');
+
+    const labels = layout.map((g) => {
+      const sum = g.mine.reduce((n, p) => n + p.ms, 0);
+      const head = `<div onclick="toggleLane('${esc(g.lane)}')" style="position:absolute;left:0;width:${GW}px;
+          top:${g.top}px;height:22px;display:flex;align-items:center;gap:3px;
+          cursor:${g.mine.length ? 'pointer' : 'default'}">
+          <span style="width:11px;flex:none;color:var(--mut);font-size:9px">${g.mine.length ? (g.open ? '▾' : '▸') : ''}</span>
+          <span class="mono" title="${esc(g.lane)}" style="font-size:11px;color:${colOf(g.lane)};min-width:0;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.lane)}</span></div>`;
+      const kids = g.open ? g.mine.map((p, i) => `<div style="position:absolute;left:0;width:${GW - 8}px;
+          top:${g.top + g.head + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
+          <span class="mut" title="${esc(p.label)}" style="font-size:10px;max-width:100%;overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span></div>`).join('') : '';
+      const tot = `<div style="position:absolute;right:0;width:${RW}px;top:${g.top}px;height:22px;
+          display:flex;align-items:center;justify-content:flex-end">
+          <span class="mono num" style="color:${sum ? 'var(--fg)' : 'var(--mut)'}">${sum ? fmt(sum) : '—'}</span></div>`;
+      const ktot = g.open ? g.mine.map((p, i) => `<div style="position:absolute;right:0;width:${RW}px;
+          top:${g.top + g.head + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
+          <span class="mono num mut" style="font-size:10px">${fmt(p.ms)}</span></div>`).join('') : '';
+      return head + kids + tot + ktot;
+    }).join('');
+
+    // ---- the way back to the evidence -------------------------------------
+    // A picture over log lines that cannot hand you the log lines is a dead
+    // end. Every bar knows its window, so every bar can name its rows.
+    let panel = `<p class="mut" style="font-size:11.5px;margin:10px 0 0">
+      Each drop is a handoff. Click any bar — or any handoff line — to see the log lines behind it.</p>`;
+    if (sel) {
+      const rows = tr.events.filter((e) => e.t >= sel.at - 1 && e.t <= sel.to + 1);
+      panel = `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:11px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+          <b style="font-size:12.5px">${esc(sel.label)}</b>
+          <span class="mono num mut" style="font-size:11.5px">${sel.at === sel.to
+            ? 'at +' + fmt(sel.at)
+            : '+' + fmt(sel.at) + ' → +' + fmt(sel.to) + ' · ' + fmt(sel.to - sel.at)}</span>
+          <span class="mut" style="font-size:11.5px">${rows.length} log line${rows.length === 1 ? '' : 's'}</span>
+          <button onclick="clearSel()" style="margin-left:auto;font:inherit;font-size:11px;padding:2px 9px;
+            border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer">
+            clear</button>
+        </div>
+        <div class="mono" style="font-size:10.5px;background:var(--soft);border:1px solid var(--line);
+          border-radius:6px;padding:6px 9px;margin-bottom:9px;overflow-x:auto;white-space:nowrap">
+          <span class="mut">open in Logs →</span> trace_id:${esc(tr.id)}
+          ${sel.at === sel.to ? `<span class="mut">at</span> +${fmt(sel.at)}`
+            : `<span class="mut">from</span> +${fmt(sel.at)} <span class="mut">to</span> +${fmt(sel.to)}`}</div>` +
+        (rows.length ? `<table><tr><th>at</th><th>span</th><th>where</th><th>message</th></tr>` +
+          rows.map((e) => `<tr${isErr(e) ? ' style="background:color-mix(in srgb,var(--bad) 8%,transparent)"' : ''}>
+            <td class="mono num mut" style="width:64px">+${fmt(e.t)}</td>
+            <td class="mono" style="width:126px;color:${isErr(e) ? 'var(--bad)' : 'inherit'}">${esc(e.n || '·')}</td>
+            <td class="mono mut" style="width:70px">${esc(e.i || '')}</td>
+            <td>${esc(e.m)}</td></tr>`).join('') + `</table>`
+          : `<p class="mut" style="font-size:11.5px;margin:0">Nothing was logged during this stretch — which is
+             the finding. The bar exists because the spans either side of it bracket the time.</p>`) + `</div>`;
+    }
+
+    // Never scrollable, by construction. A route you have to scroll sideways
+    // has stopped being a route — so the frame is fixed and anything too long
+    // is truncated where it sits, in its own column.
+    return `<div style="position:relative;height:${H}px;overflow:hidden">
+        <div style="position:absolute;left:${GW}px;right:${RW}px;top:0;height:${H}px;overflow:hidden">
+          ${bands}${tracks}${links}</div>
+        ${labels}
+      </div>${panel}`;
+  });
+
+// This one is a fixed frame on purpose — see its render.
+DESIGNS[DESIGNS.length - 1].noScroll = true;
+
+// ---------------------------------------------------------------- shell
+const KEYS = [
+  ['fast',    'Happy path',   '8 spans · 80ms'],
+  ['timeout', 'Relay timeout','8 spans · 30.3s'],
+  ['busy',    'Retry storm',  '13 spans · 4 attempts'],
+  ['burst',   'Reconnect burst','69 spans · 25 calls'],
+];
+let current = 'busy';
+let ELIDE = true;
+const OPEN = new Set(['pod 5hdrz']);
+let SEL = null;
+
+function draw() {
+  const tr = TRACES[current];
+  document.getElementById('picker').innerHTML = KEYS.map(([k, label, note]) =>
+    `<button aria-pressed="${k === current}" onclick="pick('${k}')"><b>${label}</b><small>${note}</small></button>`).join('')
+    + `<button style="margin-left:14px" aria-pressed="${ELIDE}" onclick="toggleElide()">
+         <b>${ELIDE ? '⋯ Long gaps elided' : '⇔ True proportion'}</b>
+         <small>${ELIDE ? 'structure visible' : 'a 30s stall dwarfs everything'}</small></button>`;
+  document.getElementById('out').innerHTML = `
+    <div class="card"><div class="body" style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline">
+      <span class="mono" style="font-size:13px">${esc(tr.action)}</span>
+      <span class="mono num" style="font-size:13px">${fmt(tr.totalMs)}</span>
+      <span class="chip mono ${tr.ok ? 'ok' : 'bad'}">${tr.ok ? 'ok' : 'failed'}</span>
+      <span class="mono mut" style="font-size:11px">${esc(tr.id)}</span>
+    </div></div>` +
+    DESIGNS.map((d, i) => `${i === 20 ? `<div style="margin:14px 0 -6px"><h2 style="font-size:14px;margin:0 0 3px">
+        Combining 12 + 18</h2><div class="sub">Both already put time on X, so there is no axis to reconcile — only
+        how much of one you dissolve into the other, from “keep both, aligned” to “one widget, two states”.</div></div>` : ''}
+      ${i === 10 ? `<div style="margin:14px 0 -6px"><h2 style="font-size:14px;margin:0 0 3px">
+        Combining 1 + 2</h2><div class="sub">Waterfall says <em>when</em> and <em>how long</em>; sequence says <em>who</em> and <em>to whom</em>.
+        Ten ways to hold both at once — by resolving the axis clash, by encoding the lane in something
+        other than space, by letting the arrow carry the duration, or by splitting the trace up.</div></div>` : ''}
+      <section class="card">
+      <h2><span class="n">${String(i + 1).padStart(2, '0')}</span> ${d.title}
+        <span class="why">${d.why}</span></h2>
+      <div class="body"${d.noScroll ? ' style="overflow:hidden"' : ''}>${d.render(tr)}</div>
+      <div class="verdict"><span><b>Good:</b> ${d.good}</span><span><b>Weak:</b> ${d.bad}</span></div>
+    </section>`).join('');
+}
+function pick(k) { current = k; SEL = null; draw(); }
+function toggleElide() { ELIDE = !ELIDE; draw(); }
+function toggleLane(l) { OPEN.has(l) ? OPEN.delete(l) : OPEN.add(l); draw(); }
+function selectSpan(a, b, label) { SEL = { at: a, to: b, label: decodeURIComponent(label) }; draw(); }
+function clearSel() { SEL = null; draw(); }
+function expandHandoff(a, b, t, label) {
+  OPEN.add(decodeURIComponent(a)); OPEN.add(decodeURIComponent(b));
+  SEL = { at: t, to: t, label: 'handoff · ' + decodeURIComponent(label) };
+  draw();
+}
+
+/** Design 13 only works if hovering a row lights the machine it ran on. */
+document.addEventListener('mouseover', (ev) => {
+  const row = ev.target.closest?.('.wfrow');
+  const lanes = document.querySelectorAll('.topo');
+  if (!lanes.length) return;
+  lanes.forEach((n) => {
+    const on = row && n.dataset.lane === row.dataset.lane;
+    n.style.borderColor = on ? colOf(n.dataset.lane) : 'var(--line)';
+    n.style.background = on ? 'color-mix(in srgb, ' + colOf(n.dataset.lane) + ' 12%, transparent)' : 'transparent';
+  });
+  document.querySelectorAll('.wfrow').forEach((r) => {
+    r.style.background = (row && r === row) ? 'var(--soft)' : 'transparent';
+  });
+});
+draw();
+</script>

@@ -6,12 +6,17 @@ import { createContext, useContext } from 'react';
  * Two platforms, two answers, and the difference is not cosmetic:
  *
  * - **Touch** has an Edit Layout mode. Hiding, unhiding and reordering all live
- *   inside it, on badges attached to the thing being arranged. Leaving the same
- *   actions in long-press menus as well would mean two routes to one job, one of
- *   which is invisible while the other is running (edit mode suppresses context
- *   menus so long-press can mean drag).
+ *   inside it, on badges attached to the thing being arranged. There is no
+ *   long-press menu to duplicate them into, because long press means drag.
  * - **Desktop** has no edit mode — drag is always live and there is nothing to
  *   enter. So it keeps the right-click menu items, which are its only route.
+ *
+ * On touch, a long press is now the way *into* Edit Layout, and the press that
+ * enters it is also the press that picks the tile up. That is why touch has no
+ * context menus at all any more: Radix opens one on a native `contextmenu` as
+ * well as on its own 700ms timer, and an open menu sets `pointer-events: none`
+ * on the body, which kills the drag outright. There is no delay that separates
+ * them — the menu had to go.
  *
  * Passed by context rather than as a prop for the reason `PinnedTabsContext`
  * already documents: 28 widget components forward `WidgetProps`, and threading
@@ -28,6 +33,22 @@ export interface LayoutEditState {
   touchMode: boolean;
   /** True while Edit Layout is actually running. */
   editMode: boolean;
+  /**
+   * A drag has started. On touch this is how Edit Layout is *entered*: the hold
+   * that begins the drag is the same hold that turns the mode on, so the two
+   * arrive together and the gesture reads as one movement.
+   *
+   * Every `DndContext` must call this from `onDragStart`, and `endLift` from
+   * both `onDragEnd` **and** `onDragCancel`. Missing the cancel leaves the
+   * deferred tidy-up pending — hence Dashboard's watchdog.
+   *
+   * Optional, and called as `beginLift?.()`: a grid rendered outside a provider
+   * (a shared view, a test) has no mode to enter, and requiring the pair would
+   * mean every such caller supplying two functions that do nothing.
+   */
+  beginLift?: () => void;
+  /** That drag ended or was cancelled. Runs the tidy-up the lift deferred. */
+  endLift?: () => void;
 }
 
 const NONE: LayoutEditState = { touchMode: false, editMode: false };

@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 import { Loader2, Play, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { actionKey } from '@/lib/pending-writes';
@@ -172,27 +171,31 @@ export function ActionCard({
   // a one-way action's label flips with live device state, so a pin
   // made while the doors were open would read "Lock up" for ever, and
   // a two-way one's names the set rather than the press.
-  if (editMode && homeId && onHideAction) {
-    return (
-      <div className="relative">
-        {card}
+  // The wrapper is unconditional and only the badges are behind `editMode` —
+  // the mode now flips mid-drag, and swapping element trees at that moment
+  // would remount the card dnd-kit is tracking. See SceneCard.
+  const editable = (
+    <div className="relative">
+      {card}
+      {editMode && homeId && onHideAction && (
         <TileEditActions
           action={{ kind: 'remove', label: `Hide ${HOME_ACTION_NAMES[action.id]}`, onRemove: () => onHideAction(action.id) }}
           tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
         />
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
+  if (editMode) return editable;
 
-  // Two different menus in one, by platform. Desktop has no edit
-  // mode, so hiding lives where every other desktop hide does — the
-  // right-click menu. A phone hides from Edit Layout, but a long
-  // press is still the quick way onto the tab bar.
+  // Desktop has no edit mode, so hiding lives where every other desktop hide
+  // does — the right-click menu. On touch there is no menu at all now: a long
+  // press lifts the card into Edit Layout, which is where hiding and pinning
+  // both live.
   const canHideHere = !touchMode && !!homeId && !!onHideAction;
-  if (!canHideHere && !homeId) return <Fragment>{card}</Fragment>;
+  if (touchMode || (!canHideHere && !homeId)) return editable;
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{editable}</ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
           {HOME_ACTION_NAMES[action.id]}

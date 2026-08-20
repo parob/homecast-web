@@ -554,6 +554,8 @@ interface SortableRoomGroupItemProps {
   children?: React.ReactNode;
   dropZone?: 'before' | 'inside' | 'after' | null;
   editMode?: boolean;
+  /** No right-click menu — a touch device, where a long press is a lift. */
+  disableContextMenu?: boolean;
 }
 
 const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
@@ -572,6 +574,7 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
   children,
   dropZone,
   editMode,
+  disableContextMenu,
 }) => {
   const {
     attributes,
@@ -590,35 +593,41 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
 
   const roomGroupWiggleOffset = editMode ? { '--wiggle-offset': `${(group.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
 
+  // Named so the menu can wrap it or not without the row itself being written
+  // twice — this row sits *inside* the drag-handle div, so a second copy is a
+  // second place to forget the handle.
+  const groupRow = (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onSelect();
+      }}
+      className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
+        isDarkBackground
+          ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
+          : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
+      } ${dropZone === 'inside' ? 'ring-2 ring-primary ring-inset' : ''}`}
+    >
+      <Layers className="h-4 w-4" />
+      <span className="flex-1 truncate text-left">{group.name}</span>
+      {!hideAccessoryCounts && (
+        <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+          {group.roomCount}
+        </span>
+      )}
+    </button>
+  );
+
   return (
     // Outer container moves with transform, but doesn't capture drag events
     <div ref={setNodeRef} style={style} data-room-group-entity-id={group.entityId} data-sortable-id={id}>
       {dropZone === 'before' && <div className="h-1 bg-primary rounded-full mb-1" />}
       {/* Only the header has drag listeners */}
       <div {...attributes} {...listeners} className={`cursor-pointer ${editMode ? 'wiggle' : ''}`} style={roomGroupWiggleOffset} onClick={(e) => { e.preventDefault(); onSelect(); }}>
+        {disableContextMenu ? groupRow : (
         <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onSelect();
-              }}
-              className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${isDragging ? 'cursor-grabbing' : ''} ${
-                isDarkBackground
-                  ? `${hasSelectedChild ? 'text-white bg-white/10' : isSelected ? 'bg-primary text-primary-foreground' : 'text-white hover:bg-white/10'}`
-                  : `${hasSelectedChild ? 'bg-muted' : isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`
-              } ${dropZone === 'inside' ? 'ring-2 ring-primary ring-inset' : ''}`}
-            >
-              <Layers className="h-4 w-4" />
-              <span className="flex-1 truncate text-left">{group.name}</span>
-              {!hideAccessoryCounts && (
-                <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                  {group.roomCount}
-                </span>
-              )}
-            </button>
-          </ContextMenuTrigger>
+          <ContextMenuTrigger asChild>{groupRow}</ContextMenuTrigger>
           <ContextMenuContent>
             <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
               {group.name}
@@ -649,6 +658,7 @@ const SortableRoomGroupItem: React.FC<SortableRoomGroupItemProps> = ({
             )}
           </ContextMenuContent>
         </ContextMenu>
+        )}
       </div>
       {/* Children inside the container so they move with the group */}
       {children}
@@ -667,6 +677,8 @@ interface SortableGroupRoomItemProps {
   onBackgroundSettings?: () => void;
   disabled?: boolean;
   editMode?: boolean;
+  /** No right-click menu — a touch device, where a long press is a lift. */
+  disableContextMenu?: boolean;
 }
 
 const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
@@ -678,6 +690,7 @@ const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
   onBackgroundSettings,
   disabled,
   editMode,
+  disableContextMenu,
 }) => {
   const {
     attributes,
@@ -697,28 +710,33 @@ const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
   const RoomIcon = getRoomIcon(room.name);
   const groupRoomWiggleOffset = editMode ? { '--wiggle-offset': `${(room.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
 
+  // Named rather than written twice: this row *is* the drag handle, so a second
+  // copy is a second place to drop {...attributes} {...listeners}.
+  const roomRow = (
+    <button
+      {...attributes}
+      {...listeners}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+        isDragging ? 'cursor-grabbing' : ''
+      } ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+    >
+      <RoomIcon className="h-4 w-4" />
+      <span className="flex-1 truncate">{room.name}</span>
+      {!hideAccessoryCounts && (
+        <span className="text-xs text-muted-foreground">
+          {room.accessoryCount}
+        </span>
+      )}
+    </button>
+  );
+
   return (
     <div ref={setNodeRef} style={style} data-sortable-id={id} className="cursor-pointer" onClick={onSelect}>
       <div className={editMode ? 'wiggle' : ''} style={groupRoomWiggleOffset}>
+      {disableContextMenu ? roomRow : (
       <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button
-            {...attributes}
-            {...listeners}
-            onClick={(e) => { e.stopPropagation(); onSelect(); }}
-            className={`relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-              isDragging ? 'cursor-grabbing' : ''
-            } ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-          >
-            <RoomIcon className="h-4 w-4" />
-            <span className="flex-1 truncate">{room.name}</span>
-            {!hideAccessoryCounts && (
-              <span className="text-xs text-muted-foreground">
-                {room.accessoryCount}
-              </span>
-            )}
-          </button>
-        </ContextMenuTrigger>
+        <ContextMenuTrigger asChild>{roomRow}</ContextMenuTrigger>
         <ContextMenuContent>
           {onBackgroundSettings && (
             <ContextMenuItem onClick={onBackgroundSettings}>
@@ -728,6 +746,7 @@ const SortableGroupRoomItem: React.FC<SortableGroupRoomItemProps> = ({
           )}
         </ContextMenuContent>
       </ContextMenu>
+      )}
       </div>
     </div>
   );
@@ -1967,10 +1986,26 @@ const Dashboard = () => {
   // Touch-friendly sensors: long-press to drag, allows normal scrolling
   // TouchSensor uses native touch events (not mapped pointer events) — avoids
   // iOS Safari race where pointercancel fires before the delay completes.
+  //
+  // The hold is longer before Edit Layout is running than after, because the two
+  // are different gestures wearing the same shape: the first one *enters a mode*
+  // and has to be deliberate enough that resting a thumb on a tile never does it
+  // by accident, while the second is just picking something up in a mode you are
+  // already in, where waiting half a second each time is tedious.
+  //
+  // `tolerance: 5` is what keeps scrolling intact — a finger that travels has
+  // chosen to scroll, and the pending lift is cancelled.
+  //
+  // Changing the delay while a drag runs is safe. dnd-kit builds the sensor once
+  // at activation and reads `activationConstraint` from the options it captured
+  // then, so the value only matters on the *next* press. What is not safe is
+  // changing the sensor *classes* mid-drag, because that re-runs setup/teardown
+  // and pulls the non-passive touchmove listener out from under an active drag —
+  // which is exactly what swapping in an empty sensor list used to do.
   const touchSensors = useSensors(
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
+        delay: editMode ? LIFT_DELAY_EDITING : LIFT_DELAY_IDLE,
         tolerance: 5,
       },
     }),
@@ -1978,10 +2013,9 @@ const Dashboard = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  const disabledSensors = useSensors();
-  // On touch devices, drag-and-drop is disabled unless edit mode is active (prevents scroll interference)
-  const dndEnabled = !isTouchDevice || editMode;
-  const activeSensors = !dndEnabled ? disabledSensors : isTouchDevice ? touchSensors : sensors;
+  // Drag is always live on touch now: the long press that starts one is also how
+  // Edit Layout is entered, so there is nothing to gate it behind.
+  const activeSensors = isTouchDevice ? touchSensors : sensors;
 
   // Debug accessory state (triggered via right-click menu for admins)
   const [debugAccessory, setDebugAccessory] = useState<HomeKitAccessory | null>(null);
@@ -6800,8 +6834,8 @@ const Dashboard = () => {
                                     } : undefined}
                                     pinTab={{ type: 'home', id: home.id, name: home.name }}
                                     isDarkBackground={isDarkBackground}
-                                    dragDisabled={!dndEnabled || !!sidebarActiveId}
-                                    disableContextMenu={isTouchDevice && editMode}
+                                    dragDisabled={!!sidebarActiveId}
+                                    disableContextMenu={isTouchDevice}
                                     editMode={isTouchDevice && editMode}
                                   >
                                   <AnimatedCollapse open={pendingHomeId === home.id && selectedHomeId === home.id && sidebarRoomsExpanded}>
@@ -6832,6 +6866,7 @@ const Dashboard = () => {
                                                   <div key={item.id} className="mt-1 first:mt-0">
                                                     <SortableRoomGroupItem
                                                       id={item.id}
+                                                      disableContextMenu={isTouchDevice}
                                                       group={group}
                                                       isExpanded={isExpanded}
                                                       isSelected={selectedRoomGroupId === group.entityId && selectedRoomId === null}
@@ -6881,6 +6916,7 @@ const Dashboard = () => {
                                                             const room = child.data as HomeKitRoom;
                                                             return (
                                                               <SortableGroupRoomItem
+                                                                disableContextMenu={isTouchDevice}
                                                                 key={child.id}
                                                                 id={child.id}
                                                                 room={room}
@@ -6932,8 +6968,7 @@ const Dashboard = () => {
                                                       onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'room', id: room.id, name: room.name }); setBackgroundSettingsOpen(true); setSidebarOpen(false); }}
                                                       pinTab={selectedHomeId ? { type: 'room', id: room.id, name: room.name, homeId: selectedHomeId } : undefined}
                                                       isDarkBackground={isDarkBackground}
-                                                      dragDisabled={!dndEnabled}
-                                                      disableContextMenu={isTouchDevice && editMode}
+                                                      disableContextMenu={isTouchDevice}
                                                       editMode={isTouchDevice && editMode}
                                                     />
                                                   </div>
@@ -7009,9 +7044,8 @@ const Dashboard = () => {
                       }}
                       pinTabFor={(collection) => ({ type: 'collection', id: collection.id, name: collection.name })}
                       isDarkBackground={isDarkBackground}
-                      dragDisabled={!dndEnabled}
                       touchMode={isTouchDevice}
-                      disableContextMenu={isTouchDevice && editMode}
+                      disableContextMenu={isTouchDevice}
                       editMode={isTouchDevice && editMode}
                       groupsContent={collectionPayload.groups.length > 0 ? (
                         <DndContext
@@ -7042,8 +7076,7 @@ const Dashboard = () => {
                                 }}
                                 pinTab={selectedCollection ? { type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id } : undefined}
                                 isDarkBackground={isDarkBackground}
-                                dragDisabled={!dndEnabled}
-                                disableContextMenu={isTouchDevice && editMode}
+                                disableContextMenu={isTouchDevice}
                                 editMode={isTouchDevice && editMode}
                               />
                             ))}
@@ -7332,8 +7365,8 @@ const Dashboard = () => {
                                 } catch { toast.error('Failed to remove home'); }
                               } : undefined}
                               pinTab={{ type: 'home', id: home.id, name: home.name }}
-                              dragDisabled={!dndEnabled || !!sidebarActiveId}
-                              disableContextMenu={isTouchDevice && editMode}
+                              dragDisabled={!!sidebarActiveId}
+                              disableContextMenu={isTouchDevice}
                               editMode={isTouchDevice && editMode}
                               isDarkBackground={isDarkBackground}
                             >
@@ -7368,6 +7401,7 @@ const Dashboard = () => {
                                             <div key={item.id} className="mt-1 first:mt-0">
                                               <SortableRoomGroupItem
                                                 id={item.id}
+                                                disableContextMenu={isTouchDevice}
                                                 group={group}
                                                 isExpanded={isExpanded}
                                                 isSelected={selectedRoomGroupId === group.entityId && selectedRoomId === null}
@@ -7406,6 +7440,7 @@ const Dashboard = () => {
                                                       const room = child.data as HomeKitRoom;
                                                       return (
                                                         <SortableGroupRoomItem
+                                                          disableContextMenu={isTouchDevice}
                                                           key={child.id}
                                                           editMode={isTouchDevice && editMode}
                                                           id={child.id}
@@ -7450,8 +7485,7 @@ const Dashboard = () => {
                                                 onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'room', id: room.id, name: room.name }); setBackgroundSettingsOpen(true); }}
                                                 pinTab={selectedHomeId ? { type: 'room', id: room.id, name: room.name, homeId: selectedHomeId } : undefined}
                                                 isDarkBackground={isDarkBackground}
-                                                dragDisabled={!dndEnabled}
-                                                disableContextMenu={isTouchDevice && editMode}
+                                                disableContextMenu={isTouchDevice}
                                                 editMode={isTouchDevice && editMode}
                                               />
                                             </div>
@@ -7516,9 +7550,8 @@ const Dashboard = () => {
                 }}
                 pinTabFor={(collection) => ({ type: 'collection', id: collection.id, name: collection.name })}
                 isDarkBackground={isDarkBackground}
-                dragDisabled={!dndEnabled}
                 touchMode={isTouchDevice}
-                disableContextMenu={isTouchDevice && editMode}
+                disableContextMenu={isTouchDevice}
                 editMode={isTouchDevice && editMode}
                 groupsContent={collectionPayload.groups.length > 0 ? (
                   <DndContext
@@ -7548,8 +7581,7 @@ const Dashboard = () => {
                           }}
                           pinTab={selectedCollection ? { type: 'collectionGroup', id: group.id, name: group.name, collectionId: selectedCollection.id } : undefined}
                           isDarkBackground={isDarkBackground}
-                          dragDisabled={!dndEnabled}
-                          disableContextMenu={isTouchDevice && editMode}
+                          disableContextMenu={isTouchDevice}
                           editMode={isTouchDevice && editMode}
                         />
                       ))}
@@ -8048,7 +8080,7 @@ const Dashboard = () => {
                       isDarkBackground={isDarkBackground}
                       open={scenesOpen}
                       isViewOnly={isViewOnly}
-                      dndEnabled={dndEnabled}
+                      dndEnabled
                       onRunAction={runHomeAction}
                       onHideAction={selectedHomeId && !isViewOnly ? handleHideHomeAction : undefined}
                       onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
@@ -8412,7 +8444,7 @@ const Dashboard = () => {
                           <DraggableGrid
                             sharedContext
                             containerId={contextId}
-                            enabled={dndEnabled}
+                            enabled
                             touchMode={isTouchDevice}
                             itemIds={allItemIds}
                             onReorder={handleReorder}

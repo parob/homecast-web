@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homecast UI proposals</title>
+<style>
+:root{
+  --bg:hsl(0 0% 100%); --fg:hsl(222.2 84% 4.9%);
+  --card:hsl(0 0% 100%); --popover:hsl(0 0% 100%);
+  --primary:hsl(217 91% 60%); --primary-fg:#fff;
+  --muted:hsl(214 32% 91%); --muted-fg:hsl(215.4 16.3% 46.9%);
+  --border:hsl(214.3 31.8% 91.4%);
+  --destructive:hsl(0 84.2% 60.2%); --success:hsl(142 76% 36%); --warning:hsl(38 92% 50%);
+  --page:hsl(210 20% 96%);
+  --glass:rgb(255 255 255 / .7); --glass-thick:rgb(255 255 255 / .85);
+  --shadow-lg:0 10px 15px -3px rgb(0 0 0/.1),0 4px 6px -4px rgb(0 0 0/.1);
+  --shadow-xl:0 20px 25px -5px rgb(0 0 0/.12),0 8px 10px -6px rgb(0 0 0/.1);
+}
+html[data-theme="dark"]{
+  --bg:hsl(222 47% 6%); --fg:hsl(210 40% 98%);
+  --card:hsl(222 47% 8%); --popover:hsl(222 47% 8%);
+  --muted:hsl(217 32% 17%); --muted-fg:hsl(215 20% 65%);
+  --border:hsl(217 32% 17%);
+  --destructive:hsl(0 72% 51%); --success:hsl(142 70% 45%);
+  --page:hsl(222 47% 4%);
+  --glass:rgb(0 0 0 / .4); --glass-thick:rgb(0 0 0 / .55);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  background:var(--page); color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--primary)}
+code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--muted);padding:.1em .35em;border-radius:4px}
+
+/* ---------- chrome ---------- */
+.topbar{
+  position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:16px;
+  padding:12px 24px;background:var(--bg);border-bottom:1px solid var(--border);
+}
+.topbar h1{font-size:15px;font-weight:650;letter-spacing:-.01em;margin-right:auto}
+.topbar h1 span{color:var(--muted-fg);font-weight:400}
+.seg{display:inline-flex;background:var(--muted);border-radius:9px;padding:2px}
+.seg button{
+  font:inherit;font-size:12px;font-weight:550;border:0;background:transparent;color:var(--muted-fg);
+  padding:5px 12px;border-radius:7px;cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.08)}
+.nav{
+  position:sticky;top:53px;z-index:99;display:flex;gap:4px;overflow-x:auto;
+  padding:8px 24px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+}
+.nav a{
+  font-size:13px;font-weight:500;text-decoration:none;color:var(--muted-fg);
+  padding:5px 11px;border-radius:8px;white-space:nowrap;
+}
+.nav a:hover{background:var(--muted);color:var(--fg)}
+
+main{max-width:1240px;margin:0 auto;padding:32px 24px 120px}
+section{margin-bottom:64px;scroll-margin-top:110px}
+.sec-head{margin-bottom:8px}
+.sec-head h2{font-size:24px;font-weight:680;letter-spacing:-.02em}
+.sec-head p{color:var(--muted-fg);max-width:74ch;margin-top:6px}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:6px}
+
+.grid{display:grid;gap:20px;margin-top:24px}
+.grid.g2{grid-template-columns:repeat(auto-fit,minmax(400px,1fr))}
+.grid.g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+
+.opt{
+  background:var(--bg);border:1px solid var(--border);border-radius:16px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.opt.current{border-color:color-mix(in srgb,var(--destructive) 45%,var(--border))}
+.opt-head{padding:14px 16px 12px;border-bottom:1px solid var(--border)}
+.opt-head .row{display:flex;align-items:center;gap:8px}
+.opt-head h3{font-size:14px;font-weight:640}
+.tag{
+  font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 7px;border-radius:5px;background:var(--muted);color:var(--muted-fg);
+}
+.tag.now{background:color-mix(in srgb,var(--destructive) 15%,transparent);color:var(--destructive)}
+.tag.rec{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.opt-head p{font-size:12.5px;color:var(--muted-fg);margin-top:6px}
+.opt-body{padding:16px;display:flex;flex-direction:column;gap:12px;flex:1}
+.opt-foot{
+  padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-fg);
+  background:color-mix(in srgb,var(--muted) 35%,transparent);
+}
+.opt-foot b{color:var(--fg);font-weight:600}
+
+.btnrow{display:flex;flex-wrap:wrap;gap:6px}
+.btn{
+  font:inherit;font-size:12px;font-weight:550;cursor:pointer;
+  padding:6px 11px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg);color:var(--fg);
+}
+.btn:hover{background:var(--muted)}
+.btn.pri{background:var(--primary);border-color:transparent;color:#fff}
+.btn.pri:hover{filter:brightness(1.06)}
+
+/* ---------- app frame ---------- */
+.frame{
+  position:relative;border-radius:22px;overflow:hidden;isolation:isolate;
+  height:330px;border:1px solid var(--border);
+  background-image:var(--wall);background-size:cover;background-position:center;
+}
+.frame.tall{height:390px}
+.frame::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgb(255 255 255/.12)}
+.f-header{
+  position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:center;
+  justify-content:space-between;padding:0 10px;z-index:5;
+}
+.bubble{
+  display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:12px;
+  background:var(--glass);backdrop-filter:blur(14px) saturate(150%);
+  font-size:11.5px;font-weight:550;
+}
+.f-body{position:absolute;inset:52px 12px 74px;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}
+.tile{
+  border-radius:16px;padding:10px;height:74px;display:flex;flex-direction:column;justify-content:space-between;
+  background:var(--glass);backdrop-filter:blur(14px) saturate(150%);
+}
+.tile .nm{font-size:11px;font-weight:600;line-height:1.2}
+.tile .st{font-size:10px;color:var(--muted-fg)}
+.tile.on{background:rgb(255 255 255/.92)}
+.tile.on .st{color:hsl(38 92% 40%)}
+
+/* ---------- CURRENT toast (faithful) ---------- */
+.t-layer{position:absolute;inset:0;z-index:40;pointer-events:none;display:flex;padding:14px}
+.t-layer.top{justify-content:center;align-items:flex-start}
+.t-layer.bottom-c{justify-content:center;align-items:flex-end;padding-bottom:82px}
+.t-layer.bottom-r{justify-content:flex-end;align-items:flex-end;padding-bottom:82px}
+.t-stack{display:flex;flex-direction:column;gap:8px;width:100%;align-items:inherit}
+.t-layer.top .t-stack{align-items:center}
+.t-layer.bottom-c .t-stack{align-items:center}
+.t-layer.bottom-r .t-stack{align-items:flex-end}
+
+/* current: sonner pill */
+.toast-now{
+  display:flex;align-items:center;gap:10px;max-width:92%;
+  background:color-mix(in srgb,var(--bg) 80%,transparent);
+  backdrop-filter:blur(20px);border:1px solid transparent;
+  border-radius:9999px;padding:8px 16px;box-shadow:var(--shadow-lg);
+  font-size:13px;
+}
+.toast-now .ic{flex:0 0 auto;display:grid;place-items:center}
+.toast-now .ic.ok{color:var(--success)} .toast-now .ic.err{color:var(--destructive)}
+.toast-now .tx{min-width:0}
+.toast-now .ti{font-weight:550;line-height:1.35}
+.toast-now .td{font-size:12px;color:var(--muted-fg);line-height:1.35}
+/* current: radix toaster */
+.toast-radix{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;
+  border:1px solid var(--border);background:var(--bg);color:var(--fg);
+  border-radius:12px;padding:24px 32px 24px 24px;box-shadow:var(--shadow-lg);position:relative;
+}
+.toast-radix .ti{font-size:13px;font-weight:640}
+.toast-radix .td{font-size:13px;opacity:.9;margin-top:2px}
+.toast-radix .xx{position:absolute;top:8px;right:8px;opacity:.5}
+
+/* ---------- proposal toasts ---------- */
+.tst{
+  display:flex;gap:10px;align-items:flex-start;pointer-events:auto;
+  box-shadow:var(--shadow-xl);font-size:13px;
+  animation:tin .34s cubic-bezier(.21,1.02,.73,1) both;
+}
+.t-layer.top .tst{animation-name:tin-top}
+@keyframes tin-top{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes tin{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+.tst .ic{flex:0 0 auto;display:grid;place-items:center;width:16px;height:16px;margin-top:1px}
+.tst .ti{font-weight:600;line-height:1.35;letter-spacing:-.005em}
+.tst .td{font-size:12.5px;color:var(--muted-fg);line-height:1.4;margin-top:2px}
+.tst .act{
+  margin-left:auto;flex:0 0 auto;font-size:12px;font-weight:600;color:var(--primary);
+  background:transparent;border:0;cursor:pointer;padding:2px 4px;border-radius:6px;
+}
+
+/* A — card, sonner-native */
+.tst.card{width:310px;max-width:100%;background:var(--popover);border:1px solid var(--border);border-radius:12px;padding:13px 14px}
+.tst.card .ic.ok{color:var(--success)} .tst.card .ic.err{color:var(--destructive)}
+
+/* B — capsule HUD, one line only */
+.tst.hud{
+  align-items:center;gap:8px;border-radius:9999px;padding:9px 16px 9px 13px;
+  background:var(--glass-thick);backdrop-filter:blur(14px) saturate(150%);
+  border:1px solid rgb(255 255 255/.16);max-width:92%;font-weight:550;
+}
+.tst.hud .ti{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tst.hud .ic.ok{color:var(--success)} .tst.hud .ic.err{color:var(--destructive)}
+
+/* C — glass card, app material */
+.tst.glass{
+  width:310px;max-width:100%;border-radius:16px;padding:13px 14px;
+  background:var(--glass-thick);backdrop-filter:blur(14px) saturate(150%);
+  border:1px solid rgb(255 255 255/.18);
+}
+.tst.glass .ic.ok{color:var(--success)} .tst.glass .ic.err{color:var(--destructive)}
+.tst.glass .accent{position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0}
+
+/* D — accent rail card */
+.tst.rail{
+  position:relative;width:310px;max-width:100%;border-radius:12px;padding:13px 14px 13px 16px;
+  background:var(--popover);border:1px solid var(--border);overflow:hidden;
+}
+.tst.rail::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted-fg)}
+.tst.rail.err::before{background:var(--destructive)}
+.tst.rail.ok::before{background:var(--success)}
+.tst.rail .ic.ok{color:var(--success)} .tst.rail .ic.err{color:var(--destructive)}
+
+/* E — collapsing island */
+.tst.island{
+  flex-direction:column;gap:0;border-radius:18px;padding:0;overflow:hidden;
+  background:var(--glass-thick);backdrop-filter:blur(14px) saturate(150%);
+  border:1px solid rgb(255 255 255/.18);width:min(310px,92%);cursor:pointer;
+}
+.tst.island .hd{display:flex;align-items:center;gap:9px;padding:10px 14px;width:100%}
+.tst.island .more{
+  max-height:0;opacity:0;transition:max-height .28s ease,opacity .2s ease;
+  padding:0 14px;font-size:12.5px;color:var(--muted-fg);
+}
+.tst.island.open .more{max-height:120px;opacity:1;padding:0 14px 12px 37px}
+.tst.island .cnt{
+  margin-left:auto;font-size:11px;font-weight:700;min-width:18px;height:18px;padding:0 6px;
+  border-radius:9px;background:color-mix(in srgb,var(--fg) 12%,transparent);
+  display:grid;place-items:center;color:var(--muted-fg);
+}
+.tst.island .ic.ok{color:var(--success)} .tst.island .ic.err{color:var(--destructive)}
+
+/* inline widget feedback (option F) */
+.tile.failed{outline:2px solid var(--destructive);outline-offset:-2px;animation:shk .4s}
+@keyframes shk{10%,90%{transform:translateX(-1.5px)}30%,70%{transform:translateX(2.5px)}50%{transform:translateX(-2.5px)}}
+.tile .errline{font-size:10px;color:var(--destructive);font-weight:600}
+
+/* ---------- menus ---------- */
+.menu-stage{position:relative;height:300px;border-radius:18px;overflow:hidden;border:1px solid var(--border);
+  background-image:var(--wall);background-size:cover;background-position:center;padding:22px}
+.mcard{
+  position:relative;width:230px;border-radius:16px;padding:14px;
+  background:var(--glass-thick);backdrop-filter:blur(14px) saturate(150%);
+}
+.mcard .t{font-size:13px;font-weight:640}
+.mcard .s{font-size:11px;color:var(--muted-fg);margin-top:2px}
+.dots{
+  position:absolute;top:9px;right:9px;width:30px;height:30px;border-radius:8px;border:0;cursor:pointer;
+  background:transparent;color:var(--fg);display:grid;place-items:center;
+  transition:background .18s ease,color .18s ease,border-radius .22s cubic-bezier(.3,0,.2,1);
+}
+.dots:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}
+.mn{
+  position:absolute;min-width:186px;border-radius:12px;padding:4px;z-index:20;
+  background:var(--popover);border:1px solid var(--border);box-shadow:var(--shadow-lg);
+  color:var(--fg);
+}
+.mn .it{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
+  font-size:13px;cursor:pointer;white-space:nowrap;
+}
+.mn .it:hover{background:var(--muted)}
+.mn .it.dngr{color:var(--destructive)}
+.mn .sep{height:1px;background:var(--border);margin:4px 6px}
+.hidden{display:none!important}
+
+/* current menu anim */
+.mn.now{animation:zoom .12s ease-out both;transform-origin:top right}
+@keyframes zoom{from{opacity:0;transform:scale(.95) translateY(-8px)}to{opacity:1;transform:none}}
+
+/* M1 — welded: button is the menu's top-right corner */
+.dots.weld-open{
+  background:#fff;color:#111;border-radius:8px 8px 0 0;height:38px;
+  box-shadow:0 -1px 0 rgb(0 0 0/.04);
+}
+html[data-theme="dark"] .dots.weld-open{background:#fff;color:#111}
+.mn.weld{
+  top:47px;right:9px;border-radius:12px 0 12px 12px;border:0;background:#fff;color:#111;
+  box-shadow:0 12px 28px -8px rgb(0 0 0/.3);
+  animation:weld .26s cubic-bezier(.2,.9,.25,1) both;transform-origin:top right;
+}
+.mn.weld .it:hover{background:rgb(0 0 0/.06)}
+.mn.weld .sep{background:rgb(0 0 0/.08)}
+@keyframes weld{from{opacity:0;clip-path:inset(0 0 100% 0 round 12px 0 12px 12px)}to{opacity:1;clip-path:inset(0 0 0 0 round 12px 0 12px 12px)}}
+
+/* M2 — grow-from-button: menu unfolds out of the button's own box */
+.dots.grow-open{background:#fff;color:#111;border-radius:8px}
+.mn.grow{
+  top:9px;right:9px;background:#fff;color:#111;border:0;border-radius:12px;
+  box-shadow:0 14px 34px -10px rgb(0 0 0/.34);padding-top:36px;
+  animation:grow .32s cubic-bezier(.2,.9,.25,1) both;transform-origin:top right;
+}
+.mn.grow .it:hover{background:rgb(0 0 0/.06)}
+.mn.grow .sep{background:rgb(0 0 0/.08)}
+@keyframes grow{
+  from{opacity:.45;clip-path:inset(0 0 calc(100% - 30px) calc(100% - 30px) round 8px)}
+  to{opacity:1;clip-path:inset(0 0 0 0 round 12px)}
+}
+.mn.grow .capdots{position:absolute;top:0;right:0;width:30px;height:30px;display:grid;place-items:center;color:#111}
+
+/* M3 — morph to X, single white surface */
+.dots.x-open{background:#fff;color:#111;border-radius:8px 8px 0 0;height:36px}
+.dots.x-open svg{transform:rotate(90deg);transition:transform .24s cubic-bezier(.3,0,.2,1)}
+.mn.xm{
+  top:45px;right:9px;background:#fff;color:#111;border:0;border-radius:12px 2px 12px 12px;
+  box-shadow:0 14px 34px -10px rgb(0 0 0/.34);
+  animation:xm .24s cubic-bezier(.2,.9,.25,1) both;transform-origin:top right;
+}
+.mn.xm .it:hover{background:rgb(0 0 0/.06)}
+.mn.xm .sep{background:rgb(0 0 0/.08)}
+@keyframes xm{from{opacity:0;transform:scaleY(.4) translateY(-6px)}to{opacity:1;transform:none}}
+
+/* M4 — iOS context: card dims, menu takes over */
+.menu-stage .scrim{position:absolute;inset:0;background:rgb(0 0 0/.28);backdrop-filter:blur(3px);z-index:10;opacity:0;pointer-events:none;transition:opacity .22s}
+.menu-stage.ctx .scrim{opacity:1;pointer-events:auto}
+.menu-stage.ctx .mcard{z-index:15}
+.mn.ctx{
+  top:47px;right:9px;background:#fff;color:#111;border:0;border-radius:13px;
+  box-shadow:0 22px 50px -12px rgb(0 0 0/.5);z-index:20;
+  animation:ctx .3s cubic-bezier(.2,.9,.25,1) both;transform-origin:top right;
+}
+.mn.ctx .it:hover{background:rgb(0 0 0/.06)}
+.mn.ctx .sep{background:rgb(0 0 0/.08)}
+@keyframes ctx{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
+.dots.ctx-open{background:#fff;color:#111;border-radius:8px;z-index:20}
+
+/* ---------- tab bars ---------- */
+.bar-stage{
+  position:relative;height:150px;border-radius:18px;overflow:hidden;border:1px solid var(--border);
+  background-image:var(--wall);background-size:cover;background-position:center;
+  display:flex;align-items:flex-end;justify-content:center;padding-bottom:14px;
+}
+.bar{
+  display:flex;align-items:flex-start;gap:4px;padding:6px 8px;border-radius:16px;
+  background:var(--glass);backdrop-filter:blur(14px) saturate(150%);max-width:calc(100% - 24px);
+}
+.tb{
+  display:flex;flex-direction:column;align-items:center;gap:2px;width:64px;
+  padding:6px 4px;border-radius:8px;border:0;background:transparent;cursor:pointer;color:var(--muted-fg);
+  transition:background .18s,color .18s;
+}
+.tb .lb{font-size:10px;font-weight:500;line-height:1.15;text-align:center;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.tb[aria-current]{background:color-mix(in srgb,var(--fg) 10%,transparent);color:var(--fg)}
+
+/* T1 — expanding active tab, icon-only inactive */
+.bar.t1{gap:2px;padding:6px;border-radius:9999px;align-items:center}
+.bar.t1 .tb{width:44px;flex-direction:row;gap:0;border-radius:9999px;padding:9px;overflow:hidden;
+  transition:width .3s cubic-bezier(.2,.9,.25,1),background .2s,color .2s}
+.bar.t1 .tb .lb{max-width:0;opacity:0;white-space:nowrap;-webkit-line-clamp:1;font-size:12px;font-weight:600;
+  transition:max-width .3s cubic-bezier(.2,.9,.25,1),opacity .18s,margin .3s}
+.bar.t1 .tb[aria-current]{width:auto;background:var(--primary);color:#fff;padding:9px 14px 9px 11px}
+.bar.t1 .tb[aria-current] .lb{max-width:120px;opacity:1;margin-left:7px}
+
+/* T2 — Material 3: capsule behind icon only, label below */
+.bar.t2 .tb{gap:3px;background:transparent}
+.bar.t2 .tb .ip{display:grid;place-items:center;width:44px;height:26px;border-radius:9999px;
+  transition:background .22s cubic-bezier(.2,.9,.25,1)}
+.bar.t2 .tb[aria-current] .ip{background:var(--primary);color:#fff}
+.bar.t2 .tb[aria-current]{background:transparent;color:var(--fg)}
+.bar.t2 .tb[aria-current] .lb{font-weight:650}
+.bar.t2 .tb .lb{-webkit-line-clamp:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px;font-size:10.5px}
+
+/* T3 — one line, tighter, tinted active */
+.bar.t3 .tb{width:56px;padding:6px 3px;border-radius:11px}
+.bar.t3 .tb .lb{-webkit-line-clamp:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:52px;font-size:10.5px}
+.bar.t3 .tb[aria-current]{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--primary)}
+.bar.t3 .tb[aria-current] .lb{font-weight:650}
+
+/* T4 — minimal: icons + underline dot */
+.bar.t4{border-radius:9999px;padding:5px 8px;align-items:center;gap:0}
+.bar.t4 .tb{width:46px;padding:8px 0 10px;gap:0;position:relative;border-radius:9999px}
+.bar.t4 .tb .lb{display:none}
+.bar.t4 .tb[aria-current]{background:transparent;color:var(--fg)}
+.bar.t4 .tb::after{content:"";position:absolute;bottom:4px;left:50%;translate:-50% 0;
+  width:4px;height:4px;border-radius:50%;background:currentColor;opacity:0;transition:opacity .2s,width .2s}
+.bar.t4 .tb[aria-current]::after{opacity:1;width:14px;border-radius:2px;background:var(--primary)}
+
+.note{
+  border-left:3px solid var(--primary);background:color-mix(in srgb,var(--primary) 7%,transparent);
+  padding:12px 16px;border-radius:0 10px 10px 0;margin-top:20px;font-size:13px;
+}
+.note b{font-weight:640}
+ul.tight{margin:8px 0 0 18px} ul.tight li{margin-bottom:5px;font-size:13px}
+.ideas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));margin-top:20px}
+.idea{background:var(--bg);border:1px solid var(--border);border-radius:13px;padding:14px 16px}
+.idea h4{font-size:13.5px;font-weight:640;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.idea p{font-size:12.5px;color:var(--muted-fg)}
+.idea .why{font-size:12px;margin-top:8px;color:var(--fg);opacity:.8}
+.eff{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:var(--muted);color:var(--muted-fg)}
+.eff.s{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.eff.m{background:color-mix(in srgb,var(--warning) 20%,transparent);color:hsl(38 92% 35%)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Homecast UI proposals <span>— toasts, menus, tab bar</span></h1>
+  <div class="seg" id="themeSeg">
+    <button data-theme="light" aria-pressed="true">Light</button>
+    <button data-theme="dark" aria-pressed="false">Dark</button>
+  </div>
+  <div class="seg" id="wallSeg">
+    <button data-wall="dusk" aria-pressed="true">Dusk</button>
+    <button data-wall="warm" aria-pressed="false">Warm</button>
+    <button data-wall="flat" aria-pressed="false">Flat</button>
+  </div>
+</div>
+<div class="nav">
+  <a href="#toasts">1 · Toasts</a>
+  <a href="#menus">2 · Menu morph</a>
+  <a href="#tabbar">3 · Tab bar</a>
+  <a href="#ideas">4 · Other ideas</a>
+</div>
+
+<main>
+
+<!-- ================= TOASTS ================= -->
+<section id="toasts">
+  <div class="sec-head">
+    <div class="kicker">Section 1</div>
+    <h2>Toasts</h2>
+    <p>Two toast systems are mounted at once today — Sonner (top-centre pill) and the shadcn/Radix <code>Toaster</code> (top on mobile, bottom-right on desktop). Same app, two shapes, two positions. 355 call sites, 223 of them <code>toast.error</code>. Fire each one and compare.</p>
+  </div>
+
+  <div class="grid g2">
+
+    <div class="opt current">
+      <div class="opt-head">
+        <div class="row"><h3>Current — Sonner pill</h3><span class="tag now">Live</span></div>
+        <p>Top-centre, <code>rounded-full</code>, <code>bg-background/80</code>, transparent border. Fine for one short word. The moment a title, an icon and a description share it, the 9999px radius turns it into a lozenge and the text sits in the pinched part.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="now:ok">Success</button>
+          <button class="btn" data-fire="now:err">Error</button>
+          <button class="btn" data-fire="now:desc">Error + description</button>
+          <button class="btn" data-fire="now:multi">3 at once</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Breaks on:</b> descriptions, long names, stacking, and any wallpaper light enough to swallow an 80%-opaque white pill with no border.</div>
+    </div>
+
+    <div class="opt current">
+      <div class="opt-head">
+        <div class="row"><h3>Current — Radix Toaster</h3><span class="tag now">Also live</span></div>
+        <p>The second system, still wired in <code>App.tsx:195</code>. Stock shadcn: <code>p-6</code>, 420px, hard border, bottom-right on desktop. Used by Account and History settings only.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="radix:ok">Fire</button>
+          <button class="btn" data-fire="radix:desc">With description</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Recommendation:</b> delete it. Port the ~8 call sites to Sonner and drop <code>@radix-ui/react-toast</code>.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>A · Bottom-right card</h3><span class="tag">Sonner default</span></div>
+        <p>What Vercel, Linear, GitHub and Stripe do. Sonner's own default, essentially unstyled. Stacks and collapses, out of the way of the header, never over the content you just acted on.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="card:ok">Success</button>
+          <button class="btn" data-fire="card:err">Error</button>
+          <button class="btn" data-fire="card:desc">Error + description</button>
+          <button class="btn" data-fire="card:multi">3 at once</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Cost:</b> delete the <code>classNames</code> override. On phone it moves to bottom-centre above the tab bar.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>B · Capsule HUD</h3><span class="tag">Apple</span></div>
+        <p>Keeps the pill you already have, but enforces what a pill is for: <b>one short line, no description, ever</b>. This is the iOS volume/AirPods HUD. Glass material, so it matches the tab bar and widgets rather than shadcn.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="hud:ok">Success</button>
+          <button class="btn" data-fire="hud:err">Error</button>
+          <button class="btn" data-fire="hud:long">Long title (clipped)</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Catch:</b> needs a lint rule or a wrapper — a <code>description</code> passed to a pill has nowhere to go.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>C · Glass card, bottom-centre</h3><span class="tag rec">Recommended</span></div>
+        <p>The app's own <code>material-thick</code> and <code>rounded-2xl</code> — the same surface as the tab bar, the header bubble and every widget. Holds a description without deforming, and reads as Homecast rather than as a component library.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="glass:ok">Success</button>
+          <button class="btn" data-fire="glass:err">Error</button>
+          <button class="btn" data-fire="glass:desc">Error + description</button>
+          <button class="btn" data-fire="glass:action">With Undo</button>
+          <button class="btn" data-fire="glass:multi">3 at once</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Sits above the tab bar</b>, so it never covers the thing you just tapped, and never fights the header.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>D · Accent rail</h3><span class="tag">Slack / Notion</span></div>
+        <p>Solid popover surface with a 3px status rail. Severity is carried by a stripe rather than by flooding the toast with red — 223 error toasts in a saturated red is a lot of alarm for things like "View-only access".</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="rail:ok">Success</button>
+          <button class="btn" data-fire="rail:err">Error</button>
+          <button class="btn" data-fire="rail:desc">Error + description</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Best if</b> you want toasts legible over any wallpaper without relying on backdrop blur.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>E · Collapsing island</h3><span class="tag">Dynamic Island</span></div>
+        <p>One line collapsed; tap to expand the detail. Repeats of the same message coalesce into a count instead of stacking. Directly targets the flapping-relay case <code>toast-bus.ts</code> already debounces by hand.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="island:err">Error (tap it)</button>
+          <button class="btn" data-fire="island:repeat">Fire 4× same</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Most work</b> of the five, and only pays off because so many toasts here are repeats.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>F · Don't toast at all</h3><span class="tag rec">Apply everywhere</span></div>
+        <p>The real fix for a lot of the 223. When a write fails, the widget that failed says so — a red ring and a line of text on the tile. Apple's rule: feedback belongs where the action happened. A toast is for things with no on-screen anchor.</p>
+      </div>
+      <div class="opt-body">
+        <div class="frame" data-frame></div>
+        <div class="btnrow">
+          <button class="btn" data-fire="inline:fail">Fail a light</button>
+          <button class="btn" data-fire="inline:compare">Same, as a toast</button>
+        </div>
+      </div>
+      <div class="opt-foot"><b>Not a replacement</b> — a companion. Keep toasts for scene runs, deletes, saves and connection state.</div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>The convention, briefly.</b>
+    <ul class="tight">
+      <li><b>Material 3</b> puts snackbars bottom-centre on mobile, bottom-left on desktop; one at a time; one action; never for errors that need a decision.</li>
+      <li><b>Apple</b> has no toast primitive at all. Confirmation is the control changing state; transient banners are reserved for things arriving from outside.</li>
+      <li><b>Web apps</b> (Vercel, Linear, GitHub, Stripe, Notion, Figma) are near-unanimous on a bottom corner, small card, 3–5 max, hover to expand.</li>
+      <li>Top-centre is for <b>things happening to you</b> — a dropped connection, an incoming call. It's the wrong shelf for "Group renamed".</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= MENUS ================= -->
+<section id="menus">
+  <div class="sec-head">
+    <div class="kicker">Section 2</div>
+    <h2>Menu morphed into its button</h2>
+    <p>Today the menu is a detached popover 4px below a ghost button, zooming in from 95%. Four ways to weld the two into one surface, with the trigger going white while open. Click the ⋮ on each card.</p>
+  </div>
+
+  <div class="grid g3">
+    <div class="opt current">
+      <div class="opt-head">
+        <div class="row"><h3>Current</h3><span class="tag now">Live</span></div>
+        <p>Detached. <code>sideOffset=4</code>, bordered popover, zoom-95. The button stays ghost-transparent, so nothing on screen says which button opened this.</p>
+      </div>
+      <div class="opt-body"><div class="menu-stage" data-menu="now"></div></div>
+      <div class="opt-foot">The 4px gap and the border are what make it read as two objects.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>M1 · Welded corner</h3><span class="tag rec">Closest to the ask</span></div>
+        <p>Button goes white and square-bottomed; the menu's top-right corner squares off to meet it. One continuous white surface with a notch where the button sits. Wipes open from the button's edge.</p>
+      </div>
+      <div class="opt-body"><div class="menu-stage" data-menu="weld"></div></div>
+      <div class="opt-foot"><b>Radix:</b> <code>sideOffset={0}</code>, <code>align="end"</code>, plus a <code>data-[state=open]</code> variant on the trigger.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>M2 · Grows out of the button</h3><span class="tag">Most literal morph</span></div>
+        <p>The menu <i>is</i> the button, unfolding. It starts at exactly 30×30 in the button's own box and expands down-left; the dots stay drawn in the corner throughout.</p>
+      </div>
+      <div class="opt-body"><div class="menu-stage" data-menu="grow"></div></div>
+      <div class="opt-foot"><b>Note:</b> animating width/height can't use a Radix content animation — needs the menu positioned over the trigger.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>M3 · Dots rotate, panel unrolls</h3><span class="tag">Cheapest</span></div>
+        <p>Same weld, but the trigger's glyph rotates 90° to a row of dots (or an ✕) so the button reads as a toggle. Menu unrolls on the Y axis rather than zooming.</p>
+      </div>
+      <div class="opt-body"><div class="menu-stage" data-menu="xm"></div></div>
+      <div class="opt-foot"><b>~15 lines</b> of CSS on the existing components. No layout change.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>M4 · iOS context menu</h3><span class="tag">Heaviest</span></div>
+        <p>The rest of the screen dims and blurs, the card lifts, the menu scales up from the button. What long-press does on iOS. Strong, and right for destructive menus — but a lot of ceremony for "Rename".</p>
+      </div>
+      <div class="opt-body"><div class="menu-stage" data-menu="ctx"></div></div>
+      <div class="opt-foot">Worth it for the accessory long-press menu; too much for every card.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>One caution on the white button.</b> Over a light wallpaper a white trigger on a white glass card has almost no edge — it reads as a hole. All four variants above rely on the menu's shadow to carry the shape. Worth checking M1 against the <b>Warm</b> wallpaper before committing.
+  </div>
+</section>
+
+<!-- ================= TAB BAR ================= -->
+<section id="tabbar">
+  <div class="sec-head">
+    <div class="kicker">Section 3</div>
+    <h2>Tab bar</h2>
+    <p>Fixed 64px slots, a 20px icon over a 10px label wrapped to two lines, and an active state that is a flat translucent block. The two-line labels are what make it ragged — five pins of different name lengths give five different label heights inside one pill.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="opt current">
+      <div class="opt-head">
+        <div class="row"><h3>Current</h3><span class="tag now">Live</span></div>
+        <p><code>w-16</code> · <code>text-[10px]</code> · <code>line-clamp-2</code> · active = <code>bg-black/10</code>. Note how "Living Room" and "Everything Off" wrap while "Study" doesn't — the icon row stays level but the pill grows to the tallest label.</p>
+      </div>
+      <div class="opt-body"><div class="bar-stage" data-bar="now"></div></div>
+      <div class="opt-foot"><b>Measured 352×69.</b> On a 375px phone that is edge to edge, and the 69px height is set by the one label that wrapped.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>T1 · Expanding active tab</h3><span class="tag rec">Recommended</span></div>
+        <p>Inactive tabs are icon-only; the active one grows sideways to show its label in a filled capsule. The bar shrinks from 352×69 to 281×50, labels never wrap, and the active tab is unmistakable. Click through them.</p>
+      </div>
+      <div class="opt-body"><div class="bar-stage" data-bar="t1"></div></div>
+      <div class="opt-foot"><b>Trade:</b> you lose the labels on inactive tabs. Fine for 4–5 pins the user chose; poor for 5 similar rooms.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>T2 · Material 3 indicator</h3><span class="tag">Android-native</span></div>
+        <p>Keeps every label, but the active pill sits behind the <i>icon only</i> and the label goes semibold below it. Labels forced to one line with an ellipsis. This is the Android system nav bar, so it will feel native in the Tauri build.</p>
+      </div>
+      <div class="opt-body"><div class="bar-stage" data-bar="t2"></div></div>
+      <div class="opt-foot"><b>Keeps</b> all five labels visible. Same 352px width, but 65px tall instead of 69px because nothing wraps.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>T3 · Tighter, tinted</h3><span class="tag s">Smallest change</span></div>
+        <p>The current bar with three edits: one-line labels with ellipsis, 56px slots, and an active state tinted <code>primary</code> instead of grey. Same structure, same code path, most of the raggedness gone. Measures 312×58.</p>
+      </div>
+      <div class="opt-body"><div class="bar-stage" data-bar="t3"></div></div>
+      <div class="opt-foot"><b>~6 lines</b> in <code>MobileTabBar.tsx</code>. Ships today.</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <div class="row"><h3>T4 · Icons only</h3><span class="tag">Most minimal</span></div>
+        <p>No labels at all; a primary underline marks the active tab. Bar drops to 246×48 — the smallest of the five. Leans entirely on icon recognition — viable because the user pinned these themselves.</p>
+      </div>
+      <div class="opt-body"><div class="bar-stage" data-bar="t4"></div></div>
+      <div class="opt-foot"><b>Risk:</b> two rooms with the same derived icon become indistinguishable. Needs a long-press tooltip.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Whichever you pick</b>, two things are worth fixing in all of them: the label and icon are both <code>muted-foreground</code> on an inactive tab, which over a light wallpaper is grey-on-grey; and the active background is a neutral wash carrying none of the app's blue. T1/T2/T3 all address both.
+  </div>
+</section>
+
+<!-- ================= IDEAS ================= -->
+<section id="ideas">
+  <div class="sec-head">
+    <div class="kicker">Section 4</div>
+    <h2>Other things worth a pass</h2>
+    <p>Found while reading the surrounding code. Ordered by payoff for effort — say which you want mocked and I'll add them here.</p>
+  </div>
+
+  <div class="ideas">
+    <div class="idea">
+      <h4>Delete the second toast system <span class="eff s">Small</span></h4>
+      <p><code>App.tsx</code> mounts both <code>&lt;Toaster/&gt;</code> and <code>&lt;Sonner/&gt;</code>. Eight call sites use the Radix one; everything else uses Sonner.</p>
+      <div class="why">Removes a whole component family, a dependency, and the possibility of two visually different toasts on screen at once.</div>
+    </div>
+    <div class="idea">
+      <h4>Error toasts don't say what failed <span class="eff s">Small</span></h4>
+      <p>"Failed to save", "Failed to delete", "Failed to reorder groups" — 200+ of these carry no object and no cause.</p>
+      <div class="why">"Couldn't rename Kitchen — relay offline" is the same amount of code and actually tells the user whether to retry.</div>
+    </div>
+    <div class="idea">
+      <h4>Destructive confirmations are text-only <span class="eff s">Small</span></h4>
+      <p>Delete flows go through a plain AlertDialog. No icon, no name of the thing, no count of what goes with it.</p>
+      <div class="why">"Delete Kitchen?" with the 6 accessories it contains listed underneath prevents the mistake rather than reporting it.</div>
+    </div>
+    <div class="idea">
+      <h4>Header bubble vs. buttons over dark wallpaper <span class="eff m">Medium</span></h4>
+      <p><code>AppHeader</code> already toggles the bubble off on dark backgrounds, with a comment about a 56px slab beside two 40px circles. The seam is still visible mid-tone.</p>
+      <div class="why">One consistent control height and a single glass surface would remove the conditional entirely.</div>
+    </div>
+    <div class="idea">
+      <h4>Empty states <span class="eff m">Medium</span></h4>
+      <p>"Empty collection" is a caption. Rooms, scenes and automations with nothing in them mostly render as blank space.</p>
+      <div class="why">An empty grid is the first thing a new user sees. It's the cheapest place to put the primary action.</div>
+    </div>
+    <div class="idea">
+      <h4>Focus rings are the same blue as selection <span class="eff s">Small</span></h4>
+      <p><code>--ring</code> and <code>--primary</code> are both <code>217 91% 60%</code>, so a keyboard focus ring and a selected ring are indistinguishable.</p>
+      <div class="why">Already bitten once per the project notes. Shifting <code>--ring</code> a few degrees separates them permanently.</div>
+    </div>
+  </div>
+</section>
+
+</main>
+<script>
+/* ---------------- icons (lucide paths) ---------------- */
+const P = {
+  check:'M21.801 10A10 10 0 1 1 17 3.335M9 11l3 3L22 4',
+  alert:'M12 8v4M12 16h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
+  info:'M12 16v-4M12 8h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z',
+  x:'M18 6 6 18M6 6l12 12',
+  dots:'M12 5h.01M12 12h.01M12 19h.01',
+  house:'M15 21v-8H9v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  bulb:'M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4',
+  layers:'m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83zM2 12.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9M2 17.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9',
+  folder:'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z',
+  zap:'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z',
+  sofa:'M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3M2 16a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a1 1 0 0 1-1 1h-1a2 2 0 0 1-2-2H6a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1zM4 18v2M20 18v2M6 9h12v5H6z',
+  utensils:'M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2z',
+  share:'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13',
+  trash:'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
+  pencil:'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4',
+  copy:'M14 2H6a2 2 0 0 0-2 2v12M20 6H10a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z',
+  pin:'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z',
+};
+const ic = (n, sz=16, cls='') =>
+  `<svg class="${cls}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+
+/* ---------------- theme + wallpaper ---------------- */
+const WALLS = {
+  dusk:'linear-gradient(160deg,#1e3a5f 0%,#2d5a87 30%,#7b6f9e 62%,#d98f6b 100%)',
+  warm:'linear-gradient(160deg,#fdf0dc 0%,#f6d3ac 42%,#e8b78d 70%,#d99f74 100%)',
+  flat:'linear-gradient(160deg,#eef2f7 0%,#dde5ee 100%)',
+};
+function setWall(k){ document.documentElement.style.setProperty('--wall', WALLS[k]); }
+setWall('dusk');
+
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  [...document.getElementById('themeSeg').children]
+    .forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === t)));
+}
+document.getElementById('themeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  applyTheme(b.dataset.theme);
+});
+applyTheme(matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.getElementById('wallSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  setWall(b.dataset.wall);
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+});
+
+/* ---------------- app frame scaffold ---------------- */
+const FRAME_HTML = `
+  <div class="f-header">
+    <div class="bubble">${ic('house',14)} Beach House</div>
+    <div class="bubble">rob@parob.com</div>
+  </div>
+  <div class="f-body">
+    <div class="tile on" data-tile="lamp"><div>${ic('bulb',18)}</div><div><div class="nm">Table Lamp</div><div class="st">On · 60%</div></div></div>
+    <div class="tile"><div>${ic('sofa',18)}</div><div><div class="nm">Living Room</div><div class="st">3 accessories</div></div></div>
+    <div class="tile"><div>${ic('utensils',18)}</div><div><div class="nm">Kitchen</div><div class="st">Off</div></div></div>
+    <div class="tile"><div>${ic('zap',18)}</div><div><div class="nm">Good Night</div><div class="st">Scene</div></div></div>
+  </div>
+  <div class="bar-mini"></div>
+  <div class="t-layer top"><div class="t-stack"></div></div>`;
+
+const MINIBAR = `
+  <div style="position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;z-index:6;pointer-events:none">
+    <div class="bar t3" style="pointer-events:auto">
+      <button class="tb" aria-current="true">${ic('house',20)}<span class="lb">Home</span></button>
+      <button class="tb">${ic('sofa',20)}<span class="lb">Living</span></button>
+      <button class="tb">${ic('utensils',20)}<span class="lb">Kitchen</span></button>
+      <button class="tb">${ic('zap',20)}<span class="lb">Night</span></button>
+    </div>
+  </div>`;
+
+document.querySelectorAll('[data-frame]').forEach(f => {
+  f.innerHTML = FRAME_HTML.replace('<div class="bar-mini"></div>', MINIBAR);
+});
+
+/* ---------------- toast rendering ---------------- */
+const POS = {
+  now:'top', radix:'bottom-r', card:'bottom-r', hud:'top',
+  glass:'bottom-c', rail:'bottom-r', island:'bottom-c', inline:'bottom-c',
+};
+
+function layerFor(frame, variant){
+  const layer = frame.querySelector('.t-layer');
+  layer.className = 't-layer ' + POS[variant];
+  return layer.querySelector('.t-stack');
+}
+
+const COPY = {
+  ok:   {kind:'ok',  title:'Group renamed'},
+  err:  {kind:'err', title:'Failed to save'},
+  desc: {kind:'err', title:'Lock up failed', desc:'Front Door did not respond — the relay is offline.'},
+  long: {kind:'err', title:'View-only access: you cannot control accessories in this home'},
+  action:{kind:'ok', title:'Collection deleted', act:'Undo'},
+};
+
+function build(variant, c){
+  const iconName = c.kind==='ok' ? 'check' : c.kind==='err' ? 'alert' : 'info';
+  const iconEl = `<span class="ic ${c.kind}">${ic(iconName,16)}</span>`;
+  const txt = `<div class="tx"><div class="ti">${c.title}</div>${c.desc?`<div class="td">${c.desc}</div>`:''}</div>`;
+  const act = c.act ? `<button class="act">${c.act}</button>` : '';
+  const el = document.createElement('div');
+
+  if (variant==='now'){
+    el.className='toast-now';
+    el.innerHTML = iconEl + txt;
+  } else if (variant==='radix'){
+    el.className='toast-radix';
+    el.innerHTML = `<div><div class="ti">${c.title}</div>${c.desc?`<div class="td">${c.desc}</div>`:''}</div>
+      <span class="xx">${ic('x',16)}</span>`;
+  } else if (variant==='hud'){
+    el.className='tst hud';
+    el.innerHTML = iconEl + `<div class="tx"><div class="ti">${c.title}</div></div>`;
+  } else if (variant==='island'){
+    el.className='tst island';
+    el.innerHTML = `<div class="hd">${iconEl}<div class="ti">${c.title}</div></div>
+      <div class="more">${c.desc || 'Front Door did not respond — the relay is offline.'}</div>`;
+    el.addEventListener('click', ()=> el.classList.toggle('open'));
+  } else {
+    el.className = 'tst ' + variant + (variant==='rail' ? ' '+c.kind : '');
+    el.innerHTML = iconEl + txt + act;
+  }
+  return el;
+}
+
+function fire(frame, variant, key, opts={}){
+  const stack = layerFor(frame, variant);
+  const c = {...COPY[key]};
+
+  if (variant==='island' && opts.repeat){
+    let existing = stack.querySelector('.island');
+    if (existing){
+      const badge = existing.querySelector('.cnt');
+      if (badge) badge.textContent = String(+badge.textContent + 1);
+      else existing.querySelector('.hd').insertAdjacentHTML('beforeend','<span class="cnt">2</span>');
+      return;
+    }
+  }
+
+  const el = build(variant, c);
+  // newest nearest the screen edge the toasts come from
+  if (POS[variant]==='top') stack.prepend(el); else stack.append(el);
+
+  while (stack.children.length > 3) {
+    (POS[variant]==='top' ? stack.lastElementChild : stack.firstElementChild).remove();
+  }
+  setTimeout(()=>{
+    el.style.transition='opacity .25s, transform .25s';
+    el.style.opacity='0';
+    el.style.transform = POS[variant]==='top' ? 'translateY(-10px)' : 'translateY(10px)';
+    setTimeout(()=>el.remove(), 260);
+  }, opts.hold || 4200);
+}
+
+document.querySelectorAll('[data-fire]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const frame = btn.closest('.opt').querySelector('.frame');
+    const [variant, key] = btn.dataset.fire.split(':');
+
+    if (key==='multi'){
+      ['ok','err','desc'].forEach((k,i)=> setTimeout(()=>fire(frame,variant,k), i*420));
+      return;
+    }
+    if (key==='repeat'){
+      for(let i=0;i<4;i++) setTimeout(()=>fire(frame,'island','desc',{repeat:true,hold:6000}), i*600);
+      return;
+    }
+    if (variant==='inline'){
+      const tile = frame.querySelector('[data-tile="lamp"]');
+      if (key==='fail'){
+        tile.classList.remove('failed'); void tile.offsetWidth;
+        tile.classList.add('failed');
+        const st = tile.querySelector('.st');
+        const was = st.textContent;
+        st.className='errline'; st.textContent='Not responding';
+        setTimeout(()=>{ tile.classList.remove('failed'); st.className='st'; st.textContent=was; }, 4200);
+      } else {
+        fire(frame,'glass','desc');
+      }
+      return;
+    }
+    fire(frame, variant, key);
+  });
+});
+
+/* ---------------- menus ---------------- */
+const MENU_ITEMS = `
+  <div class="it">${ic('pencil',15)} Rename</div>
+  <div class="it">${ic('pin',15)} Pin to tab bar</div>
+  <div class="it">${ic('share',15)} Share…</div>
+  <div class="sep"></div>
+  <div class="it dngr">${ic('trash',15)} Delete</div>`;
+
+const MENU_CLASS = { now:'now', weld:'weld', grow:'grow', xm:'xm', ctx:'ctx' };
+const TRIG_CLASS = { now:'', weld:'weld-open', grow:'grow-open', xm:'x-open', ctx:'ctx-open' };
+
+document.querySelectorAll('[data-menu]').forEach(stage => {
+  const kind = stage.dataset.menu;
+  stage.innerHTML = `
+    <div class="scrim"></div>
+    <div class="mcard">
+      <div class="t">Living Room</div>
+      <div class="s">3 accessories · 1 scene</div>
+      <button class="dots" aria-label="More">${ic('dots',18)}</button>
+      <div class="mn ${MENU_CLASS[kind]} hidden">${
+        kind==='grow' ? `<div class="capdots">${ic('dots',18)}</div>` : ''}${MENU_ITEMS}</div>
+    </div>`;
+
+  const btn = stage.querySelector('.dots');
+  const menu = stage.querySelector('.mn');
+  const close = () => {
+    menu.classList.add('hidden');
+    if (TRIG_CLASS[kind]) btn.classList.remove(TRIG_CLASS[kind]);
+    stage.classList.remove('ctx');
+  };
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = !menu.classList.contains('hidden');
+    document.querySelectorAll('.mn').forEach(m => m.classList.add('hidden'));
+    document.querySelectorAll('.dots').forEach(d => d.className='dots');
+    document.querySelectorAll('.menu-stage').forEach(s => s.classList.remove('ctx'));
+    if (open) return;
+    menu.classList.remove('hidden');
+    // restart the CSS animation
+    menu.style.animation='none'; void menu.offsetWidth; menu.style.animation='';
+    if (TRIG_CLASS[kind]) btn.classList.add(TRIG_CLASS[kind]);
+    if (kind==='ctx') stage.classList.add('ctx');
+  });
+  stage.addEventListener('click', close);
+  menu.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target.closest('.it')) close();
+  });
+});
+document.addEventListener('click', () => {
+  document.querySelectorAll('.mn').forEach(m => m.classList.add('hidden'));
+  document.querySelectorAll('.dots').forEach(d => d.className='dots');
+  document.querySelectorAll('.menu-stage').forEach(s => s.classList.remove('ctx'));
+});
+
+/* ---------------- tab bars ---------------- */
+const TABS = [
+  {icon:'house',    label:'Home'},
+  {icon:'sofa',     label:'Living Room'},
+  {icon:'utensils', label:'Kitchen'},
+  {icon:'zap',      label:'Everything Off'},
+  {icon:'folder',   label:'Study'},
+];
+
+document.querySelectorAll('[data-bar]').forEach(stage => {
+  const kind = stage.dataset.bar;
+  const cls = kind==='now' ? '' : kind;
+  stage.innerHTML = `<div class="bar ${cls}">${TABS.map((t,i)=>`
+    <button class="tb" ${i===0?'aria-current="true"':''}>
+      ${kind==='t2' ? `<span class="ip">${ic(t.icon,20)}</span>` : ic(t.icon,20)}
+      <span class="lb">${t.label}</span>
+    </button>`).join('')}</div>`;
+
+  stage.querySelectorAll('.tb').forEach(b => b.addEventListener('click', () => {
+    stage.querySelectorAll('.tb').forEach(x => x.removeAttribute('aria-current'));
+    b.setAttribute('aria-current','true');
+  }));
+});
+</script>
+</body>
+</html>

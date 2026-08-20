@@ -454,6 +454,24 @@ html.mac-app .selectable {
   user-select: text;
 }
 
+/* The OS long-press callout ("Copy", "Save Image"…), suppressed wherever a
+   finger is the primary input — not just inside the iOS app.
+
+   Radix's ContextMenu.Trigger used to set this inline on every tile, card and
+   sidebar row it wrapped. Removing those triggers on touch (long press means
+   drag now) took that with it, and mobile Safari and the Android build have no
+   `html.ios-app` class to fall back on — so a hold that was about to lift a tile
+   would raise a system callout over it instead.
+
+   Callout only. `user-select` is deliberately left alone: WidgetWrapper's
+   NO_SELECT already covers the tiles, and turning selection off for every coarse
+   pointer would take readable text with it. */
+@media (pointer: coarse) {
+  * {
+    -webkit-touch-callout: none;
+  }
+}
+
 /* Disable text selection and touch callout in iOS app WKWebView for native-like feel */
 html.ios-app {
   -webkit-user-select: none;

@@ -27,7 +27,7 @@ import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
-import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
@@ -536,6 +536,9 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Actions offered in the expanded panel: what the context menu already
   // offers, surfaced where a person is actually studying the accessory.
+  const pinAction = usePinAction(
+    accessory ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId } : null,
+  );
   const expandedActions: ExpandedAction[] = [];
   if (canShowHistory && accessory) {
     expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });
@@ -551,6 +554,22 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   }
   if (onShare) {
     expandedActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
+  }
+  // Pinning was a context-menu item, and on touch there is no longer a menu to
+  // put it in. Edit Layout's badge is the only other route, and reaching it to
+  // pin one accessory means entering a mode for it.
+  //
+  // Through `usePinAction`, not a hand-rolled toggle: it is the same hook the
+  // edit badge uses, so the pinned/full/pinnable wording cannot drift between
+  // the two places that offer the same job. It answers null when pinning is not
+  // on offer at all (no tab bar), which is the gate.
+  if (pinAction && !pinAction.full) {
+    expandedActions.push({
+      key: 'pin',
+      icon: pinAction.pinned ? 'unpin' : 'pin',
+      label: pinAction.label,
+      onClick: pinAction.toggle,
+    });
   }
 
   const cardInner = (
@@ -663,7 +682,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
 
   // Wrap with context menu if we have characteristics, location info, or actions to show
-  // Context menu appears on right-click (desktop) or long-press (touch)
+  // Context menu appears on right-click — a mouse only. On touch a long press
+  // enters Edit Layout and lifts the tile, so there is no menu to open: Radix
+  // opens one on a native `contextmenu` as well as its own timer, and an open
+  // menu puts `pointer-events: none` on the body, which would kill the drag.
   // By context, not by prop — same reasoning as useDeals above.
   const pins = usePinnedTabs();
   const canPin = pins.enabled && !!accessory;
@@ -674,7 +696,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const menuOnToggleShowHidden = touchMode ? undefined : onToggleShowHidden;
 
   const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || menuOnHide || menuOnToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin;
-  if (hasContextMenuContent && !editMode && !isDragging && !disableTooltip) {
+  if (hasContextMenuContent && !touchMode && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
         <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg} pressed={pressed}>

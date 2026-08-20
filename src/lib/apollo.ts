@@ -175,6 +175,8 @@ const communityLocalLink = new ApolloLink((operation, forward) => {
         operationName: operation.operationName,
         variables: operation.variables,
         authorization: token ? `Bearer ${token}` : undefined,
+        // This link only runs on the relay Mac — see the guard above.
+        local: true,
       }).then(result => {
         observer.next(result as any);
         observer.complete();

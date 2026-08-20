@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8"><title>tab bar modes</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;font:13px -apple-system,system-ui,sans-serif;background:#111;color:#fff;padding:10px}
+  .phone{position:relative;width:var(--w,390px);height:150px;overflow:hidden;margin:0 10px 12px 0;
+    display:inline-block;vertical-align:top;border-radius:14px;
+    background:linear-gradient(160deg,#1e3a5f,#2d5a87 40%,#d98f6b)}
+  .cap{position:absolute;top:6px;left:8px;font-size:10px;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:5px}
+  .outer{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;padding:0 16px}
+  .pill{display:flex;gap:4px;min-width:0;max-width:calc(100% - 32px);padding:6px;
+    background:rgba(0,0,0,.4);backdrop-filter:blur(14px)}
+  .row{display:flex;gap:4px;min-width:0;max-width:100%;overflow:hidden}
+  /* compact */
+  .compact .pill{border-radius:24px;align-items:flex-start;padding:6px 8px}
+  .compact .row{align-items:flex-start}
+  .compact .slot{display:flex;min-width:0;flex:1 1 0;max-width:64px}
+  .compact .tab{display:flex;width:100%;min-width:0;flex-direction:column;align-items:center;gap:2px;border-radius:16px;padding:6px 4px;color:#fff;background:#3b82f6}
+  .compact .lb{width:100%;height:23px;padding:0 4px;font-size:10px;font-weight:500;line-height:1.15;text-align:center;
+    overflow-wrap:break-word;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  /* icons */
+  .icons .pill{border-radius:9999px;align-items:center}
+  .icons .row{align-items:center}
+  .icons .slot{display:flex;flex-shrink:0}
+  .icons .slot.on{min-width:0;flex:1 1 0}
+  .icons .tab{display:flex;width:100%;min-width:0;flex-direction:row;align-items:center;border-radius:9999px;
+    padding:8px 10px;color:rgba(255,255,255,.85)}
+  .icons .tab.on{background:#3b82f6;color:#fff;padding:8px 14px 8px 11px;gap:6px}
+  .icons .lb{display:none}
+  .icons .tab.on .lb{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;font-size:12.5px;font-weight:600;max-width:220px}
+  svg{width:20px;height:20px;flex-shrink:0}
+  pre{color:#9ae6b4;font:11px ui-monospace,Menlo,monospace;white-space:pre-wrap}
+</style>
+<div id="out"></div><pre id="log"></pre>
+<script>
+const I='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>';
+const NAMES=['Home','Ensuite Underfloor Heating','Annex Lights','Conservatory','Everything Off'];
+function bar(mode,w){
+  return `<div class="phone ${mode}" style="--w:${w}px" data-m="${mode}" data-w="${w}">
+    <span class="cap">${mode} · ${w}px</span><div class="outer"><div class="pill"><div class="row">
+    ${NAMES.map((n,i)=>`<div class="slot ${i===1?'on':''}"><button class="tab ${i===1?'on':''}">${I}<span class="lb">${n}</span></button></div>`).join('')}
+    </div></div></div></div>`;
+}
+document.getElementById('out').innerHTML =
+  bar('compact',390)+bar('compact',320)+bar('icons',390)+bar('icons',320);
+addEventListener('load',()=>{
+  const rows=[];
+  document.querySelectorAll('.phone').forEach(p=>{
+    const pill=p.querySelector('.pill'), pr=pill.getBoundingClientRect();
+    const tabs=[...p.querySelectorAll('.slot')];
+    const widths=tabs.map(t=>Math.round(t.getBoundingClientRect().width));
+    const l=Math.min(...tabs.map(t=>t.getBoundingClientRect().left));
+    const r=Math.max(...tabs.map(t=>t.getBoundingClientRect().right));
+    const over = l < pr.left-0.5 || r > pr.right+0.5;
+    const equal = new Set(widths).size === 1;
+    const lit = p.querySelector('.tab.on .lb');
+    const clipped = lit ? lit.scrollWidth > lit.clientWidth + 1 : null;
+    rows.push(`${p.dataset.m.padEnd(8)}@${p.dataset.w}  widths ${widths.join(',').padEnd(22)} equal:${equal?'yes':'NO '}  tabs escape pill:${over?'YES':'no '}  name truncated:${clipped===null?'-':clipped?'yes':'no'}`);
+  });
+  document.getElementById('log').textContent=rows.join('\n');
+});
+</script>

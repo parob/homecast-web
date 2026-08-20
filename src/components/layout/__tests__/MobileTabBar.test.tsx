@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 import { MobileTabBar, type PinnedTabStatus } from '../MobileTabBar';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 
 // ExpandedOverlay portals to document.body and measures layout; in jsdom the
 // measurements are all zero, so stand in for it with something assertable.
+// Portalled, like the real one — and that is the point, not an incidental
+// detail: React dispatches through the component tree rather than the DOM one,
+// so a press inside the panel reaches the bar's own handlers even though the
+// panel is not a DOM descendant of it. Rendered inline, the mock could not
+// reproduce the bug at all.
 vi.mock('@/components/shared/ExpandedOverlay', () => ({
   ExpandedOverlay: ({ isExpanded, children }: { isExpanded: boolean; children: React.ReactNode }) =>
-    isExpanded ? <div data-testid="control-popover">{children}</div> : null,
+    isExpanded ? createPortal(<div data-testid="control-popover">{children}</div>, document.body) : null,
 }));
 
 // jsdom has no ResizeObserver, and the bar watches its own row so the end
@@ -1185,5 +1191,44 @@ describe('how the row is divided', () => {
     expect(label.className).toContain('line-clamp-2');
     expect(label.className).toContain('break-words');
     expect(label.className).toContain('w-full');
+  });
+});
+
+/**
+ * A press inside a pin's control panel is not a press on the bar.
+ *
+ * The panel is rendered by this component and portalled to the body, and React
+ * dispatches through the component tree rather than the DOM one — so a
+ * pointerdown inside the panel arrived at the bar's own handler as though it
+ * had been made on a chip. The slide then tracked a finger that was working a
+ * slider and, on release, picked whichever chip its x had ended up over: the
+ * panel closed and something behind it changed. A tap survived it, which is why
+ * a toggle looked fine and only the sliders did not.
+ */
+describe('a press inside the panel the bar opened', () => {
+  const bar = () => document.querySelector<HTMLElement>('[data-tab-row]')!;
+
+  it('does not start the slide, so the panel stays put', () => {
+    const props = setup([TABS.home, TABS.accessory]);
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+    const panel = screen.getByTestId('control-popover');
+
+    // A drag that begins inside the panel and ends over another chip. It
+    // reaches the bar's handler through the React tree, which is the bug.
+    fireEvent.pointerDown(panel, { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 300, clientY: 0 }));
+
+    expect(props.onSelectHome).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
+  });
+
+  it('still starts for a press on a chip', () => {
+    const props = setup([TABS.home]);
+    const chip = screen.getByRole('button', { name: /Beach House/ });
+
+    fireEvent.pointerDown(chip, { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: 0 }));
+
+    expect(props.onSelectHome).toHaveBeenCalledWith('HOME-1');
   });
 });

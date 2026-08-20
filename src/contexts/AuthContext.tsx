@@ -300,6 +300,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
         operationName,
         variables,
         authorization: token ? `Bearer ${token}` : undefined,
+        local: true,   // relay Mac, in-process — see isRelayRef above
       });
     }
     // External browser/iOS client: HTTP POST to the relay server

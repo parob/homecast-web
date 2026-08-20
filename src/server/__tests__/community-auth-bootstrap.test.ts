@@ -8,6 +8,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const mockDb = {
   users: new Map<string, any>(),
@@ -191,5 +192,39 @@ describe('setting up authentication from scratch', () => {
       variables: { name: 'second', password: 'pw-second-123', role: 'view' },
     });
     expect(second.data?.createCommunityUser?.token ?? null).toBeNull();
+  });
+});
+
+describe('the relay Mac is not a network client', () => {
+  it('can still turn auth off when an owner exists but it holds no token', async () => {
+    // The lockout this closes: the UI signs the relay Mac in as `relay-owner`
+    // without a password and never issues it a JWT. With auth on and an owner
+    // in the database the bootstrap hatch is shut — correctly, it is only for
+    // a relay with no accounts — so the machine running the relay could not
+    // call anything, including the mutation that turns auth back off.
+    mockDb.users.set('u1', { id: 'u1', name: 'owner', passwordHash: 'x', salt: 'y', iterations: 1, role: 'owner' });
+    mockDb.settings.set('auth-enabled', 'true');
+
+    const overTheWire = await handleGraphQL({ operationName: 'SetAuthEnabled', variables: { enabled: false } }) as any;
+    expect(isAuthError(overTheWire)).toBe(true);
+    expect(mockDb.settings.get('auth-enabled')).toBe('true');
+
+    const fromTheRelayItself = await handleGraphQL({
+      operationName: 'SetAuthEnabled', variables: { enabled: false }, local: true,
+    }) as any;
+    expect(isAuthError(fromTheRelayItself)).toBe(false);
+    expect(mockDb.settings.get('auth-enabled')).toBe('false');
+  });
+
+  it('does not let a network caller claim to be local', async () => {
+    // local-server.ts builds its request with four named fields and never
+    // copies this one, so a body carrying it cannot reach the gate. Pinned
+    // here because the whole safety of the flag rests on that.
+    const source = readFileSync(
+      new URL('../local-server.ts', import.meta.url), 'utf8',
+    );
+    const call = source.slice(source.indexOf('await handleGraphQL({'));
+    const args = call.slice(0, call.indexOf('});'));
+    expect(args).not.toContain('local');
   });
 });

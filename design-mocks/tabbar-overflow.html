@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8"><title>tab bar overflow</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;font:14px -apple-system,system-ui,sans-serif;background:#222;padding:12px}
+  .phone{width:var(--w,390px);margin:0 0 18px;border:1px solid #555;border-radius:14px;overflow:hidden;
+    background:linear-gradient(160deg,#1e3a5f,#2d5a87 40%,#d98f6b);height:170px;position:relative}
+  .cap{position:absolute;top:6px;left:10px;color:#fff;font-size:11px;opacity:.85}
+  .outer{position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;
+    padding:0 16px;pointer-events:none}
+  .pill{pointer-events:auto;display:flex;gap:4px;align-items:center;padding:6px;
+    border-radius:9999px;background:rgba(0,0,0,.4);backdrop-filter:blur(14px) saturate(150%);
+    max-width:calc(100% - 32px)}
+  .pill.clip{overflow:hidden}
+  .tab{display:flex;flex-direction:row;align-items:center;border-radius:9999px;overflow:hidden;
+    padding:8px 10px;flex-shrink:0;border:0;background:transparent;color:rgba(255,255,255,.75)}
+  .tab .ic{width:20px;height:20px;flex-shrink:0;display:block}
+  .tab.lit{background:#3b82f6;color:#fff;padding:8px 12px}
+  /* the fix */
+  .fix .tab.lit{min-width:0;flex-shrink:1}
+  .fix2 .tab.lit{min-width:0;flex-shrink:1}
+  .fix2 .lbl{text-overflow:ellipsis;min-width:0}
+  .fix2{min-width:0}
+  .lbl{font-size:13px;font-weight:600;line-height:1;white-space:nowrap;overflow:hidden;
+    max-width:120px;margin-left:8px}
+  .fix .lbl{text-overflow:ellipsis;min-width:0}
+  .broken .lbl{text-overflow:clip}
+</style>
+<script>
+const ICON='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>';
+function bar(label, cls, clip){
+  return `<div class="phone"><div class="cap">${cls}</div><div class="outer"><div class="pill ${clip?'clip':''} ${cls}">
+    <button class="tab lit">${ICON}<span class="lbl">${label}</span></button>
+    <button class="tab">${ICON}</button><button class="tab">${ICON}</button>
+    <button class="tab">${ICON}</button><button class="tab">${ICON}</button>
+  </div></div></div>`;
+}
+document.write(
+  '<div style="--w:320px">' +
+  bar('Ensuite Underfloor Heating','broken',false) +
+  bar('Ensuite Underfloor Heating','fix2',true) +
+  '</div>' +
+  bar('Ensuite Underfloor Heating','broken',false) +
+  bar('Ensuite Underfloor Heating','fix2',true)
+);
+addEventListener('load',()=>{
+  const out=[];
+  document.querySelectorAll('.phone').forEach((p,i)=>{
+    const pill=p.querySelector('.pill'), pr=pill.getBoundingClientRect(), pp=p.getBoundingClientRect();
+    const tabs=[...pill.querySelectorAll('.tab')];
+    const spanL=Math.min(...tabs.map(t=>t.getBoundingClientRect().left));
+    const spanR=Math.max(...tabs.map(t=>t.getBoundingClientRect().right));
+    const cs=getComputedStyle(pill);
+    out.push(`#${i} ${pill.className.trim()} | pill ${Math.round(pr.width)}px | tabs overflow pill: ${(spanL<pr.left-0.5||spanR>pr.right+0.5)?'YES':'no'} | pill inside phone: ${(pr.left>=pp.left-0.5&&pr.right<=pp.right+0.5)?'yes':'NO'} | cap ${cs.maxWidth} | outer ${Math.round(pill.parentElement.getBoundingClientRect().width)}`);
+  });
+  document.title='done';
+  const pre=document.createElement('pre');
+  pre.style.cssText='color:#fff;font-size:12px;white-space:pre-wrap';
+  pre.textContent=out.join('\n'); document.body.appendChild(pre);
+});
+</script>

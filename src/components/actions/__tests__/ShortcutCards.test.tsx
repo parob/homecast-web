@@ -94,6 +94,10 @@ const alarm = acc('s1', 'security_system', [
  * because its toggle is. So the card is found by id rather than by role.
  */
 const card = (id: string) => screen.getByTestId(`action-${id}`);
+// Edit Layout's badges are rendered *beside* the card, never inside it — a
+// button within the drag handle would turn every tap into a long-press race
+// (see EditActions). So scoping to one card's badges means its wrapper.
+const tile = (id: string) => within(card(id).parentElement!);
 
 /** The single switch on a card whose action is all-on or all-off. */
 const switchOn = (id: string) => within(card(id)).getByRole('switch');
@@ -422,7 +426,7 @@ describe('hiding an action', () => {
   });
 });
 
-describe('pinning from a long press', () => {
+describe('pinning', () => {
   afterEach(cleanup);
   beforeEach(() => {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
@@ -430,7 +434,7 @@ describe('pinning from a long press', () => {
 
   const PINS_ON = { enabled: true, isPinned: () => false, isFull: false, toggle: vi.fn() };
 
-  it('offers Pin to Tab Bar on a phone, where Edit Layout owns hiding', () => {
+  it('offers nothing to long-press on a phone, where the press is a lift', () => {
     renderSection(
       [lightOn],
       { homeId: 'HOME-1', onHideAction: vi.fn() },
@@ -439,9 +443,25 @@ describe('pinning from a long press', () => {
     );
 
     fireEvent.contextMenu(card('lights'));
-    expect(screen.getByText('Pin to Tab Bar')).toBeTruthy();
-    // Hiding is Edit Layout's job on touch — the menu must not offer it twice.
+    // No menu at all on touch: the hold that would have opened one now enters
+    // Edit Layout and lifts the card, and an open Radix menu takes the pointer
+    // with it. Pinning and hiding both live on the tile's badges instead.
+    expect(screen.queryByText('Pin to Tab Bar')).toBeNull();
     expect(screen.queryByText('Hide Scene')).toBeNull();
+  });
+
+  it('offers Pin on the tile while editing, which is where touch pins from now', () => {
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { touchMode: true, editMode: true },
+      PINS_ON,
+    );
+
+    // The badge reads "Pin"; "Pin to Tab Bar" is its accessible name, and it
+    // comes from the same usePinAction the menu item used, so the two wordings
+    // cannot drift apart.
+    expect(tile('lights').getByLabelText('Pin to Tab Bar')).toBeTruthy();
   });
 
   it('offers both on the desktop, where there is no edit mode', () => {
@@ -459,15 +479,16 @@ describe('pinning from a long press', () => {
 
   it('pins under the stable name, not the label that follows device state', () => {
     const toggle = vi.fn();
+    // Through Edit Layout's badge, the route touch now has. The invariant under
+    // test is the stored name, and it has to hold on whichever route reaches it.
     renderSection(
       [lightOn],
       { homeId: 'HOME-1', onHideAction: vi.fn() },
-      { touchMode: true, editMode: false },
+      { touchMode: true, editMode: true },
       { ...PINS_ON, toggle },
     );
 
-    fireEvent.contextMenu(card('lights'));
-    fireEvent.click(screen.getByText('Pin to Tab Bar'));
+    fireEvent.click(tile('lights').getByLabelText('Pin to Tab Bar'));
     // "Turn all lights off" would freeze today's state into the tab for ever.
     expect(toggle).toHaveBeenCalledWith(expect.objectContaining({ id: 'lights', name: 'Lights' }));
   });

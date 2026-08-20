@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8"><title>scrim coords</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;font:13px -apple-system,system-ui,sans-serif;background:#111;color:#fff}
+  .screen{position:relative;width:340px;height:300px;overflow:hidden;margin:14px;display:inline-block;
+    background:linear-gradient(160deg,#1e3a5f,#2d5a87 40%,#d98f6b);vertical-align:top;border-radius:14px}
+  .lab{position:absolute;top:6px;left:8px;z-index:5;font-size:11px;background:rgba(0,0,0,.55);
+    padding:3px 7px;border-radius:6px}
+  /* the real .fixed-full-screen shape: starts above the viewport, ends below it */
+  .scrim{position:absolute;left:calc(var(--sal) * -1);top:calc(var(--sat) * -1);
+    width:calc(100% + var(--sal) + var(--sar));height:calc(100% + var(--sat) + var(--sab));
+    background:rgba(0,0,0,.45);backdrop-filter:blur(2px);z-index:3}
+  .chip{position:absolute;bottom:14px;left:50%;translate:-50% 0;z-index:2;
+    background:#3b82f6;color:#fff;padding:8px 14px;border-radius:9999px;font-weight:600}
+  pre{color:#9ae6b4;font:11px ui-monospace,Menlo,monospace;margin:0 14px 14px}
+</style>
+<div class="screen" id="before"><span class="lab">before — clip in VIEWPORT coords</span>
+  <div class="chip">Annex Lights</div><div class="scrim"></div></div>
+<div class="screen" id="after"><span class="lab">after — clip in SCRIM coords</span>
+  <div class="chip">Annex Lights</div><div class="scrim"></div></div>
+<div class="screen" id="nofilter"><span class="lab">control — clip, blur removed</span><div class="chip">Annex Lights</div><div class="scrim" style="backdrop-filter:none"></div></div>
+<div class="screen" id="noscrim"><span class="lab">control — no scrim at all</span><div class="chip">Annex Lights</div></div>
+<div class="screen" id="panes"><span class="lab">four panes around it</span><div class="chip">Annex Lights</div><div class="scrim" id="paneWrap" style="background:none;backdrop-filter:none"></div></div>
+<pre id="out"></pre>
+<script>
+const PAD=5,R=11;
+function cutout(w,h,r){
+  const x=r.left-PAD,y=r.top-PAD,rw=r.width+PAD*2,rh=r.height+PAD*2;
+  const a=Math.max(0,Math.min(R,rw/2,rh/2));
+  return `path(evenodd, "M0,0 H${w} V${h} H0 Z M${x+a},${y} H${x+rw-a} A${a},${a} 0 0 1 ${x+rw},${y+a} V${y+rh-a} A${a},${a} 0 0 1 ${x+rw-a},${y+rh} H${x+a} A${a},${a} 0 0 1 ${x},${y+rh-a} V${y+a} A${a},${a} 0 0 1 ${x+a},${y} Z")`;
+}
+// A notch-sized top inset and a home-indicator bottom one, as on a real phone.
+document.documentElement.style.setProperty('--sat','47px');
+document.documentElement.style.setProperty('--sab','34px');
+document.documentElement.style.setProperty('--sal','0px');
+document.documentElement.style.setProperty('--sar','0px');
+
+const out=[];
+for (const id of ['before','after','nofilter']) {
+  const screen=document.getElementById(id);
+  const scrim=screen.querySelector('.scrim'), chip=screen.querySelector('.chip');
+  const sb=scrim.getBoundingClientRect(), cb=chip.getBoundingClientRect();
+  if (id==='before') {
+    // the bug: screen-sized outer box, screen-relative hole
+    const pb=screen.getBoundingClientRect();
+    scrim.style.clipPath=cutout(pb.width,pb.height,{left:cb.left-pb.left,top:cb.top-pb.top,width:cb.width,height:cb.height});
+  } else {
+    scrim.style.clipPath=cutout(sb.width,sb.height,{left:cb.left-sb.left,top:cb.top-sb.top,width:cb.width,height:cb.height});
+  }
+  // Where does the painted scrim actually stop, relative to the screen?
+  const pb=screen.getBoundingClientRect();
+  const paintedBottom = id==='before' ? sb.top + pb.height : sb.bottom;
+  out.push(`${id.padEnd(7)} scrim spans y ${Math.round(sb.top-pb.top)}..${Math.round(sb.bottom-pb.top)} of screen 0..${Math.round(pb.height)} | clip covers to y ${Math.round(paintedBottom-pb.top)} | gap at bottom: ${Math.round(pb.height-(paintedBottom-pb.top))}px`);
+}
+document.getElementById('out').textContent=out.join('\n');
+</script>

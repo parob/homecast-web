@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tab bar — always-visible labels</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --primary:hsl(217 91% 60%); --fg:hsl(222 47% 6%);
+  --page:hsl(210 20% 96%); --bg:#fff; --border:hsl(214 32% 91%);
+  --muted-fg:hsl(215 16% 47%);
+}
+html[data-theme="dark"]{--page:hsl(222 47% 4%);--bg:hsl(222 47% 8%);--fg:hsl(210 40% 98%);
+  --border:hsl(217 32% 17%);--muted-fg:hsl(215 20% 65%)}
+body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  background:var(--page);color:var(--fg);-webkit-font-smoothing:antialiased}
+.top{position:sticky;top:0;z-index:10;display:flex;gap:14px;align-items:center;
+  padding:12px 20px;background:var(--bg);border-bottom:1px solid var(--border)}
+.top h1{font-size:15px;font-weight:650;margin:0 auto 0 0}
+.top h1 span{color:var(--muted-fg);font-weight:400}
+.seg{display:inline-flex;background:hsl(214 32% 91%);border-radius:9px;padding:2px}
+html[data-theme="dark"] .seg{background:hsl(217 32% 17%)}
+.seg button{font:inherit;font-size:12px;font-weight:550;border:0;background:transparent;
+  color:var(--muted-fg);padding:5px 11px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.08)}
+main{max-width:1500px;margin:0 auto;padding:24px 20px 100px}
+.intro{max-width:70ch;color:var(--muted-fg);font-size:13.5px;margin-bottom:24px}
+.opts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(430px,1fr))}
+.opt{background:var(--bg);border:1px solid var(--border);border-radius:15px;overflow:hidden}
+.opt.now{border-color:hsl(0 84% 60%/.5)}
+.hd{padding:13px 15px 11px;border-bottom:1px solid var(--border)}
+.hd .r{display:flex;align-items:center;gap:8px}
+.hd h3{font-size:14px;font-weight:640;margin:0}
+.tag{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 7px;border-radius:5px;background:hsl(214 32% 91%);color:var(--muted-fg)}
+html[data-theme="dark"] .tag{background:hsl(217 32% 17%)}
+.tag.live{background:hsl(0 84% 60%/.15);color:hsl(0 84% 55%)}
+.tag.rec{background:hsl(142 76% 36%/.16);color:hsl(142 60% 38%)}
+.hd p{font-size:12.5px;color:var(--muted-fg);margin:6px 0 0}
+.bd{padding:14px;display:flex;gap:12px;flex-wrap:wrap}
+.ft{padding:9px 15px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-fg);
+  background:hsl(214 32% 91%/.35)}
+html[data-theme="dark"] .ft{background:hsl(217 32% 17%/.35)}
+.ft b{color:var(--fg);font-weight:600}
+
+/* ---- phone ---- */
+.phone{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border);
+  background-image:var(--wall);background-size:cover;background-position:center;height:132px;
+  display:flex;align-items:flex-end;justify-content:center;padding:0 16px 10px;flex:0 0 auto}
+.phone .w{position:absolute;top:6px;left:9px;font-size:10px;color:#fff;opacity:.8;
+  background:rgba(0,0,0,.35);padding:2px 6px;border-radius:5px}
+.warn{position:absolute;top:6px;right:9px;font-size:10px;font-weight:700;color:#fff;
+  background:hsl(0 84% 50%);padding:2px 6px;border-radius:5px;display:none}
+.phone.bad .warn{display:block}
+
+/* ---- the bar ---- */
+.bar{display:flex;gap:4px;align-items:flex-start;padding:6px;border-radius:18px;min-width:0;
+  background:rgba(0,0,0,.4);backdrop-filter:blur(14px) saturate(150%);max-width:calc(100% - 32px)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;
+  border:0;background:transparent;color:rgba(255,255,255,.72);border-radius:10px;
+  flex:1 1 0;min-width:0;max-width:64px}
+.tab .ic{width:20px;height:20px;flex-shrink:0}
+.tab .lb{font-size:10px;font-weight:500;line-height:1.15;text-align:center;width:100%;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow-wrap:break-word}
+.tab.on{background:rgba(255,255,255,.2);color:#fff}
+
+/* A — live: label only on the active one */
+.a .tab .lb{display:none}
+.a .tab{flex-direction:row;border-radius:9999px;flex:0 0 auto;max-width:none;padding:8px 10px;gap:0}
+.a .bar{align-items:center;border-radius:9999px}
+.a .tab.on{background:var(--primary);color:#fff;padding:8px 12px;min-width:0;flex:0 1 auto}
+.a .tab.on .lb{display:block;-webkit-line-clamp:1;font-size:13px;font-weight:600;
+  white-space:nowrap;text-overflow:ellipsis;margin-left:8px;max-width:120px;min-width:0}
+
+/* B — two lines, height always reserved */
+.b .tab .lb{height:23px;-webkit-line-clamp:2}
+
+/* C — one line, ellipsis */
+.c .tab .lb{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+
+/* D — tabs size to their name, within limits */
+.d .tab{flex:0 1 auto;min-width:0;max-width:88px;padding:6px 7px}
+.d .tab .lb{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+
+/* E — icon and label side by side, every tab */
+.e .bar{align-items:center;border-radius:9999px}
+.e .tab{flex-direction:row;flex:0 1 auto;max-width:none;gap:6px;border-radius:9999px;
+  padding:7px 10px;min-width:0}
+.e .tab .lb{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis;font-size:11.5px;
+  font-weight:600;min-width:0;width:auto;text-align:left}
+.e .tab.on{background:var(--primary);color:#fff}
+
+/* F — scrollable, nothing truncated */
+.f .bar{overflow-x:auto;scrollbar-width:none}
+.f .bar::-webkit-scrollbar{display:none}
+.f .tab .lb{-webkit-line-clamp:1;white-space:nowrap;max-width:none}
+.f .tab{flex:0 0 auto;max-width:none;min-width:56px;padding:6px 8px}
+
+/* G — smaller glyph buys the label a line */
+.g .tab{max-width:60px}
+.g .tab .ic{width:17px;height:17px}
+.g .tab .lb{font-size:10.5px;-webkit-line-clamp:2;height:24px}
+
+/* H — A's chips, but every name kept and the row scrolls.
+   The scroller is INSIDE the glass so the mask fades the tabs at the ends
+   without eating the pill's own background — a mask on the pill would fade
+   its rounded ends into nothing. */
+.scroller{display:flex;gap:4px;align-items:center;overflow-x:auto;scrollbar-width:none;
+  min-width:0;max-width:100%;scroll-behavior:smooth}
+.scroller::-webkit-scrollbar{display:none}
+/* Directional: a fade on an end you have already reached is a lie — it says
+   there is more that way when there is not. */
+.scroller.fade-l{mask-image:linear-gradient(90deg,transparent 0,#000 14px);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px)}
+.scroller.fade-r{mask-image:linear-gradient(90deg,#000 calc(100% - 14px),transparent 100%);
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 14px),transparent 100%)}
+.scroller.fade-l.fade-r{mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.h .bar,.h2 .bar{align-items:center;border-radius:9999px;padding:6px}
+.h .tab,.h2 .tab{flex:0 0 auto;max-width:none;flex-direction:row;gap:7px;border-radius:9999px;
+  padding:8px 13px 8px 11px;width:auto}
+.h .tab .lb,.h2 .tab .lb{-webkit-line-clamp:1;display:block;white-space:nowrap;font-size:12.5px;
+  font-weight:600;width:auto;text-align:left;overflow:visible}
+.h .tab.on,.h2 .tab.on{background:var(--primary);color:#fff}
+/* H2 holds the full width so the bar stops resizing as you move along it. */
+.h2 .bar{width:calc(100% - 32px);max-width:calc(100% - 32px)}
+/* The only case where H and H2 differ: pins that FIT. While the row overflows
+   both are full width and identical, which is why they looked the same. */
+.vs{grid-column:1/-1;background:var(--bg);border:1px solid var(--border);border-radius:15px;
+  overflow:hidden;margin-bottom:2px}
+.vs .row{display:flex;gap:14px;flex-wrap:wrap;padding:14px}
+.vs .col{flex:0 0 auto}
+.vs .lab{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted-fg);margin:0 0 6px 2px}
+.legend{margin-top:26px;font-size:13px;border-left:3px solid var(--primary);
+  background:hsl(217 91% 60%/.07);padding:12px 15px;border-radius:0 9px 9px 0}
+.legend b{font-weight:640}
+ul{margin:8px 0 0 18px;padding:0} li{margin-bottom:5px;font-size:13px}
+pre{font:11.5px ui-monospace,Menlo,monospace;background:hsl(214 32% 91%/.5);padding:10px 12px;
+  border-radius:8px;overflow-x:auto;margin-top:20px;color:var(--fg)}
+html[data-theme="dark"] pre{background:hsl(217 32% 17%/.5)}
+</style></head><body>
+<div class="top">
+  <h1>Tab bar <span>— every label visible</span></h1>
+  <div class="seg" id="pins">
+    <button data-set="mixed" aria-pressed="true">Mixed</button>
+    <button data-set="long" aria-pressed="false">Long names</button>
+    <button data-set="short" aria-pressed="false">Short names</button>
+    <button data-set="three" aria-pressed="false">3 pins</button>
+  </div>
+  <div class="seg" id="theme">
+    <button data-theme="light" aria-pressed="true">Light</button>
+    <button data-theme="dark" aria-pressed="false">Dark</button>
+  </div>
+</div>
+<main>
+  <p class="intro">
+    Every option below shows all five labels at once. Each is drawn at
+    <b>320px</b> (iPhone SE) and <b>390px</b> (iPhone 14/15) against the real
+    geometry — 5 pins max, the real glass, the real 64px slots. A red
+    <b>OVERFLOW</b> flag appears if the tabs escape the bar's background, which
+    is the bug that took the bar off the side of the screen.
+  </p>
+  <div class="opts" id="opts"></div>
+  <div class="legend">
+    <b>What actually constrains this.</b>
+    <ul>
+      <li>Five pins is the maximum, and the user chose each one — so they already know roughly what they are.</li>
+      <li>Names come from Apple Home and are not editable there: "Ensuite Underfloor Heating" is a real accessory name.</li>
+      <li>A tab can be renamed in Edit Layout, so a long name is fixable by hand — but the default has to be survivable.</li>
+      <li>The bar sits in the thumb zone at the bottom edge; 44px is the minimum comfortable target.</li>
+    </ul>
+  </div>
+  <pre id="measure"></pre>
+</main>
+<script>
+const P={
+  sofa:'M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3M2 16a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a1 1 0 0 1-1 1h-1a2 2 0 0 1-2-2H6a2 2 0 0 1-2 2H3a1 1 0 0 1-1-1zM4 18v2M20 18v2M6 9h12v5H6z',
+  house:'M15 21v-8H9v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  bulb:'M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4',
+  therm:'M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z',
+  zap:'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z',
+  layers:'m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83zM2 12.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9M2 17.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9',
+  plug:'M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z',
+};
+const ic=n=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${P[n]}"/></svg>`;
+
+const SETS={
+  mixed:[['house','Home'],['sofa','Living Room'],['bulb','Annex Lights'],['therm','Ensuite Underfloor Heating'],['zap','Everything Off']],
+  long:[['sofa','Ensuite Underfloor Heating'],['bulb','Downstairs Hallway Lights'],['layers','Bedroom Bedside Lamps'],['therm','Conservatory Radiator'],['plug','Washing Machine Socket']],
+  short:[['house','Home'],['sofa','Snug'],['bulb','Hall'],['therm','Loft'],['zap','Off']],
+  three:[['house','Home'],['sofa','Living Room'],['bulb','Annex Lights']],
+};
+const OPTS=[
+  {k:'h',n:'H · A’s chips, every name, scrolls',tag:'rec',d:'The look you have now — icon and label in a filled capsule — but every tab keeps its name and nothing is ever truncated. When the row is wider than the bar it scrolls sideways, and the active tab is scrolled into view. The bar hugs its content until it runs out of room.',f:'The bar changes width as you move between tabs, because the capsules are different sizes.'},
+  {k:'h2',n:'H2 · Same, but fixed width',tag:'rec',d:'Identical to H except the bar always spans the available width, so it stops resizing under your thumb as you switch tabs. Scrolls inside a bar of constant size.',f:'A bar wider than its contents when you only have two or three short pins.'},
+  {k:'a',n:'A · Live today',tag:'live',cls:'now',d:'Only the active tab carries its name; the rest are bare icons. This is what is deployed and what you are asking to change.',f:'The four you are not on say nothing at all.'},
+  {k:'b',n:'B · Two lines, height reserved',tag:'rec',d:'The original two-line label, but the label box is always exactly two lines tall whether or not it wraps. Every name visible, and the bar stops changing height as you move between tabs.',f:'Full names up to ~22 characters. Bar is the tallest of the options.'},
+  {k:'c',n:'C · One line, ellipsis',d:'Fixed 64px slots, one line, truncated. The most even row and the shortest bar.',f:'"Ensuite Underfloor Heating" becomes "Ensuit…" — the long ones stop being identifiable.'},
+  {k:'d',n:'D · Tabs sized to their name',d:'Each tab is as wide as its label needs, floored at 50px and capped at 88px. Short names stop wasting the row so long ones get more of it.',f:'Ragged by design — the tabs are no longer a uniform grid.'},
+  {k:'e',n:'E · Icon beside label',tag:'rec',d:'Every tab a horizontal capsule, icon then label, all shrinking together with ellipsis. The active one is filled.',f:'Reads as a row of chips rather than a tab bar. Shortest vertically.'},
+  {k:'f',n:'F · Scrolls sideways',d:'Nothing is truncated and nothing shrinks; when the row is wider than the bar you swipe it.',f:'Hidden tabs — a pin you cannot see is one you will not use. Needs an edge fade to hint at it.'},
+  {k:'g',n:'G · Smaller glyph, bigger label',d:'B, with the icon down to 17px and the label up to 10.5px. Buys roughly two more characters per line.',f:'Icons get noticeably small at arm’s length.'},
+];
+
+const WALL='linear-gradient(160deg,#1e3a5f 0%,#2d5a87 34%,#7b6f9e 64%,#d98f6b 100%)';
+document.documentElement.style.setProperty('--wall',WALL);
+
+let setKey='mixed';
+function render(){
+  const pins=SETS[setKey];
+  const few=[['house','Home'],['sofa','Snug'],['bulb','Hall']];
+  const vs=`
+    <div class="vs">
+      <div class="hd"><div class="r"><h3>H vs H2 — the only case they differ</h3></div>
+        <p>Three short pins, so the row <b>fits</b> and no scrolling happens. While the
+        row overflows, both fill the width and are identical — which is why they looked
+        the same. H shrinks to its contents; H2 holds the full width whatever is in it.</p></div>
+      <div class="row">
+        ${[['h','H — hugs its contents'],['h2','H2 — always full width']].map(([k,lab])=>`
+          <div class="col"><p class="lab">${lab}</p>
+            <div class="phone ${k}" style="width:390px" data-k="${k}" data-w="390">
+              <span class="w">390px · 3 pins</span><span class="warn">OVERFLOW</span>
+              <div class="bar"><div class="scroller">${few.map(([i,l],n)=>`
+                <button class="tab ${n===0?'on':''}">${ic(i)}<span class="lb">${l}</span></button>`).join('')}</div>
+              </div>
+            </div></div>`).join('')}
+      </div>
+    </div>`;
+  document.getElementById('opts').innerHTML=vs+OPTS.map(o=>`
+    <div class="opt ${o.cls||''}">
+      <div class="hd"><div class="r"><h3>${o.n}</h3>${o.tag?`<span class="tag ${o.tag}">${o.tag==='live'?'Live':'Worth a look'}</span>`:''}</div>
+        <p>${o.d}</p></div>
+      <div class="bd">
+        ${[320,390].map(w=>`
+          <div class="phone ${o.k}" style="width:${w}px" data-k="${o.k}" data-w="${w}">
+            <span class="w">${w}px</span><span class="warn">OVERFLOW</span>
+            <div class="bar">${o.k[0]==='h'?'<div class="scroller">':''}${pins.map(([i,l],n)=>`
+              <button class="tab ${n===1?'on':''}">${ic(i)}<span class="lb">${l}</span></button>`).join('')}${o.k[0]==='h'?'</div>':''}
+            </div>
+          </div>`).join('')}
+      </div>
+      <div class="ft"><b>Trade:</b> ${o.f}</div>
+    </div>`).join('');
+  requestAnimationFrame(measure);
+}
+function measure(){
+  const rows=[];
+  document.querySelectorAll('.phone').forEach(p=>{
+    const bar=p.querySelector('.bar'), br=bar.getBoundingClientRect();
+    const tabs=[...bar.querySelectorAll('.tab')];
+    const l=Math.min(...tabs.map(t=>t.getBoundingClientRect().left));
+    const r=Math.max(...tabs.map(t=>t.getBoundingClientRect().right));
+    const over=l<br.left-0.5||r>br.right+0.5;
+    p.classList.toggle('bad',over && p.dataset.k[0] !== 'f' && p.dataset.k[0] !== 'h');
+    rows.push(`${p.dataset.k.toUpperCase()} @${p.dataset.w}px  bar ${String(Math.round(br.width)).padStart(3)}px  h ${String(Math.round(br.height)).padStart(2)}px  overflow ${over?'YES':'no '}`);
+  });
+  document.querySelectorAll('.scroller').forEach(sc=>{
+    const applyFade = () => {
+      const max = sc.scrollWidth - sc.clientWidth;
+      sc.classList.toggle('fade-l', sc.scrollLeft > 1);
+      sc.classList.toggle('fade-r', sc.scrollLeft < max - 1);
+    };
+    applyFade();
+    if (!sc.dataset.wired) { sc.dataset.wired = '1'; sc.addEventListener('scroll', applyFade, {passive:true}); }
+    const scrollable = sc.scrollWidth > sc.clientWidth + 1;
+    const on = sc.querySelector('.tab.on');
+    // A pin you cannot see is one you will not use, so the lit one is brought
+    // into view rather than left wherever the row happens to sit.
+    if (scrollable && on) on.scrollIntoView({block:'nearest',inline:'center'});
+  });
+  document.getElementById('measure').textContent='measured\n'+rows.join('\n');
+}
+document.getElementById('opts').addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(!t)return;
+  t.closest('.bar').querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  requestAnimationFrame(measure);
+});
+document.getElementById('pins').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  setKey=b.dataset.set;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  render();
+});
+document.getElementById('theme').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.documentElement.dataset.theme=b.dataset.theme;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+});
+render();
+addEventListener('resize',measure);
+</script></body></html>

@@ -31,12 +31,14 @@ function subtitleOf(scene: HomeKitScene): string {
  * its own — same look, different job.
  */
 export function SceneCard({
-  scene, homeId, isDarkBackground, editMode, running, isHidden, onRun, onEdit, onToggleHidden,
+  scene, homeId, isDarkBackground, editMode, touchMode, running, isHidden, onRun, onEdit, onToggleHidden,
 }: {
   scene: HomeKitScene;
   homeId?: string | null;
   isDarkBackground?: boolean;
   editMode: boolean;
+  /** Touch device: no context menu, because long press means lift. */
+  touchMode?: boolean;
   running: boolean;
   /** Turned off for this home. Only rendered at all while editing. */
   isHidden?: boolean;
@@ -100,27 +102,35 @@ export function SceneCard({
 
   const tab = { type: 'scene' as const, id: scene.id, name: scene.name, homeId: homeId ?? undefined };
 
-  // Editing carries the buttons on the tile; otherwise a long press
-  // reaches the same thing without entering a mode for it.
-  if (editMode) {
-    return (
-      <div className="relative">
-        {card}
-        {/* Outside the card, so dimming a hidden one does not also grey out
-            the button that brings it back. */}
-        {isHidden && <HiddenLabel />}
+  // The wrapper is unconditional, and only the badges are behind `editMode`.
+  // It used to be a bare fragment outside edit mode, which meant flipping the
+  // mode swapped one element tree for another and remounted the card — and the
+  // mode now flips *during* a drag, on the press that started it. A remount
+  // mid-drag takes the node dnd-kit is tracking out from under it.
+  const editable = (
+    <div className="relative">
+      {card}
+      {/* Outside the card, so dimming a hidden one does not also grey out
+          the button that brings it back. */}
+      {editMode && isHidden && <HiddenLabel />}
+      {editMode && (
         <TileEditActions
           action={onToggleHidden
             ? { kind: 'hide', isHidden: !!isHidden, onToggle: () => onToggleHidden(scene, !!isHidden), name: scene.name }
             : null}
           tab={tab}
         />
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
+
+  // Right-click only. On touch the long press that used to open this now lifts
+  // the card into Edit Layout — see LayoutEditContext.
+  if (editMode || touchMode) return editable;
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{editable}</ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
           {scene.name}

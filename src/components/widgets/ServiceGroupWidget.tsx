@@ -19,7 +19,7 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import { groupKey } from '@/lib/pending-writes';
-import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
@@ -511,7 +511,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const menuOnHide = touchMode ? undefined : onHide;
   const menuOnToggleShowHidden = touchMode ? undefined : onToggleShowHidden;
 
-  const hasContextMenu = !disableTooltip && !isDragging;
+  // Right-click only. On touch a long press lifts the tile into Edit Layout, and
+  // an open Radix menu would take the pointer with it — see WidgetCard.
+  const hasContextMenu = !disableTooltip && !isDragging && !touchMode;
 
 
   // No Response styling (same as WidgetCard)
@@ -542,6 +544,21 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
   // across the middle would cover the name again.
   const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
+
+  // The press shrink, same as an accessory tile — see WidgetCard for why this
+  // is state rather than CSS `:active`. Compact only: the inline card has its
+  // sliders and member list inside it, and shrinking those under a drag reads
+  // as the card collapsing.
+  //
+  // The group's own controls never get here — the toggle's wrapper stops
+  // pointerdown, and both CardContents stop the click.
+  const [pressed, setPressed] = useState(false);
+  const pressHandlers = showCompact ? {
+    onPointerDown: () => setPressed(true),
+    onPointerUp: () => setPressed(false),
+    onPointerLeave: () => setPressed(false),
+    onPointerCancel: () => setPressed(false),
+  } : {};
 
   const handleCardClick = useCallback(() => {
     if (isDragging || editMode) return;
@@ -580,12 +597,12 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     <Card
       className={`relative ${groupCardBgClass} ${noResponseClass} ${hiddenClass} ${editMode ? 'pointer-events-none' : 'cursor-pointer'}`}
       onClick={handleCardClick}
+      {...pressHandlers}
     >
-      {/* p-3, not a fixed 14px. An accessory tile uses p-3 — 0.75rem — and the
-          text-size setting drives the root font size (16/18/20px), so its padding
-          is 12/13.5/15px while a hard-coded 14px never moved. The two sat side by
-          side in the same grid at visibly different sizes, and by a different
-          amount at each setting. Same unit, same scaling, same tile. */}
+      {/* p-3, not a fixed 14px. An accessory tile uses p-3 — 0.75rem — and a
+          hard-coded 14px sat beside it in the same grid at a visibly different
+          size, and by a different amount at each text size back when the setting
+          still moved the root font size. Same unit, same tile. */}
       <CardHeader className={`relative ${showCompact ? 'p-3' : `p-4 ${(isBlindsGroup || (isLightsGroup && groupOn && (brightness !== null || colorTempInfo))) ? 'pb-2' : 'pb-4'}`}`}>
         {/* On the header, not the Card: this card grows in place when the group
             is opened inline, and a badge anchored to the Card would ride down
@@ -902,6 +919,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
   // Group panels carry the same corner cluster as accessory panels.
+  const groupPinAction = usePinAction({
+    type: 'serviceGroup', id: group.id, name: group.name, homeId: accessories[0]?.homeId,
+  });
   const groupActions: ExpandedAction[] = [];
   if (canShowHistory) {
     groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group, accessories) });
@@ -911,6 +931,16 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   }
   if (onShare) {
     groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
+  }
+  // Same reasoning as the accessory panel: pinning lived in the menu touch no
+  // longer has. `usePinAction` answers null when there is no tab bar to pin to.
+  if (groupPinAction && !groupPinAction.full) {
+    groupActions.push({
+      key: 'pin',
+      icon: groupPinAction.pinned ? 'unpin' : 'pin',
+      label: groupPinAction.label,
+      onClick: groupPinAction.toggle,
+    });
   }
 
   const expandedCardContent = (
@@ -1181,7 +1211,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     return (
       <div className={wiggleClass} style={wiggleOffset}>
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg} pressed={pressed}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               {cardContent}
@@ -1320,7 +1350,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   return (
     <div className={wiggleClass} style={wiggleOffset}>
     <WidgetColorContext.Provider value={colorContextValue}>
-      <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+      <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg} pressed={pressed}>
         {cardContent}
         {hiddenLabel}
         {editActions}

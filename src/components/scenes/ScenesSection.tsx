@@ -277,6 +277,7 @@ export function ScenesSection({
       homeId={homeId}
       isDarkBackground={isDarkBackground}
       editMode={editMode}
+      touchMode={touchMode}
       running={runningSceneId === card.scene.id}
       isHidden={card.isHidden}
       onRun={handleRun}

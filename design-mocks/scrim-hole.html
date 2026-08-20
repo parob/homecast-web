@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8"><title>scrim hole</title>
+<style>
+  body{margin:0;font:14px -apple-system,system-ui,sans-serif;
+    background:linear-gradient(160deg,#1e3a5f,#2d5a87 30%,#7b6f9e 62%,#d98f6b);
+    height:100vh;overflow:hidden}
+  .card{position:absolute;top:120px;left:60px;width:260px;padding:14px;border-radius:16px;
+    background:rgba(255,255,255,.7);backdrop-filter:blur(14px) saturate(150%)}
+  /* The two ancestors that defeat z-index, reproduced exactly. */
+  .transformed{transform:translate3d(0,0,0)}
+  .dots{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:8px;
+    border:0;background:#fff;color:#111;font-size:18px;line-height:1;cursor:default}
+  #scrim{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.30);
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  #menu{position:fixed;z-index:10060;background:#fff;border-radius:12px;padding:6px;
+    min-width:180px;box-shadow:0 14px 34px -10px rgba(0,0,0,.4);color:#111}
+  #menu div{padding:8px 10px;border-radius:7px}
+  .note{position:fixed;bottom:10px;left:10px;z-index:10061;color:#fff;font-size:12px;
+    background:rgba(0,0,0,.5);padding:6px 10px;border-radius:8px}
+</style>
+<div class="card transformed">
+  <b>Living Room</b><div style="font-size:11px;opacity:.7">3 accessories</div>
+  <button class="dots" id="t">⋮</button>
+</div>
+<div id="scrim"></div>
+<div id="menu"><div>Rename</div><div>Pin to tab bar</div><div>Delete</div></div>
+<div class="note" id="note"></div>
+<script>
+const PAD=5, R=11;
+function cutout(w,h,r){
+  const x=r.left-PAD, y=r.top-PAD, rw=r.width+PAD*2, rh=r.height+PAD*2;
+  const a=Math.max(0,Math.min(R,rw/2,rh/2));
+  const outer=`M0,0 H${w} V${h} H0 Z`;
+  const inner=[`M${x+a},${y}`,`H${x+rw-a}`,`A${a},${a} 0 0 1 ${x+rw},${y+a}`,
+    `V${y+rh-a}`,`A${a},${a} 0 0 1 ${x+rw-a},${y+rh}`,`H${x+a}`,
+    `A${a},${a} 0 0 1 ${x},${y+rh-a}`,`V${y+a}`,`A${a},${a} 0 0 1 ${x+a},${y}`,'Z'].join(' ');
+  return `path(evenodd, "${outer} ${inner}")`;
+}
+const t=document.getElementById('t'), r=t.getBoundingClientRect();
+const clip=cutout(innerWidth,innerHeight,r);
+const s=document.getElementById('scrim');
+s.style.clipPath=clip;
+const m=document.getElementById('menu');
+m.style.top=(r.bottom+6)+'px'; m.style.left=(r.right-180)+'px';
+document.getElementById('note').textContent =
+  'clip-path applied: ' + (getComputedStyle(s).clipPath !== 'none' ? 'YES ('+getComputedStyle(s).clipPath.slice(0,40)+'…)' : 'NO — unsupported');
+</script>
