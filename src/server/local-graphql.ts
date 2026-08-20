@@ -141,6 +141,34 @@ function toStoredVirtualAccessory(h: { id: string; homeId: string; data: string;
  * optimistically — otherwise a fresh read and an optimistic write land in two
  * different normalised cache entries.
  */
+
+/**
+ * The origin to put in a share link.
+ *
+ * `window.location.origin` on the relay is `http://localhost:5656`, which
+ * means "this device" on whatever device reads it — so a link built from it
+ * works only on the Mac that generated it and is useless to the person it was
+ * sent to. Only the server knows the answer, and it reports it on /health.
+ *
+ * Cached because share links are generated in a handful of places and the
+ * answer does not change while the process is up. Falls back to the page
+ * origin, which is right for every non-relay caller.
+ */
+let shareOriginCache: string | null = null;
+async function shareOrigin(): Promise<string> {
+  if (shareOriginCache) return shareOriginCache;
+  const fallback = typeof window !== 'undefined' ? window.location.origin : '';
+  try {
+    const resp = await fetch('/health', { signal: AbortSignal.timeout(3000) });
+    const d = await resp.json();
+    const first = Array.isArray(d?.addresses) ? d.addresses.find((a: unknown) => typeof a === 'string') : null;
+    shareOriginCache = first || (d?.lanAddress ? `http://${d.lanAddress}:${d.port || 5656}` : fallback);
+  } catch {
+    shareOriginCache = fallback;
+  }
+  return shareOriginCache;
+}
+
 function toStoredEntity(e: db.StoredEntity, typename = 'StoredEntity') {
   return {
     id: e.id,
@@ -1018,7 +1046,12 @@ async function resolveOperation(
       const publicAccess = matching.find(a => a.accessType === 'public');
       const passcodes = matching.filter(a => a.accessType === 'passcode');
       const users = matching.filter(a => a.accessType === 'user');
-      const shareHash = publicAccess?.shareHash || matching[0]?.shareHash || btoa(`${variables.entityType}:${variables.entityId}`).replace(/[+/=]/g, c => c === '+' ? '-' : c === '/' ? '_' : '').slice(0, 16);
+      // Only a hash that was actually stored can ever resolve. This used to
+      // fall back to btoa(entityType:entityId) for an entity with no access
+      // rows at all — handing back a link that looked perfectly valid and
+      // answered "Not Found" forever, because nothing had been shared and no
+      // row with that hash existed to find.
+      const shareHash = publicAccess?.shareHash || matching[0]?.shareHash || null;
       return {
         sharingInfo: {
           isShared: matching.length > 0,
@@ -1027,7 +1060,7 @@ async function resolveOperation(
           passcodeCount: passcodes.length,
           userCount: users.length,
           shareHash,
-          shareUrl: `${window.location.origin}/s/${shareHash}`,
+          shareUrl: shareHash ? `${await shareOrigin()}/s/${shareHash}` : null,
           roomCount: 0,
           accessoryCount: 0,
           groupCount: 0,
@@ -1061,7 +1094,7 @@ async function resolveOperation(
           error: null,
           access: { ...access, __typename: 'EntityAccess' },
           shareHash,
-          shareUrl: `${window.location.origin}/s/${shareHash}`,
+          shareUrl: `${await shareOrigin()}/s/${shareHash}`,
           __typename: 'CreateEntityAccessResult',
         },
       };
@@ -1085,6 +1118,9 @@ async function resolveOperation(
 
     case 'GetMySharedEntities': {
       const allAccess = await db.getEntityAccess();
+      // Resolved once, outside the map: the callback is not async, and the
+      // answer is the same for every row anyway.
+      const origin = await shareOrigin();
       return {
         mySharedEntities: allAccess.map(a => ({
           id: a.id,
@@ -1099,7 +1135,7 @@ async function resolveOperation(
           name: a.name || null,
           userEmail: a.userEmail || null,
           hasPasscode: !!a.hasPasscode,
-          shareUrl: a.shareHash ? `${window.location.origin}/s/${a.shareHash}` : null,
+          shareUrl: a.shareHash ? `${origin}/s/${a.shareHash}` : null,
           accessSchedule: a.accessSchedule || null,
           createdAt: a.createdAt || null,
           __typename: 'EntityAccess',

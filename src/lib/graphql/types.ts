@@ -779,8 +779,13 @@ export interface SharingInfo {
   publicRole?: AccessRole | null;
   passcodeCount: number;
   userCount: number;
-  shareHash: string;
-  shareUrl: string;
+  /**
+   * Null until something is actually shared. It used to be a required string,
+   * which invited the relay to invent one for an entity nobody had shared —
+   * producing a link that looked real and could never resolve.
+   */
+  shareHash: string | null;
+  shareUrl: string | null;
   roomCount?: number | null;
   accessoryCount?: number | null;
   groupCount?: number | null;
