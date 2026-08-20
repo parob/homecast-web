@@ -681,7 +681,12 @@ export function MobileTabBar({
             // on one line is a worse tab than one wrapped over two, and while
             // arranging every name is on show at once. No colour of its own:
             // it takes the chip's, so the two bars read the same.
-            <span className="h-[23px] w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
+            // `px-1` on the name and not on the tab: it narrows the text
+            // without narrowing the bubble behind it. Given the tab's full
+            // width the last line ran right to the edge of its own background
+            // — and with the clamp's ellipsis on the end of it, slightly past.
+            // Two characters' worth of margin at this size.
+            <span className="h-[23px] w-full px-2 text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
               {label}
             </span>
           ) : (

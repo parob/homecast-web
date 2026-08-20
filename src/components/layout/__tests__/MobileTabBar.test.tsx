@@ -1171,7 +1171,12 @@ describe('how the row is divided', () => {
     setup([TABS.home, TABS.room], { mode: 'compact' });
     // Sized to their own labels, a one-line name made a visibly shorter tab
     // than a two-line one beside it.
-    expect(tab(/Kitchen/).querySelector('span')!.className).toContain('h-[23px]');
+    const label = tab(/Kitchen/).querySelector('span')!;
+    expect(label.className).toContain('h-[23px]');
+    // Inset from the bubble behind it: given the tab's full width the last line
+    // ran right to the edge of its own background, and with the clamp's
+    // ellipsis on the end of it, slightly past.
+    expect(label.className).toContain('px-2');
   });
 
   it('wraps a compact name to two lines and then truncates it', () => {
