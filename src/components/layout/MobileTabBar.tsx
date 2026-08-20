@@ -107,13 +107,18 @@ function animateScrollTo(el: HTMLElement, left: number, onFrame?: () => void): (
 export type PinnedTabStatus = 'ready' | 'loading' | 'missing';
 
 /**
- * Height kept clear at the bottom for a control panel opened from the bar.
+ * Fallback height to keep clear at the bottom for a panel opened from the bar,
+ * used until the bar has been measured.
  *
- * Enough to clear the bar and the home indicator under it, and no more: the
- * panel belongs to the chip that opened it, and a wide band of wallpaper
- * between the two read as two unrelated things rather than one.
+ * Measured rather than assumed, because the bar is not one height: compact
+ * stacks a two-line name under each icon and stands a good deal taller than a
+ * row of chips. A constant sized for one left the panel sitting on top of the
+ * other.
  */
 const TAB_BAR_INSET = 96;
+
+/** Wallpaper left between the bar and the panel above it. */
+const PANEL_GAP = 12;
 
 interface MobileTabBarProps {
   pinnedTabs: PinnedTab[];
@@ -202,6 +207,9 @@ export function MobileTabBar({
   /** Set by the gesture below so the click it also produces does nothing. */
   const suppressClickRef = useRef(false);
 
+  const barRef = useRef<HTMLDivElement>(null);
+  /** The bar's own height, so a panel clears whichever shape it is wearing. */
+  const [barHeight, setBarHeight] = useState(TAB_BAR_INSET - PANEL_GAP);
   const scrollerRef = useRef<HTMLDivElement>(null);
   /** The last glyph each accessory pin actually resolved to. */
   const iconMemoRef = useRef(new Map<string, LucideIcon>());
@@ -282,6 +290,22 @@ export function MobileTabBar({
   // Layout effect, not an effect: the fade must be right on the first paint,
   // or the bar flashes an end-cap it is about to remove.
   useLayoutEffect(() => { measureScroll(); });
+
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const measure = () => setBarHeight(el.getBoundingClientRect().height);
+    measure();
+    // Its height changes with the shape, with the safe area, and with a name
+    // that wraps to a second line.
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -576,9 +600,23 @@ export function MobileTabBar({
     const lit = litKey === key;
     const label = tab.customName || tab.name;
     const named = namedKey === 'all' || namedKey === key;
+    /**
+     * `basis-0` in both flexible cases: a slot sized from the free space it is
+     * given rather than from what is in it. Content-sized, a long name took
+     * more of the row than a short one — and in icons, more of it than there
+     * was.
+     */
+    const slotClass = shape === 'compact'
+      // An equal share each, capped so two pins do not become two huge tabs.
+      ? 'min-w-0 flex-1 basis-0 max-w-16'
+      : shape === 'icon' && named
+        // Whatever is left after the glyph-only ones, and not a pixel more.
+        ? 'min-w-0 flex-1 basis-0'
+        // Regular holds every name in full; the row scrolls to suit.
+        : 'shrink-0';
 
     return (
-      <TabSlot key={key} id={key} sortable={editMode}>
+      <TabSlot key={key} id={key} sortable={editMode} className={slotClass}>
         {(dragProps) => (<>
         <button
           {...dragProps}
@@ -596,25 +634,16 @@ export function MobileTabBar({
           title={editMode ? undefined : label}
           className={cn(
             'transition-[background-color,color,width] duration-base ease-standard',
+            // Fills its slot; the slot is what divides the row.
+            'w-full min-w-0',
             shape === 'compact'
-              // The name under the icon, and every tab the same width.
-              //
-              // `basis-0` is what makes them equal: sized from the free space
-              // they are given rather than from what is in them, so a long name
-              // cannot claim more of the row than a short one. Capped at 64px so
-              // two pins do not become two enormous tabs, floored at nothing so
-              // five always fit rather than the row overflowing.
-              ? 'flex min-w-0 flex-1 basis-0 max-w-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
+              // The name under the icon, on two reserved lines so every bubble
+              // is the same height — sized to their own labels, a one-line name
+              // made a visibly shorter tab than a two-line one beside it.
+              ? 'flex flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
               : cn(
                   'flex flex-row items-center rounded-full py-2',
                   named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
-                  // Icons: the glyph-only chips hold their size and the named
-                  // one takes what is left — `flex-1` with a zero basis, so its
-                  // width comes from the free space rather than from the name
-                  // in it. Shrinking from a content-sized basis was not enough:
-                  // a long enough name still pushed the row past the end of the
-                  // bar and clipped the icons off it. Now it cannot.
-                  shape === 'icon' && named ? 'min-w-0 flex-1 basis-0' : 'shrink-0',
                 ),
             lit && 'bg-primary text-primary-foreground',
             // The bar's glass follows the wallpaper — white over a light one,
@@ -652,7 +681,7 @@ export function MobileTabBar({
             // on one line is a worse tab than one wrapped over two, and while
             // arranging every name is on show at once. No colour of its own:
             // it takes the chip's, so the two bars read the same.
-            <span className="w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
+            <span className="h-[23px] w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
               {label}
             </span>
           ) : (
@@ -698,7 +727,7 @@ export function MobileTabBar({
           <ExpandedOverlay
             isExpanded
             onClose={() => setOpenKey(null)}
-            bottomInset={TAB_BAR_INSET}
+            bottomInset={barHeight + PANEL_GAP}
             // The chip is on its way to the middle, so the panel starts there
             // rather than setting off from wherever the chip happens to be and
             // chasing it across.
@@ -799,7 +828,7 @@ export function MobileTabBar({
    * layout, and portals carry React context so everything it reads still works.
    */
   return createPortal(
-    <div className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
+    <div ref={barRef} className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
       {editingTab && (
         <TabEditSheet
           open
@@ -873,10 +902,20 @@ export function MobileTabBar({
  *   it a new backdrop root and the glass switches off for as long as it runs.
  *   `src/index.css` documents the same trap for widget tiles.
  */
-function TabSlot({ id, sortable, children }: {
+function TabSlot({ id, sortable, className, children }: {
   id: string;
   /** False outside edit mode, and while this tab's label is being typed into. */
   sortable: boolean;
+  /**
+   * How this tab divides the row.
+   *
+   * On the slot, not on the button inside it. The row's flex items are these
+   * wrappers, so flex sizing on the button reached nothing at all: the slot
+   * stayed content-sized and every rule about equal shares or taking only the
+   * leftover space was quietly inert. It is why compact tabs came out uneven
+   * and why a long name in icons still pushed the glyphs off the bar.
+   */
+  className?: string;
   children: (dragProps: Record<string, unknown>) => React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -884,7 +923,7 @@ function TabSlot({ id, sortable, children }: {
     disabled: !sortable,
   });
 
-  if (!sortable) return <div className="relative">{children({})}</div>;
+  if (!sortable) return <div data-tab-slot className={cn('relative', className)}>{children({})}</div>;
 
   return (
     <div
@@ -894,7 +933,8 @@ function TabSlot({ id, sortable, children }: {
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
-      className="relative shrink-0 touch-none"
+      data-tab-slot
+      className={cn('relative touch-none', className)}
       // Marks the element dnd-kit writes its inline transform onto. The wiggle
       // must never land here — a test asserts these stay two elements.
       data-sortable-node=""

@@ -973,15 +973,16 @@ describe('the shape of the bar while arranging', () => {
     setup([TABS.home, TABS.room], { editMode: true });
     expect(tab(/Kitchen/).className).toContain('flex-col');
     // An equal share of the row each, capped at 64px, so five always fit
-    // rather than the row scrolling.
-    expect(tab(/Kitchen/).className).toContain('basis-0');
-    expect(tab(/Kitchen/).className).toContain('max-w-16');
+    // rather than the row scrolling. On the slot, which is the flex item.
+    const slot = tab(/Kitchen/).closest<HTMLElement>('[data-tab-slot]')!;
+    expect(slot.className).toContain('basis-0');
+    expect(slot.className).toContain('max-w-16');
   });
 
   it('is a row of chips the rest of the time', () => {
     setup([TABS.home, TABS.room]);
     expect(tab(/Kitchen/).className).toContain('flex-row');
-    expect(tab(/Kitchen/).className).not.toContain('basis-16');
+    expect(tab(/Kitchen/).closest<HTMLElement>('[data-tab-slot]')!.className).toContain('shrink-0');
   });
 
   it('lets the name take the chip colour rather than one of its own', () => {
@@ -1137,24 +1138,40 @@ describe('which modes scroll', () => {
  */
 describe('how the row is divided', () => {
   const tab = (re: RegExp) => screen.getByRole('button', { name: re });
+  /**
+   * The SLOT, not the button.
+   *
+   * The row's flex items are the wrappers around the buttons, so sizing on the
+   * button reached nothing — and an earlier version of these tests asserted on
+   * the button and passed while the layout did exactly nothing. Assert on the
+   * element that actually lays out.
+   */
+  const slot = (re: RegExp) => tab(re).closest<HTMLElement>('[data-tab-slot]')!;
 
   it('gives every compact tab the same share, capped so two do not sprawl', () => {
     setup([TABS.home, TABS.room], { mode: 'compact' });
     for (const re of [/Beach House/, /Kitchen/]) {
-      expect(tab(re).className).toContain('flex-1');
-      expect(tab(re).className).toContain('basis-0');
-      expect(tab(re).className).toContain('max-w-16');
+      expect(slot(re).className).toContain('flex-1');
+      expect(slot(re).className).toContain('basis-0');
+      expect(slot(re).className).toContain('max-w-16');
     }
   });
 
   it('gives the named icon chip the leftover space, and no more', () => {
     setup([TABS.home, TABS.room], { mode: 'icon', selectedHomeId: 'HOME-1' });
     // The one with the name takes what is left...
-    expect(tab(/Beach House/).className).toContain('flex-1');
-    expect(tab(/Beach House/).className).toContain('basis-0');
+    expect(slot(/Beach House/).className).toContain('flex-1');
+    expect(slot(/Beach House/).className).toContain('basis-0');
     // ...and the glyph-only ones hold their size, so they cannot be squeezed
     // off the end of the bar.
-    expect(tab(/Kitchen/).className).toContain('shrink-0');
+    expect(slot(/Kitchen/).className).toContain('shrink-0');
+  });
+
+  it('reserves two lines for a compact name, so the bubbles match', () => {
+    setup([TABS.home, TABS.room], { mode: 'compact' });
+    // Sized to their own labels, a one-line name made a visibly shorter tab
+    // than a two-line one beside it.
+    expect(tab(/Kitchen/).querySelector('span')!.className).toContain('h-[23px]');
   });
 
   it('wraps a compact name to two lines and then truncates it', () => {
