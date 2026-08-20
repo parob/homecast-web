@@ -204,10 +204,6 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
-    /* Text that inherits rather than naming a `text-*` class still follows the
-       Text size setting. `1rem` is the fixed root (see --text-scale below), so
-       this lands on the same 16/18/20px the root font size used to be. */
-    font-size: calc(1rem * var(--text-scale));
     /* Use SF Pro font family */
     font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     /* Thin font rendering - matches Chrome appearance */
@@ -224,15 +220,6 @@ All colors MUST be HSL.
 
 .window-no-drag {
   -webkit-app-region: no-drag;
-}
-
-/* How large type is, independent of how large the interface is.
-   Set on <html> from the Text size setting (0.8 / 0.9 / 1); 1 until the app
-   applies it, and on any page that never does. Only Tailwind's `text-*` tokens
-   and the body size above multiply by it — everything sized in rem (control
-   heights, the tab bar, icons, padding) is deliberately left alone. */
-:root {
-  --text-scale: 1;
 }
 
 /* Safe area insets for notched devices.

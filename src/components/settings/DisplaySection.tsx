@@ -215,7 +215,7 @@ export function DisplaySection({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">Text size</p>
-            <p className="text-xs text-muted-foreground">How large text is. Buttons and controls stay the same size.</p>
+            <p className="text-xs text-muted-foreground">Scale text and UI elements</p>
           </div>
           {settingSaveError === 'fontSize' && (
             <div className="whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">

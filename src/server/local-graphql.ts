@@ -23,6 +23,23 @@ interface GraphQLRequest {
    * current user's token from localStorage.
    */
   authorization?: string;
+  /**
+   * This call came from the relay's own web app, in-process.
+   *
+   * Not spoofable: the HTTP entry point in `local-server.ts` builds its request
+   * with four named fields and never copies this one, so nothing arriving over
+   * the network can set it. Every caller that does set it is guarded by
+   * `isRelayCapable()`, which is true only on the Mac running the relay.
+   *
+   * It matters because the relay Mac has no token to present. The UI signs it
+   * in as `relay-owner` without a password — deliberately, since whoever is at
+   * that keyboard already has the machine the home runs on — but that synthetic
+   * user was never issued a JWT. So with auth on and an owner in the database,
+   * the relay's own settings screen could not call anything at all, including
+   * the mutation that turns auth back off. Authentication is there to keep
+   * *network* clients out; it was locking out the machine itself.
+   */
+  local?: boolean;
 }
 
 /**
@@ -36,7 +53,8 @@ const GRAPHQL_PUBLIC_OPS = new Set([
   // one of them returns nothing for a hash that matches no row. Sitting behind
   // the blanket auth gate made "public access" mean "public to people who
   // already have an account here", which is not sharing.
-  'GetPublicEntity', 'GetPublicEntityAccessories', 'PublicEntitySetCharacteristic',
+  'GetPublicEntity', 'GetPublicEntityAccessories',
+  'PublicEntitySetCharacteristic', 'PublicEntitySetServiceGroup',
 ]);
 
 /**
@@ -175,6 +193,25 @@ async function shareOrigin(): Promise<string> {
   return shareOriginCache;
 }
 
+
+/**
+ * The value a share sends, back into the type HomeKit expects.
+ *
+ * The mutation declares `$value: String!` and the client JSON-stringifies, so
+ * `false` arrives as the four characters `false` — which is a non-empty string
+ * and therefore truthy. Passing it straight through meant "turn the lights
+ * off" reported success and turned them on, or set a brightness of `"40"`.
+ */
+function parseShareValue(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // A bare string the sender never encoded — a scene name, say.
+    return raw;
+  }
+}
+
 function toStoredEntity(e: db.StoredEntity, typename = 'StoredEntity') {
   return {
     id: e.id,
@@ -216,7 +253,7 @@ export async function handleGraphQL(request: GraphQLRequest): Promise<unknown> {
   const { operationName, variables = {}, authorization } = request;
 
   try {
-    if (operationName && !GRAPHQL_PUBLIC_OPS.has(operationName)) {
+    if (operationName && !GRAPHQL_PUBLIC_OPS.has(operationName) && !request.local) {
       const authEnabled = (await db.getSetting('auth-enabled')) === 'true';
       if (authEnabled) {
         // Auth can be on with nobody to authenticate as — switching it on
@@ -1368,7 +1405,7 @@ async function resolveOperation(
         await communityRequest('characteristic.set', {
           accessoryId: variables.accessoryId,
           characteristicType: variables.characteristicType,
-          value: variables.value,
+          value: parseShareValue(variables.value),
         });
         return {
           publicEntitySetCharacteristic: {
@@ -1383,6 +1420,49 @@ async function resolveOperation(
         return { publicEntitySetCharacteristic: { success: false, error: e.message } };
       }
     }
+    case 'PublicEntitySetServiceGroup': {
+      // The cloud has had this since service groups existed; the relay never
+      // implemented it, so every group tile on a shared page failed with
+      // "Failed to control group" — an operation with no case here falls
+      // through and answers nothing at all.
+      //
+      // Authorisation is identical to PublicEntitySetCharacteristic: the hash
+      // has to match a stored row, a passcode upgrades the role when one is
+      // set, and view-only never writes.
+      const allAccess = await db.getEntityAccess();
+      const matching = allAccess.filter(a => a.shareHash === variables.shareHash);
+      const baseAccess = matching.find(a => a.accessType !== 'passcode') || matching[0];
+      const passcodeAccess = matching.find(a => a.accessType === 'passcode');
+      let effectiveRole = baseAccess?.role;
+      if (passcodeAccess && variables.passcode && passcodeAccess.passcode === variables.passcode) {
+        effectiveRole = passcodeAccess.role;
+      }
+      if (!baseAccess || effectiveRole === 'view') {
+        return { publicEntitySetServiceGroup: { success: false, error: 'Access denied' } };
+      }
+      try {
+        await communityRequest('serviceGroup.set', {
+          groupId: variables.groupId,
+          characteristicType: variables.characteristicType,
+          value: parseShareValue(variables.value),
+          // A group write needs the home it belongs to. For a home share that
+          // is the shared entity itself; otherwise the row records it.
+          homeId: baseAccess.homeId || (baseAccess.entityType === 'home' ? baseAccess.entityId : undefined),
+        });
+        return {
+          publicEntitySetServiceGroup: {
+            success: true,
+            accessoryId: variables.groupId,
+            characteristicType: variables.characteristicType,
+            value: variables.value,
+            __typename: 'PublicEntitySetServiceGroupResult',
+          },
+        };
+      } catch (e: any) {
+        return { publicEntitySetServiceGroup: { success: false, error: e?.message || 'Group control failed' } };
+      }
+    }
+
     case 'GetWebhookEventTypes':
       return { webhookEventTypes: [
         { eventType: 'state.changed', displayName: 'State Changed', description: 'Fired when a device characteristic changes', category: 'Device', __typename: 'WebhookEventTypeInfo' },

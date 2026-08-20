@@ -132,6 +132,16 @@ describe('a share link works for the person it was sent to', () => {
 
     const accessories = await call('GetPublicEntityAccessories', { shareHash });
     expect(accessories.errors).toBeUndefined();
+
+    // Every share op has to be on the public list, not just most of them —
+    // implementing one and forgetting to open it is the same outage.
+    for (const op of ['PublicEntitySetCharacteristic', 'PublicEntitySetServiceGroup']) {
+      const res = await call(op, {
+        shareHash, accessoryId: 'a1', groupId: 'g1',
+        characteristicType: 'power_state', value: 'false',
+      });
+      expect(res.errors, `${op} must not require a login`).toBeUndefined();
+    }
   });
 
   it('still refuses a hash that matches nothing', async () => {
@@ -174,5 +184,53 @@ describe('the hash is the credential, so it has to be unguessable', () => {
   it('is long enough to be worth guessing at', async () => {
     const a = await call('CreateEntityAccess', { entityType: 'home', entityId: HOME, accessType: 'public', role: 'view' });
     expect(a.data.createEntityAccess.shareHash.length).toBeGreaterThanOrEqual(22);
+  });
+});
+
+describe('controlling things through a share link', () => {
+  it('turns a group off, rather than answering "Failed to control group"', async () => {
+    // PublicEntitySetServiceGroup had no case in this resolver at all. An
+    // unhandled operation falls through and answers nothing, so every group
+    // tile on a shared page failed while single accessories worked.
+    const created = await call('CreateEntityAccess', {
+      entityType: 'home', entityId: HOME, accessType: 'public', role: 'control',
+    });
+    const shareHash = created.data.createEntityAccess.shareHash;
+    const res = await call('PublicEntitySetServiceGroup', {
+      shareHash, groupId: 'group-1', characteristicType: 'power_state', value: 'false',
+    });
+    expect(res.data.publicEntitySetServiceGroup.success).toBe(true);
+  });
+
+  it('sends HomeKit a boolean, not the four characters "false"', async () => {
+    // $value is declared String! and the client JSON-stringifies, so `false`
+    // arrives as a non-empty — and therefore truthy — string. Passed straight
+    // through, "turn the lights off" reported success and turned them on.
+    const { communityRequest } = await import('@/server/connection');
+    const created = await call('CreateEntityAccess', {
+      entityType: 'home', entityId: HOME, accessType: 'public', role: 'control',
+    });
+    const shareHash = created.data.createEntityAccess.shareHash;
+
+    await call('PublicEntitySetCharacteristic', {
+      shareHash, accessoryId: 'a1', characteristicType: 'power_state', value: 'false',
+    });
+    expect(communityRequest).toHaveBeenCalledWith('characteristic.set', expect.objectContaining({ value: false }));
+
+    await call('PublicEntitySetServiceGroup', {
+      shareHash, groupId: 'g1', characteristicType: 'brightness', value: '40',
+    });
+    expect(communityRequest).toHaveBeenCalledWith('serviceGroup.set', expect.objectContaining({ value: 40 }));
+  });
+
+  it('refuses group control on a view-only link', async () => {
+    const created = await call('CreateEntityAccess', {
+      entityType: 'home', entityId: HOME, accessType: 'public', role: 'view',
+    });
+    const res = await call('PublicEntitySetServiceGroup', {
+      shareHash: created.data.createEntityAccess.shareHash,
+      groupId: 'g1', characteristicType: 'power_state', value: 'false',
+    });
+    expect(res.data.publicEntitySetServiceGroup.success).toBe(false);
   });
 });
