@@ -111,3 +111,68 @@ describe('share links', () => {
     expect(url).not.toContain('undefined');
   });
 });
+
+describe('a share link works for the person it was sent to', () => {
+  it('resolves without a login, which is what "public" means', async () => {
+    // Every share op sat behind the blanket auth gate, so turning on a password
+    // silently turned public sharing off: the owner's own browser worked and
+    // the recipient's got "Not Found".
+    // The owner creates the share while signed in, then turns a password on —
+    // or had one on all along and created it from their own session.
+    const created = await call('CreateEntityAccess', {
+      entityType: 'home', entityId: HOME, accessType: 'public', role: 'control',
+    });
+    const shareHash = created.data.createEntityAccess.shareHash;
+    mockDb.settings.set('auth-enabled', 'true');
+
+    // No authorization header anywhere in these.
+    const entity = await call('GetPublicEntity', { shareHash });
+    expect(entity.errors).toBeUndefined();
+    expect(entity.data.publicEntity).not.toBeNull();
+
+    const accessories = await call('GetPublicEntityAccessories', { shareHash });
+    expect(accessories.errors).toBeUndefined();
+  });
+
+  it('still refuses a hash that matches nothing', async () => {
+    mockDb.settings.set('auth-enabled', 'true');
+    const res = await call('GetPublicEntity', { shareHash: 'nothing-here' });
+    expect(res.errors).toBeUndefined();
+    expect(res.data.publicEntity).toBeNull();
+  });
+
+  it('will not let a view-only link control anything', async () => {
+    const created = await call('CreateEntityAccess', {
+      entityType: 'home', entityId: HOME, accessType: 'public', role: 'view',
+    });
+    mockDb.settings.set('auth-enabled', 'true');
+    const res = await call('PublicEntitySetCharacteristic', {
+      shareHash: created.data.createEntityAccess.shareHash,
+      accessoryId: 'a', characteristicType: 'power_state', value: true,
+    });
+    expect(res.data.publicEntitySetCharacteristic.success).toBe(false);
+  });
+});
+
+describe('the hash is the credential, so it has to be unguessable', () => {
+  it('does not derive from the entity id', async () => {
+    // btoa(`type:id:${Date.now()}`).slice(0,16) kept only twelve bytes — "home:"
+    // plus seven characters of the id. The timestamp never survived, so the
+    // hash was a pure function of the home id and anyone holding that id could
+    // compute the link.
+    const a = await call('CreateEntityAccess', { entityType: 'home', entityId: HOME, accessType: 'public', role: 'view' });
+    const legacyShape = btoa(`home:${HOME}`).replace(/[+/=]/g, c => (c === '+' ? '-' : c === '/' ? '_' : '')).slice(0, 16);
+    expect(a.data.createEntityAccess.shareHash).not.toBe(legacyShape);
+  });
+
+  it('differs between two shares of the same home', async () => {
+    const a = await call('CreateEntityAccess', { entityType: 'home', entityId: HOME, accessType: 'public', role: 'view' });
+    const b = await call('CreateEntityAccess', { entityType: 'home', entityId: HOME, accessType: 'passcode', role: 'control', passcode: '1234' });
+    expect(a.data.createEntityAccess.shareHash).not.toBe(b.data.createEntityAccess.shareHash);
+  });
+
+  it('is long enough to be worth guessing at', async () => {
+    const a = await call('CreateEntityAccess', { entityType: 'home', entityId: HOME, accessType: 'public', role: 'view' });
+    expect(a.data.createEntityAccess.shareHash.length).toBeGreaterThanOrEqual(22);
+  });
+});

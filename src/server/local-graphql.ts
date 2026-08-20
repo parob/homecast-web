@@ -31,6 +31,12 @@ interface GraphQLRequest {
  */
 const GRAPHQL_PUBLIC_OPS = new Set([
   'IsOnboarded', 'GetVersion', 'Login', 'Signup', 'GetAuthEnabled',
+  // Share links. These carry their own access control — an unguessable hash,
+  // the passcode when one is set, and the role recorded against it — and every
+  // one of them returns nothing for a hash that matches no row. Sitting behind
+  // the blanket auth gate made "public access" mean "public to people who
+  // already have an account here", which is not sharing.
+  'GetPublicEntity', 'GetPublicEntityAccessories', 'PublicEntitySetCharacteristic',
 ]);
 
 /**
@@ -1070,7 +1076,16 @@ async function resolveOperation(
     }
 
     case 'CreateEntityAccess': {
-      const shareHash = btoa(`${variables.entityType}:${variables.entityId}:${Date.now()}`).replace(/[+/=]/g, c => c === '+' ? '-' : c === '/' ? '_' : '').slice(0, 16);
+      // Random, because the hash *is* the credential — it is the only thing
+      // standing between a link and control of someone's home.
+      //
+      // It used to be btoa(`type:id:${Date.now()}`) truncated to 16 chars. Two
+      // things went wrong there: sixteen base64 characters encode twelve bytes,
+      // so everything past `home:` plus the first seven characters of the id —
+      // the timestamp included — was cut off and contributed nothing. The hash
+      // was therefore a pure function of the entity id, identical for every
+      // share of the same home, and computable by anyone who knew that id.
+      const shareHash = randomUUID().replace(/-/g, '').slice(0, 22);
       const access = {
         id: randomUUID(),
         entityType: variables.entityType as string,
