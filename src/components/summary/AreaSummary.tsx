@@ -4,7 +4,7 @@
  * Displays at the top of home/room/collection views with hover tooltips for breakdowns.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Thermometer,
   Droplets,
@@ -13,9 +13,12 @@ import {
   LockOpen,
   DoorOpen,
   BatteryWarning,
+  LineChart,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSensorAggregation, type SensorReading } from '@/hooks/useSensorAggregation';
+import { useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
+import { buildStatusCategories, STATUS_CATEGORY_TITLE, type StatusCategoryKey } from '@/history/status-series';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +30,12 @@ interface AreaSummaryProps {
   accessories: HomeKitAccessory[];
   isDarkBackground?: boolean;
   className?: string;
+  /**
+   * Where the analytics dialog's "Open in Analytics" link lands. A room view
+   * knows which room it is showing; the whole-home view passes nothing and
+   * gets the home.
+   */
+  analyticsScope?: AnalyticsScope;
 }
 
 // ============================================================================
@@ -39,6 +48,8 @@ interface SummaryItemProps {
   tooltip: React.ReactNode;
   variant?: 'default' | 'warning' | 'success';
   isDarkBackground?: boolean;
+  /** When set, the expanded panel carries an analytics button, top right. */
+  onAnalytics?: () => void;
 }
 
 // Once the tooltip opens (usually from hover), clicks can't close it again until
@@ -46,7 +57,7 @@ interface SummaryItemProps {
 // immediately dismisses the tooltip the user was trying to open.
 const CLICK_CLOSE_GRACE_MS = 1000;
 
-function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackground }: SummaryItemProps) {
+function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackground, onAnalytics }: SummaryItemProps) {
   const [open, setOpen] = useState(false);
   const openedAtRef = useRef(0);
   // Radix closes an open tooltip on pointerdown, before click fires — so the
@@ -119,10 +130,31 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
             // Roomier than a one-line tooltip: this one lists rooms and their
             // sensors, so it reads as a panel and wants a panel's inset. Fixed
             // px so it does not tighten up at the small text setting.
-            'max-w-xs max-h-[75vh] overflow-y-auto shadow-lg px-[16px] py-[14px]',
+            'relative max-w-xs max-h-[75vh] overflow-y-auto shadow-lg px-[16px] py-[14px]',
             tooltipStyles
           )}
         >
+          {onAnalytics && (
+            <button
+              type="button"
+              onClick={() => {
+                // Close first: a tooltip left standing behind a modal is a
+                // stray panel nobody can dismiss.
+                setOpen(false);
+                onAnalytics();
+              }}
+              className={cn(
+                'absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors',
+                isDarkBackground
+                  ? 'bg-white/15 text-white hover:bg-white/25'
+                  : 'bg-black/[0.06] text-foreground/70 hover:bg-black/10 hover:text-foreground'
+              )}
+              aria-label={`Analytics for ${label}`}
+              title="Analytics"
+            >
+              <LineChart className="h-3 w-3" />
+            </button>
+          )}
           {tooltip}
         </TooltipContent>
       </Tooltip>
@@ -199,7 +231,8 @@ function ReadingList({ title, readings, formatValue, getItemVariant, isDarkBackg
 
   return (
     <div className="space-y-1.5">
-      <div className="font-medium text-sm">{title}</div>
+      {/* pr-8 keeps the heading clear of the analytics button pinned top right. */}
+      <div className="font-medium text-sm pr-8">{title}</div>
       {hasMultipleRooms ? (
         // Tree structure grouped by room
         <div className="text-xs space-y-1.5">
@@ -283,8 +316,52 @@ function formatMotionState(value: number | boolean): string {
 // Main Component
 // ============================================================================
 
-export function AreaSummary({ accessories, isDarkBackground = false, className }: AreaSummaryProps) {
+export function AreaSummary({
+  accessories,
+  isDarkBackground = false,
+  className,
+  analyticsScope,
+}: AreaSummaryProps) {
   const sensorData = useSensorAggregation(accessories);
+  const { defaultHomeId, analyticsAvailableFor, openStatusHistory } = useHistory();
+
+  // Accessories off the wire don't always carry a homeId; the selected home
+  // is the fallback, exactly as openHistory has always done.
+  const isHomeRecording = useCallback(
+    (homeId: string | undefined) => analyticsAvailableFor(homeId ?? defaultHomeId),
+    [analyticsAvailableFor, defaultHomeId],
+  );
+
+  // Which bubbles have history behind them. Empty on a home that doesn't
+  // record, and empty outside HistoryProvider — which is how the shared-link
+  // views end up with no analytics buttons without knowing anything about it.
+  const chartable = useMemo(
+    () => new Set(buildStatusCategories(sensorData, { isHomeRecording }).map(c => c.key)),
+    [sensorData, isHomeRecording],
+  );
+
+  const openAnalytics = useCallback((only?: StatusCategoryKey) => {
+    // Built at the click rather than held: one bubble gets the bigger
+    // per-category budget, the whole row shares the smaller one.
+    const categories = buildStatusCategories(sensorData, {
+      isHomeRecording,
+      only,
+      ...(only ? { maxRefsPerCategory: 24 } : {}),
+    });
+    if (categories.length === 0) return;
+    const homeId = categories[0].refs[0]?.homeId ?? defaultHomeId;
+    if (!homeId) return;
+    openStatusHistory(homeId, {
+      title: only ? STATUS_CATEGORY_TITLE[only] : 'Status',
+      categories,
+      analyticsScope,
+    });
+  }, [sensorData, isHomeRecording, defaultHomeId, openStatusHistory, analyticsScope]);
+
+  const analyticsFor = useCallback(
+    (key: StatusCategoryKey) => (chartable.has(key) ? () => openAnalytics(key) : undefined),
+    [chartable, openAnalytics],
+  );
 
   // Build summary items
   const items = useMemo(() => {
@@ -297,6 +374,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="temperature"
+          onAnalytics={analyticsFor('temperature')}
           icon={<Thermometer className="h-3.5 w-3.5" />}
           label={label}
           isDarkBackground={isDarkBackground}
@@ -319,6 +397,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="humidity"
+          onAnalytics={analyticsFor('humidity')}
           icon={<Droplets className="h-3.5 w-3.5" />}
           label={label}
           isDarkBackground={isDarkBackground}
@@ -342,6 +421,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="motion"
+          onAnalytics={analyticsFor('motion')}
           icon={<Activity className="h-3.5 w-3.5" />}
           label={label}
           variant={hasMotion ? 'warning' : 'default'}
@@ -382,6 +462,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="locks"
+          onAnalytics={analyticsFor('locks')}
           icon={<LockIcon className="h-3.5 w-3.5" />}
           label={label}
           variant={hasIssue ? 'warning' : 'success'}
@@ -413,6 +494,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="contacts"
+          onAnalytics={analyticsFor('contacts')}
           icon={<DoorOpen className="h-3.5 w-3.5" />}
           label={label}
           variant={hasOpen ? 'warning' : 'default'}
@@ -437,6 +519,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
       result.push(
         <SummaryItem
           key="battery"
+          onAnalytics={analyticsFor('battery')}
           icon={<BatteryWarning className="h-3.5 w-3.5" />}
           label={`${count} low`}
           variant="warning"
@@ -456,7 +539,7 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
     }
 
     return result;
-  }, [sensorData, isDarkBackground]);
+  }, [sensorData, isDarkBackground, analyticsFor]);
 
   // Don't render if no sensor data
   if (!sensorData.hasData) {
@@ -466,6 +549,26 @@ export function AreaSummary({ accessories, isDarkBackground = false, className }
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
       {items}
+      {chartable.size > 0 && (
+        // Last in the row, and round rather than labelled: the bubbles are
+        // readings, this is the one thing you can do with them. An inline
+        // flex child, so AnimatedCollapse's overflow clipping never reaches
+        // it the way it would an absolutely positioned corner button.
+        <button
+          type="button"
+          onClick={() => openAnalytics()}
+          className={cn(
+            'inline-flex items-center justify-center rounded-full p-1.5 transition-colors',
+            isDarkBackground
+              ? 'bg-black/25 text-white/90 hover:bg-black/35'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+          )}
+          aria-label="Analytics"
+          title="Analytics"
+        >
+          <LineChart className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }

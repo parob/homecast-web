@@ -4834,6 +4834,21 @@ const Dashboard = () => {
   // automations and stats pills are home-level, so they only show here.
   const isWholeHomeView = !!selectedHomeId && !selectedRoomId && !selectedRoomGroup;
 
+  // Where "Open in Analytics" lands from the Status row's analytics button.
+  // A room view names its room, the same way that room's own menu does;
+  // the whole-home view passes nothing and gets the home.
+  const statusAnalyticsScope = useMemo<AnalyticsScope | undefined>(() => {
+    if (isWholeHomeView) return undefined;
+    const room = rooms.find(r => r.id === selectedRoomId);
+    if (!room) return undefined;
+    return {
+      level: 'category',
+      category: 'climate',
+      room: room.name,
+      homeId: selectedHomeId ?? undefined,
+    };
+  }, [isWholeHomeView, rooms, selectedRoomId, selectedHomeId]);
+
   // Which summary-row pills this home shows. Stored as a hidden-list in the
   // home layout blob, so a home that predates the setting shows all four.
   /**
@@ -7997,6 +8012,7 @@ const Dashboard = () => {
                     <AreaSummary
                       accessories={summaryAccessories}
                       isDarkBackground={isDarkBackground}
+                      analyticsScope={statusAnalyticsScope}
                     />
                   )}
                 </div>

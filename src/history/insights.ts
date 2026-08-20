@@ -105,16 +105,25 @@ export function meanValue(data: HistorySeriesData): number | null {
   return data.points.reduce((a, p) => a + p.avg, 0) / data.points.length;
 }
 
-/** Time spent in a non-zero state over [fromTs, toTs]. */
-export function onMs(data: HistorySeriesData, fromTs: number, toTs: number): number {
+/**
+ * Time spent "on" over [fromTs, toTs], where `isOn` decides what on means.
+ * Locks are the reason this is a parameter: lock_current_state is
+ * 0 unsecured / 1 secured / 2 jammed, so time-unlocked is `v !== 1`.
+ */
+export function onMsWith(
+  data: HistorySeriesData,
+  fromTs: number,
+  toTs: number,
+  isOn: (value: number) => boolean,
+): number {
   if (data.states.length > 0) {
     let total = 0;
     let prevTs = fromTs;
-    let prevOn = (data.prevValue ?? 0) !== 0;
+    let prevOn = isOn(data.prevValue ?? 0);
     for (const span of data.states) {
       if (prevOn) total += Math.max(0, span.ts - prevTs);
       prevTs = span.ts;
-      prevOn = span.value !== 0;
+      prevOn = isOn(span.value);
     }
     if (prevOn) total += Math.max(0, toTs - prevTs);
     return total;
@@ -124,11 +133,17 @@ export function onMs(data: HistorySeriesData, fromTs: number, toTs: number): num
     try {
       const stateMs = JSON.parse(bucket.stateMsJson) as Record<string, number>;
       for (const [key, ms] of Object.entries(stateMs)) {
-        if (key !== '0') total += ms;
+        // Bucket keys are the raw state values, stringified.
+        if (isOn(Number(key))) total += ms;
       }
     } catch { /* dominant-only cell */ }
   }
   return total;
+}
+
+/** Time spent in a non-zero state over [fromTs, toTs]. */
+export function onMs(data: HistorySeriesData, fromTs: number, toTs: number): number {
+  return onMsWith(data, fromTs, toTs, v => v !== 0);
 }
 
 export interface InsightsInput {

@@ -4,6 +4,7 @@ import {
   selectInsightRefs,
   eventCount,
   onMs,
+  onMsWith,
   type InsightsInput,
 } from '../insights';
 import type { LiveAccessory } from '../summaries';
@@ -162,5 +163,30 @@ describe('series helpers', () => {
     };
     // on 0→2h, off 2→5h, on 5→12h = 9h
     expect(onMs(data, 0, 12 * HOUR)).toBe(9 * HOUR);
+  });
+
+  it('onMsWith takes the caller\'s definition of on', () => {
+    // A lock: 1 secured, 0 unsecured, 2 jammed. Time UNlocked is v !== 1, so
+    // the jam counts — the default non-zero rule would answer the opposite.
+    const data: HistorySeriesData = {
+      ...stateData(0),
+      prevValue: 1,
+      states: [{ ts: 2 * HOUR, value: 0 }, { ts: 5 * HOUR, value: 2 }, { ts: 6 * HOUR, value: 1 }],
+    };
+    // unlocked 2→5h, jammed 5→6h = 4h
+    expect(onMsWith(data, 0, 12 * HOUR, v => v !== 1)).toBe(4 * HOUR);
+    // The default rule answers a different question: non-zero is
+    // 0→2h plus 5h→12h = 9h, i.e. mostly time spent LOCKED.
+    expect(onMs(data, 0, 12 * HOUR)).toBe(9 * HOUR);
+  });
+
+  it('onMsWith applies the predicate to rolled bucket keys', () => {
+    const data: HistorySeriesData = {
+      ...stateData(0),
+      states: [],
+      stateBuckets: [{ ts: 0, dominant: 1, stateMsJson: '{"0":25,"1":60,"2":15}', transitions: 2 }],
+    };
+    expect(onMsWith(data, 0, 100, v => v !== 1)).toBe(40);
+    expect(onMs(data, 0, 100)).toBe(75);
   });
 });

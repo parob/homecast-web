@@ -95,22 +95,36 @@ export function aggregateToSeries(
   };
 }
 
+/** What counts as "on" for a state series. Default: anything but zero. */
+export type OnPredicate = (value: number) => boolean;
+
+const NONZERO_IS_ON: OnPredicate = v => v !== 0;
+
 /**
  * A bool/enum series as 0/1 numeric so it can join an aggregation — the
  * "how many of the group are on" chart is the sum of these. Raw spans map
  * directly; rolled buckets contribute their on-fraction (time-weighted
  * truth, not a guess).
+ *
+ * `isOn` exists because "on" is not always "non-zero": HomeKit's
+ * lock_current_state is 0 unsecured / 1 secured / 2 jammed, so "how many are
+ * unlocked" is `v !== 1` — and a jammed lock has to count as not locked.
  */
-export function stateToNumericSeries(data: HistorySeriesData): HistorySeriesData {
+export function stateToNumericSeriesWith(
+  data: HistorySeriesData,
+  isOn: OnPredicate,
+): HistorySeriesData {
+  const prevValue = data.prevValue === null ? null : (isOn(data.prevValue) ? 1 : 0);
+
   if (data.states.length > 0 || data.stateBuckets.length === 0) {
     return {
       ...data,
       kind: 'numeric',
       points: data.states.map(s => {
-        const v = s.value === 0 ? 0 : 1;
+        const v = isOn(s.value) ? 1 : 0;
         return { ts: s.ts, min: v, avg: v, max: v, last: v, count: 1 };
       }),
-      prevValue: data.prevValue === null ? null : (data.prevValue === 0 ? 0 : 1),
+      prevValue,
       states: [],
       stateBuckets: [],
     };
@@ -119,17 +133,28 @@ export function stateToNumericSeries(data: HistorySeriesData): HistorySeriesData
     ...data,
     kind: 'numeric',
     points: data.stateBuckets.map(b => {
-      let fraction = b.dominant === 0 ? 0 : 1;
+      let fraction = isOn(b.dominant) ? 1 : 0;
       try {
         const stateMs = JSON.parse(b.stateMsJson) as Record<string, number>;
-        const total = Object.values(stateMs).reduce((a, x) => a + x, 0);
-        if (total > 0) fraction = (total - (stateMs['0'] ?? 0)) / total;
+        let total = 0;
+        let on = 0;
+        for (const [key, ms] of Object.entries(stateMs)) {
+          total += ms;
+          // Bucket keys are the raw state values, stringified.
+          if (isOn(Number(key))) on += ms;
+        }
+        if (total > 0) fraction = on / total;
       } catch { /* dominant-only cell */ }
       return { ts: b.ts, min: fraction, avg: fraction, max: fraction, last: fraction, count: 1 };
     }),
-    prevValue: data.prevValue === null ? null : (data.prevValue === 0 ? 0 : 1),
+    prevValue,
     states: [],
     stateBuckets: [],
   };
+}
+
+/** The common case: non-zero is on. */
+export function stateToNumericSeries(data: HistorySeriesData): HistorySeriesData {
+  return stateToNumericSeriesWith(data, NONZERO_IS_ON);
 }
 

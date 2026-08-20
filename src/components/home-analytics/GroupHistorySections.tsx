@@ -1,18 +1,15 @@
 import { useMemo } from 'react';
-import { aggregateNumericSeries, stateToNumericSeries } from '@/history/aggregate';
-import { sanitizeSeriesData } from '@/history/sanitize';
 import { HISTORY_CHAR_ORDER } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { canonicalHistoryType } from '@/history/keys';
 import { stateValueLabel } from '@/history/labels';
-import { onMs, eventCount } from '@/history/insights';
 import ChartSkeleton from './ChartSkeleton';
 import { SETPOINT_STATE_TYPES } from '@/history/categories';
-import HistoryChart from '@/components/widgets/HistoryChart';
 import StateTimeline from '@/components/widgets/StateTimeline';
+import AggregateSeriesSection from './AggregateSeriesSection';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
-import type { HistoryPointData, HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
+import type { HistorySeriesData, HistorySeriesInfo, HistorySeriesRefInput } from '@/lib/graphql/types';
 
 const MAX_REFS = 36;
 
@@ -20,14 +17,6 @@ export interface GroupRef {
   id: string;
   name: string;
   memberIds: string[];
-}
-
-function formatDuration(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h ${minutes % 60}m`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 /**
@@ -119,78 +108,21 @@ export default function GroupHistorySections({
           .map(s => entryOf(s))
           .filter((d): d is HistorySeriesData => !!d);
         if (entries.length === 0) return null;
-        const label = charLabel(section.type);
-
-        if (section.kind === 'numeric') {
-          // Average across members with the min–max envelope — the same
-          // chart the accessory view draws, fed by the whole group.
-          // Implausible readings (radio-fault sentinels) never reach the
-          // aggregate — one -40° would drag the whole group average.
-          const sane = entries.map(e => sanitizeSeriesData(e).data);
-          const points: HistoryPointData[] = aggregateNumericSeries(sane, fromTs, toTs)
-            .map(p => ({ ts: p.ts, min: p.min, avg: p.avg, max: p.max, last: p.avg, count: p.count }));
-          if (points.length === 0) return null;
-          let min = Infinity;
-          let max = -Infinity;
-          let sum = 0;
-          for (const p of points) {
-            min = Math.min(min, p.min);
-            max = Math.max(max, p.max);
-            sum += p.avg;
-          }
-          const unit = section.unit ?? '';
-          return (
-            <div key={section.type} className="space-y-1.5">
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-medium">{label}</span>
-                <span className="text-[0.625rem] text-muted-foreground">
-                  average of {entries.length} member{entries.length === 1 ? '' : 's'} · shaded = spread
-                </span>
-              </div>
-              <HistoryChart
-                points={points}
-                unit={section.unit}
-                gradientId={`group-${group.id}-${section.type}`}
-                fromTs={fromTs}
-                toTs={toTs}
-              />
-              <p className="text-[0.6875rem] text-muted-foreground">
-                min {min.toFixed(1)}{unit} · avg {(sum / points.length).toFixed(1)}{unit} · max {max.toFixed(1)}{unit}
-              </p>
-            </div>
-          );
-        }
-
-        // State kinds: "how many are on" over time — the honest group
-        // aggregate of on/off members — plus totals.
-        const numericized = entries.map(stateToNumericSeries);
-        const agg = aggregateNumericSeries(numericized, fromTs, toTs);
-        const points: HistoryPointData[] = agg.map(p => {
-          const on = p.avg * p.count;
-          return { ts: p.ts, min: on, avg: on, max: on, last: on, count: p.count };
-        });
-        if (points.length === 0) return null;
-        const totalOnMs = entries.reduce((a, d) => a + onMs(d, fromTs, toTs), 0);
-        const changes = entries.reduce((a, d) => a + eventCount(d), 0);
+        const numeric = section.kind === 'numeric';
         return (
-          <div key={section.type} className="space-y-1.5">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-medium">{label}</span>
-              <span className="text-[0.625rem] text-muted-foreground">
-                how many of {entries.length} are on
-              </span>
-            </div>
-            <HistoryChart
-              points={points}
-              unit={null}
-              gradientId={`group-${group.id}-${section.type}`}
-              fromTs={fromTs}
-              toTs={toTs}
-            />
-            <p className="text-[0.6875rem] text-muted-foreground">
-              combined on-time {formatDuration(totalOnMs)} · {changes} change{changes === 1 ? '' : 's'}
-            </p>
-          </div>
+          <AggregateSeriesSection
+            key={section.type}
+            title={charLabel(section.type)}
+            source={numeric
+              ? `average of ${entries.length} member${entries.length === 1 ? '' : 's'} · shaded = spread`
+              : `how many of ${entries.length} are on`}
+            entries={entries}
+            kind={numeric ? 'numeric' : 'state'}
+            unit={section.unit}
+            fromTs={fromTs}
+            toTs={toTs}
+            gradientId={`group-${group.id}-${section.type}`}
+          />
         );
       })}
 

@@ -9,13 +9,22 @@ export interface MultiSeriesEntry {
 }
 
 /**
+ * A ref that may name its own home. A collection's accessories can come from
+ * several homes at once, and GetHistory is per-home — so the home travels
+ * with the ref rather than being one value for the whole call. Omitted means
+ * the hook's `homeId`, which is every existing caller.
+ */
+export type ScopedSeriesRef = HistorySeriesRefInput & { homeId?: string };
+
+/**
  * Chunked multi-series fetch: the wire caps GetHistory at 6 refs, so wider
  * views issue several queries. Keyed by UPPERCASE accessory id +
- * characteristic — the case-insensitive UUID rule.
+ * characteristic — the case-insensitive UUID rule. Accessory UUIDs are
+ * globally unique, so that key stays right across homes.
  */
 export function useMultiSeriesHistory(
   homeId: string | null,
-  refs: HistorySeriesRefInput[],
+  refs: ScopedSeriesRef[],
   fromTs: number,
   toTs: number,
   mock: boolean,
@@ -29,12 +38,15 @@ export function useMultiSeriesHistory(
   // Real progress, not a guessed ETA: the wire caps a query at 6 series, so a
   // wide view is a known number of sequential chunks and "18 of 30" is a fact.
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
-  const refsKey = refs.map(r => `${r.accessoryId}|${r.characteristicType}`).join(',');
+  const refsKey = refs.map(r => `${r.homeId ?? ''}|${r.accessoryId}|${r.characteristicType}`).join(',');
   const maxPoints = opts?.maxPoints ?? 500;
   const enabled = opts?.enabled ?? true;
 
   useEffect(() => {
-    if (!enabled || !homeId || refs.length === 0) {
+    // A per-ref home is enough on its own — the hook-level one is the default,
+    // not a requirement.
+    const anyHome = homeId || refs.some(r => r.homeId);
+    if (!enabled || !anyHome || refs.length === 0) {
       setData(new Map());
       return;
     }
@@ -42,8 +54,22 @@ export function useMultiSeriesHistory(
 
     const fetchAll = async (from: number, to: number): Promise<HistorySeriesData[]> => {
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
-      const chunks: HistorySeriesRefInput[][] = [];
-      for (let i = 0; i < refs.length; i += 6) chunks.push(refs.slice(i, i + 6));
+      // Group by home first — GetHistory takes one home — then into the
+      // 6-ref wire batches. The homeId never travels in the variables.
+      const byHome = new Map<string, HistorySeriesRefInput[]>();
+      for (const ref of refs) {
+        const home = ref.homeId ?? homeId;
+        if (!home) continue;
+        const list = byHome.get(home) ?? [];
+        list.push({ accessoryId: ref.accessoryId, characteristicType: ref.characteristicType });
+        byHome.set(home, list);
+      }
+      const chunks: Array<{ homeId: string; refs: HistorySeriesRefInput[] }> = [];
+      for (const [home, homeRefs] of byHome) {
+        for (let i = 0; i < homeRefs.length; i += 6) {
+          chunks.push({ homeId: home, refs: homeRefs.slice(i, i + 6) });
+        }
+      }
 
       // Sequentially, a home of 688 series is 115 round trips end to end —
       // half a minute of waiting for a relay that could have answered several
@@ -59,11 +85,11 @@ export function useMultiSeriesHistory(
           const chunk = chunks[index];
           const result = await client.query<{ history: HistorySeriesData[] }>({
             query: GET_HISTORY,
-            variables: { homeId, series: chunk, fromTs: from, toTs: to, maxPoints },
+            variables: { homeId: chunk.homeId, series: chunk.refs, fromTs: from, toTs: to, maxPoints },
             fetchPolicy: 'network-only',
           });
           out.push(...(result.data?.history ?? []));
-          done += chunk.length;
+          done += chunk.refs.length;
           if (!cancelled) setProgress(p => ({ ...p, done: Math.min(done, p.total) }));
         }
       };

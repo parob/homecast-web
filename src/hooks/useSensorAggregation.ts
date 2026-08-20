@@ -16,6 +16,14 @@ export interface SensorReading {
   accessoryName: string;
   roomName?: string;
   value: number | boolean;
+  /**
+   * The characteristic this reading actually came from. A category can match
+   * more than one type (motion is motion_detected OR occupancy_detected), so
+   * the category alone cannot be turned back into a history query.
+   */
+  characteristicType: string;
+  /** Which home the accessory belongs to — a collection can span several. */
+  homeId?: string;
 }
 
 export interface NumericAggregation {
@@ -88,14 +96,23 @@ const CONTACT_STATE = {
 // Helper functions
 // ============================================================================
 
+/** A matched characteristic: its parsed value, and the type that matched. */
+interface Matched {
+  value: unknown;
+  characteristicType: string;
+}
+
 /**
- * Extract characteristic value from an accessory by type.
+ * Find the first characteristic on an accessory whose type is in `types`.
  * Returns undefined if not found or accessory is unreachable.
+ *
+ * Reports the matched type alongside the value: the caller needs it to build
+ * a history query, and several categories accept more than one type.
  */
-function getCharacteristicValue(
+function findCharacteristic(
   accessory: HomeKitAccessory,
   types: string[]
-): unknown | undefined {
+): Matched | undefined {
   // Skip unreachable accessories
   if (!accessory.isReachable) {
     return undefined;
@@ -107,12 +124,12 @@ function getCharacteristicValue(
         // Parse JSON-encoded value if it's a string
         if (typeof char.value === 'string') {
           try {
-            return JSON.parse(char.value);
+            return { value: JSON.parse(char.value), characteristicType: char.characteristicType };
           } catch {
-            return char.value;
+            return { value: char.value, characteristicType: char.characteristicType };
           }
         }
-        return char.value;
+        return { value: char.value, characteristicType: char.characteristicType };
       }
     }
   }
@@ -154,68 +171,70 @@ export function useSensorAggregation(accessories: HomeKitAccessory[]): Aggregate
     const batteryReadings: SensorReading[] = [];
 
     for (const accessory of accessories) {
+      // Everything a reading carries about where it came from, written once.
+      const provenance = {
+        accessoryId: accessory.id,
+        accessoryName: accessory.name,
+        roomName: accessory.roomName,
+        homeId: accessory.homeId,
+      };
+
       // Temperature
-      const temp = getCharacteristicValue(accessory, TEMPERATURE_TYPES);
-      if (typeof temp === 'number' && !isNaN(temp)) {
+      const temp = findCharacteristic(accessory, TEMPERATURE_TYPES);
+      if (typeof temp?.value === 'number' && !isNaN(temp.value)) {
         temperatureReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
-          value: temp,
+          ...provenance,
+          characteristicType: temp.characteristicType,
+          value: temp.value,
         });
       }
 
       // Humidity
-      const humidity = getCharacteristicValue(accessory, HUMIDITY_TYPES);
-      if (typeof humidity === 'number' && !isNaN(humidity)) {
+      const humidity = findCharacteristic(accessory, HUMIDITY_TYPES);
+      if (typeof humidity?.value === 'number' && !isNaN(humidity.value)) {
         humidityReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
-          value: humidity,
+          ...provenance,
+          characteristicType: humidity.characteristicType,
+          value: humidity.value,
         });
       }
 
       // Motion/Occupancy
-      const motion = getCharacteristicValue(accessory, MOTION_TYPES);
-      if (typeof motion === 'boolean') {
+      const motion = findCharacteristic(accessory, MOTION_TYPES);
+      if (typeof motion?.value === 'boolean') {
         motionReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
-          value: motion,
+          ...provenance,
+          characteristicType: motion.characteristicType,
+          value: motion.value,
         });
       }
 
       // Locks
-      const lockState = getCharacteristicValue(accessory, LOCK_TYPES);
-      if (typeof lockState === 'number') {
+      const lockState = findCharacteristic(accessory, LOCK_TYPES);
+      if (typeof lockState?.value === 'number') {
         lockReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
-          value: lockState,
+          ...provenance,
+          characteristicType: lockState.characteristicType,
+          value: lockState.value,
         });
       }
 
       // Contact sensors
-      const contactState = getCharacteristicValue(accessory, CONTACT_TYPES);
-      if (typeof contactState === 'number') {
+      const contactState = findCharacteristic(accessory, CONTACT_TYPES);
+      if (typeof contactState?.value === 'number') {
         contactReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
-          value: contactState,
+          ...provenance,
+          characteristicType: contactState.characteristicType,
+          value: contactState.value,
         });
       }
 
       // Low battery
-      const lowBattery = getCharacteristicValue(accessory, BATTERY_TYPES);
-      if (lowBattery === true || lowBattery === 1) {
+      const lowBattery = findCharacteristic(accessory, BATTERY_TYPES);
+      if (lowBattery?.value === true || lowBattery?.value === 1) {
         batteryReadings.push({
-          accessoryId: accessory.id,
-          accessoryName: accessory.name,
-          roomName: accessory.roomName,
+          ...provenance,
+          characteristicType: lowBattery.characteristicType,
           value: true,
         });
       }

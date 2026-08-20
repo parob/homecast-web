@@ -4,7 +4,8 @@ import { useQuery } from '@apollo/client/react';
 import { GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
-import { useHistory } from '@/contexts/HistoryContext';
+import { useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
+import type { StatusHistoryCategory } from '@/history/status-series';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import type {
@@ -26,6 +27,7 @@ import { AccessorySeriesSection } from '@/components/home-analytics/AccessorySec
 const HistoryChart = lazy(() => import('./HistoryChart'));
 // Lazy for the same reason: it pulls the charting stack.
 const GroupHistorySections = lazy(() => import('@/components/home-analytics/GroupHistorySections'));
+const StatusHistorySections = lazy(() => import('@/components/home-analytics/StatusHistorySections'));
 
 const RANGES = [
   { label: '6h', ms: 6 * 3_600_000 },
@@ -42,12 +44,13 @@ const RANGES = [
 
 
 
-function formatDuration(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h ${minutes % 60}m`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+/** Status mode: the sensor categories behind a Status bubble or its row. */
+export interface StatusHistoryScope {
+  /** "Status" for the whole row, or the bubble's own name for one category. */
+  title: string;
+  categories: StatusHistoryCategory[];
+  /** Where "Open in Analytics" lands. Defaults to the home. */
+  analyticsScope?: AnalyticsScope;
 }
 
 export interface HistoryTarget {
@@ -56,6 +59,8 @@ export interface HistoryTarget {
   accessory?: HomeKitAccessory;
   /** Group mode: the same layout, aggregated across the group's members. */
   group?: { id: string; name: string; memberIds: string[] };
+  /** Status mode: one aggregate chart per Status bubble. */
+  status?: StatusHistoryScope;
 }
 
 interface HistoryDialogProps {
@@ -157,14 +162,18 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         <DialogHeader>
           <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
             <LineChart className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 truncate">{target?.accessory?.name ?? target?.group?.name ?? 'Analytics'}</span>
+            <span className="flex-1 truncate">
+              {target?.accessory?.name ?? target?.group?.name ?? target?.status?.title ?? 'Analytics'}
+            </span>
             <button
               onClick={() => {
                 const accessory = target?.accessory;
                 const group = target?.group;
+                const status = target?.status;
                 const homeId = target?.homeId;
                 onClose();
-                if (group) openAnalytics({ level: 'group', groupId: group.id, homeId });
+                if (status) openAnalytics(status.analyticsScope ?? { level: 'home', homeId });
+                else if (group) openAnalytics({ level: 'group', groupId: group.id, homeId });
                 else openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined);
               }}
               className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
@@ -202,6 +211,16 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               </button>
             )}
           </div>
+        ) : target?.status ? (
+          <Suspense fallback={<div className="h-[240px]" />}>
+            <StatusHistorySections
+              homeId={target.homeId}
+              mock={mock}
+              categories={target.status.categories}
+              fromTs={fromTs}
+              toTs={toTs}
+            />
+          </Suspense>
         ) : target?.group ? (
           <Suspense fallback={<div className="h-[240px]" />}>
             <GroupHistorySections

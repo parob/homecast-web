@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateNumericSeries, normalizeValue } from '../aggregate';
+import { aggregateNumericSeries, normalizeValue, stateToNumericSeries, stateToNumericSeriesWith } from '../aggregate';
 import type { HistorySeriesData } from '@/lib/graphql/types';
 
 const series = (prevValue: number | null, points: Array<[number, number]>): HistorySeriesData => ({
@@ -51,5 +51,65 @@ describe('normalizeValue', () => {
     expect(normalizeValue(10, 10, 20)).toBe(0);
     expect(normalizeValue(20, 10, 20)).toBe(100);
     expect(normalizeValue(7, 7, 7)).toBe(50);
+  });
+});
+
+const stateSeries = (
+  prevValue: number | null,
+  states: Array<[number, number]>,
+): HistorySeriesData => ({
+  accessoryId: 'lock',
+  characteristicType: 'lock_current_state',
+  kind: 'enum',
+  unit: null,
+  resolution: 'raw',
+  prevValue,
+  points: [],
+  states: states.map(([ts, value]) => ({ ts, value })),
+  stateBuckets: [],
+});
+
+const bucketSeries = (stateMs: Record<string, number>): HistorySeriesData => ({
+  accessoryId: 'lock',
+  characteristicType: 'lock_current_state',
+  kind: 'enum',
+  unit: null,
+  resolution: 'hourly',
+  prevValue: null,
+  points: [],
+  states: [],
+  stateBuckets: [{ ts: 0, dominant: 1, stateMsJson: JSON.stringify(stateMs), transitions: 2 }],
+});
+
+describe('stateToNumericSeries', () => {
+  it('treats non-zero as on', () => {
+    const out = stateToNumericSeries(stateSeries(0, [[100, 1], [200, 0]]));
+    expect(out.kind).toBe('numeric');
+    expect(out.prevValue).toBe(0);
+    expect(out.points.map(p => p.avg)).toEqual([1, 0]);
+  });
+
+  it('reads a rolled bucket as the fraction of time not in state 0', () => {
+    const out = stateToNumericSeries(bucketSeries({ '0': 25, '1': 75 }));
+    expect(out.points[0].avg).toBeCloseTo(0.75);
+  });
+});
+
+describe('stateToNumericSeriesWith', () => {
+  it('lets the caller say what on means', () => {
+    // Locks: 0 unsecured / 1 secured / 2 jammed. "Unlocked" is v !== 1, so a
+    // jammed door reads as not locked.
+    const isUnlocked = (v: number) => v !== 1;
+    const out = stateToNumericSeriesWith(stateSeries(1, [[100, 0], [200, 2], [300, 1]]), isUnlocked);
+
+    expect(out.prevValue).toBe(0);
+    expect(out.points.map(p => p.avg)).toEqual([1, 1, 0]);
+  });
+
+  it('applies the predicate to rolled bucket keys', () => {
+    const isUnlocked = (v: number) => v !== 1;
+    // 25ms unsecured + 15ms jammed = 40ms of 100ms not locked.
+    const out = stateToNumericSeriesWith(bucketSeries({ '0': 25, '1': 60, '2': 15 }), isUnlocked);
+    expect(out.points[0].avg).toBeCloseTo(0.4);
   });
 });

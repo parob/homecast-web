@@ -5,7 +5,7 @@ import { getRecordableCharacteristics } from '@/components/automations/character
 import { isMockHistoryEnabled } from '@/history/mock';
 import type { CategoryId } from '@/history/categories';
 import type { HomeKitAccessory, HomeKitServiceGroup, HistoryStorageStatsData } from '@/lib/graphql/types';
-import type { HistoryTarget } from '@/components/widgets/HistoryDialog';
+import type { HistoryTarget, StatusHistoryScope } from '@/components/widgets/HistoryDialog';
 
 /**
  * Reaches WidgetCard's context menu through context, not props — 28 widget
@@ -30,6 +30,12 @@ export type AnalyticsScope = (
 };
 
 interface HistoryContextValue {
+  /**
+   * The selected home. Accessories off the wire do not always carry a
+   * homeId — openHistory has always fallen back to this — so anything
+   * deriving a home from an accessory needs the same fallback.
+   */
+  defaultHomeId: string | null;
   /** Gates the menu entries: home opted in + accessory has recordable series. */
   historyAvailable: (accessory: HomeKitAccessory) => boolean;
   /** True when the SELECTED home records history. */
@@ -41,16 +47,20 @@ interface HistoryContextValue {
   openHistory: (accessory: HomeKitAccessory) => void;
   /** Open the compact history popup for a group (aggregated members). */
   openGroupHistory: (group: HomeKitServiceGroup) => void;
+  /** Open the compact history popup for the Status bubbles of an area. */
+  openStatusHistory: (homeId: string, status: StatusHistoryScope) => void;
   /** Open Home Analytics, scoped. Defaults to the overview. */
   openAnalytics: (scope?: AnalyticsScope) => void;
 }
 
 const HistoryContext = createContext<HistoryContextValue>({
+  defaultHomeId: null,
   historyAvailable: () => false,
   analyticsAvailable: false,
   analyticsAvailableFor: () => false,
   openHistory: () => {},
   openGroupHistory: () => {},
+  openStatusHistory: () => {},
   openAnalytics: () => {},
 });
 
@@ -140,13 +150,22 @@ export function HistoryProvider({
     });
   }, [homeId, onOpenHistory]);
 
+  const openStatusHistory = useCallback((statusHomeId: string, status: StatusHistoryScope) => {
+    if (!onOpenHistory || status.categories.length === 0) return;
+    onOpenHistory({ homeId: statusHomeId, status });
+  }, [onOpenHistory]);
+
   const openAnalytics = useCallback((scope?: AnalyticsScope) => {
     onOpenAnalytics?.(scope ?? { level: 'home' });
   }, [onOpenAnalytics]);
 
   const value = useMemo(
-    () => ({ historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor, openHistory, openGroupHistory, openAnalytics }),
-    [historyAvailable, enabled, analyticsAvailableFor, openHistory, openGroupHistory, openAnalytics],
+    () => ({
+      defaultHomeId: homeId,
+      historyAvailable, analyticsAvailable: enabled, analyticsAvailableFor,
+      openHistory, openGroupHistory, openStatusHistory, openAnalytics,
+    }),
+    [homeId, historyAvailable, enabled, analyticsAvailableFor, openHistory, openGroupHistory, openStatusHistory, openAnalytics],
   );
 
   return (

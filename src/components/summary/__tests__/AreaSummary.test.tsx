@@ -123,4 +123,13 @@ describe('AreaSummary sensor bubble tooltip', () => {
     });
     expect(isOpen(bubble)).toBe(false);
   });
+
+  it('offers no analytics outside a HistoryProvider', async () => {
+    // This is how the shared-link views render it. The default context
+    // reports no recording home, so both buttons stay away — no mode check
+    // in the component, and nothing to keep in sync.
+    expect(screen.queryByRole('button', { name: 'Analytics' })).toBeNull();
+    await hoverOpen(getBubble());
+    expect(screen.queryAllByRole('button', { name: /Analytics for/ })).toHaveLength(0);
+  });
 });
