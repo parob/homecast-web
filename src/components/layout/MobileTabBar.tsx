@@ -685,8 +685,9 @@ export function MobileTabBar({
             // without narrowing the bubble behind it. Given the tab's full
             // width the last line ran right to the edge of its own background
             // — and with the clamp's ellipsis on the end of it, slightly past.
-            // Two characters' worth of margin at this size.
-            <span className="h-[23px] w-full px-2 text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
+            // Eight characters at this size, with the tab's own padding and
+            // this one together keeping them 8px clear of the bubble edge.
+            <span className="h-[23px] w-full px-1 text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
               {label}
             </span>
           ) : (

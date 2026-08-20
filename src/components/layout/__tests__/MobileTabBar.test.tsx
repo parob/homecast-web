@@ -1176,7 +1176,7 @@ describe('how the row is divided', () => {
     // Inset from the bubble behind it: given the tab's full width the last line
     // ran right to the edge of its own background, and with the clamp's
     // ellipsis on the end of it, slightly past.
-    expect(label.className).toContain('px-2');
+    expect(label.className).toContain('px-1');
   });
 
   it('wraps a compact name to two lines and then truncates it', () => {
