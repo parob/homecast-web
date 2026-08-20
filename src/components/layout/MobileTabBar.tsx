@@ -37,6 +37,34 @@ export { MAX_PINNED_TABS };
 /** How long a chip takes to reach the middle. */
 const CENTRE_MS = 220;
 
+/**
+ * How long the label takes to appear, matching `duration-base`. The row's
+ * width is not final until then.
+ */
+const LABEL_MS = 220;
+
+/**
+ * Where the row must scroll for `key` to sit in the middle of it.
+ *
+ * Measured, not `offsetLeft`. Every chip sits in a `TabSlot`, which is
+ * `position: relative` so it can anchor the unpin badge — which makes it the
+ * chip's offsetParent, so `offsetLeft` is the chip's position inside its own
+ * wrapper: about zero, for all of them. The target came out at 0 every time and
+ * the bar never moved.
+ */
+function targetFor(el: HTMLElement, key: string): number {
+  const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
+    .find(n => n.dataset.tabKey === key);
+  if (!chip) return el.scrollLeft;
+  const chipBox = chip.getBoundingClientRect();
+  const elBox = el.getBoundingClientRect();
+  const centreWithinRow = el.scrollLeft + (chipBox.left - elBox.left) + chipBox.width / 2;
+  return Math.max(0, Math.min(
+    centreWithinRow - el.clientWidth / 2,
+    el.scrollWidth - el.clientWidth,
+  ));
+}
+
 /** Leaves fast and settles — the same shape as the `ease-standard` token. */
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -324,20 +352,34 @@ export function MobileTabBar({
     const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
       .find(n => n.dataset.tabKey === key);
     if (!chip) return;
-    // Measured, not `offsetLeft`. Every chip sits in a `TabSlot`, which is
-    // `position: relative` so it can anchor the unpin badge — which makes it
-    // the chip's offsetParent, so `offsetLeft` is the chip's position inside
-    // its own wrapper: about zero, for all of them. The target came out at 0
-    // every time and the bar never moved.
-    const chipBox = chip.getBoundingClientRect();
-    const elBox = el.getBoundingClientRect();
-    const centreWithinRow = el.scrollLeft + (chipBox.left - elBox.left) + chipBox.width / 2;
-    const target = Math.max(0, Math.min(
-      centreWithinRow - el.clientWidth / 2,
-      el.scrollWidth - el.clientWidth,
-    ));
+    const target = targetFor(el, key);
     cancelCentreRef.current();
-    cancelCentreRef.current = animateScrollTo(el, target);
+    const stopScroll = animateScrollTo(el, target);
+
+    /*
+     * And again once the chip has finished growing.
+     *
+     * Taking its name widens the chip, and with names collapsed that happens
+     * over the label's own transition — so the geometry this just measured is
+     * out of date by the time the row settles. On the last pin it showed as
+     * both symptoms at once: the row could now scroll further than it had been
+     * told, so the chip sat short of the end with its icon clipped, and the
+     * end-fade stayed on because there was suddenly more to the right.
+     *
+     * Cheap to do unconditionally: if nothing moved, `animateScrollTo` sees
+     * less than a pixel to travel and returns without a frame.
+     */
+    let stopCorrection = () => {};
+    const correct = window.setTimeout(() => {
+      const settled = scrollerRef.current;
+      if (settled) stopCorrection = animateScrollTo(settled, targetFor(settled, key));
+    }, LABEL_MS);
+
+    cancelCentreRef.current = () => {
+      stopScroll();
+      stopCorrection();
+      window.clearTimeout(correct);
+    };
   };
 
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus, centre = true) => {
@@ -506,7 +548,12 @@ export function MobileTabBar({
     // reaches it, so the chip under the thumb IS the active one — and naming it
     // would grow it under the thumb and shift the rest of the row sideways,
     // which is the reflow the callout exists to avoid.
-    : (dragKey !== null ? null : activeKey);
+    //
+    // Otherwise: whatever wears the fill wears the name. Keyed off `activeKey`
+    // these two disagreed — a pinned page you are still on stays active, so its
+    // chip kept its name open while the panel you had just opened took the fill
+    // and stayed nameless. Two chips claiming to be the current one.
+    : (dragKey !== null ? null : litKey);
 
   /** What the callout says: the tab a release would land on. */
   const aimedAt = collapseNames && !editMode && dragKey
@@ -547,13 +594,16 @@ export function MobileTabBar({
           title={editMode ? undefined : label}
           className={cn(
             'transition-[background-color,color,width] duration-base ease-standard',
-            // One chip, arranging or not. The stacked 64px column that edit
-            // mode used to keep was left over from when the bar looked like
-            // that everywhere; carrying it made arranging a bar you could not
-            // recognise, at a size that told you nothing about how the result
-            // would sit.
-            'flex shrink-0 flex-row items-center rounded-full py-2',
-            named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
+            editMode
+              // Arranging stacks the name under the icon. Five chips at their
+              // full width do not fit a phone, and a row you have to scroll is
+              // a row you cannot see to reorder — the whole point of the screen
+              // is having all of them in front of you at once.
+              ? 'flex shrink-0 w-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
+              : cn(
+                  'flex shrink-0 flex-row items-center rounded-full py-2',
+                  named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
+                ),
             lit && 'bg-primary text-primary-foreground',
             // The bar's glass follows the wallpaper — white over a light one,
             // black over a dark one — so the text on it has to as well. An
@@ -585,19 +635,29 @@ export function MobileTabBar({
           >
             <Icon className="h-5 w-5 shrink-0" />
           </PendingRing>
-          {/* Collapsed to nothing rather than unmounted: animating a width is
-              what makes the capsule look like it grew the name, and an element
-              that is not there has no width to animate from. */}
-          <span
-            aria-hidden
-            className={cn(
-              'overflow-hidden whitespace-nowrap text-[12.5px] font-semibold leading-none',
-              'transition-[max-width,opacity] duration-base ease-standard',
-              named ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0',
-            )}
-          >
-            {label}
-          </span>
+          {editMode ? (
+            // Two lines, then ellipsis. A long room name truncated to "Livin…"
+            // on one line is a worse tab than one wrapped over two, and while
+            // arranging every name is on show at once. No colour of its own:
+            // it takes the chip's, so the two bars read the same.
+            <span className="w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
+              {label}
+            </span>
+          ) : (
+            /* Collapsed to nothing rather than unmounted: animating a width is
+               what makes the capsule look like it grew the name, and an element
+               that is not there has no width to animate from. */
+            <span
+              aria-hidden
+              className={cn(
+                'overflow-hidden whitespace-nowrap text-[12.5px] font-semibold leading-none',
+                'transition-[max-width,opacity] duration-base ease-standard',
+                named ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0',
+              )}
+            >
+              {label}
+            </span>
+          )}
         </button>
 
         {editMode && onUnpin && (
@@ -676,9 +736,13 @@ export function MobileTabBar({
         // item's automatic minimum size is its content, and that beats
         // `max-width` — so without it the bar simply refused to come down to
         // the width it had been told it could have.
-        // A row of capsules wants a capsule around it, arranging or not. The
-        // scroller inside is what keeps the tabs within it.
-        'pointer-events-auto flex gap-1 min-w-0 items-center p-1.5 rounded-full overflow-hidden transition-colors duration-300',
+        'pointer-events-auto flex gap-1 min-w-0 overflow-hidden transition-colors duration-300',
+        editMode
+          // Stacked tabs make a taller row, where a full stadium reads as a
+          // lozenge — but it keeps the real bar's roundness as far as it can.
+          ? 'items-start rounded-3xl px-2 py-1.5'
+          // A row of capsules wants a capsule around it.
+          : 'items-center rounded-full p-1.5',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
       )}
       style={{ maxWidth: 'calc(100% - 32px)' }}

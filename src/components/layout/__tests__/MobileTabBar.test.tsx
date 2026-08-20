@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MobileTabBar, type PinnedTabStatus } from '../MobileTabBar';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 
@@ -955,5 +955,127 @@ describe('swiping through collapsed pins', () => {
 
     fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
     expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+  });
+});
+
+/**
+ * Arranging stacks the name under the icon.
+ *
+ * Five chips at their full width do not fit a phone, and a row you have to
+ * scroll is a row you cannot see to reorder — the whole point of that screen is
+ * having all of them in front of you at once. The styling is the real bar's
+ * either way: same colours, same glass, corners as round as a taller row allows.
+ */
+describe('the shape of the bar while arranging', () => {
+  const tab = (re: RegExp) => screen.getByRole('button', { name: re });
+
+  it('stacks the name under the icon, so five fit across', () => {
+    setup([TABS.home, TABS.room], { editMode: true });
+    expect(tab(/Kitchen/).className).toContain('flex-col');
+    expect(tab(/Kitchen/).className).toContain('w-16');
+  });
+
+  it('is a row of chips the rest of the time', () => {
+    setup([TABS.home, TABS.room]);
+    expect(tab(/Kitchen/).className).toContain('flex-row');
+    expect(tab(/Kitchen/).className).not.toContain('w-16');
+  });
+
+  it('lets the name take the chip colour rather than one of its own', () => {
+    setup([TABS.home, TABS.room], { editMode: true, isDarkBackground: true });
+    const label = tab(/Kitchen/).querySelector('span')!;
+    // No text-* of its own: whatever the chip wears, the name wears.
+    expect(label.className).not.toMatch(/text-(white|foreground|muted)/);
+    expect(tab(/Kitchen/).className).toContain('text-white/85');
+  });
+});
+
+/**
+ * The name and the fill are the same claim, so they follow the same rule.
+ *
+ * Keyed off `activeKey` they disagreed: a pinned page you are still on stays
+ * active, so its chip kept its name open while the panel you had just opened
+ * took the fill and stayed nameless — two chips both claiming to be current.
+ */
+describe('which collapsed chip is named', () => {
+  const named = (re: RegExp) => {
+    const span = screen.getByRole('button', { name: re }).querySelector('span[aria-hidden]');
+    return !span?.className.includes('max-w-0');
+  };
+
+  it('moves the name off the page you are on when a panel opens', () => {
+    setup([TABS.room, TABS.accessory], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    expect(named(/Kitchen/)).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+
+    expect(named(/Lamp/)).toBe(true);
+    expect(named(/Kitchen/)).toBe(false);
+  });
+
+  it('gives it back when the panel closes', () => {
+    setup([TABS.room, TABS.accessory], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    const lamp = screen.getByRole('button', { name: /Lamp/ });
+
+    fireEvent.click(lamp);
+    fireEvent.click(lamp);
+
+    expect(named(/Kitchen/)).toBe(true);
+    expect(named(/Lamp/)).toBe(false);
+  });
+
+  it('names exactly one chip at a time', () => {
+    setup([TABS.room, TABS.accessory, TABS.scene], { collapseNames: true, selectedRoomId: 'ROOM-1' });
+    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
+
+    const lit = [/Kitchen/, /Lamp/, /Movie night/].filter(named);
+    expect(lit).toHaveLength(1);
+  });
+});
+
+/**
+ * Centring corrects itself once the chip has finished growing.
+ *
+ * Taking its name widens the chip, and with names collapsed that happens over
+ * the label's own transition — so the geometry measured at the press is out of
+ * date by the time the row settles. On the LAST pin that showed as both
+ * symptoms at once: the row could scroll further than it had been told, so the
+ * chip sat short of the end with its icon clipped, and the end-fade stayed on
+ * because there was suddenly more to the right.
+ */
+describe('centring the last pin as it grows', () => {
+  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('scrolls again once the row has widened under it', () => {
+    setup([TABS.home, TABS.room, TABS.action], { collapseNames: true });
+    const el = scroller();
+    Object.defineProperty(el, 'clientWidth', { value: 150, configurable: true });
+    el.getBoundingClientRect = () => ({
+      left: 0, right: 150, top: 0, bottom: 44, x: 0, y: 0, width: 150, height: 44, toJSON: () => ({}),
+    }) as DOMRect;
+    el.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
+      chip.getBoundingClientRect = () => {
+        const left = n * 50 - el.scrollLeft;
+        return { left, right: left + 40, top: 0, bottom: 44,
+          x: left, y: 0, width: 40, height: 44, toJSON: () => ({}) } as DOMRect;
+      };
+    });
+
+    // Narrow row to begin with: the last chip's centre is barely past the edge.
+    Object.defineProperty(el, 'scrollWidth', { value: 160, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: /Everything off/ }));
+    const first = el.scrollLeft;
+
+    // The label lands and the row grows; the end moves further right.
+    Object.defineProperty(el, 'scrollWidth', { value: 260, configurable: true });
+    act(() => { vi.advanceTimersByTime(300); });
+
+    expect(el.scrollLeft).toBeGreaterThan(first);
   });
 });

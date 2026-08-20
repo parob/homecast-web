@@ -181,9 +181,9 @@ export function DisplaySection({
       </div>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">Collapse tab names</p>
+          <p className="text-sm font-medium">Compact tab bar</p>
           <p className="text-xs text-muted-foreground">
-            Show only icons in the tab bar, and name the one you are on
+            Show icons only, and swipe along the bar to move between them
           </p>
         </div>
         <div className="relative flex items-center">
