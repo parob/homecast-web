@@ -572,30 +572,14 @@ export function MobileTabBar({
   const litKey = dragKey ?? (!editMode && openKey) ?? activeKey;
 
   /**
-   * Which chips show their name.
+   * Which chips show their name: all of them, or none.
    *
-   * Everything, unless the setting says otherwise — and then only the one that
-   * is current, so the bar still says where you are. Arranging always shows
-   * them all: you cannot reorder or rename what you cannot read.
-   *
-   * Mid-slide the lit chip's name comes off too. A capsule that grows its name
-   * under a thumb has put that name in the one place on screen it cannot be
-   * read, and moved the rest of the bar sideways to do it. The callout above
-   * takes over the naming instead — one shrink at the point you leave, rather
-   * than a reflow at every chip you cross.
+   * Icons never widen for the one you are on. A chip that grows its name moves
+   * every chip after it, and in a bar you navigate by swiping that is the row
+   * shifting under the finger doing the swiping. The callout above says what is
+   * selected instead — the one place a thumb is not covering.
    */
-  const namedKey = shape !== 'icon'
-    ? 'all' as const
-    // Nothing at all while a finger is down. Swiping opens each pin as it
-    // reaches it, so the chip under the thumb IS the active one — and naming it
-    // would grow it under the thumb and shift the rest of the row sideways,
-    // which is the reflow the callout exists to avoid.
-    //
-    // Otherwise: whatever wears the fill wears the name. Keyed off `activeKey`
-    // these two disagreed — a pinned page you are still on stays active, so its
-    // chip kept its name open while the panel you had just opened took the fill
-    // and stayed nameless. Two chips claiming to be the current one.
-    : (dragKey !== null ? null : litKey);
+  const namedKey = shape === 'icon' ? null : 'all' as const;
 
   /** What the callout says: the tab a release would land on. */
   const aimedAt = shape === 'icon' && dragKey
@@ -625,11 +609,9 @@ export function MobileTabBar({
     const slotClass = shape === 'compact'
       // An equal share each, capped so two pins do not become two huge tabs.
       ? 'min-w-0 flex-1 basis-0 max-w-16'
-      : shape === 'icon' && named
-        // Whatever is left after the glyph-only ones, and not a pixel more.
-        ? 'min-w-0 flex-1 basis-0'
-        // Regular holds every name in full; the row scrolls to suit.
-        : 'shrink-0';
+      // Regular holds every name in full and the row scrolls to suit; icons are
+      // all the same glyph-sized chip and always fit.
+      : 'shrink-0';
 
     return (
       <TabSlot key={key} id={key} sortable={editMode} className={slotClass}>
@@ -716,9 +698,6 @@ export function MobileTabBar({
                 'overflow-hidden whitespace-nowrap text-[12.5px] font-semibold leading-none',
                 'transition-[max-width,opacity] duration-base ease-standard',
                 named ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0',
-                // `min-w-0` because a flex item will not shrink below its own
-                // content without it, whatever the ellipsis says.
-                shape === 'icon' && 'min-w-0 text-ellipsis',
               )}
             >
               {label}

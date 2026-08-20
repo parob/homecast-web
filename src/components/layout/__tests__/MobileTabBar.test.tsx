@@ -838,9 +838,11 @@ describe('collapsed tab names', () => {
     });
   };
 
-  it('names only the tab you are on', () => {
+  it('names none of them — the callout above does that', () => {
     setup([TABS.home, TABS.room], { mode: 'icon' as const, selectedHomeId: 'HOME-1' });
-    expect(named(/Beach House/)).toBe(true);
+    // A chip that grows its name moves every chip after it, and in a bar you
+    // navigate by swiping that is the row shifting under the finger doing it.
+    expect(named(/Beach House/)).toBe(false);
     expect(named(/Kitchen/)).toBe(false);
   });
 
@@ -1000,48 +1002,6 @@ describe('the shape of the bar while arranging', () => {
   });
 });
 
-/**
- * The name and the fill are the same claim, so they follow the same rule.
- *
- * Keyed off `activeKey` they disagreed: a pinned page you are still on stays
- * active, so its chip kept its name open while the panel you had just opened
- * took the fill and stayed nameless — two chips both claiming to be current.
- */
-describe('which collapsed chip is named', () => {
-  const named = (re: RegExp) => {
-    const span = screen.getByRole('button', { name: re }).querySelector('span[aria-hidden]');
-    return !span?.className.includes('max-w-0');
-  };
-
-  it('moves the name off the page you are on when a panel opens', () => {
-    setup([TABS.room, TABS.accessory], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
-    expect(named(/Kitchen/)).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
-
-    expect(named(/Lamp/)).toBe(true);
-    expect(named(/Kitchen/)).toBe(false);
-  });
-
-  it('gives it back when the panel closes', () => {
-    setup([TABS.room, TABS.accessory], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
-    const lamp = screen.getByRole('button', { name: /Lamp/ });
-
-    fireEvent.click(lamp);
-    fireEvent.click(lamp);
-
-    expect(named(/Kitchen/)).toBe(true);
-    expect(named(/Lamp/)).toBe(false);
-  });
-
-  it('names exactly one chip at a time', () => {
-    setup([TABS.room, TABS.accessory, TABS.scene], { mode: 'icon' as const, selectedRoomId: 'ROOM-1' });
-    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
-
-    const lit = [/Kitchen/, /Lamp/, /Movie night/].filter(named);
-    expect(lit).toHaveLength(1);
-  });
-});
 
 
 /**
@@ -1118,12 +1078,13 @@ describe('which modes scroll', () => {
     expect(row().className).toContain('overflow-hidden');
   });
 
-  it('truncates the one name that is on show rather than widening the row', () => {
+  it('keeps every icon chip the same size, so nothing has to truncate', () => {
     setup([TABS.home, TABS.room], { mode: 'icon', selectedHomeId: 'HOME-1' });
-    const label = screen.getByRole('button', { name: /Beach House/ })
-      .querySelector('span[aria-hidden]')!;
-    expect(label.className).toContain('text-ellipsis');
-    expect(label.className).toContain('min-w-0');
+    for (const re of [/Beach House/, /Kitchen/]) {
+      const s = screen.getByRole('button', { name: re }).closest<HTMLElement>('[data-tab-slot]')!;
+      expect(s.className).toContain('shrink-0');
+      expect(s.className).not.toContain('flex-1');
+    }
   });
 
   it('arranges in the compact shape whatever the setting says', () => {
@@ -1163,13 +1124,11 @@ describe('how the row is divided', () => {
     }
   });
 
-  it('gives the named icon chip the leftover space, and no more', () => {
+  it('holds every icon chip at its own size', () => {
     setup([TABS.home, TABS.room], { mode: 'icon', selectedHomeId: 'HOME-1' });
-    // The one with the name takes what is left...
-    expect(slot(/Beach House/).className).toContain('flex-1');
-    expect(slot(/Beach House/).className).toContain('basis-0');
-    // ...and the glyph-only ones hold their size, so they cannot be squeezed
-    // off the end of the bar.
+    // None of them widen, so five always fit and none can be squeezed off the
+    // end of the bar.
+    expect(slot(/Beach House/).className).toContain('shrink-0');
     expect(slot(/Kitchen/).className).toContain('shrink-0');
   });
 
