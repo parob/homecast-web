@@ -134,6 +134,7 @@ import { PinnedControl } from '@/components/layout/PinnedControl';
 import { PinnedActionCard, PinnedSceneCard } from '@/components/layout/PinnedRunCard';
 import { pinnedContextLabel } from '@/lib/pinned-context';
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { RowEditActions } from '@/components/shared/EditActions';
