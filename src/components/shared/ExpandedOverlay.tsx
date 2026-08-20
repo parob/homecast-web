@@ -28,6 +28,16 @@ export interface ExpandedOverlayProps {
    * first place when a tab is the trigger.
    */
   bottomInset?: number;
+  /**
+   * Keep the scrim itself clear of this much at the bottom, as a CSS length.
+   *
+   * For a trigger that has to stay legible while its panel is open — the
+   * pinned tab bar. Lifting the bar over the scrim with z-index does not work
+   * (its stacking context is not the scrim's), and cutting a hole does not
+   * either (`clip-path` leaves `backdrop-filter` alone). Geometry is the only
+   * approach that cannot be argued with: the scrim simply stops above the bar.
+   */
+  scrimBottomInset?: string;
   children: React.ReactNode;
 }
 
@@ -93,10 +103,21 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
     x = rect.right - overlayWidth - PADDING;
   }
 
+  // Clamp to the viewport, whatever the trigger is doing.
+  //
+  // The branches above align the panel to the trigger's own edge, which assumes
+  // the trigger is on screen. A pinned tab need not be: the bar scrolls, so a
+  // chip with a long name can be half off the side when you press it — and
+  // `rect.left` is then negative, which put the panel off the same edge and
+  // left half the widget unreachable. The panel's footprint is its width plus
+  // the 10px ring the wrapper draws around it.
+  const footprint = overlayWidth + PADDING * 2;
+  x = Math.max(0, Math.min(x, viewportRight - footprint));
+
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, scrimBottomInset, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
@@ -513,7 +534,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             // the scroll-past-40px dismissal with it. A wheel over the
             // backdrop means the same thing a tap does.
             onWheel={() => onClose()}
-            style={{ zIndex: baseZ }}
+            style={{
+              zIndex: baseZ,
+              ...(scrimBottomInset
+                ? ({ ['--ffs-bottom-inset']: scrimBottomInset } as React.CSSProperties)
+                : {}),
+            }}
             // Opacity is NOT tied to `ready`. That flag waits for the panel to
             // be measured, which waits for the widget inside it to render —
             // heavy — so the blur arrived a beat after the press instead of

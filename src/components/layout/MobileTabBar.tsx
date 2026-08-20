@@ -33,6 +33,18 @@ import type { HomeActionId } from '@/lib/summary-sections';
 
 export { MAX_PINNED_TABS };
 
+/**
+ * What the bar occupies at the bottom of the screen: the pill, the 8px under
+ * it, and the home indicator below that.
+ *
+ * The scrim stops here so the bar stays legible while a panel is open. Two
+ * other approaches failed first and both for the same reason — z-index cannot
+ * lift the bar out of a stacking context it does not share with the scrim, and
+ * `clip-path` cuts a hole in a scrim's paint but not in its `backdrop-filter`,
+ * so the chip stayed blurred inside its own cut-out. Geometry always works.
+ */
+const BAR_FOOTPRINT = 'calc(62px + var(--safe-area-bottom, 0px))';
+
 /** How long a chip takes to reach the middle. */
 const CENTRE_MS = 220;
 
@@ -552,11 +564,10 @@ export function MobileTabBar({
             isExpanded
             onClose={() => setOpenKey(null)}
             bottomInset={TAB_BAR_INSET}
-            // Below the bar's own 10001, so the bar floats on top of the blur
-            // rather than having a hole cut through it for the chip. A hole
-            // could never work anyway: `clip-path` does not clip
-            // `backdrop-filter`, so the chip stayed blurred inside its own
-            // cut-out, and the rectangle around it read as a patch.
+            // The blur stops above the bar rather than trying to sit behind it.
+            scrimBottomInset={BAR_FOOTPRINT}
+            // Still below the bar's own 10001, which keeps the panel out of the
+            // bar's way even where the two would otherwise meet.
             zIndex={9990}
           >
             {renderControl(tab)}
