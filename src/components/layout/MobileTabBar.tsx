@@ -33,6 +33,45 @@ import type { HomeActionId } from '@/lib/summary-sections';
 
 export { MAX_PINNED_TABS };
 
+/** How long a chip takes to reach the middle. */
+const CENTRE_MS = 220;
+
+/** Leaves fast and settles — the same shape as the `ease-standard` token. */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/**
+ * Scroll `el` to `left`, in our own time.
+ *
+ * `scroll-behavior: smooth` is the obvious way and the wrong one twice over:
+ * its duration is the browser's to choose and is slower than a tab bar wants,
+ * and it emits scroll events on its own schedule — which the open panel is
+ * following, so the panel inherited whatever cadence the browser felt like.
+ * Driving it here means both move on the same frames.
+ */
+function animateScrollTo(el: HTMLElement, left: number, onFrame?: () => void): () => void {
+  const from = el.scrollLeft;
+  const distance = left - from;
+  if (Math.abs(distance) < 1) return () => {};
+
+  // Someone who has asked for less motion gets the destination, not the trip.
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    el.scrollLeft = left;
+    onFrame?.();
+    return () => {};
+  }
+
+  let raf = 0;
+  const start = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / CENTRE_MS);
+    el.scrollLeft = from + distance * easeOut(t);
+    onFrame?.();
+    if (t < 1) raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
+}
+
 /**
  * Whether a pin still points at something.
  *
@@ -46,11 +85,11 @@ export type PinnedTabStatus = 'ready' | 'loading' | 'missing';
 /**
  * Height kept clear at the bottom for a control panel opened from the bar.
  *
- * More than the bar is tall: a panel that stopped just short of the chips sat
- * in the very bottom of the screen, which is the hardest part of a phone to
- * read and the easiest to cover with a thumb. This lifts it clear of both.
+ * Enough to clear the bar and the home indicator under it, and no more: the
+ * panel belongs to the chip that opened it, and a wide band of wallpaper
+ * between the two read as two unrelated things rather than one.
  */
-const TAB_BAR_INSET = 124;
+const TAB_BAR_INSET = 96;
 
 interface MobileTabBarProps {
   pinnedTabs: PinnedTab[];
@@ -131,6 +170,8 @@ export function MobileTabBar({
   const suppressClickRef = useRef(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
+  /** Stops an in-flight centring when a second press starts another. */
+  const cancelCentreRef = useRef<() => void>(() => {});
   /** Whether the row is wider than the bar, and which ends have more beyond them. */
   const [scrollable, setScrollable] = useState(false);
   const [fadeLeft, setFadeLeft] = useState(false);
@@ -271,7 +312,13 @@ export function MobileTabBar({
     if (!el) return;
     const chip = [...el.querySelectorAll<HTMLElement>('[data-tab-key]')]
       .find(n => n.dataset.tabKey === key);
-    chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    if (!chip) return;
+    const target = Math.max(0, Math.min(
+      chip.offsetLeft + chip.offsetWidth / 2 - el.clientWidth / 2,
+      el.scrollWidth - el.clientWidth,
+    ));
+    cancelCentreRef.current();
+    cancelCentreRef.current = animateScrollTo(el, target);
   };
 
   const handleTap = (tab: PinnedTab, status: PinnedTabStatus) => {
@@ -505,7 +552,12 @@ export function MobileTabBar({
             isExpanded
             onClose={() => setOpenKey(null)}
             bottomInset={TAB_BAR_INSET}
-            cutOutTrigger
+            // Below the bar's own 10001, so the bar floats on top of the blur
+            // rather than having a hole cut through it for the chip. A hole
+            // could never work anyway: `clip-path` does not clip
+            // `backdrop-filter`, so the chip stayed blurred inside its own
+            // cut-out, and the rectangle around it read as a patch.
+            zIndex={9990}
           >
             {renderControl(tab)}
           </ExpandedOverlay>
@@ -529,7 +581,7 @@ export function MobileTabBar({
       // scrolls and only a tap picks. While it all fits there is nothing to
       // pan, so the axis goes back to slide-to-select.
       className={cn(
-        'flex min-w-0 max-w-full items-center gap-1 overflow-x-auto scrollbar-hidden scroll-smooth',
+        'flex min-w-0 max-w-full items-center gap-1 overflow-x-auto scrollbar-hidden',
         scrollable ? 'touch-pan-x' : 'touch-none',
         fadeLeft && fadeRight && 'tab-fade-both',
         fadeLeft && !fadeRight && 'tab-fade-left',

@@ -31,7 +31,11 @@ export function PinnedControl({ context, children }: {
     //
     // Lands ~22px down and ~26px in from the panel edge, on top of the
     // overlay's own 10px ring.
-    <div className="flex flex-col gap-2 px-1.5 pt-3">
+    // `pb` as well as `pt`: the glass is `inset-0` of this box, so with padding
+    // only above it stopped level with the widget's last pixel and the card's
+    // bottom edge sat on the very rim of the panel — reading as cut off rather
+    // than contained.
+    <div className="flex flex-col gap-2 px-1.5 pb-2 pt-3">
       <p
         className={cn(
           // No surface of its own — a second panel above the panel would read

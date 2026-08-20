@@ -2,7 +2,7 @@ import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useE
 import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { overlayScrim, SCRIM_HOLE_PADDING } from '@/lib/overlay-scrim';
+import { overlayScrim } from '@/lib/overlay-scrim';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -28,18 +28,6 @@ export interface ExpandedOverlayProps {
    * first place when a tab is the trigger.
    */
   bottomInset?: number;
-  /**
-   * Leave the trigger itself unblurred, by cutting it out of the scrim.
-   *
-   * For a trigger that stays on screen beside the panel and still means
-   * something while it is open — a pinned tab, which is both the thing you
-   * pressed and the thing you press again to close. Dimming it made the bar
-   * look switched off at the moment it was most in use.
-   *
-   * Off by default: a widget tile's panel is drawn over the tile, so a hole
-   * there would sit behind the panel and only show as a bright rim.
-   */
-  cutOutTrigger?: boolean;
   children: React.ReactNode;
 }
 
@@ -108,11 +96,14 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, cutOutTrigger = false, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** The last placement, including ones written straight to the DOM. */
+  const coordsRef = useRef({ x: 0, y: 0 });
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
   const [coords, setCoords] = useState({ x: 0, y: 0 });
@@ -120,12 +111,6 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
-  /**
-   * The trigger's box in the scrim's own coordinates, when the caller wants it
-   * left lit. The scrim is drawn as four panes around this rather than one
-   * pane clipped through it — see the render.
-   */
-  const [hole, setHole] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
@@ -167,31 +152,27 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   }, [isExpanded, shouldRender]);
 
   /**
-   * Place the panel and the scrim's hole against the trigger, wherever it is
-   * now. Called when the overlay opens and again whenever the trigger moves.
+   * Put the panel where its trigger is, wherever that is now. Called when the
+   * overlay opens and on every frame of a scroll that carries the trigger.
+   *
+   * `viaDom` writes straight to the node instead of through state. A scroll
+   * emits an event per frame, and a `setState` per frame re-renders the widget
+   * inside the panel — which is why the panel juddered across behind a bar that
+   * was moving smoothly. Placement is one number; it does not need React.
    */
-  const placeAgainstTrigger = useCallback(() => {
+  const placeAgainstTrigger = useCallback((viaDom = false) => {
     const parent = parentRef.current?.parentElement ?? null;
     if (!parent) return;
     const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
+    if (viaDom && panelRef.current) {
+      panelRef.current.style.left = `${x}px`;
+      coordsRef.current = { x, y };
+      return;
+    }
     setPosition(pos);
     setCoords({ x, y });
-    // In the scrim's own frame, not the window's: `.fixed-full-screen` starts
-    // at `-safe-area-top` and runs past the bottom of the screen so it can
-    // reach behind the notch, so window coordinates are wrong by exactly the
-    // safe-area insets — which put the hole a notch-height off the trigger and
-    // left an unpainted strip along the bottom.
-    const scrimBox = scrimRef.current?.getBoundingClientRect();
-    const triggerBox = parent.getBoundingClientRect();
-    setHole(cutOutTrigger && scrimBox && triggerBox.width > 0
-      ? {
-          left: triggerBox.left - scrimBox.left - SCRIM_HOLE_PADDING,
-          top: triggerBox.top - scrimBox.top - SCRIM_HOLE_PADDING,
-          width: triggerBox.width + SCRIM_HOLE_PADDING * 2,
-          height: triggerBox.height + SCRIM_HOLE_PADDING * 2,
-        }
-      : null);
-  }, [effectiveWidth, cutOutTrigger]);
+    coordsRef.current = { x, y };
+  }, [effectiveWidth]);
 
   // Calculate position on mount, before animation
   useLayoutEffect(() => {
@@ -398,7 +379,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       const node = e.target as Node | null;
       if (triggerEl && node && node !== triggerEl && 'contains' in node &&
           (node as Element).contains(triggerEl)) {
-        placeAgainstTrigger();
+        placeAgainstTrigger(true);
         return;
       }
       if (startTarget === null) {
@@ -533,39 +514,18 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             // backdrop means the same thing a tap does.
             onWheel={() => onClose()}
             style={{ zIndex: baseZ }}
-            // The dim and the blur live on the panes below when there is a hole
-            // to leave, and on this element itself when there is not. Hit
-            // testing stays here either way, so a tap anywhere — including over
-            // the trigger — still means "close", and nothing reaches whatever
-            // is underneath.
-            className={`fixed-full-screen transition-opacity duration-fast ease-standard ${
-              hole ? '' : overlayScrim(isDarkBackground)
-            } ${ready && !isClosing ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          >
-            {/* Four panes around the trigger rather than one pane with a hole
-                clipped through it.
-                
-                `clip-path` removes an element's background but NOT its
-                `backdrop-filter`: the filter applies to the whole border box
-                regardless, so a clipped scrim left the chip unblurred of dim
-                and still blurred of focus — which is exactly what "the tab bar
-                item is still behind the blurred background" looked like. An
-                element that does not overlap the chip cannot blur it, so the
-                scrim simply stops short of it on all four sides. */}
-            {hole && (
-              <>
-                <div className={`absolute left-0 right-0 top-0 ${overlayScrim(isDarkBackground)}`}
-                     style={{ height: Math.max(0, hole.top) }} />
-                <div className={`absolute left-0 right-0 bottom-0 ${overlayScrim(isDarkBackground)}`}
-                     style={{ top: hole.top + hole.height }} />
-                <div className={`absolute left-0 ${overlayScrim(isDarkBackground)}`}
-                     style={{ top: hole.top, height: hole.height, width: Math.max(0, hole.left) }} />
-                <div className={`absolute right-0 ${overlayScrim(isDarkBackground)}`}
-                     style={{ top: hole.top, height: hole.height, left: hole.left + hole.width }} />
-              </>
-            )}
-          </div>
+            // Opacity is NOT tied to `ready`. That flag waits for the panel to
+            // be measured, which waits for the widget inside it to render —
+            // heavy — so the blur arrived a beat after the press instead of
+            // with it. The scrim needs no measurement, so it paints at once.
+            // Interactivity still waits, so the close animation cannot eat the
+            // next tap.
+            className={`fixed-full-screen ${overlayScrim(isDarkBackground)} transition-opacity duration-fast ease-standard ${
+              isClosing ? 'opacity-0' : 'opacity-100'
+            } ${ready && !isClosing ? 'pointer-events-auto' : 'pointer-events-none'}`}
+          />
           <div
+            ref={panelRef}
             // Marks this as expanded-widget content even though the portal puts
             // it outside the widget's own subtree. Dashboard's collapse-on-
             // mouse-leave asks whether focus is still inside a widget before

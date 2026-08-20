@@ -604,49 +604,84 @@ describe('scroll fades', () => {
  * also fired when a panel closed and handed that state back to the page you
  * were already on, so shutting a panel slid the bar as though you had
  * navigated somewhere.
+ *
+ * The scroll is ours rather than `scroll-behavior: smooth`, whose duration the
+ * browser picks and whose scroll events arrive on its own schedule — which the
+ * open panel follows, so it inherited that cadence and juddered. jsdom lays
+ * nothing out, so the metrics are stubbed; reduced motion is switched on to
+ * make the move land in one tick.
  */
 describe('centring the pressed tab', () => {
-  const spy = () => Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
-  const centred = () =>
-    spy().mock.instances.map(el => (el as HTMLElement).dataset?.tabKey).filter(Boolean);
+  const scroller = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
 
-  it('centres a navigation tab when you press it', () => {
-    setup([TABS.home, TABS.room]);
-    spy().mockClear();
+  /** Five 100px chips in a 300px window. Centre of chip n is n*100 + 50. */
+  const layOut = (clientWidth = 300) => {
+    const el = scroller();
+    Object.defineProperty(el, 'clientWidth', { value: clientWidth, configurable: true });
+    Object.defineProperty(el, 'scrollWidth', { value: 500, configurable: true });
+    el.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
+      Object.defineProperty(chip, 'offsetLeft', { value: n * 100, configurable: true });
+      Object.defineProperty(chip, 'offsetWidth', { value: 100, configurable: true });
+    });
+    return el;
+  };
 
-    fireEvent.click(screen.getByRole('button', { name: /Kitchen/ }));
-
-    expect(centred()).toEqual(['room:HOME-1:ROOM-1']);
+  beforeEach(() => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
   });
 
-  it('centres a popover tab too, and its panel rides across with it', () => {
+  it('scrolls the pressed tab to the middle', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    const el = layOut();
+
+    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
+
+    // Chip 2 spans 200..300, centre 250; window is 300 wide, so 250 - 150.
+    expect(el.scrollLeft).toBe(100);
+  });
+
+  it('centres a popover tab too — its panel rides across with it', () => {
     setup([TABS.home, TABS.accessory]);
-    spy().mockClear();
+    const el = layOut();
 
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
 
-    // The panel keeping up is ExpandedOverlay's half of this — it repositions
-    // on a scroll that carries its trigger rather than dismissing on it.
-    expect(centred()).toEqual(['accessory:HOME-1:ACC-1']);
+    // Chip 1 centre is 150, dead centre of the window, so no travel.
+    expect(el.scrollLeft).toBe(0);
+  });
+
+  it('never scrolls past either end', () => {
+    setup([TABS.home, TABS.room, TABS.scene]);
+    const el = layOut();
+
+    fireEvent.click(screen.getByRole('button', { name: /Beach House/ }));
+    expect(el.scrollLeft).toBe(0);           // centring chip 0 would want -150
+
+    fireEvent.click(screen.getByRole('button', { name: /Movie night/ }));
+    expect(el.scrollLeft).toBe(100);         // and the far end caps at 200
   });
 
   it('centres the chip you pressed to close, never the page behind it', () => {
     setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
+    const el = layOut(150);   // room centres at 0, the lamp at 75
 
     fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
-    spy().mockClear();
-    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+    expect(el.scrollLeft).toBe(75);
 
-    // Closing hands "active" back to the room. The bar must not chase it.
-    expect(centred()).not.toContain('room:HOME-1:ROOM-1');
+    // Closing hands "active" back to the room, whose chip centres at 0. The bar
+    // must stay on the chip that was pressed.
+    fireEvent.click(screen.getByRole('button', { name: /Lamp/ }));
+    expect(el.scrollLeft).toBe(75);
   });
 
-  it('leaves the bar alone while arranging, where a tap opens the editor', () => {
+  it('leaves the bar where it is while arranging, where a tap opens the editor', () => {
     setup([TABS.home, TABS.room], { editMode: true });
-    spy().mockClear();
+    // Edit mode has no inner scroller; the pill itself is the scrollable one.
+    const pill = document.querySelector<HTMLElement>('.overflow-x-auto')!;
+    pill.scrollLeft = 42;
 
     fireEvent.click(screen.getByRole('button', { name: /Kitchen/ }));
 
-    expect(centred()).toEqual([]);
+    expect(pill.scrollLeft).toBe(42);
   });
 });
