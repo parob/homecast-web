@@ -597,19 +597,24 @@ export function MobileTabBar({
           className={cn(
             'transition-[background-color,color,width] duration-base ease-standard',
             shape === 'compact'
-              // The name under the icon. Five chips at their full width do not
-              // fit a phone, so these give instead: 64px where there is room,
-              // narrower where there is not, and the name wraps and then
-              // truncates inside its own chip.
-              ? 'flex min-w-0 shrink basis-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
+              // The name under the icon, and every tab the same width.
+              //
+              // `basis-0` is what makes them equal: sized from the free space
+              // they are given rather than from what is in them, so a long name
+              // cannot claim more of the row than a short one. Capped at 64px so
+              // two pins do not become two enormous tabs, floored at nothing so
+              // five always fit rather than the row overflowing.
+              ? 'flex min-w-0 flex-1 basis-0 max-w-16 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5'
               : cn(
                   'flex flex-row items-center rounded-full py-2',
                   named ? 'gap-1.5 pl-2.5 pr-3.5' : 'gap-0 px-2.5',
-                  // Compact: the icons hold their size and the named chip gives,
-                  // so a long name costs its own tail rather than the row's
-                  // width. Otherwise every chip holds its full name and the row
-                  // scrolls to suit.
-                  shape === 'icon' && named ? 'min-w-0 shrink' : 'shrink-0',
+                  // Icons: the glyph-only chips hold their size and the named
+                  // one takes what is left — `flex-1` with a zero basis, so its
+                  // width comes from the free space rather than from the name
+                  // in it. Shrinking from a content-sized basis was not enough:
+                  // a long enough name still pushed the row past the end of the
+                  // bar and clipped the icons off it. Now it cannot.
+                  shape === 'icon' && named ? 'min-w-0 flex-1 basis-0' : 'shrink-0',
                 ),
             lit && 'bg-primary text-primary-foreground',
             // The bar's glass follows the wallpaper — white over a light one,

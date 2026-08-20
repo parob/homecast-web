@@ -972,10 +972,10 @@ describe('the shape of the bar while arranging', () => {
   it('stacks the name under the icon, so five fit across', () => {
     setup([TABS.home, TABS.room], { editMode: true });
     expect(tab(/Kitchen/).className).toContain('flex-col');
-    // Sized to 64px where there is room and narrower where there is not, so
-    // five always fit rather than the row scrolling.
-    expect(tab(/Kitchen/).className).toContain('basis-16');
-    expect(tab(/Kitchen/).className).toContain('shrink');
+    // An equal share of the row each, capped at 64px, so five always fit
+    // rather than the row scrolling.
+    expect(tab(/Kitchen/).className).toContain('basis-0');
+    expect(tab(/Kitchen/).className).toContain('max-w-16');
   });
 
   it('is a row of chips the rest of the time', () => {
@@ -1123,5 +1123,45 @@ describe('which modes scroll', () => {
     setup([TABS.home, TABS.room], { mode: 'icon', editMode: true });
     // Every name legible, stacked — you cannot reorder what you cannot read.
     expect(screen.getByRole('button', { name: /Kitchen/ }).className).toContain('flex-col');
+  });
+});
+
+/**
+ * How each shape divides the row.
+ *
+ * Both rules are `basis-0`: a chip sized from the free space it is given rather
+ * than from what is in it. Sizing from content is what let a long name claim
+ * more of the row than a short one in compact, and — in icons — push the row
+ * past the end of the bar so the glyphs were clipped off it. Shrinking from a
+ * content-sized basis was not enough; the basis itself has to be nothing.
+ */
+describe('how the row is divided', () => {
+  const tab = (re: RegExp) => screen.getByRole('button', { name: re });
+
+  it('gives every compact tab the same share, capped so two do not sprawl', () => {
+    setup([TABS.home, TABS.room], { mode: 'compact' });
+    for (const re of [/Beach House/, /Kitchen/]) {
+      expect(tab(re).className).toContain('flex-1');
+      expect(tab(re).className).toContain('basis-0');
+      expect(tab(re).className).toContain('max-w-16');
+    }
+  });
+
+  it('gives the named icon chip the leftover space, and no more', () => {
+    setup([TABS.home, TABS.room], { mode: 'icon', selectedHomeId: 'HOME-1' });
+    // The one with the name takes what is left...
+    expect(tab(/Beach House/).className).toContain('flex-1');
+    expect(tab(/Beach House/).className).toContain('basis-0');
+    // ...and the glyph-only ones hold their size, so they cannot be squeezed
+    // off the end of the bar.
+    expect(tab(/Kitchen/).className).toContain('shrink-0');
+  });
+
+  it('wraps a compact name to two lines and then truncates it', () => {
+    setup([TABS.home, TABS.room], { mode: 'compact' });
+    const label = tab(/Kitchen/).querySelector('span')!;
+    expect(label.className).toContain('line-clamp-2');
+    expect(label.className).toContain('break-words');
+    expect(label.className).toContain('w-full');
   });
 });
