@@ -28,6 +28,16 @@ export interface ExpandedOverlayProps {
    * first place when a tab is the trigger.
    */
   bottomInset?: number;
+  /**
+   * Centre the panel in the viewport rather than anchoring it to its trigger.
+   *
+   * For the pinned tab bar, where the trigger itself is on its way to the
+   * middle: the chip you press is scrolled to the centre, so the panel's
+   * destination is known before the journey starts. Anchoring it to a moving
+   * target meant it set off from wherever the chip happened to be — off the
+   * side of the screen, for a chip that started there — and chased it.
+   */
+  centred?: boolean;
   children: React.ReactNode;
 }
 
@@ -107,7 +117,7 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
   return { position, x, y: widgetTopY };
 };
 
-export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, children }) => {
+export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, centred = false, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
   const parentRef = useRef<HTMLDivElement>(null);
@@ -174,7 +184,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const placeAgainstTrigger = useCallback((viaDom = false) => {
     const parent = parentRef.current?.parentElement ?? null;
     if (!parent) return;
-    const { position: pos, x, y } = getOverlayPositionAndCoords(parent, effectiveWidth);
+    const anchored = getOverlayPositionAndCoords(parent, effectiveWidth);
+    const pos = centred ? 'center' as const : anchored.position;
+    const x = centred
+      ? Math.max(0, (window.innerWidth - (effectiveWidth + PADDING * 2)) / 2)
+      : anchored.x;
+    const y = anchored.y;
     if (viaDom && panelRef.current) {
       panelRef.current.style.left = `${x}px`;
       coordsRef.current = { x, y };
@@ -183,7 +198,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     setPosition(pos);
     setCoords({ x, y });
     coordsRef.current = { x, y };
-  }, [effectiveWidth]);
+  }, [effectiveWidth, centred]);
 
   // Calculate position on mount, before animation
   useLayoutEffect(() => {

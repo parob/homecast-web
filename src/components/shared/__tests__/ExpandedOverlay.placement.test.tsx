@@ -33,10 +33,10 @@ describe('panel placement against an off-screen trigger', () => {
   });
 
   /** Render an overlay whose trigger sits at `left`, and read the panel's x. */
-  const panelLeftFor = (left: number, width = 140) => {
+  const panelLeftFor = (left: number, width = 140, centred = false) => {
     const { container } = render(
       <div>
-        <ExpandedOverlay isExpanded onClose={vi.fn()}>
+        <ExpandedOverlay isExpanded onClose={vi.fn()} centred={centred}>
           <div>content</div>
         </ExpandedOverlay>
       </div>,
@@ -68,5 +68,48 @@ describe('panel placement against an off-screen trigger', () => {
     const x = panelLeftFor(120);
     expect(x).toBeGreaterThanOrEqual(0);
     expect(x).toBeLessThanOrEqual(maxLeft);
+  });
+});
+
+/**
+ * A pinned panel is centred, because its chip is on its way to the centre.
+ *
+ * Anchoring to the trigger meant setting off from wherever the chip happened to
+ * be — off the side of the screen, for one that started there — and chasing it.
+ * The destination is known before the journey starts.
+ */
+describe('a centred panel', () => {
+  const PORTRAIT_WIDTH = 300;
+  const PADDING = 10;
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+  });
+
+  const centredLeftFor = (triggerLeft: number) => {
+    const { container } = render(
+      <div>
+        <ExpandedOverlay isExpanded onClose={vi.fn()} centred>
+          <div>content</div>
+        </ExpandedOverlay>
+      </div>,
+    );
+    const trigger = container.querySelector<HTMLElement>('.hidden')!.parentElement!;
+    trigger.getBoundingClientRect = () => ({
+      left: triggerLeft, right: triggerLeft + 140, top: 700, bottom: 744,
+      x: triggerLeft, y: 700, width: 140, height: 44, toJSON: () => ({}),
+    }) as DOMRect;
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    const panel = document.body.querySelector<HTMLElement>('[data-expandable-widget]')!;
+    return parseFloat(panel.style.left || '0');
+  };
+
+  const expected = (390 - (PORTRAIT_WIDTH + PADDING * 2)) / 2;
+
+  it('sits in the middle whatever the trigger is doing', () => {
+    expect(centredLeftFor(-60)).toBeCloseTo(expected, 0);
+    expect(centredLeftFor(340)).toBeCloseTo(expected, 0);
+    expect(centredLeftFor(120)).toBeCloseTo(expected, 0);
   });
 });

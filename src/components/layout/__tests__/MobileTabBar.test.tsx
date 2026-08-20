@@ -712,3 +712,90 @@ describe('centring the pressed tab', () => {
     expect(pill.scrollLeft).toBe(42);
   });
 });
+
+/**
+ * The real path a finger takes, not `click`.
+ *
+ * A press is committed on pointerup by the slide gesture, and the click the
+ * browser sends afterwards is meant to be swallowed. If that swallow ever
+ * misses, the tap runs twice and a toggle lands back where it started — which
+ * looks exactly like a chip that refuses to stay lit.
+ */
+describe('a scene chip pressed the way a finger presses it', () => {
+  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+  const chip = (name: RegExp) => screen.getByRole('button', { name });
+
+  const press = (name: RegExp) => {
+    const el = chip(name);
+    document.elementFromPoint = vi.fn(() => el);
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 10, clientY: 0 }));
+    // The click the browser always sends after a tap.
+    fireEvent.click(el);
+  };
+
+  it('stays lit after one press', () => {
+    setup([TABS.scene]);
+    press(/Movie night/);
+    expect(chip(/Movie night/).getAttribute('aria-current')).toBe('true');
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
+  });
+
+  it('closes on the second press, not the first', () => {
+    setup([TABS.scene]);
+    press(/Movie night/);
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
+    press(/Movie night/);
+    expect(screen.queryByTestId('control-popover')).toBeNull();
+    expect(chip(/Movie night/).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('does the same for a shortcut', () => {
+    setup([TABS.action]);
+    press(/Everything off/);
+    expect(chip(/Everything off/).getAttribute('aria-current')).toBe('true');
+  });
+});
+
+/**
+ * Which chip wears the fill when more than one thing is "active".
+ *
+ * A pinned room reads as active the whole time you are looking at it, and
+ * `activeKey` takes the first tab that does — so opening a scene's card lit
+ * nothing, because the room was found first and kept the fill. This is the
+ * case the single-pin tests could not see.
+ */
+describe('the fill when a page and a panel are both live', () => {
+  it('gives an open scene card the fill, not the room you are standing in', () => {
+    setup([TABS.room, TABS.scene], { selectedRoomId: 'ROOM-1' });
+    const room = screen.getByRole('button', { name: /Kitchen/ });
+    const scene = screen.getByRole('button', { name: /Movie night/ });
+
+    expect(room.className).toContain('bg-primary');
+
+    fireEvent.click(scene);
+    expect(scene.className).toContain('bg-primary');
+    expect(room.className).not.toContain('bg-primary');
+  });
+
+  it('hands the fill back to the room when the card closes', () => {
+    setup([TABS.room, TABS.scene], { selectedRoomId: 'ROOM-1' });
+    const room = screen.getByRole('button', { name: /Kitchen/ });
+    const scene = screen.getByRole('button', { name: /Movie night/ });
+
+    fireEvent.click(scene);
+    fireEvent.click(scene);
+
+    expect(room.className).toContain('bg-primary');
+    expect(scene.className).not.toContain('bg-primary');
+  });
+
+  it('does the same for an accessory panel', () => {
+    setup([TABS.room, TABS.accessory], { selectedRoomId: 'ROOM-1' });
+    const lamp = screen.getByRole('button', { name: /Lamp/ });
+
+    fireEvent.click(lamp);
+    expect(lamp.className).toContain('bg-primary');
+    expect(screen.getByRole('button', { name: /Kitchen/ }).className).not.toContain('bg-primary');
+  });
+});

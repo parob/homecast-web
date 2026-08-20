@@ -442,8 +442,16 @@ export function MobileTabBar({
     window.addEventListener('pointercancel', done);
   };
 
-  /** The fill follows the finger: it is what letting go would commit to. */
-  const litKey = dragKey ?? activeKey;
+  /**
+   * The fill follows the finger: it is what letting go would commit to.
+   *
+   * An open panel outranks the page you are on. `activeKey` is the FIRST tab
+   * that reads as active, and a pinned room you are looking at reads as active
+   * the whole time — so opening a scene's card lit nothing, because the room
+   * was found first and kept the fill. Whatever is open is the thing you are
+   * doing; the room is only where you happen to be standing.
+   */
+  const litKey = dragKey ?? (!editMode && openKey) ?? activeKey;
 
   const tabs = pinnedTabs.map((tab) => {
     const key = pinKey(tab);
@@ -559,6 +567,10 @@ export function MobileTabBar({
             isExpanded
             onClose={() => setOpenKey(null)}
             bottomInset={TAB_BAR_INSET}
+            // The chip is on its way to the middle, so the panel starts there
+            // rather than setting off from wherever the chip happens to be and
+            // chasing it across.
+            centred
             // Below the bar's own 10001. That comparison only means anything
             // because the bar is portalled to the body as well — see the render.
             zIndex={9990}
