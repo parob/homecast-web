@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
 import ScopeDashboard from './ScopeDashboard';
+import { clearSeriesCache } from '@/history/seriesCache';
 import ScopeHeader from './ScopeHeader';
 import ScopeTree from './ScopeTree';
 import { buildScopeTree, scopeCrumbs, type AnalyticsScopeState } from './scope';
@@ -251,6 +252,15 @@ export default function AnalyticsContent({
         settings={nav.settings}
         onSettings={nav.setSettings}
         onSelect={nav.setScope}
+        onRefresh={() => {
+          // The exact instant, not the quantised grid point: a Refresh that
+          // hands back five-minute-old data is not a refresh. Changing
+          // windowEnd is also what re-runs every view's fetch — clearing the
+          // cache alone leaves their effect deps untouched.
+          clearSeriesCache();
+          nav.setSettings({ windowEnd: Date.now() });
+          void refetch();
+        }}
       />
       {/* A permanent column would eat the width the charts need on a phone,
           but hiding it outright left no way down: the breadcrumb only walks

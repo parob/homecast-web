@@ -113,7 +113,7 @@ export default function RoomStackView({
   // all live in useSeriesSelection; see that file for why they are separate.
   const { setHovered, latched, toggleLatch, highlight } = useSeriesSelection();
 
-  const toTs = useMemo(() => Date.now(), [room, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toTs = settings.windowEnd;
   const fromTs = toTs - rangeMs;
 
   const roomKey = room;

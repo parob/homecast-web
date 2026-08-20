@@ -6,6 +6,7 @@ import {
 } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
+import { analyticsWindowEnd } from '@/history/seriesCache';
 import { useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
 import type { StatusHistoryCategory } from '@/history/status-series';
 import { useMultiSeriesHistory } from '@/components/home-analytics/useMultiSeriesHistory';
@@ -87,8 +88,10 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   const mock = isMockHistoryEnabled();
 
   // Snapshot "now" per open+range so the query key is stable while the dialog
-  // is up (a ticking `to` would refetch on every render).
-  const toTs = useMemo(() => Date.now(), [target, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  // is up (a ticking `to` would refetch on every render). Quantised, so an
+  // accessory already charted on the Analytics page is served from its cache
+  // rather than fetched again for the popup.
+  const toTs = useMemo(() => analyticsWindowEnd(), [target, rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromTs = toTs - rangeMs;
 
   const recordable = useMemo(

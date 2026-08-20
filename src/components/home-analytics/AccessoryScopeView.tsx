@@ -31,7 +31,7 @@ export default function AccessoryScopeView({
   charByType: Map<string, WritableChar>;
   settings: AnalyticsSettings;
 }) {
-  const toTs = useMemo(() => Date.now(), [accessoryId, settings.rangeMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toTs = settings.windowEnd;
   const fromTs = toTs - settings.rangeMs;
 
   const ordered = useMemo(() => {

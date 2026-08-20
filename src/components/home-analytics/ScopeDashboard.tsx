@@ -101,7 +101,10 @@ export default function ScopeDashboard({
   if (scope.level === 'group') {
     const group = groups.find(g => g.id === scope.groupId);
     if (!group) return <Empty>That group is no longer here.</Empty>;
-    const toTs = Date.now();
+    // Not Date.now(): this is the render body, so every re-render used to mint
+    // a new window, change useMultiSeriesHistory's effect deps and refetch the
+    // whole group.
+    const toTs = settings.windowEnd;
     return (
       <GroupHistorySections
         key={scopeKey}

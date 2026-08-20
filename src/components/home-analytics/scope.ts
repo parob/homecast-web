@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { analyticsWindowEnd } from '@/history/seriesCache';
 import { getDisplayName } from '@/lib/graphql/types';
 import type { AccessoryInfoEntry } from '@/history/categories';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
@@ -38,11 +39,25 @@ export const RANGES = [
  */
 export interface AnalyticsSettings {
   rangeMs: number;
+  /**
+   * The instant the window ends. Session-wide for the same reason rangeMs is:
+   * every view used to call Date.now() for itself, so the room and the house
+   * asked about windows a few seconds apart and no two questions ever matched.
+   * Quantised by default (see analyticsWindowEnd) so the answers can be
+   * cached; Refresh replaces it with an exact instant.
+   */
+  windowEnd: number;
 }
 
-export const DEFAULT_SETTINGS: AnalyticsSettings = {
-  rangeMs: 24 * 3_600_000,
-};
+/**
+ * Minted, not frozen: windowEnd has to be read at the moment the surface opens.
+ */
+export function defaultSettings(): AnalyticsSettings {
+  return {
+    rangeMs: 24 * 3_600_000,
+    windowEnd: analyticsWindowEnd(),
+  };
+}
 
 export interface ScopeAccessory {
   id: string;
@@ -305,7 +320,7 @@ function sameScope(a: AnalyticsScope | undefined, b: AnalyticsScope): boolean {
 
 export function useAnalyticsScope(initial?: AnalyticsScope): AnalyticsScopeState {
   const [history, setHistory] = useState<AnalyticsScope[]>([initial ?? { level: 'home' }]);
-  const [settings, setSettingsState] = useState<AnalyticsSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettingsState] = useState<AnalyticsSettings>(defaultSettings);
 
   const setScope = useCallback((next: AnalyticsScope) => {
     // Re-picking where you already are is not a step. It used to push anyway,
@@ -318,7 +333,16 @@ export function useAnalyticsScope(initial?: AnalyticsScope): AnalyticsScopeState
     setHistory(h => (h.length > 1 ? h.slice(0, -1) : h));
   }, []);
   const setSettings = useCallback((next: Partial<AnalyticsSettings>) => {
-    setSettingsState(s => ({ ...s, ...next }));
+    setSettingsState(s => ({
+      ...s,
+      // A new range means a new question, so it should be asked about now
+      // rather than about whenever the surface happened to open. Refresh
+      // passes windowEnd explicitly and keeps it.
+      ...(next.rangeMs !== undefined && next.windowEnd === undefined
+        ? { windowEnd: analyticsWindowEnd() }
+        : null),
+      ...next,
+    }));
   }, []);
 
   return useMemo(() => ({

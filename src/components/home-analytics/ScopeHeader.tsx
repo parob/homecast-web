@@ -1,4 +1,6 @@
-import { ChevronRight, Menu, X } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
+import { ChevronRight, Menu, RotateCw, X } from 'lucide-react';
+import { analyticsFetchCount, subscribeAnalyticsFetching } from '@/history/seriesCache';
 import { RANGES, type AnalyticsScope, type AnalyticsSettings } from './scope';
 
 /**
@@ -24,6 +26,7 @@ export default function ScopeHeader({
   settings,
   onSettings,
   onSelect,
+  onRefresh,
 }: {
   /** The screen's name, leading the row. */
   title?: string;
@@ -36,7 +39,18 @@ export default function ScopeHeader({
   settings: AnalyticsSettings;
   onSettings: (next: Partial<AnalyticsSettings>) => void;
   onSelect: (scope: AnalyticsScope) => void;
+  /** Drops every cached series and re-asks as of now. */
+  onRefresh?: () => void;
 }) {
+  // Read from the cache module rather than threaded down as a prop: the fetch
+  // lives inside whichever scope view is mounted, three components away, and
+  // after a refresh those views keep their old data on screen — so without
+  // this the button would be the only possible sign that anything happened.
+  const fetching = useSyncExternalStore(
+    subscribeAnalyticsFetching,
+    () => analyticsFetchCount() > 0,
+    () => false,
+  );
   return (
     // 56px and centred: the text gets equal air above and below rather than
     // sitting tight against the rule, and everything in the row — burger,
@@ -91,7 +105,7 @@ export default function ScopeHeader({
         })}
       </nav>
 
-      <div className="order-3 flex basis-full justify-end sm:order-2 sm:basis-auto">
+      <div className="order-3 flex basis-full items-center justify-end sm:order-2 sm:basis-auto">
         <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
         {RANGES.map(r => (
           <button
@@ -107,6 +121,16 @@ export default function ScopeHeader({
           </button>
         ))}
         </div>
+        {onRefresh && (
+          <button
+            className="ml-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={onRefresh}
+            aria-label="Refresh"
+            title="Refresh"
+          >
+            <RotateCw className={`h-4 w-4${fetching ? ' animate-spin' : ''}`} />
+          </button>
+        )}
       </div>
 
       {onClose && (
