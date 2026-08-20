@@ -340,7 +340,7 @@ export function MobileTabBar({
     cancelCentreRef.current = animateScrollTo(el, target);
   };
 
-  const handleTap = (tab: PinnedTab, status: PinnedTabStatus) => {
+  const handleTap = (tab: PinnedTab, status: PinnedTabStatus, centre = true) => {
     // While editing, a tap opens the tab's editor — name and icon. Navigating
     // away mid-edit would drop you into another room with the toolbar still up
     // and nothing explaining the move.
@@ -349,7 +349,7 @@ export function MobileTabBar({
       return;
     }
 
-    centreTab(pinKey(tab));
+    if (centre) centreTab(pinKey(tab));
 
     if (status === 'missing') {
       void onActivate(tab); // Dashboard explains what's gone.
@@ -431,7 +431,29 @@ export function MobileTabBar({
     if (!start) return; // Nothing pinned to aim at.
     setDragKey(start);
 
-    const move = (ev: PointerEvent) => setDragKey(nearestKey(bar, ev.clientX));
+    /**
+     * Collapsed, a swipe opens each pin as it reaches it rather than waiting
+     * for the release. The bar is icons only then, so you cannot read your way
+     * along it — you find what you want by watching the screen behind change.
+     *
+     * Never centred mid-swipe: centring moves the row, and moving the row under
+     * a travelling finger changes which chip it is over. The centring happens
+     * once, on release.
+     */
+    const openedRef = { current: null as string | null };
+    const openLive = (key: string | null) => {
+      if (!collapseNames || !key || key === openedRef.current) return;
+      openedRef.current = key;
+      const tab = pinnedTabs.find(t => pinKey(t) === key);
+      if (tab) handleTap(tab, resolveStatus(tab), false);
+    };
+    openLive(start);
+
+    const move = (ev: PointerEvent) => {
+      const key = nearestKey(bar, ev.clientX);
+      setDragKey(key);
+      openLive(key);
+    };
     const done = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -443,6 +465,9 @@ export function MobileTabBar({
       done();
       if (!end) return; // The last pin was removed mid-press.
       suppressClickRef.current = true;
+      // Already open, if the swipe opened it on the way: tapping again would
+      // toggle a panel shut. All that is left is to bring it to the middle.
+      if (openedRef.current === end) { centreTab(end); return; }
       const tab = pinnedTabs.find(t => pinKey(t) === end);
       if (tab) handleTap(tab, resolveStatus(tab));
     };
@@ -477,7 +502,11 @@ export function MobileTabBar({
    */
   const namedKey = editMode || !collapseNames
     ? 'all' as const
-    : (dragKey !== null && dragKey !== activeKey ? null : activeKey);
+    // Nothing at all while a finger is down. Swiping opens each pin as it
+    // reaches it, so the chip under the thumb IS the active one — and naming it
+    // would grow it under the thumb and shift the rest of the row sideways,
+    // which is the reflow the callout exists to avoid.
+    : (dragKey !== null ? null : activeKey);
 
   /** What the callout says: the tab a release would land on. */
   const aimedAt = collapseNames && !editMode && dragKey

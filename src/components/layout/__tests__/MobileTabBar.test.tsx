@@ -885,3 +885,75 @@ describe('collapsed tab names', () => {
     expect(callout()).toBeNull();
   });
 });
+
+/**
+ * Collapsed, a swipe opens each pin as it reaches it.
+ *
+ * The bar is icons only then, so you cannot read your way along it — you find
+ * what you want by watching the screen behind change. Expanded, nothing happens
+ * until you let go, because the names are right there to aim at.
+ */
+describe('swiping through collapsed pins', () => {
+  const bar = () => document.querySelector<HTMLElement>('.overflow-x-auto')!;
+
+  /** Chips 40px wide, 50px apart: chip n spans n*50 .. n*50+40. */
+  const layOut = () => {
+    document.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((chip, n) => {
+      const left = n * 50;
+      chip.getBoundingClientRect = () => ({
+        left, right: left + 40, top: 0, bottom: 44,
+        x: left, y: 0, width: 40, height: 44, toJSON: () => ({}),
+      }) as DOMRect;
+    });
+  };
+
+  it('opens each pin as the finger reaches it', () => {
+    const props = setup([TABS.home, TABS.room], { collapseNames: true });
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    expect(props.onSelectHome).toHaveBeenCalledWith('HOME-1');
+
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+  });
+
+  it('opens each pin once, not on every frame it is under', () => {
+    const props = setup([TABS.home, TABS.room], { collapseNames: true });
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 12, clientY: 0 }));
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 15, clientY: 0 }));
+
+    expect(props.onSelectHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not toggle a panel shut again on release', () => {
+    setup([TABS.home, TABS.accessory], { collapseNames: true });
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
+
+    // The release must not read as a second press on the chip it lands on.
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+    expect(screen.queryByTestId('control-popover')).toBeTruthy();
+  });
+
+  it('waits for the release when the names are on show', () => {
+    const props = setup([TABS.home, TABS.room]);
+    layOut();
+
+    fireEvent.pointerDown(bar(), { clientX: 10, clientY: 0 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 60, clientY: 0 }));
+    // Nothing has happened yet: you can read where you are going, so you get to
+    // change your mind.
+    expect(props.onSelectHome).not.toHaveBeenCalled();
+    expect(props.onSelectRoom).not.toHaveBeenCalled();
+
+    fireEvent(window, new PointerEvent('pointerup', { clientX: 60, clientY: 0 }));
+    expect(props.onSelectRoom).toHaveBeenCalledWith('HOME-1', 'ROOM-1');
+  });
+});
