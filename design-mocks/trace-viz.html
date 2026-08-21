@@ -195,9 +195,12 @@ function batons(tr) {
   for (const p of phases(tr)) {
     const lane = ownerOf(p.from);
     const last = out[out.length - 1];
-    if (last && last.lane === lane) { last.ms += p.ms; last.to = p.at + p.ms; last.n++; }
-    else out.push({ lane, at: p.at, to: p.at + p.ms, ms: p.ms, n: 1 });
+    if (last && last.lane === lane) { last.ms += p.ms; last.to = p.at + p.ms; last.n++; last.parts.push(p); }
+    else out.push({ lane, at: p.at, to: p.at + p.ms, ms: p.ms, n: 1, parts: [p] });
   }
+  // What was logged inside each leg, so a leg can show that it carries a failure
+  // rather than looking like every other leg until you click it.
+  out.forEach((b) => { b.evts = tr.events.filter((e) => e.t >= b.at && e.t <= b.to); });
   return out;
 }
 
@@ -971,160 +974,173 @@ D('Ⓒ Annotated line <span class="mut">(12+18, stations named)</span>',
 
 /* 24 ------------------------------- 12+18: the strip IS the collapsed waterfall */
 D('Ⓓ Expandable route <span class="mut">(12+18, one widget, two states)</span>',
-  'Collapsed it is a captioned route; unfolded it is a waterfall. Any bar opens the log lines behind it.',
-  'Reads without interaction, rewards it with detail, and never becomes a dead end — every mark names its evidence.',
-  'Hides by default — you can miss something you never expanded.',
+  'Collapsed, each leg names itself. Expanded, it unfolds into rows. Click any bar for the log lines behind it.',
+  'Says something useful before you touch it, and every bar is a door back to the raw logs.',
+  'Hides detail by default — you can miss something you never expanded.',
   (tr) => {
     const sc = makeScale(tr, ELIDE), L = lanes(tr), bs = batons(tr), ph = phases(tr);
-    const GW = 118, RW = 64, KID = 15, GAP = 3;
+    const GW = 122, RW = 76, HEAD = 34, KID = 15, GAP = 3;
+    const keyOf = (lane, at, ms) => `${lane}|${Math.round(at)}|${Math.round(ms)}`;
 
-    // Positions are computed, not flowed: the connectors have to reach between
-    // rows whose distance changes every time something unfolds.
     const layout = []; let y = 0;
     for (const lane of L) {
       const mine = ph.filter((p) => ownerOf(p.from) === lane);
-      const legs = bs.filter((b) => b.lane === lane);
       const open = OPEN.has(lane) && mine.length > 0;
-      // A collapsed lane needs room under its bar for the caption; an unfolded
-      // one does not, because the rows below carry their own labels.
-      const head = (legs.length && !open) ? 40 : 24;
-      layout.push({ lane, mine, legs, open, top: y, head, trackY: y + 11 });
-      y += head + (open ? mine.length * KID : 0) + GAP;
+      layout.push({ lane, mine, open, top: y, trackY: y + 13 });
+      y += HEAD + (open ? mine.length * KID : 0) + GAP;
     }
     const H = y, at = (l) => layout.find((g) => g.lane === l).trackY;
-    const sel = SEL;
 
     const bands = sc.cuts.map((c) => `<span style="position:absolute;top:0;height:${H}px;left:${c.a * 100}%;
       width:${Math.max(0.4, (c.b - c.a) * 100)}%;background:repeating-linear-gradient(45deg,transparent,
       transparent 3px,var(--line) 3px,var(--line) 6px)"></span>`).join('');
 
-    // The handoff lines are the most interesting moments in the trace, so they
-    // are targets too: clicking one opens both machines it connects and pulls
-    // up whatever was logged at that instant.
     const links = bs.map((b, i) => {
       const nx = bs[i + 1]; if (!nx) return '';
       const x = sc.x(b.to) * 100, yA = at(b.lane), yB = at(nx.lane);
       const lo = Math.min(yA, yB), hi = Math.max(yA, yB);
-      const on = sel && Math.abs(sel.at - b.to) < 1 && sel.at === sel.to;
-      const go = `onclick="expandHandoff('${encodeURIComponent(b.lane)}','${encodeURIComponent(nx.lane)}',${b.to},
-        '${encodeURIComponent(b.lane + ' → ' + nx.lane)}')"`;
       return `<span style="position:absolute;left:${x}%;top:0;height:${H}px;width:1px;background:var(--mut);opacity:.14"></span>
         <span style="position:absolute;left:${x}%;top:${lo}px;height:${Math.max(2, hi - lo)}px;width:2px;
-          margin-left:-1px;background:${on ? 'var(--fg)' : 'var(--mut)'};opacity:${on ? 1 : .65}"></span>
+          margin-left:-1px;background:var(--mut);opacity:.65"></span>
         <span style="position:absolute;left:${x}%;top:${yB - 4.5}px;width:9px;height:9px;margin-left:-4.5px;
-          border-radius:50%;background:var(--card);border:2px solid ${on ? 'var(--fg)' : colOf(nx.lane)}"></span>
-        <span ${go} title="handoff ${esc(b.lane)} → ${esc(nx.lane)} at +${fmt(b.to)} — click to open both"
-          style="position:absolute;left:${x}%;top:${lo - 7}px;height:${Math.max(16, hi - lo + 14)}px;width:13px;
-          margin-left:-6.5px;cursor:pointer"></span>`;
+          border-radius:50%;background:var(--card);border:2px solid ${colOf(nx.lane)}"></span>`;
     }).join('');
 
-    const isSel = (a, b) => sel && Math.abs(sel.at - a) < 1 && Math.abs(sel.to - b) < 1;
-    // Attributes only — no `style` here. Emitting one made every clickable
-    // element carry two style attributes, and the first one wins, which threw
-    // away all the positioning.
-    const pick = (a, b, label) =>
-      `onclick="selectSpan(${a},${b},'${encodeURIComponent(label)}')"`;
-
     const tracks = layout.map((g) => {
-      const rail = `<span style="position:absolute;left:0;right:0;top:${g.trackY - 1}px;height:2px;
-        background:var(--line)"></span>`;
-      const legs = g.legs.map((b) => {
+      const legs = bs.filter((b) => b.lane === g.lane);
+      const rail = `<span style="position:absolute;left:0;right:0;top:${g.trackY - 1}px;height:2px;background:var(--line)"></span>`;
+      const bar = legs.map((b) => {
         const x0 = sc.x(b.at) * 100, w = Math.max(0.5, (sc.x(b.to) - sc.x(b.at)) * 100);
-        // What this leg was doing, for the caption. One phase names itself;
-        // several are only honestly summarised by a count.
-        const inside = ph.filter((p) => ownerOf(p.from) === g.lane && p.at >= b.at && p.at < b.to);
-        const what = inside.length === 1 ? inside[0].label : inside.length + ' steps';
-        const on = isSel(b.at, b.to);
-        return `<span ${pick(b.at, b.to, what)} title="${esc(what)} — ${fmt(b.ms)}"
-            style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY - 4}px;height:8px;cursor:pointer;
-            border-radius:4px;background:${colOf(g.lane)};outline:${on ? '2px solid var(--fg)' : 'none'};
-            outline-offset:2px"></span>
-          ${(!g.open && w > 6) ? `<span ${pick(b.at, b.to, what)}
-            title="${esc(what)} — ${fmt(b.ms)}"
-            style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY + 8}px;font-size:9.5px;line-height:1.25;
-            text-align:center;color:${colOf(g.lane)};padding:0 2px;cursor:pointer;overflow:hidden">
-            <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(what)}</span>
-            <span class="mono num mut">${fmt(b.ms)}</span></span>` : ''}`;
+        const k = keyOf(b.lane, b.at, b.ms), on = SEL === k;
+        // Collapsed, the leg names itself. Without this the strip was a row of
+        // anonymous coloured stubs — it told you a handoff happened and nothing
+        // at all about what it was.
+        const what = b.parts.length === 1 ? b.parts[0].label : b.parts.length + ' steps';
+        const bad = b.evts.some((e) => isErr(e) || isWarn(e));
+        const col = bad ? 'var(--bad)' : colOf(g.lane);
+        // A narrow leg still says something. Name and time if there is room,
+        // the time alone if there is not, and the tooltip when even that fails.
+        const text = !g.open && w > 9 ? `<span style="display:block;overflow:hidden;text-overflow:ellipsis;
+              white-space:nowrap;padding:0 2px">${esc(what)}</span><span class="mono num mut">${fmt(b.ms)}</span>`
+          : !g.open && w > 3 ? `<span class="mono num mut">${fmt(b.ms)}</span>` : '';
+        const label = text ? `<span style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY + 8}px;
+              text-align:center;font-size:9.5px;line-height:1.25;color:${col};pointer-events:none">${text}</span>` : '';
+        return `<span onclick="pickSpan('${esc(k)}')" title="${esc(what)} — ${fmt(b.ms)}${bad ? ' — carries an error' : ''} — click for log lines"
+            style="position:absolute;left:${x0}%;width:${w}%;top:${g.trackY - 4}px;height:8px;border-radius:4px;
+            background:${col};cursor:pointer;
+            box-shadow:${on ? '0 0 0 2px var(--card), 0 0 0 4px ' + col : 'none'}"></span>${label}`;
       }).join('');
       const brace = g.open ? `<span style="position:absolute;left:0;top:${g.trackY}px;
-        height:${g.mine.length * KID}px;width:2px;background:${colOf(g.lane)};opacity:.3"></span>` : '';
+        height:${g.mine.length * KID + 12}px;width:2px;background:${colOf(g.lane)};opacity:.3"></span>` : '';
       const kids = g.open ? g.mine.map((p, i) => {
-        const ky = g.top + g.head + i * KID, on = isSel(p.at, p.at + p.ms);
-        return `<span ${pick(p.at, p.at + p.ms, p.label)} title="${esc(p.label)} — ${fmt(p.ms)}"
+        const ky = g.top + HEAD + i * KID, k = keyOf(g.lane, p.at, p.ms), on = SEL === k;
+        return `<span onclick="pickSpan('${esc(k)}')" title="${esc(p.label)} — ${fmt(p.ms)} — click for log lines"
           style="position:absolute;left:${sc.x(p.at) * 100}%;
           width:${Math.max(0.5, (sc.x(p.at + p.ms) - sc.x(p.at)) * 100)}%;top:${ky + 3}px;height:9px;
           border-radius:2px;background:${colOf(g.lane)};opacity:${on ? 1 : .75};cursor:pointer;
-          outline:${on ? '2px solid var(--fg)' : 'none'};outline-offset:2px"></span>`;
+          box-shadow:${on ? '0 0 0 2px var(--card), 0 0 0 3px ' + colOf(g.lane) : 'none'}"></span>`;
       }).join('') : '';
-      return rail + legs + brace + kids;
+      return rail + bar + brace + kids;
     }).join('');
 
     const labels = layout.map((g) => {
       const sum = g.mine.reduce((n, p) => n + p.ms, 0);
       const head = `<div onclick="toggleLane('${esc(g.lane)}')" style="position:absolute;left:0;width:${GW}px;
-          top:${g.top}px;height:22px;display:flex;align-items:center;gap:3px;
+          top:${g.top}px;height:26px;display:flex;align-items:center;gap:3px;
           cursor:${g.mine.length ? 'pointer' : 'default'}">
-          <span style="width:11px;flex:none;color:var(--mut);font-size:9px">${g.mine.length ? (g.open ? '▾' : '▸') : ''}</span>
-          <span class="mono" title="${esc(g.lane)}" style="font-size:11px;color:${colOf(g.lane)};min-width:0;
-            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.lane)}</span></div>`;
+          <span style="width:11px;color:var(--mut);font-size:9px">${g.mine.length ? (g.open ? '▾' : '▸') : ''}</span>
+          <span class="mono" style="font-size:11px;color:${g.mine.length ? colOf(g.lane) : 'var(--mut)'};
+            opacity:${g.mine.length ? 1 : .55}">${esc(g.lane)}</span>
+</div>`;
       const kids = g.open ? g.mine.map((p, i) => `<div style="position:absolute;left:0;width:${GW - 8}px;
-          top:${g.top + g.head + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
-          <span class="mut" title="${esc(p.label)}" style="font-size:10px;max-width:100%;overflow:hidden;
-            text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span></div>`).join('') : '';
-      const tot = `<div style="position:absolute;right:0;width:${RW}px;top:${g.top}px;height:22px;
+          top:${g.top + HEAD + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
+          <span class="mut" style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</span>
+        </div>`).join('') : '';
+      const tot = `<div style="position:absolute;right:0;width:${RW}px;top:${g.top}px;height:26px;
           display:flex;align-items:center;justify-content:flex-end">
-          <span class="mono num" style="color:${sum ? 'var(--fg)' : 'var(--mut)'}">${sum ? fmt(sum) : '—'}</span></div>`;
+          <span class="${sum ? 'mono num' : 'mut'}" style="font-size:${sum ? 13 : 9.5}px;
+            color:${sum ? 'var(--fg)' : 'var(--mut)'};white-space:nowrap;opacity:${sum ? 1 : .7}">
+            ${sum ? fmt(sum) : 'not reporting'}</span></div>`;
       const ktot = g.open ? g.mine.map((p, i) => `<div style="position:absolute;right:0;width:${RW}px;
-          top:${g.top + g.head + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
+          top:${g.top + HEAD + i * KID}px;height:${KID}px;display:flex;align-items:center;justify-content:flex-end">
           <span class="mono num mut" style="font-size:10px">${fmt(p.ms)}</span></div>`).join('') : '';
       return head + kids + tot + ktot;
     }).join('');
 
-    // ---- the way back to the evidence -------------------------------------
-    // A picture over log lines that cannot hand you the log lines is a dead
-    // end. Every bar knows its window, so every bar can name its rows.
-    let panel = `<p class="mut" style="font-size:11.5px;margin:10px 0 0">
-      Each drop is a handoff. Click any bar — or any handoff line — to see the log lines behind it.</p>`;
-    if (sel) {
-      const rows = tr.events.filter((e) => e.t >= sel.at - 1 && e.t <= sel.to + 1);
-      panel = `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:11px">
-        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px">
-          <b style="font-size:12.5px">${esc(sel.label)}</b>
-          <span class="mono num mut" style="font-size:11.5px">${sel.at === sel.to
-            ? 'at +' + fmt(sel.at)
-            : '+' + fmt(sel.at) + ' → +' + fmt(sel.to) + ' · ' + fmt(sel.to - sel.at)}</span>
-          <span class="mut" style="font-size:11.5px">${rows.length} log line${rows.length === 1 ? '' : 's'}</span>
-          <button onclick="clearSel()" style="margin-left:auto;font:inherit;font-size:11px;padding:2px 9px;
-            border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer">
-            clear</button>
-        </div>
-        <div class="mono" style="font-size:10.5px;background:var(--soft);border:1px solid var(--line);
-          border-radius:6px;padding:6px 9px;margin-bottom:9px;overflow-x:auto;white-space:nowrap">
-          <span class="mut">open in Logs →</span> trace_id:${esc(tr.id)}
-          ${sel.at === sel.to ? `<span class="mut">at</span> +${fmt(sel.at)}`
-            : `<span class="mut">from</span> +${fmt(sel.at)} <span class="mut">to</span> +${fmt(sel.to)}`}</div>` +
-        (rows.length ? `<table><tr><th>at</th><th>span</th><th>where</th><th>message</th></tr>` +
-          rows.map((e) => `<tr${isErr(e) ? ' style="background:color-mix(in srgb,var(--bad) 8%,transparent)"' : ''}>
-            <td class="mono num mut" style="width:64px">+${fmt(e.t)}</td>
-            <td class="mono" style="width:126px;color:${isErr(e) ? 'var(--bad)' : 'inherit'}">${esc(e.n || '·')}</td>
-            <td class="mono mut" style="width:70px">${esc(e.i || '')}</td>
-            <td>${esc(e.m)}</td></tr>`).join('') + `</table>`
-          : `<p class="mut" style="font-size:11.5px;margin:0">Nothing was logged during this stretch — which is
-             the finding. The bar exists because the spans either side of it bracket the time.</p>`) + `</div>`;
-    }
-
-    // Never scrollable, by construction. A route you have to scroll sideways
-    // has stopped being a route — so the frame is fixed and anything too long
-    // is truncated where it sits, in its own column.
-    return `<div style="position:relative;height:${H}px;overflow:hidden">
-        <div style="position:absolute;left:${GW}px;right:${RW}px;top:0;height:${H}px;overflow:hidden">
-          ${bands}${tracks}${links}</div>
+    // The verdict, before the picture. Most of the time this is the whole answer.
+    const worst = bs.reduce((a, b) => (b.ms > (a?.ms ?? -1) ? b : a), null);
+    const failed = tr.events.find((e) => e.e && e.n === 'response_sent');
+    const verdict = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:11px;
+        font-size:12.5px">
+        <span class="mono">${esc(tr.action)}</span>
+        <span class="mono num" style="font-weight:600">${fmt(tr.totalMs)}</span>
+        <span class="chip mono ${failed ? 'bad' : 'ok'}">${failed ? esc(failed.e) : 'ok'}</span>
+        ${worst ? `<span class="mut">— ${fmt(worst.ms)} of it
+          (${Math.round((worst.ms / (tr.totalMs || 1)) * 100)}%) on
+          <span class="mono" style="color:${colOf(worst.lane)}">${esc(worst.lane)}</span></span>` : ''}
+      </div>`;
+    // A ruler marked at the handoffs — the moments that actually mean something,
+    // and the only ones whose position survives an elided axis.
+    const rawTicks = [0, ...bs.slice(0, -1).map((b) => b.to), tr.totalMs];
+    // Two handoffs milliseconds apart would print their labels on top of each
+    // other, which is how the ruler first read "0m47ms".
+    const ticks = rawTicks
+      .filter((t, i, a) => i === 0 || i === a.length - 1 || sc.x(t) - sc.x(a[i - 1]) > 0.06)
+      .map((t) => ({ t }))
+      .map((k) => `<span class="mono num mut" style="position:absolute;left:${sc.x(k.t) * 100}%;
+        transform:translateX(-50%);font-size:9.5px;white-space:nowrap">${fmt(k.t)}</span>
+        <span style="position:absolute;left:${sc.x(k.t) * 100}%;top:-4px;height:3px;width:1px;
+          background:var(--line)"></span>`).join('');
+    return verdict + `<div style="position:relative;height:${H}px">
+        <div style="position:absolute;left:${GW}px;right:${RW}px;top:0;height:${H}px">${bands}${tracks}${links}</div>
         ${labels}
-      </div>${panel}`;
+      </div>
+      <div style="position:relative;height:14px;margin-top:2px">
+        <span style="position:absolute;left:${GW}px;right:${RW}px;top:0;height:14px;display:block">${ticks}</span>
+      </div>` + logPanel(tr);
   });
 
-// This one is a fixed frame on purpose — see its render.
-DESIGNS[DESIGNS.length - 1].noScroll = true;
+/**
+ * The way back to the evidence.
+ *
+ * Every bar is a time window on one machine, which is exactly what a log query
+ * is. Clicking one shows the lines inside it and the query that would fetch
+ * them, so the picture is never the end of the road — you can always check that
+ * it is telling the truth.
+ */
+function logPanel(tr) {
+  if (!SEL) {
+    return `<p class="mut" style="font-size:11.5px;margin:12px 0 0;border-top:1px dashed var(--line);padding-top:10px">
+      Click any bar — a named leg, or a row inside an unfolded machine — for the log lines behind it.</p>`;
+  }
+  const [lane, atS, msS] = SEL.split('|');
+  const at = Number(atS), ms = Number(msS), end = at + ms;
+  const inside = tr.events.filter((e) => e.t >= at && e.t <= end);
+  const q = `trace_id:${tr.id}`;
+  const rows = inside.length ? inside.map((e) => `<tr${isErr(e) ? ' style="background:color-mix(in srgb,var(--bad) 8%,transparent)"' : ''}>
+      <td class="mono num mut" style="width:62px">+${fmt(e.t)}</td>
+      <td class="mono" style="width:66px;color:${isErr(e) ? 'var(--bad)' : isWarn(e) ? 'var(--warn)' : 'var(--mut)'}">
+        ${esc(e.sev || 'INFO')}</td>
+      <td class="mono" style="width:126px">${esc(e.n || '·')}</td>
+      <td class="mono mut" style="width:70px">${esc(e.i || '')}</td>
+      <td>${esc(e.m)}${e.e ? ` <span class="chip mono bad">${esc(e.e)}</span>` : ''}</td></tr>`).join('')
+    : `<tr><td colspan="5" class="mut" style="padding:8px 0">No lines inside this window — it is the
+        <b>gap between</b> two spans, and that is the finding: nothing was logged here, which is exactly
+        why the time is unexplained.</td></tr>`;
+  return `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+        <span class="mono" style="font-size:12px;color:${colOf(lane)}">${esc(lane)}</span>
+        <span class="mono num mut" style="font-size:11.5px">+${fmt(at)} → +${fmt(end)} · ${fmt(ms)}</span>
+        <button onclick="pickSpan('${esc(SEL)}')" style="margin-left:auto;font:inherit;font-size:11px;
+          padding:2px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);
+          color:var(--mut);cursor:pointer">clear</button>
+      </div>
+      <div class="mono" style="font-size:10.5px;color:var(--mut);background:var(--soft);border:1px solid var(--line);
+        border-radius:6px;padding:6px 9px;margin-bottom:9px;overflow-x:auto;white-space:nowrap">
+        ${esc(q)} &nbsp;<span style="opacity:.6">→ /portal/admin/logs?q=${esc(q)}&amp;from=…&amp;to=…</span>
+      </div>
+      <table>${rows}</table></div>`;
+}
 
 // ---------------------------------------------------------------- shell
 const KEYS = [
@@ -1169,6 +1185,7 @@ function draw() {
 function pick(k) { current = k; SEL = null; draw(); }
 function toggleElide() { ELIDE = !ELIDE; draw(); }
 function toggleLane(l) { OPEN.has(l) ? OPEN.delete(l) : OPEN.add(l); draw(); }
+function pickSpan(k) { SEL = SEL === k ? null : k; draw(); }
 function selectSpan(a, b, label) { SEL = { at: a, to: b, label: decodeURIComponent(label) }; draw(); }
 function clearSel() { SEL = null; draw(); }
 function expandHandoff(a, b, t, label) {
@@ -1178,17 +1195,21 @@ function expandHandoff(a, b, t, label) {
 }
 
 /** Design 13 only works if hovering a row lights the machine it ran on. */
+let hovered = null;
 document.addEventListener('mouseover', (ev) => {
   const row = ev.target.closest?.('.wfrow');
-  const lanes = document.querySelectorAll('.topo');
-  if (!lanes.length) return;
-  lanes.forEach((n) => {
+  if (row === hovered) return;   // mouseover fires constantly; only act on a change
+  // Restyling every row on every pointer move meant two document-wide queries
+  // and a layout pass per event. On the 69-span burst that is enough DOM to
+  // lock the page up, which is exactly what it did.
+  if (hovered) hovered.style.background = 'transparent';
+  hovered = row;
+  if (row) row.style.background = 'var(--soft)';
+  const nodes = document.querySelectorAll('.topo');
+  nodes.forEach((n) => {
     const on = row && n.dataset.lane === row.dataset.lane;
     n.style.borderColor = on ? colOf(n.dataset.lane) : 'var(--line)';
     n.style.background = on ? 'color-mix(in srgb, ' + colOf(n.dataset.lane) + ' 12%, transparent)' : 'transparent';
-  });
-  document.querySelectorAll('.wfrow').forEach((r) => {
-    r.style.background = (row && r === row) ? 'var(--soft)' : 'transparent';
   });
 });
 draw();
