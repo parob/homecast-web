@@ -128,6 +128,18 @@ async function gotoMyHome(page: Page, roomName?: string) {
     await closeBtn.click({ force: true }).catch(() => {});
     await page.waitForTimeout(500);
   }
+  // And make sure it actually went. The sheet's scrim is a fixed inset-0 layer
+  // that swallows every press behind it, so a sidebar left open doesn't fail
+  // here — it fails later, in whichever shot next tries to touch the header,
+  // which is how 03-menu.png became a picture of no menu. The X above is only
+  // one way to close it; Escape is the one Radix always honours, and waiting on
+  // the scrim is the only proof the press landed.
+  const scrim = page.locator('div[data-aria-hidden="true"][data-state="open"]').first();
+  if (await scrim.count()) {
+    await page.keyboard.press('Escape');
+    await scrim.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+  }
   // Reset scroll position so the header is visible in the screenshot.
   await page.evaluate(() => {
     window.scrollTo(0, 0);
@@ -909,6 +921,21 @@ test.describe('App Store screenshots', () => {
 
 // ── iPhone App Store Screenshots (1284×2778 at 3x) ──────────────────────────
 
+/**
+ * Open the header's ⋮ menu on the phone set.
+ *
+ * `click({ force: true })` stopped opening it: this project runs with
+ * `hasTouch`, and a forced click skips the actionability wait, so the press
+ * lands before Radix's trigger will act on it — the menu never opens. Nothing
+ * asserted that it had, so `03-menu.png` quietly became a shot of the dashboard
+ * with no menu in it while the test still passed.
+ *
+ * `tap()` is what a touch project should have been sending anyway.
+ */
+async function openHeaderMenu(page: Page) {
+  await page.locator('[data-tour="header-menu"]').first().tap();
+}
+
 test.describe('iPhone App Store screenshots', () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'iphone-screenshots', 'iPhone only');
@@ -949,7 +976,7 @@ test.describe('iPhone App Store screenshots', () => {
     });
     await setupMocks(page);
     await gotoMyHome(page);
-    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
+    await openHeaderMenu(page);
     await page.waitForTimeout(500);
     await page.screenshot({ path: iphoneImg('03-menu.png') });
   });
@@ -963,7 +990,7 @@ test.describe('iPhone App Store screenshots', () => {
     await setupMocks(page);
     await gotoMyHome(page);
     // Open header menu → Share
-    await page.locator('[data-tour="header-menu"]').first().click({ force: true });
+    await openHeaderMenu(page);
     await page.waitForTimeout(300);
     await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
     await page.waitForTimeout(1000);

@@ -134,9 +134,11 @@ describe('an expanded group', () => {
   });
 
   // The panel is a fixed 360px box whose insets are rem, so a section that
-  // disagrees about its margin by one rung is off by 4-5px depending on the
-  // text-size setting — and the members section used to, with a pr-1 on the
-  // scroller that made the right edge line up while the left sat proud.
+  // disagrees about its margin by one rung is off by 4-5px — and the members
+  // section used to, with a pr-1 on the scroller that made the right edge line
+  // up while the left sat proud. (It used to be off by a different amount at
+  // each text size too; the setting stopped moving the root font size, so a rem
+  // is one number now — see lib/text-scale.ts.)
   //
   // Compared as Tailwind rungs rather than measured: jsdom lays nothing out,
   // and the rung is the thing that has to agree anyway.
