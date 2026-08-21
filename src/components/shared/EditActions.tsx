@@ -107,7 +107,11 @@ function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
   if (!pin) return null;
   return (
     <EditActionButton
-      label={pin.pinned ? 'Unpin' : pin.full ? 'Full' : 'Pin'}
+      // Still "Pin" when the bar is full — greyed out, not relabelled. "Full"
+      // named the tab bar's problem on a button about this tile, so it read as
+      // a state of the accessory. Disabled says the same thing without the
+      // riddle, and the accessible name still explains why.
+      label={pin.pinned ? 'Unpin' : 'Pin'}
       ariaLabel={pin.label}
       onClick={pin.toggle}
       disabled={pin.full}

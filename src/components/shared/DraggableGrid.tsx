@@ -20,6 +20,8 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 
 // Measuring configuration to reduce layout measurements during drag
 const measuringConfig = {
@@ -87,6 +89,9 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
   sharedContext = false,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
+  // By context, not props: this grid is rendered from several places, and every
+  // one of them would otherwise have to remember to thread three more values.
+  const { editMode, beginLift, endLift } = useLayoutEdit();
 
   const pointerSensors = useSensors(
     useSensor(PointerSensor, {
@@ -98,7 +103,12 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
   );
   const touchSensors = useSensors(
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
+      // Longer before the mode is running than after — see lib/long-press.ts.
+      // The same hold that starts this drag is what turns Edit Layout on.
+      activationConstraint: {
+        delay: editMode ? LIFT_DELAY_EDITING : LIFT_DELAY_IDLE,
+        tolerance: 5,
+      },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -111,13 +121,18 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const id = String(event.active.id);
     setActiveId(id);
+    // On touch this press is also how Edit Layout is entered — the mode comes on
+    // under a finger that is already dragging. No-op once it is running, and on
+    // desktop, where there is no mode.
+    beginLift?.();
     onDragStart?.(id, event);
-  }, [onDragStart]);
+  }, [onDragStart, beginLift]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
 
     setActiveId(null);
+    endLift?.();
 
     if (!over || active.id === over.id) {
       onDragEnd?.(event, false);
@@ -135,7 +150,15 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
     const reordered = arrayMove(itemIds, oldIndex, newIndex);
     onReorder(reordered);
     onDragEnd?.(event, true);
-  }, [itemIds, onReorder, onDragEnd]);
+  }, [itemIds, onReorder, onDragEnd, endLift]);
+
+  // A cancelled drag never reached onDragEnd, so nothing cleared activeId and
+  // the overlay stayed up showing an item that had gone back to the grid. It
+  // matters more now: without an end, the lift's deferred tidy-up never runs.
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+    endLift?.();
+  }, [endLift]);
 
   // Droppable so an item can be dropped on an EMPTY grid, where there is no
   // sortable item to collide with. Registered unconditionally: hooks cannot be
@@ -169,6 +192,7 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
         collisionDetection={enabled ? closestCenter : undefined}
         onDragStart={enabled ? handleDragStart : undefined}
         onDragEnd={enabled ? handleDragEnd : undefined}
+        onDragCancel={enabled ? handleDragCancel : undefined}
         measuring={enabled ? measuringConfig : undefined}
       >
         <SortableContext items={itemIds} strategy={rectSortingStrategy}>

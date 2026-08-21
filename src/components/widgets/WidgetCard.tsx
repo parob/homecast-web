@@ -571,6 +571,25 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       onClick: pinAction.toggle,
     });
   }
+  // Deleting a virtual accessory, and only that.
+  //
+  // It shares WidgetCard's `onRemove` slot with a collection's "remove from
+  // this collection", but the two are not the same act: a collection's remove
+  // is reversible and Edit Layout's badge already offers it, while this one
+  // destroys a helper. `EditActions` deliberately refuses to put it on a badge,
+  // where a mis-grab on the way to a drag would find it — and that was the only
+  // route touch had left once the context menu went.
+  //
+  // Here it is safe for the reason the badge was not: you arrive by tapping the
+  // tile open and studying it, and the button raises a confirmation.
+  if (effectiveOnRemove && !onRemove) {
+    expandedActions.push({
+      key: 'delete',
+      icon: 'delete',
+      label: effectiveRemoveLabel,
+      onClick: effectiveOnRemove,
+    });
+  }
 
   const cardInner = (
     <>

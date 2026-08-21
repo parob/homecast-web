@@ -42,7 +42,9 @@ export function PinnedActionCard({ action, homeId, isViewOnly, onRunAction }: {
       isViewOnly={isViewOnly}
       // The panel is not the layout, so it never wiggles; and it is reached by
       // touch, which is what decides whether a two-way action offers both
-      // directions up front or on a long press.
+      // directions up front. `touchMode` also means no context menu — right,
+      // here: this card is inside the tab bar's own panel, so it is already
+      // pinned by definition, and unpinning is the bar's ⊗ badge.
       editMode={false}
       touchMode
       running={runner.runningId === action.id}

@@ -136,6 +136,14 @@ export interface HomeLayoutData {
    * than pruned, because a shortcut comes and goes with the home's contents.
    */
   sceneCardOrder?: string[];
+  /**
+   * Arrangement of the Automations section's cards, as prefixed keys
+   * (`hk:<uuid>`, `hc:<id>`). See lib/automation-cards.ts — HomeKit's engine
+   * and Homecast's share no id space, and a key that no longer resolves is
+   * skipped rather than pruned, because the Homecast half is only fetched once
+   * the section is open.
+   */
+  automationCardOrder?: string[];
   visibility?: {
     hiddenRooms?: string[];
     /** Summary-row pills turned off for this home. Absent = all shown. */
@@ -144,6 +152,8 @@ export interface HomeLayoutData {
     hiddenActions?: HomeActionId[];
     /** Individual Apple Home scenes turned off for this home, by scene id. */
     hiddenScenes?: string[];
+    /** Individual automations turned off for this home, by prefixed key. */
+    hiddenAutomations?: string[];
   };
   background?: BackgroundSettings;
 }

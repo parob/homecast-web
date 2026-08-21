@@ -30,6 +30,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -42,6 +43,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 
 interface SortableCollectionItemProps {
   collection: Collection;
@@ -253,6 +256,8 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const [draggingCollectionId, setDraggingCollectionId] = useState<string | null>(null);
 
+  const { editMode: liftEditMode, beginLift, endLift } = useLayoutEdit();
+
   const pointerSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -263,10 +268,16 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+  // TouchSensor, not a PointerSensor with a delay: iOS Safari can fire
+  // pointercancel before the delay elapses, and native touch events do not
+  // race that way. Every other grid in the app already does it this way.
+  //
+  // The delay is longer before Edit Layout is running than after, because that
+  // first hold enters a mode — see lib/long-press.ts.
   const touchSensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
+        delay: liftEditMode ? LIFT_DELAY_EDITING : LIFT_DELAY_IDLE,
         tolerance: 5,
       },
     }),
@@ -341,10 +352,17 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
 
   const handleDragStart = (event: DragStartEvent) => {
     setDraggingCollectionId(event.active.id as string);
+    beginLift?.();
+  };
+
+  const handleDragCancel = () => {
+    setDraggingCollectionId(null);
+    endLift?.();
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setDraggingCollectionId(null);
+    endLift?.();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -431,6 +449,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
             collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
             <SortableContext
               items={collections.map(c => c.id)}

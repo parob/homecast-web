@@ -32,6 +32,7 @@ import { TabEditSheet } from './TabEditSheet';
 import { tabIconComponent } from './tabIconComponents';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import type { HomeActionId } from '@/lib/summary-sections';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 
 export { MAX_PINNED_TABS };
 
@@ -157,6 +158,18 @@ interface MobileTabBarProps {
    * size it will be, which a list of rows in a dialog could not show.
    */
   editMode?: boolean;
+  /**
+   * A touch device. Distinct from `editMode`: it says a hold on a tab should
+   * pick it up and turn arranging on, which is how edit mode is reached now.
+   *
+   * A prop rather than the context, because this component is also rendered
+   * bare in tests and already takes `editMode` the same way.
+   */
+  touchMode?: boolean;
+  /** A drag began — enters Edit Layout if it is not already running. */
+  beginLift?: () => void;
+  /** …and ended, or was cancelled. */
+  endLift?: () => void;
   onReorder?: (reordered: PinnedTab[]) => void;
   /**
    * Both overrides at once. They travel together because the receiver rewrites
@@ -184,6 +197,9 @@ export function MobileTabBar({
   isDarkBackground,
   mode = DEFAULT_TAB_BAR_MODE,
   editMode = false,
+  touchMode = false,
+  beginLift,
+  endLift,
   onReorder,
   onRename,
   onUnpin,
@@ -250,11 +266,25 @@ export function MobileTabBar({
   // Same split as DraggableGrid: a pointer needs to travel before it counts as a
   // drag, a finger needs to dwell. Without the dwell, every tap to rename would
   // be swallowed as the start of a reorder.
-  const sensors = useSensors(
+  //
+  // Split by input rather than registered together, which mattered the moment
+  // this context stopped being edit-mode-only: with both live, the PointerSensor
+  // would win after 8px of travel and an ordinary scroll along the bar would
+  // pick a tab up. Every other call site already splits them.
+  const pointerSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  const touchSensors = useSensors(
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: editMode ? LIFT_DELAY_EDITING : LIFT_DELAY_IDLE,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const sensors = touchMode ? touchSensors : pointerSensors;
 
   /**
    * Three different meanings of "active", which is the whole point of the bar
@@ -325,14 +355,27 @@ export function MobileTabBar({
 
   const itemIds = pinnedTabs.map(pinKey);
 
+  // The slide-to-select gesture may already be tracking this same finger. It
+  // has to let go before the drag takes over, or the release would also pick a
+  // tab and navigate away from the layout you just started arranging.
+  const abortGestureRef = useRef<(() => void) | null>(null);
+
+  const handleDragStart = useCallback(() => {
+    abortGestureRef.current?.();
+    beginLift?.();
+  }, [beginLift]);
+
+  const handleDragCancel = useCallback(() => { endLift?.(); }, [endLift]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
+    endLift?.();
     if (!over || active.id === over.id) return;
     const oldIndex = itemIds.indexOf(String(active.id));
     const newIndex = itemIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
     onReorder?.(arrayMove(pinnedTabs, oldIndex, newIndex));
-  }, [itemIds, pinnedTabs, onReorder]);
+  }, [itemIds, pinnedTabs, onReorder, endLift]);
 
   if (pinnedTabs.length === 0) return null;
 
@@ -531,7 +574,12 @@ export function MobileTabBar({
       const tab = pinnedTabs.find(t => pinKey(t) === key);
       if (tab) handleTap(tab, resolveStatus(tab), false);
     };
-    openLive(start);
+    // Not on touch. A press that has not moved yet may still become a lift, and
+    // opening a pin's panel first would leave you holding a drag underneath an
+    // open popover. Slide-to-select is a moving gesture by definition, so
+    // opening on the first move costs it nothing — and a press that never moves
+    // is a tap, where `up` opens it anyway.
+    if (!touchMode) openLive(start);
 
     const move = (ev: PointerEvent) => {
       const key = nearestKey(bar, ev.clientX);
@@ -543,6 +591,20 @@ export function MobileTabBar({
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', done);
       setDragKey(null);
+      abortGestureRef.current = null;
+    };
+    /*
+     * Hand the pointer to dnd-kit.
+     *
+     * Called when a drag activates on this same finger. `done` drops the window
+     * listeners, so the `pointerup` that ends the drag no longer runs `up` —
+     * nothing is selected, nothing navigates. The click that the press will
+     * still produce is spent here, because the tab's own onClick reads the same
+     * flag.
+     */
+    abortGestureRef.current = () => {
+      done();
+      suppressClickRef.current = true;
     };
     const up = (ev: PointerEvent) => {
       const end = nearestKey(bar, ev.clientX);
@@ -572,12 +634,25 @@ export function MobileTabBar({
   const litKey = dragKey ?? (!editMode && openKey) ?? activeKey;
 
   /**
+   * Which chips show their name.
+   *
+   * Everything, unless the setting says otherwise — and then only the one that
+   * is current, so the bar still says where you are. Arranging always shows
+   * them all: you cannot reorder or rename what you cannot read.
+   *
+   * Mid-slide the lit chip's name comes off too. A capsule that grows its name
+   * under a thumb has put that name in the one place on screen it cannot be
+   * read, and moved the rest of the bar sideways to do it. The callout above
+   * takes over the naming instead — one shrink at the point you leave, rather
+   * than a reflow at every chip you cross.
+   */
+  /**
    * Which chips show their name: all of them, or none.
    *
    * Icons never widen for the one you are on. A chip that grows its name moves
    * every chip after it, and in a bar you navigate by swiping that is the row
    * shifting under the finger doing the swiping. The callout above says what is
-   * selected instead — the one place a thumb is not covering.
+   * selected instead, which is the one place a thumb is not covering.
    */
   const namedKey = shape === 'icon' ? null : 'all' as const;
 
@@ -614,7 +689,7 @@ export function MobileTabBar({
       : 'shrink-0';
 
     return (
-      <TabSlot key={key} id={key} sortable={editMode} className={slotClass}>
+      <TabSlot key={key} id={key} sortable={editMode || touchMode} editMode={editMode} className={slotClass}>
         {(dragProps) => (<>
         <button
           {...dragProps}
@@ -868,15 +943,21 @@ export function MobileTabBar({
         </div>
       )}
       <div className="flex justify-center px-4 pb-2">
-        {editMode ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={itemIds} strategy={horizontalListSortingStrategy}>
-              {pill}
-            </SortableContext>
-          </DndContext>
-        ) : (
-          pill
-        )}
+        {/* Mounted whether or not we are arranging. On touch the drag is how
+            edit mode is entered, so the context has to already be there when
+            the hold starts — and mounting it underneath a running drag would
+            take the drag with it. */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <SortableContext items={itemIds} strategy={horizontalListSortingStrategy}>
+            {pill}
+          </SortableContext>
+        </DndContext>
       </div>
     </div>,
     document.body,
@@ -903,10 +984,19 @@ export function MobileTabBar({
  *   it a new backdrop root and the glass switches off for as long as it runs.
  *   `src/index.css` documents the same trap for widget tiles.
  */
-function TabSlot({ id, sortable, className, children }: {
+function TabSlot({ id, sortable, editMode, className, children }: {
   id: string;
-  /** False outside edit mode, and while this tab's label is being typed into. */
+  /**
+   * Whether this slot is a sortable node at all.
+   *
+   * True on touch even outside edit mode, because the hold that starts a drag
+   * is what turns edit mode *on* — the node has to already exist for the sensor
+   * to have something to pick up. Flipping this mid-gesture would swap one
+   * element tree for another and remount the node dnd-kit is tracking.
+   */
   sortable: boolean;
+  /** Arranging: what the wiggle and the pointer lock actually key off. */
+  editMode?: boolean;
   /**
    * How this tab divides the row.
    *
@@ -926,6 +1016,7 @@ function TabSlot({ id, sortable, className, children }: {
 
   if (!sortable) return <div data-tab-slot className={cn('relative', className)}>{children({})}</div>;
 
+
   return (
     <div
       ref={setNodeRef}
@@ -935,7 +1026,13 @@ function TabSlot({ id, sortable, className, children }: {
         opacity: isDragging ? 0.5 : 1,
       }}
       data-tab-slot
-      className={cn('relative touch-none', className)}
+      // `touch-none` only while arranging. The row scrolls with `touch-pan-x`
+      // when it overflows, and a slot that always refused touch panning would
+      // override it and strand a bar too wide to see. Leaving the axis to the
+      // row outside edit mode is also right for the lift: a pan takes the
+      // pointer, dnd-kit gets a touchcancel, and the pending hold dies — which
+      // is what a swipe should do to it.
+      className={cn('relative', editMode && 'touch-none', className)}
       // Marks the element dnd-kit writes its inline transform onto. The wiggle
       // must never land here — a test asserts these stay two elements.
       data-sortable-node=""
@@ -949,7 +1046,7 @@ function TabSlot({ id, sortable, className, children }: {
           way (SortableItem carries the transform, WidgetCard the wiggle); this
           collapsed the two into one and reintroduced the clash. */}
       <div
-        className={cn(!isDragging && 'wiggle')}
+        className={cn(editMode && !isDragging && 'wiggle')}
         style={{
           // Derived from the id so neighbouring tabs don't wiggle in lockstep.
           '--wiggle-offset': `${(id.charCodeAt(0) % 5) * 0.05}deg`,

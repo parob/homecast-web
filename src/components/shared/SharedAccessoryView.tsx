@@ -358,6 +358,14 @@ export function SharedAccessoryView({
         {/* Single accessory - centered and larger */}
         <div className="flex justify-center">
           <div className="w-full max-w-md">
+            {/* Keeps its long-press menu on touch, alone among tiles.
+                Everywhere else the menu had to go because a hold now starts a
+                drag and an open Radix menu would kill it — but this page has no
+                DndContext and no Edit Layout, so there is no gesture to
+                conflict with and nowhere else for Analytics or Share to live.
+                It falls out of the LayoutEditContext default (touchMode: false)
+                rather than being asked for; this note is so the absence of a
+                `disableTooltip` here reads as deliberate. */}
             <AccessoryWidget
               accessory={accessory}
               homeName={accessory.homeName}

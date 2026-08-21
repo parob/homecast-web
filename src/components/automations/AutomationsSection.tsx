@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Plus, ChevronRight, Check } from 'lucide-react';
@@ -13,8 +13,16 @@ import { AutomationFormDialog } from './AutomationFormDialog';
 const AutomationEditorDialog = lazy(() => import('@/components/automation-editor/AutomationEditorDialog'));
 import { GET_AUTOMATIONS, HC_AUTOMATIONS } from '@/lib/graphql/queries';
 import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
+import { DraggableGrid } from '@/components/shared/DraggableGrid';
+import { SortableItem } from '@/components/shared/SortableItem';
+import { DragHandleArea } from '@/components/shared/DragHandleArea';
+import {
+  applyAutomationCardOrder,
+  automationCardKey,
+  isAutomationVisible,
+} from '@/lib/automation-cards';
 import { SAVE_HC_AUTOMATION, DELETE_HC_AUTOMATION } from '@/lib/graphql/mutations';
-import type { HomeKitAutomation, GetAutomationsResponse } from '@/lib/graphql/types';
+import type { HomeKitAutomation, GetAutomationsResponse, HomeLayoutData } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
 
 /** StoredEntityInfo rows as the HC_AUTOMATIONS document selects them. */
@@ -33,6 +41,12 @@ interface AutomationsSectionProps {
   // When set, render this fixed list instead of fetching real automations.
   // Used by the tutorial demo flow so the Automations step always has rows.
   demoAutomations?: HomeKitAutomation[];
+  /** The home's stored arrangement and hidden list. */
+  homeLayout?: HomeLayoutData | null;
+  /** Persist the card arrangement. Absent where the layout can't be written. */
+  onReorderCards?: (order: string[]) => void;
+  /** Turn one automation's card off for this home, or back on. */
+  onToggleAutomationHidden?: (key: string, visible: boolean) => void;
 }
 
 /**
@@ -87,8 +101,25 @@ export function AutomationsPill({ homeId, open, onToggle, isDarkBackground, hide
   );
 }
 
-export function AutomationsSection({ homeId, compact, isDarkBackground, open: expanded, demoAutomations }: AutomationsSectionProps) {
-  const { editMode } = useLayoutEdit();
+/** One cell of the Automations grid, from whichever engine owns it. */
+type AutomationCard =
+  | { kind: 'hk'; id: string; automation: HomeKitAutomation }
+  | { kind: 'hc'; id: string; hc: Automation };
+
+const cardKey = (c: AutomationCard) => automationCardKey(c.kind, c.id);
+
+export function AutomationsSection({
+  homeId, compact, isDarkBackground, open: expanded, demoAutomations,
+  homeLayout, onReorderCards, onToggleAutomationHidden,
+}: AutomationsSectionProps) {
+  const { editMode, touchMode } = useLayoutEdit();
+  /**
+   * The arrangement you just dragged, held until the saved one catches up.
+   *
+   * Not a nicety — see the same field in ScenesSection for why the drop
+   * animation lands in the wrong place without it.
+   */
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
   const [selectedAutomation, setSelectedAutomation] = useState<HomeKitAutomation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -141,11 +172,71 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
     });
   }, [hcData]);
 
+  /**
+   * The two engines' automations as one ordered, filtered list.
+   *
+   * They share a grid and an order but no id space — a HomeKit automation id is
+   * a UUID, a Homecast one is an engine id — so the key is prefixed. Same shape
+   * as the Scenes grid; see lib/automation-cards.ts.
+   */
+  const hiddenAutomations = homeLayout?.visibility?.hiddenAutomations;
+  const savedOrder = homeLayout?.automationCardOrder;
+  const cards = useMemo(() => {
+    const all: AutomationCard[] = [
+      ...automations.map(a => ({ kind: 'hk' as const, id: a.id, automation: a })),
+      ...hcAutomations.map(hc => ({ kind: 'hc' as const, id: hc.id, hc })),
+    ];
+    // Editing reveals what is hidden — you cannot bring back what you cannot
+    // see, and hiding is only offered on the card itself.
+    const visible = editMode
+      ? all
+      : all.filter(c => isAutomationVisible(hiddenAutomations, cardKey(c)));
+    return applyAutomationCardOrder(visible, optimisticOrder ?? savedOrder, cardKey);
+  }, [automations, hcAutomations, hiddenAutomations, savedOrder, optimisticOrder, editMode]);
+
+  // Let go once the saved order is the source of truth again.
+  useEffect(() => { setOptimisticOrder(null); }, [savedOrder]);
+
+  const itemIds = cards.map(cardKey);
+  // The tutorial's fixed list is not the user's to rearrange.
+  const canReorder = !demoAutomations && !!onReorderCards;
+
   const isLoading = loading || hcLoading;
   const totalCount = automations.length + hcAutomations.length;
   // Note: deliberately NOT hidden when empty. The section holds the only "Create"
   // button, so collapsing it at zero left no way to create a first automation.
   const isEmpty = !isLoading && totalCount === 0 && !relayNeedsUpdate;
+
+  const renderCard = (card: AutomationCard) => {
+    const key = cardKey(card);
+    const hidden = !isAutomationVisible(hiddenAutomations, key);
+    const onToggleHidden = onToggleAutomationHidden && !demoAutomations
+      ? () => onToggleAutomationHidden(key, hidden)
+      : undefined;
+    return card.kind === 'hk' ? (
+      <AutomationCard
+        automation={card.automation}
+        onClick={() => handleCardClick(card.automation)}
+        onUpdated={() => refetch()}
+        editMode={editMode}
+        compact={compact}
+        isDarkBackground={isDarkBackground}
+        isHidden={hidden}
+        onToggleHidden={onToggleHidden}
+      />
+    ) : (
+      <AutomationCard
+        hcAutomation={card.hc}
+        onClick={() => handleHcAutomationClick(card.hc)}
+        onToggle={() => handleToggleHcAutomation(card.hc)}
+        editMode={editMode}
+        compact={compact}
+        isDarkBackground={isDarkBackground}
+        isHidden={hidden}
+        onToggleHidden={onToggleHidden}
+      />
+    );
+  };
 
   const handleCardClick = (automation: HomeKitAutomation) => {
     setSelectedAutomation(automation);
@@ -207,39 +298,31 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
           {/* Wider minimum track than the scenes grid: automation names are
               descriptive sentences, and the card also carries a trigger summary,
               a toggle and a delete button on the same row. */}
+          <DraggableGrid
+            itemIds={itemIds}
+            onReorder={(order) => { setOptimisticOrder(order); onReorderCards?.(order); }}
+            enabled={canReorder}
+            touchMode={touchMode}
+            renderDragOverlay={(activeId) => {
+              const card = cards.find(c => cardKey(c) === activeId);
+              return card ? <div className="w-full opacity-90">{renderCard(card)}</div> : null;
+            }}
+          >
           <div className={
             compact
               ? 'grid items-start gap-2 grid-cols-[repeat(auto-fill,minmax(210px,1fr))]'
               : 'grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(360px,1fr))]'
           }>
-            {/* HomeKit native automations */}
-            {automations.map(automation => (
-              <AutomationCard
-                key={automation.id}
-                automation={automation}
-                onClick={() => handleCardClick(automation)}
-                onUpdated={() => refetch()}
-                editMode={editMode}
-                compact={compact}
-                isDarkBackground={isDarkBackground}
-              />
-            ))}
-
-            {/* Homecast-managed automations */}
-            {hcAutomations.map((hc: Automation) => (
-              <AutomationCard
-                key={`hc-${hc.id}`}
-                hcAutomation={hc}
-                onClick={() => handleHcAutomationClick(hc)}
-                onToggle={() => handleToggleHcAutomation(hc)}
-                editMode={editMode}
-                compact={compact}
-                isDarkBackground={isDarkBackground}
-              />
+            {cards.map(card => (
+              <SortableItem key={cardKey(card)} id={cardKey(card)} disabled={!canReorder}>
+                <DragHandleArea>{renderCard(card)}</DragHandleArea>
+              </SortableItem>
             ))}
 
             {/* New automation button — same height as cards. Creating is not
-                arranging: it would add a card to the grid you are rearranging. */}
+                arranging: it would add a card to the grid you are rearranging.
+                Outside the SortableItems, and last in an auto-fill grid, so
+                removing it moves nothing that is being dragged. */}
             {!editMode && <button
               type="button"
               data-testid="new-automation-button"
@@ -254,6 +337,7 @@ export function AutomationsSection({ homeId, compact, isDarkBackground, open: ex
               <span className={`${compact ? 'text-xs' : 'text-sm'}`}>Create</span>
             </button>}
           </div>
+          </DraggableGrid>
         </div>
       </AnimatedCollapse>
 

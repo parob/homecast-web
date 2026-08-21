@@ -1,6 +1,7 @@
 // Unified automation card — used for both HomeKit and Homecast automations
 // Identical style, differentiated only by a subtle outline icon
 
+import type React from 'react';
 import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { Switch } from '@/components/ui/switch';
@@ -10,6 +11,7 @@ import { SET_AUTOMATION_ENABLED } from '@/lib/graphql/mutations';
 import { toast } from 'sonner';
 import { ViewOnlyHomeDialog } from '@/components/shared/ViewOnlyHomeDialog';
 import { useRelayCannotEdit } from '@/hooks/useRelayCannotEdit';
+import { TileEditActions, HiddenLabel } from '@/components/shared/EditActions';
 import { translateHomeKitError } from '@/lib/homekit-errors';
 import type { HomeKitAutomation, SetAutomationEnabledResponse } from '@/lib/graphql/types';
 import type { Automation } from '@/automation/types/automation';
@@ -27,9 +29,13 @@ interface AutomationCardProps {
   onDelete?: () => void;
   compact?: boolean;
   isDarkBackground?: boolean;
+  /** Turned off for this home. Only rendered at all while editing. */
+  isHidden?: boolean;
+  /** Absent where the layout cannot be written (a shared home, the tutorial). */
+  onToggleHidden?: () => void;
 }
 
-export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground, editMode }: AutomationCardProps) {
+export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground, editMode, isHidden, onToggleHidden }: AutomationCardProps) {
   const isHomeKit = !!automation;
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
   const [setEnabled] = useMutation<SetAutomationEnabledResponse>(SET_AUTOMATION_ENABLED);
@@ -99,7 +105,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   // When enabled: solid blue bg → dark text (same as widgets). When disabled on dark bg: white text.
   const textClass = (isDarkBackground && !isEnabled) ? 'text-white' : '';
   const subtextClass = (isDarkBackground && !isEnabled) ? 'text-white/60' : 'text-muted-foreground';
-  return (
+  const card = (
     <div
       className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
       style={{ contain: 'layout style paint' }}
@@ -172,6 +178,45 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
         <div onClick={(e) => e.stopPropagation()}>
           <ViewOnlyHomeDialog open onOpenChange={setViewOnlyOpen} homeId={automation.homeId} subject="automation" />
         </div>
+      )}
+    </div>
+  );
+
+  /*
+   * The wrapper is unconditional, and only the badges are behind `editMode`.
+   * Edit Layout can now be entered by the very drag that is picking this card
+   * up, so the mode flips *mid-gesture* — and swapping element trees at that
+   * moment would remount the node dnd-kit is tracking. Same rule as SceneCard.
+   *
+   * `TileEditActions` renders outside the card rather than inside it, for two
+   * reasons that both bite: the dimming applied to a hidden card would grey out
+   * the button that brings it back, and a button inside the drag handle turns
+   * every tap into a long-press race (see EditActions). The caller wraps this
+   * whole thing in DragHandleArea, so "outside the card" is what keeps the
+   * badge a sibling of the handle rather than a descendant.
+   *
+   * The wiggle sits on its own element too: `.wiggle` animates `transform`, and
+   * this card's root is an ancestor of a `backdrop-blur-xl` layer — an animated
+   * transform on one of those makes it a new backdrop root and the glass
+   * switches off while it runs. index.css documents the same trap.
+   */
+  return (
+    <div className="relative">
+      <div
+        className={editMode ? 'wiggle' : ''}
+        style={editMode
+          ? ({ '--wiggle-offset': `${((automation?.id ?? hcAutomation?.id ?? 'a').charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties)
+          : undefined}
+      >
+        {card}
+      </div>
+      {editMode && isHidden && <HiddenLabel />}
+      {editMode && onToggleHidden && (
+        <TileEditActions
+          action={{ kind: 'hide', isHidden: !!isHidden, onToggle: onToggleHidden, name }}
+          // Automations are not a PinnedTab type, so there is no pin to offer.
+          tab={null}
+        />
       )}
     </div>
   );

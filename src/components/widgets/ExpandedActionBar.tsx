@@ -1,4 +1,4 @@
-import { LineChart, Pencil, Pin, PinOff, Share2, Tag } from 'lucide-react';
+import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
 
 /**
  * The action row in an expanded widget panel: small round icon buttons in
@@ -17,7 +17,7 @@ import { LineChart, Pencil, Pin, PinOff, Share2, Tag } from 'lucide-react';
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin';
+  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'delete';
   label: string;
   onClick: () => void;
 }
@@ -36,6 +36,7 @@ const ICONS = {
   share: Share2,
   pin: Pin,
   unpin: PinOff,
+  delete: Trash2,
 } as const;
 
 export default function ExpandedActionBar({

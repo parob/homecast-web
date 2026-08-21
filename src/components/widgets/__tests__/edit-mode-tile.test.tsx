@@ -12,6 +12,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { SwitchWidget } from '../SwitchWidget';
 import { ServiceGroupWidget } from '../ServiceGroupWidget';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
+import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import type { WidgetProps } from '../types';
 
 vi.mock('@/lib/config', () => ({
@@ -249,5 +250,45 @@ describe('service groups are inert while editing too', () => {
     renderGroup({ editMode: true, onHide });
     fireEvent.click(screen.getByRole('button', { name: /^Hide Downstairs/ }));
     expect(onHide).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('what a long press means, by platform', () => {
+  /** A tile inside a provider that says which platform this is. */
+  function renderIn(layout: { touchMode: boolean; editMode: boolean }) {
+    render(
+      <LayoutEditProvider value={layout}>
+        <PinnedTabsProvider value={{ enabled: true, isPinned: () => false, isFull: false, toggle: vi.fn() } as never}>
+          <SwitchWidget {...({
+            accessory: ACCESSORY,
+            getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+            onSetValue: vi.fn(), onSlider: vi.fn(), onToggle: vi.fn(),
+            iconStyle: 'colourful', compact: true,
+            homeName: 'Beach House',
+          } as unknown as WidgetProps)} />
+        </PinnedTabsProvider>
+      </LayoutEditProvider>,
+    );
+  }
+
+  it('opens the menu on a right-click, on a device with a mouse', () => {
+    renderIn({ touchMode: false, editMode: false });
+    fireEvent.contextMenu(screen.getByText('Ceiling Light'));
+    expect(screen.getByText('Beach House · Kitchen')).toBeTruthy();
+  });
+
+  it('opens nothing on touch, where the same press is a lift', () => {
+    // Not a timing question. Radix opens on a native `contextmenu` as well as
+    // on its own hold timer, and an open menu puts `pointer-events: none` on
+    // the body — which would kill the drag the press had just started. There is
+    // no delay that separates the two, so the menu has to be absent.
+    renderIn({ touchMode: true, editMode: false });
+    fireEvent.contextMenu(screen.getByText('Ceiling Light'));
+    expect(screen.queryByText('Beach House · Kitchen')).toBeNull();
+  });
+
+  it('still renders the tile itself on touch, menu or no menu', () => {
+    renderIn({ touchMode: true, editMode: false });
+    expect(screen.getByText('Ceiling Light')).toBeTruthy();
   });
 });

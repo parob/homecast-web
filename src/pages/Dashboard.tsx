@@ -134,9 +134,17 @@ import { PinnedControl } from '@/components/layout/PinnedControl';
 import { PinnedActionCard, PinnedSceneCard } from '@/components/layout/PinnedRunCard';
 import { pinnedContextLabel } from '@/lib/pinned-context';
 import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
-import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
+import { withAutomationVisibility } from '@/lib/automation-cards';
+import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
+
+/** dnd-kit's default drop animation, which the deferred reveal waits out. */
+const DROP_ANIMATION_MS = 250;
+/** Backstop for a drag that never reports an end. Long enough to never race a
+ *  real one, short enough that a stuck mode rights itself. */
+const LIFT_WATCHDOG_MS = 8000;
 import { RowEditActions } from '@/components/shared/EditActions';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
@@ -1321,6 +1329,30 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  /*
+   * …and then believe a finger over the media query.
+   *
+   * `(pointer: coarse)` describes the *primary* pointer, so it is false on a
+   * touchscreen laptop, on an iPad with a trackpad attached, and in a desktop
+   * browser resized to phone width — all of which can still be touched, and on
+   * all of which a hold silently did nothing but drag the one tile, because the
+   * lift is gated on this flag.
+   *
+   * A real `touchstart` is proof the query cannot give. It only ever turns the
+   * flag *on*: a device with a touchscreen has one, and a mouse never fires
+   * this, so a Mac or a Windows desktop keeps its context menus untouched.
+   *
+   * `once` because the answer cannot change, and because swapping the sensor
+   * classes is only safe between gestures — see the sensor block. In practice
+   * this fires long before anyone tries a long press: scrolling the dashboard
+   * is a touchstart.
+   */
+  useEffect(() => {
+    const learn = () => setIsTouchDevice(true);
+    window.addEventListener('touchstart', learn, { passive: true, once: true });
+    return () => window.removeEventListener('touchstart', learn);
+  }, []);
+
   // Subscribe to relay connection state
   // In Community mode on relay Mac, skip — always "connected" via local HomeKit bridge
   useEffect(() => {
@@ -1591,6 +1623,59 @@ const Dashboard = () => {
   // below that clears it on the way out, so the reveal can't leak into normal
   // browsing after you've finished arranging.
   const [showHiddenItems, setShowHiddenItems] = useState(false);
+
+  /**
+   * Entering Edit Layout from the gesture instead of the menu.
+   *
+   * A long press on a tile starts a drag, and that same press turns the mode on
+   * — so `beginLift` runs *while a finger is down and dnd-kit is measuring*.
+   * That rules out `setEditModeAndTidy`: both halves of its tidy-up change the
+   * layout under the finger. Revealing hidden tiles registers new droppables,
+   * and dnd-kit re-measures every rect when the container set changes, so the
+   * grid shifts mid-drag and the drop lands somewhere else. Collapsing a summary
+   * section can unmount the very card being dragged.
+   *
+   * So the mode comes on now and the tidy-up waits — except the collapse, which
+   * never runs on this route at all. It exists to stop you editing behind an
+   * open section; arriving *from* a card inside one means that section is
+   * exactly where you are working.
+   */
+  const liftWatchdogRef = useRef<number | undefined>(undefined);
+  const [liftInFlight, setLiftInFlight] = useState(false);
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
+  // Read through a ref so the two callbacks stay stable: they are handed to
+  // every DndContext through context, and a new identity each render would
+  // rebuild the sensor descriptors mid-gesture.
+  const isTouchDeviceRef = useRef(isTouchDevice);
+  isTouchDeviceRef.current = isTouchDevice;
+
+  const endLift = useCallback(() => {
+    window.clearTimeout(liftWatchdogRef.current);
+    setLiftInFlight(prev => {
+      if (!prev) return prev;
+      // After the drop animation, not during it — the overlay is still flying
+      // home, and new droppables appearing under it scramble the landing.
+      window.setTimeout(() => setShowHiddenItems(true), DROP_ANIMATION_MS);
+      return false;
+    });
+  }, []);
+
+  const beginLift = useCallback(() => {
+    // Touch only. Desktop has no Edit Layout to enter — drag is always live
+    // there — and without this guard an ordinary mouse drag would switch the
+    // mode on: the collection grid reads `editMode` raw, so it would start
+    // wiggling and go inert, and the drop would reveal every hidden tile.
+    if (!isTouchDeviceRef.current) return;
+    if (editModeRef.current) return;   // already arranging; nothing to enter
+    setEditMode(true);
+    setLiftInFlight(true);
+    // Insurance against a DndContext that forgets onDragCancel: without an end,
+    // the deferred reveal never runs and the sidebar never widens.
+    liftWatchdogRef.current = window.setTimeout(() => endLift(), LIFT_WATCHDOG_MS);
+  }, [endLift]);
+
+  useEffect(() => () => window.clearTimeout(liftWatchdogRef.current), []);
   // Scenes/Automations/Status sections, toggled by the pills in the summary
   // row — mutually exclusive, so opening one closes the other two. All are
   // home-view only: room views keep the sensor bubbles inline.
@@ -2669,13 +2754,6 @@ const Dashboard = () => {
     setPinnedTabs(reordered);
     saveSettings({ pinnedTabs: reordered }, 'pinnedTabs');
   }, [saveSettings]);
-
-  // Tells every tile and group whether hiding belongs to a menu (desktop) or to
-  // Edit Layout (touch), without threading a flag through 28 widget components.
-  const layoutEditState = useMemo(
-    () => ({ touchMode: isTouchDevice, editMode: isTouchDevice && editMode }),
-    [isTouchDevice, editMode],
-  );
 
   // === UI Visibility check functions ===
   // When showHiddenItems is true, these return false so hidden items are shown
@@ -3824,11 +3902,18 @@ const Dashboard = () => {
   // Handle home drag start - track which home is being dragged
   const handleHomeDragStart = useCallback((event: { active: { id: string | number } }) => {
     setDraggingHomeId(String(event.active.id));
-  }, []);
+    beginLift();
+  }, [beginLift]);
+
+  const handleHomeDragCancel = useCallback(() => {
+    setDraggingHomeId(null);
+    endLift();
+  }, [endLift]);
 
   // Handle home drag end
   const handleHomeDragEnd = useCallback(async (event: DragEndEvent) => {
     setDraggingHomeId(null);
+    endLift();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -4053,6 +4138,7 @@ const Dashboard = () => {
   const handleSidebarDragStart = useCallback((event: DragStartEvent) => {
     const activeId = String(event.active.id);
     setSidebarActiveId(activeId);
+    beginLift();
 
     // Check if this item is inside a group
     for (const item of sidebarTree) {
@@ -4077,6 +4163,7 @@ const Dashboard = () => {
     const groupContext = sidebarDragGroupContext;
     setSidebarActiveId(null);
     setSidebarDragGroupContext(null);
+    endLift();
 
     if (!over || active.id === over.id || !selectedHomeId) return;
 
@@ -4118,7 +4205,8 @@ const Dashboard = () => {
   const handleSidebarDragCancel = useCallback(() => {
     setSidebarActiveId(null);
     setSidebarDragGroupContext(null);
-  }, []);
+    endLift();
+  }, [endLift]);
 
   // Parse collection payload to get groups for sidebar
   const collectionPayload = useMemo((): CollectionPayload => {
@@ -4154,6 +4242,7 @@ const Dashboard = () => {
   // Handle collection group drag end (reorder groups)
   const handleCollectionGroupDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
+    endLift();
     if (!over || active.id === over.id || !selectedCollection) return;
 
     const groups = collectionPayload.groups;
@@ -4368,6 +4457,7 @@ const Dashboard = () => {
     document.documentElement.style.setProperty('--text-scale', String(TEXT_SCALES[fontSize]));
   }, [fontSize]);
 
+
   // Editing adds two action buttons to the trailing edge of every row, which
   // eats into the space the home or room name had. Widening the panel gives the
   // name that space back rather than making you guess which room you are hiding.
@@ -4375,7 +4465,12 @@ const Dashboard = () => {
   // One width at every text size: the panel is chrome, and it stopped tracking
   // the setting when the setting stopped resizing chrome. These are the numbers
   // large used, which is the default and so what almost everyone already had.
-  const editingSidebar = isTouchDevice && editMode;
+  // Chrome that changes the *layout* of what is under the finger, so it waits
+  // for the drop when the mode was entered by a lift: this widens the sidebar
+  // and swaps the summary pills for the taller edit row, either of which would
+  // shove the grid mid-drag. Badges, wiggle and the toolbar do not wait — they
+  // are what tells you the hold took.
+  const editingSidebar = isTouchDevice && editMode && !liftInFlight;
   const EDIT_SIDEBAR_EXTRA = 56;
   const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
   const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
@@ -4953,6 +5048,22 @@ const Dashboard = () => {
       .catch(() => toast.error('Could not save that arrangement'));
   }, [updateHomeLayout]);
 
+  const handleToggleAutomationHidden = useCallback((key: string, visible: boolean) => {
+    void updateHomeLayout(prev => ({
+      ...prev,
+      visibility: {
+        ...prev?.visibility,
+        hiddenAutomations: withAutomationVisibility(prev?.visibility?.hiddenAutomations, key, visible),
+      },
+    })).catch(() => toast.error('Could not hide that automation'));
+  }, [updateHomeLayout]);
+
+  /** Persist the arrangement of the Automations section's cards. See above. */
+  const handleReorderAutomationCards = useCallback((order: string[]) => {
+    void updateHomeLayout(prev => ({ ...prev, automationCardOrder: order }))
+      .catch(() => toast.error('Could not save that arrangement'));
+  }, [updateHomeLayout]);
+
   /**
    * Which summary section is expanded, as one value. The three booleans are kept
    * mutually exclusive by their own handlers, so this is the same state read the
@@ -5361,13 +5472,25 @@ const Dashboard = () => {
     if (activeId.startsWith('group-')) {
       const group = serviceGroups.find(g => `group-${g.id}` === activeId);
       if (!group) return null;
+      const groupMembers = getAccessoriesInGroup(group);
+      // The room the grid would have given it. A group tile titles itself with
+      // the room stripped off — "Lights", under a Kitchen heading that already
+      // says where it is — and the stripping only happens when it is told the
+      // room. Without this the lifted copy grew the room back the instant you
+      // picked it up ("Kitchen Lights"), which reads as a different tile.
+      //
+      // Undefined when the grid is not grouped by room, because there is no
+      // heading above it then and the grid does not strip either.
+      const overlayRoomName = groupByRoom ? groupMembers[0]?.roomName : undefined;
       return (
         <div className="relative cursor-grabbing opacity-90">
           {/* editMode must match the grid, or the lifted copy is not the tile
               you picked up — its controls come back and its edit buttons go. */}
           <ServiceGroupWidget
             group={group}
-            accessories={getAccessoriesInGroup(group)}
+            accessories={groupMembers}
+            homeName={getHomeName(groupMembers[0]?.homeId)}
+            roomName={overlayRoomName}
             onHide={() => {}}
             onToggle={() => {}}
             onSlider={() => {}}
@@ -5405,7 +5528,7 @@ const Dashboard = () => {
     );
   }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
       compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
-      isTouchDevice, editMode]);
+      isTouchDevice, editMode, groupByRoom]);
 
   const handleToggleShowHidden = useCallback(() => {
     setShowHiddenItems(prev => !prev);
@@ -5438,6 +5561,29 @@ const Dashboard = () => {
     // way of the ones you are actually arranging. Leaving puts them back.
     setShowHiddenItems(next);
   }, []);
+
+  /**
+   * Holding the page itself, rather than anything on it.
+   *
+   * The full tidy-up runs here, unlike a lift: nothing was picked up, so there
+   * is no drag for the reveal and the collapse to disturb.
+   */
+  const dashboardBodyRef = useRef<HTMLDivElement>(null);
+  useBackgroundLongPress(
+    dashboardBodyRef,
+    useCallback(() => setEditModeAndTidy(true), [setEditModeAndTidy]),
+    isTouchDevice && !editMode,
+  );
+
+
+  // Tells every tile and group whether hiding belongs to a menu (desktop) or to
+  // Edit Layout (touch), without threading a flag through 28 widget components,
+  // and hands every DndContext the two ends of a lift. Declared here rather than
+  // with the rest of the edit state because it closes over beginLift/endLift.
+  const layoutEditState = useMemo(
+    () => ({ touchMode: isTouchDevice, editMode: isTouchDevice && editMode, beginLift, endLift }),
+    [isTouchDevice, editMode, beginLift, endLift],
+  );
 
   // Track previous background to avoid flashing during loading
   const prevBackgroundRef = useRef<BackgroundSettings | null>(null);
@@ -6786,6 +6932,7 @@ const Dashboard = () => {
                           collisionDetection={closestCenter}
                           onDragStart={handleHomeDragStart}
                           onDragEnd={handleHomeDragEnd}
+                          onDragCancel={handleHomeDragCancel}
                         >
                           <SortableContext
                             items={visibleHomes.map(h => h.id)}
@@ -7052,7 +7199,9 @@ const Dashboard = () => {
                         <DndContext
                           sensors={activeSensors}
                           collisionDetection={closestCenter}
+                          onDragStart={beginLift}
                           onDragEnd={handleCollectionGroupDragEnd}
+                          onDragCancel={endLift}
                         >
                           <SortableContext
                             items={collectionPayload.groups.map(g => g.id)}
@@ -7248,6 +7397,9 @@ const Dashboard = () => {
           resolveAccessory={resolvePinnedAccessory}
           isDarkBackground={isDarkBackground}
           editMode={isTouchDevice && editMode}
+          touchMode={isTouchDevice}
+          beginLift={beginLift}
+          endLift={endLift}
           onReorder={handleReorderTabs}
           onRename={handleUpdateTabOverrides}
           onUnpin={handleUnpinTab}
@@ -7328,6 +7480,7 @@ const Dashboard = () => {
                     collisionDetection={closestCenter}
                     onDragStart={handleHomeDragStart}
                     onDragEnd={handleHomeDragEnd}
+                    onDragCancel={handleHomeDragCancel}
                   >
                     <SortableContext
                       items={visibleHomes.map(h => h.id)}
@@ -7558,7 +7711,9 @@ const Dashboard = () => {
                   <DndContext
                     sensors={activeSensors}
                     collisionDetection={closestCenter}
+                    onDragStart={beginLift}
                     onDragEnd={handleCollectionGroupDragEnd}
+                    onDragCancel={endLift}
                   >
                     <SortableContext
                       items={collectionPayload.groups.map(g => g.id)}
@@ -7614,7 +7769,10 @@ const Dashboard = () => {
               refreshingContent={<Loader2 className={`h-5 w-5 animate-spin mx-auto mt-3 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`} />}
               pullingContent={<ArrowDown className={`h-5 w-5 mx-auto mt-3 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`} />}
             >
-            <div className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
+            {/* The hold-anywhere target. This wrapper already fills the
+                viewport, so the empty space below the last tile is covered,
+                and the sidebar and header are outside <main> entirely. */}
+            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
               {/* Pending Invitations Modal */}
               <Dialog open={pendingInvitationsOpen} onOpenChange={setPendingInvitationsOpen}>
                 <DialogContent className="sm:max-w-lg" style={{ zIndex: 10010 }}>
@@ -8087,7 +8245,16 @@ const Dashboard = () => {
                       onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
                       onToggleSceneHidden={selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined}
                     />}
-                    {showAutomations && <AutomationsSection homeId={selectedHomeId!} compact={compactMode} isDarkBackground={isDarkBackground} open={automationsOpen} demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined} />}
+                    {showAutomations && <AutomationsSection
+                      homeId={selectedHomeId!}
+                      compact={compactMode}
+                      isDarkBackground={isDarkBackground}
+                      open={automationsOpen}
+                      demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
+                      homeLayout={homeLayout}
+                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderAutomationCards : undefined}
+                      onToggleAutomationHidden={selectedHomeId && !isViewOnly ? handleToggleAutomationHidden : undefined}
+                    />}
                     {showStatus && <AnimatedCollapse open={statusOpen}>
                       <AreaSummary
                         accessories={summaryAccessories}
@@ -8101,10 +8268,10 @@ const Dashboard = () => {
                 <DndContext
                   sensors={activeSensors}
                   collisionDetection={closestCenter}
-                  onDragStart={(e) => setActiveDragId(String(e.active.id))}
+                  onDragStart={(e) => { setActiveDragId(String(e.active.id)); beginLift(); }}
                   onDragOver={handleSharedDragOver}
-                  onDragEnd={(e) => { handleSharedDragEnd(e); setActiveDragId(null); }}
-                  onDragCancel={() => { setActiveDragId(null); setDragCrossRoomBlocked(false); }}
+                  onDragEnd={(e) => { handleSharedDragEnd(e); setActiveDragId(null); endLift(); }}
+                  onDragCancel={() => { setActiveDragId(null); setDragCrossRoomBlocked(false); endLift(); }}
                 >
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (

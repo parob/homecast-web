@@ -108,6 +108,8 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { randomUUID } from '@/lib/uuid';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 
 // Measuring configuration to reduce layout measurements during drag
 const measuringConfig = {
@@ -374,6 +376,8 @@ export function CollectionDetail({
   }, [collection.id, isWebSocketConnected]);
 
   // DnD sensors — mirror DraggableGrid pattern (pointer for desktop, touch for iOS edit mode)
+  const { beginLift, endLift } = useLayoutEdit();
+
   const pointerSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -384,16 +388,20 @@ export function CollectionDetail({
   );
   const touchSensors = useSensors(
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
+      // Longer before Edit Layout is running than after — see lib/long-press.ts.
+      activationConstraint: {
+        delay: editMode ? LIFT_DELAY_EDITING : LIFT_DELAY_IDLE,
+        tolerance: 5,
+      },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  const disabledSensors = useSensors();
-  // Match DraggableGrid sensor pattern: always draggable on desktop, edit-mode-only on touch devices
-  const dndEnabled = !isTouchDevice || editMode === true;
-  const activeSensors = !dndEnabled ? disabledSensors : isTouchDevice ? touchSensors : pointerSensors;
+  // Always draggable, on both. On touch the long press that starts a drag is
+  // also how Edit Layout is entered, so there is nothing left to gate it behind
+  // — and swapping in an empty sensor list mid-gesture was never safe anyway.
+  const activeSensors = isTouchDevice ? touchSensors : pointerSensors;
 
   // Fetch homes for the picker via relay hooks
   const { data: homesData, loading: homesLoading } = useHomes();
@@ -1003,6 +1011,7 @@ export function CollectionDetail({
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
     onDragActiveChange?.(true);
+    beginLift?.();
     // Capture the dragged element's dimensions for the placeholder
     // Use dnd-kit's rect API which is more reliable
     const initialRect = event.active.rect.current.initial;
@@ -1045,12 +1054,24 @@ export function CollectionDetail({
   }, [payload.items]);
 
   // Handle drag end for reordering and cross-group moves
+  // A cancelled drag never reaches handleDragEnd, so without this the overlay
+  // stays up and — now that a drag can be what turned Edit Layout on — the
+  // deferred tidy-up never runs.
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+    setOverGroupId(null);
+    setActiveDragRect(null);
+    onDragActiveChange?.(false);
+    endLift?.();
+  }, [onDragActiveChange, endLift]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
     setOverGroupId(null);
     setActiveDragRect(null);
     onDragActiveChange?.(false);
+    endLift?.();
 
     if (!over) return;
 
@@ -1599,6 +1620,7 @@ export function CollectionDetail({
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
               measuring={measuringConfig}
             >
               <SortableContext
@@ -1768,6 +1790,7 @@ export function CollectionDetail({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
             <SortableContext items={allSortableIds} strategy={rectSortingStrategy}>
               <div className={compactMode ? 'space-y-4' : 'space-y-6'}>
