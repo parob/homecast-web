@@ -1,5 +1,5 @@
 import React, { Component, type ReactNode } from "react";
-import { isStaleBundleError, reloadForNewBundle } from "@/lib/stale-bundle";
+import { isStaleBundleError, isLikelyOffline, reloadForNewBundle, retryWithoutClearing } from "@/lib/stale-bundle";
 
 interface Props {
   children: ReactNode;
@@ -62,50 +62,78 @@ export class ErrorBoundary extends Component<Props, State> {
     return parts.join("\n") || "Unknown error";
   }
 
+  /**
+   * The two "nothing is broken, just try again" screens. Same shape, different
+   * words and a different recovery — kept together so they cannot drift apart.
+   */
+  private renderNotice(title: string, body: string, action: string, onAction: () => void) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+          textAlign: "center",
+          padding: 24,
+        }}
+      >
+        <div style={{ maxWidth: 360 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: "inherit" }}>
+            {title}
+          </h1>
+          <p style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5, marginBottom: 20 }}>
+            {body}
+          </p>
+          <button
+            onClick={onAction}
+            style={{
+              background: "rgba(128,128,128,0.1)",
+              color: "inherit",
+              border: "1px solid rgba(128,128,128,0.2)",
+              borderRadius: 8,
+              padding: "8px 20px",
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            {action}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   render() {
     if (!this.state.hasError) return this.props.children;
 
     const detail = this.getFullDetail();
 
+    // A module failed to load. Two different causes wear the same message —
+    // WebKit says "Importing a module script failed." whether a deploy renamed
+    // the chunk or the phone simply lost signal — so the offline case is split
+    // out first. It gets a plain retry: the shell cache is the only reason the
+    // app opens without a network at all, and clearing it to "fix" a blip is
+    // how a passing dead spot became an app that would not start.
+    if (isStaleBundleError(this.state.error) && isLikelyOffline()) {
+      return this.renderNotice(
+        "No connection",
+        "Homecast could not finish loading. Check your connection and try again.",
+        "Try again",
+        retryWithoutClearing
+      );
+    }
+
     // A deploy renamed the chunk this session was still asking for. Nothing is
     // broken and there is nothing to report — the bundle on disk is simply the
     // old one. Say that, instead of showing a stack trace for a working app.
     if (isStaleBundleError(this.state.error)) {
-      return (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100vh",
-            fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
-            textAlign: "center",
-            padding: 24,
-          }}
-        >
-          <div style={{ maxWidth: 360 }}>
-            <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: "inherit" }}>
-              Homecast has been updated
-            </h1>
-            <p style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5, marginBottom: 20 }}>
-              This page is running an older version. Reload to pick up the new one.
-            </p>
-            <button
-              onClick={reloadForNewBundle}
-              style={{
-                background: "rgba(128,128,128,0.1)",
-                color: "inherit",
-                border: "1px solid rgba(128,128,128,0.2)",
-                borderRadius: 8,
-                padding: "8px 20px",
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-            >
-              Reload
-            </button>
-          </div>
-        </div>
+      return this.renderNotice(
+        "Homecast has been updated",
+        "This page is running an older version. Reload to pick up the new one.",
+        "Reload",
+        reloadForNewBundle
       );
     }
 
