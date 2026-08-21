@@ -103,6 +103,21 @@ describe('the edit-mode summary row', () => {
 });
 
 describe('a pill is the same size whichever state it is in', () => {
+  it('keeps its button inside the label\u2019s line box, so the row cannot grow', () => {
+    // The one that stops the grid jumping. This row swaps in while a tile is
+    // being dragged — Edit Layout is entered by a long press that is already a
+    // drag — and it sits above that grid, so any extra height pushes what the
+    // finger is holding down the page. The button's 10px text would otherwise
+    // inherit the pill's 16-20px line box and make the row ~4px taller.
+    //
+    // Asserted as a class because jsdom has no layout to measure, and as
+    // `leading-none` rather than a fixed height because the root font size
+    // moves with the text-size setting.
+    setup(null);
+    expect(screen.getByRole('button', { name: 'Hide Scenes' }).className)
+      .toContain('leading-none');
+  });
+
   it('builds both states from the same shell', () => {
     // jsdom has no layout, so measuring heights would be theatre. The invariant
     // that actually prevents the jump is structural: both states put their

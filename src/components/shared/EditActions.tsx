@@ -29,7 +29,21 @@ interface ActionButtonProps {
   onClick: () => void;
   disabled?: boolean;
   /** `tile` sits over a widget; `row` is the smaller one for a sidebar line. */
-  size?: 'tile' | 'row';
+  /**
+   * `pill` is the summary row's. It differs from `row` in one way that carries
+   * real weight: `leading-none`, so the button's box hugs its own 10px text
+   * instead of inheriting the surrounding 16-20px line box.
+   *
+   * That is what lets it sit inside a summary pill without making the pill any
+   * taller than the live one beside it — and that row sits above the accessory
+   * grid, which is being dragged at the moment it swaps in. A taller row there
+   * pushes what the finger is holding down the page.
+   *
+   * Expressed as `leading-none` rather than a fixed height because the root font
+   * size is not fixed across text-size settings; hugging the text works at all
+   * of them, a hard-coded 24px works at one.
+   */
+  size?: 'tile' | 'row' | 'pill';
 }
 
 /**
@@ -61,7 +75,9 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
         'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-800/95 font-semibold text-white shadow-lg',
         'transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700',
         'disabled:opacity-50 disabled:hover:bg-zinc-800/95',
-        size === 'tile' ? 'px-2 py-0.5 text-[10px]' : 'px-1.5 py-0.5 text-[10px]',
+        size === 'tile' ? 'px-2 py-0.5 text-[10px]'
+          : size === 'pill' ? 'px-1.5 py-0.5 text-[10px] leading-none'
+          : 'px-1.5 py-0.5 text-[10px]',
       )}
     >
       {label}

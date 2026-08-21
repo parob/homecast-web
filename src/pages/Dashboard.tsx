@@ -46,6 +46,7 @@ import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
 import { TEXT_SCALE_BASE_PX, TEXT_SCALES } from '@/lib/text-scale';
 import { HomecastError } from '@/server/websocket';
+import { describeWriteFailure } from '@/lib/describe-error';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
 import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, invalidateAccessoriesForHome, normalizeAccessories, wasHydratedFromStorage, getCachedListLength } from '@/hooks/useHomeKitData';
@@ -217,6 +218,7 @@ import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialo
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { RelayStatusBadge } from '@/components/layout/RelayStatusBadge';
+import { ConnectionBadge } from '@/components/layout/ConnectionBadge';
 import { LocalModeBadge } from '@/components/layout/LocalModeBadge';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
@@ -4465,12 +4467,16 @@ const Dashboard = () => {
   // One width at every text size: the panel is chrome, and it stopped tracking
   // the setting when the setting stopped resizing chrome. These are the numbers
   // large used, which is the default and so what almost everyone already had.
-  // Chrome that changes the *layout* of what is under the finger, so it waits
-  // for the drop when the mode was entered by a lift: this widens the sidebar
-  // and swaps the summary pills for the taller edit row, either of which would
-  // shove the grid mid-drag. Badges, wiggle and the toolbar do not wait — they
-  // are what tells you the hold took.
+  // The sidebar widens while editing, which reflows the column beside it — so
+  // when the mode was entered by a lift, that waits for the drop rather than
+  // moving the grid under the finger. On a phone the sidebar is a closed
+  // overlay, so this is invisible there either way.
+  //
+  // The summary row used to wait with it, because its edit variant was taller.
+  // It is not any more (see SummarySectionEditPills), so it arrives at the lift
+  // with the wiggle and the toolbar — nothing below it moves.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
+  const editingSummaryRow = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
   const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
   const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
@@ -5168,6 +5174,19 @@ const Dashboard = () => {
     return serverValue;
   }, []);
 
+  /**
+   * The user-facing name of an accessory, for messages about it.
+   *
+   * Same two-step lookup as the homeId resolution below, and for the same
+   * reason: a collection view or a pinned tab can act on an accessory that is
+   * not in the home currently on screen.
+   */
+  const accessoryName = useCallback((accessoryId: string): string | undefined => {
+    const acc = accessories.find(a => a.id === accessoryId)
+      || allAccessoriesRef.current?.find(a => a.id === accessoryId);
+    return acc?.name || undefined;
+  }, [accessories]);
+
   // These hooks must be defined before any early returns to satisfy React hooks rules
   const handleToggle = useCallback(async (accessoryId: string, characteristicType: string, currentValue: boolean) => {
     if (isViewOnly) {
@@ -5197,14 +5216,11 @@ const Dashboard = () => {
       }));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
-      const msg = error instanceof HomecastError
-        ? `${error.code}: ${error.message}`
-        : (error.message || 'Failed to update device');
-      toast.error(msg);
+      toast.error(describeWriteFailure(error, accessoryName(accessoryId)));
       // Revert optimistic update on error
       updateCharacteristicInCache(accessoryId, characteristicType, JSON.stringify(currentValue));
     }
-  }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
+  }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly, accessoryName]);
 
   /**
    * Write any characteristic value.
@@ -5218,6 +5234,17 @@ const Dashboard = () => {
       toast.error('View-only access: you cannot control devices in this home');
       return;
     }
+    // Captured BEFORE the optimistic write, in the cache's own JSON-encoded
+    // form so it can go straight back. `handleToggle` is handed the previous
+    // value by its caller; this one has to read it, because a slider knows
+    // where it is going and not where it came from.
+    const previousValue = (
+      accessories.find(a => a.id === accessoryId)
+      || allAccessoriesRef.current?.find(a => a.id === accessoryId)
+    )?.services
+      ?.flatMap(svc => svc.characteristics || [])
+      .find(c => c.characteristicType === characteristicType)?.value;
+
     // Mark this as a pending update to prevent stale server updates from overwriting
     markPendingUpdate(accessoryId, characteristicType, value);
 
@@ -5239,12 +5266,21 @@ const Dashboard = () => {
       }));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
-      const msg = error instanceof HomecastError
-        ? `${error.code}: ${error.message}`
-        : (error.message || 'Failed to update');
-      toast.error(msg);
+      toast.error(describeWriteFailure(error, accessoryName(accessoryId)));
+      // Revert the optimistic update, exactly as handleToggle does. Without
+      // this the tile kept showing a brightness, mode or temperature the
+      // device never took — permanently, since nothing else rewrites a
+      // characteristic until the next refresh. A slow link made that the
+      // common case rather than the rare one.
+      //
+      // Skipped when there was no prior value to restore: an accessory whose
+      // characteristic HomeKit could not read has nothing to go back to, and
+      // writing `undefined` would erase the tile rather than restore it.
+      if (previousValue !== undefined && previousValue !== null) {
+        updateCharacteristicInCache(accessoryId, characteristicType, previousValue);
+      }
     }
-  }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly]);
+  }, [updateCharacteristicInCache, selectedHomeId, accessories, isViewOnly, accessoryName]);
 
   /** The numeric-only face of writeCharacteristic, kept for existing callers. */
   const handleSlider = useCallback(
@@ -6869,7 +6905,7 @@ const Dashboard = () => {
           />
 
 
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><ConnectionBadge isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -8181,7 +8217,7 @@ const Dashboard = () => {
                     bubbles aggregate every room, so there they sit behind the
                     Status pill with the other collapsible sections. */}
                 <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
-                  {isWholeHomeView && editingSidebar ? (
+                  {isWholeHomeView && editingSummaryRow ? (
                     /* Editing: a stand-in row that can show a hidden section as
                        well as hide a shown one, and that opens nothing. */
                     <SummarySectionEditPills

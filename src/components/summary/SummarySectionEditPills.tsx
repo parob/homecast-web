@@ -22,8 +22,14 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
  *
  * Each pill keeps its normal job. The label still opens and closes the section —
  * you are arranging the row, not frozen out of it — and a separate eye beside it
- * turns the section off. Two targets in one pill, which is why it is taller here
- * than the 20px live one.
+ * turns the section off. Two targets in one pill.
+ *
+ * **This row must be exactly as tall as the live one.** Edit Layout is entered by
+ * a long press that is already dragging a tile, so this row swaps in with a
+ * finger down — and it sits above the accessory grid, so a pixel of extra height
+ * pushes what you are holding down the page. It used to be taller, and the swap
+ * had to wait for the drop because of it. The `pill` button size is what keeps
+ * the two equal; see EditActions.
  *
  * A hidden section's pill is the exception: there is nothing to open, since the
  * section itself does not render while hidden, so the whole pill turns it back on.
@@ -67,7 +73,7 @@ export function SummarySectionEditPills({
             >
               <span>{label}</span>
               <EditActionButton
-                size="row"
+                size="pill"
                 label="Unhide"
                 ariaLabel={`Unhide ${label}`}
                 onClick={() => onToggleHidden(id, true)}
@@ -97,7 +103,7 @@ export function SummarySectionEditPills({
               <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
             </button>
             <EditActionButton
-              size="row"
+              size="pill"
               label="Hide"
               ariaLabel={`Hide ${label}`}
               onClick={() => onToggleHidden(id, false)}
