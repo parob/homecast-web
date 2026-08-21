@@ -1,4 +1,34 @@
 /**
+ * The wait, on its own — because a wait is no longer the same thing as an
+ * empty screen.
+ *
+ * Held series paint immediately now, so opening the whole house after a room
+ * arrives with content already on it and the rest still in flight. Gated on
+ * "nothing to show yet", as it was when it lived only inside the skeleton,
+ * that case reported nothing at all: charts quietly filled themselves in with
+ * no sign that anything was still coming.
+ */
+export function SeriesProgress({ progress }: { progress?: { done: number; total: number } }) {
+  const pct = progress && progress.total > 0
+    ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+    : null;
+  if (pct === null) return null;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary/60 transition-[width] duration-300"
+          style={{ width: `${Math.max(pct, 4)}%` }}
+        />
+      </div>
+      <span className="shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
+        {progress!.done} of {progress!.total} series
+      </span>
+    </div>
+  );
+}
+
+/**
  * What a chart looks like before it arrives: panel-shaped, so the page keeps
  * its height and nothing jumps when the data lands. A spinner in empty space
  * measures nothing and then shoves everything down.
@@ -15,24 +45,9 @@ export default function ChartSkeleton({
   panels?: number;
   progress?: { done: number; total: number };
 }) {
-  const pct = progress && progress.total > 0
-    ? Math.min(100, Math.round((progress.done / progress.total) * 100))
-    : null;
   return (
     <div className="space-y-3">
-      {pct !== null && (
-        <div className="flex items-center gap-2">
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary/60 transition-[width] duration-300"
-              style={{ width: `${Math.max(pct, 4)}%` }}
-            />
-          </div>
-          <span className="shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
-            {progress!.done} of {progress!.total} series
-          </span>
-        </div>
-      )}
+      <SeriesProgress progress={progress} />
       {Array.from({ length: panels }, (_, i) => (
         <div key={i} className="space-y-2 rounded-lg border p-3">
           <div className="h-3 w-28 animate-pulse rounded bg-muted" />

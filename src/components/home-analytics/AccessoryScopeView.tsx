@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { AccessorySeriesSection } from './AccessorySections';
-import ChartSkeleton from './ChartSkeleton';
+import ChartSkeleton, { SeriesProgress } from './ChartSkeleton';
 import { useMultiSeriesHistory } from './useMultiSeriesHistory';
 import type { AnalyticsSettings } from './scope';
 import type { HistorySeriesRefInput } from '@/lib/graphql/types';
@@ -68,6 +68,7 @@ export default function AccessoryScopeView({
 
   return (
     <div className="space-y-4">
+      {loading && <SeriesProgress progress={progress} />}
       {sections.map(section => (
         <AccessorySeriesSection
           key={section.type}

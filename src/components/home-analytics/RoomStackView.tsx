@@ -11,7 +11,7 @@ import { PLOT_LEFT, PLOT_RIGHT } from './chartGeometry';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import ActivityStrips, { type ActivityEntry, type ActivityGroup } from './ActivityStrips';
 import AnalyticsPanel from './AnalyticsPanel';
-import ChartSkeleton from './ChartSkeleton';
+import ChartSkeleton, { SeriesProgress } from './ChartSkeleton';
 import ChartLegend from './ChartLegend';
 import EChartsTimeChart from './EChartsTimeChart';
 import { seriesColor, type ChartSeries } from './chartColors';
@@ -465,6 +465,10 @@ export default function RoomStackView({
 
   return (
     <div className="space-y-3">
+      {/* Held series paint at once now, so "there is data" no longer means
+          "we are done" — without this the house filled itself in silently
+          after a room had been visited. */}
+      {!firstLoad && loading && <SeriesProgress progress={progress} />}
       {firstLoad ? (
         <ChartSkeleton progress={progress} />
       ) : chartPanels.length === 0 && stripEntries.length === 0 ? (

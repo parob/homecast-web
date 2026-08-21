@@ -3,7 +3,7 @@ import { HISTORY_CHAR_ORDER } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { canonicalHistoryType } from '@/history/keys';
 import { stateValueLabel } from '@/history/labels';
-import ChartSkeleton from './ChartSkeleton';
+import ChartSkeleton, { SeriesProgress } from './ChartSkeleton';
 import { SETPOINT_STATE_TYPES } from '@/history/categories';
 import StateTimeline from '@/components/widgets/StateTimeline';
 import AggregateSeriesSection, { type AggregateEntry } from './AggregateSeriesSection';
@@ -110,6 +110,7 @@ export default function GroupHistorySections({
 
   return (
     <div className="space-y-5">
+      {loading && <SeriesProgress progress={progress} />}
       {sections.map(section => {
         const label = charLabel(section.type);
         const nameOf = (accessoryId: string, index: number) =>
