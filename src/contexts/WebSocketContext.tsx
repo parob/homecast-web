@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { HomeKit, isRelayCapable } from '../native/homekit-bridge';
 import { serverConnection } from '../server/connection';
 import type { BroadcastMessage } from '../server/websocket';
+import { type ConnectionQuality, isDegraded } from '../server/connection-quality';
+import { setPendingWriteUrgency } from '../lib/pending-writes';
 import { invalidateHomeKitCache, invalidateHomeCaches, revalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
 import { useLocalMode } from '../hooks/useLocalMode';
@@ -45,6 +47,15 @@ export type ServerConnectionInfo = {
 
 interface WebSocketContextValue {
   isConnected: boolean;
+  /**
+   * How well the connection is working, next to whether it exists.
+   *
+   * `isConnected` flattens four transport states into one boolean, and none of
+   * the four could say "up, but every request is taking four seconds" — which
+   * is the state people actually notice and the one nothing could express.
+   * See server/connection-quality.ts.
+   */
+  quality: ConnectionQuality;
   serverInfo: ServerConnectionInfo | null;
   // Subscribe to updates - returns unsubscribe function
   subscribeToUpdates: (callbacks: UpdateCallbacks) => () => void;
@@ -78,6 +89,7 @@ type BufferedReachabilityUpdate = {
 
 export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [quality, setQuality] = useState<ConnectionQuality>('unknown');
   const [serverInfo, setServerInfo] = useState<ServerConnectionInfo | null>(null);
   const { active: localModeActive } = useLocalMode();
 
@@ -224,6 +236,11 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       const connected = state.connectionState === 'connected';
       wsLog.info(`Relay state: ${state.connectionState}`);
       setIsConnected(connected);
+      setQuality(state.quality);
+      // Once latency is on the record, a tile should stop waiting a second
+      // before admitting it — that second is exactly when a user decides the
+      // tap missed and taps again. See lib/pending-writes.ts.
+      setPendingWriteUrgency(isDegraded(state.quality));
 
       // Coming back from a drop is the one case the general throttle must not
       // swallow: the server's affinity redirect lands within a second of the
@@ -338,7 +355,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <WebSocketContext.Provider value={{ isConnected, serverInfo, subscribeToUpdates }}>
+    <WebSocketContext.Provider value={{ isConnected, quality, serverInfo, subscribeToUpdates }}>
       {children}
     </WebSocketContext.Provider>
   );

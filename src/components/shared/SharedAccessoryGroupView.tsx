@@ -28,12 +28,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
+import type { ConnectionQuality } from '@/server/connection-quality';
 
 interface SharedAccessoryGroupViewProps {
   entityData: SharedEntityData;
   shareHash: string;
   passcode?: string | null;
-  onWsStatusChange?: (subscribed: boolean) => void;
+  onWsStatusChange?: (subscribed: boolean, quality: ConnectionQuality) => void;
   onAccessoriesLoaded?: (meta: { count: number; entityName: string | null; background: any }) => void;
   onRequestPasscodeUpgrade?: () => void;
 }
@@ -121,6 +122,7 @@ export function SharedAccessoryGroupView({
   // WebSocket for realtime updates
   const {
     isConnected: wsConnected,
+    quality: wsQuality,
     isSubscribed: wsSubscribed,
     setOnCharacteristicUpdate,
     setOnReachabilityUpdate,
@@ -177,9 +179,9 @@ export function SharedAccessoryGroupView({
 
   // Report WebSocket status to parent for Live indicator
   useEffect(() => {
-    onWsStatusChange?.(wsSubscribed);
+    onWsStatusChange?.(wsSubscribed, wsQuality);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsSubscribed]);
+  }, [wsSubscribed, wsQuality]);
 
   const [setCharacteristic] = useMutation<PublicEntitySetCharacteristicResponse>(
     PUBLIC_ENTITY_SET_CHARACTERISTIC

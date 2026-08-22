@@ -8,11 +8,13 @@
  */
 
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './websocket';
+import type { ConnectionQuality } from './connection-quality';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
+import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
 import { toastConnection } from '../lib/toast-bus';
 
@@ -63,6 +65,15 @@ export interface ServerConnectionState {
   connectionState: ConnectionState;
   error: Error | null;
   relayStatus: boolean | null; // null = not relay-capable, true = active relay, false = standby
+  /**
+   * How well the connection is working, as opposed to whether it exists.
+   *
+   * `connectionState` cannot answer this: every one of its four values is
+   * about whether a socket is up, and the state users complain about — up,
+   * and taking four seconds a request — is `connected` in all of them.
+   * See ./connection-quality.ts.
+   */
+  quality: ConnectionQuality;
 }
 
 type StateListener = (state: ServerConnectionState) => void;
@@ -127,7 +138,15 @@ const LAST_CONNECTED_AT_KEY = 'homecast-last-connected-at';
 // the relevant entries. Cache entries are refreshed in the background.
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const communityCache = new Map<string, { data: unknown; timestamp: number; pending?: Promise<unknown> }>();
+const communityCache = new Map<string, {
+  data: unknown;
+  timestamp: number;
+  pending?: Promise<unknown>;
+  /** Consecutive background refreshes that have failed since one last succeeded. */
+  refreshFailures?: number;
+  /** When the most recent background refresh failed. */
+  lastRefreshFailureAt?: number;
+}>();
 
 /**
  * Bumped by every invalidation, checked before every write-back.
@@ -273,9 +292,43 @@ export async function communityRequest<T>(action: string, payload: Record<string
         // *because* the answer we are holding is out of date. Writing it back
         // would undo the invalidation with the very data it was aimed at.
         if (communityCacheGeneration === gen) {
+          // A fresh answer resets the failure record along with the data.
           communityCache.set(key, { data: result, timestamp: Date.now() });
         }
         return result;
+      }).catch((error: unknown) => {
+        // A rejected refresh used to fall straight through this chain. Two
+        // consequences, both bad and neither visible:
+        //
+        //  1. Nothing handled the rejection. `cached.pending` is never awaited
+        //     — the caller already has its stale answer and returned — so the
+        //     rejection surfaced as an unhandled promise rejection instead of
+        //     as anything actionable.
+        //  2. The stale entry stayed exactly as it was, so the next read
+        //     re-served the same out-of-date data and launched another doomed
+        //     refresh. On a weak link that is a dashboard built entirely from
+        //     minutes-old state, with no error and no staleness anywhere.
+        //
+        // The entry is deliberately NOT dropped: stale data still beats an
+        // empty screen, and the timestamp is what makes its age reportable.
+        // Recording the failure is what turns "silently stale" into "known
+        // stale", which is the whole point.
+        const entry = communityCache.get(key);
+        if (entry) {
+          entry.refreshFailures = (entry.refreshFailures ?? 0) + 1;
+          entry.lastRefreshFailureAt = Date.now();
+        }
+        try {
+          browserLogger.logInfo('community_cache_refresh_failed', {
+            action,
+            age_ms: Date.now() - (entry?.timestamp ?? Date.now()),
+            consecutive_failures: entry?.refreshFailures ?? 1,
+            error: describeError(error),
+          });
+        } catch { /* logging must never replace the original failure */ }
+        // Swallowed on purpose: the caller was handed the stale value and has
+        // already returned. Rethrowing here reaches nobody.
+        return undefined;
       }).finally(() => {
         const entry = communityCache.get(key);
         if (entry) delete entry.pending;
@@ -404,6 +457,7 @@ class ServerConnection {
     connectionState: 'disconnected',
     error: null,
     relayStatus: null,
+    quality: 'unknown',
   };
 
   // Subscription management
@@ -484,6 +538,21 @@ class ServerConnection {
       return null;
     }
     return this.websocket.getConnectedAt();
+  }
+
+  /**
+   * The most recent measured round trip, in ms, or null when there is none.
+   *
+   * Null rather than 0 on purpose, so the UI says "checking" instead of
+   * rendering a confident "0ms" — which would be the same lie, one layer up.
+   */
+  getLastRttMs(): number | null {
+    return this.websocket?.getLastRttMs() ?? null;
+  }
+
+  /** When that round trip was measured. 0 when never. */
+  getLastRttAt(): number {
+    return this.websocket?.getLastRttAt() ?? 0;
   }
 
   /**
@@ -650,6 +719,9 @@ class ServerConnection {
             }
             this.updateState(updates);
           },
+          onQualityChange: (quality) => {
+            this.updateState({ quality });
+          },
           onError: (error) => {
             console.error('[ServerConnection] Error:', error);
             this.updateState({ error });
@@ -718,6 +790,7 @@ class ServerConnection {
       connectionState: 'disconnected',
       error: null,
       relayStatus: null,
+      quality: 'unknown',
     });
   }
 

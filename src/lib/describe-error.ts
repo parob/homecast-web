@@ -102,3 +102,40 @@ export function errorCode(e: unknown): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * Codes that mean the write never got a verdict, rather than being refused.
+ *
+ * These are the only ones worth rewording: for everything else the thrown
+ * message says something specific about the accessory, and replacing it with
+ * generic prose would throw away the useful half.
+ */
+const NO_VERDICT_CODES = new Set(['TIMEOUT', 'DEVICE_ERROR']);
+const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE']);
+
+/**
+ * What to tell someone whose device write did not land.
+ *
+ * `describeError` is right for a log and wrong for a toast. It deliberately
+ * keeps the error code, so a failed tap read
+ * `TIMEOUT: Request timed out: characteristic.set` — which names the transport
+ * action rather than the thing the user touched, and asks them to parse a code
+ * to learn that the light did not come on.
+ *
+ * Only transport failures are reworded, and deliberately without blaming the
+ * connection: "didn't respond in time" is all we actually know. Whether the
+ * connection is the cause is a separate question, now answered by the
+ * connection indicator rather than guessed at here.
+ */
+export function describeWriteFailure(e: unknown, accessoryName?: string): string {
+  const name = typeof accessoryName === 'string' ? accessoryName.trim() : '';
+  const code = errorCode(e);
+
+  if (code && NO_VERDICT_CODES.has(code)) {
+    return `${name || 'The accessory'} didn't respond in time.`;
+  }
+  if (code && UNREACHABLE_CODES.has(code)) {
+    return `Couldn't reach ${name || 'the accessory'} — your home isn't connected.`;
+  }
+  return describeError(e);
+}

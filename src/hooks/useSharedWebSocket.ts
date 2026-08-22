@@ -2,6 +2,13 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { HomeKitAccessory, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { config as appConfig } from '@/lib/config';
 import { getBrowserSessionId } from '@/server/connection';
+import {
+  INITIAL_RECONNECT_DELAY, nextReconnectDelay, jitter, isSocketStale,
+} from '@/server/reconnect-policy';
+import {
+  type ConnectionQuality, type HysteresisState,
+  classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
+} from '@/server/connection-quality';
 
 type CharacteristicUpdate = {
   type: 'characteristic_update';
@@ -73,6 +80,37 @@ export function useSharedWebSocket(
   const [isConnected, setIsConnected] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
+
+  // ── Connection quality ────────────────────────────────────────────────────
+  // A share link had the least of any surface here: no staleness detection at
+  // all, so a half-open socket never recovered; a flat 3s reconnect with no
+  // backoff or jitter; and `isConnected` computed and then never rendered by
+  // any of the six views that destructure it. The viewer has no account, no
+  // history and — with no pull-to-refresh on these pages — no way to re-ask.
+  const [quality, setQuality] = useState<ConnectionQuality>('unknown');
+  const qualityStateRef = useRef<HysteresisState>(initialHysteresis('unknown'));
+  const lastInboundAtRef = useRef(0);
+  const lastPingSentAtRef = useRef<number | null>(null);
+  const rttSamplesRef = useRef<number[]>([]);
+  const lastRttAtRef = useRef(0);
+  /** Grows per failed attempt, reset on a successful open. */
+  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
+
+  const evaluateQuality = useCallback((socketConnected: boolean) => {
+    const now = Date.now();
+    const raw = classifyQuality({
+      socketConnected,
+      rttSamples: rttSamplesRef.current,
+      lastRttAt: lastRttAtRef.current,
+      // This socket is push-only — there are no requests to be outstanding —
+      // so the in-flight signal simply does not apply here.
+      oldestInFlightSentAt: null,
+      consecutiveFailures: 0,
+    }, now);
+    const next = applyHysteresis(qualityStateRef.current, raw, now);
+    if (next.shown !== qualityStateRef.current.shown) setQuality(next.shown);
+    qualityStateRef.current = next;
+  }, []);
 
   // Update buffering - batch rapid updates to reduce React re-renders
   const characteristicBufferRef = useRef<Map<string, BufferedCharacteristicUpdate>>(new Map());
@@ -193,6 +231,16 @@ export function useSharedWebSocket(
       console.log('[SharedWS] Connected - subscribing...');
       setIsConnected(true);
       setSubscribeError(null);
+      // A socket that just opened has legitimately heard nothing yet; stamping
+      // it here is what stops `isSocketStale` firing on a brand-new connection.
+      lastInboundAtRef.current = Date.now();
+      lastPingSentAtRef.current = null;
+      // Samples from the previous socket describe a connection that no longer
+      // exists. Start from "unknown" and let the first pong answer it.
+      rttSamplesRef.current = [];
+      lastRttAtRef.current = 0;
+      reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
+      evaluateQuality(true);
 
       // Subscribe to share hash. browserSessionId lets the server replace this
       // tab's previous session instead of accumulating a new one per socket.
@@ -205,13 +253,37 @@ export function useSharedWebSocket(
 
       // Start ping interval to keep connection alive
       pingIntervalRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
+        if (ws.readyState !== WebSocket.OPEN) return;
+
+        // A half-open socket reports OPEN forever: TCP is up, the peer is gone,
+        // and no `onclose` will ever fire. The main client has guarded against
+        // this since `isSocketStale` was written; this one never did, so a
+        // shared page could sit on dead-but-confident data indefinitely with
+        // no reconnect and — these pages having no pull-to-refresh — nothing
+        // the viewer could do about it.
+        if (isSocketStale(lastInboundAtRef.current, Date.now())) {
+          console.warn('[SharedWS] No traffic — treating socket as dead and reconnecting');
+          try { ws.close(); } catch { /* already gone */ }
+          return;
         }
+
+        // An unanswered ping is itself the measurement: the round trip has
+        // already exceeded a whole interval. Recorded as a lower bound rather
+        // than discarded.
+        if (lastPingSentAtRef.current !== null) {
+          rttSamplesRef.current = pushRtt(rttSamplesRef.current, Date.now() - lastPingSentAtRef.current);
+          lastRttAtRef.current = Date.now();
+        }
+        lastPingSentAtRef.current = Date.now();
+        ws.send(JSON.stringify({ type: 'ping' }));
+        evaluateQuality(true);
       }, 30000);
     };
 
     ws.onmessage = (event) => {
+      // Anything arriving is proof the peer is still there — the only evidence
+      // there is, since readyState cannot tell a live socket from a half-open one.
+      lastInboundAtRef.current = Date.now();
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
 
@@ -253,6 +325,16 @@ export function useSharedWebSocket(
         } else if (message.type === 'ping') {
           // Server ping - respond with pong
           ws.send(JSON.stringify({ type: 'pong' }));
+        } else if (message.type === 'pong') {
+          // The round trip. The shared endpoint has always replied to a client
+          // ping with a bare pong (web_clients.py, shared_view_endpoint), so
+          // this needed no protocol change — the answer was simply never read.
+          if (lastPingSentAtRef.current !== null) {
+            rttSamplesRef.current = pushRtt(rttSamplesRef.current, Date.now() - lastPingSentAtRef.current);
+            lastPingSentAtRef.current = null;
+            lastRttAtRef.current = Date.now();
+            evaluateQuality(true);
+          }
         }
       } catch (error) {
         console.error('[SharedWS] Parse error:', error);
@@ -274,19 +356,28 @@ export function useSharedWebSocket(
         pingIntervalRef.current = null;
       }
 
+      evaluateQuality(false);
+
       // Reconnect after delay (unless access denied or replaced by a newer connection)
       if (![4001, 4002, 4003].includes(event.code)) {
+        // Was a flat 3s with no backoff and no jitter. Against a server that is
+        // down or restarting, that is every viewer of every share retrying in
+        // lockstep, twenty times a minute, for as long as it lasts. Same policy
+        // as the main client now (`reconnect-policy.ts`), including the ±20%
+        // jitter that keeps a crowd from arriving together.
+        const delay = jitter(reconnectDelayRef.current);
+        reconnectDelayRef.current = nextReconnectDelay(reconnectDelayRef.current, false);
         reconnectTimeoutRef.current = setTimeout(() => {
           console.log('[SharedWS] Reconnecting...');
           connect();
-        }, 3000);
+        }, delay);
       }
     };
 
     ws.onerror = (error) => {
       console.error('[SharedWS] Error:', error);
     };
-  }, [shareHash, passcode, scheduleFlush, teardownSocket]);
+  }, [shareHash, passcode, scheduleFlush, teardownSocket, evaluateQuality]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
@@ -350,6 +441,8 @@ export function useSharedWebSocket(
 
   return {
     isConnected,
+    /** How well this connection is working — see server/connection-quality.ts. */
+    quality,
     isSubscribed,
     subscribeError,
     disconnect,

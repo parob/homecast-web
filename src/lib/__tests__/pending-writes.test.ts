@@ -11,6 +11,7 @@ import {
   MIN_VISIBLE_MS,
   IDLE_GRACE_MS,
   MAX_VISIBLE_MS,
+  setPendingWriteUrgency,
 } from '../pending-writes';
 
 const KEY = accessoryKey('abc');
@@ -235,5 +236,50 @@ describe('pending-writes', () => {
     // so its synthetic accessories are never tracked and can never ring.
     expect(isRingVisible(accessoryKey('never-written'))).toBe(false);
     expect(isWriting(accessoryKey('never-written'))).toBe(false);
+  });
+});
+
+// A second of delay is right when we are guessing and wrong when we already
+// know: it is exactly the window in which someone decides the tap missed and
+// taps again.
+describe('when the connection is already known to be bad', () => {
+  it('rings at once instead of waiting out the delay', () => {
+    setPendingWriteUrgency(true);
+    const d = deferred();
+    void trackWrite(KEY, d.promise);
+
+    vi.advanceTimersByTime(0);
+    expect(isRingVisible(KEY)).toBe(true);
+
+    d.resolve();
+  });
+
+  it('still waits on a healthy connection', () => {
+    setPendingWriteUrgency(false);
+    const d = deferred();
+    void trackWrite(KEY, d.promise);
+
+    vi.advanceTimersByTime(SHOW_DELAY_MS - 1);
+    expect(isRingVisible(KEY)).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(isRingVisible(KEY)).toBe(true);
+
+    d.resolve();
+  });
+
+  it('is cleared by the test reset, not left for the next test to inherit', () => {
+    // Written the long way round on purpose: asserting the delay is back
+    // without first turning it on would pass whether or not the reset exists,
+    // which is exactly how the first version of this test passed vacuously.
+    setPendingWriteUrgency(true);
+    __resetPendingWrites();
+
+    const d = deferred();
+    void trackWrite(KEY, d.promise);
+    vi.advanceTimersByTime(0);
+    expect(isRingVisible(KEY)).toBe(false);
+    vi.advanceTimersByTime(SHOW_DELAY_MS);
+    expect(isRingVisible(KEY)).toBe(true);
+    d.resolve();
   });
 });

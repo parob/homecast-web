@@ -121,10 +121,18 @@ const retryLink = new RetryLink({
   },
   attempts: {
     max: 3,
-    retryIf: (error) => {
-      // Don't retry mutations by default — they're not idempotent.
-      // Only retry transport-layer failures (network errors / 5xx / aborts).
+    retryIf: (error, operation) => {
       if (!error) return false;
+      // Mutations are not idempotent, and a client-side abort says nothing
+      // about whether the server ran them — on a weak link a request that
+      // passed the 15s ceiling has usually arrived, so retrying turns one
+      // write into several. This rule was documented here from the start but
+      // never enforced: `retryIf` was declared with a single parameter, so the
+      // operation was never consulted and every mutation was retried `max`
+      // times. `operationType` is on the operation already; nothing needs to
+      // parse the document to find it.
+      if (operation?.operationType === "mutation") return false;
+      // Only retry transport-layer failures (network errors / 5xx / aborts).
       // RetryLink invokes retryIf on the `networkError` shape only; it won't
       // fire for GraphQL errors in the result array, so we can be loose here.
       const msg = String(error?.message || "");

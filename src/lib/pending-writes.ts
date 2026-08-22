@@ -36,6 +36,36 @@
 export const SHOW_DELAY_MS = 1000;
 
 /**
+ * The delay when we already know the connection is bad.
+ *
+ * 1000ms is well chosen for a healthy link and exactly wrong on a slow one: it
+ * is the window in which the user decides the tap did not register and taps
+ * again. Waiting a second to admit latency we have *already measured* is the
+ * one case where the delay buys nothing — there is no risk of crying wolf when
+ * the wolf is on the record.
+ */
+export const SHOW_DELAY_DEGRADED_MS = 0;
+
+/**
+ * Whether the ring should appear at once.
+ *
+ * A plain module-level flag rather than an import from the transport, because
+ * this file is deliberately React-free and dependency-free so it can be tested
+ * with fake timers and nothing else. The transport pushes; this never pulls.
+ */
+let showImmediately = false;
+
+/** Told by whoever knows — see contexts/WebSocketContext.tsx. */
+export function setPendingWriteUrgency(degraded: boolean): void {
+  showImmediately = degraded;
+}
+
+/** Exposed for tests; not part of the component-facing API. */
+export function getShowDelayMs(): number {
+  return showImmediately ? SHOW_DELAY_DEGRADED_MS : SHOW_DELAY_MS;
+}
+
+/**
  * Once shown, the shortest time the ring stays up.
  *
  * Without it a write settling at 1.02s paints a ring for 20ms, which reads as a
@@ -231,7 +261,7 @@ function begin(key: string): void {
   if (entry.burstStartedAt === null) {
     entry.burstStartedAt = Date.now();
     if (!entry.visible && !entry.showTimer) {
-      entry.showTimer = setTimeout(() => show(key), SHOW_DELAY_MS);
+      entry.showTimer = setTimeout(() => show(key), getShowDelayMs());
     }
   }
 }
@@ -305,4 +335,7 @@ export function __resetPendingWrites(): void {
     if (entry.capTimer) clearTimeout(entry.capTimer);
     entries.delete(key);
   }
+  // Module-level, so without this one degraded test would silently change the
+  // timing of every test that ran after it.
+  showImmediately = false;
 }

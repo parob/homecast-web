@@ -40,6 +40,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
+import type { ConnectionQuality } from '@/server/connection-quality';
 
 interface SharedCollectionViewProps {
   entityData: SharedEntityData;
@@ -49,7 +50,7 @@ interface SharedCollectionViewProps {
   renderSidebar?: (sidebar: React.ReactNode) => void;
   externalSelectedGroup?: string | null;
   onExternalGroupSelect?: (group: string | null) => void;
-  onWsStatusChange?: (subscribed: boolean) => void;
+  onWsStatusChange?: (subscribed: boolean, quality: ConnectionQuality) => void;
   onAccessoriesLoaded?: (meta: { count: number; entityName: string | null; background: any }) => void;
   onRequestPasscodeUpgrade?: () => void;
 }
@@ -185,6 +186,7 @@ export function SharedCollectionView({
   // WebSocket for realtime updates
   const {
     isConnected: wsConnected,
+    quality: wsQuality,
     isSubscribed: wsSubscribed,
     setOnCharacteristicUpdate,
     setOnReachabilityUpdate,
@@ -238,9 +240,9 @@ export function SharedCollectionView({
 
   // Report WebSocket status to parent for Live indicator
   useEffect(() => {
-    onWsStatusChange?.(wsSubscribed);
+    onWsStatusChange?.(wsSubscribed, wsQuality);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsSubscribed]);
+  }, [wsSubscribed, wsQuality]);
 
   // Create a map of accessory ID to accessory for quick lookup
   const accessoryMap = useMemo(() => {

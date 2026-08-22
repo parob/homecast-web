@@ -39,9 +39,13 @@ import {
   Eye,
   Info,
   KeyRound,
-  Wifi,
+  WifiOff,
+  RefreshCw,
   Home as HomeIcon,
 } from 'lucide-react';
+import { isTransportError } from '@/lib/graphql-errors';
+import type { ConnectionQuality } from '@/server/connection-quality';
+import { connectionPresentation } from '@/lib/connection-presentation';
 import { SharedCollectionView } from '@/components/shared/SharedCollectionView';
 import { SharedRoomView } from '@/components/shared/SharedRoomView';
 import { SharedHomeView } from '@/components/shared/SharedHomeView';
@@ -112,13 +116,14 @@ function SharedHeaderContent({ icon: Icon, title, subtitle }: { icon: typeof Fol
  * and the burger, and this text is ~40 characters.
  */
 function SharedStatusBar({
-  role, wsSubscribed, accessoriesCount, canUpgrade,
+  role, wsSubscribed, wsQuality, accessoriesCount, canUpgrade,
   upgradeDialogOpen, setUpgradeDialogOpen,
   upgradePasscode, setUpgradePasscode,
   upgradeError, setUpgradeError, onUpgradeSubmit,
 }: {
   role: string;
   wsSubscribed: boolean;
+  wsQuality: ConnectionQuality;
   accessoriesCount: number;
   canUpgrade: boolean;
   upgradeDialogOpen: boolean;
@@ -132,6 +137,12 @@ function SharedStatusBar({
   const { isDarkBackground } = useBackgroundContext();
   const RoleIcon = role === 'control' ? Zap : Eye;
 
+  // A healthy socket that has not subscribed yet is not yet carrying updates,
+  // so "Live" would be a promise we are not keeping. Brief in practice —
+  // subscribe goes out on open — but "checking" is the honest word for it.
+  const effectiveQuality: ConnectionQuality =
+    wsQuality === 'good' && !wsSubscribed ? 'unknown' : wsQuality;
+
   // The detail, shared by the wide layout and the narrow popover so the two
   // cannot drift.
   const detail = (
@@ -140,15 +151,6 @@ function SharedStatusBar({
         <RoleIcon className="h-3 w-3 shrink-0" />
         {role === 'control' ? 'Control Access' : 'View Only'}
       </span>
-      {wsSubscribed && (
-        <>
-          <span aria-hidden>·</span>
-          <span className="flex items-center gap-1 whitespace-nowrap text-green-600">
-            <Wifi className="h-3 w-3 shrink-0" />
-            Live
-          </span>
-        </>
-      )}
       {accessoriesCount > 0 && (
         <>
           <span aria-hidden>·</span>
@@ -182,6 +184,30 @@ function SharedStatusBar({
           <div className="flex items-center gap-2 text-xs text-muted-foreground">{detail}</div>
         </PopoverContent>
       </Popover>
+
+      {/*
+        Never behind the ⓘ, for the same reason Unlock Control is not: on a
+        narrow screen everything in `detail` collapses into that popover, and a
+        connection indicator nobody opens is a connection indicator that does
+        not exist. Mobile is exactly where this matters most.
+
+        Present at every state, `good` included. The old "Live" chip appeared
+        only when subscribed, so its absence meant both "connecting", "dropped"
+        and "nothing is checking" — which is the ambiguity this whole change is
+        about. It has been folded into this one, so there is a single place
+        that speaks about the connection.
+      */}
+      <span
+        className="flex items-center gap-1 whitespace-nowrap"
+        aria-label={connectionPresentation(effectiveQuality).srLabel}
+      >
+        <span className={cn(
+          'h-1.5 w-1.5 rounded-full shrink-0',
+          connectionPresentation(effectiveQuality).dotClass,
+          connectionPresentation(effectiveQuality).pulse && 'motion-safe:animate-pulse',
+        )} />
+        {connectionPresentation(effectiveQuality).label ?? (wsSubscribed ? 'Live' : null)}
+      </span>
 
       {/* Never behind the ⓘ: the one action here, and the only route into
           control access. */}
@@ -257,6 +283,18 @@ export default function SharedEntityPage() {
 
   // WebSocket status reported by child views (for Live indicator)
   const [wsSubscribed, setWsSubscribed] = useState(false);
+  const [wsQuality, setWsQuality] = useState<ConnectionQuality>('unknown');
+
+  /**
+   * Say something during the long middle of a slow load.
+   *
+   * Apollo aborts at 15s (`GRAPHQL_REQUEST_TIMEOUT_MS`) and RetryLink makes
+   * three attempts, so on weak mobile data this page can sit on a bare
+   * "Loading..." for roughly forty-five seconds before it resolves either way.
+   * Nothing in that window distinguished a slow connection from a hung page,
+   * and the viewer has no other signal to go on.
+   */
+  const [slowLoading, setSlowLoading] = useState(false);
 
   // Callback for child views to set sidebar content
   const handleSetSidebar = useCallback((sidebar: React.ReactNode) => {
@@ -269,8 +307,9 @@ export default function SharedEntityPage() {
   }, []);
 
   // Callback for child views to report WebSocket subscription status
-  const handleWsStatusChange = useCallback((subscribed: boolean) => {
+  const handleWsStatusChange = useCallback((subscribed: boolean, quality: ConnectionQuality) => {
     setWsSubscribed(subscribed);
+    setWsQuality(quality);
   }, []);
 
   // --- Analytics, when the home's owner has opened it to share links -------
@@ -355,6 +394,17 @@ export default function SharedEntityPage() {
 
   const entity = data?.publicEntity;
   const requiresPasscode = entity?.requiresPasscode && !submittedPasscode;
+
+  useEffect(() => {
+    if (!loading) {
+      setSlowLoading(false);
+      return;
+    }
+    // Comfortably longer than a healthy load and comfortably shorter than the
+    // first abort, so it lands in the silence rather than next to the answer.
+    const t = setTimeout(() => setSlowLoading(true), 4000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   // Derive header/status values from child-reported metadata
   const accessoriesCount = accessoriesMeta?.count ?? 0;
@@ -457,7 +507,9 @@ export default function SharedEntityPage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <p className="mt-4 text-muted-foreground">
+            {slowLoading ? 'Still loading — your connection seems slow.' : 'Loading...'}
+          </p>
         </div>
       </div>
     );
@@ -506,6 +558,44 @@ export default function SharedEntityPage() {
     );
   }
 
+  // Couldn't reach the server.
+  //
+  // This branch sits AHEAD of the not-found branch deliberately. Both used to
+  // be one `if (!entity || error)`, so a dropped connection rendered "Not Found
+  // — this shared link is invalid or the item is no longer being shared": a
+  // false statement about someone else's link, on the one surface whose viewer
+  // has no account, no history and no way to check. Worse, the retry button
+  // lived only in the passcode branch, so there was nothing to do but close the
+  // tab. A failed request is not evidence about the share — see
+  // lib/graphql-errors.ts.
+  if (isTransportError(error)) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <WifiOff className="h-12 w-12 text-muted-foreground mx-auto" />
+                <h2 className="mt-4 text-xl font-semibold">Can't connect</h2>
+                <p className="mt-2 text-muted-foreground">
+                  This shared page couldn't be loaded. Check your connection and try again —
+                  the link itself is fine.
+                </p>
+                <div className="mt-6">
+                  <Button variant="outline" onClick={() => { void refetch(); }}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Try again
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        {sharedFooter}
+      </div>
+    );
+  }
+
   // Entity not found or access denied
   if (!entity || error) {
     return (
@@ -523,13 +613,25 @@ export default function SharedEntityPage() {
                     ? 'The passcode is incorrect or you do not have access.'
                     : 'This shared link is invalid or the item is no longer being shared.'}
                 </p>
-                {submittedPasscode && (
-                  <div className="mt-6">
+                <div className="mt-6">
+                  {submittedPasscode ? (
                     <Button variant="outline" onClick={handleTryAgain}>
                       Try Again
                     </Button>
-                  </div>
-                )}
+                  ) : (
+                    // A safety net, not a promise. The classification above is
+                    // good but not infallible — a GraphQL error thrown during a
+                    // deploy would land here — and a share can also be outside
+                    // its access schedule right now and inside it later, since
+                    // verify_access_by_hash re-evaluates the schedule on every
+                    // call. Either way, leaving the viewer with no button at all
+                    // was the thing worth fixing.
+                    <Button variant="outline" onClick={() => { void refetch(); }}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Try again
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -551,6 +653,7 @@ export default function SharedEntityPage() {
     <SharedStatusBar
       role={entity.role}
       wsSubscribed={wsSubscribed}
+      wsQuality={wsQuality}
       accessoriesCount={accessoriesCount}
       canUpgrade={!!entity.canUpgradeWithPasscode && entity.role === 'view'}
       upgradeDialogOpen={upgradeDialogOpen}

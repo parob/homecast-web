@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import type { ConnectionQuality } from '@/server/connection-quality';
 
 interface SharedRoomGroupViewProps {
   entityData: SharedEntityData;
@@ -43,7 +44,7 @@ interface SharedRoomGroupViewProps {
   renderSidebar?: (sidebar: React.ReactNode) => void;
   externalSelectedRoom?: string | null;
   onExternalRoomSelect?: (room: string | null) => void;
-  onWsStatusChange?: (subscribed: boolean) => void;
+  onWsStatusChange?: (subscribed: boolean, quality: ConnectionQuality) => void;
   onAccessoriesLoaded?: (meta: { count: number; entityName: string | null; background: any }) => void;
   onRequestPasscodeUpgrade?: () => void;
 }
@@ -153,6 +154,7 @@ export function SharedRoomGroupView({
   // WebSocket for realtime updates
   const {
     isConnected: wsConnected,
+    quality: wsQuality,
     isSubscribed: wsSubscribed,
     setOnCharacteristicUpdate,
     setOnReachabilityUpdate,
@@ -209,9 +211,9 @@ export function SharedRoomGroupView({
 
   // Report WebSocket status to parent for Live indicator
   useEffect(() => {
-    onWsStatusChange?.(wsSubscribed);
+    onWsStatusChange?.(wsSubscribed, wsQuality);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsSubscribed]);
+  }, [wsSubscribed, wsQuality]);
 
   // Build accessory lookup by ID for service groups
   const accessoryById = useMemo(() => {

@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import type { ConnectionQuality } from '@/server/connection-quality';
 
 // Matches the Dashboard's breadcrumb crumbs. Kept as a local copy rather than
 // exported from Dashboard.tsx, which is an 8,700-line page module.
@@ -65,7 +66,7 @@ interface SharedHomeViewProps {
   externalSelectedRoom?: string | null;
   onExternalRoomSelect?: (room: string | null) => void;
   // Callback to report WebSocket subscription status to parent
-  onWsStatusChange?: (subscribed: boolean) => void;
+  onWsStatusChange?: (subscribed: boolean, quality: ConnectionQuality) => void;
   // Callback to report loaded accessories metadata to parent
   onAccessoriesLoaded?: (meta: { count: number; entityName: string | null; background: BackgroundSettings | undefined }) => void;
   onRequestPasscodeUpgrade?: () => void;
@@ -195,6 +196,7 @@ export function SharedHomeView({
   // WebSocket for realtime updates
   const {
     isConnected: wsConnected,
+    quality: wsQuality,
     isSubscribed: wsSubscribed,
     setOnCharacteristicUpdate,
     setOnReachabilityUpdate,
@@ -251,9 +253,9 @@ export function SharedHomeView({
 
   // Report WebSocket status to parent for Live indicator
   useEffect(() => {
-    onWsStatusChange?.(wsSubscribed);
+    onWsStatusChange?.(wsSubscribed, wsQuality);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsSubscribed]);
+  }, [wsSubscribed, wsQuality]);
 
   // Build accessory lookup by ID for service groups
   const accessoryById = useMemo(() => {

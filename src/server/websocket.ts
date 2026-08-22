@@ -188,6 +188,8 @@ interface ServerWebSocketCallbacks {
   onBroadcast?: (message: BroadcastMessage) => void;
   onConnected?: () => void;
   onRelayStatusChange?: (isActiveRelay: boolean) => void;
+  /** Connection quality changed. See ./connection-quality.ts. */
+  onQualityChange?: (quality: ConnectionQuality) => void;
 }
 
 // Pending request tracking
@@ -195,6 +197,13 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+  /**
+   * When this went out. Read by the quality classifier, which judges the
+   * connection largely on how long the oldest unanswered request has been
+   * waiting — the only signal that still works on a half-open socket, where
+   * nothing completes and a completions-only metric goes silent.
+   */
+  sentAt: number;
 }
 
 // Reconnection settings
@@ -202,8 +211,31 @@ import {
   INITIAL_RECONNECT_DELAY, nextReconnectDelay, resetsBackoff, jitter,
   isSocketStale,
 } from './reconnect-policy';
+import {
+  type ConnectionQuality, type HysteresisState,
+  classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
+} from './connection-quality';
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
+/**
+ * How often connection quality is re-judged while a request is outstanding.
+ *
+ * Fast enough that the ~2.5s "slow" threshold is reported near the moment it is
+ * crossed rather than up to a tick late — this is the cadence that turns "30
+ * seconds of silence" into "something said so at two and a half".
+ */
+const QUALITY_TICK_MS = 500;
+
+/**
+ * The idle cadence, once nothing is in flight but the state is still degraded.
+ *
+ * Nothing needs sub-second resolution here: there is no request whose age is
+ * about to cross a threshold. It exists only so a recovery completes on the
+ * hysteresis hold (~3s) instead of waiting for the next 30s heartbeat, and a
+ * connection that is merely slow should not also cost a wakeup twice a second
+ * for as long as it lasts.
+ */
+const QUALITY_IDLE_TICK_MS = 2_000;
 /** How long to wait for the server's first word before assuming the socket is
  *  usable anyway. Generous — it only runs when the server says nothing. */
 const READY_FALLBACK_MS = 2000;
@@ -260,6 +292,34 @@ export class ServerWebSocket {
    * indefinitely.
    */
   private lastInboundAt = 0;
+
+  // ── Connection quality (see ./connection-quality.ts) ──────────────────────
+  /**
+   * When the outstanding heartbeat ping went out, or null when none is.
+   *
+   * Only one is ever in flight — pings are 30s apart and a pong arrives long
+   * before the next — so the pong needs no id to be matched to its ping, and
+   * neither server had to change to make this measurable.
+   */
+  private lastPingSentAt: number | null = null;
+  private rttSamples: number[] = [];
+  private lastRttAt = 0;
+  /** Reset by any success; two in a row is a condition rather than bad luck. */
+  private consecutiveFailures = 0;
+  private qualityState: HysteresisState = initialHysteresis('unknown');
+  /**
+   * Only runs while there is something to watch.
+   *
+   * Quality depends on the clock — an in-flight request gets worse simply by
+   * staying in flight — so it cannot be evaluated on events alone. But a timer
+   * ticking forever on an idle relay is exactly the kind of background work
+   * this codebase already fights (App Nap, event-loop stalls), so it is armed
+   * only while a request is outstanding or the connection is already degraded,
+   * and disarmed the moment neither is true.
+   */
+  private qualityTicker: ReturnType<typeof setInterval> | null = null;
+  /** The cadence the live ticker was created with, so a change can restart it. */
+  private qualityTickerInterval = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatVisibilityHandler: (() => void) | null = null;
@@ -767,6 +827,8 @@ export class ServerWebSocket {
           this.gracefulReconnect();
         }
 
+        this.consecutiveFailures++;
+        this.evaluateQuality();
         reject(new HomecastError('TIMEOUT', `Request timed out: ${action}`));
       }, REQUEST_TIMEOUT);
 
@@ -775,7 +837,11 @@ export class ServerWebSocket {
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
+        sentAt,
       });
+      // A request going out is itself news: it starts the clock the quality
+      // classifier reads, and arms the ticker that watches it age.
+      this.evaluateQuality();
 
       // Send request
       const message: ProtocolMessage = {
@@ -837,7 +903,122 @@ export class ServerWebSocket {
       const silent = this.handingOff;
       if (newState === 'connected') this.handingOff = false;
       this.callbacks.onStateChange?.(newState, { silent });
+
+      // A new socket has measured nothing yet, and the old socket's samples
+      // describe a connection that no longer exists. Starting from `unknown`
+      // is the honest position; the first pong lands within a round trip.
+      if (newState !== 'connected') {
+        this.rttSamples = [];
+        this.lastRttAt = 0;
+        this.lastPingSentAt = null;
+        this.consecutiveFailures = 0;
+      }
+      this.evaluateQuality();
     }
+  }
+
+  // ── Connection quality ────────────────────────────────────────────────────
+
+  /**
+   * Re-judge the connection and tell anyone listening if the answer changed.
+   *
+   * Cheap and idempotent, so it is safe to call from every event that could
+   * possibly matter rather than trying to work out which ones do.
+   */
+  private evaluateQuality(): void {
+    const now = Date.now();
+
+    // The oldest unanswered request. `Math.min` over the map rather than a
+    // separately-maintained pointer: the map is small (a launch burst is
+    // single digits) and a derived value cannot drift out of sync with it.
+    let oldestInFlightSentAt: number | null = null;
+    for (const pending of this.pendingRequests.values()) {
+      if (oldestInFlightSentAt === null || pending.sentAt < oldestInFlightSentAt) {
+        oldestInFlightSentAt = pending.sentAt;
+      }
+    }
+
+    const raw = classifyQuality({
+      socketConnected: this.state === 'connected',
+      rttSamples: this.rttSamples,
+      lastRttAt: this.lastRttAt,
+      oldestInFlightSentAt,
+      consecutiveFailures: this.consecutiveFailures,
+    }, now);
+
+    const before = this.qualityState.shown;
+    this.qualityState = applyHysteresis(this.qualityState, raw, now);
+    if (this.qualityState.shown !== before) {
+      logEvent('quality', `${before} → ${this.qualityState.shown}`);
+      this.callbacks.onQualityChange?.(this.qualityState.shown);
+    }
+
+    this.syncQualityTicker(oldestInFlightSentAt !== null);
+  }
+
+  /**
+   * Arm the ticker only while it has something to say.
+   *
+   * It stays armed while the shown state is not `good`, because recovering
+   * needs a tick too: nothing else fires once the requests have drained.
+   */
+  private syncQualityTicker(hasInFlight: boolean): void {
+    const wanted = hasInFlight
+      || this.qualityState.shown !== 'good'
+      || this.qualityState.improvingSince !== null;
+    const interval = hasInFlight ? QUALITY_TICK_MS : QUALITY_IDLE_TICK_MS;
+
+    if (!wanted) {
+      if (this.qualityTicker) {
+        clearInterval(this.qualityTicker);
+        this.qualityTicker = null;
+      }
+      this.qualityTickerInterval = 0;
+      return;
+    }
+
+    // Restart when the cadence should change — a request going out has to take
+    // it from the idle rate to the watching rate, or the threshold it exists to
+    // catch would be reported up to two seconds late.
+    if (this.qualityTicker && this.qualityTickerInterval !== interval) {
+      clearInterval(this.qualityTicker);
+      this.qualityTicker = null;
+    }
+    if (!this.qualityTicker) {
+      this.qualityTickerInterval = interval;
+      this.qualityTicker = setInterval(() => this.evaluateQuality(), interval);
+    }
+  }
+
+  /** What we currently believe about this connection. */
+  getConnectionQuality(): ConnectionQuality {
+    return this.qualityState.shown;
+  }
+
+  /** Most recent round-trip time in ms, or null when nothing is measured. */
+  getLastRttMs(): number | null {
+    return this.rttSamples.length ? this.rttSamples[this.rttSamples.length - 1] : null;
+  }
+
+  /** When the most recent round trip was measured. 0 when never. */
+  getLastRttAt(): number {
+    return this.lastRttAt;
+  }
+
+  /**
+   * Forget what we measured and say so.
+   *
+   * Called when the evidence stops being evidence — returning from a hidden
+   * tab, where the heartbeat was suspended and the samples describe a
+   * connection from before the app was put away. Reporting a confident "42ms"
+   * from those would reproduce, inside the indicator built to fix it, the
+   * exact bug this work exists to remove.
+   */
+  private invalidateQualitySamples(): void {
+    this.rttSamples = [];
+    this.lastRttAt = 0;
+    this.lastPingSentAt = null;
+    this.evaluateQuality();
   }
 
   /**
@@ -1239,9 +1420,20 @@ export class ServerWebSocket {
           this.webClientCount = pingPayload.webClientCount;
         }
       } else if (message.type === 'pong') {
-        // Nothing to do beyond the timestamp recorded for every inbound
-        // message — which is the point: this used to be an empty branch
-        // asserting the connection was alive without recording that it was.
+        // The round trip, which used to be thrown away here. Both servers
+        // already reply to our ping with a bare pong — the cloud handler and
+        // local-server.ts alike — so measuring this needed no protocol change
+        // and no server release; the number was simply never read.
+        //
+        // Only one ping is ever outstanding (they are 30s apart and a pong
+        // arrives long before the next), so it needs no id to be matched.
+        if (this.lastPingSentAt !== null) {
+          const rtt = Date.now() - this.lastPingSentAt;
+          this.lastPingSentAt = null;
+          this.rttSamples = pushRtt(this.rttSamples, rtt);
+          this.lastRttAt = Date.now();
+          this.evaluateQuality();
+        }
       } else if (message.type === 'redirect') {
         // Server requesting redirect to a specific pod (GKE consistent hashing)
         const target = message.target as string;
@@ -1467,11 +1659,18 @@ export class ServerWebSocket {
       } else {
         console.error(`[ServerWS] Request failed: ${message.action}`, message.error);
       }
+      // NO_DEVICE is a statement about the relay, not about this connection —
+      // the server answered us perfectly well to say so. Counting it as a
+      // connection failure would paint every tile refresh on an offline home
+      // as a bad network.
+      if (message.error.code !== 'NO_DEVICE') this.consecutiveFailures++;
       pending.reject(new HomecastError(message.error.code, message.error.message, message._trace));
     } else {
       if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, message.payload);
+      this.consecutiveFailures = 0;
       pending.resolve(message.payload);
     }
+    this.evaluateQuality();
   }
 
   private handleError(event: Event): void {
@@ -1856,7 +2055,19 @@ export class ServerWebSocket {
           this.gracefulReconnect();
           return;
         }
+        // A ping still outstanding when the next one falls due means the last
+        // round trip has already exceeded a whole heartbeat interval. That is
+        // evidence in its own right, and discarding it is part of why a
+        // degrading connection stayed invisible until `isSocketStale` finally
+        // gave up at 75s. Recorded as the interval itself — a lower bound on
+        // the truth rather than a guess at it.
+        if (this.lastPingSentAt !== null) {
+          this.rttSamples = pushRtt(this.rttSamples, Date.now() - this.lastPingSentAt);
+          this.lastRttAt = Date.now();
+        }
+        this.lastPingSentAt = Date.now();
         this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.evaluateQuality();
         if (isRelayCapable()) {
           // Native observation self-stops after 90s without this, so it rides
           // the 30s heartbeat: two chances to miss before HomeKit goes quiet.
@@ -1878,6 +2089,12 @@ export class ServerWebSocket {
           }
         } else {
           if (!this.heartbeatInterval) {
+            // The samples describe a connection from before the tab was put
+            // away — the heartbeat was suspended for the whole of it, so they
+            // are not evidence about now. Drop them first, so the indicator
+            // reads "checking" for one round trip instead of confidently
+            // reporting a round-trip time it measured minutes ago.
+            this.invalidateQualitySamples();
             tick();
             this.heartbeatInterval = setInterval(tick, HEARTBEAT_INTERVAL);
           }
@@ -1888,6 +2105,12 @@ export class ServerWebSocket {
   }
 
   private stopHeartbeat(): void {
+    this.lastPingSentAt = null;
+    if (this.qualityTicker) {
+      clearInterval(this.qualityTicker);
+      this.qualityTicker = null;
+      this.qualityTickerInterval = 0;
+    }
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
