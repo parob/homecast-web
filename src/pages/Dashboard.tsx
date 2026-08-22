@@ -154,6 +154,7 @@ import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AutoHeight } from '@/components/ui/auto-height';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -8222,7 +8223,17 @@ const Dashboard = () => {
                     or room group — the sensor bubbles inline. A whole home's
                     bubbles aggregate every room, so there they sit behind the
                     Status pill with the other collapsible sections. */}
-                <div className="mb-4 flex flex-wrap items-center gap-2 empty:hidden">
+                {/* Animated, because entering Edit Layout can rewrap this row:
+                    its pills each gain a control, and it reveals sections that
+                    are hidden the rest of the time. On a narrow phone that is a
+                    second line — a 32px step, landing while a tile is being
+                    dragged. Measured, not guessed: see AutoHeight. */}
+                <AutoHeight>
+                {/* The row's spacing is padding, not margin, so it is inside the
+                    measured height: a margin would sit outside the animated box
+                    and, on a home with every section hidden, `empty:hidden`
+                    would collapse the row while leaving its gap behind. */}
+                <div className="flex flex-wrap items-center gap-2 pb-4 empty:hidden">
                   {isWholeHomeView && editingSummaryRow ? (
                     /* Editing: a stand-in row that can show a hidden section as
                        well as hide a shown one, and that opens nothing. */
@@ -8268,6 +8279,7 @@ const Dashboard = () => {
                     />
                   )}
                 </div>
+                </AutoHeight>
                 {/* Bodies are gated on the same flags as their pills: leaving a
                     section mounted behind a hidden pill would keep its queries
                     live and could strand it open with no way to close it. */}
