@@ -93,12 +93,17 @@ describe('useSharedWebSocket', () => {
     expect(ws.url).toBe('wss://api.test/ws/shared');
     act(() => ws.simulateOpen());
 
-    expect(ws.sent).toHaveLength(1);
+    // Subscribe first — it is the point of the connection — then a ping.
+    // The ping goes out immediately rather than waiting out the first 30s
+    // interval, because the pong is the only source of round-trip samples and
+    // without it the page can say nothing about a connection that is working.
+    expect(ws.sent).toHaveLength(2);
     expect(JSON.parse(ws.sent[0])).toEqual({
       type: 'subscribe',
       shareHash: 'abc123',
       browserSessionId: 'sess_test-tab',
     });
+    expect(JSON.parse(ws.sent[1])).toEqual({ type: 'ping' });
   });
 
   it('does not reconnect after unmount', () => {
@@ -160,7 +165,8 @@ describe('useSharedWebSocket', () => {
       vi.advanceTimersByTime(30_000);
     });
     expect(ws1.sent.length).toBe(ws1SentBefore);
-    expect(ws2.sent.filter((m) => JSON.parse(m).type === 'ping')).toHaveLength(1);
+    // Two: the one sent the moment it opened, and the one from the interval.
+    expect(ws2.sent.filter((m) => JSON.parse(m).type === 'ping')).toHaveLength(2);
 
     // No extra sockets appear later
     act(() => {

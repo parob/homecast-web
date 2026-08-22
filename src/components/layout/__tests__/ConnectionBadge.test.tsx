@@ -117,3 +117,24 @@ describe('ConnectionBadge', () => {
     expect(screen.getByRole('button')).toBeTruthy();
   });
 });
+
+describe('shape', () => {
+  it('is a circle when there is no label, not a pill', () => {
+    // rounded-full on a 24x16 box is a stadium. Equal height and width is what
+    // makes it round, so the unlabelled state must be square.
+    mockQuality = 'good';
+    render(<ConnectionBadge />);
+    const cls = screen.getByRole('button').className;
+    expect(cls).toContain('h-6');
+    expect(cls).toContain('w-6');
+    expect(cls).not.toContain('px-2');
+  });
+
+  it('becomes a pill only once it has something to say', () => {
+    mockQuality = 'slow';
+    render(<ConnectionBadge />);
+    const cls = screen.getByRole('button').className;
+    expect(cls).toContain('px-2');
+    expect(cls).not.toContain('w-6');
+  });
+});

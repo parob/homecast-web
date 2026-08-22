@@ -6,7 +6,7 @@ import {
   INITIAL_RECONNECT_DELAY, nextReconnectDelay, jitter, isSocketStale,
 } from '@/server/reconnect-policy';
 import {
-  type ConnectionQuality, type HysteresisState,
+  type ConnectionQuality, type HysteresisState, type SocketState,
   classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
 } from '@/server/connection-quality';
 
@@ -96,10 +96,20 @@ export function useSharedWebSocket(
   /** Grows per failed attempt, reset on a successful open. */
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
 
+  const socketStateRef = useRef<{ state: SocketState; since: number }>({
+    state: 'connecting',
+    since: Date.now(),
+  });
+
   const evaluateQuality = useCallback((socketConnected: boolean) => {
     const now = Date.now();
+    const state: SocketState = socketConnected ? 'connected' : 'disconnected';
+    if (socketStateRef.current.state !== state) {
+      socketStateRef.current = { state, since: now };
+    }
     const raw = classifyQuality({
-      socketConnected,
+      socketState: state,
+      socketStateSince: socketStateRef.current.since,
       rttSamples: rttSamplesRef.current,
       lastRttAt: lastRttAtRef.current,
       // This socket is push-only — there are no requests to be outstanding —
@@ -250,6 +260,13 @@ export function useSharedWebSocket(
         passcode: passcode || undefined,
         browserSessionId: getBrowserSessionId()
       }));
+
+      // Measure the round trip at once rather than after the first interval.
+      // The pong is the only source of samples, so without this a share page
+      // spends its first 30 seconds unable to say anything about a connection
+      // that is working fine.
+      lastPingSentAtRef.current = Date.now();
+      ws.send(JSON.stringify({ type: 'ping' }));
 
       // Start ping interval to keep connection alive
       pingIntervalRef.current = setInterval(() => {

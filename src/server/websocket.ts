@@ -283,6 +283,12 @@ export class ServerWebSocket {
   private callbacks: ServerWebSocketCallbacks;
   private ws: WebSocket | NativeRelayWebSocket | null = null;
   private state: ConnectionState = 'disconnected';
+  /**
+   * When `state` last changed. Initialised to construction rather than 0, so a
+   * client that has not connected yet reads as "coming up" for the grace
+   * period rather than as an instant outage on boot.
+   */
+  private stateSince = Date.now();
   private reconnectDelay = INITIAL_RECONNECT_DELAY;
   /** Set while an affinity-redirect handoff is in flight — see redirectTo(). */
   private handingOff = false;
@@ -892,6 +898,7 @@ export class ServerWebSocket {
     if (this.state !== newState) {
       console.log(`[ServerWS] State: ${this.state} -> ${newState}`);
       this.state = newState;
+      this.stateSince = Date.now();
       if (newState === 'connected') {
         this.connectedAt = Date.now();
       } else if (newState === 'disconnected') {
@@ -939,7 +946,8 @@ export class ServerWebSocket {
     }
 
     const raw = classifyQuality({
-      socketConnected: this.state === 'connected',
+      socketState: this.state,
+      socketStateSince: this.stateSince,
       rttSamples: this.rttSamples,
       lastRttAt: this.lastRttAt,
       oldestInFlightSentAt,
@@ -2076,6 +2084,21 @@ export class ServerWebSocket {
         }
       }
     };
+
+    // Ping at once rather than waiting out the first interval.
+    //
+    // The heartbeat pong is the only source of round-trip samples, so without
+    // this there are none for the first 30 seconds of every connection — and
+    // `classifyQuality` correctly, uselessly answers `unknown` for all of it.
+    // The badge then read "Checking connection" on a link that was working
+    // perfectly, which is the same crime as a confidently stale reading, just
+    // in the other direction.
+    //
+    // Safe here because `startHeartbeat` is only ever called from
+    // `handleOpen`, i.e. with the socket already OPEN; `tick` re-checks
+    // `readyState` regardless. This is the same immediate-tick pattern the
+    // visibility handler below already uses on resume.
+    tick();
 
     this.heartbeatInterval = setInterval(tick, HEARTBEAT_INTERVAL);
 

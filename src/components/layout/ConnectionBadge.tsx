@@ -87,12 +87,18 @@ export function ConnectionBadge({ isDarkBackground }: ConnectionBadgeProps) {
         <button
           aria-label={p.srLabel}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-full text-[13px] font-medium',
+            'flex items-center justify-center rounded-full text-[13px] font-medium',
             // Width changes when a label appears. Eased rather than snapped:
             // the badge sits in a right-anchored cluster, so it grows leftward
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
+            // With no label this is a circle, not a pill. Horizontal padding
+            // around a lone 8px dot makes a 24×16 oval — `rounded-full` on a
+            // non-square box gives a stadium, not a round one. Equal height and
+            // width is what actually makes it round; the labelled state is the
+            // only one that wants a pill.
+            p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
             isDarkBackground
               ? 'bg-black/40 backdrop-blur-xl hover:bg-black/50 text-white'
               : 'bg-transparent hover:bg-black/10 text-foreground',

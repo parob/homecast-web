@@ -88,9 +88,32 @@ export const RTT_WINDOW = 5;
  */
 export const RECOVERY_HOLD_MS = 3_000;
 
+/**
+ * How long a socket may be busy coming up before we call it an outage.
+ *
+ * "Not connected yet" is not the same as "not connected", and conflating them
+ * was a real bug: `setState('connected')` is deliberately withheld until the
+ * server's first word (`armReadyAnnouncement`, up to `READY_FALLBACK_MS`), and
+ * the GKE affinity redirect tears the socket down and rebuilds it ~280ms after
+ * every connect. Reporting either as `offline` painted the badge red on every
+ * single launch, and — since recovering from a degraded state serves the full
+ * `RECOVERY_HOLD_MS` — left it wrong for seconds afterwards.
+ *
+ * So a transitional state reads as `unknown` until it has lasted longer than
+ * any legitimate handshake, and only then as `offline`.
+ */
+export const OFFLINE_AFTER_MS = 4_000;
+
+export type SocketState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
+
 export interface QualityInputs {
-  /** Is the socket believed to be up at all? Nothing else matters if not. */
-  socketConnected: boolean;
+  /**
+   * The transport's own state. A boolean cannot express the difference between
+   * "coming up" and "down", which is exactly the distinction that matters here.
+   */
+  socketState: SocketState;
+  /** When it entered that state, so a transition can be told from an outage. */
+  socketStateSince: number;
   /**
    * Recent round-trip times in ms, oldest first. Capped at `RTT_WINDOW` by
    * `pushRtt`; a longer array is tolerated and only its tail is read.
@@ -132,7 +155,11 @@ export function pushRtt(samples: readonly number[], rtt: number): number[] {
  * before, and outranks the absence of evidence.
  */
 export function classifyQuality(input: QualityInputs, now: number): ConnectionQuality {
-  if (!input.socketConnected) return 'offline';
+  if (input.socketState !== 'connected') {
+    // Long enough to be an outage rather than a handshake.
+    const inStateMs = Math.max(0, now - input.socketStateSince);
+    return inStateMs >= OFFLINE_AFTER_MS ? 'offline' : 'unknown';
+  }
 
   // In-flight age first, and ahead of sample staleness on purpose. A request
   // outstanding for nine seconds is proof of a problem no matter how old or

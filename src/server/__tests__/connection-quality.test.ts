@@ -21,6 +21,7 @@ import {
   STALLED_RTT_MS,
   SAMPLE_MAX_AGE_MS,
   RECOVERY_HOLD_MS,
+  OFFLINE_AFTER_MS,
   type QualityInputs,
 } from '../connection-quality';
 
@@ -28,7 +29,8 @@ const NOW = 1_000_000;
 
 function inputs(over: Partial<QualityInputs> = {}): QualityInputs {
   return {
-    socketConnected: true,
+    socketState: 'connected',
+    socketStateSince: NOW - 60_000,
     rttSamples: [40, 45, 50],
     lastRttAt: NOW - 1_000,
     oldestInFlightSentAt: null,
@@ -71,12 +73,44 @@ describe('classifyQuality', () => {
     expect(classifyQuality(inputs(), NOW)).toBe('good');
   });
 
-  it('offline beats every other signal', () => {
+  it('offline beats every other signal, once it has lasted', () => {
     const q = classifyQuality(
-      inputs({ socketConnected: false, rttSamples: [10], oldestInFlightSentAt: NOW - 20_000 }),
+      inputs({
+        socketState: 'disconnected',
+        socketStateSince: NOW - 30_000,
+        rttSamples: [10],
+        oldestInFlightSentAt: NOW - 20_000,
+      }),
       NOW,
     );
     expect(q).toBe('offline');
+  });
+
+  // ── the bug that made the badge wrong on every single launch ─────────────
+  it('does not call a socket that is still coming up "offline"', () => {
+    // `setState('connected')` is deliberately withheld until the server's first
+    // word (armReadyAnnouncement, up to READY_FALLBACK_MS), and the GKE
+    // affinity redirect rebuilds the socket ~280ms after connect. Treating
+    // either as offline painted the badge red on launch — and since recovering
+    // from a degraded state serves the full RECOVERY_HOLD_MS, it then stayed
+    // wrong for seconds after the connection was already fine.
+    for (const st of ['connecting', 'reconnecting', 'disconnected'] as const) {
+      expect(classifyQuality(inputs({ socketState: st, socketStateSince: NOW - 100 }), NOW))
+        .toBe('unknown');
+    }
+  });
+
+  it('still reports a real outage, just not instantly', () => {
+    const dropped = (ms: number) =>
+      classifyQuality(inputs({ socketState: 'reconnecting', socketStateSince: NOW - ms }), NOW);
+    expect(dropped(OFFLINE_AFTER_MS - 1)).toBe('unknown');
+    expect(dropped(OFFLINE_AFTER_MS)).toBe('offline');
+  });
+
+  it('does not read a boot with no connection yet as an instant outage', () => {
+    // stateSince is stamped at construction, not left at 0.
+    expect(classifyQuality(inputs({ socketState: 'disconnected', socketStateSince: NOW }), NOW))
+      .toBe('unknown');
   });
 
   // ── the case this ordering exists for ────────────────────────────────────
