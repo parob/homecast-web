@@ -4472,11 +4472,17 @@ const Dashboard = () => {
   // moving the grid under the finger. On a phone the sidebar is a closed
   // overlay, so this is invisible there either way.
   //
-  // The summary row used to wait with it, because its edit variant was taller.
-  // It is not any more (see SummarySectionEditPills), so it arrives at the lift
-  // with the wiggle and the toolbar — nothing below it moves.
+  // The summary row waits with it, and height is not why. Each edit pill carries
+  // a Hide/Unhide button the live one does not, so the row is materially *wider*
+  // — and the container wraps. On a phone the live row fits one line and the
+  // edit row does not, so swapping mid-drag costs a whole wrapped line, far more
+  // than the few pixels of height that used to be the reason.
+  //
+  // Making the two the same height was still worth doing (see the `pill` button
+  // size), but it is not sufficient on its own: geometry has to match in both
+  // directions before this can move to the lift.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
-  const editingSummaryRow = isTouchDevice && editMode;
+  const editingSummaryRow = editingSidebar;
   const EDIT_SIDEBAR_EXTRA = 56;
   const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
   const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
