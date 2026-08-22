@@ -21,6 +21,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
+import { RemeasureDuringLift } from '@/components/shared/RemeasureDuringLift';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 
 // Measuring configuration to reduce layout measurements during drag
@@ -195,6 +196,10 @@ export const DraggableGrid: React.FC<DraggableGridProps> = ({
         onDragCancel={enabled ? handleDragCancel : undefined}
         measuring={enabled ? measuringConfig : undefined}
       >
+        {/* The summary row above these grids grows when Edit Layout starts, and
+            it starts mid-drag. These measure once at drag start, so without this
+            their rects describe where the cards used to be. */}
+        <RemeasureDuringLift active={enabled && editMode} />
         <SortableContext items={itemIds} strategy={rectSortingStrategy}>
           {children}
         </SortableContext>

@@ -155,6 +155,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AutoHeight } from '@/components/ui/auto-height';
+import { RemeasureDuringLift } from '@/components/shared/RemeasureDuringLift';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -4472,18 +4473,26 @@ const Dashboard = () => {
   // when the mode was entered by a lift, that waits for the drop rather than
   // moving the grid under the finger. On a phone the sidebar is a closed
   // overlay, so this is invisible there either way.
-  //
-  // The summary row waits with it, and height is not why. Each edit pill carries
-  // a Hide/Unhide button the live one does not, so the row is materially *wider*
-  // — and the container wraps. On a phone the live row fits one line and the
-  // edit row does not, so swapping mid-drag costs a whole wrapped line, far more
-  // than the few pixels of height that used to be the reason.
-  //
-  // Making the two the same height was still worth doing (see the `pill` button
-  // size), but it is not sufficient on its own: geometry has to match in both
-  // directions before this can move to the lift.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
-  const editingSummaryRow = editingSidebar;
+  /*
+   * The summary row, unlike the sidebar, changes at the lift.
+   *
+   * It is the one thing you are looking at when the hold takes, so waiting for
+   * the drop made the mode arrive in two parts. It does move the grid: measured
+   * against the built CSS, the edit row is the same height as the live one at
+   * 414pt and up, and a second line — 24px to 56px — at 375 and 390, because its
+   * pills each carry a control the live ones do not and it reveals sections that
+   * are hidden the rest of the time.
+   *
+   * Two things make that acceptable rather than a jump under the finger:
+   * AutoHeight animates the step, and RemeasureDuringLift re-reads the grid's
+   * rects while it moves, so a drop still lands where it looks like it will.
+   *
+   * Reserving the space in the live pills was tried and is worse — it makes the
+   * normal row two lines on the commonest phones and still mismatches above
+   * that, because the live pills carry counts the edit ones do not.
+   */
+  const editingSummaryRow = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
   const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
   const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
@@ -8326,7 +8335,8 @@ const Dashboard = () => {
                   onDragOver={handleSharedDragOver}
                   onDragEnd={(e) => { handleSharedDragEnd(e); setActiveDragId(null); endLift(); }}
                   onDragCancel={() => { setActiveDragId(null); setDragCrossRoomBlocked(false); endLift(); }}
-                >
+                  >
+                  <RemeasureDuringLift active={isTouchDevice && editMode} />
                 <div className={compactMode ? "space-y-3" : "space-y-8"}>
                   {(() => { let visibleRoomIdx = 0; return (
                   (groupByRoom ? filteredRooms : [['All Accessories', filteredRooms.flatMap(([_, accs]) => accs).sort((a, b) => {
