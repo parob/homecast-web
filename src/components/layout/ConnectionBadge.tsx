@@ -25,16 +25,20 @@
  * where those rules are pinned by tests.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import { serverConnection } from '@/server/connection';
+import type { ConnectionQuality } from '@/server/connection-quality';
 import { isCommunity } from '@/lib/config';
 import { isRelayCapable } from '@/native/homekit-bridge';
 import { useWebSocket } from '@/contexts/WebSocketContext';
-import { connectionPresentation, formatRtt } from '@/lib/connection-presentation';
+import {
+  connectionPresentation, formatRtt, warnsUser,
+  RECONNECTED_PRESENTATION, RECONNECTED_VISIBLE_MS,
+} from '@/lib/connection-presentation';
 
 interface ConnectionBadgeProps {
   isDarkBackground?: boolean;
@@ -64,7 +68,29 @@ export function ConnectionBadge({ isDarkBackground }: ConnectionBadgeProps) {
     return () => clearInterval(t);
   }, [open]);
 
-  const p = connectionPresentation(quality);
+  // The recovery confirmation, which used to be the "Reconnected" toast.
+  //
+  // It lives here rather than in the classifier because it is not a state of
+  // the connection — it is a statement about one the connection just left, and
+  // the classifier is deliberately memoryless. Same rule the toast used: only
+  // confirm a recovery if we actually showed the user a warning to recover
+  // from, so a blip nobody saw does not announce itself.
+  const [reconnected, setReconnected] = useState(false);
+  const prevQuality = useRef<ConnectionQuality>(quality);
+  useEffect(() => {
+    const was = prevQuality.current;
+    prevQuality.current = quality;
+    if (quality === 'good' && warnsUser(was)) {
+      setReconnected(true);
+      const t = setTimeout(() => setReconnected(false), RECONNECTED_VISIBLE_MS);
+      return () => clearTimeout(t);
+    }
+    // Anything that is not "good" supersedes the confirmation immediately —
+    // saying "Reconnected" while dropping again would be worse than silence.
+    if (quality !== 'good') setReconnected(false);
+  }, [quality]);
+
+  const p = reconnected ? RECONNECTED_PRESENTATION : connectionPresentation(quality);
   const rtt = formatRtt(serverConnection.getLastRttMs());
   const measuredAt = ago(serverConnection.getLastRttAt() || null);
 

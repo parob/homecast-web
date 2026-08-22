@@ -52,7 +52,6 @@ vi.mock('../../lib/request-log', () => ({
   logEvent: vi.fn(),
 }));
 vi.mock('../../lib/browser-logger', () => ({ browserLogger: { log: vi.fn(), error: vi.fn() } }));
-vi.mock('../../lib/toast-bus', () => ({ toastConnection: vi.fn() }));
 vi.mock('./websocket', () => ({ ServerWebSocket: class {} }));
 
 /** Fresh module per test — the cache is a module-level singleton. */

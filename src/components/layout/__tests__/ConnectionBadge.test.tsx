@@ -13,8 +13,10 @@
 // never by appearing.
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { act } from '@testing-library/react';
 import { render, screen, cleanup } from '@testing-library/react';
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { RECONNECTED_VISIBLE_MS } from '@/lib/connection-presentation';
 
 let mockQuality: ConnectionQuality = 'good';
 let mockIsCommunity = false;
@@ -136,5 +138,70 @@ describe('shape', () => {
     const cls = screen.getByRole('button').className;
     expect(cls).toContain('px-2');
     expect(cls).not.toContain('w-6');
+  });
+});
+
+// The connection toasts used to live in toast-bus and fired once for four
+// seconds. They are now text beside the dot, which is where a condition
+// belongs — but the recovery half keeps the toast's rule exactly: only confirm
+// a recovery the user was warned about.
+describe('the connection message, which replaced the toasts', () => {
+  function renderAt(q: ConnectionQuality) {
+    mockQuality = q;
+    return render(<ConnectionBadge />);
+  }
+
+  it('says "Connecting…" beside the dot', () => {
+    renderAt('connecting');
+    expect(screen.getByRole('button').textContent).toBe('Connecting…');
+  });
+
+  it('confirms a recovery the user was warned about', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderAt('offline');
+    expect(screen.getByRole('button').textContent).toBe('Offline');
+
+    mockQuality = 'good';
+    act(() => { rerender(<ConnectionBadge />); });
+    expect(screen.getByRole('button').textContent).toBe('Reconnected');
+    vi.useRealTimers();
+  });
+
+  it('gets out of the way again', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderAt('connecting');
+    mockQuality = 'good';
+    act(() => { rerender(<ConnectionBadge />); });
+    expect(screen.getByRole('button').textContent).toBe('Reconnected');
+
+    act(() => { vi.advanceTimersByTime(RECONNECTED_VISIBLE_MS); });
+    expect(screen.getByRole('button').textContent).toBe('');
+    vi.useRealTimers();
+  });
+
+  it('does not announce a recovery from a blip nobody saw', () => {
+    // `unknown` shows no label, so there was nothing to recover from as far as
+    // the user is concerned. This is the old toast's rule, kept.
+    vi.useFakeTimers();
+    const { rerender } = renderAt('unknown');
+    expect(screen.getByRole('button').textContent).toBe('');
+
+    mockQuality = 'good';
+    act(() => { rerender(<ConnectionBadge />); });
+    expect(screen.getByRole('button').textContent).toBe('');
+    vi.useRealTimers();
+  });
+
+  it('drops the confirmation immediately if it drops again', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderAt('offline');
+    mockQuality = 'good';
+    act(() => { rerender(<ConnectionBadge />); });
+    expect(screen.getByRole('button').textContent).toBe('Reconnected');
+
+    mockQuality = 'connecting';
+    act(() => { rerender(<ConnectionBadge />); });
+    expect(screen.getByRole('button').textContent).toBe('Connecting…');
+    vi.useRealTimers();
   });
 });

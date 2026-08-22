@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { connectionPresentation, formatRtt } from '../connection-presentation';
+import {
+  connectionPresentation, formatRtt, warnsUser, RECONNECTED_PRESENTATION,
+} from '../connection-presentation';
 import type { ConnectionQuality } from '@/server/connection-quality';
 
-const ALL: ConnectionQuality[] = ['good', 'unknown', 'slow', 'stalled', 'offline'];
+const ALL: ConnectionQuality[] = ['good', 'unknown', 'connecting', 'slow', 'stalled', 'offline'];
 
 describe('connectionPresentation', () => {
   it('gives the healthy state nothing to notice', () => {
@@ -28,9 +30,18 @@ describe('connectionPresentation', () => {
     }
   });
 
-  it('moves only for a state that is actively wrong', () => {
+  it('moves only where something is happening or wrong', () => {
     const pulsing = ALL.filter(q => connectionPresentation(q).pulse);
-    expect(pulsing).toEqual(['stalled']);
+    expect(pulsing).toEqual(['connecting', 'stalled']);
+  });
+
+  it('keeps "Connecting…" neutral rather than alarming', () => {
+    // Carries the old toast's wording, and its stance: that toast was
+    // deliberately not a warning, because a drop is nearly always transient
+    // and alarm colours asked the user to act on something they cannot.
+    const c = connectionPresentation('connecting');
+    expect(c.label).toBe('Connecting…');
+    expect(c.dotClass).not.toMatch(/amber|red/);
   });
 
   it('always has something for a screen reader, even with no visible label', () => {
@@ -62,5 +73,27 @@ describe('formatRtt', () => {
     expect(formatRtt(999)).toBe('999ms');
     expect(formatRtt(1000)).toBe('1.0s');
     expect(formatRtt(4200)).toBe('4.2s');
+  });
+});
+
+describe('warnsUser', () => {
+  it('is exactly the set of states that show the user a label', () => {
+    // The old toast confirmed a recovery only if it had shown the warning.
+    // Deriving this from the label rather than a second list is what stops the
+    // two drifting apart.
+    for (const q of ALL) {
+      expect(warnsUser(q)).toBe(connectionPresentation(q).label !== null);
+    }
+    expect(warnsUser('connecting')).toBe(true);
+    expect(warnsUser('offline')).toBe(true);
+    expect(warnsUser('good')).toBe(false);
+    expect(warnsUser('unknown')).toBe(false);
+  });
+});
+
+describe('RECONNECTED_PRESENTATION', () => {
+  it('says it plainly and does not draw attention to itself', () => {
+    expect(RECONNECTED_PRESENTATION.label).toBe('Reconnected');
+    expect(RECONNECTED_PRESENTATION.pulse).toBe(false);
   });
 });

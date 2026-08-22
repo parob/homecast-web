@@ -2,28 +2,21 @@
  * Thin facade over Sonner for the observability UX.
  *
  * Rules:
- * - Only surface material events to the user. Chatty reconnects should stay
- *   invisible; disconnects that linger or recoveries from a bad state are
- *   worth a toast.
- * - Deduplicate rapid-fire state changes so a flapping connection doesn't
- *   spam notifications.
+ * - Only surface material events to the user, and deduplicate rapid-fire ones
+ *   so a flapping backend cannot spam notifications.
+ * - A toast reports an *event*. Anything that is a *condition* — something
+ *   that persists and that the user may want to check on — does not belong
+ *   here, because a toast fires once and is gone in seconds.
+ *
+ * The connection toasts used to live here and have moved to the header badge
+ * (components/layout/ConnectionBadge) for exactly that reason: "Connecting…"
+ * described a state that outlasted its own four-second toast, and its absence
+ * afterwards was indistinguishable from never having been told.
  */
 
 import { toast } from 'sonner';
 
-type ConnState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-
-// Connection toasts are only material where live data is on screen. A
-// logged-in user browsing marketing pages (/, /pricing, /how-it-works, …)
-// still holds a background socket; a reconnect there is invisible noise.
-const CONNECTION_TOAST_ROUTES = ['/portal', '/mqtt', '/diagnostics'];
-
-function connectionToastsEnabled(): boolean {
-  const path = window.location.pathname;
-  return CONNECTION_TOAST_ROUTES.some(p => path === p || path.startsWith(`${p}/`));
-}
-
-// Suppress a toast for a state that just fired within the debounce window.
+// Suppress a toast for a message that just fired within the debounce window.
 const DEBOUNCE_MS = 2_000;
 const lastShown = new Map<string, number>();
 
@@ -33,47 +26,6 @@ function shouldShow(key: string): boolean {
   if (now - prev < DEBOUNCE_MS) return false;
   lastShown.set(key, now);
   return true;
-}
-
-/**
- * Emit a toast for a connection state transition, if it's material.
- *
- * Material transitions:
- *   connected → disconnected/reconnecting   (visible problem)
- *   reconnecting/disconnected → connected    (recovery — only if we warned)
- *
- * Boring transitions (connecting ↔ connected on first load) are silent.
- */
-export function toastConnection(prev: ConnState, next: ConnState): void {
-  // Marketing/auth pages: stay silent even with a live background socket.
-  if (!connectionToastsEnabled()) return;
-
-  // First connection on page load is silent.
-  if (prev === 'disconnected' && next === 'connecting') return;
-  if (prev === 'connecting' && next === 'connected') return;
-
-  // Drop → a quiet note that we are working on it. Use a persistent toast ID so
-  // subsequent disconnects replace rather than stack.
-  //
-  // Deliberately neutral, not `.warning`: a drop is nearly always transient, and
-  // "Connection lost" in alarm colours asked the user to act on something they
-  // cannot act on. The description said the same thing twice, so it is gone.
-  if ((prev === 'connected' || prev === 'connecting') &&
-      (next === 'disconnected' || next === 'reconnecting')) {
-    if (!shouldShow('conn:down')) return;
-    toast('Connecting…', { id: 'conn', duration: 4000 });
-    return;
-  }
-
-  // Recovery — only fire if we had previously shown the warning toast.
-  if ((prev === 'reconnecting' || prev === 'disconnected') && next === 'connected') {
-    if (lastShown.has('conn:down')) {
-      if (!shouldShow('conn:up')) return;
-      toast('Reconnected', { id: 'conn', duration: 3000 });
-      lastShown.delete('conn:down');
-    }
-    return;
-  }
 }
 
 /**

@@ -22,6 +22,8 @@ import {
   SAMPLE_MAX_AGE_MS,
   RECOVERY_HOLD_MS,
   OFFLINE_AFTER_MS,
+  CONNECTING_AFTER_MS,
+  isTransitional,
   type QualityInputs,
 } from '../connection-quality';
 
@@ -87,6 +89,19 @@ describe('classifyQuality', () => {
   });
 
   // ── the bug that made the badge wrong on every single launch ─────────────
+  it('climbs quiet → connecting → offline rather than jumping', () => {
+    const dropped = (ms: number) =>
+      classifyQuality(inputs({ socketState: 'reconnecting', socketStateSince: NOW - ms }), NOW);
+    // Below the dwell nothing is said at all: the affinity redirect rebuilds
+    // the socket ~280ms after every connect, and "Connecting…" flashing in the
+    // header on every launch is the noise the old toast's gate existed to stop.
+    expect(dropped(0)).toBe('unknown');
+    expect(dropped(CONNECTING_AFTER_MS - 1)).toBe('unknown');
+    expect(dropped(CONNECTING_AFTER_MS)).toBe('connecting');
+    expect(dropped(OFFLINE_AFTER_MS - 1)).toBe('connecting');
+    expect(dropped(OFFLINE_AFTER_MS)).toBe('offline');
+  });
+
   it('does not call a socket that is still coming up "offline"', () => {
     // `setState('connected')` is deliberately withheld until the server's first
     // word (armReadyAnnouncement, up to READY_FALLBACK_MS), and the GKE
@@ -98,13 +113,6 @@ describe('classifyQuality', () => {
       expect(classifyQuality(inputs({ socketState: st, socketStateSince: NOW - 100 }), NOW))
         .toBe('unknown');
     }
-  });
-
-  it('still reports a real outage, just not instantly', () => {
-    const dropped = (ms: number) =>
-      classifyQuality(inputs({ socketState: 'reconnecting', socketStateSince: NOW - ms }), NOW);
-    expect(dropped(OFFLINE_AFTER_MS - 1)).toBe('unknown');
-    expect(dropped(OFFLINE_AFTER_MS)).toBe('offline');
   });
 
   it('does not read a boot with no connection yet as an instant outage', () => {
@@ -290,5 +298,39 @@ describe('isDegraded', () => {
     expect(isDegraded('slow')).toBe(true);
     expect(isDegraded('stalled')).toBe(true);
     expect(isDegraded('offline')).toBe(true);
+  });
+});
+
+describe('isTransitional', () => {
+  it('covers the two states that are not a verdict on the connection', () => {
+    expect(isTransitional('unknown')).toBe(true);
+    expect(isTransitional('connecting')).toBe(true);
+    for (const q of ['good', 'slow', 'stalled', 'offline'] as const) {
+      expect(isTransitional(q)).toBe(false);
+    }
+  });
+
+  it('lets a reconnect resolve without serving the recovery hold', () => {
+    // Otherwise the header would keep saying "Connecting…" for three seconds
+    // after the connection was already back.
+    let st = initialHysteresis('connecting');
+    st = applyHysteresis(st, 'good', NOW);
+    expect(st.shown).toBe('good');
+  });
+
+  it('still makes a genuinely degraded state serve the hold', () => {
+    let st = initialHysteresis('slow');
+    st = applyHysteresis(st, 'good', NOW);
+    expect(st.shown).toBe('slow');
+    st = applyHysteresis(st, 'good', NOW + RECOVERY_HOLD_MS);
+    expect(st.shown).toBe('good');
+  });
+});
+
+describe('isDegraded', () => {
+  it('does not treat connecting as degradation', () => {
+    // It drives the immediate pending-write ring; a routine reconnect must not
+    // put a ring on every tile.
+    expect(isDegraded('connecting')).toBe(false);
   });
 });

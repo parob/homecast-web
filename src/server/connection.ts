@@ -16,7 +16,6 @@ import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
 import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
-import { toastConnection } from '../lib/toast-bus';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -698,13 +697,18 @@ class ServerConnection {
             if (connectionState === 'connected') {
               try { localStorage.setItem(LAST_CONNECTED_AT_KEY, String(Date.now())); } catch { /* noop */ }
             }
-            // Emit structured log + toast for state transitions so disconnects
-            // are visible both in Cloud Logging (via browserLogger shipping)
-            // and to the user in the UI.
-            // Emit the structured log for every transition — a redirect
-            // handoff is exactly the kind of thing worth being able to see in
-            // Cloud Logging afterwards — but keep it out of the UI, since
-            // nothing went wrong for the user to act on.
+            // Emit the structured log for every transition, including a
+            // redirect handoff — that is exactly the kind of thing worth being
+            // able to see in Cloud Logging afterwards.
+            //
+            // The user-facing half of this used to be a toast here. It now
+            // lives in the header badge (components/layout/ConnectionBadge),
+            // because a toast is the wrong instrument for a condition: it
+            // fires once and dismisses after four seconds, while a connection
+            // problem lasts minutes. `opts.silent` is no longer consulted for
+            // that reason — the badge debounces itself through
+            // CONNECTING_AFTER_MS, which covers the redirect handoff without
+            // needing to be told about it.
             const prev = this.state.connectionState;
             if (prev !== connectionState) {
               try {
@@ -713,9 +717,6 @@ class ServerConnection {
                   opts?.silent ? `prev=${prev} handoff` : `prev=${prev}`,
                 );
               } catch { /* noop */ }
-              if (!opts?.silent) {
-                try { toastConnection(prev, connectionState); } catch { /* noop */ }
-              }
             }
             this.updateState(updates);
           },

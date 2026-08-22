@@ -32,7 +32,7 @@
  * `good` from minutes-old samples would reproduce, inside the indicator meant
  * to fix it, the exact bug this work exists to remove.
  */
-export type ConnectionQuality = 'good' | 'slow' | 'stalled' | 'offline' | 'unknown';
+export type ConnectionQuality = 'good' | 'slow' | 'stalled' | 'offline' | 'unknown' | 'connecting';
 
 /**
  * Round-trip time at which a request stops feeling immediate.
@@ -104,6 +104,21 @@ export const RECOVERY_HOLD_MS = 3_000;
  */
 export const OFFLINE_AFTER_MS = 4_000;
 
+/**
+ * How long a socket may be coming up before we say so out loud.
+ *
+ * This is the debounce that used to live in the toast (`shouldShow`, 2s) and
+ * in its route gate. The affinity redirect rebuilds the socket ~280ms after
+ * every connect and an ordinary handshake is quicker still, so anything below
+ * this is invisible — otherwise "Connecting…" would flash in the header on
+ * every single launch, which is precisely the noise the toast was written to
+ * avoid.
+ *
+ * Between here and OFFLINE_AFTER_MS the ladder reads: quiet dot → Connecting…
+ * → Offline.
+ */
+export const CONNECTING_AFTER_MS = 1_500;
+
 export type SocketState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
 
 export interface QualityInputs {
@@ -156,9 +171,12 @@ export function pushRtt(samples: readonly number[], rtt: number): number[] {
  */
 export function classifyQuality(input: QualityInputs, now: number): ConnectionQuality {
   if (input.socketState !== 'connected') {
-    // Long enough to be an outage rather than a handshake.
     const inStateMs = Math.max(0, now - input.socketStateSince);
-    return inStateMs >= OFFLINE_AFTER_MS ? 'offline' : 'unknown';
+    // Long enough to be an outage rather than a handshake.
+    if (inStateMs >= OFFLINE_AFTER_MS) return 'offline';
+    // Long enough to be worth mentioning, but not yet a failure.
+    if (inStateMs >= CONNECTING_AFTER_MS) return 'connecting';
+    return 'unknown';
   }
 
   // In-flight age first, and ahead of sample staleness on purpose. A request
@@ -188,10 +206,25 @@ export function classifyQuality(input: QualityInputs, now: number): ConnectionQu
 const SEVERITY: Record<ConnectionQuality, number> = {
   good: 0,
   unknown: 1,
-  slow: 2,
-  stalled: 3,
-  offline: 4,
+  connecting: 2,
+  slow: 3,
+  stalled: 4,
+  offline: 5,
 };
+
+/**
+ * States that describe not having an answer rather than a bad one.
+ *
+ * Both are exempt from the recovery hold. `unknown` because it is the absence
+ * of a claim; `connecting` because its resolution is the expected happy path,
+ * not a flap — holding it would leave "Connecting…" on screen for three
+ * seconds after the connection was already back, which is the same complaint
+ * in a different costume. The `CONNECTING_AFTER_MS` dwell is what debounces
+ * this state; it does not need debouncing twice.
+ */
+export function isTransitional(q: ConnectionQuality): boolean {
+  return q === 'unknown' || q === 'connecting';
+}
 
 export interface HysteresisState {
   /** What is being shown. */
@@ -225,12 +258,12 @@ export function applyHysteresis(
     return { shown: raw, improvingSince: null };
   }
 
-  // Leaving `unknown` is exempt. `unknown` is not a claim about the connection,
-  // it is the absence of one, so replacing it with a real measurement is not a
-  // reversal and there is nothing to debounce. Without this exemption every
-  // return from a backgrounded tab would sit on "checking" for the full hold,
-  // which is the jitter the hold exists to prevent, just relocated.
-  if (state.shown === 'unknown') {
+  // Leaving a transitional state is exempt — see isTransitional. Without this,
+  // every return from a backgrounded tab would sit on "checking" for the full
+  // hold, and every reconnect would keep saying "Connecting…" for three
+  // seconds after it had finished: the jitter the hold exists to prevent, just
+  // relocated.
+  if (isTransitional(state.shown)) {
     return { shown: raw, improvingSince: null };
   }
 
@@ -242,7 +275,14 @@ export function applyHysteresis(
   return { shown: state.shown, improvingSince: since };
 }
 
-/** Does this state warrant telling the user anything beyond a quiet dot? */
+/**
+ * Is the connection actually bad, as opposed to merely unmeasured or busy?
+ *
+ * Drives the immediate pending-write ring, so `connecting` is deliberately
+ * out: a socket mid-handshake has no measured latency to justify dropping the
+ * ring's delay, and treating a routine reconnect as degradation would put a
+ * ring on every tile for a second on every launch.
+ */
 export function isDegraded(q: ConnectionQuality): boolean {
   return q === 'slow' || q === 'stalled' || q === 'offline';
 }
