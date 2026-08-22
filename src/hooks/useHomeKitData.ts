@@ -10,6 +10,7 @@ import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
 import { sameAccessoryId, resolveAccessoriesCacheKey } from './accessoryCacheKeys';
+import { confirmsPending, ignoreWindowMs } from './pendingConfirmation';
 
 /**
  * Derive `isReachable` from value presence + the framework flag before the
@@ -329,9 +330,6 @@ interface PendingUpdate {
 class PendingUpdatesTracker {
   private pending = new Map<string, PendingUpdate>();
   private pendingGroups = new Map<string, PendingUpdate>();
-  // Window during which stale server updates are ignored (ms).
-  // Extended to 5s (from 2s) to account for slow HomeKit responses (B8 fix).
-  private ignoreWindow = 5000;
 
   private makeKey(accessoryId: string, characteristicType: string): string {
     return `${accessoryId}:${characteristicType}`;
@@ -387,13 +385,13 @@ class PendingUpdatesTracker {
     const age = Date.now() - pending.timestamp;
 
     // If the server value matches our pending value, the update completed - clear pending
-    if (JSON.stringify(serverValue) === JSON.stringify(pending.value)) {
+    if (confirmsPending(characteristicType, serverValue, pending.value)) {
       this.pending.delete(key);
       return false; // Allow this update through (it confirms our optimistic update)
     }
 
     // If within ignore window, ignore stale server updates
-    if (age < this.ignoreWindow) {
+    if (age < ignoreWindowMs(characteristicType)) {
       if (import.meta.env.DEV) console.log(`[PendingUpdates] Ignoring stale server update for ${accessoryId.slice(0, 8)}:${characteristicType}, pending=${JSON.stringify(pending.value)}, server=${JSON.stringify(serverValue)}, age=${age}ms`);
       return true;
     }
@@ -415,13 +413,13 @@ class PendingUpdatesTracker {
     const age = Date.now() - pending.timestamp;
 
     // If the server value matches our pending value, the update completed - clear pending
-    if (JSON.stringify(serverValue) === JSON.stringify(pending.value)) {
+    if (confirmsPending(characteristicType, serverValue, pending.value)) {
       this.pendingGroups.delete(key);
       return false; // Allow this update through (it confirms our optimistic update)
     }
 
     // If within ignore window, ignore stale server updates
-    if (age < this.ignoreWindow) {
+    if (age < ignoreWindowMs(characteristicType)) {
       if (import.meta.env.DEV) console.log(`[PendingUpdates] Ignoring stale service group update for ${groupId.slice(0, 8)}:${characteristicType}, pending=${JSON.stringify(pending.value)}, server=${JSON.stringify(serverValue)}, age=${age}ms`);
       return true;
     }

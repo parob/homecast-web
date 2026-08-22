@@ -1,9 +1,20 @@
-import React, { memo, useState, useRef, useCallback } from 'react';
-import { Blinds, ChevronUp, ChevronDown, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
+import React, { memo, useState, useRef, useCallback, useEffect } from 'react';
+import { Blinds, ChevronUp, ChevronDown, Square, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
 import { VerticalSlider } from './shared';
-import { coveringMotion, coveringStatusText, coveringToggleLabel, coveringToggleTarget, usesStandardPositionLogic } from './shared/coveringStatus';
+import {
+  coveringMotion,
+  coveringStatusText,
+  coveringStopWrite,
+  coveringToggleLabel,
+  coveringToggleTarget,
+  fromOpenness,
+  hasDeviceStarted,
+  isCommandAbandoned,
+  samePosition,
+  usesStandardPositionLogic,
+} from './shared/coveringStatus';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { getIconColor } from './iconColors';
 
@@ -14,6 +25,26 @@ const toPositionNumber = (value: any): number => {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 };
+
+/**
+ * A position we asked for, and what has come back about it since.
+ *
+ * `from` is where the blind was when we asked, which is the only way to tell a
+ * device that has begun moving from one that has merely been written to.
+ * `reflected` is whether the optimistic write has appeared in the accessory we
+ * render from — until it has, the target says nothing about our command.
+ */
+interface Command {
+  target: number;
+  from: number;
+  reflected: boolean;
+}
+
+/** How long to wait for our own optimistic write to appear before giving up on it. */
+const UNREFLECTED_TIMEOUT_MS = 2000;
+
+/** How long a covering may plausibly still be travelling towards what we asked for. */
+const IN_FLIGHT_TIMEOUT_MS = 90000;
 
 // Full-width interactive curtain visualization component
 const CurtainVisualFull: React.FC<{
@@ -81,6 +112,13 @@ const CurtainVisualFull: React.FC<{
 
   // Curtain closed percentage (inverse of position - 0% open = 100% curtain showing)
   const curtainHeight = 100 - displayPosition;
+  // Where the blind actually is, as against where it has been told to go. This
+  // panel has always drawn the target — which is why it responded instantly and
+  // the hero bar did not — but drawing only the target means a command that
+  // never arrives looks identical to one that did. The hairline is the missing
+  // half, and the same one the hero bar grew.
+  const actualHeight = 100 - currentPosition;
+  const showTravel = Math.abs(actualHeight - curtainHeight) > 1;
 
   return (
     <div
@@ -100,6 +138,14 @@ const CurtainVisualFull: React.FC<{
         }}
       />
 
+      {/* Where the blind actually is, while it is still on its way there. */}
+      {showTravel && (
+        <div
+          className="absolute inset-x-0 h-px bg-foreground/40 transition-all duration-300"
+          style={{ top: `${actualHeight}%` }}
+        />
+      )}
+
       {/* Position indicator */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <span className="text-lg font-bold text-foreground/80 drop-shadow-sm">
@@ -116,6 +162,7 @@ const CurtainVisualFull: React.FC<{
 export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   accessory,
   onSlider,
+  onSetValue,
   getEffectiveValue,
   compact,
   expanded,
@@ -168,7 +215,6 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   const model = String(modelChar?.value || '').toLowerCase();
 
   const usesStandardLogic = usesStandardPositionLogic(manufacturer, model);
-  const isInvertedBlinds = !usesStandardLogic;
 
   const rawCurrentPosition = toPositionNumber(currentPositionChar?.value);
   const rawTargetPosition = toPositionNumber(
@@ -191,6 +237,93 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     positionStateChar ? positionState : null,
     usesStandardLogic,
   );
+
+  // The device's own account of moving, kept apart from coveringMotion's — that
+  // one deliberately counts an un-started command as motion so the tile can
+  // respond at once, which is exactly the thing we need to be able to see past
+  // here.
+  const deviceMoving = positionStateChar ? positionState !== 2 : false;
+
+  const holdPositionChar = getCharacteristic(accessory, 'hold_position');
+  const canHoldPosition = holdPositionChar?.isWritable === true;
+
+  // ── What we asked for, and whether it is happening ──────────────────────
+  //
+  // The write path is optimistic: target_position lands in the cache before the
+  // relay is even called, and is put back if the call fails. That gives the bar
+  // its instant response, and takes away any way of telling three very
+  // different situations apart — asked and travelling, asked and ignored, and
+  // asked and refused all leave the same target sitting in the cache.
+  //
+  // So remember the command: what we asked for, and where the blind was when we
+  // asked. Everything the widget says about latency is derived from those two
+  // numbers against what has arrived since.
+  const [command, setCommand] = useState<Command | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  /** Openness we just wrote — call alongside every target write. */
+  const recordCommand = useCallback((targetOpenness: number) => {
+    setFailed(false);
+    setCommand({ target: targetOpenness, from: currentPosition, reflected: false });
+  }, [currentPosition]);
+
+  useEffect(() => {
+    if (!command) return;
+
+    // Arrived. The blind is where it was asked to be; nothing left to watch.
+    if (samePosition(currentPosition, command.target)) {
+      setCommand(null);
+      return;
+    }
+
+    // Wait for the optimistic write to show up in the accessory before reading
+    // anything into the target. It normally lands in the same render — the
+    // cache is written before the relay is even called — but "the target is not
+    // what I asked for" is indistinguishable from "the target has not caught up
+    // yet", and one of those is a false alarm on every single press. Confirming
+    // first costs nothing and removes the whole class.
+    if (!command.reflected) {
+      if (samePosition(targetPosition, command.target)) {
+        setCommand(c => (c === command ? { ...c, reflected: true } : c));
+        return;
+      }
+      // Never reflected at all: this surface's write did not reach the cache we
+      // are reading. Nothing to watch, and nothing worth reporting either.
+      const timer = setTimeout(() => setCommand(null), UNREFLECTED_TIMEOUT_MS);
+      return () => clearTimeout(timer);
+    }
+
+    // The target was ours and is not any more. Either the write was rejected
+    // and reverted by writeCharacteristic, or something else took the blind
+    // over; both mean the bar is about to slide somewhere the user did not put
+    // it, and it should say so rather than just doing it.
+    if (isCommandAbandoned(command.target, targetPosition)) {
+      setCommand(null);
+      setFailed(true);
+      return;
+    }
+
+    // Accepted, under way, not there yet. A blind can genuinely take a minute,
+    // but past that the command is not in flight any more, it is lost — and a
+    // bar that pulses for ever is worse than one that gives up.
+    // Cleanup below is the guard the timer needs: it cannot outlive the command
+    // that armed it, because any change to one re-runs this effect.
+    const timer = setTimeout(() => setCommand(null), IN_FLIGHT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [command, currentPosition, targetPosition]);
+
+  // Clear the failure flash once it has been seen.
+  useEffect(() => {
+    if (!failed) return;
+    const timer = setTimeout(() => setFailed(false), 600);
+    return () => clearTimeout(timer);
+  }, [failed]);
+
+  // Out of the door, but the motor has not turned. This is the state the widget
+  // had no way to show: "Opening" the instant you press is a useful lie, but it
+  // made a blind that never got the message look exactly like one that did.
+  const awaitingStart = command !== null
+    && !hasDeviceStarted(command.from, currentPosition, deviceMoving);
   const isOpen = currentPosition > 0;
   const hasControls = targetPositionChar?.isWritable;
   // Show expanded controls when not compact and has controls and reachable
@@ -232,13 +365,63 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     ? (iconStyle === 'colourful' && widgetColors ? `${widgetColors.accent} hover:${widgetColors.accent}/90 text-white` : '')
     : 'bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-foreground';
 
-  const statusText = coveringStatusText(isMoving, isOpening, currentPosition);
+  const statusText = coveringStatusText(isMoving, isOpening, currentPosition, !awaitingStart);
+
+  /**
+   * Ask for a position, in openness terms, and remember that we asked.
+   *
+   * Every control here went through its own `isInvertedBlinds ? 100 - v : v`,
+   * which is the kind of expression that is right in five places and inverted
+   * in the sixth — and an inverted one drives the blind the wrong way. One door
+   * out, and the command bookkeeping cannot be forgotten at a call site because
+   * it is on the other side of it.
+   */
+  const writeTarget = useCallback((openness: number) => {
+    if (isViewOnly) return;
+    recordCommand(openness);
+    onSlider(accessory.id, 'target_position', fromOpenness(openness, usesStandardLogic));
+  }, [accessory.id, isViewOnly, onSlider, recordCommand, usesStandardLogic]);
+
+  // hold_position is HomeKit's own answer and plenty of bridges never expose it;
+  // it is also write-only, so it needs onSetValue rather than the numeric
+  // slider path. Both have to be there to use it — see coveringStopWrite for
+  // the fallback, which every covering understands.
+  const canStopViaHold = canHoldPosition && !!onSetValue;
+
+  /**
+   * Stop where it stands.
+   *
+   * Mid-travel used to leave one move available — command a different position
+   * and wait out the rest of the journey — which is the opposite of what a
+   * blind halfway down a window is for. Clears the command rather than
+   * recording one: stopping is not a place to arrive at, and watching for
+   * arrival at a position the blind is already leaving would flag a phantom
+   * failure the moment it coasted past.
+   */
+  const stopCovering = useCallback(() => {
+    if (isViewOnly) return;
+    setCommand(null);
+    setFailed(false);
+    const write = coveringStopWrite(rawCurrentPosition, canStopViaHold);
+    if (write.characteristicType === 'hold_position') {
+      onSetValue?.(accessory.id, write.characteristicType, write.value);
+    } else {
+      onSlider(accessory.id, write.characteristicType, write.value as number);
+    }
+  }, [accessory.id, canStopViaHold, isViewOnly, onSetValue, onSlider, rawCurrentPosition]);
 
   // How much of the window the blind covers — what you actually see of it.
-  // What the bar draws is where the blind actually is. Drawing the target made
-  // pressing Open snap the whole bar open before the blind had moved an inch,
-  // which is the one thing a slow device's control must not do.
-  const coverage = 100 - currentPosition;
+  //
+  // Two of them, and the bar draws both. Drawing only the target made pressing
+  // Open snap the whole bar open before the blind had moved an inch; drawing
+  // only the current position — the fix for that — meant releasing a drag threw
+  // the bar back to a stale reading and crawled it up again, which is worse,
+  // because it happens on every single interaction rather than only the
+  // dishonest ones. The value is the target, so the bar answers the finger
+  // immediately and never slides backwards; the current position rides along as
+  // a ghost, so the part that is merely asked for is drawn as asked-for.
+  const targetCoverage = 100 - targetPosition;
+  const currentCoverage = 100 - currentPosition;
 
   // Nothing left to ask for. Keyed on the target, not the current position, so
   // Open also goes quiet while the blind is already on its way open — pressing
@@ -291,23 +474,27 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
         //
         // Wider than the beside-the-controls version was: centred in the panel
         // a 132px bar reads as stranded, and this is the control you drag.
-        <div className="h-[240px] w-full max-w-[200px]">
+        <div className={`h-[240px] w-full max-w-[200px] ${failed ? 'animate-nudge' : ''}`}>
           <VerticalSlider
             // The bar IS the blind: colour is the material, hanging from the top
             // and growing downward as it closes. So it works in coverage, not
             // openness — `invert` anchors the fill to the top and, with it,
             // makes dragging down raise the value. Coverage rising as you drag
             // down is the same gesture as before: pull down to close.
-            value={coverage}
+            value={targetCoverage}
+            ghostValue={currentCoverage}
+            pending={awaitingStart}
+            // One write per drag. A blind takes seconds to travel, so the
+            // stream of intermediate targets a live commit sends is a stream of
+            // re-targetings it can never keep up with — and on a slow link they
+            // arrive after the finger has gone, leaving it chasing positions
+            // the user passed through on the way to the one they wanted.
+            commitMode="release"
             invert
             min={0}
             max={100}
             step={5}
-            onCommit={(v) => {
-              // v is coverage; the raw characteristic is coverage on inverted
-              // blinds and openness on the rest.
-              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? v : (100 - v));
-            }}
+            onCommit={(v) => writeTarget(100 - v)}
             disabled={isViewOnly || noResponse}
             icon={Blinds}
             // A percentage of openness printed on a bar that draws coverage
@@ -355,11 +542,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
             className={`h-7 px-3 text-xs font-medium transition-transform active:scale-95 ${compactButtonClasses} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
             onClick={(e) => {
               e.stopPropagation();
-              if (!isViewOnly) {
-                // For inverted blinds: convert from openness % back to coverage %
-                const targetValue = compactToggleTarget;
-                onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - targetValue) : targetValue);
-              }
+              writeTarget(compactToggleTarget);
             }}
             disabled={noResponse}
           >
@@ -370,79 +553,110 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     >
       {showHero && (
         // The bar handles fine positioning; these are the two places you
-        // actually want most of the time.
+        // actually want most of the time — until it is moving, at which point
+        // the only thing you want that the bar cannot already do is halt it.
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className={`h-11 flex-1 ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            disabled={noResponse || atFullyOpen}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
-            }}
-          >
-            <ChevronUp className="mr-1 h-4 w-4" />
-            Open
-          </Button>
-          <Button
-            variant="outline"
-            className={`h-11 flex-1 ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            disabled={noResponse || atFullyClosed}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
-            }}
-          >
-            <ChevronDown className="mr-1 h-4 w-4" />
-            Close
-          </Button>
+          {isMoving ? (
+            <Button
+              variant="outline"
+              className={`h-11 flex-1 ${getButtonClasses(false)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              disabled={noResponse}
+              onClick={(e) => {
+                e.stopPropagation();
+                stopCovering();
+              }}
+            >
+              <Square className="mr-1 h-3.5 w-3.5 fill-current" />
+              Stop
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                className={`h-11 flex-1 ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+                disabled={noResponse || atFullyOpen}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  writeTarget(100);
+                }}
+              >
+                <ChevronUp className="mr-1 h-4 w-4" />
+                Open
+              </Button>
+              <Button
+                variant="outline"
+                className={`h-11 flex-1 ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+                disabled={noResponse || atFullyClosed}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  writeTarget(0);
+                }}
+              >
+                <ChevronDown className="mr-1 h-4 w-4" />
+                Close
+              </Button>
+            </>
+          )}
         </div>
       )}
       {showExpanded && !showHero && (
-        <div className="flex gap-2 -mt-1">
+        <div className={`flex gap-2 -mt-1 ${failed ? 'animate-nudge' : ''}`}>
           <div className={`flex-1 ${expanded ? 'h-32' : 'h-24'}`}>
             <CurtainVisualFull
               currentPosition={currentPosition}
               targetPosition={targetPosition}
-              onChange={(v) => {
-                if (!isViewOnly) {
-                  // For inverted blinds: convert from openness % back to coverage %
-                  onSlider(accessory.id, 'target_position', isInvertedBlinds ? (100 - v) : v);
-                }
-              }}
+              onChange={writeTarget}
               disabled={isViewOnly || noResponse}
               accentColor={getAccentColor()}
               trackColor={getTrackColor()}
             />
           </div>
-          {/* Up/Down buttons */}
+          {/* Open/Close, or the one control worth having mid-travel. */}
           <div className="flex flex-col gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                // Open fully (100% open = 0% coverage for inverted blinds)
-                if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 0 : 100);
-              }}
-              disabled={noResponse || atFullyOpen}
-              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            >
-              <ChevronUp className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                // Close fully (0% open = 100% coverage for inverted blinds)
-                if (!isViewOnly) onSlider(accessory.id, 'target_position', isInvertedBlinds ? 100 : 0);
-              }}
-              disabled={noResponse || atFullyClosed}
-              className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
-            >
-              <ChevronDown className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
-            </Button>
+            {isMoving ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  stopCovering();
+                }}
+                disabled={noResponse}
+                aria-label="Stop"
+                className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(false)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+              >
+                <Square className={`fill-current ${expanded ? 'h-4 w-4' : 'h-3 w-3'}`} />
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    writeTarget(100);
+                  }}
+                  disabled={noResponse || atFullyOpen}
+                  aria-label="Open"
+                  className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyOpen)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+                >
+                  <ChevronUp className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    writeTarget(0);
+                  }}
+                  disabled={noResponse || atFullyClosed}
+                  aria-label="Close"
+                  className={`${expanded ? 'h-11 w-11' : 'h-8 w-8'} p-0 rounded-md ${getButtonClasses(atFullyClosed)} ${isViewOnly ? 'cursor-not-allowed' : ''}`}
+                >
+                  <ChevronDown className={expanded ? 'h-5 w-5' : 'h-4 w-4'} />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}
