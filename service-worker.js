@@ -2,12 +2,14 @@
  * Homecast service worker.
  *
  * Emitted to /sw.js by `serviceWorkerPlugin` in vite.config.ts, which
- * substitutes __BUILD_SHA__ with the entry chunk's content hash. That
- * substitution is load-bearing: a browser only reinstalls a worker whose bytes
- * changed, so a worker that didn't vary per build would install once and serve
- * the same shell forever. It used to be stamped with the commit SHA — of
- * homecast-cloud, the repo the deploy runs in — so a web-only change left this
- * file byte-identical and shipped fixes never reached anyone.
+ * substitutes __BUILD_SHA__ with a hash of index.html — the exact document the
+ * shell cache holds. That substitution is load-bearing: a browser only
+ * reinstalls a worker whose bytes changed, so a worker that didn't vary per
+ * build would install once and serve the same shell forever. It used to be
+ * stamped with the commit SHA — of homecast-cloud, the repo the deploy runs in
+ * — so a web-only change left this file byte-identical and shipped fixes never
+ * reached anyone. Stamping it with the entry chunk's hash fixed that but still
+ * missed edits to index.html itself, which move no chunk at all.
  *
  * Why this exists: the Mac and iOS apps load the UI from homecast.cloud, so
  * every cold start used to be a network round trip before anything rendered,
@@ -107,7 +109,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(serveShell(request));
+    event.respondWith(serveShell(request, event));
     return;
   }
 
@@ -121,14 +123,32 @@ self.addEventListener('fetch', (event) => {
 });
 
 /**
- * Navigations are served from cache first. That is the whole point — it's what
- * removes the network from app launch and what makes the app open offline.
- * A deploy still lands, because a changed worker reinstalls and refetches the
- * shell on the next launch.
+ * Navigations are served from cache first, then the cached copy is refreshed in
+ * the background. Cache-first is the whole point — it's what removes the network
+ * from app launch and what makes the app open offline.
+ *
+ * The refresh is what stops that being a trap. index.html is the only thing here
+ * with no content hash, so it is the only thing that can go stale, and what it
+ * goes stale *about* is the names of the hashed assets — including the entry
+ * script. Serving a shell that names a deleted entry doesn't degrade the app, it
+ * hangs it on the splash: the entry 404s, so none of the app's own recovery code
+ * is running to notice (index.html's inline watchdog is the answer to that half).
+ *
+ * This used to refresh only when the worker reinstalled, i.e. only when sw.js's
+ * own bytes changed. Anything that left the worker in place — an install that
+ * failed, a client that hadn't run an update check yet — meant every launch
+ * re-served the same dead shell. Refreshing on each navigation bounds it to one.
  */
-async function serveShell(request) {
-  const cached = await caches.match(SHELL_URL, { cacheName: SHELL_CACHE });
-  if (cached) return cached;
+async function serveShell(request, event) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(SHELL_URL);
+
+  if (cached) {
+    // waitUntil, so the worker isn't killed mid-refresh. Failure is fine and
+    // deliberately silent: keeping the shell we have is the offline promise.
+    event.waitUntil(refreshShell(cache));
+    return cached;
+  }
 
   try {
     return await fetch(request);
@@ -137,6 +157,26 @@ async function serveShell(request) {
     // completed. Nothing cached and no network: let the app's native error
     // page handle it rather than returning a broken document.
     return Response.error();
+  }
+}
+
+/**
+ * Re-fetch the shell for the *next* launch.
+ *
+ * cache: 'reload' for the same reason install() uses it — a stale HTTP-cache
+ * copy would just re-pin the problem this exists to clear. Only a good document
+ * is stored: a 500 or a captive-portal page written here would be served as the
+ * app until something else replaced it.
+ *
+ * isFallback is deliberately NOT applied — the shell is text/html by nature,
+ * which is exactly what that check refuses.
+ */
+async function refreshShell(cache) {
+  try {
+    const response = await fetch(SHELL_URL, { cache: 'reload' });
+    if (response.ok) await cache.put(SHELL_URL, response);
+  } catch {
+    /* offline, or the fetch failed — the copy we already have stands */
   }
 }
 

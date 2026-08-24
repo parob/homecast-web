@@ -68,6 +68,87 @@
       gtag('js', new Date());
       gtag('config', 'G-DC316TN5R0');
     </script>
+    <!--
+      Boot watchdog. Inline, and deliberately not a module.
+
+      The service worker serves navigations from its shell cache, and index.html
+      is the one document with no content hash — so after a deploy it can name an
+      entry script the deploy has deleted. That script then 404s, and because
+      every other recovery we have (the ErrorBoundary, Vite's preloadError hook,
+      reloadForNewBundle) lives *inside* that script, none of it is running. The
+      page sits on the splash below forever with nothing alive to notice.
+
+      This is the one piece of code that still runs in that state. It clears the
+      caches the worker serves from, lets go of the worker, and reloads onto the
+      real bundle — once per session, so a genuinely broken deploy cannot turn
+      into a reload loop.
+    -->
+    <script>
+      (function () {
+        var KEY = 'homecast-boot-recovery';
+        window.__hcRecover = function (reason) {
+          if (window.__homecastBooted) return;
+          try {
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, reason);
+          } catch (e) { /* private mode: one attempt, no guard */ }
+
+          var done = false;
+          var go = function () { if (done) return; done = true; location.reload(); };
+          // Reload even if storage never settles — being stuck on the splash is
+          // the bug, so this must not be able to add another way to stay there.
+          setTimeout(go, 2000);
+
+          var jobs = [];
+          try {
+            if (window.caches) {
+              jobs.push(caches.keys().then(function (names) {
+                return Promise.all(names.filter(function (n) {
+                  return n.indexOf('homecast-') === 0;
+                }).map(function (n) { return caches.delete(n); }));
+              }));
+            }
+          } catch (e) { /* no Cache API (insecure context) */ }
+          try {
+            if (navigator.serviceWorker) {
+              jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }));
+            }
+          } catch (e) { /* no worker to release */ }
+
+          Promise.all(jobs).then(go, go);
+        };
+
+        // Resource errors don't bubble, but they do reach a capture-phase
+        // listener here — and this has to be a listener rather than an onerror
+        // attribute on the script tag, because Vite rewrites that tag on build
+        // and drops the attribute with it.
+        //
+        // Scoped hard to our own hashed assets. Every blocked third-party
+        // script fires this same event — the ad blocker in the bug report was
+        // cancelling googlesyndication — and recovering for one of those would
+        // be a reload loop with no cause to fix.
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (!t || !t.tagName) return; // a thrown error, not a failed resource
+          var src = t.src || t.href;
+          if (!src || src.indexOf(location.origin + '/assets/') !== 0) return;
+          window.__hcRecover('asset');
+        }, true);
+
+        // Backstop for the case where the entry neither loads nor errors — a
+        // request left hanging. Generous, because a slow phone on a big bundle
+        // is not a fault, and skipped outright when the device says it has no
+        // network: there the bundle is fine and the cache is the only reason
+        // anything renders at all.
+        setTimeout(function () {
+          if (window.__homecastBooted) return;
+          if (navigator.onLine === false) return;
+          window.__hcRecover('timeout');
+        }, 20000);
+      })();
+    </script>
   </head>
 
   <body style="margin:0">

@@ -9,6 +9,16 @@ import { markBoot } from "./lib/boot-timing";
 import { reloadForNewBundle } from "./lib/stale-bundle";
 
 markBoot("module");
+
+// Stand the boot watchdog down: reaching this line proves the entry script
+// loaded and ran, which is the exact thing it exists to catch. Clearing its
+// one-shot guard here — rather than never — is what lets the *next* deploy
+// recover too. See the inline script in index.html.
+{
+  const w = window as Window & { __homecastBooted?: boolean };
+  w.__homecastBooted = true;
+  try { sessionStorage.removeItem('homecast-boot-recovery'); } catch { /* private mode */ }
+}
 import { browserLogger } from "./lib/browser-logger";
 import { config } from "./lib/config";
 
