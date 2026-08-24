@@ -7,7 +7,7 @@
  * - Browser mode: Connects to server to receive updates from remote relay
  */
 
-import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated } from './websocket';
+import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated, HomecastError } from './websocket';
 import type { ConnectionQuality } from './connection-quality';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
@@ -873,7 +873,10 @@ class ServerConnection {
       if (local?.isActive()) {
         throw new LocalOnlyError(action);
       }
-      throw new Error('[ServerConnection] Not active - cannot make request');
+      // Reachable by ordinary use too, not only by a programming error: a hook
+      // can mount before `activate()` has finished, and a signed-out session
+      // never activates at all. So it carries a code and reads like the rest.
+      throw new HomecastError('DISCONNECTED', 'Not connected to Homecast');
     }
     return this.websocket.request<T>(action, payload, traceId);
   }

@@ -111,7 +111,7 @@ export function errorCode(e: unknown): string | undefined {
  * generic prose would throw away the useful half.
  */
 const NO_VERDICT_CODES = new Set(['TIMEOUT', 'DEVICE_ERROR']);
-const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE']);
+const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE', 'LOCAL_ONLY']);
 
 /**
  * What to tell someone whose device write did not land.

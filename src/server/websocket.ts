@@ -804,7 +804,12 @@ export class ServerWebSocket {
     if (import.meta.env.DEV) console.log(`[ServerWS] Remote request: ${action}`, payload);
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket not connected');
+      // Fails fast rather than waiting out REQUEST_TIMEOUT, which is right —
+      // there is nothing to wait for. But it used to be a bare Error with no
+      // `code`, so it slipped past `describeWriteFailure` and a tap made while
+      // offline surfaced the raw string "WebSocket not connected" to the user.
+      // Every other transport failure names the accessory instead.
+      throw new HomecastError('DISCONNECTED', 'WebSocket not connected');
     }
 
     const id = `req_${Date.now()}_${++this.requestIdCounter}`;

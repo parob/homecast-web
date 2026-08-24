@@ -126,6 +126,23 @@ describe('describeWriteFailure', () => {
     expect(describeWriteFailure({ code: 'NO_DEVICE' }, 'Lamp')).toMatch(/isn't connected/);
   });
 
+  it('never leaks an action name or a transport detail', () => {
+    // These are the throws a tap makes while the socket is down. Both used to
+    // be bare Errors or prose quoting the raw action, so the user saw
+    // "WebSocket not connected" or '"characteristic.set" needs Homecast's
+    // servers' — the implementation, not the thing they touched.
+    const thrown = [
+      { code: 'DISCONNECTED', message: 'WebSocket not connected' },
+      { code: 'DISCONNECTED', message: 'Not connected to Homecast' },
+      { code: 'LOCAL_ONLY', message: '"characteristic.set" needs Homecast\'s servers, and this device can\'t reach them right now.' },
+    ];
+    for (const e of thrown) {
+      const msg = describeWriteFailure(e, 'Kitchen Light');
+      expect(msg).toContain('Kitchen Light');
+      expect(msg).not.toMatch(/WebSocket|characteristic\.set|DISCONNECTED|LOCAL_ONLY/);
+    }
+  });
+
   it('keeps a specific refusal rather than replacing it with generic prose', () => {
     // An accessory that refused the write has something worth reading.
     const refused = { code: 'CHARACTERISTIC_NOT_WRITABLE', message: 'Characteristic is not writable' };
