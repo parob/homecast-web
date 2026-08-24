@@ -105,6 +105,19 @@ interface WidgetCardProps {
   className?: string;
   style?: React.CSSProperties;
   accessory?: HomeKitAccessory;
+  /**
+   * The device is mid-transition on its own account, beyond any write we are
+   * still waiting on.
+   *
+   * The pending ring answers "has the relay taken this yet", which for a lamp
+   * is the whole of the wait. A blind is different: the write is confirmed in
+   * milliseconds and then the motor turns for another half a minute, and for
+   * all of that the tile looked idle. Widgets that know their device is still
+   * going say so here, and the same ring covers both halves of the wait.
+   *
+   * ORed with the registry rather than replacing it — see the call site.
+   */
+  busy?: boolean;
   compact?: boolean;
   onExpandToggle?: () => void;
   /** Callback to show debug info for this accessory (admin only) */
@@ -171,6 +184,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   className = '',
   style,
   accessory,
+  busy,
   compact = false,
   onExpandToggle,
   onDebug,
@@ -328,6 +342,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const iconElement = (
     <PendingRing
       pendingKey={accessory ? accessoryKey(accessory.id) : undefined}
+      // `|| undefined` rather than passing the boolean straight through:
+      // PendingRing resolves `pending ?? tracked`, so a literal false would
+      // override the registry and silence the ring on a device that is idle but
+      // has a write still in flight. Undefined hands the question back.
+      pending={busy || undefined}
       className={`${iconSizeClass} ${iconTextClass}`}
     >
       <div className={`shrink-0 items-center justify-center flex rounded-full ${iconSizeClass} ${iconBgClass} ${iconTextClass} ${iconShadowClass} ${iconOpacityClass}`}>
