@@ -40,7 +40,11 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
  * inside — that is what made the hidden one 8px taller, and a row that jumps
  * under your thumb as you use it is the wrong thing to have built.
  */
-const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-xs font-medium transition-colors';
+// `pr-0.5` on the trailing edge, against `pl-2.5` on the leading one. The eye is
+// a filled chip with an edge of its own, so the padding that correctly frames
+// text left it looking inset from the pill's own rim; the label keeps the full
+// 2.5. Narrower is also fewer pixels of row, which is what wraps it.
+const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-0.5 text-xs font-medium transition-colors';
 
 export function SummarySectionEditPills({
   layout, isDarkBackground, openSection, onToggleOpen, onToggleHidden,

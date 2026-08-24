@@ -833,24 +833,20 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
         >
           {isLoading && isSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <House className="h-4 w-4" />}
           <span className="flex-1 truncate text-left font-semibold">{home.name}</span>
+          {/* One mark, not two. A home you do not own used to show a cloud for a
+              cloud-managed one and a pair of people for a relay-hosted one —
+              but how somebody else's home is served is their business, not a
+              fact about your sidebar. What matters here is that it is not
+              yours, and who it came from, which is what this says. */}
           {home.role && home.role !== 'owner' && (
-            home.isCloudManaged
-              ? <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex"><Cloud className={`h-3 w-3 ${isDarkBackground ? 'text-white/50' : isSelected && !hasSelectedChild ? 'text-primary-foreground/60' : 'text-muted-foreground'}`} /></span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom"><p className="text-xs">Cloud Relay{home.ownerEmail ? ` · ${home.ownerEmail}` : ''}</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              : <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex"><Users className={`h-3 w-3 ${isDarkBackground ? 'text-white/50' : isSelected && !hasSelectedChild ? 'text-primary-foreground/60' : 'text-muted-foreground'}`} /></span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom"><p className="text-xs">Shared by {home.ownerEmail || 'another user'}</p></TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex"><Users className={`h-3 w-3 ${isDarkBackground ? 'text-white/50' : isSelected && !hasSelectedChild ? 'text-primary-foreground/60' : 'text-muted-foreground'}`} /></span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom"><p className="text-xs">Shared by {home.ownerEmail || 'another user'}</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           {!hideAccessoryCounts && !showEditBadge && home.accessoryCount > 0 && (
             <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
@@ -7471,6 +7467,13 @@ const Dashboard = () => {
                 <span className="text-sm font-semibold leading-tight">Editing Layout</span>
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
                   Press and hold a widget or menu item to rearrange
+                </span>
+                {/* Says where the things you cannot see went. Editing reveals
+                    hidden items, and they are sorted to the end rather than
+                    back into place — without saying so, a tile appearing at the
+                    bottom reads as the mode having moved it. */}
+                <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/45' : 'text-muted-foreground/70'}`}>
+                  Hidden items are moved to the end
                 </span>
               </div>
               <button
