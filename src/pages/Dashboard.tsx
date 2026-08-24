@@ -4908,6 +4908,20 @@ const Dashboard = () => {
   helperAccessoriesRef.current = helperAccessories.helpers;
   helperTimersRef.current = helperAccessories.timers;
 
+  /*
+   * Hidden rooms come back as soon as the hold takes, not when you let go.
+   *
+   * `showHiddenItems` waits for the drop, because revealing hidden *tiles*
+   * inserts them into the grid the finger is in: new droppables, a changed
+   * SortableContext, and every sibling's index shifting under an active drag.
+   *
+   * A room is different in the one way that matters. Hidden rooms sort last, so
+   * revealing one appends a section *below everything* — nothing above it moves,
+   * and the drag is untouched. So rooms need not wait, and waiting was visible:
+   * the mode arrived, and then a moment later the room did.
+   */
+  const revealHiddenRooms = showHiddenItems || (isTouchDevice && editMode);
+
   const filteredRooms = useMemo(() => {
     /*
      * Hidden rooms are dropped, except while hidden things are being shown —
@@ -4927,7 +4941,7 @@ const Dashboard = () => {
       visibleRooms = orderRoomsHiddenLast(
         sortedRooms,
         homeLayout?.visibility?.hiddenRooms,
-        showHiddenItems,
+        revealHiddenRooms,
       );
     }
     const visibleRoomIds = new Set(visibleRooms.map(r => r.id));
@@ -5001,7 +5015,7 @@ const Dashboard = () => {
         return [roomName, sorted];
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, homeLayout, showHiddenItems, visibility, visibilityVersion]);
+  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, homeLayout, revealHiddenRooms, visibility, visibilityVersion]);
 
   // Every visible accessory in the current view — what the summary row reads.
   // Memoised because both the Status pill and AreaSummary aggregate over it.
@@ -8404,7 +8418,13 @@ const Dashboard = () => {
                     // Helper accessories hide exactly like real ones: the id goes in
                     // the room layout's hiddenAccessories, so Show Hidden reveals them
                     // and the same toggle puts them back.
-                    if (!showHiddenItems && roomGroups.length === 0 && displayAccessories.length === 0) return null;
+                    // ...but a revealed hidden room stays, even with nothing in
+                    // it: its heading is the only place to unhide it from, and a
+                    // room whose tiles are all hidden would otherwise vanish
+                    // again the moment you went looking for it.
+                    const roomRevealed = revealHiddenRooms && !!room && !!selectedHomeId
+                      && isRoomHiddenState(selectedHomeId, room.id);
+                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;

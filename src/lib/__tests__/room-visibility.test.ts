@@ -48,3 +48,18 @@ describe('where a revealed room sits', () => {
       .toEqual(['Kitchen', 'Bedroom', 'Automations']);
   });
 });
+
+describe('when a hidden room comes back', () => {
+  it('comes back on the reveal, whatever drove it', () => {
+    // Rooms reveal at the lift, not at the drop. Hidden *tiles* have to wait —
+    // they land inside the grid being dragged — but a revealed room appends a
+    // section below everything, so nothing above it moves.
+    expect(orderRoomsHiddenLast([AUTOMATIONS, KITCHEN], HIDDEN, true).map(r => r.name))
+      .toEqual(['Kitchen', 'Automations']);
+  });
+
+  it('is absent until something reveals it', () => {
+    expect(orderRoomsHiddenLast([AUTOMATIONS, KITCHEN], HIDDEN, false).map(r => r.name))
+      .toEqual(['Kitchen']);
+  });
+});

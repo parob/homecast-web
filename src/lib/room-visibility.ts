@@ -25,9 +25,9 @@ export function isRoomHidden(hiddenRooms: string[] | undefined, roomId: string):
 export function shouldFilterRoomOut(
   hiddenRooms: string[] | undefined,
   roomId: string,
-  showHiddenItems: boolean,
+  reveal: boolean,
 ): boolean {
-  if (showHiddenItems) return false;
+  if (reveal) return false;
   return isRoomHidden(hiddenRooms, roomId);
 }
 
@@ -40,9 +40,9 @@ export function shouldFilterRoomOut(
 export function orderRoomsHiddenLast<T extends { id: string }>(
   rooms: T[],
   hiddenRooms: string[] | undefined,
-  showHiddenItems: boolean,
+  reveal: boolean,
 ): T[] {
   const hidden = (r: T) => isRoomHidden(hiddenRooms, r.id);
-  if (!showHiddenItems) return rooms.filter(r => !hidden(r));
+  if (!reveal) return rooms.filter(r => !hidden(r));
   return [...rooms.filter(r => !hidden(r)), ...rooms.filter(hidden)];
 }
