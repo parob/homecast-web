@@ -31,7 +31,7 @@ export function coveringMotion(
   const deviceMoving = positionState !== null && positionState !== 2;
   // A degree of slack: blinds settle a percent or two off their target and
   // would otherwise claim to be moving for ever.
-  const headingElsewhere = Math.abs(target - openness) > 1;
+  const headingElsewhere = !samePosition(target, openness);
   return {
     isMoving: deviceMoving || headingElsewhere,
     isOpening: deviceMoving
@@ -43,9 +43,22 @@ export function coveringMotion(
 /**
  * What the blind is doing, in words, given openness (0 closed → 100 open).
  * "Open" alone was ambiguous at 60%, where a blind is neither open nor closed.
+ *
+ * `hasStarted` separates a blind that is moving from one that has merely been
+ * asked to — see hasDeviceStarted. The difference is an ellipsis, which is
+ * deliberately quiet: the loud half of that signal is the pulse the widget puts
+ * on the bar, and two shouty indicators for one state is worse than none.
  */
-export function coveringStatusText(isMoving: boolean, isOpening: boolean, openness: number): string {
-  if (isMoving) return isOpening ? 'Opening' : 'Closing';
+export function coveringStatusText(
+  isMoving: boolean,
+  isOpening: boolean,
+  openness: number,
+  hasStarted = true,
+): string {
+  if (isMoving) {
+    const verb = isOpening ? 'Opening' : 'Closing';
+    return hasStarted ? verb : `${verb}…`;
+  }
   if (openness <= 0) return 'Currently Closed';
   if (openness >= 100) return 'Currently Fully Open';
   return 'Currently Partially Open';
@@ -109,4 +122,76 @@ export function coveringToggleLabel(
   isMoving: boolean,
 ): 'Open' | 'Close' {
   return coveringToggleTarget(currentOpenness, targetOpenness, isMoving) === 100 ? 'Open' : 'Close';
+}
+
+/**
+ * How far off a position reading may be and still count as "the same place".
+ *
+ * Blinds settle a percent or two off their target, and a bridge that rounds a
+ * write of 37 down to 35 is reporting arrival, not disagreement. Every
+ * comparison between two positions in this file goes through this.
+ */
+export const POSITION_TOLERANCE = 1;
+
+/** Are these two positions the same place, allowing for the slop above? */
+export function samePosition(a: number, b: number, tolerance = POSITION_TOLERANCE): boolean {
+  return Math.abs(a - b) <= tolerance;
+}
+
+/**
+ * Has the device actually begun moving, or have we only asked it to?
+ *
+ * Between the press and the first millimetre of travel there is a real state
+ * the widget used to have no word for: the write is out, the motor has not
+ * started, and `coveringMotion` already says "Opening" because the optimistic
+ * target differs from the current position. That is a useful lie — it beats
+ * saying nothing — but on a slow link it is also the whole complaint: the tile
+ * claims motion for two seconds before anything happens, so when the blind
+ * genuinely stalls it looks exactly the same.
+ *
+ * Two ways to know it started, and either will do: the device says so via
+ * position_state, or the position it reports has left where it was when we
+ * asked.
+ */
+export function hasDeviceStarted(
+  positionAtRequest: number,
+  currentOpenness: number,
+  deviceMoving: boolean,
+): boolean {
+  return deviceMoving || !samePosition(currentOpenness, positionAtRequest);
+}
+
+/**
+ * Has the target we wrote been thrown away?
+ *
+ * A rejected write is reverted in the cache by `writeCharacteristic`, which
+ * puts `target_position` back where it was. Since the bar now draws the target,
+ * that revert is visible on its own — but silently, and the bar is the thing
+ * the user just touched, so it deserves to be told rather than to just slide
+ * back. Anything that moves the effective target off what we asked for counts:
+ * a rejection, or another client commanding something else.
+ */
+export function isCommandAbandoned(requestedTarget: number, targetOpenness: number): boolean {
+  return !samePosition(requestedTarget, targetOpenness);
+}
+
+/**
+ * The write that stops a covering where it stands.
+ *
+ * HomeKit's own answer is `hold_position`, a write-only boolean, but plenty of
+ * bridges never expose it. The universal fallback is to command the position it
+ * is passing through, which every covering understands because it is an
+ * ordinary target write — the blind arrives immediately, having already
+ * arrived.
+ *
+ * Takes and returns RAW positions, not openness: this is handed straight to the
+ * write path, and the caller has the raw reading anyway.
+ */
+export function coveringStopWrite(
+  rawCurrentPosition: number,
+  canHoldPosition: boolean,
+): { characteristicType: 'hold_position' | 'target_position'; value: boolean | number } {
+  return canHoldPosition
+    ? { characteristicType: 'hold_position', value: true }
+    : { characteristicType: 'target_position', value: rawCurrentPosition };
 }

@@ -166,6 +166,19 @@ export default {
           "0%": { opacity: "0", transform: "translateY(4px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        // Asked for, not yet happening. Faster than pulse-soft because it marks
+        // a wait the user is actively enduring rather than an ambient state.
+        "pulse-edge": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.25" },
+        },
+        // A write came back rejected. One pass, small amplitude: enough to say
+        // the bar moved back on its own rather than because you moved it.
+        "nudge": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%": { transform: "translateX(-3px)" },
+          "75%": { transform: "translateX(3px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -174,6 +187,8 @@ export default {
         "scale-in": "scale-in 0.2s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         "slide-up": "slide-up 0.2s ease-out",
+        "pulse-edge": "pulse-edge 1.2s ease-in-out infinite",
+        "nudge": "nudge 0.3s ease-in-out",
       },
     },
   },

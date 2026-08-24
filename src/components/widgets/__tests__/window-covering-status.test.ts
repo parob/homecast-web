@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coveringMotion, coveringStatusText, coveringToggleLabel, coveringToggleTarget, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
+import { coveringMotion, coveringStatusText, coveringStopWrite, coveringToggleLabel, coveringToggleTarget, hasDeviceStarted, isCommandAbandoned, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
 
 // HomeKit's position_state values, of the RAW position.
 const DECREASING = 0;
@@ -142,5 +142,75 @@ describe('the compact one-press button', () => {
     // Target still reads 0 from the last command, but nothing is moving and the
     // blind is open — the button must describe the blind, not the old order.
     expect(coveringToggleLabel(100, 0, false)).toBe('Close');
+  });
+});
+
+describe('asked for, versus happening', () => {
+  it('reads the device as started once it says it is moving', () => {
+    // Not an inch of travel reported yet, but position_state is definite.
+    expect(hasDeviceStarted(40, 40, true)).toBe(true);
+  });
+
+  it('reads it as started once the position leaves where it was', () => {
+    // Plenty of blinds publish no position_state at all; the reading moving is
+    // the only evidence there is.
+    expect(hasDeviceStarted(40, 46, false)).toBe(true);
+  });
+
+  it('does not mistake settling slop for the journey beginning', () => {
+    expect(hasDeviceStarted(40, 40, false)).toBe(false);
+    expect(hasDeviceStarted(40, 41, false)).toBe(false);
+  });
+
+  it('marks the wait with an ellipsis and nothing louder', () => {
+    expect(coveringStatusText(true, true, 40, false)).toBe('Opening…');
+    expect(coveringStatusText(true, false, 40, false)).toBe('Closing…');
+    // Once it is genuinely under way, the plain word.
+    expect(coveringStatusText(true, true, 40, true)).toBe('Opening');
+  });
+
+  it('says nothing about waiting when the blind is at rest', () => {
+    // A resting blind has no outstanding command to be waiting on, whatever the
+    // flag says — the wording must not leak into the idle states.
+    expect(coveringStatusText(false, false, 0, false)).toBe('Currently Closed');
+    expect(coveringStatusText(false, false, 100, false)).toBe('Currently Fully Open');
+  });
+
+  it('assumes started when the caller does not track commands', () => {
+    // The default keeps every existing call site's wording unchanged.
+    expect(coveringStatusText(true, true, 40)).toBe('Opening');
+  });
+});
+
+describe('a command that was thrown away', () => {
+  it('accepts a blind that stops a percent short of its target', () => {
+    expect(isCommandAbandoned(100, 99)).toBe(false);
+    expect(isCommandAbandoned(60, 60)).toBe(false);
+  });
+
+  it('notices the target being put back by a rejected write', () => {
+    // writeCharacteristic reverts target_position on failure. The bar draws the
+    // target, so this is the moment it slides away from where the user put it.
+    expect(isCommandAbandoned(100, 0)).toBe(true);
+  });
+});
+
+describe('stopping where it stands', () => {
+  it('uses hold_position when the covering offers it', () => {
+    expect(coveringStopWrite(45, true)).toEqual({ characteristicType: 'hold_position', value: true });
+  });
+
+  it('otherwise commands the position it is passing through', () => {
+    // Raw, not openness: this goes straight to the write path. A blind sent its
+    // own current position has already arrived, so it halts.
+    expect(coveringStopWrite(45, false)).toEqual({ characteristicType: 'target_position', value: 45 });
+  });
+
+  it('stops at the raw reading whichever convention the blind uses', () => {
+    // The value is echoed untouched, so an openness-reporting blind and a
+    // coverage-reporting one are both told exactly where they already are.
+    for (const raw of [0, 45, 100]) {
+      expect(coveringStopWrite(raw, false).value).toBe(raw);
+    }
   });
 });

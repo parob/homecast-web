@@ -24,6 +24,38 @@ interface VerticalSliderProps {
   className?: string;
   /** Inverts the fill so it grows downward — blinds close from the top. */
   invert?: boolean;
+  /**
+   * When to tell the device. 'live' commits on a throttle as the finger moves,
+   * which is what makes a bulb track the drag; 'release' sends exactly one
+   * write, on lift.
+   *
+   * A blind is not a bulb. It takes seconds to travel, so the eight
+   * intermediate targets a two-second drag emits on 'live' are eight real
+   * re-targetings of a motor that has not reached the first one — and on a slow
+   * link they land *after* the finger is up, so the blind spends the next
+   * half-minute chasing positions the user has already passed through and
+   * abandoned. The drag itself is local state either way, so 'release' costs
+   * nothing in smoothness.
+   */
+  commitMode?: 'live' | 'release';
+  /**
+   * A second position to mark: where the device actually is, when that differs
+   * from where it has been told to go.
+   *
+   * With this set the bar tells two things at once. The solid fill is the part
+   * both readings agree on — real, confirmed, already true. The lighter band
+   * between them is the outstanding travel, and it shrinks as the device
+   * reports its way across. So the value can jump to the target the instant a
+   * command is sent (no snapping back to a stale reading on release) without
+   * the bar ever claiming a blind is somewhere it is not: the claim and the
+   * fact are drawn as different things.
+   */
+  ghostValue?: number;
+  /**
+   * Draws the target edge pulsing — a write is out and the device has not moved
+   * yet. Purely presentational; the slider does not track requests itself.
+   */
+  pending?: boolean;
   /** Narrow bar (landscape, beside secondary controls) — shrinks the readout. */
   dense?: boolean;
   /**
@@ -59,6 +91,9 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   formatValue,
   className = '',
   invert = false,
+  commitMode = 'live',
+  ghostValue,
+  pending = false,
   dense,
   fixedGradient = false,
 }) => {
@@ -71,8 +106,18 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   const lastCommit = useRef(0);
 
   const display = dragging ?? value;
-  const pct = max > min ? ((display - min) / (max - min)) * 100 : 0;
-  const clampedPct = Math.max(0, Math.min(100, pct));
+  const toPct = (v: number) => {
+    const raw = max > min ? ((v - min) / (max - min)) * 100 : 0;
+    return Math.max(0, Math.min(100, raw));
+  };
+  const clampedPct = toPct(display);
+
+  // The two edges, ordered rather than named: which of the target and the
+  // device's own reading is the further along the bar changes with the
+  // direction of travel, and the drawing does not care which is which.
+  const ghostPct = ghostValue === undefined ? null : toPct(ghostValue);
+  const confirmedPct = ghostPct === null ? clampedPct : Math.min(clampedPct, ghostPct);
+  const outstandingPct = ghostPct === null ? 0 : Math.max(clampedPct, ghostPct) - confirmedPct;
 
   const valueFromY = useCallback((clientY: number): number => {
     const rect = trackRef.current?.getBoundingClientRect();
@@ -95,12 +140,13 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
     if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const next = valueFromY(e.clientY);
     setDragging(next);
+    if (commitMode === 'release') return;
     const now = performance.now();
     if (now - lastCommit.current > 250) {
       lastCommit.current = now;
       onCommit(next);
     }
-  }, [disabled, onCommit, valueFromY]);
+  }, [commitMode, disabled, onCommit, valueFromY]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (disabled) return;
@@ -114,6 +160,15 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   }, [disabled, onCommit]);
 
   const readout = formatValue ? formatValue(display) : `${Math.round(display)}%`;
+  // Only worth drawing while the two disagree; once the device arrives the
+  // fill's own boundary is the edge and an extra rule on top of it is noise.
+  const showTravel = ghostPct !== null && outstandingPct > 0.5;
+  /** Offset from whichever end the fill grows from. */
+  const fromAnchor = (pct: number): React.CSSProperties =>
+    invert ? { top: `${pct}%` } : { bottom: `${pct}%` };
+  const ghostReadout = ghostValue === undefined
+    ? null
+    : formatValue ? formatValue(ghostValue) : `${Math.round(ghostValue)}%`;
 
   return (
     <div
@@ -122,6 +177,9 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       aria-valuenow={Math.round(display)}
       aria-valuemin={min}
       aria-valuemax={max}
+      // The gap between command and reality is the whole point of the ghost
+      // track, and a screen reader gets none of it from the fill.
+      aria-valuetext={showTravel && ghostReadout ? `${readout}, currently ${ghostReadout}` : undefined}
       aria-label={label}
       aria-disabled={disabled || undefined}
       onPointerDown={handlePointerDown}
@@ -139,23 +197,61 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       } ${className}`}
       style={{ touchAction: 'none' }}
     >
+      {/* The part both readings agree on: real, confirmed, already true. */}
       <div
         className={`absolute inset-x-0 ${invert ? 'top-0' : 'bottom-0'} ${fillClassName} ${
           dragging === null ? 'transition-[height] duration-base ease-standard' : ''
         }`}
         style={{
-          height: `${clampedPct}%`,
+          height: `${confirmedPct}%`,
           // Anchored to the end the fill grows from, so the visible slice is the
           // part of the gradient that actually corresponds to the value.
-          ...(fixedGradient && clampedPct > 0
+          ...(fixedGradient && confirmedPct > 0
             ? {
-                backgroundSize: `100% ${10000 / clampedPct}%`,
+                backgroundSize: `100% ${10000 / confirmedPct}%`,
                 backgroundPosition: invert ? 'top' : 'bottom',
               }
             : {}),
           ...fillStyle,
         }}
       />
+
+      {/* The outstanding travel. Same colour, half present — it reads as the
+          command rather than as the state, and it drains as the device
+          reports its way across. */}
+      {showTravel && (
+        <div
+          data-testid="slider-travel"
+          className={`absolute inset-x-0 opacity-40 ${fillClassName} ${
+            dragging === null ? 'transition-all duration-base ease-standard' : ''
+          }`}
+          style={{
+            ...fromAnchor(confirmedPct),
+            height: `${outstandingPct}%`,
+            ...fillStyle,
+          }}
+        />
+      )}
+
+      {/* Where the device actually is — the boundary between fact and order. */}
+      {showTravel && ghostPct !== null && (
+        <div
+          className={`absolute inset-x-0 h-px bg-white/50 ${
+            dragging === null ? 'transition-all duration-base ease-standard' : ''
+          }`}
+          style={fromAnchor(ghostPct)}
+        />
+      )}
+
+      {/* Where it has been told to go. The crisp one, because it is the value:
+          it lands the moment the command is sent and does not move again. */}
+      {showTravel && (
+        <div
+          data-testid="slider-target-edge"
+          className={`absolute inset-x-0 -my-px h-0.5 bg-black/50 ${pending ? 'animate-pulse-edge' : ''}`}
+          style={fromAnchor(clampedPct)}
+        />
+      )}
 
       {/* Readout sits above the fill line so it stays legible at any value. */}
       <div className={`relative flex h-full flex-col items-center justify-between pointer-events-none ${isDense ? 'py-3' : 'py-4'}`}>
