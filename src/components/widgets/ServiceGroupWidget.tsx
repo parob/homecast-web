@@ -535,9 +535,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     ? { type: 'serviceGroup', id: group.id, name: group.name, homeId: accessories[0]?.homeId }
     : null;
 
-  const editActions = showEditActions
-    ? <TileEditActions action={editPrimaryAction} tab={editTab} />
-    : null;
+  // Always rendered, gated by `visible` — see WidgetCard.
+  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
 
   // Named outside edit mode, where there is no legend explaining what a bare eye
   // icon means — desktop reveals hidden tiles from the context menu and never

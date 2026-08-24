@@ -453,12 +453,15 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           )}
         </button>
       </div>
-      {showEditBadge && (
-        <RowEditActions
-          action={{ kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility!, name: room.name }}
-          tab={pinTab}
-        />
-      )}
+      {/* Gated by `visible`, not by whether it renders, so the badges stay
+          for the length of their exit animation — see TileEditActions. */}
+      <RowEditActions
+        visible={!!showEditBadge}
+        action={onToggleVisibility
+          ? { kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility, name: room.name }
+          : null}
+        tab={pinTab}
+      />
     </div>
   );
 
@@ -855,12 +858,15 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           )}
         </button>
       </div>
-      {showEditBadge && (
-        <RowEditActions
-          action={{ kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility!, name: home.name }}
-          tab={pinTab}
-        />
-      )}
+      {/* Gated by `visible`, not by whether it renders, so the badges stay
+          for the length of their exit animation — see TileEditActions. */}
+      <RowEditActions
+        visible={!!showEditBadge}
+        action={onToggleVisibility
+          ? { kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility, name: home.name }
+          : null}
+        tab={pinTab}
+      />
     </div>
   );
 
@@ -1031,7 +1037,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
       </button>
       </div>
       {/* A collection group can't be hidden, so pin is the only action here. */}
-      {editMode && pinTab && <RowEditActions action={null} tab={pinTab} />}
+      <RowEditActions visible={!!(editMode && pinTab)} action={null} tab={pinTab} />
     </div>
   );
 

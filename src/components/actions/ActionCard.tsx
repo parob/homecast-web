@@ -177,12 +177,18 @@ export function ActionCard({
   const editable = (
     <div className="relative">
       {card}
-      {editMode && homeId && onHideAction && (
-        <TileEditActions
-          action={{ kind: 'remove', label: `Hide ${HOME_ACTION_NAMES[action.id]}`, onRemove: () => onHideAction(action.id) }}
-          tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }}
-        />
-      )}
+      {/* Gated by `visible` so it can animate away — see SceneCard. The props
+          are only meaningful when there is a home to hide it from, so they are
+          built defensively rather than under the render condition. */}
+      <TileEditActions
+        visible={!!(editMode && homeId && onHideAction)}
+        action={homeId && onHideAction
+          ? { kind: 'remove', label: `Hide ${HOME_ACTION_NAMES[action.id]}`, onRemove: () => onHideAction(action.id) }
+          : null}
+        tab={homeId
+          ? { type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }
+          : null}
+      />
     </div>
   );
   if (editMode) return editable;

@@ -461,9 +461,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId }
     : null;
 
-  const editActions = showEditActions
-    ? <TileEditActions action={editPrimaryAction} tab={editTab} />
-    : null;
+  // Always rendered, gated by `visible`: the badges have to outlive the mode
+  // by the length of their exit animation, and a component that is not there
+  // cannot animate away.
+  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
 
   // A hidden tile with no way to act on it still has to say why it is greyed out.
   // Named outside edit mode, where there is no legend explaining what a bare eye

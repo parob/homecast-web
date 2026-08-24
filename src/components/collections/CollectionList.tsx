@@ -128,7 +128,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
       </button>
       </div>
       {/* A collection isn't hideable, so pin is the only action it offers. */}
-      {editMode && pinTab && <RowEditActions action={null} tab={pinTab} />}
+      <RowEditActions visible={!!(editMode && pinTab)} action={null} tab={pinTab} />
     </div>
   );
 

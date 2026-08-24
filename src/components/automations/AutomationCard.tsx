@@ -211,13 +211,15 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
         {card}
       </div>
       {editMode && isHidden && <HiddenLabel />}
-      {editMode && onToggleHidden && (
-        <TileEditActions
-          action={{ kind: 'hide', isHidden: !!isHidden, onToggle: onToggleHidden, name }}
-          // Automations are not a PinnedTab type, so there is no pin to offer.
-          tab={null}
-        />
-      )}
+      {/* Gated by `visible` so it can animate away — see SceneCard. */}
+      <TileEditActions
+        visible={!!(editMode && onToggleHidden)}
+        action={onToggleHidden
+          ? { kind: 'hide', isHidden: !!isHidden, onToggle: onToggleHidden, name }
+          : null}
+        // Automations are not a PinnedTab type, so there is no pin to offer.
+        tab={null}
+      />
     </div>
   );
 }

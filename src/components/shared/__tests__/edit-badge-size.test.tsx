@@ -11,8 +11,8 @@
  * a 16px line box inside a pill (`text-xs`), the body's ~19px on a tile. Measured
  * in a browser, that was 38x19 against 38x20. `leading-4` pins it.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import { TileEditActions, RowEditActions } from '../EditActions';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
 import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
@@ -100,5 +100,45 @@ describe('the edit badge', () => {
     const pin = screen.getByRole('button', { name: 'Pin to Tab Bar' });
     expect(pin.className).toContain('leading-4');
     expect(pin.className).toContain('px-2');
+  });
+});
+
+describe('the badges leaving', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const Badge = ({ visible }: { visible: boolean }) => (
+    <PinnedTabsProvider value={PINS as never}>
+      <TileEditActions
+        visible={visible}
+        action={{ kind: 'hide', isHidden: false, onToggle: vi.fn(), name: 'Lamp' }}
+        tab={null}
+      />
+    </PinnedTabsProvider>
+  );
+
+  it('stays on screen after the mode ends, so it has something to animate', () => {
+    // The whole point: a component that has already unmounted cannot animate
+    // away. Callers pass `visible` instead of not rendering it.
+    const { rerender } = render(<Badge visible />);
+    expect(screen.getByRole('button', { name: 'Hide Lamp' })).toBeTruthy();
+
+    rerender(<Badge visible={false} />);
+    const leaving = screen.getByRole('button', { name: 'Hide Lamp' });
+    expect(leaving.parentElement!.className).toContain('edit-badge-out');
+  });
+
+  it('is gone once the animation has run', () => {
+    const { rerender } = render(<Badge visible />);
+    rerender(<Badge visible={false} />);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.queryByRole('button', { name: 'Hide Lamp' })).toBeNull();
+  });
+
+  it('arrives with the enter animation, not the exit one', () => {
+    render(<Badge visible />);
+    const cls = screen.getByRole('button', { name: 'Hide Lamp' }).parentElement!.className;
+    expect(cls).toContain('edit-badge-in');
+    expect(cls).not.toContain('edit-badge-out');
   });
 });

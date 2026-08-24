@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { usePinAction } from '@/contexts/PinnedTabsContext';
 import type { PinnedTab } from '@/lib/pinned-tabs';
@@ -169,6 +169,31 @@ function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
   );
 }
 
+
+/** How long the badges take to arrive and to leave. Matches index.css. */
+const BADGE_ANIM_MS = 150;
+
+/**
+ * Keep the badges on screen long enough to animate away.
+ *
+ * They are rendered by whether Edit Layout is running, so when it stops they
+ * would simply cease to exist — you cannot animate an element that is no longer
+ * there. This holds them for the length of the exit and then lets them go.
+ *
+ * Callers pass `visible` rather than not rendering at all; the default is
+ * `true`, so anything still using the old shape keeps its previous behaviour
+ * (it appears and disappears) rather than breaking.
+ */
+function useBadgePresence(visible: boolean) {
+  const [rendered, setRendered] = useState(visible);
+  useEffect(() => {
+    if (visible) { setRendered(true); return; }
+    const t = window.setTimeout(() => setRendered(false), BADGE_ANIM_MS);
+    return () => window.clearTimeout(t);
+  }, [visible]);
+  return { rendered, exiting: rendered && !visible };
+}
+
 /**
  * Tucked into the widget's top-right corner.
  *
@@ -179,13 +204,28 @@ function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
  * Rendered by the caller *outside* the Card, so the dimming applied to a hidden
  * tile's content does not also grey out the button that undoes it.
  */
-export function TileEditActions({ action, tab }: { action: PrimaryEditAction; tab?: PinnedTab | null }) {
-  const pin = usePinAction(tab);
-  const primary = primaryButton(action, 'tile');
+export function TileEditActions({ action, tab, visible = true }: {
+  action: PrimaryEditAction;
+  tab?: PinnedTab | null;
+  /** False while Edit Layout is ending — the badges stay to animate away. */
+  visible?: boolean;
+}) {
+  const { rendered, exiting } = useBadgePresence(visible);
+  // What was on the badge when it was last real. Its props go null the moment
+  // the mode ends, and an exit animation of an empty box is nothing at all.
+  const held = useRef({ action, tab });
+  if (visible) held.current = { action, tab };
+  const shown = visible ? { action, tab } : held.current;
+
+  const pin = usePinAction(shown.tab);
+  const primary = primaryButton(shown.action, 'tile');
   const pinned = pinButton(pin, 'tile');
-  if (!primary && !pinned) return null;
+  if (!rendered || (!primary && !pinned)) return null;
   return (
-    <div className="edit-badge-in absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none">
+    <div className={cn(
+      'absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none',
+      exiting ? 'edit-badge-out' : 'edit-badge-in',
+    )}>
       {primary}
       {pinned}
     </div>
@@ -200,18 +240,28 @@ export function TileEditActions({ action, tab }: { action: PrimaryEditAction; ta
  * Hide+Pin cluster is 73px and sits 8px in from the edge, so that padding is
  * 81px — `pr-14` was 56px and the name had been truncating under the badges.
  */
-export function RowEditActions({ action, tab }: { action: PrimaryEditAction; tab?: PinnedTab | null }) {
-  const pin = usePinAction(tab);
-  const primary = primaryButton(action, 'row');
+export function RowEditActions({ action, tab, visible = true }: {
+  action: PrimaryEditAction;
+  tab?: PinnedTab | null;
+  /** False while Edit Layout is ending — see TileEditActions. */
+  visible?: boolean;
+}) {
+  const { rendered, exiting } = useBadgePresence(visible);
+  const held = useRef({ action, tab });
+  if (visible) held.current = { action, tab };
+  const shown = visible ? { action, tab } : held.current;
+
+  const pin = usePinAction(shown.tab);
+  const primary = primaryButton(shown.action, 'row');
   const pinned = pinButton(pin, 'row');
-  if (!primary && !pinned) return null;
+  if (!rendered || (!primary && !pinned)) return null;
   return (
     // Two elements, and it has to stay that way: this one centres itself with
     // `-translate-y-1/2`, and the enter animation animates `transform` — on one
     // element the keyframe would replace the centring and the badge would jump
     // half its height as it arrived. Same clash the wiggle documents.
     <div className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1">
-      <div className="edit-badge-in flex items-center gap-1">
+      <div className={cn('flex items-center gap-1', exiting ? 'edit-badge-out' : 'edit-badge-in')}>
         {primary}
         {pinned}
       </div>

@@ -113,14 +113,15 @@ export function SceneCard({
       {/* Outside the card, so dimming a hidden one does not also grey out
           the button that brings it back. */}
       {editMode && isHidden && <HiddenLabel />}
-      {editMode && (
-        <TileEditActions
-          action={onToggleHidden
-            ? { kind: 'hide', isHidden: !!isHidden, onToggle: () => onToggleHidden(scene, !!isHidden), name: scene.name }
-            : null}
-          tab={tab}
-        />
-      )}
+      {/* Gated by `visible`, not by whether it renders: the badges stay put
+          for the length of their exit animation. */}
+      <TileEditActions
+        visible={editMode}
+        action={onToggleHidden
+          ? { kind: 'hide', isHidden: !!isHidden, onToggle: () => onToggleHidden(scene, !!isHidden), name: scene.name }
+          : null}
+        tab={tab}
+      />
     </div>
   );
 
