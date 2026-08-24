@@ -7462,7 +7462,17 @@ const Dashboard = () => {
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <span className="text-sm font-semibold">Editing Layout</span>
+              {/* The gesture is not discoverable on its own — nothing on screen
+                  says a hold does anything — so the bar that appears when you
+                  find it explains what you can do next. `min-w-0` and wrapping
+                  rather than truncating: an instruction cut off mid-sentence is
+                  worse than one on two lines, and the bar has the room. */}
+              <div className="flex min-w-0 flex-1 flex-col items-center">
+                <span className="text-sm font-semibold leading-tight">Editing Layout</span>
+                <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
+                  Press and hold a widget or menu item to rearrange
+                </span>
+              </div>
               <button
                 onClick={() => setEditModeAndTidy(false)}
                 className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold active:bg-primary/80"

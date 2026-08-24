@@ -91,9 +91,17 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
       onTouchStart={swallow}
       onClick={(e) => { swallow(e); if (!disabled) onClick(); }}
       className={cn(
-        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-800/95 font-semibold text-white shadow-lg',
-        'transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700',
-        'disabled:opacity-50 disabled:hover:bg-zinc-800/95',
+        // Quieter than it was: these sit on top of the thing they act on, and
+        // a near-opaque chip with a lifted shadow read as the loudest object on
+        // the screen while arranging. Backed off to a translucent, blurred chip
+        // with a hairline shadow — the same glass the tiles use.
+        //
+        // Not all the way transparent: 10px text over a photographic wallpaper
+        // needs something behind it, which is what the blur is for. The weight
+        // stays semibold for the same reason.
+        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-900/70 backdrop-blur-sm font-semibold text-white shadow-sm',
+        'transition-colors duration-fast hover:bg-zinc-900/85 active:bg-zinc-900/85',
+        'disabled:opacity-50 disabled:hover:bg-zinc-900/70',
         size === 'tile' ? TILE_BADGE
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.
