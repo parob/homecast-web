@@ -185,37 +185,28 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   return (
     <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden">
-        <DialogHeader>
-          <DialogTitle className="text-base leading-tight pr-6 flex items-center gap-2">
-            <LineChart className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 truncate">
+        {/* The header is the name and nothing else. An action used to sit at the
+            end of this row, where the close button's 40px hit circle reaches
+            23px past the content edge — it collided whenever the name was long
+            enough to stop the row shrinking, which is most names on a phone. */}
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="text-base leading-tight pr-8 flex items-center gap-2 min-w-0">
+            <LineChart className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1 min-w-0 truncate">
               {target?.accessory?.name ?? target?.group?.name ?? target?.status?.title ?? 'Analytics'}
             </span>
-            <button
-              onClick={() => {
-                const accessory = target?.accessory;
-                const group = target?.group;
-                const status = target?.status;
-                const homeId = target?.homeId;
-                onClose();
-                if (status) openAnalytics(status.analyticsScope ?? { level: 'home', homeId });
-                else if (group) openAnalytics({ level: 'group', groupId: group.id, homeId });
-                else openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined);
-              }}
-              className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              title="Open full-screen and compare with other accessories"
-            >
-              Open in Analytics <ExternalLink className="h-3 w-3" />
-            </button>
           </DialogTitle>
           {target?.status?.subtitle && (
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs pr-8">
               {target.status.subtitle}
             </DialogDescription>
           )}
         </DialogHeader>
 
-        <div className="flex gap-1">
+        {/* Range and scope in one row: both answer "what am I looking at". It
+            wraps rather than colliding, so a narrow dialog drops the link to a
+            line of its own instead of under the X. */}
+        <div className="flex flex-wrap items-center gap-1">
           {RANGES.map(r => (
             <button
               key={r.label}
@@ -229,6 +220,22 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
               {r.label}
             </button>
           ))}
+          <button
+            onClick={() => {
+              const accessory = target?.accessory;
+              const group = target?.group;
+              const status = target?.status;
+              const homeId = target?.homeId;
+              onClose();
+              if (status) openAnalytics(status.analyticsScope ?? { level: 'home', homeId });
+              else if (group) openAnalytics({ level: 'group', groupId: group.id, homeId });
+              else openAnalytics(accessory ? { level: 'accessory', accessory, homeId } : undefined);
+            }}
+            className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 py-0.5"
+            title="Open full-screen and compare with other accessories"
+          >
+            Open in Analytics <ExternalLink className="h-3 w-3" />
+          </button>
         </div>
 
         {!historyEnabled ? (
