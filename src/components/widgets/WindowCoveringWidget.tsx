@@ -372,6 +372,22 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   const statusText = coveringStatusText(isMoving, isOpening, currentPosition, !awaitingStart);
 
   /**
+   * Is the blind actually going somewhere — enough to spin the tile's ring?
+   *
+   * Deliberately NOT `isMoving`. That one takes a target differing from the
+   * current position as movement, which is what lets the tile say "Opening" the
+   * instant you press, and it is right for a word. It is wrong for a spinner,
+   * because it never expires: a blind that settles three percent short of its
+   * target satisfies it for ever, and a tile that spins for ever is not
+   * reporting progress, it is just broken furniture.
+   *
+   * Both of these end on their own. position_state is the device's own account
+   * and returns to Stopped; `command` is cleared on arrival, on abandonment, or
+   * by its own 90-second cap.
+   */
+  const changingState = deviceMoving || command !== null;
+
+  /**
    * Ask for a position, in openness terms, and remember that we asked.
    *
    * Every control here went through its own `isInvertedBlinds ? 100 - v : v`,
@@ -458,6 +474,9 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
     <WidgetCard
       title={accessory.name}
       subtitle={subtitle}
+      // The write lands in milliseconds and the motor turns for another half a
+      // minute; the ring covers both, so the tile stops looking idle mid-travel.
+      busy={changingState}
       icon={<Blinds className="h-4 w-4" />}
       isOn={isOpen}
       isReachable={accessory.isReachable}
