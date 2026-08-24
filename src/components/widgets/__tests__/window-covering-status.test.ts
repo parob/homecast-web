@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coveringMotion, coveringStatusText, coveringStopWrite, coveringToggleLabel, coveringToggleTarget, hasDeviceStarted, isCommandAbandoned, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
+import { coveringMotion, coveringPositionWord, coveringStatusText, coveringStopWrite, coveringToggleLabel, coveringToggleTarget, hasDeviceStarted, isCommandAbandoned, isOpeningFromState, usesStandardPositionLogic, toOpenness, fromOpenness } from '../shared/coveringStatus';
 
 // HomeKit's position_state values, of the RAW position.
 const DECREASING = 0;
@@ -8,9 +8,9 @@ const STOPPED = 2;
 
 describe('window covering status', () => {
   it('names the resting state rather than calling everything Open', () => {
-    expect(coveringStatusText(false, false, 0)).toBe('Currently Closed');
-    expect(coveringStatusText(false, false, 60)).toBe('Currently Partially Open');
-    expect(coveringStatusText(false, false, 100)).toBe('Currently Fully Open');
+    expect(coveringStatusText(false, false, 0)).toBe('Closed');
+    expect(coveringStatusText(false, false, 60)).toBe('Half Open');
+    expect(coveringStatusText(false, false, 100)).toBe('Open');
   });
 
   it('reports the direction while it moves, whatever the position', () => {
@@ -21,8 +21,8 @@ describe('window covering status', () => {
   });
 
   it('treats out-of-range readings as the nearest end stop', () => {
-    expect(coveringStatusText(false, false, -1)).toBe('Currently Closed');
-    expect(coveringStatusText(false, false, 101)).toBe('Currently Fully Open');
+    expect(coveringStatusText(false, false, -1)).toBe('Closed');
+    expect(coveringStatusText(false, false, 101)).toBe('Open');
   });
 
   it('reads the direction the way the blind reports position', () => {
@@ -74,7 +74,7 @@ describe('window covering motion', () => {
     expect(coveringStatusText(arriving.isMoving, arriving.isOpening, 60)).toBe('Opening');
 
     const settled = coveringMotion(100, 100, STOPPED, true);
-    expect(coveringStatusText(settled.isMoving, settled.isOpening, 100)).toBe('Currently Fully Open');
+    expect(coveringStatusText(settled.isMoving, settled.isOpening, 100)).toBe('Open');
   });
 });
 
@@ -172,8 +172,8 @@ describe('asked for, versus happening', () => {
   it('says nothing about waiting when the blind is at rest', () => {
     // A resting blind has no outstanding command to be waiting on, whatever the
     // flag says — the wording must not leak into the idle states.
-    expect(coveringStatusText(false, false, 0, false)).toBe('Currently Closed');
-    expect(coveringStatusText(false, false, 100, false)).toBe('Currently Fully Open');
+    expect(coveringStatusText(false, false, 0, false)).toBe('Closed');
+    expect(coveringStatusText(false, false, 100, false)).toBe('Open');
   });
 
   it('assumes started when the caller does not track commands', () => {
@@ -212,5 +212,41 @@ describe('stopping where it stands', () => {
     for (const raw of [0, 45, 100]) {
       expect(coveringStopWrite(raw, false).value).toBe(raw);
     }
+  });
+});
+
+
+describe('how far open, in words', () => {
+  it('keeps the end stops bare', () => {
+    // Not "Fully Open", and not prefixed with "Currently" — the line only ever
+    // describes now, so the word was doing no work.
+    expect(coveringPositionWord(0)).toBe('Closed');
+    expect(coveringPositionWord(100)).toBe('Open');
+  });
+
+  it('climbs the ladder in between rather than saying Partially Open to everything', () => {
+    // 5% and 95% are both "partially open" and that told you nothing you could
+    // not already see.
+    expect(coveringPositionWord(5)).toBe('Slightly Open');
+    expect(coveringPositionWord(50)).toBe('Half Open');
+    expect(coveringPositionWord(95)).toBe('Mostly Open');
+  });
+
+  it('puts the boundaries where the words stop being true', () => {
+    expect(coveringPositionWord(34)).toBe('Slightly Open');
+    expect(coveringPositionWord(35)).toBe('Half Open');
+    expect(coveringPositionWord(64)).toBe('Half Open');
+    expect(coveringPositionWord(65)).toBe('Mostly Open');
+  });
+
+  it('never calls a blind that is barely cracked Closed', () => {
+    // 1% open is open, and a blind reporting 99 has not finished arriving.
+    expect(coveringPositionWord(1)).toBe('Slightly Open');
+    expect(coveringPositionWord(99)).toBe('Mostly Open');
+  });
+
+  it('clamps a reading from outside the range', () => {
+    expect(coveringPositionWord(-5)).toBe('Closed');
+    expect(coveringPositionWord(120)).toBe('Open');
   });
 });

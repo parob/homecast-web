@@ -100,19 +100,46 @@ const renderBlind = (opts: BlindOpts, handlers: { onSlider?: ReturnType<typeof v
 
 const slider = () => screen.getByRole('slider');
 
+/**
+ * The big number inside the bar, and the status line outside it.
+ *
+ * They deliberately say the same words now — both read the device — so a bare
+ * getByText is ambiguous, and that ambiguity is the fix working. Scope instead.
+ */
+const barReadout = () => slider().querySelector('.tabular-nums')?.textContent ?? '';
+const subtitleHas = (text: string) =>
+  screen.getAllByText(text).some(el => !slider().contains(el));
+
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('what the bar draws', () => {
-  it('shows the commanded position, not the one the blind is crawling away from', () => {
-    // Told to open fully; still physically shut. The readout used to follow the
-    // current position, so releasing a drag threw the bar back to where the
-    // blind was and crept up over the next half-minute.
+  it('draws the fill to the command, so a press lands at once', () => {
+    // Told to open fully; still physically shut. Drawing the current position
+    // instead meant releasing a drag threw the bar back to where the blind was
+    // and crept up over the next half-minute.
     renderBlind({ current: 100, target: 0 });
-    expect(screen.getByText('Open')).toBeTruthy();
-    // …and the device's own position rides along as the second edge.
     expect(screen.getByTestId('slider-travel')).toBeTruthy();
-    expect(slider().getAttribute('aria-valuetext')).toBe('Open, currently Closed');
+    // The fill runs the whole way: raw 0 coverage is wide open.
+    expect(screen.getByTestId('slider-target-edge').style.top).toBe('0%');
+  });
+
+  it('prints where the blind is, never where it was sent', () => {
+    // The regression: the fill moving to the target took the readout with it,
+    // so this said "Open" over a window that was still shut.
+    renderBlind({ current: 100, target: 0 });
+    expect(barReadout()).toBe('Closed');
+    expect(slider().getAttribute('aria-valuetext')).toBe('Closed, heading for Open');
+  });
+
+  it('lets the number climb as the blind actually travels', () => {
+    const { update } = renderBlind({ current: 100, target: 0 });
+    expect(barReadout()).toBe('Closed');
+    // Coverage falling on a coverage-reporting blind is the blind going up.
+    update({ current: 40, target: 0, positionState: DECREASING });
+    expect(barReadout()).toBe('60%');
+    update({ current: 0, target: 0 });
+    expect(barReadout()).toBe('Open');
   });
 
   it('draws one plain fill once the blind has arrived', () => {
@@ -124,15 +151,15 @@ describe('what the bar draws', () => {
   it('reads the position the way the maker reports it', () => {
     // Lutron reports openness, so raw 100 is wide open — the same picture the
     // Aqara above draws from raw 0.
-    renderBlind({ current: 0, target: 100, manufacturer: 'Lutron' });
-    expect(screen.getByText('Open')).toBeTruthy();
+    renderBlind({ current: 100, target: 100, manufacturer: 'Lutron' });
+    expect(barReadout()).toBe('Open');
   });
 });
 
 describe('saying whether anything is actually happening', () => {
   it('marks a command the device has not acted on yet', () => {
     const { onSlider, update } = renderBlind({ current: 100, target: 100 });
-    expect(screen.getByText('Currently Closed')).toBeTruthy();
+    expect(subtitleHas('Closed')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: /open/i }));
     expect(onSlider).toHaveBeenCalledWith('BLIND-1', 'target_position', 0);
@@ -169,7 +196,7 @@ describe('saying whether anything is actually happening', () => {
     // the target, so it is about to slide away from where the user put it.
     update({ target: 100 });
     expect(container.querySelector('.animate-nudge')).toBeTruthy();
-    expect(screen.getByText('Currently Closed')).toBeTruthy();
+    expect(subtitleHas('Closed')).toBe(true);
   });
 
   it('does not cry failure at a surface that never reflects the write', () => {
@@ -221,5 +248,30 @@ describe('stopping it where it stands', () => {
     renderBlind({ current: 60, target: 60 });
     expect(screen.queryByRole('button', { name: /stop/i })).toBeNull();
     expect(screen.getByRole('button', { name: /open/i })).toBeTruthy();
+  });
+});
+
+
+describe('how far open it says it is', () => {
+  it('climbs the ladder as the blind travels', () => {
+    // The subtitle, which is the plain-language half of the same reading. Every
+    // one of these used to be the single phrase "Currently Partially Open".
+    const { update } = renderBlind({ current: 100, target: 100 });
+    expect(subtitleHas('Closed')).toBe(true);
+
+    update({ current: 85, target: 85 });
+    expect(subtitleHas('Slightly Open')).toBe(true);
+
+    update({ current: 50, target: 50 });
+    expect(subtitleHas('Half Open')).toBe(true);
+
+    update({ current: 10, target: 10 });
+    expect(subtitleHas('Mostly Open')).toBe(true);
+
+    update({ current: 0, target: 0 });
+    expect(subtitleHas('Open')).toBe(true);
+    // The bar's number and the subtitle now agree, both read from the device
+    // rather than one from the device and one from the last order.
+    expect(barReadout()).toBe('Open');
   });
 });

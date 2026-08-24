@@ -57,7 +57,11 @@ const CurtainVisualFull: React.FC<{
 }> = ({ currentPosition, targetPosition, onChange, disabled, accentColor, trackColor }) => {
   const [dragging, setDragging] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // What the picture draws: the order, so the curtain answers the press at once.
   const displayPosition = dragging !== null ? dragging : targetPosition;
+  // What the label says: the blind, for the same reason the hero bar's readout
+  // does. A drop that has been asked for is not a drop that has happened.
+  const labelPosition = dragging !== null ? dragging : currentPosition;
 
   const handleInteraction = useCallback((clientY: number) => {
     if (!containerRef.current || disabled) return;
@@ -149,10 +153,10 @@ const CurtainVisualFull: React.FC<{
       {/* Position indicator */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <span className="text-lg font-bold text-foreground/80 drop-shadow-sm">
-          {displayPosition === 100 ? 'Open' :
-           displayPosition === 0 ? 'Closed' :
-           displayPosition >= 50 ? `${Math.round(displayPosition)}% Open` :
-           `${Math.round(100 - displayPosition)}% Closed`}
+          {labelPosition >= 100 ? 'Open' :
+           labelPosition <= 0 ? 'Closed' :
+           labelPosition >= 50 ? `${Math.round(labelPosition)}% Open` :
+           `${Math.round(100 - labelPosition)}% Closed`}
         </span>
       </div>
     </div>
@@ -483,6 +487,10 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
             // down is the same gesture as before: pull down to close.
             value={targetCoverage}
             ghostValue={currentCoverage}
+            // The fill is the order; the number is the blind. Printing the
+            // target here said "Open" the instant Open was pressed, over a
+            // window that was still shut.
+            readoutValue={currentCoverage}
             pending={awaitingStart}
             // One write per drag. A blind takes seconds to travel, so the
             // stream of intermediate targets a live commit sends is a stream of
