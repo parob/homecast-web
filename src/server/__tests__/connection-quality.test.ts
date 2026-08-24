@@ -10,6 +10,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  ENGAGE_AFTER_MS, ENGAGE_AFTER_MS_RELAY_CAPABLE, DISENGAGE_AFTER_MS,
+} from '../local-mode';
+import {
   classifyQuality,
   medianRtt,
   pushRtt,
@@ -332,5 +335,32 @@ describe('isDegraded', () => {
     // It drives the immediate pending-write ring; a routine reconnect must not
     // put a ring on every tile.
     expect(isDegraded('connecting')).toBe(false);
+  });
+});
+
+// The four systems that decide "can we reach your home" were each given their
+// own timing, independently, with nothing tying them together. Read in order
+// they form one escalation, and the badge narrates exactly it:
+//
+//   0.0s    quiet dot      nothing worth saying — absorbs the affinity redirect
+//   1.5s    Connecting…    the socket is being rebuilt
+//   4.0s    Offline        it is not coming straight back
+//   8/30s   Local Mode     …and this device has taken over serving your home
+//
+// That order holds today by luck rather than by construction, and would break
+// silently the moment one number moved. This is the test that makes it break
+// loudly instead.
+describe('the escalation ladder', () => {
+  it('runs quiet → connecting → offline → Local Mode, in that order', () => {
+    expect(CONNECTING_AFTER_MS).toBeLessThan(OFFLINE_AFTER_MS);
+    expect(OFFLINE_AFTER_MS).toBeLessThan(ENGAGE_AFTER_MS);
+    expect(ENGAGE_AFTER_MS).toBeLessThanOrEqual(ENGAGE_AFTER_MS_RELAY_CAPABLE);
+  });
+
+  it('gives Local Mode time to take over before the connection gives up on it', () => {
+    // Local Mode disengaging must be slower than it engaging, or a flapping
+    // relay makes the badge blink. Asserted here too because the badge is now
+    // the thing that blinks.
+    expect(DISENGAGE_AFTER_MS).toBeGreaterThan(ENGAGE_AFTER_MS);
   });
 });

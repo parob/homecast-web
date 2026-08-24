@@ -177,7 +177,26 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
     return { active: true, reason: 'manual', memo: { active: true, pendingSince: null } };
   }
 
-  const cloudDown = i.socketState === 'disconnected';
+  // `reconnecting` counts, and leaving it out was a real hole.
+  //
+  // An ordinary network drop does NOT produce `disconnected`. `handleClose`
+  // reserves that for terminal cases — a replaced session, an expired one, a
+  // failed token refresh — and everything else, including every WiFi blip and
+  // every mobile-data gap, goes to `reconnecting` and schedules a retry with
+  // backoff of up to 30s.
+  //
+  // So testing only `disconnected` meant Local Mode fell back on
+  // `anyHomeNeedsLocal`, which reads the *cached* homes list — where every
+  // home still carries the `relayState: 'connected'` the server last told us.
+  // The one situation Local Mode exists for, "this device cannot reach the
+  // cloud", was gated on a field only the cloud can update. It engaged on a
+  // logged-out session and a first run with no relay, and not on the outage.
+  //
+  // Safe against the affinity redirect, which puts the socket in
+  // `reconnecting` for ~280ms on every launch: `wants` going false again
+  // returns `off()`, which clears `pendingSince`, so the 8s/30s engage delay
+  // below is the debounce. Nothing engages on a blip.
+  const cloudDown = i.socketState === 'disconnected' || i.socketState === 'reconnecting';
   const wants = !i.anyRelayKnown || cloudDown || anyHomeNeedsLocal(i.homes);
 
   const reason: LocalModeReason | null = !wants

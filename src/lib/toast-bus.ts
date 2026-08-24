@@ -9,7 +9,7 @@
  *   here, because a toast fires once and is gone in seconds.
  *
  * The connection toasts used to live here and have moved to the header badge
- * (components/layout/ConnectionBadge) for exactly that reason: "Connecting…"
+ * (components/layout/StatusBadge) for exactly that reason: "Connecting…"
  * described a state that outlasted its own four-second toast, and its absence
  * afterwards was indistinguishable from never having been told.
  */

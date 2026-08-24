@@ -219,9 +219,7 @@ import { CreateRoomGroupDialog } from '@/components/room-groups';
 import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialog';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
-import { RelayStatusBadge } from '@/components/layout/RelayStatusBadge';
-import { ConnectionBadge } from '@/components/layout/ConnectionBadge';
-import { LocalModeBadge } from '@/components/layout/LocalModeBadge';
+import { StatusBadge } from '@/components/layout/StatusBadge';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
@@ -6530,20 +6528,6 @@ const Dashboard = () => {
   // Right menu for header (three dots menu)
   const headerRightMenu = (
     <>
-    {/* Immediately left of the search icon, and outside the hasContentAccess
-        guard: Local Mode's whole point is that it works before setup is
-        finished, so the badge has to survive the states where search does not.
-        It lives here rather than in leftBadge because the "Guest" pill sits
-        between leftBadge and rightMenu — only this position is adjacent to
-        search in both header layouts and in every auth state. */}
-    <LocalModeBadge
-      isDarkBackground={isDarkBackground}
-      // The settings pane is developer-mode-only, so the link to it is too —
-      // offering it otherwise would open Settings on a page that isn't there.
-      onOpenSettings={developerMode
-        ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); }
-        : undefined}
-    />
     {hasContentAccess && (
     <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
@@ -6921,7 +6905,18 @@ const Dashboard = () => {
           />
 
 
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><ConnectionBadge isDarkBackground={isDarkBackground} />{isRelayEnabled() && <RelayStatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} />}</>} isDarkBackground={isDarkBackground}>
+      {/* One status bubble, in leftBadge.
+          Local Mode used to live in rightMenu, immediately left of the search
+          icon, because the "Guest" pill sits between the two slots and only
+          that position was adjacent to search in every auth state. That was
+          right for a lone badge and is moot for a merged one: this is now the
+          single place the app speaks about reaching your home, so it belongs
+          with the other status pills rather than beside an unrelated control.
+          The constraint that rationale was really protecting still holds —
+          Local Mode has to survive the states where search does not, and
+          leftBadge is passed unconditionally, outside the hasContentAccess
+          guard that gates the search button. */}
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

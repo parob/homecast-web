@@ -327,3 +327,73 @@ describe('standing down when the premise turns out to be wrong', () => {
     expect(wellAfter.active).toBe(false);
   });
 });
+
+// The hole this closes: an ordinary network drop never produces
+// `disconnected`. `handleClose` reserves that for terminal cases — a replaced
+// session, an expired one, a failed token refresh — and sends every WiFi blip
+// and mobile-data gap to `reconnecting` with a scheduled retry.
+//
+// So while `cloudDown` tested only `disconnected`, Local Mode fell back on
+// `anyHomeNeedsLocal`, which reads the *cached* homes — still carrying the
+// `relayState: 'connected'` the server last reported. The one case Local Mode
+// exists for was gated on a field only the cloud can update.
+describe('a socket that is retrying counts as the cloud being down', () => {
+  const HEALTHY = [{ id: LIVE, relayState: 'connected' }];
+
+  it('engages while reconnecting, even though every home still reads connected', () => {
+    const seq = run([
+      { socketState: 'reconnecting', homes: HEALTHY, now: 0 },
+      { socketState: 'reconnecting', homes: HEALTHY, now: ENGAGE_AFTER_MS },
+    ]);
+    expect(seq[0].active).toBe(false);
+    expect(seq[1].active).toBe(true);
+    expect(seq[1].reason).toBe('socket-down');
+  });
+
+  it('does not engage on the affinity redirect', () => {
+    // The redirect puts the socket in `reconnecting` for ~280ms on every
+    // launch. `wants` going false again returns off(), which clears
+    // pendingSince — so the engage delay is the debounce and nothing fires.
+    const seq = run([
+      { socketState: 'reconnecting', homes: HEALTHY, now: 0 },
+      { socketState: 'connected', homes: HEALTHY, now: 300 },
+      { socketState: 'connected', homes: HEALTHY, now: ENGAGE_AFTER_MS * 2 },
+    ]);
+    expect(seq.every((d) => !d.active)).toBe(true);
+  });
+
+  it('still waits longer on a relay-capable Mac', () => {
+    // It may be promoted to active relay, which serves everyone rather than
+    // just this machine. Give the better outcome time to happen.
+    const seq = run([
+      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: 0 },
+      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS },
+      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS_RELAY_CAPABLE },
+    ]);
+    expect(seq[1].active).toBe(false);
+    expect(seq[2].active).toBe(true);
+  });
+
+  it('never engages on the relay itself, however the socket looks', () => {
+    const seq = run([
+      { socketState: 'reconnecting', homes: HEALTHY, isThisDeviceTheRelay: true, now: 0 },
+      { socketState: 'reconnecting', homes: HEALTHY, isThisDeviceTheRelay: true, now: ENGAGE_AFTER_MS * 4 },
+    ]);
+    expect(seq.every((d) => !d.active)).toBe(true);
+  });
+
+  it('does not let a retrying socket claim "no relay has ever been set up"', () => {
+    // The homesLoaded guard deliberately exempts only `disconnected`. A
+    // momentary reconnect is not grounds to conclude the account has no relay
+    // — and that branch engages with no delay at all, so getting this wrong
+    // flips a fresh login straight into Local Mode.
+    const d = decideLocalMode(inputs({
+      socketState: 'reconnecting',
+      homesLoaded: false,
+      homes: [],
+      anyRelayKnown: false,
+      now: 0,
+    }), EMPTY_MEMO);
+    expect(d.active).toBe(false);
+  });
+});
