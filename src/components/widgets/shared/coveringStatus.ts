@@ -41,8 +41,31 @@ export function coveringMotion(
 }
 
 /**
+ * Where the blind is standing, in words, given openness (0 closed → 100 open).
+ *
+ * Everything between the end stops used to be one phrase, "Partially Open",
+ * which is true of 5% and 95% alike and so tells you nothing you could not see.
+ * A blind is a thing you glance at, and the useful glance is roughly how far
+ * open it is, not the exact number — which the bar is already showing.
+ *
+ * The end stops are the bare words: a fully open blind is Open, not "Fully
+ * Open", and certainly not "Currently Fully Open". The prefix was doing no work
+ * — the line only ever describes now.
+ */
+export function coveringPositionWord(openness: number): string {
+  if (openness <= 0) return 'Closed';
+  if (openness >= 100) return 'Open';
+  if (openness < SLIGHTLY_OPEN_BELOW) return 'Slightly Open';
+  if (openness < MOSTLY_OPEN_FROM) return 'Half Open';
+  return 'Mostly Open';
+}
+
+/** Below this it is barely cracked; from MOSTLY_OPEN_FROM it is nearly wide. */
+const SLIGHTLY_OPEN_BELOW = 35;
+const MOSTLY_OPEN_FROM = 65;
+
+/**
  * What the blind is doing, in words, given openness (0 closed → 100 open).
- * "Open" alone was ambiguous at 60%, where a blind is neither open nor closed.
  *
  * `hasStarted` separates a blind that is moving from one that has merely been
  * asked to — see hasDeviceStarted. The difference is an ellipsis, which is
@@ -59,9 +82,7 @@ export function coveringStatusText(
     const verb = isOpening ? 'Opening' : 'Closing';
     return hasStarted ? verb : `${verb}…`;
   }
-  if (openness <= 0) return 'Currently Closed';
-  if (openness >= 100) return 'Currently Fully Open';
-  return 'Currently Partially Open';
+  return coveringPositionWord(openness);
 }
 
 /**

@@ -56,6 +56,22 @@ interface VerticalSliderProps {
    * yet. Purely presentational; the slider does not track requests itself.
    */
   pending?: boolean;
+  /**
+   * What the printed readout says when the finger is off, if that is not the
+   * value the fill draws.
+   *
+   * The two came apart when the fill moved to the target. A fill that runs
+   * ahead of the device is honest — the lighter band says plainly that the
+   * travel is outstanding — but a *word* has no such shading. "Open" printed
+   * over a shut blind is simply false, and it is the one part of the control
+   * that cannot hedge. So the number reports where the device is and the fill
+   * reports where it was sent; between them the bar says both things at once
+   * without either having to lie.
+   *
+   * Dragging still wins over both: while the finger is down the readout is what
+   * you are setting, because that is the only question being asked.
+   */
+  readoutValue?: number;
   /** Narrow bar (landscape, beside secondary controls) — shrinks the readout. */
   dense?: boolean;
   /**
@@ -94,6 +110,7 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
   commitMode = 'live',
   ghostValue,
   pending = false,
+  readoutValue,
   dense,
   fixedGradient = false,
 }) => {
@@ -159,16 +176,16 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
     });
   }, [disabled, onCommit]);
 
-  const readout = formatValue ? formatValue(display) : `${Math.round(display)}%`;
+  // The finger if there is one, else the device's own reading, else the value.
+  const readoutSource = dragging ?? readoutValue ?? value;
+  const readout = formatValue ? formatValue(readoutSource) : `${Math.round(readoutSource)}%`;
   // Only worth drawing while the two disagree; once the device arrives the
   // fill's own boundary is the edge and an extra rule on top of it is noise.
   const showTravel = ghostPct !== null && outstandingPct > 0.5;
   /** Offset from whichever end the fill grows from. */
   const fromAnchor = (pct: number): React.CSSProperties =>
     invert ? { top: `${pct}%` } : { bottom: `${pct}%` };
-  const ghostReadout = ghostValue === undefined
-    ? null
-    : formatValue ? formatValue(ghostValue) : `${Math.round(ghostValue)}%`;
+  const targetReadout = formatValue ? formatValue(display) : `${Math.round(display)}%`;
 
   return (
     <div
@@ -179,7 +196,7 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       aria-valuemax={max}
       // The gap between command and reality is the whole point of the ghost
       // track, and a screen reader gets none of it from the fill.
-      aria-valuetext={showTravel && ghostReadout ? `${readout}, currently ${ghostReadout}` : undefined}
+      aria-valuetext={showTravel ? `${readout}, heading for ${targetReadout}` : undefined}
       aria-label={label}
       aria-disabled={disabled || undefined}
       onPointerDown={handlePointerDown}

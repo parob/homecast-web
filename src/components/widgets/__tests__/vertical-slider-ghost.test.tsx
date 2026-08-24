@@ -68,8 +68,8 @@ describe('the ghost track', () => {
   });
 
   it('tells a screen reader both numbers, not just the command', () => {
-    render(<VerticalSlider value={80} ghostValue={30} invert onCommit={() => {}} formatValue={(v) => `${v}%`} />);
-    expect(slider().getAttribute('aria-valuetext')).toBe('80%, currently 30%');
+    render(<VerticalSlider value={80} ghostValue={30} readoutValue={30} invert onCommit={() => {}} formatValue={(v) => `${v}%`} />);
+    expect(slider().getAttribute('aria-valuetext')).toBe('30%, heading for 80%');
   });
 
   it('says nothing extra once the device has arrived', () => {
@@ -129,5 +129,40 @@ describe('when the write is sent', () => {
     fireEvent.pointerDown(el, { clientY: 200, pointerId: 1 });
     fireEvent.pointerMove(el, { clientY: 50, pointerId: 1 });
     expect(slider().getAttribute('aria-valuenow')).toBe('75');
+  });
+});
+
+
+describe('what the number says', () => {
+  it('reports the device, not the order, once the finger is off', () => {
+    // The regression this exists to catch: the fill moved to the target and
+    // took the readout with it, so pressing Open printed "Open" across a bar
+    // drawn over a window that was still shut. A fill can shade an outstanding
+    // command; a word cannot.
+    render(<VerticalSlider value={100} ghostValue={0} readoutValue={0} invert onCommit={() => {}} />);
+    expect(screen.getByText('0%')).toBeTruthy();
+  });
+
+  it('still draws the fill to the order', () => {
+    // The other half of the same bar: the number stays honest, and the picture
+    // still answers the press immediately.
+    render(<VerticalSlider value={100} ghostValue={0} readoutValue={0} invert onCommit={() => {}} />);
+    expect(targetEdge()!.style.top).toBe('100%');
+    expect(travel()!.style.height).toBe('100%');
+  });
+
+  it('follows the finger while dragging, over both', () => {
+    // Mid-drag the only question being asked is what you are setting.
+    render(<VerticalSlider value={0} ghostValue={0} readoutValue={0} commitMode="release" onCommit={() => {}} />);
+    const el = prepare(slider());
+    fireEvent.pointerDown(el, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientY: 50, pointerId: 1 });
+    expect(screen.getByText('75%')).toBeTruthy();
+  });
+
+  it('falls back to the value when no device reading is given', () => {
+    // Every other widget passes no readoutValue and must be unchanged.
+    render(<VerticalSlider value={42} onCommit={() => {}} />);
+    expect(screen.getByText('42%')).toBeTruthy();
   });
 });
