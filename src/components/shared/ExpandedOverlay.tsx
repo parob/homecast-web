@@ -58,6 +58,10 @@ const PADDING = 10;
 // Offset the overlay content down from the widget's top edge so it visually
 // starts just below the top of the compact trigger rather than flush with it.
 const TOP_OFFSET = 16;
+// The highest the panel is ever placed, and so the margin it keeps at the
+// bottom too. Also the assumption the height cap is built on: a panel may be as
+// tall as it would fit *here*, wherever it currently sits.
+const MIN_TOP = 8;
 // How long after a resize a pointer-leave is treated as the panel having moved
 // rather than the user having left.
 const RESIZE_GRACE_MS = 600;
@@ -509,9 +513,9 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const anchoredTop = coords.y - PADDING + TOP_OFFSET;
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
   const lowestTop = viewportH && panelHeight
-    ? viewportH - panelHeight - PADDING * 2 - 8 - bottomInset
+    ? viewportH - panelHeight - PADDING * 2 - MIN_TOP - bottomInset
     : anchoredTop;
-  const top = Math.max(8, Math.min(anchoredTop, Math.max(8, lowestTop)));
+  const top = Math.max(MIN_TOP, Math.min(anchoredTop, Math.max(MIN_TOP, lowestTop)));
 
   /**
    * How tall the panel may be before it has to scroll.
@@ -522,9 +526,25 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
    * above it, and a tap meant for the widget pressed a tab instead. It showed
    * on service groups and shortcuts because their cards are tall; an accessory
    * panel was never long enough to reach.
+   *
+   * Measured from MIN_TOP — the room the panel would have at the *top* of the
+   * screen — and NOT from `top`, which is where it happens to be sitting. Using
+   * `top` tied the two numbers in a knot: the cap limits the height, the height
+   * is what `panelHeight` measures, and `panelHeight` is what pulls `top` up.
+   * A panel opened low therefore froze at whatever it was tall when it opened,
+   * and anything that appeared afterwards — the hero bars when a group is
+   * switched on, a member's slider, the member grid — had nowhere to go. It
+   * could not even scroll to it: the collapse inside is a `1fr` grid row, so a
+   * squeezed panel shrinks its contents rather than overflowing them, and
+   * `scrollHeight` came back equal to the height. Service groups showed it
+   * because their panels change size after opening; an accessory panel barely
+   * does, which is why it looked like a group-only fault.
+   *
+   * Anchoring the cap to MIN_TOP breaks the loop: the ceiling is a constant of
+   * the viewport, the panel grows into it, and `top` glides up to meet it.
    */
   const maxPanelHeight = viewportH
-    ? Math.max(160, viewportH - top - PADDING * 2 - 8 - bottomInset)
+    ? Math.max(160, viewportH - MIN_TOP - PADDING * 2 - MIN_TOP - bottomInset)
     : undefined;
 
   const transformOrigin = position === 'left'
