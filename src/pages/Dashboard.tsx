@@ -5650,6 +5650,9 @@ const Dashboard = () => {
    */
   const editBarHeight = 80;
 
+  /** `inert` for the edit bar while it is parked off-screen. See its use. */
+  const INERT = { inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>;
+
 
   // Leaving edit mode puts the hidden things back out of sight. On touch the
   // Show hidden toggle only exists inside the mode, so without this a reveal
@@ -7439,12 +7442,28 @@ const Dashboard = () => {
           see, and a toggle for it was one more thing to misread. Nor is there a
           legend — the buttons say "Hide" and "Pin" in words, so there is nothing
           left to explain. */}
-      {isTouchDevice && editMode && (
+      {/* Mounted whenever this device can enter the mode, and slid out of view
+          when it is not in it — rather than mounted and unmounted, which is what
+          made it appear and vanish in a single frame. It can only animate out if
+          it is still there to animate.
+          Costs no layout either way: the page's `paddingTop` reserves the bar's
+          height unconditionally, so nothing reflows as it comes and goes. */}
+      {isTouchDevice && (
         <div
           // The same glass the tab bar and the header bubbles use, rather than a
           // flat panel — it sits directly over the widgets and looked like a
           // different kind of surface pasted on top of them.
-          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
+          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
+            editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+          } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
+          // Out of the tree for anyone not looking at it, and unreachable by
+          // pointer or keyboard — it is off-screen but still rendered, and an
+          // off-screen Done button is still a tab stop without `inert`.
+          //
+          // Spread rather than written as a prop: React 18's typings have no
+          // `inert`, and it is an attribute rather than a boolean DOM property.
+          aria-hidden={!editMode}
+          {...(editMode ? {} : INERT)}
           data-testid="edit-layout-bar"
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>

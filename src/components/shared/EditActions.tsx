@@ -185,7 +185,7 @@ export function TileEditActions({ action, tab }: { action: PrimaryEditAction; ta
   const pinned = pinButton(pin, 'tile');
   if (!primary && !pinned) return null;
   return (
-    <div className="absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none">
+    <div className="edit-badge-in absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none">
       {primary}
       {pinned}
     </div>
@@ -206,9 +206,15 @@ export function RowEditActions({ action, tab }: { action: PrimaryEditAction; tab
   const pinned = pinButton(pin, 'row');
   if (!primary && !pinned) return null;
   return (
+    // Two elements, and it has to stay that way: this one centres itself with
+    // `-translate-y-1/2`, and the enter animation animates `transform` — on one
+    // element the keyframe would replace the centring and the badge would jump
+    // half its height as it arrived. Same clash the wiggle documents.
     <div className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1">
-      {primary}
-      {pinned}
+      <div className="edit-badge-in flex items-center gap-1">
+        {primary}
+        {pinned}
+      </div>
     </div>
   );
 }
