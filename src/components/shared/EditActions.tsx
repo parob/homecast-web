@@ -30,18 +30,21 @@ interface ActionButtonProps {
   disabled?: boolean;
   /** `tile` sits over a widget; `row` is the smaller one for a sidebar line. */
   /**
-   * `pill` is the summary row's. It differs from `row` in one way that carries
-   * real weight: `leading-none`, so the button's box hugs its own 10px text
-   * instead of inheriting the surrounding 16-20px line box.
+   * `pill` is the summary row's, and renders **exactly** the tile's badge — same
+   * padding, same text, same box. A person reading the screen sees one control
+   * that means one thing, whether it is on a tile or on a pill.
    *
-   * That is what lets it sit inside a summary pill without making the pill any
-   * taller than the live one beside it — and that row sits above the accessory
-   * grid, which is being dragged at the moment it swaps in. A taller row there
-   * pushes what the finger is holding down the page.
+   * What differs is only what it contributes to *layout*: `-my-0.5` cancels the
+   * 4px by which it overflows the pill's 16px line box, so it hangs into the
+   * pill rather than stretching it. That matters because this row sits above the
+   * accessory grid and swaps in mid-drag — Edit Layout is entered by a long
+   * press that is already dragging — so a taller row pushes what the finger is
+   * holding down the page.
    *
-   * Expressed as `leading-none` rather than a fixed height because the root font
-   * size is not fixed across text-size settings; hugging the text works at all
-   * of them, a hard-coded 24px works at one.
+   * Shrinking the button was the first attempt and was wrong twice over: it made
+   * the two badges different sizes for no reason a user could see, and the
+   * height was never the expensive part anyway — the width is, because it is
+   * what rewraps the row.
    */
   size?: 'tile' | 'row' | 'pill';
 }
@@ -59,6 +62,9 @@ interface ActionButtonProps {
  * because a compact tile is about 160px wide and has to hold two of them beside
  * the accessory's icon; the full phrasing survives as the accessible name.
  */
+/** The badge on an accessory tile. `pill` reuses it verbatim — see below. */
+const TILE_BADGE = 'px-2 py-0.5 text-[10px]';
+
 export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
   return (
@@ -75,8 +81,10 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
         'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-800/95 font-semibold text-white shadow-lg',
         'transition-colors duration-fast hover:bg-zinc-700 active:bg-zinc-700',
         'disabled:opacity-50 disabled:hover:bg-zinc-800/95',
-        size === 'tile' ? 'px-2 py-0.5 text-[10px]'
-          : size === 'pill' ? 'px-1.5 py-0.5 text-[10px] leading-none'
+        size === 'tile' ? TILE_BADGE
+          // Literally the tile's badge, tucked into the line box around it —
+          // see the `pill` doc on ActionButtonProps.
+          : size === 'pill' ? `${TILE_BADGE} -my-0.5`
           : 'px-1.5 py-0.5 text-[10px]',
       )}
     >

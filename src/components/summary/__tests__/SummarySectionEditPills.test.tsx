@@ -103,19 +103,23 @@ describe('the edit-mode summary row', () => {
 });
 
 describe('a pill is the same size whichever state it is in', () => {
-  it('keeps its button inside the label\u2019s line box, so the row cannot grow', () => {
-    // The one that stops the grid jumping. This row swaps in while a tile is
-    // being dragged — Edit Layout is entered by a long press that is already a
-    // drag — and it sits above that grid, so any extra height pushes what the
-    // finger is holding down the page. The button's 10px text would otherwise
-    // inherit the pill's 16-20px line box and make the row ~4px taller.
+  it('wears the tile badge, and hangs into the pill rather than stretching it', () => {
+    // Two claims in one, and both matter.
     //
-    // Asserted as a class because jsdom has no layout to measure, and as
-    // `leading-none` rather than a fixed height because the root font size
-    // moves with the text-size setting.
+    // Same badge as an accessory tile: one control that means one thing, on a
+    // pill or on a tile. Measured at 39px wide either way.
+    //
+    // And `-my-0.5`, which cancels the 4px by which it overflows the pill's
+    // line box — so the pill stays the height of the live one beside it. This
+    // row swaps in while a tile is being dragged, and it sits above that grid,
+    // so a taller row pushes what the finger is holding down the page.
+    //
+    // Asserted as classes because jsdom has no layout to measure.
     setup(null);
-    expect(screen.getByRole('button', { name: 'Hide Scenes' }).className)
-      .toContain('leading-none');
+    const badge = screen.getByRole('button', { name: 'Hide Scenes' }).className;
+    expect(badge).toContain('px-2');        // the tile's padding, not a shrunk one
+    expect(badge).toContain('text-[10px]'); // ...and its text
+    expect(badge).toContain('-my-0.5');     // ...tucked into the line box
   });
 
   it('builds both states from the same shell', () => {
