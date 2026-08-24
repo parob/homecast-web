@@ -147,7 +147,7 @@ const DROP_ANIMATION_MS = 250;
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
-import { RowEditActions } from '@/components/shared/EditActions';
+import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { DEFAULT_TAB_BAR_MODE, normalizeTabBarMode, type TabBarMode } from '@/lib/tab-bar-mode';
@@ -4894,10 +4894,25 @@ const Dashboard = () => {
   helperTimersRef.current = helperAccessories.timers;
 
   const filteredRooms = useMemo(() => {
-    // Filter out hidden rooms (unless in edit mode)
+    /*
+     * Hidden rooms are dropped, except while hidden things are being shown —
+     * which is what Edit Layout turns on — where they come last instead.
+     *
+     * They used to be dropped unconditionally (the comment claimed otherwise),
+     * so a hidden room could only be brought back from the sidebar. That is the
+     * one thing the room's own heading could not do, and the same hole
+     * `HomeActionsSection` exists to close for scenes: hidden, by definition,
+     * means there is nothing left on screen to act on.
+     *
+     * Last rather than in place, so revealing them never reorders the rooms you
+     * actually use — exactly what `getOrderedItems` does with hidden tiles.
+     */
     let visibleRooms = sortedRooms;
     if (selectedHomeId) {
-      visibleRooms = sortedRooms.filter(r => !isRoomHidden(selectedHomeId, r.id));
+      const hiddenOf = (r: { id: string }) => isRoomHidden(selectedHomeId, r.id);
+      visibleRooms = showHiddenItems
+        ? [...sortedRooms.filter(r => !hiddenOf(r)), ...sortedRooms.filter(hiddenOf)]
+        : sortedRooms.filter(r => !hiddenOf(r));
     }
     const visibleRoomIds = new Set(visibleRooms.map(r => r.id));
     const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
@@ -4970,7 +4985,7 @@ const Dashboard = () => {
         return [roomName, sorted];
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, visibility, visibilityVersion]);
+  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, showHiddenItems, visibility, visibilityVersion]);
 
   // Every visible accessory in the current view — what the summary row reads.
   // Memoised because both the Status pill and AreaSummary aggregate over it.
@@ -8382,17 +8397,47 @@ const Dashboard = () => {
                     <div key={roomName} data-room-container data-room-name={roomName} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
                       {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
+                        // A hidden room only reaches here while hidden things are
+                        // being shown, and it comes last — see filteredRooms.
+                        const roomHidden = !!(room && selectedHomeId && isRoomHidden(selectedHomeId, room.id));
+                        // Same rule the tiles use: while arranging, every room
+                        // offers to hide; outside that, only a revealed one
+                        // offers to come back. A room with nothing to act on
+                        // would otherwise be a one-way door.
+                        const canToggleRoom = !!room && !!selectedHomeId && !isViewOnly && (editMode || roomHidden);
                         return (
                           <div className={`flex items-center gap-2 ${compactMode ? 'mb-1.5 mt-1' : 'mb-3 mt-2'}`}>
                             <button
                               onClick={() => room && handleSelectRoom(room.id)}
-                              className={`text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
+                              // min-w-0 as well as truncate: a flex item's default
+                              // `min-width: auto` refuses to shrink below its text's
+                              // intrinsic width, so a long room name would push the
+                              // Hidden pill and the button off the row rather than
+                              // truncating before them. AnimatedCollapse documents
+                              // the same trap for grid items.
+                              className={`min-w-0 truncate text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${roomHidden ? 'opacity-40' : ''} ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
                             >
                               {roomName}
                               {/* Helper accessories are tiles in this room too, so a
                                   count that excluded them read as wrong beside them. */}
                               {!hideAccessoryCounts && ` (${roomAccessories.length})`}
                             </button>
+                            {/* Says it in a word rather than by the dimming alone,
+                                which on a photographic wallpaper is not a reliable
+                                signal on its own. */}
+                            {roomHidden && (
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium leading-4 ${isDarkBackground ? 'bg-white/15 text-white/70' : 'bg-muted text-muted-foreground'}`}>
+                                Hidden
+                              </span>
+                            )}
+                            {canToggleRoom && (
+                              <EditActionButton
+                                size="tile"
+                                label={roomHidden ? 'Unhide' : 'Hide'}
+                                ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
+                                onClick={() => toggleVisibility('room', 'ui', selectedHomeId!, room!.id)}
+                              />
+                            )}
                           </div>
                         );
                       })()}
