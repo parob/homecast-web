@@ -3,6 +3,24 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { DIALOG_Z, dialogElevation, topPanelElevation } from "@/lib/overlay-elevation";
+
+/**
+ * Reports the moment the dialog actually opens.
+ *
+ * `DialogContent` below is rendered by its caller whether or not the dialog is
+ * open — `<Dialog open={!!target}><DialogContent>` mounts the wrapper once, on
+ * the caller's first render, and it is Radix's portal that comes and goes. So
+ * the wrapper cannot read anything about "the screen as it is right now" from
+ * its own mount; by then nothing has happened yet. `DialogPortal` wraps each
+ * child in `Presence`, so a sentinel INSIDE the content mounts exactly when the
+ * dialog opens — and again on every reopen. A layout effect lands before paint,
+ * so the elevation it sets is the one the first frame is drawn with.
+ */
+function OpenProbe({ onOpen }: { onOpen: () => void }) {
+  React.useLayoutEffect(() => { onOpen(); }, [onOpen]);
+  return null;
+}
 
 const Dialog = DialogPrimitive.Root;
 
@@ -35,12 +53,21 @@ const DialogContent = React.forwardRef<
     /** Restyle the backdrop, the same way SheetContent already allows. */
     overlayClassName?: string;
   }
->(({ className, children, style, hideCloseButton, overlayClassName, ...props }, ref) => (
+>(({ className, children, style, hideCloseButton, overlayClassName, ...props }, ref) => {
+  // A dialog opened FROM an expanded panel has to be above it — the panel is a
+  // portal sibling, not an ancestor, so only z-index separates them. Measured
+  // at open, not continuously: a dialog that a panel is later elevated INSIDE
+  // must keep the level it opened with, or the two climb over each other.
+  // See lib/overlay-elevation.
+  const [panelAwareZ, setPanelAwareZ] = React.useState(DIALOG_Z);
+  const measure = React.useCallback(
+    () => setPanelAwareZ(dialogElevation(topPanelElevation())),
+    [],
+  );
+  const zIndex = style?.zIndex ?? panelAwareZ;
+  return (
   <DialogPortal>
-    <DialogOverlay
-      className={overlayClassName}
-      style={style?.zIndex ? { zIndex: style.zIndex } : undefined}
-    />
+    <DialogOverlay className={overlayClassName} style={{ zIndex }} />
     <DialogPrimitive.Content
       ref={ref}
       aria-describedby={undefined}
@@ -54,9 +81,10 @@ const DialogContent = React.forwardRef<
         "max-h-[calc(100dvh-2*max(var(--safe-area-top),var(--safe-area-bottom))-2rem)]",
         className,
       )}
-      style={style}
+      style={{ ...style, zIndex }}
       {...props}
     >
+      <OpenProbe onOpen={measure} />
       {children}
       {!hideCloseButton && (
         <DialogPrimitive.Close className="absolute right-[13px] top-[16px] rounded-full p-2 opacity-70 ring-offset-background transition-[opacity,background-color] data-[state=open]:bg-accent data-[state=open]:text-muted-foreground hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
@@ -66,7 +94,8 @@ const DialogContent = React.forwardRef<
       )}
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

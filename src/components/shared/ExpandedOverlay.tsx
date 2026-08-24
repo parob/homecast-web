@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { overlayScrim } from '@/lib/overlay-scrim';
+import { registerPanelElevation } from '@/lib/overlay-elevation';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -120,6 +121,16 @@ const getOverlayPositionAndCoords = (element: HTMLElement | null, overlayWidth: 
 export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, onClose, onMouseEnter, onMouseLeave, width, zIndex, bottomInset = 0, centred = false, children }) => {
   const inheritedZ = useContext(OverlayZContext);
   const baseZ = zIndex ?? inheritedZ ?? DEFAULT_Z;
+
+  // Publish where this panel sits while it is up, so a dialog its action bar
+  // opens can clear it. Only matters when the panel has been raised ABOVE
+  // dialog level to escape a dialog it lives inside — which is exactly when
+  // the dialog it opens would otherwise land underneath it. The `+ 1` is the
+  // panel itself; `baseZ` is only its scrim.
+  useEffect(() => {
+    if (!isExpanded) return;
+    return registerPanelElevation(baseZ + 1);
+  }, [isExpanded, baseZ]);
   const parentRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
