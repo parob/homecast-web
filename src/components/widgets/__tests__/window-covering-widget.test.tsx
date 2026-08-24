@@ -275,3 +275,103 @@ describe('how far open it says it is', () => {
     expect(barReadout()).toBe('Open');
   });
 });
+
+/** The sweeping arc PendingRing draws; the track beside it is not animated. */
+const spinners = () => document.querySelectorAll('span.animate-spin[aria-hidden="true"]');
+
+describe('the spinner while it travels', () => {
+  it('spins from the press, before the device has said anything', () => {
+    // The write is confirmed in milliseconds and the motor turns for another
+    // half a minute. The tile used to look idle for all of it.
+    const { update } = renderBlind({ current: 100, target: 100 });
+    expect(spinners()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    update({ target: 0 });
+    expect(spinners().length).toBeGreaterThan(0);
+  });
+
+  it('keeps spinning while the device reports itself moving', () => {
+    renderBlind({ current: 40, target: 0, positionState: DECREASING });
+    expect(spinners().length).toBeGreaterThan(0);
+  });
+
+  it('stops once the blind arrives', () => {
+    const { update } = renderBlind({ current: 100, target: 100 });
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    update({ target: 0 });
+    expect(spinners().length).toBeGreaterThan(0);
+
+    update({ current: 0, target: 0 });
+    expect(spinners()).toHaveLength(0);
+  });
+
+  it('does not spin for ever on a blind that settles short of its target', () => {
+    // The reason this is not keyed on isMoving. A blind resting at 97 for a
+    // target of 100 satisfies "target differs from current" permanently, which
+    // is fine for the word "Opening" and useless as a spinner — a tile that
+    // spins for ever reports nothing at all.
+    renderBlind({ current: 3, target: 0, positionState: STOPPED });
+    expect(spinners()).toHaveLength(0);
+    // …and the wording still describes the gap, which is its job, not the ring's.
+    expect(subtitleHas('Opening')).toBe(true);
+  });
+
+  it('is silent on a blind nobody has touched', () => {
+    renderBlind({ current: 50, target: 50 });
+    expect(spinners()).toHaveLength(0);
+  });
+});
+
+describe('the spinner lasts the whole journey', () => {
+  it('never blinks out across a full travel that reports as it goes', () => {
+    // The requirement stated plainly: spinning at the press, at every step of
+    // the way, and only stopping on arrival. Checked at each report rather than
+    // at the ends, because a spinner that drops out mid-travel and comes back
+    // is worse than one that never appeared.
+    const { update } = renderBlind({ current: 100, target: 100 });
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    update({ target: 0 });
+    expect(spinners().length).toBeGreaterThan(0);
+
+    for (const current of [92, 74, 51, 28, 9]) {
+      update({ current, target: 0, positionState: DECREASING });
+      expect(spinners().length).toBeGreaterThan(0);
+    }
+
+    update({ current: 0, target: 0, positionState: STOPPED });
+    expect(spinners()).toHaveLength(0);
+  });
+
+  it('survives a bridge that drops back to Stopped mid-travel', () => {
+    // Plenty of bridges republish Stopped between position reports. Leaning on
+    // position_state alone would strobe the ring for the whole journey; the
+    // outstanding command is what carries it across the gaps.
+    const { update } = renderBlind({ current: 100, target: 100 });
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    update({ target: 0 });
+
+    update({ current: 80, target: 0, positionState: STOPPED });
+    expect(spinners().length).toBeGreaterThan(0);
+    update({ current: 60, target: 0, positionState: DECREASING });
+    expect(spinners().length).toBeGreaterThan(0);
+    update({ current: 30, target: 0, positionState: STOPPED });
+    expect(spinners().length).toBeGreaterThan(0);
+  });
+
+  it('covers the travel of a blind that publishes no position_state at all', () => {
+    // No device account of movement to lean on — the command is the only thing
+    // that knows the journey is still going.
+    const { update } = renderBlind({ current: 100, target: 100, positionState: null });
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    update({ target: 0, positionState: null });
+
+    for (const current of [70, 40, 10]) {
+      update({ current, target: 0, positionState: null });
+      expect(spinners().length).toBeGreaterThan(0);
+    }
+
+    update({ current: 0, target: 0, positionState: null });
+    expect(spinners()).toHaveLength(0);
+  });
+});
