@@ -148,6 +148,7 @@ const DROP_ANIMATION_MS = 250;
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
+import { isRoomHidden as roomIsHidden, shouldFilterRoomOut, orderRoomsHiddenLast } from '@/lib/room-visibility';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { DEFAULT_TAB_BAR_MODE, normalizeTabBarMode, type TabBarMode } from '@/lib/tab-bar-mode';
@@ -2800,14 +2801,28 @@ const Dashboard = () => {
     return false;
   }, [apolloClient]);
 
+  /**
+   * Is this room hidden — the stored state, whether or not hidden things are
+   * currently on screen.
+   *
+   * Distinct from `isRoomHidden` below, and the distinction is load-bearing.
+   * That one answers "filter this out right now", which is false while hidden
+   * items are being shown; anything that needs to *say* a room is hidden — the
+   * heading's dimming, its Hidden pill, its Unhide button, and sorting it last —
+   * needs this instead. Asking the filter gave every room a Hide button and left
+   * a hidden room sitting at the top, because the moment Edit Layout revealed it
+   * the filter stopped calling it hidden.
+   */
+  const isRoomHiddenState = useCallback((homeId: string, roomId: string): boolean => {
+    if (homeId !== selectedHomeId) return false;
+    return roomIsHidden(homeLayout?.visibility?.hiddenRooms, roomId);
+  }, [selectedHomeId, homeLayout]);
+
+  /** Should this room be filtered out of the view as it stands? */
   const isRoomHidden = useCallback((homeId: string, roomId: string): boolean => {
-    if (showHiddenItems) return false;
-    // Check entity layout (StoredEntity) for hidden rooms
-    if (homeId === selectedHomeId) {
-      return homeLayout?.visibility?.hiddenRooms?.includes(roomId) ?? false;
-    }
-    return false;
-  }, [showHiddenItems, selectedHomeId, homeLayout]);
+    if (homeId !== selectedHomeId) return false;
+    return shouldFilterRoomOut(homeLayout?.visibility?.hiddenRooms, roomId, showHiddenItems);
+  }, [selectedHomeId, homeLayout, showHiddenItems]);
 
   const isHomeHidden = useCallback((homeId: string): boolean => {
     if (showHiddenItems) return false;
@@ -4909,10 +4924,11 @@ const Dashboard = () => {
      */
     let visibleRooms = sortedRooms;
     if (selectedHomeId) {
-      const hiddenOf = (r: { id: string }) => isRoomHidden(selectedHomeId, r.id);
-      visibleRooms = showHiddenItems
-        ? [...sortedRooms.filter(r => !hiddenOf(r)), ...sortedRooms.filter(hiddenOf)]
-        : sortedRooms.filter(r => !hiddenOf(r));
+      visibleRooms = orderRoomsHiddenLast(
+        sortedRooms,
+        homeLayout?.visibility?.hiddenRooms,
+        showHiddenItems,
+      );
     }
     const visibleRoomIds = new Set(visibleRooms.map(r => r.id));
     const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
@@ -4985,7 +5001,7 @@ const Dashboard = () => {
         return [roomName, sorted];
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, showHiddenItems, visibility, visibilityVersion]);
+  }, [selectedRoomId, selectedRoomGroup, accessoriesByRoom, rooms, sortedRooms, getAccessoryCategory, CATEGORY_ORDER, selectedHomeId, isRoomHidden, homeLayout, showHiddenItems, visibility, visibilityVersion]);
 
   // Every visible accessory in the current view — what the summary row reads.
   // Memoised because both the Status pill and AreaSummary aggregate over it.
@@ -8399,7 +8415,7 @@ const Dashboard = () => {
                       {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
                         // A hidden room only reaches here while hidden things are
                         // being shown, and it comes last — see filteredRooms.
-                        const roomHidden = !!(room && selectedHomeId && isRoomHidden(selectedHomeId, room.id));
+                        const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id));
                         // Same rule the tiles use: while arranging, every room
                         // offers to hide; outside that, only a revealed one
                         // offers to come back. A room with nothing to act on
