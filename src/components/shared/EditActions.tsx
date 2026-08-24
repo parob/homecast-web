@@ -98,7 +98,11 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.
           : size === 'pill' ? `${TILE_BADGE} -my-0.5`
-          : 'px-1.5 py-0.5 text-[10px] leading-4',
+          // Identical to a tile's. It used to be narrower, which made the
+          // sidebar's badges visibly smaller than the ones on the tiles right
+          // beside them — the same control, three sizes. The name is kept
+          // because it says where the badge is used, not how big it is.
+          : TILE_BADGE,
       )}
     >
       {label}
@@ -184,7 +188,9 @@ export function TileEditActions({ action, tab }: { action: PrimaryEditAction; ta
  * Trailing edge of a sidebar row: the primary action, and the pin to its right.
  *
  * The caller must add right padding to the row's own content so the name has
- * somewhere to truncate to rather than running underneath these.
+ * somewhere to truncate to rather than running underneath these. Measured, the
+ * Hide+Pin cluster is 73px and sits 8px in from the edge, so that padding is
+ * 81px — `pr-14` was 56px and the name had been truncating under the badges.
  */
 export function RowEditActions({ action, tab }: { action: PrimaryEditAction; tab?: PinnedTab | null }) {
   const pin = usePinAction(tab);

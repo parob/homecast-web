@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import { TileEditActions } from '../EditActions';
+import { TileEditActions, RowEditActions } from '../EditActions';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
 import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
 
@@ -61,6 +61,31 @@ describe('the edit badge', () => {
       </PinnedTabsProvider>,
     );
     expect(screen.getByRole('button', { name: 'Hide Lamp' }).className).toContain('leading-4');
+  });
+
+  it('sizes a sidebar row\u2019s badge the same as a tile\u2019s', () => {
+    // The left navigation's rows sit beside the tiles they describe, so a
+    // narrower badge there read as a different control. It used to be px-1.5.
+    render(
+      <PinnedTabsProvider value={PINS as never}>
+        <RowEditActions
+          action={{ kind: 'hide', isHidden: false, onToggle: vi.fn(), name: 'Kitchen' }}
+          tab={null}
+        />
+      </PinnedTabsProvider>,
+    );
+    const row = sizing(screen.getByRole('button', { name: 'Hide Kitchen' }));
+    cleanup();
+
+    render(
+      <PinnedTabsProvider value={PINS as never}>
+        <TileEditActions
+          action={{ kind: 'hide', isHidden: false, onToggle: vi.fn(), name: 'Lamp' }}
+          tab={null}
+        />
+      </PinnedTabsProvider>,
+    );
+    expect(row).toBe(sizing(screen.getByRole('button', { name: 'Hide Lamp' })));
   });
 
   it('sizes the pin button the same way, since it is the same control', () => {
