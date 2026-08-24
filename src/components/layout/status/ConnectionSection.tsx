@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
-import { formatRtt } from '@/lib/connection-presentation';
+import { formatRtt, warnsUser } from '@/lib/connection-presentation';
 
 /** "just now" / "3m ago", for a moment rather than a duration. */
 function ago(at: number | null): string | null {
@@ -52,20 +52,31 @@ export function ConnectionSection({ quality, headline, onReconnect }: Connection
       )}
 
       {/*
-        The one action a user can actually take. `serverConnection.reconnect()`
-        existed all along and was called from nowhere in the UI — which is also
-        why the old connection toast was written deliberately neutral, since
-        asking someone to act with no way to act is worse than saying nothing.
+        The one action a user can actually take — offered only when there is
+        something to fix.
+
+        `serverConnection.reconnect()` is not a refresh: it tears the socket
+        down and builds a new one, which rejects every in-flight request and
+        drops the subscriptions with it. On a healthy connection that is a
+        small footgun rather than a courtesy, so it would be inviting someone
+        to break something that is working.
+
+        The gate is `warnsUser`, which is exactly the set of states that carry
+        a label — connecting, slow, not responding, offline. That keeps a
+        useful invariant: we only offer a remedy for a problem we actually
+        reported. Anything we were quiet about needs no fixing.
       */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={onReconnect}
-      >
-        <RefreshCw className="h-3.5 w-3.5 mr-2" />
-        Reconnect now
-      </Button>
+      {warnsUser(quality) && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onReconnect}
+        >
+          <RefreshCw className="h-3.5 w-3.5 mr-2" />
+          Reconnect now
+        </Button>
+      )}
     </div>
   );
 }
