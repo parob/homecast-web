@@ -63,7 +63,20 @@ interface ActionButtonProps {
  * the accessory's icon; the full phrasing survives as the accessible name.
  */
 /** The badge on an accessory tile. `pill` reuses it verbatim — see below. */
-const TILE_BADGE = 'px-2 py-0.5 text-[10px]';
+/*
+ * `leading-4` is what makes the badge one size everywhere.
+ *
+ * `text-[10px]` is an arbitrary font size, so Tailwind sets no line-height with
+ * it and the button inherits whatever surrounds it: a 16px line box inside a
+ * summary pill (`text-xs`), the body's ~19px on a tile. Same button, two heights
+ * — visible the moment the summary row and the tiles are on screen together,
+ * which they always are.
+ *
+ * Pinned to the taller of the two, 16px + 4px of padding = 20px, so the tile and
+ * the pill agree and neither depends on its surroundings. Both the hide and the
+ * pin button render through here, so they move together.
+ */
+const TILE_BADGE = 'px-2 py-0.5 text-[10px] leading-4';
 
 export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
@@ -85,7 +98,7 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.
           : size === 'pill' ? `${TILE_BADGE} -my-0.5`
-          : 'px-1.5 py-0.5 text-[10px]',
+          : 'px-1.5 py-0.5 text-[10px] leading-4',
       )}
     >
       {label}
