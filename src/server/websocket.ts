@@ -1019,6 +1019,36 @@ export class ServerWebSocket {
   }
 
   /**
+   * How long the outstanding heartbeat ping has gone unanswered, or null when
+   * none is outstanding.
+   *
+   * The popover needs this to stop contradicting itself. A missed pong is
+   * recorded as an RTT *sample* of one whole interval — a deliberate lower
+   * bound, and what correctly drives the verdict to `stalled` — but rendering
+   * it as "Round trip 30.0s · just now" reads as a measurement just taken,
+   * when in truth nothing came back at all.
+   */
+  getPendingPingMs(): number | null {
+    return this.lastPingSentAt === null ? null : Math.max(0, Date.now() - this.lastPingSentAt);
+  }
+
+  /**
+   * Age of the oldest unanswered request, or null when nothing is in flight.
+   *
+   * Usually the real reason the connection is being called slow — it is the
+   * leading indicator the classifier ranks first — so it is what the popover
+   * should say, rather than a round trip that may be perfectly healthy and
+   * entirely beside the point.
+   */
+  getOldestInFlightMs(): number | null {
+    let oldest: number | null = null;
+    for (const p of this.pendingRequests.values()) {
+      if (oldest === null || p.sentAt < oldest) oldest = p.sentAt;
+    }
+    return oldest === null ? null : Math.max(0, Date.now() - oldest);
+  }
+
+  /**
    * Forget what we measured and say so.
    *
    * Called when the evidence stops being evidence — returning from a hidden

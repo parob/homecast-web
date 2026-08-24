@@ -11,6 +11,7 @@ import { RefreshCw } from 'lucide-react';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { formatRtt, warnsUser } from '@/lib/connection-presentation';
+import { SLOW_IN_FLIGHT_MS, SLOW_RTT_MS } from '@/server/connection-quality';
 
 /** "just now" / "3m ago", for a moment rather than a duration. */
 function ago(at: number | null): string | null {
@@ -30,19 +31,56 @@ interface ConnectionSectionProps {
   onReconnect: () => void;
 }
 
-export function ConnectionSection({ quality, headline, onReconnect }: ConnectionSectionProps) {
+/** Seconds, for a duration someone is watching tick upward. */
+function secs(ms: number): string {
+  return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms)}ms`;
+}
+
+/**
+ * The line under the headline: *why* we are saying what we are saying.
+ *
+ * It used to be the round trip unconditionally, which made the popover
+ * contradict itself in exactly the states it exists for. Throttled testing
+ * against production produced both of these:
+ *
+ *   "Your connection is slow"        / "Round trip 12ms"
+ *   "Your home is not responding"    / "Round trip 30.0s · just now"
+ *
+ * The first is the classifier working correctly — the verdict came from a
+ * request that had been outstanding for seconds, while the WebSocket round
+ * trip was genuinely fine — but the evidence shown was the half that was not
+ * the reason. The second rendered a missed pong, recorded deliberately as a
+ * one-interval lower bound, as though it were a fresh measurement.
+ *
+ * So the reasons are ranked the same way the classifier ranks them, and the
+ * round trip is reported only when it is actually the thing being complained
+ * about.
+ */
+function reasonLine(): React.ReactNode {
+  const inFlight = serverConnection.getOldestInFlightMs();
+  const pendingPing = serverConnection.getPendingPingMs();
   const rtt = formatRtt(serverConnection.getLastRttMs());
   const measuredAt = ago(serverConnection.getLastRttAt() || null);
 
+  // Leading indicator first, exactly as classifyQuality reads it.
+  if (inFlight !== null && inFlight >= SLOW_IN_FLIGHT_MS) {
+    return `A request has been waiting ${secs(inFlight)}.`;
+  }
+  // Nothing came back from the last check. Not a slow round trip — no round
+  // trip, which is a different and worse thing.
+  if (pendingPing !== null && pendingPing >= SLOW_RTT_MS) {
+    return 'No reply to the last connection check.';
+  }
+  if (rtt) return <>Round trip {rtt}{measuredAt ? ` · ${measuredAt}` : ''}</>;
+  return 'No round trip measured yet.';
+}
+
+export function ConnectionSection({ quality, headline, onReconnect }: ConnectionSectionProps) {
   return (
     <div className="space-y-3">
       <div>
         <p className="text-sm font-medium">{headline}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {rtt
-            ? <>Round trip {rtt}{measuredAt ? ` · ${measuredAt}` : ''}</>
-            : 'No round trip measured yet.'}
-        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{reasonLine()}</p>
       </div>
 
       {quality !== 'good' && quality !== 'unknown' && (

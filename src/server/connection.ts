@@ -554,6 +554,16 @@ class ServerConnection {
     return this.websocket?.getLastRttAt() ?? 0;
   }
 
+  /** How long the outstanding ping has gone unanswered. See websocket.ts. */
+  getPendingPingMs(): number | null {
+    return this.websocket?.getPendingPingMs() ?? null;
+  }
+
+  /** Age of the oldest unanswered request. See websocket.ts. */
+  getOldestInFlightMs(): number | null {
+    return this.websocket?.getOldestInFlightMs() ?? null;
+  }
+
   /**
    * Get the timestamp of the most recent successful connection — persists across
    * disconnects via localStorage so the UI can show "last online X ago" while
