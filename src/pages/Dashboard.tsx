@@ -47,6 +47,7 @@ import { setActivityLoggingFlags } from '@/lib/activity-logging';
 import { TEXT_SCALE_BASE_PX, TEXT_SCALES } from '@/lib/text-scale';
 import { HomecastError } from '@/server/websocket';
 import { describeWriteFailure } from '@/lib/describe-error';
+import { coalescedWrite, writeKey } from '@/lib/write-coalescer';
 import HomeKit, { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { setAccessoryLimit as setRelayAccessoryLimit, setAllowedAccessoryIds as setRelayAllowedIds } from '@/relay/local-handler';
 import { useHomes, useRooms, useAccessories, useAccessoriesForHomes, useServiceGroups, useAllServiceGroups, updateAccessoryCharacteristicInCache, markPendingUpdate, markGroupPendingUpdate, invalidateHomeKitCache, invalidateAccessoriesForHome, normalizeAccessories, wasHydratedFromStorage, getCachedListLength } from '@/hooks/useHomeKitData';
@@ -5221,13 +5222,19 @@ const Dashboard = () => {
     const homeId = accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId || selectedHomeId;
 
     try {
-      // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await trackWrite(accessoryKey(accessoryId), serverConnection.request('characteristic.set', {
-        accessoryId,
-        characteristicType,
-        value: newValue,
-        homeId
-      }));
+      // Always use relay (local loopback in Mac app, WebSocket in browser).
+      // Funnelled through the coalescer so a rapid double-tap cannot put two
+      // writes for the same control in flight at once — see write-coalescer.ts.
+      await trackWrite(accessoryKey(accessoryId), coalescedWrite(
+        writeKey(accessoryId, characteristicType),
+        newValue,
+        (v) => serverConnection.request('characteristic.set', {
+          accessoryId,
+          characteristicType,
+          value: v,
+          homeId
+        }),
+      ));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
       toast.error(describeWriteFailure(error, accessoryName(accessoryId)));
@@ -5271,13 +5278,24 @@ const Dashboard = () => {
     const homeId = accessories.find(a => a.id === accessoryId)?.homeId || allAccessoriesRef.current?.find(a => a.id === accessoryId)?.homeId || selectedHomeId;
 
     try {
-      // Always use relay (local loopback in Mac app, WebSocket in browser)
-      await trackWrite(accessoryKey(accessoryId), serverConnection.request('characteristic.set', {
-        accessoryId,
-        characteristicType,
+      // Always use relay (local loopback in Mac app, WebSocket in browser).
+      //
+      // Through the coalescer, which is what keeps a drag honest. The slider
+      // commits on a time-based 250ms throttle that never checks whether the
+      // last write came back, so on a slow link a two-second drag used to put
+      // eight writes in flight at once — and the relay spawns each one
+      // concurrently, so they could reach HomeKit in any order and leave the
+      // device on a value that was not the one the finger stopped at.
+      await trackWrite(accessoryKey(accessoryId), coalescedWrite(
+        writeKey(accessoryId, characteristicType),
         value,
-        homeId
-      }));
+        (v) => serverConnection.request('characteristic.set', {
+          accessoryId,
+          characteristicType,
+          value: v,
+          homeId
+        }),
+      ));
       // Cache already has the correct value from optimistic update
     } catch (error: any) {
       toast.error(describeWriteFailure(error, accessoryName(accessoryId)));

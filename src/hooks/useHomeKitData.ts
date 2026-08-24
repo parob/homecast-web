@@ -11,6 +11,7 @@ import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } 
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
 import { sameAccessoryId, resolveAccessoriesCacheKey } from './accessoryCacheKeys';
 import { confirmsPending, ignoreWindowMs } from './pendingConfirmation';
+import { hasOutstandingWrite, writeKey } from '@/lib/write-coalescer';
 
 /**
  * Derive `isReachable` from value presence + the framework flag before the
@@ -388,6 +389,18 @@ class PendingUpdatesTracker {
     if (confirmsPending(characteristicType, serverValue, pending.value)) {
       this.pending.delete(key);
       return false; // Allow this update through (it confirms our optimistic update)
+    }
+
+    // Still travelling? Then this echo is stale by definition, however late it
+    // is. The ignore window below is a safety net for never hearing back at
+    // all; it should not be the thing deciding this, because on a flaky link
+    // an echo can easily outlast it — and accepting one makes the tile jump
+    // back to a value the user has already moved away from.
+    //
+    // Above the window rather than below it on purpose: this knows the write
+    // is outstanding, where the window can only guess from elapsed time.
+    if (hasOutstandingWrite(writeKey(accessoryId, characteristicType))) {
+      return true;
     }
 
     // If within ignore window, ignore stale server updates
