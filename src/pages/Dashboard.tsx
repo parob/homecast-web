@@ -8296,11 +8296,29 @@ const Dashboard = () => {
                     second line — a 32px step, landing while a tile is being
                     dragged. Measured, not guessed: see AutoHeight. */}
                 <AutoHeight>
+                {/* One line that scrolls, rather than wrapping to two.
+                    Wrapping was what made this row change height at all — the
+                    edit variant is wider, so on a narrow phone it took a second
+                    line and pushed the grid down. Scrolling sideways keeps it one
+                    line whatever it holds, so the height stops depending on the
+                    viewport.
+
+                    `w-max` on the row inside: in a scroller the children would
+                    otherwise shrink to fit rather than overflow, and the pills
+                    would squash instead of scrolling.
+
+                    `overflow-x: auto` forces `overflow-y` to compute to `auto`
+                    as well, so anything overhanging the row would be clipped
+                    rather than drawn over the edge — the trap MobileTabBar
+                    documents. Nothing here overhangs: the edit badge is tucked
+                    2px into the pill's line box (`-my-0.5`), and the pill's own
+                    `py-1` is 4px, so the badge stays inside the pill. */}
+                <div className="overflow-x-auto scrollbar-hidden">
                 {/* The row's spacing is padding, not margin, so it is inside the
                     measured height: a margin would sit outside the animated box
                     and, on a home with every section hidden, `empty:hidden`
                     would collapse the row while leaving its gap behind. */}
-                <div className="flex flex-wrap items-center gap-2 pb-4 empty:hidden">
+                <div className="flex w-max items-center gap-2 pb-4 empty:hidden">
                   {isWholeHomeView && editingSummaryRow ? (
                     /* Editing: a stand-in row that can show a hidden section as
                        well as hide a shown one, and that opens nothing. */
@@ -8345,6 +8363,7 @@ const Dashboard = () => {
                       areaName={statusAreaName}
                     />
                   )}
+                </div>
                 </div>
                 </AutoHeight>
                 {/* Bodies are gated on the same flags as their pills: leaving a
