@@ -1,7 +1,5 @@
 import React, { memo, useState } from 'react';
 import { intensityFrom } from '@/lib/widget-tint';
-import { useTileTone } from './useTileTone';
-import { getIconColor } from './iconColors';
 import { Lightbulb, Sun, Palette } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { SliderControl, ColoredSwitch, ColorControl, VerticalSlider, ColorSwatchRow, mirrorMired, formatMirroredAsKelvin } from './shared';
@@ -53,12 +51,6 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
     brightnessChar?.characteristic?.minValue,
     brightnessChar?.characteristic?.maxValue,
   );
-  // The hero slider sits on the tile, so its ink follows the tile's fill. A
-  // dim bulb over a dark wallpaper is a wash over black, where the old
-  // hardcoded slate was unreadable.
-  const { onDark: heroOnDark } = useTileTone({
-    colors: getIconColor('lightbulb'), iconStyle, intensity, isOn,
-  });
   const colorTemp = colorTempChar ? getEffectiveValue(accessory.id, colorTempChar.type, colorTempChar.value) : null;
   const hue = hueChar ? getEffectiveValue(accessory.id, hueChar.type, hueChar.value) : null;
   const saturation = saturationChar ? getEffectiveValue(accessory.id, saturationChar.type, saturationChar.value) : null;
@@ -106,8 +98,8 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           label="Brightness"
           fillStyle={{ backgroundColor: heroFill }}
           fillClassName=""
-          trackClassName={heroOnDark ? 'bg-white/15' : 'bg-black/10'}
-          className={`h-full ${heroOnDark ? 'text-white' : 'text-slate-900'}`}
+          trackClassName="bg-black/10 tile-ink-track"
+          className="h-full text-slate-900 tile-ink"
         />
         </div>
       ) : undefined}

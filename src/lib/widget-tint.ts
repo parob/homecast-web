@@ -81,8 +81,20 @@ const ASSUMED_LUMINANCE_DARK = 0.05;
  * The luminance at which white and black ink contrast equally against the same
  * backdrop, by WCAG 2.0: solving 1.05/(L+0.05) = (L+0.05)/0.05 gives
  * L = sqrt(0.0525) - 0.05. Below it white wins, above it black does.
+ *
+ * This decides the ink for a tile at FULL strength only. It deliberately does
+ * not decide it for an off tile — see `resolveWidgetTint`, where using it for
+ * both was a real regression.
  */
 const INK_CROSSOVER = Math.sqrt(0.0525) - 0.05;
+
+/** White ink or the usual slate. */
+type Tone = 'light' | 'dark';
+
+/** A translucent fill's luminance once composited over what sits behind it. */
+function compositeLuminance(fill: Rgba, backdrop: number): number {
+  return fill.a * getLuminance(fill.r, fill.g, fill.b) + (1 - fill.a) * backdrop;
+}
 
 /**
  * Normalise a characteristic reading into the 0-1 an accessory's tint needs.
@@ -164,7 +176,7 @@ export interface TintResult {
   /** The glass layer's fill. */
   backgroundColor: string;
   /** Which ink the content needs: 'light' is white, 'dark' is the usual slate. */
-  tone: 'light' | 'dark';
+  tone: Tone;
   /** The inset hairline's colour, faded out as the fill comes up. */
   ringColor: string;
   /** The resolved fill level, 0-1. Exposed for tests and callers that animate. */
@@ -200,8 +212,35 @@ export function resolveWidgetTint({
   const backdrop =
     wallpaperLuminance ??
     (isDarkWallpaper ? ASSUMED_LUMINANCE_DARK : ASSUMED_LUMINANCE_LIGHT);
-  const fillLuminance = getLuminance(fill.r, fill.g, fill.b);
-  const effective = fill.a * fillLuminance + (1 - fill.a) * backdrop;
+
+  // Ink is decided by interpolating between the two ENDS, not by thresholding
+  // the composite luminance against an absolute constant.
+  //
+  // Thresholding was the obvious approach and it was wrong. This app calls a
+  // wallpaper "dark" whenever its luminance is below 0.8 (isDarkLuminance) —
+  // a deliberate choice that puts white ink on glass over almost any
+  // photograph. WCAG's own crossover is 0.179. An off tile is only 20% black,
+  // so its composite is dominated by the wallpaper, and every wallpaper in the
+  // band between those two numbers — which is most photographs — flipped from
+  // white ink to black. Interpolating the decision instead reproduces the old
+  // behaviour at both ends *by construction*, for every wallpaper.
+  const offTone: Tone = isDarkWallpaper ? 'light' : 'dark';
+  const onLuminance = compositeLuminance({ ...accentRgb, a: alpha }, backdrop);
+  const onTone: Tone = onLuminance < INK_CROSSOVER ? 'light' : 'dark';
+
+  let tone: Tone;
+  if (offTone === onTone) {
+    // Nothing to interpolate — over a light wallpaper both ends are dark ink,
+    // so the tile never flips however far it opens.
+    tone = offTone;
+  } else {
+    // The ends disagree, so the ink turns over somewhere along the ramp. Take
+    // the midpoint of the two composite luminances: it lands where the fill has
+    // taken over from the wallpaper, and it cannot drift off either end.
+    const offLuminance = compositeLuminance(off, backdrop);
+    const midpoint = (offLuminance + onLuminance) / 2;
+    tone = compositeLuminance(fill, backdrop) < midpoint ? offTone : onTone;
+  }
 
   // The ring marks an off tile's edge. Dropping it at the on/off boundary made
   // it pop, so it fades out as the fill comes up. Over a dark wallpaper it was
@@ -213,7 +252,7 @@ export function resolveWidgetTint({
 
   return {
     backgroundColor: rgbaToCss(fill),
-    tone: effective < INK_CROSSOVER ? 'light' : 'dark',
+    tone,
     ringColor,
     level,
   };

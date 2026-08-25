@@ -5808,6 +5808,15 @@ const Dashboard = () => {
 
   // Determine if there's an active background and if it's dark enough for light text
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
+
+  // Memoised because a context read bypasses React.memo: an inline object here
+  // is a new identity every Dashboard render, so every widget that reads the
+  // background would re-render with it. Dashboard renders on every optimistic
+  // cache write, which means once per slider commit mid-drag.
+  const backgroundContextValue = useMemo(
+    () => ({ hasBackground, isDarkBackground, effectiveLuminance }),
+    [hasBackground, isDarkBackground, effectiveLuminance],
+  );
   // Light background: has background but not dark enough for dark mode styling
   const isLightBackground = hasBackground && !isDarkBackground;
 
@@ -6815,7 +6824,7 @@ const Dashboard = () => {
     >
     <HistoryProvider
         onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
-    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground, effectiveLuminance }}>
+    <BackgroundContext.Provider value={backgroundContextValue}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}

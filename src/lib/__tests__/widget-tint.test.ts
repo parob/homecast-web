@@ -23,11 +23,19 @@ const onWhite = (over: Partial<TintInput> = {}): TintInput => ({
   ...over,
 });
 
-/** A tile over a dark photograph. */
+/**
+ * A tile over a dark photograph.
+ *
+ * 0.28, not 0.03. This fixture used to be near-black, and that is exactly how a
+ * real regression shipped: the app calls a wallpaper "dark" whenever its
+ * luminance is under 0.8, so a typical photograph sits somewhere in the middle
+ * of that range, and every off tile over one turned from white ink to black.
+ * A fixture at 0.03 agreed with the bug. Keep this a realistic photograph.
+ */
 const onDark = (over: Partial<TintInput> = {}): TintInput => ({
   ...onWhite(),
   isDarkWallpaper: true,
-  wallpaperLuminance: 0.03,
+  wallpaperLuminance: 0.28,
   ...over,
 });
 
@@ -176,6 +184,41 @@ describe('resolveWidgetTint — ink', () => {
     // The case the old `!isOn && isDarkBackground` rule got wrong: isOn is
     // true, so it chose dark ink over what is essentially black.
     expect(resolveWidgetTint(onDark({ intensity: 0 })).tone).toBe('light');
+  });
+
+  it('keeps white ink on an off tile for EVERY wallpaper the app calls dark', () => {
+    // The regression this exists to prevent. `isDarkLuminance` puts the app's
+    // threshold at 0.8, WCAG's own crossover is 0.179, and thresholding the
+    // composite against the latter flipped the whole band between them — most
+    // photographs — to black ink on tiles that had always been white.
+    for (const wallpaperLuminance of [0.03, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.65, 0.79]) {
+      const { tone } = resolveWidgetTint(
+        onDark({ isOn: false, wallpaperLuminance }),
+      );
+      expect({ wallpaperLuminance, tone }).toEqual({ wallpaperLuminance, tone: 'light' });
+    }
+  });
+
+  it('keeps dark ink on a fully-on tile for every wallpaper', () => {
+    // The other end, which must be equally immovable: a full-strength accent is
+    // pale, so it takes dark ink whatever is behind it.
+    for (const wallpaperLuminance of [0.03, 0.25, 0.5, 0.79]) {
+      expect(resolveWidgetTint(onDark({ intensity: 1, wallpaperLuminance })).tone).toBe('dark');
+    }
+    for (const wallpaperLuminance of [0.85, 1]) {
+      const { tone } = resolveWidgetTint(
+        onWhite({ intensity: 1, wallpaperLuminance }),
+      );
+      expect(tone).toBe('dark');
+    }
+  });
+
+  it('never flips over a light wallpaper, however far the tile opens', () => {
+    // Both ends want dark ink there, so there is nothing to interpolate and the
+    // tile must not pick up white ink somewhere in the middle.
+    for (const i of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+      expect(resolveWidgetTint(onWhite({ intensity: i })).tone).toBe('dark');
+    }
   });
 
   it('crosses over exactly once as a light is dimmed up over a dark wallpaper', () => {

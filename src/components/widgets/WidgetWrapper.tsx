@@ -79,8 +79,15 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   // accent and takes dark ink". That stopped being true once the fill became
   // proportional: a light at 15% over a dark wallpaper is a wash over black
   // and needs white ink even though it is on. So it follows the fill instead.
+  //
+  // `.tile-ink` / `.tile-ink-track` are hooks for content that sets its own
+  // colour and cannot inherit — the hero sliders. They are matched from here
+  // rather than resolved by the widget itself on purpose: a widget calling
+  // useTileTone would subscribe to BackgroundContext, and a context read
+  // bypasses React.memo, so every light tile re-rendered on every Dashboard
+  // render. That is a slider drag's whole frame budget.
   const darkModeClass = tone === 'light'
-    ? '[&_h3]:!text-white [&_p]:!text-white/70 [&_span:not([data-status-badge])]:!text-white/70 [&_[data-state=unchecked]]:!bg-white/20 [&_[data-state=unchecked]>span]:!bg-white/70'
+    ? '[&_h3]:!text-white [&_p]:!text-white/70 [&_span:not([data-status-badge])]:!text-white/70 [&_[data-state=unchecked]]:!bg-white/20 [&_[data-state=unchecked]>span]:!bg-white/70 [&_.tile-ink]:!text-white [&_.tile-ink-track]:!bg-white/15'
     : '';
 
   // Inset hairline, fading out as the fill comes up rather than disappearing at

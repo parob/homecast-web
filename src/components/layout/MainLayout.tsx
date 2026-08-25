@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
 import { BackgroundImage } from '@/components/BackgroundImage';
@@ -67,6 +67,13 @@ export function MainLayout({
   // no-op or a regression.
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(background, bgImageLuminance);
 
+  // Memoised for the same reason as Dashboard's: a new object identity here
+  // re-renders every background-reading widget, memo or not.
+  const backgroundContextValue = useMemo(
+    () => ({ hasBackground, isDarkBackground, effectiveLuminance }),
+    [hasBackground, isDarkBackground, effectiveLuminance],
+  );
+
   // Swipe in from the left edge to open the menu — the same gesture that closes
   // it again from inside the sheet (see SheetContent). Only where the menu is
   // collapsed behind a button in the first place: on md and up the sidebar is a
@@ -113,7 +120,7 @@ export function MainLayout({
   });
 
   return (
-    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground, effectiveLuminance }}>
+    <BackgroundContext.Provider value={backgroundContextValue}>
     <div className="fixed inset-0">
       {/* Backdrop color painted past the safe areas — the layout container
           itself must stay at inset-0 so content keeps clear of the notch. */}

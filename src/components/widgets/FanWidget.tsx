@@ -1,7 +1,5 @@
 import React, { memo } from 'react';
 import { intensityFrom } from '@/lib/widget-tint';
-import { useTileTone } from './useTileTone';
-import { getIconColor } from './iconColors';
 import { Fan, RotateCcw, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
@@ -50,10 +48,6 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
     speedChar?.characteristic?.minValue,
     speedChar?.characteristic?.maxValue,
   );
-  // The hero slider sits on the tile, so its ink follows the tile's fill.
-  const { onDark: heroOnDark } = useTileTone({
-    colors: getIconColor('fan'), iconStyle, intensity, isOn,
-  });
   const direction = directionChar ? getEffectiveValue(accessory.id, 'rotation_direction', directionChar.value) : 0;
 
   const hasControls = speedChar?.isWritable;
@@ -73,8 +67,8 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
           icon={Fan}
           label="Fan Speed"
           fillClassName="bg-sky-400/80"
-          trackClassName={heroOnDark ? 'bg-white/15' : 'bg-black/10'}
-          className={`h-full ${heroOnDark ? 'text-white' : 'text-slate-900'}`}
+          trackClassName="bg-black/10 tile-ink-track"
+          className="h-full text-slate-900 tile-ink"
         />
       ) : undefined}
       title={accessory.name}

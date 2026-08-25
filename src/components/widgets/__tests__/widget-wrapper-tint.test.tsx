@@ -31,7 +31,9 @@ function paint(
 }
 
 const LIGHT = { isDarkBackground: false, effectiveLuminance: 1 };
-const DARK = { isDarkBackground: true, effectiveLuminance: 0.03 };
+// 0.28, not 0.03 — a real photograph. See widget-tint.test.ts: a near-black
+// fixture agreed with the ink regression instead of catching it.
+const DARK = { isDarkBackground: true, effectiveLuminance: 0.28 };
 
 afterEach(cleanup);
 
@@ -80,6 +82,18 @@ describe('WidgetWrapper ink', () => {
     expect(whiteInk(paint({ isOn: false }, LIGHT).root)).toBe(false);
     expect(whiteInk(paint({ isOn: true, intensity: 1 }, DARK).root)).toBe(false);
     expect(whiteInk(paint({ isOn: true, intensity: 1 }, LIGHT).root)).toBe(false);
+  });
+
+  it('carries the ink down to content that sets its own colour', () => {
+    // The hero sliders hardcode text-slate-900 and cannot inherit. They opt in
+    // with `.tile-ink` so the wrapper can flip them, rather than each widget
+    // resolving the tone itself — a widget doing that would have to read
+    // BackgroundContext, and a context read bypasses React.memo, which
+    // re-rendered every light tile on every Dashboard render mid-drag.
+    const dark = paint({ isOn: false }, DARK).root.className;
+    expect(dark).toContain('[&_.tile-ink]:!text-white');
+    expect(dark).toContain('[&_.tile-ink-track]:!bg-white/15');
+    expect(paint({ isOn: true, intensity: 1 }, DARK).root.className).not.toContain('.tile-ink');
   });
 
   it('goes white for a barely-on light over a dark wallpaper', () => {
