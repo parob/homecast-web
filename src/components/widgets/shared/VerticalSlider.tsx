@@ -209,7 +209,15 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       // The ring matters: these bars sit on tiles that are already tinted with
       // the device's colour, so without a defined edge a warm fill on a warm
       // card reads as a smudge rather than a control.
-      className={`relative w-full overflow-hidden rounded-3xl select-none ring-1 ring-inset ring-black/10 ${trackClassName} ${
+      //
+      // `tile-ink`/`tile-ink-track` are what let WidgetWrapper flip this bar to
+      // white on a dark tile — the readout and label carry no colour of their
+      // own and inherit from here. They live on the component rather than on
+      // each caller because all nine sliders sit on a tile and want the same
+      // thing; tagging call sites got six of them wrong. `tile-ink-track` sets
+      // only a background-*color*, so a gradient track (Color Temp) still
+      // paints over it.
+      className={`relative w-full overflow-hidden rounded-3xl select-none ring-1 ring-inset ring-black/10 tile-ink tile-ink-track ${trackClassName} ${
         disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
       } ${className}`}
       style={{ touchAction: 'none' }}

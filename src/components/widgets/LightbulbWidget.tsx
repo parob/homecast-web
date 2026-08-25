@@ -98,8 +98,8 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           label="Brightness"
           fillStyle={{ backgroundColor: heroFill }}
           fillClassName=""
-          trackClassName="bg-black/10 tile-ink-track"
-          className="h-full text-slate-900 tile-ink"
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
         />
         </div>
       ) : undefined}

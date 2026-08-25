@@ -8,6 +8,8 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { WidgetWrapper } from '../WidgetWrapper';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { TINT_ALPHA } from '@/lib/widget-tint';
@@ -94,6 +96,24 @@ describe('WidgetWrapper ink', () => {
     expect(dark).toContain('[&_.tile-ink]:!text-white');
     expect(dark).toContain('[&_.tile-ink-track]:!bg-white/15');
     expect(paint({ isOn: true, intensity: 1 }, DARK).root.className).not.toContain('.tile-ink');
+  });
+
+  it('reaches every hero slider, because the hook lives on the component', () => {
+    // Tagging call sites got 6 of the 9 sliders wrong — the lights-group
+    // Brightness and Color Temp bars among them. VerticalSlider carries the
+    // hook itself so a new slider cannot be forgotten.
+    //
+    // Pinned from source rather than by rendering one: importing VerticalSlider
+    // pulls in lib/config, which touches localStorage at module load and dies
+    // under the local Node build (see vertical-slider-ghost.test.tsx). The
+    // repo already pins contracts this way — see lib/__tests__/deep-link-paths.
+    const source = readFileSync(
+      join(__dirname, '..', 'shared', 'VerticalSlider.tsx'), 'utf8',
+    );
+    const root = source.slice(source.indexOf('className={`relative w-full'));
+    const rootClasses = root.slice(0, root.indexOf('}'));
+    expect(rootClasses).toContain('tile-ink');
+    expect(rootClasses).toContain('tile-ink-track');
   });
 
   it('goes white for a barely-on light over a dark wallpaper', () => {

@@ -67,8 +67,8 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
           icon={Fan}
           label="Fan Speed"
           fillClassName="bg-sky-400/80"
-          trackClassName="bg-black/10 tile-ink-track"
-          className="h-full text-slate-900 tile-ink"
+          trackClassName="bg-black/10"
+          className="h-full text-slate-900"
         />
       ) : undefined}
       title={accessory.name}
