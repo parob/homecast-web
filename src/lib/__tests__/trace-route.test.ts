@@ -398,3 +398,41 @@ describe('things the real data broke', () => {
     expect(makeTimeScale(few, 933, true).cuts).toEqual([]);
   });
 });
+
+describe('a burst is not one call', () => {
+  const BURST_ONLY = [
+    ev(0, 'route_decision', { action: 'rooms.list' }),
+    ev(1, 'relay_sent', { action: 'rooms.list' }),
+    ev(40, 'relay_response', { action: 'rooms.list', latencyMs: 40 }),
+    ev(50, 'relay_sent', { action: 'scenes.list' }),
+    ev(90, 'relay_response', { action: 'scenes.list', latencyMs: 40 }),
+  ];
+
+  it('is titled by its size, not by whichever call came first', () => {
+    // The list linking here said `serviceGroups.list`; the detail said
+    // `rooms.list`, because the first span happened to be an inner call.
+    expect(buildRoute(BURST_ONLY).title).toBe('2 calls');
+  });
+
+  it('gets no baseline, because its total is the sum of many calls', () => {
+    // Against a single call's median this reported "13.8x slower" for a trace
+    // that was thirteen perfectly ordinary calls.
+    const baselines = baselinesFrom(
+      Array.from({ length: 20 }, () => ({ action: 'rooms.list', totalLatencyMs: 40, relayLatencyMs: 38 })),
+    );
+    expect(verdictOf(buildRoute(BURST_ONLY), baselines).baseline).toBeNull();
+  });
+
+  it('still titles an ordinary request by its action', () => {
+    expect(buildRoute(REQUEST).title).toBe('automation.virtual_states');
+  });
+
+  it('does not name the logger as a phase', () => {
+    const m = buildRoute([
+      ev(0, 'server_received', { action: 'x' }),
+      ev(10, null, { source: 'websocket' }),
+      ev(60, 'response_sent', { action: 'x', latencyMs: 60 }),
+    ]);
+    expect(m.phases.every((p) => !p.label.includes('websocket'))).toBe(true);
+  });
+});

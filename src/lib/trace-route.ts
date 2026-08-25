@@ -86,6 +86,8 @@ export interface RouteModel {
   baseTime: number;
   totalMs: number;
   action: string | null;
+  /** What to call this trace on screen. */
+  title: string;
   lanes: string[];
   phases: Phase[];
   legs: Leg[];
@@ -138,7 +140,10 @@ function labelAfter(e: TraceEvent): string {
     case 'route_decision': return 'handing off to the owning pod';
     case 'relay_sent': return 'waiting for the relay Mac';
     case 'relay_response': return 'building and sending the reply';
-    default: return `in ${e.spanName || e.source || 'the server'}`;
+    // Unnamed rows are internal server chatter. Naming the log source ("in
+    // websocket") told the reader which logger emitted it, which is not a thing
+    // they are asking about.
+    default: return 'server-side work';
   }
 }
 
@@ -157,7 +162,7 @@ export function buildRoute(rows: TraceEvent[]): RouteModel {
 
   if (!ordered.length) {
     return {
-      events: [], baseTime: 0, totalMs: 0, action: null, lanes: [], phases: [],
+      events: [], baseTime: 0, totalMs: 0, action: null, title: 'trace', lanes: [], phases: [],
       legs: [], exchanges: [], shape: 'request', attempts: 0, failure: null, lateAnswer: null,
     };
   }
@@ -233,6 +238,11 @@ export function buildRoute(rows: TraceEvent[]): RouteModel {
     : decisions.length > 1 ? 'repetition' : 'request';
   const attempts = shape === 'repetition' ? decisions.length : 1;
 
+  // A burst carries many calls and no request of its own, so naming it after
+  // whichever call happened to be first is arbitrary and contradicts the list
+  // that linked here.
+  const title = shape === 'burst' ? `${exchanges.length} calls` : (action ?? 'trace');
+
   const failedSend = events.find((e) => e.spanName === 'response_sent' && e.error);
   const failure = failedSend ? { code: String(failedSend.error), at: failedSend.t } : null;
 
@@ -241,7 +251,7 @@ export function buildRoute(rows: TraceEvent[]): RouteModel {
     : undefined;
   const lateAnswer = late ? { at: late.t, afterMs: late.t - failure!.at } : null;
 
-  return { events, baseTime, totalMs, action, lanes, phases, legs, exchanges, shape, attempts, failure, lateAnswer };
+  return { events, baseTime, totalMs, action, title, lanes, phases, legs, exchanges, shape, attempts, failure, lateAnswer };
 }
 
 /**
@@ -332,7 +342,12 @@ export interface Verdict {
  * guessing confidently.
  */
 export function verdictOf(model: RouteModel, baselines?: Map<string, Baseline>): Verdict {
-  const baseline = (model.action && baselines?.get(model.action)) || null;
+  // No baseline for a burst: its total is the sum of many calls, and comparing
+  // that against the median of one of them reported "13.8x slower" for a trace
+  // that was thirteen perfectly ordinary calls.
+  const baseline = model.shape === 'burst'
+    ? null
+    : (model.action && baselines?.get(model.action)) || null;
   const worstLeg = model.legs.reduce<Leg | null>((a, b) => (b.ms > (a?.ms ?? -1) ? b : a), null);
   const ok = !model.failure;
   const base = { shape: model.shape, ok, baseline, worstLeg };
