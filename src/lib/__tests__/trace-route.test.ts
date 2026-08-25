@@ -5,6 +5,7 @@ import {
   baselinesFrom,
   bubbleUp,
   buildRoute,
+  groupIncidents,
   hopOf,
   makeTimeScale,
   ownerAfter,
@@ -434,5 +435,107 @@ describe('a burst is not one call', () => {
       ev(60, 'response_sent', { action: 'x', latencyMs: 60 }),
     ]);
     expect(m.phases.every((p) => !p.label.includes('websocket'))).toBe(true);
+  });
+});
+
+describe('what needs attention', () => {
+  const at = (min: number) => new Date(T0 + min * 60_000).toISOString();
+  const summary = (o: Partial<Parameters<typeof groupIncidents>[0][number]> & { traceId: string }) =>
+    ({ action: 'serviceGroup.set', totalLatencyMs: 500, relayLatencyMs: 400, success: true, ...o });
+
+  const base = new Map([
+    ['serviceGroup.set', { action: 'serviceGroup.set', n: 40, p50: 500, p50Relay: 400, p95: 900 }],
+    ['scene.execute', { action: 'scene.execute', n: 40, p50: 200, p50Relay: 100, p95: 400 }],
+  ]);
+
+  it('states one fault once, however many traces hit it', () => {
+    const traces = Array.from({ length: 61 }, (_, i) => summary({
+      traceId: `t${i}`, success: false, error: 'send_failed: Cannot call "send"',
+      totalLatencyMs: 60_000 + i, startTime: at(i),
+    }));
+    const groups = groupIncidents(traces, base);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].count).toBe(61);
+    expect(groups[0].why).toBe('send_failed');
+    // The worst example is the one worth opening.
+    expect(groups[0].worst.traceId).toBe('t60');
+  });
+
+  it('does not let one loud fault crowd out the others', () => {
+    const loud = Array.from({ length: 61 }, (_, i) => summary({
+      traceId: `loud${i}`, success: false, error: 'send_failed: x', totalLatencyMs: 60_000, startTime: at(i),
+    }));
+    const quiet = [summary({
+      traceId: 'quiet', action: 'scene.execute', success: false,
+      error: 'BRIDGE_TIMEOUT: no answer', totalLatencyMs: 8_000, startTime: at(3),
+    })];
+    const groups = groupIncidents([...loud, ...quiet], base);
+    expect(groups.map((g) => g.why)).toEqual(['send_failed', 'BRIDGE_TIMEOUT']);
+    // Loudest first, but the other one is still on the page.
+    expect(groups[0].count).toBe(61);
+    expect(groups[1].count).toBe(1);
+  });
+
+  it('buckets slowness by decade so it groups at all', () => {
+    const slow = [3.2, 3.9, 4.5, 12, 30].map((mult, i) => summary({
+      traceId: `s${i}`, totalLatencyMs: 500 * mult, startTime: at(i),
+    }));
+    const groups = groupIncidents(slow, base);
+    expect(groups.map((g) => `${g.why}:${g.count}`)).toEqual(['3-10x slower:3', '10x+ slower:2']);
+  });
+
+  it('ignores a trace that is merely slower than its neighbours', () => {
+    expect(groupIncidents([summary({ traceId: 'a', totalLatencyMs: 1400 })], base)).toEqual([]);
+  });
+
+  it('keeps a failure with no baseline for its action', () => {
+    const groups = groupIncidents(
+      [summary({ traceId: 'a', action: 'brand.new', success: false, error: 'nope' })],
+      base,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].action).toBe('brand.new');
+  });
+
+  it('reports the span a fault covers, not just its count', () => {
+    const groups = groupIncidents([
+      summary({ traceId: 'a', success: false, error: 'send_failed', startTime: at(0) }),
+      summary({ traceId: 'b', success: false, error: 'send_failed', startTime: at(9) }),
+    ], base);
+    expect(groups[0].lastMs - groups[0].firstMs).toBe(9 * 60_000);
+  });
+});
+
+describe('elision cuts dead time only', () => {
+  // A trace whose one long interval is a leg: the relay held it for 7s. Cutting
+  // that is cutting the finding.
+  const spread = [0, 40, 80, 7_080, 7_120, 7_200].map((t) => ({ t }));
+
+  it('leaves a long interval alone when a leg covers it', () => {
+    const busy = [{ at: 80, to: 7_080 }];
+    const scale = makeTimeScale(spread, 7_200, true, busy);
+    expect(scale.elided).toBe(false);
+    expect(scale.cuts).toEqual([]);
+    // ...and the leg keeps its true share of the axis.
+    expect(scale.x(7_080) - scale.x(80)).toBeCloseTo(7_000 / 7_200, 2);
+  });
+
+  it('still cuts the same interval when nothing was happening in it', () => {
+    const scale = makeTimeScale(spread, 7_200, true, []);
+    expect(scale.elided).toBe(true);
+    expect(scale.cuts).toHaveLength(1);
+    expect(scale.cuts[0].ms).toBe(7_000);
+  });
+
+  it('does not shrink a small leg to rescue a large one', () => {
+    // The shape that broke it: 7.0s of work, then 448ms of work, then a 3s
+    // silence. Only the silence may be cut, so the 448ms leg stays small.
+    const events = [0, 30, 7_030, 7_478, 10_478].map((t) => ({ t }));
+    const busy = [{ at: 30, to: 7_030 }, { at: 7_030, to: 7_478 }];
+    const scale = makeTimeScale(events, 10_478, true, busy);
+    const big = scale.x(7_030) - scale.x(30);
+    const small = scale.x(7_478) - scale.x(7_030);
+    expect(big).toBeGreaterThan(small * 10);
+    expect(scale.cuts).toHaveLength(1);
   });
 });

@@ -558,12 +558,23 @@ export interface TimeScale {
  * The axis is the real enemy: no linear scale shows a 36ms span and a 30s stall
  * in one picture — one of them is a hairline.
  *
- * Elision keeps every event in order and in relative size, but squashes any
- * interval big enough to dominate down to a fixed sliver the view can mark with
- * what it cost. You lose true proportion and gain the ability to see structure,
- * which is why it is a toggle and not a default.
+ * Elision squashes an interval big enough to dominate down to a fixed sliver
+ * the view can mark with what it cost. You lose true proportion and gain the
+ * ability to see structure, which is why it is a toggle and not a default.
+ *
+ * It only ever squashes *dead* time. `busy` is the set of intervals a leg
+ * covers, and those are never cut however long they run: their length is the
+ * finding. Squashing on size alone inverted the picture — on a 15s trace it
+ * compressed a 7.0s handoff and a 5.0s relay wait to slivers while leaving a
+ * 448ms reply at full scale, so the reply was drawn wider than the stall that
+ * caused the whole incident.
  */
-export function makeTimeScale(events: Array<{ t: number }>, totalMs: number, elide: boolean): TimeScale {
+export function makeTimeScale(
+  events: Array<{ t: number }>,
+  totalMs: number,
+  elide: boolean,
+  busy: Array<{ at: number; to: number }> = [],
+): TimeScale {
   const total = Math.max(1, totalMs);
   if (!elide) return { x: (ms) => Math.max(0, Math.min(1, ms / total)), cuts: [], elided: false };
 
@@ -575,11 +586,14 @@ export function makeTimeScale(events: Array<{ t: number }>, totalMs: number, eli
   // broken.
   if (times.length < 5) return { x: (ms) => Math.max(0, Math.min(1, ms / total)), cuts: [], elided: false };
   const threshold = Math.max(400, total * 0.06);
+  const working = (t0: number, t1: number) => busy.some((b) => b.at < t1 && b.to > t0);
   const segments: Array<{ t0: number; t1: number; real: number; big: boolean; disp: number; d0: number }> = [];
   let prev = 0;
   for (const t of times) {
     const real = t - prev;
-    if (real > 0) segments.push({ t0: prev, t1: t, real, big: real > threshold, disp: 0, d0: 0 });
+    if (real > 0) {
+      segments.push({ t0: prev, t1: t, real, big: real > threshold && !working(prev, t), disp: 0, d0: 0 });
+    }
     prev = t;
   }
   if (!segments.length) return { x: () => 0, cuts: [], elided: false };
@@ -601,6 +615,89 @@ export function makeTimeScale(events: Array<{ t: number }>, totalMs: number, eli
       return 1;
     },
     cuts: segments.filter((s) => s.big).map((s) => ({ from: s.d0 / span, to: (s.d0 + s.disp) / span, ms: s.real })),
-    elided: true,
+    // Nothing was actually cut, so the view must not claim it was.
+    elided: segments.some((s) => s.big),
   };
+}
+
+// ---------------------------------------------------------------------------
+// What needs attention
+// ---------------------------------------------------------------------------
+
+/** How far past its own median a successful trace has to be to count. */
+export const OUTLIER_RATIO = 3;
+
+export interface IncidentGroup<T> {
+  /** Stable key: what makes these the same fault. */
+  key: string;
+  action: string;
+  /** The badge — an error code, or how far past normal. */
+  why: string;
+  failed: boolean;
+  count: number;
+  /** Median duration across the group, and the median relay share of it. */
+  ms: number;
+  relayMs: number;
+  /** First and last occurrence, so a burst reads differently from a drip. */
+  firstMs: number;
+  lastMs: number;
+  /** The one to open: the worst example. */
+  worst: T;
+}
+
+/**
+ * Distinct faults, not distinct traces.
+ *
+ * The first version listed the eight worst traces, and in production all eight
+ * were the same `serviceGroup.set` timing out — one fault stated eight times,
+ * with the other ninety failures and every other kind of problem pushed off the
+ * list entirely. Grouping by action and error code means eight rows are eight
+ * different things to look at.
+ */
+export function groupIncidents<T extends TraceSummaryLike & { startTime?: string | null }>(
+  traces: T[],
+  baselines: Map<string, Baseline>,
+  limit = 8,
+): Array<IncidentGroup<T>> {
+  const by = new Map<string, Array<{ row: T; ms: number; relay: number; at: number; ratio: number | null }>>();
+
+  for (const t of traces) {
+    const ms = t.totalLatencyMs ?? t.relayLatencyMs ?? null;
+    if (!ms || !t.action) continue;
+    const base = baselines.get(t.action);
+    const ratio = base && base.p50 > 0 ? ms / base.p50 : null;
+    const failed = t.success === false;
+    if (!failed && !(ratio !== null && ratio >= OUTLIER_RATIO)) continue;
+
+    // Slow traces group by decade rather than by exact multiple, or every one
+    // would be its own "3.7x" group and the grouping would do nothing.
+    const why = failed
+      ? (t.error || 'failed').split(':')[0]
+      : `${ratio! >= 10 ? '10x+' : `${OUTLIER_RATIO}-10x`} slower`;
+    const key = `${t.action}|${failed ? 'f' : 's'}|${why}`;
+    const at = t.startTime ? Date.parse(t.startTime) : NaN;
+    const list = by.get(key) ?? [];
+    list.push({ row: t, ms, relay: t.relayLatencyMs ?? 0, at: Number.isNaN(at) ? 0 : at, ratio });
+    by.set(key, list);
+  }
+
+  const groups: Array<IncidentGroup<T>> = [];
+  for (const [key, xs] of by) {
+    const [action, kind, why] = key.split('|');
+    const totals = xs.map((x) => x.ms).sort((a, b) => a - b);
+    const relays = xs.map((x) => x.relay).sort((a, b) => a - b);
+    const stamps = xs.map((x) => x.at).filter(Boolean).sort((a, b) => a - b);
+    const worst = xs.reduce((a, b) => (b.ms > a.ms ? b : a));
+    groups.push({
+      key, action, why, failed: kind === 'f', count: xs.length,
+      ms: quantile(totals, 0.5), relayMs: quantile(relays, 0.5),
+      firstMs: stamps[0] ?? 0, lastMs: stamps[stamps.length - 1] ?? 0,
+      worst: worst.row,
+    });
+  }
+
+  // Failures before slowness, then by how much of the window each accounts for.
+  return groups
+    .sort((a, b) => (Number(b.failed) - Number(a.failed)) || (b.count - a.count) || (b.ms - a.ms))
+    .slice(0, limit);
 }
