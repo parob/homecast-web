@@ -1,7 +1,7 @@
 import { ServiceType } from './types';
 
 // Complete widget color scheme for different device types
-// These are Tailwind CSS color classes
+// These are Tailwind CSS color classes, except `tint` — see the note on it below.
 export type IconColor = {
   // Icon colors (existing)
   bg: string;      // Icon background when on
@@ -22,9 +22,15 @@ export type IconColor = {
   sliderThumb: string;  // Slider thumb color
   // Switch colors
   switchBg: string;     // Switch background when checked
-  // Blur background colors (for hasBackground mode in colorful theme)
-  blurBg: string;       // Tinted blur background when ON
-  blurBgOff: string;    // Blur background when OFF (typically dark overlay)
+  // The tile's fill.
+  //
+  // A hex, not a Tailwind class, because the fill is now painted at a strength
+  // proportional to how far on the accessory is — and `tailwind.config.ts` has
+  // no `safelist`, so a generated `bg-yellow-200/${pct}` would be purged. The
+  // maths lives in `lib/widget-tint.ts`; this is just the colour it starts from.
+  tint: string;
+  /** Overrides the shared TINT_ALPHA for the rare entry that painted at another alpha. */
+  tintAlpha?: number;
 };
 
 // Color palette for device types
@@ -45,8 +51,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-yellow-500',
     sliderThumb: 'bg-yellow-600',
     switchBg: 'bg-yellow-500',
-    blurBg: 'bg-yellow-200/75 dark:bg-yellow-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fef08a', // yellow-200
   },
 
   // Switches & Outlets - blue
@@ -65,8 +70,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-blue-500',
     sliderThumb: 'bg-blue-600',
     switchBg: 'bg-blue-500',
-    blurBg: 'bg-blue-200/75 dark:bg-blue-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bfdbfe', // blue-200
   },
   outlet: {
     bg: 'bg-blue-500',
@@ -83,8 +87,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-blue-500',
     sliderThumb: 'bg-blue-600',
     switchBg: 'bg-blue-500',
-    blurBg: 'bg-blue-200/75 dark:bg-blue-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bfdbfe', // blue-200
   },
 
   // Climate - orange for heat
@@ -103,8 +106,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-orange-500',
     sliderThumb: 'bg-orange-600',
     switchBg: 'bg-orange-500',
-    blurBg: 'bg-orange-200/75 dark:bg-orange-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fed7aa', // orange-200
   },
   // Heater/Cooler - sky blue for cooling
   heater_cooler: {
@@ -122,8 +124,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-sky-500',
     sliderThumb: 'bg-sky-600',
     switchBg: 'bg-sky-500',
-    blurBg: 'bg-sky-200/75 dark:bg-sky-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bae6fd', // sky-200
   },
   // Climate balanced - emerald green
   climate_balanced: {
@@ -141,8 +142,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-emerald-500',
     sliderThumb: 'bg-emerald-600',
     switchBg: 'bg-emerald-500',
-    blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a7f3d0', // emerald-200
   },
 
   // Fans - cyan/teal
@@ -161,8 +161,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-cyan-500',
     sliderThumb: 'bg-cyan-600',
     switchBg: 'bg-cyan-500',
-    blurBg: 'bg-cyan-200/75 dark:bg-cyan-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a5f3fc', // cyan-200
   },
   air_purifier: {
     bg: 'bg-cyan-500',
@@ -179,8 +178,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-cyan-500',
     sliderThumb: 'bg-cyan-600',
     switchBg: 'bg-cyan-500',
-    blurBg: 'bg-cyan-200/75 dark:bg-cyan-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a5f3fc', // cyan-200
   },
 
   // Humidity - sky blue
@@ -199,8 +197,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-sky-500',
     sliderThumb: 'bg-sky-600',
     switchBg: 'bg-sky-500',
-    blurBg: 'bg-sky-200/75 dark:bg-sky-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bae6fd', // sky-200
   },
 
   // Locks - slight dark tint for secure feeling
@@ -219,8 +216,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-zinc-800 dark:bg-zinc-200',
     sliderThumb: 'bg-zinc-900 dark:bg-zinc-100',
     switchBg: 'bg-zinc-800 dark:bg-zinc-200',
-    blurBg: 'bg-zinc-200/75 dark:bg-zinc-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e4e4e7', // zinc-200
   },
 
   // Security - red
@@ -239,8 +235,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-red-500',
     sliderThumb: 'bg-red-600',
     switchBg: 'bg-red-500',
-    blurBg: 'bg-red-200/75 dark:bg-red-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fecaca', // red-200
   },
 
   // Doors & Windows - indigo
@@ -259,8 +254,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-indigo-500',
     sliderThumb: 'bg-indigo-600',
     switchBg: 'bg-indigo-500',
-    blurBg: 'bg-indigo-200/75 dark:bg-indigo-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#c7d2fe', // indigo-200
   },
   window: {
     bg: 'bg-indigo-500',
@@ -277,8 +271,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-indigo-500',
     sliderThumb: 'bg-indigo-600',
     switchBg: 'bg-indigo-500',
-    blurBg: 'bg-indigo-200/75 dark:bg-indigo-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#c7d2fe', // indigo-200
   },
   garage_door: {
     bg: 'bg-indigo-500',
@@ -295,8 +288,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-indigo-500',
     sliderThumb: 'bg-indigo-600',
     switchBg: 'bg-indigo-500',
-    blurBg: 'bg-indigo-200/75 dark:bg-indigo-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#c7d2fe', // indigo-200
   },
 
   // Window coverings / blinds - violet
@@ -315,8 +307,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-violet-500',
     sliderThumb: 'bg-violet-600',
     switchBg: 'bg-violet-500',
-    blurBg: 'bg-violet-200/75 dark:bg-violet-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#ddd6fe', // violet-200
   },
 
   // Sensors - emerald/teal
@@ -335,8 +326,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-emerald-500',
     sliderThumb: 'bg-emerald-600',
     switchBg: 'bg-emerald-500',
-    blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a7f3d0', // emerald-200
   },
   occupancy_sensor: {
     bg: 'bg-emerald-500',
@@ -353,8 +343,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-emerald-500',
     sliderThumb: 'bg-emerald-600',
     switchBg: 'bg-emerald-500',
-    blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a7f3d0', // emerald-200
   },
   contact_sensor: {
     bg: 'bg-emerald-500',
@@ -371,8 +360,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-emerald-500',
     sliderThumb: 'bg-emerald-600',
     switchBg: 'bg-emerald-500',
-    blurBg: 'bg-emerald-200/75 dark:bg-emerald-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#a7f3d0', // emerald-200
   },
   temperature_sensor: {
     bg: 'bg-rose-500',
@@ -389,8 +377,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-rose-500',
     sliderThumb: 'bg-rose-600',
     switchBg: 'bg-rose-500',
-    blurBg: 'bg-rose-200/75 dark:bg-rose-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fecdd3', // rose-200
   },
   humidity_sensor: {
     bg: 'bg-sky-500',
@@ -407,8 +394,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-sky-500',
     sliderThumb: 'bg-sky-600',
     switchBg: 'bg-sky-500',
-    blurBg: 'bg-sky-200/75 dark:bg-sky-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bae6fd', // sky-200
   },
   light_sensor: {
     bg: 'bg-amber-500',
@@ -425,8 +411,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-amber-500',
     sliderThumb: 'bg-amber-600',
     switchBg: 'bg-amber-500',
-    blurBg: 'bg-amber-200/75 dark:bg-amber-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fde68a', // amber-200
   },
   smoke_sensor: {
     bg: 'bg-red-500',
@@ -443,8 +428,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-red-500',
     sliderThumb: 'bg-red-600',
     switchBg: 'bg-red-500',
-    blurBg: 'bg-red-200/75 dark:bg-red-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fecaca', // red-200
   },
   carbon_monoxide_sensor: {
     bg: 'bg-red-500',
@@ -461,8 +445,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-red-500',
     sliderThumb: 'bg-red-600',
     switchBg: 'bg-red-500',
-    blurBg: 'bg-red-200/75 dark:bg-red-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fecaca', // red-200
   },
   carbon_dioxide_sensor: {
     bg: 'bg-red-500',
@@ -479,8 +462,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-red-500',
     sliderThumb: 'bg-red-600',
     switchBg: 'bg-red-500',
-    blurBg: 'bg-red-200/75 dark:bg-red-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fecaca', // red-200
   },
   leak_sensor: {
     bg: 'bg-blue-500',
@@ -497,8 +479,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-blue-500',
     sliderThumb: 'bg-blue-600',
     switchBg: 'bg-blue-500',
-    blurBg: 'bg-blue-200/75 dark:bg-blue-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bfdbfe', // blue-200
   },
   air_quality_sensor: {
     bg: 'bg-teal-500',
@@ -515,8 +496,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-teal-500',
     sliderThumb: 'bg-teal-600',
     switchBg: 'bg-teal-500',
-    blurBg: 'bg-teal-200/75 dark:bg-teal-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#99f6e4', // teal-200
   },
 
   // Water/Irrigation - blue/green
@@ -535,8 +515,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-blue-500',
     sliderThumb: 'bg-blue-600',
     switchBg: 'bg-blue-500',
-    blurBg: 'bg-blue-200/75 dark:bg-blue-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bfdbfe', // blue-200
   },
   faucet: {
     bg: 'bg-blue-500',
@@ -553,8 +532,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-blue-500',
     sliderThumb: 'bg-blue-600',
     switchBg: 'bg-blue-500',
-    blurBg: 'bg-blue-200/75 dark:bg-blue-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bfdbfe', // blue-200
   },
   irrigation_system: {
     bg: 'bg-green-500',
@@ -571,8 +549,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-green-500',
     sliderThumb: 'bg-green-600',
     switchBg: 'bg-green-500',
-    blurBg: 'bg-green-200/75 dark:bg-green-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#bbf7d0', // green-200
   },
 
   // Audio - purple
@@ -591,8 +568,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-purple-500',
     sliderThumb: 'bg-purple-600',
     switchBg: 'bg-purple-500',
-    blurBg: 'bg-purple-200/75 dark:bg-purple-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e9d5ff', // purple-200
   },
   smart_speaker: {
     bg: 'bg-purple-500',
@@ -609,8 +585,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-purple-500',
     sliderThumb: 'bg-purple-600',
     switchBg: 'bg-purple-500',
-    blurBg: 'bg-purple-200/75 dark:bg-purple-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e9d5ff', // purple-200
   },
   microphone: {
     bg: 'bg-purple-500',
@@ -627,8 +602,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-purple-500',
     sliderThumb: 'bg-purple-600',
     switchBg: 'bg-purple-500',
-    blurBg: 'bg-purple-200/75 dark:bg-purple-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e9d5ff', // purple-200
   },
 
   // Camera/Doorbell - slate/amber
@@ -647,8 +621,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-slate-600',
     sliderThumb: 'bg-slate-700',
     switchBg: 'bg-slate-600',
-    blurBg: 'bg-slate-200/75 dark:bg-slate-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e2e8f0', // slate-200
   },
   doorbell: {
     bg: 'bg-amber-500',
@@ -665,8 +638,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-amber-500',
     sliderThumb: 'bg-amber-600',
     switchBg: 'bg-amber-500',
-    blurBg: 'bg-amber-200/75 dark:bg-amber-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fde68a', // amber-200
   },
 
   // Buttons/Remotes - pink
@@ -685,8 +657,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-pink-500',
     sliderThumb: 'bg-pink-600',
     switchBg: 'bg-pink-500',
-    blurBg: 'bg-pink-200/75 dark:bg-pink-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fbcfe8', // pink-200
   },
 
   // Scenes - amber (Zap)
@@ -705,8 +676,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-amber-500',
     sliderThumb: 'bg-amber-600',
     switchBg: 'bg-amber-500',
-    blurBg: 'bg-amber-200/75 dark:bg-amber-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#fde68a', // amber-200
   },
 
   // Bridges/Hubs - slate grey
@@ -725,8 +695,7 @@ export const ICON_COLORS: Record<string, IconColor> = {
     sliderTrack: 'bg-slate-500',
     sliderThumb: 'bg-slate-600',
     switchBg: 'bg-slate-500',
-    blurBg: 'bg-slate-200/75 dark:bg-slate-400/60',
-    blurBgOff: 'bg-black/40',
+    tint: '#e2e8f0', // slate-200
   },
 };
 
@@ -746,8 +715,7 @@ export const DEFAULT_ICON_COLOR: IconColor = {
   sliderTrack: 'bg-primary',
   sliderThumb: 'bg-primary',
   switchBg: 'bg-primary',
-  blurBg: 'bg-slate-200/75 dark:bg-slate-400/60',
-  blurBgOff: 'bg-black/40',
+  tint: '#e2e8f0', // slate-200
 };
 
 // Get icon colors for a service type
@@ -774,8 +742,8 @@ export const TIMER_FINISHED_COLOR: IconColor = {
   sliderTrack: 'bg-emerald-300',
   sliderThumb: 'bg-emerald-400',
   switchBg: 'bg-emerald-300',
-  blurBg: 'bg-emerald-100/70 dark:bg-emerald-400/30',
-  blurBgOff: 'bg-emerald-100/50 dark:bg-emerald-500/25',
+  tint: '#d1fae5', // emerald-100
+  tintAlpha: 0.7,
 };
 
 export const getIconColor = (serviceType: ServiceType | string | null): IconColor => {

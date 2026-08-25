@@ -244,11 +244,22 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // Third level: which of the selected home's sub-sections is open (null = its overview)
   const [homeSection, setHomeSection] = useState<HomeSettingsSectionId | null>(null);
 
-  // Reset to initial tab when dialog opens
+  // Reset to the initial tab when the dialog opens.
+  //
+  // Mobile keeps its own selection in `mobileSection` — the push stack reads it,
+  // not `activeTab` — so seeding only `activeTab` sent every deep link
+  // (openSettingsTo, a ?settings= URL) to the menu index on a phone while
+  // working correctly on a desktop.
+  //
+  // The seed is deliberately unconditional rather than guarded on `isMobile`:
+  // useIsMobile() starts undefined and resolves in an effect, so it reads false
+  // on the first render and a guarded seed would lose the race and still land
+  // on the index. `mobileSection` is only ever read on the mobile branch, so
+  // setting it on a desktop is inert.
   useEffect(() => {
     if (open) {
       setActiveTab(initialTab || 'plan');
-      setMobileSection(null);
+      setMobileSection(initialTab ?? null);
       setSelectedHomeId(null);
       setHomeSection(null);
     }

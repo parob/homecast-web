@@ -65,7 +65,7 @@ export function MainLayout({
   // there is no previous answer — which is the readable choice, since nothing is
   // painted over bg-background yet. Gating on top of that could only ever be a
   // no-op or a regression.
-  const { hasBackground, isDarkBackground } = useBackgroundDarkness(background, bgImageLuminance);
+  const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(background, bgImageLuminance);
 
   // Swipe in from the left edge to open the menu — the same gesture that closes
   // it again from inside the sheet (see SheetContent). Only where the menu is
@@ -113,7 +113,7 @@ export function MainLayout({
   });
 
   return (
-    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
+    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground, effectiveLuminance }}>
     <div className="fixed inset-0">
       {/* Backdrop color painted past the safe areas — the layout container
           itself must stay at inset-0 so content keeps clear of the notch. */}

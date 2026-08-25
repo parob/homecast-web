@@ -362,7 +362,9 @@ export function AccessorySearch({
 
   const totalResults = dedupedAccessories.length + filteredGroups.length;
 
-  const lightBg = useMemo(() => ({ hasBackground: false, isDarkBackground: false }), []);
+  // Search results always render on the light recipe, so the luminance has to
+  // say 'white page' too — leaving it null would be read as 'not measured yet'.
+  const lightBg = useMemo(() => ({ hasBackground: false, isDarkBackground: false, effectiveLuminance: 1 }), []);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

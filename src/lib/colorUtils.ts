@@ -27,8 +27,12 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 /**
  * Calculate relative luminance of an RGB color (0-1 scale)
  * Using the formula from WCAG 2.0
+ *
+ * Exported for `lib/widget-tint.ts`, which needs the same maths to decide
+ * whether a widget's fill takes white or black ink. One copy, so the two
+ * answers can never drift.
  */
-function getLuminance(r: number, g: number, b: number): number {
+export function getLuminance(r: number, g: number, b: number): number {
   const [rs, gs, bs] = [r, g, b].map(c => {
     c = c / 255;
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
@@ -63,7 +67,7 @@ function extractGradientColors(gradient: string): string[] {
 /**
  * Parse any color string to RGB
  */
-function parseColor(color: string): { r: number; g: number; b: number } | null {
+export function parseColor(color: string): { r: number; g: number; b: number } | null {
   // Hex color
   if (color.startsWith('#')) {
     return hexToRgb(color);

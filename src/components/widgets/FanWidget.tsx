@@ -1,4 +1,7 @@
 import React, { memo } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
+import { useTileTone } from './useTileTone';
+import { getIconColor } from './iconColors';
 import { Fan, RotateCcw, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
@@ -40,6 +43,17 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
   const powerValue = powerChar ? getEffectiveValue(accessory.id, powerChar.type, powerChar.value) : false;
   const isOn = powerValue === true || powerValue === 1;
   const speed = speedChar ? getEffectiveValue(accessory.id, 'rotation_speed', speedChar.value) : null;
+  // A single-speed fan has no rotation_speed, so this is null and the tile
+  // paints at full strength when it is running.
+  const intensity = intensityFrom(
+    speed,
+    speedChar?.characteristic?.minValue,
+    speedChar?.characteristic?.maxValue,
+  );
+  // The hero slider sits on the tile, so its ink follows the tile's fill.
+  const { onDark: heroOnDark } = useTileTone({
+    colors: getIconColor('fan'), iconStyle, intensity, isOn,
+  });
   const direction = directionChar ? getEffectiveValue(accessory.id, 'rotation_direction', directionChar.value) : 0;
 
   const hasControls = speedChar?.isWritable;
@@ -59,14 +73,15 @@ export const FanWidget: React.FC<WidgetProps> = memo(({
           icon={Fan}
           label="Fan Speed"
           fillClassName="bg-sky-400/80"
-          trackClassName="bg-black/10"
-          className="h-full text-slate-900"
+          trackClassName={heroOnDark ? 'bg-white/15' : 'bg-black/10'}
+          className={`h-full ${heroOnDark ? 'text-white' : 'text-slate-900'}`}
         />
       ) : undefined}
       title={accessory.name}
       subtitle={isOn ? (speed !== null ? `${Math.round(speed)}% speed` : 'On') : 'Off'}
       icon={<Fan className={`h-4 w-4 ${isOn ? 'animate-spin' : ''}`} style={{ animationDuration: speed ? `${2000 / (speed / 50)}ms` : '2s' }} />}
       isOn={isOn}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}

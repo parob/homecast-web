@@ -30,7 +30,7 @@ import { useHistory } from '@/contexts/HistoryContext';
 import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
-import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useTileTone } from './useTileTone';
 
 // Context for passing widget colors to child components
 export interface WidgetColorContextType {
@@ -41,6 +41,15 @@ export interface WidgetColorContextType {
   expanded: boolean;
   /** True when the hero sits in the narrow landscape slot beside its secondaries */
   heroDense: boolean;
+  /**
+   * True when the tile's fill is dark enough that its content needs white ink.
+   *
+   * Published here because it can no longer be re-derived: it used to be
+   * `!isOn && isDarkBackground`, which every control that needed it computed
+   * for itself. Now it depends on the fill's actual luminance, so there is one
+   * answer and children read it rather than guessing.
+   */
+  onDark: boolean;
 }
 
 export const WidgetColorContext = createContext<WidgetColorContextType>({
@@ -49,6 +58,7 @@ export const WidgetColorContext = createContext<WidgetColorContextType>({
   iconStyle: 'standard',
   expanded: false,
   heroDense: false,
+  onDark: false,
 });
 
 export const useWidgetColors = () => useContext(WidgetColorContext);
@@ -124,6 +134,15 @@ interface WidgetCardProps {
   onDebug?: () => void;
   serviceType?: ServiceType | string | null;
   iconStyle?: IconStyle;
+  /**
+   * How far on this accessory is, 0-1 — a light's brightness, a blind's
+   * openness, a fan's speed. The tile's colour is painted in proportion to it.
+   *
+   * Leave undefined (or pass null) for anything with no such notion — a lock, a
+   * switch, a bulb that cannot dim — and the tile paints at full strength when
+   * on, exactly as every tile did before.
+   */
+  intensity?: number | null;
   /** When true, disables hover effects and interactivity (for drag mode) */
   editMode?: boolean;
   /** When true, widget is expanded and should float above others with glow effect */
@@ -190,6 +209,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   onDebug,
   serviceType,
   iconStyle = 'standard',
+  intensity,
   editMode = false,
   expanded = false,
   editModeType,
@@ -223,9 +243,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // forgotten prop silently stops the tile re-rendering.
   const { isTracked, openPriceHistory } = useDeals();
   const canShowPrices = !!accessory && isTracked(accessory);
-  // WidgetWrapper's own rule: an ON tile takes a pale accent fill and needs
-  // dark ink; only an OFF tile over a dark wallpaper goes white.
-  const { isDarkBackground: tileOnDarkWallpaper } = useBackgroundContext();
+
   const effectiveDisabled = disabled || interactionCtx.disabled || false;
   const effectiveOnDisabledClick = interactionCtx.onDisabledClick;
 
@@ -253,6 +271,16 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Get colors for this service type (used for 'standard' and 'colourful' styles)
   const useServiceColors = (iconStyle === 'standard' || iconStyle === 'colourful') && serviceType;
   const widgetColors = colorOverride ?? (useServiceColors ? getIconColor(serviceType) : DEFAULT_ICON_COLOR);
+
+  // The same decision WidgetWrapper paints the tile with, resolved once here so
+  // the ink the children take and the fill they sit on can never disagree.
+  //
+  // It already accounts for on-ness, so callers must NOT re-gate it on `!isOn`:
+  // that is precisely the rule this replaces, and re-applying it would put dark
+  // ink back on a dimly-lit tile over a dark wallpaper.
+  const { onDark: tileOnDarkWallpaper } = useTileTone({
+    colors: widgetColors, iconStyle, intensity, isOn: effectiveIsOn,
+  });
 
   // The hero only earns its space in the expanded overlay; inline tiles keep
   // the compact stacked controls.
@@ -521,6 +549,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     iconStyle,
     expanded,
     heroDense: showHero && !heroPortrait,
+    onDark: tileOnDarkWallpaper,
   };
 
   // A widget can pass children that render nothing: a fan whose only secondary
@@ -654,7 +683,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         // Content-less widgets (a plain switch, a sensor tile) render no
         // CardContent at all — they still get their actions.
         <div className="px-5 pb-5 -mt-2">
-          <ExpandedActionBar actions={expandedActions} onDark={!isOn && tileOnDarkWallpaper} />
+          <ExpandedActionBar actions={expandedActions} onDark={tileOnDarkWallpaper} />
         </div>
       )}
       {(children || showHero) && (
@@ -709,7 +738,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             {expanded && expandedActions.length > 0 && (
               // Corner cluster, not a header icon: the top-right slot belongs
               // to the widget's own control.
-              <ExpandedActionBar actions={expandedActions} onDark={!isOn && tileOnDarkWallpaper} />
+              <ExpandedActionBar actions={expandedActions} onDark={tileOnDarkWallpaper} />
             )}
           </CardContent>
         </AnimatedCollapse>
@@ -738,7 +767,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (hasContextMenuContent && !touchMode && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <Card
@@ -859,7 +888,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   return (
     <WidgetColorContext.Provider value={colorContextValue}>
       <div className={wiggleClass} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} accentColorClass={widgetColors?.blurBg} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
           <Card
             ref={ref}
             onClick={handleCardClick}

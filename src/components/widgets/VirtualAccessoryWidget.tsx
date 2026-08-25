@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { TIMER_FINISHED_COLOR } from './iconColors';
+import { TIMER_FINISHED_COLOR, getIconColor } from './iconColors';
 import { Plus, Minus, Play, Square, ToggleLeft, ListChecks, Hash, Timer, SlidersHorizontal, Type, CalendarClock, ChevronDown, Check } from 'lucide-react';
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, parseCharacteristicValue } from './types';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useTileTone } from './useTileTone';
 import { useVirtualAccessoryDefinition, useVirtualTimerInfo } from './VirtualAccessoryEditContext';
 import { VirtualDateTimeControl, formatStored } from './VirtualDateTimeControl';
 import { durationToMs } from '@/automation/types/automation';
@@ -66,10 +67,15 @@ function fieldClass(dark: boolean, large?: boolean): string {
  */
 /**
  * The unselected state of any pill/chip sitting on a widget's translucent
- * tile. Must set its own text colour, and `onDark` must be WidgetWrapper's
- * rule — `!isOn && isDarkBackground` — not isDarkBackground alone: an ON
- * tile takes a pale accent fill (a lights group goes yellow) where white
- * ink disappears.
+ * tile. Must set its own text colour, and `onDark` must be the tile's own
+ * resolved tone — `useWidgetColors().onDark`, or `resolveWidgetTint(...)` for
+ * a caller outside the colour context — never the wallpaper flag alone.
+ *
+ * The tile's fill is proportional now, so neither `isDarkBackground` nor the
+ * older `!isOn && isDarkBackground` answers this: an ON tile at full strength
+ * takes a pale accent fill (a lights group goes yellow) where white ink
+ * disappears, but the same tile at 10% is a wash over the wallpaper where dark
+ * ink does. Only the composited fill knows.
  */
 export function UNSELECTED_CHIP(onDark: boolean): string {
   return onDark
@@ -173,12 +179,11 @@ const ModeSegmented: React.FC<{
   label: string;
   large?: boolean;
 }> = ({ options, value, onSelect, label, large }) => {
-  const { colors, iconStyle, isOn } = useWidgetColors();
+  const { colors, iconStyle, isOn, onDark } = useWidgetColors();
   // Unselected pills carried a translucent black fill and NO text colour, so
-  // they inherited the theme's dark foreground. Colour follows the tile:
-  // white only when the tile is OFF over a dark wallpaper.
-  const { isDarkBackground } = useBackgroundContext();
-  const onDark = !isOn && isDarkBackground;
+  // they inherited the theme's dark foreground. Colour follows the tile — which
+  // is now a proportional fill, so the tile resolves it once and publishes it
+  // rather than every control re-deriving `!isOn && isDarkBackground`.
   const selected = iconStyle === 'colourful'
     ? `${colors.accent} text-white ring-2 ring-inset ring-white/45`
     : 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-inset ring-white/45';
@@ -327,8 +332,6 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // Nothing else changes on press — the new value arrives seconds later — so
   // the tile needs its own reason to repaint the moment the button is hit.
   const [, repaint] = React.useReducer((n: number) => n + 1, 0);
-  const FIELD_CLASS = fieldClass(isDarkBackground, expanded);
-  const BUTTON_CLASS = buttonClass(isDarkBackground, expanded);
 
   const raw = accessory as unknown as VirtualAccessoryShape;
   const meta: VirtualAccessoryShape = {
@@ -434,6 +437,26 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
   // A finish instant outlives the run after it, so a timer started again inside
   // the alert window would otherwise still be shouting. Running wins.
   const alerting = charType === 'virtual_timer' && !running && recentlyFinished;
+
+  // The chips, menus and fields this widget renders sit OUTSIDE the colour
+  // context, because this component is what renders the WidgetCard that
+  // provides it. So the tile's ink tone is resolved here from the same inputs
+  // the card uses, rather than read from `useWidgetColors()`.
+  //
+  // This used to be the raw wallpaper flag, which was right for every virtual
+  // type except a timer: an alerting one takes the pale green fill and was
+  // getting white ink on it.
+  const virtualIsOn = charType === 'virtual_timer' ? (running || alerting) : false;
+  const virtualColors = alerting ? TIMER_FINISHED_COLOR : getIconColor('switch');
+  const { onDark } = useTileTone({
+    colors: virtualColors, iconStyle, intensity: null, isOn: virtualIsOn,
+  });
+
+  // These sit on the tile too, so they follow the same tone rather than the
+  // wallpaper. Declared after it, not with the other consts, because they now
+  // depend on it.
+  const FIELD_CLASS = fieldClass(onDark, expanded);
+  const BUTTON_CLASS = buttonClass(onDark, expanded);
   const display = charType === 'virtual_timer'
     ? (
       alerting
@@ -486,7 +509,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
       // Lighting the tile for the alert reuses the on-state tint, which is a
       // colour change only, so the glass survives it. WidgetWrapper fades tints
       // over 300ms, so it comes up and settles rather than blinking.
-      isOn={charType === 'virtual_timer' ? (running || alerting) : false}
+      isOn={virtualIsOn}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
@@ -534,7 +557,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
    */
   function renderCompactAction(): React.ReactNode {
     const round = 'flex h-7 w-7 items-center justify-center rounded-full transition active:scale-90 '
-      + (isDarkBackground
+      + (onDark
         ? 'bg-white/20 text-white hover:bg-white/30'
         : 'bg-black/10 text-slate-800 hover:bg-black/15');
     // The tile expands on click; none of these should.
@@ -591,7 +614,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
               value={typeof value === 'string' ? value : ''}
               onSelect={set}
               label={`Set ${accessory.name}`}
-              dark={isDarkBackground}
+              dark={onDark}
               variant="compact"
             />
           );
@@ -602,7 +625,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             value={value}
             onSelect={set}
             name={accessory.name}
-            dark={isDarkBackground}
+            dark={onDark}
           />
         );
       }
@@ -640,7 +663,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             value={current}
             onSelect={set}
             label={`Set ${accessory.name}`}
-            dark={isDarkBackground}
+            dark={onDark}
             variant="panel"
             large={expanded}
           />
@@ -728,7 +751,7 @@ export const VirtualAccessoryWidget: React.FC<WidgetProps> = memo((props) => {
             onCommit={set}
             onDone={onFinishEditing}
             className={FIELD_CLASS}
-            dark={isDarkBackground}
+            dark={onDark}
           />
         );
 

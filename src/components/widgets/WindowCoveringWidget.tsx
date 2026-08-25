@@ -1,4 +1,5 @@
 import React, { memo, useState, useRef, useCallback, useEffect } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
 import { Blinds, ChevronUp, ChevronDown, Square, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WidgetCard } from './WidgetCard';
@@ -229,6 +230,14 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
   // Only skip inversion for manufacturers known to use standard logic
   const currentPosition = usesStandardLogic ? rawCurrentPosition : (100 - rawCurrentPosition);
   const targetPosition = usesStandardLogic ? rawTargetPosition : (100 - rawTargetPosition);
+  // Openness, not coverage — `currentPosition` is already normalised above. A
+  // blind cracked an inch should look barely tinted, and one thrown wide open
+  // fully tinted.
+  //
+  // Deliberately the current position rather than the target: the tile follows
+  // the motor, so it does not jump to full colour the instant a blind is asked
+  // to open and then sit there for the half-minute it actually takes.
+  const intensity = intensityFrom(currentPosition, 0, 100);
   // 0 = Decreasing, 1 = Increasing, 2 = Stopped. Absent has to mean stopped:
   // parsing a missing characteristic gave 0, which reads as Decreasing, so a
   // blind that simply doesn't publish position_state claimed to be closing for
@@ -479,6 +488,7 @@ export const WindowCoveringWidget: React.FC<WidgetProps> = memo(({
       busy={changingState}
       icon={<Blinds className="h-4 w-4" />}
       isOn={isOpen}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}

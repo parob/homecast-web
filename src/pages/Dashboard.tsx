@@ -128,7 +128,6 @@ import { getCloud } from '@/lib/cloud';
 import { AccessorySearch } from '@/components/AccessorySearch';
 import { AccessoryWidget, ServiceGroupWidget, getCharacteristic, getAllCharacteristics, formatCharacteristicType, formatCharacteristicValue, hasServiceType, getPrimaryServiceType, normalizeServiceType, getRoomIcon } from '@/components/widgets';
 import { SliderControl } from '@/components/widgets/shared';
-import { getIconColor, DEFAULT_ICON_COLOR } from '@/components/widgets/iconColors';
 import { WidgetColorContext } from '@/components/widgets/WidgetCard';
 import { WebhookListView } from '@/components/webhooks';
 import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
@@ -167,7 +166,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -195,7 +193,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, Users, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -836,21 +834,6 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
         >
           {isLoading && isSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <House className="h-4 w-4" />}
           <span className="flex-1 truncate text-left font-semibold">{home.name}</span>
-          {/* One mark, not two. A home you do not own used to show a cloud for a
-              cloud-managed one and a pair of people for a relay-hosted one —
-              but how somebody else's home is served is their business, not a
-              fact about your sidebar. What matters here is that it is not
-              yours, and who it came from, which is what this says. */}
-          {home.role && home.role !== 'owner' && (
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex"><Users className={`h-3 w-3 ${isDarkBackground ? 'text-white/50' : isSelected && !hasSelectedChild ? 'text-primary-foreground/60' : 'text-muted-foreground'}`} /></span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom"><p className="text-xs">Shared by {home.ownerEmail || 'another user'}</p></TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           {!hideAccessoryCounts && !showEditBadge && home.accessoryCount > 0 && (
             <span className={`text-xs ${isDarkBackground ? 'text-white/60' : isSelected && !hasSelectedChild ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
               {home.accessoryCount}
@@ -5824,7 +5807,7 @@ const Dashboard = () => {
   }, [activeBackground, autoBackgrounds, currentEntityId]);
 
   // Determine if there's an active background and if it's dark enough for light text
-  const { hasBackground, isDarkBackground } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
+  const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
   // Light background: has background but not dark enough for dark mode styling
   const isLightBackground = hasBackground && !isDarkBackground;
 
@@ -5843,106 +5826,6 @@ const Dashboard = () => {
     isDark: isDarkBackground,
     isNativeShell: isInMacApp || isInMobileApp,
   });
-
-  // Helper to compute blur tint class for an accessory (used for ExpandedOverlay)
-  const getAccessoryBlurTint = useCallback((accessory: HomeKitAccessory) => {
-    if (activeIconStyle !== 'colourful') return undefined;
-
-    // Gather all relevant characteristic data first (don't break early for climate devices)
-    let isOn = false;
-    let heaterCoolerState: number | null = null;
-    let heatingThresholdValue: number | null = null;
-    let coolingThresholdValue: number | null = null;
-    let targetHCValidValues: number[] | undefined;
-
-    for (const service of accessory.services || []) {
-      for (const char of service.characteristics || []) {
-        const charType = char.characteristicType;
-        const value = getEffectiveValue(accessory.id, charType, char.value);
-
-        // Standard on/power_state
-        if (charType === 'on' || charType === 'power_state') {
-          const on = value === true || value === 1 || value === '1' || value === 'true';
-          if (on) isOn = true;
-        }
-        // Locks: locked (1) = on
-        if (charType === 'lock_current_state') {
-          const on = value === 1 || value === '1';
-          if (on) isOn = true;
-        }
-        // Thermostats/climate: active state
-        if (charType === 'active') {
-          const on = value === 1 || value === '1' || value === true || value === 'true';
-          if (on) isOn = true;
-        }
-        // Blinds: position > 0 = on
-        if (charType === 'current_position') {
-          const pos = typeof value === 'number' ? value : parseInt(value as string, 10);
-          const on = !isNaN(pos) && pos > 0;
-          if (on) isOn = true;
-        }
-        // Security system: armed states (0, 1, 2) = on, disarmed (3) = off
-        if (charType === 'security_system_current_state') {
-          const state = typeof value === 'number' ? value : parseInt(value as string, 10);
-          const on = !isNaN(state) && state < 3; // 0=Stay, 1=Away, 2=Night are armed
-          if (on) isOn = true;
-        }
-        // Track heater/cooler target state for dynamic color (1 = heat, 2 = cool)
-        if (charType === 'target_heater_cooler_state') {
-          const state = typeof value === 'number' ? value : parseInt(value as string, 10);
-          if (!isNaN(state)) heaterCoolerState = state;
-          targetHCValidValues = char.validValues;
-        }
-        // Track threshold values for capability detection
-        if (charType === 'heating_threshold' && value !== null && value !== undefined) {
-          heatingThresholdValue = typeof value === 'number' ? value : parseFloat(value as string);
-        }
-        if (charType === 'cooling_threshold' && value !== null && value !== undefined) {
-          coolingThresholdValue = typeof value === 'number' ? value : parseFloat(value as string);
-        }
-      }
-    }
-
-    if (!isOn) return undefined;
-
-    const serviceType = getPrimaryServiceType(accessory);
-
-    // For heater_cooler, determine color based on capabilities (matching ThermostatWidget logic)
-    if (serviceType === 'heater_cooler') {
-      // Determine capabilities from validValues or threshold presence
-      let hasHeatingCapability: boolean;
-      let hasCoolingCapability: boolean;
-
-      if (targetHCValidValues && targetHCValidValues.length > 0) {
-        hasHeatingCapability = targetHCValidValues.includes(1);
-        hasCoolingCapability = targetHCValidValues.includes(2);
-      } else {
-        // Fall back to checking if threshold values exist
-        hasHeatingCapability = heatingThresholdValue !== null && !isNaN(heatingThresholdValue);
-        hasCoolingCapability = coolingThresholdValue !== null && !isNaN(coolingThresholdValue);
-      }
-
-      // Heat-only device → always orange
-      if (hasHeatingCapability && !hasCoolingCapability) {
-        return getIconColor('thermostat').blurBg;
-      }
-      // Cool-only device → always blue
-      if (hasCoolingCapability && !hasHeatingCapability) {
-        return getIconColor('heater_cooler').blurBg;
-      }
-      // Both capabilities → color based on target mode
-      if (heaterCoolerState === 1) {
-        return getIconColor('thermostat').blurBg; // Heat mode → orange
-      } else if (heaterCoolerState === 2) {
-        return getIconColor('heater_cooler').blurBg; // Cool mode → blue
-      }
-      // Auto mode (0) or unknown → green/balanced
-      return getIconColor('climate_balanced').blurBg;
-    }
-
-    const iconColor = getIconColor(serviceType);
-    return iconColor?.blurBg;
-  }, [activeIconStyle, getEffectiveValue]);
 
   // Handle saving background settings
   // NOTE: This hook MUST be before early returns to satisfy React's Rules of Hooks
@@ -6932,7 +6815,7 @@ const Dashboard = () => {
     >
     <HistoryProvider
         onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
-    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground }}>
+    <BackgroundContext.Provider value={{ hasBackground, isDarkBackground, effectiveLuminance }}>
         {/* Main container */}
         {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
@@ -7363,10 +7246,14 @@ const Dashboard = () => {
           {/* Center spacer */}
           <div className={`flex-1 ${isInMacApp ? 'window-no-drag' : ''}`} />
           <div className={`flex items-center gap-1 md:gap-1.5 ${isInMacApp ? 'window-no-drag' : ''}`}>
-            {/* Settings Dialog */}
+            {/* Settings Dialog.
+                settingsInitialTab is cleared on close, not just the URL param: it
+                seeds both the desktop tab and the mobile section, so a stale value
+                reopens Settings on whatever the last deep link asked for when the
+                header menu meant to open the index. */}
             <SettingsDialog
               open={settingsOpen}
-              onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); updateUrlParams({ settings: null }); } }}
+              onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); setSettingsInitialTab(undefined); updateUrlParams({ settings: null }); } }}
               initialTab={settingsInitialTab}
               accountType={accountType}
               usedAccessorySlots={usedAccessorySlots}

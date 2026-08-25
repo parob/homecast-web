@@ -63,6 +63,7 @@ interface SortableCollectionItemProps {
   dragDisabled?: boolean;
   disableContextMenu?: boolean;
   editMode?: boolean;
+  hideAccessoryCounts?: boolean;
   children?: React.ReactNode;
 }
 
@@ -82,6 +83,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
   dragDisabled,
   disableContextMenu,
   editMode,
+  hideAccessoryCounts,
   children,
 }) => {
   const {
@@ -116,7 +118,7 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
       >
         <Folder className="h-4 w-4" />
         <span className="flex-1 truncate font-semibold">{collection.name}</span>
-        {!editMode && (
+        {!editMode && !hideAccessoryCounts && (
           <span className={`text-xs ${
             isDarkBackground
               ? 'text-white/70'
@@ -474,6 +476,7 @@ export function CollectionList({ selectedId, onSelect, onLoadFromUrl, onRefetchR
                       dragDisabled={dragDisabled}
                       disableContextMenu={disableContextMenu}
                       editMode={editMode}
+                      hideAccessoryCounts={hideAccessoryCounts}
                     >
                     {/* Groups nested under selected collection */}
                     <AnimatedCollapse open={selectedId === collection.id && hasGroups && groupsExpanded}>

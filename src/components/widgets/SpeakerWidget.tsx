@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
 import { Speaker, Volume2, VolumeX, Volume1 } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { SliderControl, ColoredSwitch, VerticalSlider } from './shared';
@@ -37,6 +38,11 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
 
   const isMuted = muteChar ? getEffectiveValue(accessory.id, 'mute', muteChar.value) === true : false;
   const volume = volumeChar ? getEffectiveValue(accessory.id, 'volume', volumeChar.value) : 50;
+  const intensity = intensityFrom(
+    volume,
+    volumeChar?.characteristic?.minValue,
+    volumeChar?.characteristic?.maxValue,
+  );
 
   const VolumeIcon = isMuted ? VolumeX : volume > 50 ? Volume2 : Volume1;
   const hasControls = volumeChar?.isWritable;
@@ -64,6 +70,7 @@ export const SpeakerWidget: React.FC<WidgetProps> = memo(({
       subtitle={isMuted ? 'Muted' : `${Math.round(volume)}% volume`}
       icon={<Speaker className="h-4 w-4" />}
       isOn={!isMuted && volume > 0}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}

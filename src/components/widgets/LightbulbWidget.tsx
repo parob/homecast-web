@@ -1,4 +1,7 @@
 import React, { memo, useState } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
+import { useTileTone } from './useTileTone';
+import { getIconColor } from './iconColors';
 import { Lightbulb, Sun, Palette } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { SliderControl, ColoredSwitch, ColorControl, VerticalSlider, ColorSwatchRow, mirrorMired, formatMirroredAsKelvin } from './shared';
@@ -43,6 +46,19 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
   const isOn = powerValue === true || powerValue === 1;
 
   const brightness = brightnessChar ? getEffectiveValue(accessory.id, brightnessChar.type, brightnessChar.value) : null;
+  // A bulb that cannot dim has no brightness characteristic, so this is null
+  // and the tile paints at full strength — exactly as it did before.
+  const intensity = intensityFrom(
+    brightness,
+    brightnessChar?.characteristic?.minValue,
+    brightnessChar?.characteristic?.maxValue,
+  );
+  // The hero slider sits on the tile, so its ink follows the tile's fill. A
+  // dim bulb over a dark wallpaper is a wash over black, where the old
+  // hardcoded slate was unreadable.
+  const { onDark: heroOnDark } = useTileTone({
+    colors: getIconColor('lightbulb'), iconStyle, intensity, isOn,
+  });
   const colorTemp = colorTempChar ? getEffectiveValue(accessory.id, colorTempChar.type, colorTempChar.value) : null;
   const hue = hueChar ? getEffectiveValue(accessory.id, hueChar.type, hueChar.value) : null;
   const saturation = saturationChar ? getEffectiveValue(accessory.id, saturationChar.type, saturationChar.value) : null;
@@ -90,8 +106,8 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
           label="Brightness"
           fillStyle={{ backgroundColor: heroFill }}
           fillClassName=""
-          trackClassName="bg-black/10"
-          className="h-full text-slate-900"
+          trackClassName={heroOnDark ? 'bg-white/15' : 'bg-black/10'}
+          className={`h-full ${heroOnDark ? 'text-white' : 'text-slate-900'}`}
         />
         </div>
       ) : undefined}
@@ -99,6 +115,7 @@ export const LightbulbWidget: React.FC<WidgetProps> = memo(({
       subtitle={subtitle}
       icon={<Lightbulb className="h-4 w-4" />}
       isOn={isOn}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}

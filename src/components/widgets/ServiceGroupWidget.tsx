@@ -27,6 +27,7 @@ import type { PinnedTab } from '@/lib/pinned-tabs';
 import { WidgetWrapper } from '@/components/widgets/WidgetWrapper';
 import { useDragHandle } from '@/components/shared/SortableItem';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { useTileTone } from './useTileTone';
 import { useHistory } from '@/contexts/HistoryContext';
 import { useDeals } from '@/contexts/DealsContext';
 import { findDealForAccessory, pickGroupPriceAccessory } from '@/lib/deals';
@@ -454,6 +455,22 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Create color context value for SliderControl
   const widgetColors = iconColor || DEFAULT_ICON_COLOR;
+
+  // How far on the group is, averaged across its members: a room of lights at
+  // half brightness tints half as strongly as one at full. Groups of anything
+  // else are binary, and pass null so they paint exactly as they always did.
+  const groupIntensity =
+    isLightsGroup && brightness !== null ? brightness / 100
+      : isBlindsGroup ? position / 100
+      : null;
+
+  // This widget renders WidgetWrapper directly rather than through WidgetCard,
+  // so it resolves the same tint decision itself. Inputs must match the
+  // wrapper's exactly or the ink and the fill will disagree.
+  const { onDark: groupOnDark } = useTileTone({
+    colors: widgetColors, iconStyle, intensity: groupIntensity, isOn: groupOn,
+  });
+
   // One provider serves both the inline card and the overlay, so it stays
   // false — the overlay's own controls opt into the larger sizing explicitly.
   const colorContextValue = {
@@ -462,6 +479,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     iconStyle,
     expanded: false,
     heroDense: false,
+    onDark: groupOnDark,
   };
 
   // Icon background and text colors
@@ -1177,7 +1195,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
             />
           )}
-          <ExpandedActionBar actions={groupActions} onDark={!groupOn && isDarkBackground} />
+          <ExpandedActionBar actions={groupActions} onDark={groupOnDark} />
         </CardContent>
       </AnimatedCollapse>
     </Card>
@@ -1199,7 +1217,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   if (expanded) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} tint={iconColor?.tint} tintAlpha={iconColor?.tintAlpha} intensity={groupIntensity}>
           {expandedCardContent}
         </WidgetWrapper>
       </WidgetColorContext.Provider>
@@ -1210,7 +1228,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     return (
       <div className={wiggleClass} style={wiggleOffset}>
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg} pressed={pressed}>
+        <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} tint={iconColor?.tint} tintAlpha={iconColor?.tintAlpha} intensity={groupIntensity} pressed={pressed}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               {cardContent}
@@ -1336,7 +1354,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
             width={360}
            
           >
-            <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+            <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} tint={iconColor?.tint} tintAlpha={iconColor?.tintAlpha} intensity={groupIntensity}>
               {expandedCardContent}
             </WidgetWrapper>
           </ExpandedOverlay>
@@ -1349,7 +1367,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   return (
     <div className={wiggleClass} style={wiggleOffset}>
     <WidgetColorContext.Provider value={colorContextValue}>
-      <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg} pressed={pressed}>
+      <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} tint={iconColor?.tint} tintAlpha={iconColor?.tintAlpha} intensity={groupIntensity} pressed={pressed}>
         {cardContent}
         {hiddenLabel}
         {editActions}
@@ -1361,7 +1379,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
           onMouseLeave={handleOverlayMouseLeave}
           width={360}
         >
-          <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} accentColorClass={iconColor?.blurBg}>
+          <WidgetWrapper isOn={groupOn} iconStyle={iconStyle} tint={iconColor?.tint} tintAlpha={iconColor?.tintAlpha} intensity={groupIntensity}>
             {expandedCardContent}
           </WidgetWrapper>
         </ExpandedOverlay>

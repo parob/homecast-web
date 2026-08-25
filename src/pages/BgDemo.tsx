@@ -100,12 +100,12 @@ export default function BgDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, autoBg, entityIdx]);
 
-  const { hasBackground, isDarkBackground } = useBackgroundDarkness(displayed, bgImageLuminance);
+  const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayed, bgImageLuminance);
 
   useEffect(() => { if (runId) mark(`isDarkBackground -> ${isDarkBackground}`); }, [isDarkBackground]); // eslint-disable-line
   useEffect(() => { if (runId && bgImageLuminance != null) mark(`luminance -> ${bgImageLuminance.toFixed(3)}`); }, [bgImageLuminance]); // eslint-disable-line
 
-  const ctx = useMemo(() => ({ hasBackground, isDarkBackground }), [hasBackground, isDarkBackground]);
+  const ctx = useMemo(() => ({ hasBackground, isDarkBackground, effectiveLuminance }), [hasBackground, isDarkBackground, effectiveLuminance]);
 
   return (
     <BackgroundContext.Provider value={ctx}>

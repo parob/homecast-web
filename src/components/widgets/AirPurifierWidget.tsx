@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
 import { Wind, Gauge, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
@@ -46,6 +47,11 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
   const isActive = activeChar ? getEffectiveValue(accessory.id, 'active', activeChar.value) === true : false;
   const targetState = targetStateChar ? getEffectiveValue(accessory.id, 'target_air_purifier_state', targetStateChar.value) : 0;
   const speed = speedChar ? getEffectiveValue(accessory.id, 'rotation_speed', speedChar.value) : null;
+  // Only meaningful on manual (targetState 0) — on auto the speed is the
+  // machine's business, not a setting the tile should be reporting as a level.
+  const intensity = targetState === 0
+    ? intensityFrom(speed, speedChar?.characteristic?.minValue, speedChar?.characteristic?.maxValue)
+    : null;
   const airQuality = airQualityChar?.value ?? 0;
   const filterLife = filterLifeChar?.value;
   const needsFilterChange = filterChangeChar?.value === 1;
@@ -101,6 +107,7 @@ export const AirPurifierWidget: React.FC<WidgetProps> = memo(({
       serviceType="air_purifier"
       iconStyle={iconStyle}
       isOn={isActive}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}

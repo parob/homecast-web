@@ -1,6 +1,7 @@
 import React from 'react';
 import type { IconStyle } from './iconColors';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
+import { resolveWidgetTint, STANDARD_TINT } from '@/lib/widget-tint';
 
 // A wallpaper's darkness isn't known until its image decodes, so a widget first
 // paints with the light recipe and then recolours. These transitions run at the
@@ -8,6 +9,9 @@ import { useBackgroundContext } from '@/contexts/BackgroundContext';
 // wallpaper instead of snapping ahead of it. Declared unconditionally on
 // purpose: a transition applied in the same commit as the value it should
 // animate doesn't animate.
+//
+// This also carries the tint ramp: the fill is an inline background-color now,
+// and transition-colors animates an inline value exactly as it did a class.
 //
 // Spans are deliberately left out — the Switch thumb carries transition-transform
 // and a descendant transition-colors rule would outrank it and break its slide.
@@ -33,8 +37,16 @@ interface WidgetWrapperProps {
   isOn?: boolean;
   /** Icon style mode */
   iconStyle?: IconStyle;
-  /** Colourful mode accent color class (e.g., 'bg-yellow-300/50') */
-  accentColorClass?: string;
+  /** The service type's fill colour, as a hex (see iconColors' `tint`). */
+  tint?: string;
+  /** Overrides the shared full-strength alpha, for the timer's paler green. */
+  tintAlpha?: number;
+  /**
+   * How far on the accessory is, 0-1 — a light's brightness, a blind's
+   * openness, a fan's speed. `null`/undefined means it has no such notion (a
+   * lock, a switch, a bulb that cannot dim) and paints at full strength.
+   */
+  intensity?: number | null;
   /** Pressed — the whole tile shrinks, glass included. */
   pressed?: boolean;
 }
@@ -44,31 +56,39 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   className = '',
   isOn = false,
   iconStyle = 'standard',
-  accentColorClass,
+  tint,
+  tintAlpha,
+  intensity,
   pressed = false,
 }) => {
-  const { isDarkBackground } = useBackgroundContext();
+  const { isDarkBackground, effectiveLuminance } = useBackgroundContext();
 
-  // When OFF on dark background, adjust text and UI elements
-  const darkModeClass = !isOn && isDarkBackground
+  // The fill, the ink and the hairline all come from one decision so they
+  // cannot disagree. 'standard' paints every type the same blue; 'colourful'
+  // uses the service type's own colour. See lib/widget-tint.ts.
+  const { backgroundColor, tone, ringColor } = resolveWidgetTint({
+    tint: iconStyle === 'colourful' ? tint : STANDARD_TINT,
+    intensity,
+    isOn,
+    isDarkWallpaper: isDarkBackground,
+    wallpaperLuminance: effectiveLuminance,
+    alpha: iconStyle === 'colourful' ? tintAlpha : undefined,
+  });
+
+  // Ink. This used to be `!isOn && isDarkBackground` — "an ON tile is a pale
+  // accent and takes dark ink". That stopped being true once the fill became
+  // proportional: a light at 15% over a dark wallpaper is a wash over black
+  // and needs white ink even though it is on. So it follows the fill instead.
+  const darkModeClass = tone === 'light'
     ? '[&_h3]:!text-white [&_p]:!text-white/70 [&_span:not([data-status-badge])]:!text-white/70 [&_[data-state=unchecked]]:!bg-white/20 [&_[data-state=unchecked]>span]:!bg-white/70'
     : '';
 
-  // Color layer: primary blue for standard, accent color for colourful
-  // Off state: pale grey on light background, dark overlay on dark background
-  const colorClass = !isOn
-    ? (isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80')
-    : (iconStyle === 'colourful' && accentColorClass)
-      ? accentColorClass
-      : 'bg-blue-200/75';
-
-  // Inset hairline in the off state. On a dark background the ring stays in
-  // place and only its colour goes transparent — dropping the class outright
-  // would take the box-shadow to `none`, and an inset shadow can't interpolate
-  // to that, so it would snap while everything around it fades.
-  const borderClass = !isOn
-    ? `ring-1 ring-inset ${isDarkBackground ? 'ring-transparent' : 'ring-slate-200'}`
-    : '';
+  // Inset hairline, fading out as the fill comes up rather than disappearing at
+  // the on/off boundary. The ring stays in place and only its colour changes —
+  // dropping the class outright would take the box-shadow to `none`, and an
+  // inset shadow can't interpolate to that, so it would snap while everything
+  // around it fades.
+  const borderClass = 'ring-1 ring-inset';
 
   // The press shrinks the glass and the content as two separate transforms
   // rather than one on the wrapper. The wrapper is an ancestor of the
@@ -81,9 +101,15 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const pressClass = `transition-transform duration-fast ease-standard ${pressed ? 'scale-[0.97]' : ''}`;
 
   return (
-    <div className={`relative rounded-2xl h-fit ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`} style={{ contain: 'layout style paint' }}>
+    <div
+      className={`relative rounded-2xl h-fit ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`}
+      style={{ contain: 'layout style paint', ['--tw-ring-color' as string]: ringColor }}
+    >
       {/* Blur layer - separate from content so it doesn't break during height animation */}
-      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu ${pressClass}`} />
+      <div
+        className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 transform-gpu ${pressClass}`}
+        style={{ backgroundColor }}
+      />
       {/* Content */}
       <div className={`relative z-[1] transform-gpu ${pressClass}`}>
         {children}

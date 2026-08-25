@@ -75,10 +75,34 @@ function thermostat(target: number) {
  *
  * Deliberately not a search of the whole tree: the Cool button is blue and the
  * dial is blue whatever the tile does, so matching "sky" anywhere passes even
- * with the tile painted orange — which is exactly the bug. The tint is the
- * `blurBg` class WidgetWrapper puts on the glass layer, and it is the only
- * thing here that answers "what colour is this tile".
+ * with the tile painted orange — which is exactly the bug. The tint is the fill
+ * WidgetWrapper puts on the glass layer, and it is the only thing here that
+ * answers "what colour is this tile".
+ *
+ * That fill used to be a `bg-<family>-200/75` class and this read the family
+ * straight off it. It is an inline rgba now — proportional tint cannot be a
+ * class, because Tailwind has no safelist and a generated alpha is purged — so
+ * the family is recovered by matching the rgb against the palette instead.
  */
+const TINT_FAMILIES: Array<[string, string]> = [
+  ['orange', '#fed7aa'],
+  ['sky', '#bae6fd'],
+  ['emerald', '#a7f3d0'],
+  ['yellow', '#fef08a'],
+  ['blue', '#bfdbfe'],
+];
+
+function familyOfFill(fill: string): string | null {
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(fill);
+  if (!m) return null;
+  const [r, g, b] = m.slice(1).map(Number);
+  for (const [name, hex] of TINT_FAMILIES) {
+    const want = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+    if (want[0] === r && want[1] === g && want[2] === b) return name;
+  }
+  return null;
+}
+
 function tintFamily(target: number): string | null {
   render(<ThermostatWidget {...({
     accessory: thermostat(target),
@@ -90,9 +114,11 @@ function tintFamily(target: number): string | null {
   } as unknown as WidgetProps)} />);
 
   expect(screen.getByText('Air Conditioner')).toBeTruthy();
-  for (const el of Array.from(document.querySelectorAll('[class]'))) {
-    const m = el.className.toString().match(/bg-([a-z]+)-200\/75/);
-    if (m) return m[1];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('[style]'))) {
+    const fill = el.style.backgroundColor;
+    if (!fill) continue;
+    const family = familyOfFill(fill);
+    if (family) return family;
   }
   return null;
 }
@@ -117,5 +143,23 @@ describe('thermostat tile colour follows its mode', () => {
     // entirely for an inactive tile. What matters is that it never inherits
     // the cool blue from whatever it was last set to.
     expect(tintFamily(0)).not.toBe('sky');
+  });
+
+  it('paints the accent at full strength — a thermostat has no proportion', () => {
+    // Its numbers are absolute temperatures; the gap to target is error, not
+    // intensity. So a running unit must land on the accent exactly, not on some
+    // partial blend toward it.
+    render(<ThermostatWidget {...({
+      accessory: thermostat(1),
+      getEffectiveValue: (_i: string, _c: string, v: unknown) => v,
+      onSetValue: () => {},
+      onSlider: () => {},
+      onToggle: () => {},
+      iconStyle: 'colourful',
+    } as unknown as WidgetProps)} />);
+    const fills = Array.from(document.querySelectorAll<HTMLElement>('[style]'))
+      .map(el => el.style.backgroundColor)
+      .filter(Boolean);
+    expect(fills).toContain('rgba(254, 215, 170, 0.75)');
   });
 });

@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { intensityFrom } from '@/lib/widget-tint';
 import { Droplets, CloudRain, Sun, Gauge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WidgetCard } from './WidgetCard';
@@ -50,6 +51,11 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
   const currentHumidity = currentHumidityChar?.value;
   const targetHumidity = targetHumidityChar ? getEffectiveValue(accessory.id, 'target_humidity', targetHumidityChar.value) : null;
   const speed = speedChar ? getEffectiveValue(accessory.id, 'rotation_speed', speedChar.value) : null;
+  const intensity = intensityFrom(
+    speed,
+    speedChar?.characteristic?.minValue,
+    speedChar?.characteristic?.maxValue,
+  );
   const waterLevel = waterLevelChar?.value;
 
   const isHumidifying = currentState === 2;
@@ -102,6 +108,7 @@ export const HumidifierWidget: React.FC<WidgetProps> = memo(({
       serviceType="humidifier_dehumidifier"
       iconStyle={iconStyle}
       isOn={isActive && currentState > 1}
+      intensity={intensity}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
