@@ -26,7 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, ImagePlus, Loader2, Trash2, Video, X,
+  AlertCircle, ImagePlus, Loader2, Trash2, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -265,13 +265,21 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               <TabsTrigger value="known">Previous</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="known" className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
+            <TabsContent
+              value="known"
+              className="-mx-1 mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto px-1"
+            >
               <ReportedIssues />
             </TabsContent>
 
+            {/* `px-1 -mx-1`: the focus ring is drawn outside the element's box,
+                and an overflow container clips whatever crosses its edge — so
+                the textarea's ring lost its left and right sides the moment it
+                was focused. The padding gives the ring room; the negative
+                margin gives the padding back. */}
             <TabsContent
               value="report"
-              className="mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto"
+              className="-mx-1 mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-1"
             >
             <Textarea
               id="report-summary"
@@ -302,6 +310,18 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                         src={item.previewUrl}
                         alt=""
                         className="h-12 w-12 rounded object-cover"
+                      />
+                    ) : item.mimeType.startsWith('video/') ? (
+                      // Playable, not a placeholder. A recording you cannot
+                      // watch is evidence you cannot check before sending it —
+                      // and the one thing you want to know is whether it caught
+                      // the thing you were trying to show.
+                      <video
+                        src={item.previewUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="h-20 w-32 shrink-0 rounded bg-black object-contain"
                       />
                     ) : (
                       <div className="flex h-12 w-12 items-center justify-center rounded bg-muted">
@@ -374,15 +394,11 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button" variant="ghost"
-                disabled={sending}
-                onClick={() => onOpenChange(false)}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Cancel
-              </Button>
+            {/* No Cancel. The dialog's own close control is in the corner where
+                everyone already looks for it, and a second way out sitting next
+                to Send only made the destructive choice as prominent as the
+                one people came here to make. */}
+            <div className="flex justify-end">
               <Button type="button" disabled={sending} onClick={() => void send()}>
                 {sending ? (
                   <>
