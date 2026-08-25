@@ -794,11 +794,20 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
       headerAction={
         // For heater_cooler when off: show compact mode buttons (Auto/Heat/Cool) in header
         isHeaterCooler && hasModeControls && !isActive && accessory.isReachable && !expanded ? (
+          // No temperature beside the chips. The other two branches show one
+          // because they are the tile's only reading; here the subtitle already
+          // says "Off · 26.0°" directly underneath, so the header repeated it —
+          // and that repeat is the 37px the chips need. Three chips plus a
+          // reading plus the icon is wider than a compact tile, and neither the
+          // icon nor this slot can shrink, so the row was laid out straight past
+          // the card's right padding: the Cool chip sat on the card's edge at
+          // 440pt and was drawn outside it below ~400pt.
+          //
+          // Dropping the repeat is the whole fix. Measured gap from the Cool
+          // chip to the card's edge, against the 15px the icon gets on the left:
+          // 15px at 440pt and 393pt, 10px at 375pt — the narrowest tile any
+          // current iPhone renders. Nothing here wraps or shrinks; it fits.
           <div className="flex items-center gap-2">
-            {/* Show current temp in compact mode even when off */}
-            {compact && currentTemp !== null && currentTemp !== undefined && (
-              <span className="text-xs text-muted-foreground">{Number(currentTemp).toFixed(0)}°</span>
-            )}
             <div className="flex gap-1">
               {availableHCModes.map((mode) => {
                 const modeBgClass =
