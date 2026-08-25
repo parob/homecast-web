@@ -26,7 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, ImagePlus, Loader2, Trash2, Video, X,
+  AlertCircle, ImagePlus, Loader2, Play, Trash2, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,11 +38,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
 import {
-  MAX_ATTACHMENT_BYTES, MAX_RECORDING_MS, canRecord, startRecording,
+  MAX_ATTACHMENT_BYTES, MAX_RECORDING_MS, canRecord, prepareImageForUpload, startRecording,
   type ActiveRecording, type CapturedMedia,
 } from '@/lib/report/capture';
 import { submitReport } from '@/lib/report/submit';
 
+import { AttachmentPreview } from './AttachmentPreview';
 import { RecordingOverlay } from './RecordingOverlay';
 import { ReportedIssues } from './ReportedIssues';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -59,6 +60,62 @@ const REPORT_SEVERITY = 'warning';
 
 /** Enough evidence for any issue; past this it is an upload problem. */
 const MAX_ATTACHMENTS = 6;
+
+/**
+ * `recording_1.mp4`, `recording_2.mp4`, … — numbered in the order they were
+ * taken.
+ *
+ * Every recording used to arrive called `recording.mp4` and every screenshot
+ * `screenshot.png`, so an issue with three of them gave the reader no way to
+ * say which was which, and no way for the reporter to refer to one in the text.
+ * The number is the cheapest thing that fixes both.
+ */
+function numberedName(existing: CapturedMedia[], base: string, extension: string): string {
+  const taken = new Set(existing.map((item) => item.filename));
+  for (let index = 1; ; index += 1) {
+    const candidate = `${base}_${index}.${extension}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/** Keep a renamed file usable as a filename, and keep its extension. */
+/**
+ * What a newly attached file should be called.
+ *
+ * Only things this app captured get renumbered. A photo picked from the library
+ * already has a name its owner chose, and replacing it with `screenshot_2.jpg`
+ * would be throwing information away.
+ */
+function autoName(existing: CapturedMedia[], item: CapturedMedia): string {
+  const captured = /^(screenshot|recording)\.[a-z0-9]+$/i.test(item.filename);
+  if (!captured) return item.filename;
+  const [base, extension] = item.filename.split('.');
+  return numberedName(existing, base.toLowerCase(), extension.toLowerCase());
+}
+
+const EXTENSION_FOR: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+};
+
+/**
+ * Keep a renamed file usable as a filename, and keep its extension.
+ *
+ * The extension comes from the blob's own type rather than from the name being
+ * replaced — otherwise clearing the field to type a new one leaves nothing to
+ * recover it from, and the file goes up called "".
+ */
+function sanitiseName(name: string, mimeType: string): string {
+  const extension = EXTENSION_FOR[mimeType] ?? '';
+  const cleaned = name.replace(/[/\\]/g, '-').trim() || `attachment${extension}`;
+  return extension && !cleaned.toLowerCase().endsWith(extension)
+    ? cleaned + extension
+    : cleaned;
+}
 
 interface ReportSheetProps {
   open: boolean;
@@ -79,6 +136,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // start. One refusal is a fact about this device, so stop offering it rather
   // than letting someone press a dead button over and over.
   const [recordingRefused, setRecordingRefused] = useState(false);
+  const [preview, setPreview] = useState<CapturedMedia | null>(null);
 
   const recordingRef = useRef<ActiveRecording | null>(null);
   recordingRef.current = recording;
@@ -91,6 +149,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     setMedia(initialScreenshot ? [initialScreenshot] : []);
     setSummary('');
     setError(null);
+    setPreview(null);
   }, [open, initialScreenshot]);
 
   // Object URLs outlive the component unless revoked, and a screen recording is
@@ -126,11 +185,18 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
         toast.error(`You can attach up to ${MAX_ATTACHMENTS} files.`);
         return current;
       }
-      return [...current, item];
+      return [...current, { ...item, filename: autoName(current, item) }];
     });
   }, []);
 
+  const renameMedia = useCallback((index: number, name: string) => {
+    setMedia((current) =>
+      current.map((item, at) => (at === index ? { ...item, filename: name } : item)),
+    );
+  }, []);
+
   const removeMedia = useCallback((index: number) => {
+    setPreview(null);
     setMedia((current) => {
       const next = [...current];
       const [removed] = next.splice(index, 1);
@@ -176,18 +242,23 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
 
   const addFromLibrary = useCallback((files: FileList | null) => {
     if (!files) return;
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) {
-        toast.error(`${file.name} is not an image.`);
-        continue;
+    void (async () => {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} is not an image.`);
+          continue;
+        }
+        // Same treatment as a screenshot: a photo straight off a phone camera
+        // is far past what GitHub will inline.
+        const blob = await prepareImageForUpload(file);
+        addMedia({
+          blob,
+          mimeType: blob.type,
+          filename: file.name || 'image',
+          previewUrl: URL.createObjectURL(blob),
+        });
       }
-      addMedia({
-        blob: file,
-        mimeType: file.type,
-        filename: file.name || 'image',
-        previewUrl: URL.createObjectURL(file),
-      });
-    }
+    })();
   }, [addMedia]);
 
   const send = useCallback(async () => {
@@ -265,13 +336,21 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               <TabsTrigger value="known">Previous</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="known" className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
+            <TabsContent
+              value="known"
+              className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto px-2 py-1"
+            >
               <ReportedIssues />
             </TabsContent>
 
+            {/* `px-1 -mx-1`: the focus ring is drawn outside the element's box,
+                and an overflow container clips whatever crosses its edge — so
+                the textarea's ring lost its left and right sides the moment it
+                was focused. The padding gives the ring room; the negative
+                margin gives the padding back. */}
             <TabsContent
               value="report"
-              className="mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto"
+              className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-2 py-1"
             >
             <Textarea
               id="report-summary"
@@ -297,20 +376,58 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                     key={item.previewUrl}
                     className="flex items-center gap-3 rounded-md border p-2"
                   >
-                    {item.mimeType.startsWith('image/') ? (
-                      <img
-                        src={item.previewUrl}
-                        alt=""
-                        className="h-12 w-12 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded bg-muted">
-                        <Video className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    )}
+                    {/* Openable. A 48px thumbnail says a file exists, not
+                        whether it shows what you meant to show — and for a
+                        recording that is the only question there is. */}
+                    <button
+                      type="button"
+                      onClick={() => setPreview(item)}
+                      aria-label={`Open ${item.filename}`}
+                      className="relative h-12 w-12 shrink-0 overflow-hidden rounded"
+                    >
+                      {item.mimeType.startsWith('image/') ? (
+                        <img
+                          src={item.previewUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : item.mimeType.startsWith('video/') ? (
+                        <>
+                          <video
+                            src={item.previewUrl}
+                            preload="metadata"
+                            muted
+                            playsInline
+                            className="h-full w-full bg-black object-cover"
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <Play className="h-4 w-4 fill-white text-white" />
+                          </span>
+                        </>
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center bg-muted">
+                          <Video className="h-5 w-5 text-muted-foreground" />
+                        </span>
+                      )}
+                    </button>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm">{item.filename}</div>
-                      <div className="text-xs text-muted-foreground">
+                      {/* Editable in place. Naming a recording "blinds-wrong"
+                          is how a reporter points at one of three of them from
+                          the text of the issue. Borderless until focused, so it
+                          reads as the filename it is rather than a form field
+                          demanding to be filled in. */}
+                      <input
+                        type="text"
+                        value={item.filename}
+                        aria-label={`Rename ${item.filename}`}
+                        disabled={sending}
+                        onChange={(event) => renameMedia(index, event.target.value)}
+                        onBlur={(event) =>
+                          renameMedia(index, sanitiseName(event.target.value, item.mimeType))
+                        }
+                        className="w-full truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-sm hover:border-border focus:border-input focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <div className="px-1 text-xs text-muted-foreground">
                         {(item.blob.size / 1024).toFixed(0)} KB
                       </div>
                     </div>
@@ -374,15 +491,11 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button" variant="ghost"
-                disabled={sending}
-                onClick={() => onOpenChange(false)}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Cancel
-              </Button>
+            {/* No Cancel. The dialog's own close control is in the corner where
+                everyone already looks for it, and a second way out sitting next
+                to Send only made the destructive choice as prominent as the
+                one people came here to make. */}
+            <div className="flex justify-end">
               <Button type="button" disabled={sending} onClick={() => void send()}>
                 {sending ? (
                   <>
@@ -398,6 +511,10 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      {preview && (
+        <AttachmentPreview media={preview} onClose={() => setPreview(null)} />
+      )}
 
       {recording && (
         <RecordingOverlay
