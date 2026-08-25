@@ -391,8 +391,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       <div className="flex items-start justify-between">
         {iconElement}
         {effectiveHeaderAction && (
+          // `min-w-0`, not `shrink-0`. The icon beside it cannot shrink, so a
+          // header action wider than what is left of a compact tile — a
+          // thermostat's three mode chips — was laid out past the card's right
+          // padding and drawn outside the tile. Letting this box stop at the
+          // padding edge is what gives an action that knows how to wrap
+          // somewhere to wrap to; one that doesn't is no worse off than before.
           <div
-            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            className={`relative min-w-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
