@@ -26,7 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, Check, ImagePlus, Loader2, Trash2, Video, X,
+  AlertCircle, ImagePlus, Loader2, Trash2, Video, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,13 +47,15 @@ import { RecordingOverlay } from './RecordingOverlay';
 import { ReportedIssues } from './ReportedIssues';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-type Severity = 'info' | 'warning' | 'critical';
-
-const SEVERITIES: { value: Severity; label: string; hint: string }[] = [
-  { value: 'info', label: 'Minor', hint: 'A suggestion or annoyance' },
-  { value: 'warning', label: 'Wrong', hint: 'Something behaved incorrectly' },
-  { value: 'critical', label: 'Broken', hint: 'Unusable, or something was lost' },
-];
+/**
+ * Every report is filed at the same severity.
+ *
+ * Asking was a question only the person reading the issue can answer: a reporter
+ * has no idea whether what they hit is a nuisance or data loss, and the answer
+ * changed nothing about how the report was handled. The field stays in the wire
+ * format — the issue reporter still wants one — it is just no longer a question.
+ */
+const REPORT_SEVERITY = 'warning';
 
 /** Enough evidence for any issue; past this it is an upload problem. */
 const MAX_ATTACHMENTS = 6;
@@ -67,12 +69,16 @@ interface ReportSheetProps {
 
 export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportSheetProps) {
   const [summary, setSummary] = useState('');
-  const [severity, setSeverity] = useState<Severity>('warning');
   const [media, setMedia] = useState<CapturedMedia[]>([]);
   const [recording, setRecording] = useState<ActiveRecording | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A shell can claim it records and then refuse: iOS reports
+  // RPScreenRecorder.isAvailable as true in the Simulator and fails every
+  // start. One refusal is a fact about this device, so stop offering it rather
+  // than letting someone press a dead button over and over.
+  const [recordingRefused, setRecordingRefused] = useState(false);
 
   const recordingRef = useRef<ActiveRecording | null>(null);
   recordingRef.current = recording;
@@ -84,7 +90,6 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     if (!open) return;
     setMedia(initialScreenshot ? [initialScreenshot] : []);
     setSummary('');
-    setSeverity('warning');
     setError(null);
   }, [open, initialScreenshot]);
 
@@ -157,11 +162,13 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     } catch (recordError) {
       // A failure used to be indistinguishable from a cancellation: both came
       // back as null and the button appeared to do nothing at all. It has to
-      // say something — "it silently did nothing" is the worst outcome for a
-      // button whose whole job is capturing evidence.
+      // say something once — and then stop offering itself.
+      const unavailable =
+        recordError instanceof Error && recordError.message.includes('UNAVAILABLE');
+      if (unavailable) setRecordingRefused(true);
       toast.error('Screen recording could not start.', {
-        description: recordError instanceof Error && recordError.message.includes('UNAVAILABLE')
-          ? 'This device cannot record the screen. The Simulator never can — try a real device.'
+        description: unavailable
+          ? "This device can't record the screen — attach a screenshot instead."
           : 'Try again, or attach a screenshot instead.',
       });
     }
@@ -186,7 +193,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   const send = useCallback(async () => {
     const text = summary.trim();
     if (!text) {
-      setError('Please describe what went wrong.');
+      setError('Please say something before sending.');
       return;
     }
     if (recordingRef.current) await finishRecording();
@@ -196,18 +203,18 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     const token = localStorage.getItem('homecast-token');
     if (!token) {
       setSending(false);
-      setError('You are signed out — the report was not filed.');
+      setError('You are signed out — nothing was sent.');
       return;
     }
 
     try {
       const result = await submitReport(
-        { summary: text, severity, media: mediaRef.current }, token,
+        { summary: text, severity: REPORT_SEVERITY, media: mediaRef.current }, token,
       );
       toast.success(
         result.deduplicated
-          ? `Added to issue #${result.issueNumber} — this is already known.`
-          : `Reported as issue #${result.issueNumber}. Thank you.`,
+          ? `Added to #${result.issueNumber} — this is already known.`
+          : `Sent as #${result.issueNumber}. Thank you.`,
         {
           description: result.attachmentsSkipped.length
             ? `Not included: ${result.attachmentsSkipped.join(', ')}`
@@ -218,13 +225,14 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     } catch (submitError) {
       // Never close on failure: closing would read as success, and the whole
       // point is that the user knows whether it was actually filed.
-      setError(submitError instanceof Error ? submitError.message : 'The report was not filed.');
+      setError(submitError instanceof Error ? submitError.message : 'Nothing was sent.');
     } finally {
       setSending(false);
     }
-  }, [summary, severity, finishRecording, onOpenChange]);
+  }, [summary, finishRecording, onOpenChange]);
 
   const atLimit = media.length >= MAX_ATTACHMENTS;
+  const offerRecording = canRecord() && !recordingRefused;
 
   return (
     <>
@@ -246,15 +254,15 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
           aria-describedby={undefined}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle>Report a problem</DialogTitle>
+            <DialogTitle>Feedback</DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue="report" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="report">Report</TabsTrigger>
+              <TabsTrigger value="report">New</TabsTrigger>
               {/* Often the answer someone actually wants: it is already known,
                   and possibly already fixed. */}
-              <TabsTrigger value="known">Already reported</TabsTrigger>
+              <TabsTrigger value="known">Previous</TabsTrigger>
             </TabsList>
 
             <TabsContent value="known" className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -265,40 +273,15 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               value="report"
               className="mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto"
             >
-            <div className="space-y-2">
-              <Label htmlFor="report-summary">What went wrong?</Label>
-              <Textarea
-                id="report-summary"
-                autoFocus
-                rows={4}
-                placeholder="The blinds show 0% but they're actually open."
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-                disabled={sending}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>How bad is it?</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {SEVERITIES.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={sending}
-                    onClick={() => setSeverity(option.value)}
-                    className={`rounded-md border px-2 py-2 text-left transition-colors ${
-                      severity === option.value
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="text-sm font-medium">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">{option.hint}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <Textarea
+              id="report-summary"
+              aria-label="Your feedback"
+              autoFocus
+              rows={4}
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              disabled={sending}
+            />
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -341,15 +324,10 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                     </Button>
                   </div>
                 ))}
-
-                <div className="flex items-center gap-2 rounded-md border border-dashed p-2 text-sm text-muted-foreground">
-                  <Check className="h-4 w-4 shrink-0" />
-                  App version, connection state and the last 500 log lines
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                {canRecord() && (
+                {offerRecording && (
                   <Button
                     type="button" variant="outline"
                     disabled={sending || atLimit}
@@ -366,7 +344,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                   type="button" variant="outline"
                   disabled={sending || atLimit}
                   onClick={() => pickerRef.current?.click()}
-                  className={canRecord() ? undefined : 'col-span-2'}
+                  className={offerRecording ? undefined : 'col-span-2'}
                 >
                   <ImagePlus className="mr-2 h-4 w-4" />
                   Add image
@@ -384,14 +362,6 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                   event.target.value = '';
                 }}
               />
-              {canRecord() && (
-                <p className="text-xs text-muted-foreground">
-                  Recording shows us what happens next — this sheet steps aside
-                  so you can reproduce it. Up to{' '}
-                  {Math.round(MAX_RECORDING_MS / 1000)}s each, and you can record
-                  more than once.
-                </p>
-              )}
             </div>
 
             {error && (
@@ -420,7 +390,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                     Sending…
                   </>
                 ) : (
-                  'Send report'
+                  'Send'
                 )}
               </Button>
             </div>
