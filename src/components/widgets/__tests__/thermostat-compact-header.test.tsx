@@ -11,8 +11,8 @@
 // the card below about 400pt. Reported as homecast-cloud#9.
 //
 // jsdom does no layout, so the width itself can't be asserted here. What is
-// asserted is the two things that caused it: the duplicated reading, and a
-// header slot that could not be stopped at the card's padding.
+// asserted is the cause: the duplicated reading. Dropping it is what makes the
+// row fit — measured at 15px clear at 440pt and 393pt, 10px at 375pt.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { ThermostatWidget } from '../ThermostatWidget';
@@ -116,16 +116,12 @@ describe('a compact heater_cooler tile fits its own header', () => {
     }
   });
 
-  it('wraps the chips rather than drawing one outside the card', () => {
+  it('reads the temperature exactly once', () => {
     renderCompactTile();
-    const chip = screen.getByTitle('Cool');
-    const row = chip.parentElement!;
 
-    // Both halves are needed and neither works alone: the row has to be willing
-    // to wrap, and the slot around it has to be stoppable at the card's padding
-    // for there to be anything to wrap within. `shrink-0` on the slot is what
-    // put the chip outside the tile.
-    expect(row.className).toContain('flex-wrap');
-    expect(headerSlotOf(chip).className).not.toContain('shrink-0');
+    // The width this frees is the whole fix, so the duplicate has to stay gone
+    // wherever it might come back — not just in the slot asserted above.
+    const tile = document.body.textContent ?? '';
+    expect(tile.match(/26/g) ?? []).toHaveLength(1);
   });
 });

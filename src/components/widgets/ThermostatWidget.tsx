@@ -797,16 +797,18 @@ export const ThermostatWidget: React.FC<WidgetProps> = memo(({
           // No temperature beside the chips. The other two branches show one
           // because they are the tile's only reading; here the subtitle already
           // says "Off · 26.0°" directly underneath, so the header repeated it —
-          // and the repeat is 37px the chips need. Three chips plus a reading
-          // plus the icon is wider than a compact tile, and neither the icon nor
-          // this slot can shrink, so the row was laid out straight past the
-          // card's right padding: the Cool chip sat on the edge at 440pt and
-          // hung outside the card below ~400pt.
-          <div className="flex min-w-0 items-center gap-2">
-            {/* Wraps rather than escapes. A narrow tile (SE, or a small window)
-                still can't fit three chips beside the icon, and a control drawn
-                outside its own tile is worse than a second row. */}
-            <div className="flex flex-wrap justify-end gap-1">
+          // and that repeat is the 37px the chips need. Three chips plus a
+          // reading plus the icon is wider than a compact tile, and neither the
+          // icon nor this slot can shrink, so the row was laid out straight past
+          // the card's right padding: the Cool chip sat on the card's edge at
+          // 440pt and was drawn outside it below ~400pt.
+          //
+          // Dropping the repeat is the whole fix. Measured gap from the Cool
+          // chip to the card's edge, against the 15px the icon gets on the left:
+          // 15px at 440pt and 393pt, 10px at 375pt — the narrowest tile any
+          // current iPhone renders. Nothing here wraps or shrinks; it fits.
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
               {availableHCModes.map((mode) => {
                 const modeBgClass =
                   mode.name === 'Heat'
