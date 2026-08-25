@@ -32,7 +32,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -150,9 +150,21 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     }
     // Starting can show a picker (desktop) or a system prompt (iOS), so it must
     // stay a direct result of the user's tap.
-    const active = await startRecording(() => { void finishRecording(); });
-    // Null covers dismissing the picker, which is a choice rather than a fault.
-    if (active) setRecording(active);
+    try {
+      const active = await startRecording(() => { void finishRecording(); });
+      // Null covers dismissing the picker, which is a choice rather than a fault.
+      if (active) setRecording(active);
+    } catch (recordError) {
+      // A failure used to be indistinguishable from a cancellation: both came
+      // back as null and the button appeared to do nothing at all. It has to
+      // say something — "it silently did nothing" is the worst outcome for a
+      // button whose whole job is capturing evidence.
+      toast.error('Screen recording could not start.', {
+        description: recordError instanceof Error && recordError.message.includes('UNAVAILABLE')
+          ? 'This device cannot record the screen. The Simulator never can — try a real device.'
+          : 'Try again, or attach a screenshot instead.',
+      });
+    }
   }, [media.length, finishRecording]);
 
   const addFromLibrary = useCallback((files: FileList | null) => {
@@ -222,16 +234,22 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
         open={open && !recording}
         onOpenChange={(next) => !sending && onOpenChange(next)}
       >
-        <DialogContent className="sm:max-w-lg" data-report-exclude="true">
-          <DialogHeader>
+        {/* Bounded and scrollable. Unbounded, the sheet ran off the bottom of a
+            phone and took the Record and Send buttons with it — everything below
+            the fold was simply unreachable. `dvh` rather than `vh` so the mobile
+            browser chrome collapsing does not change the answer. */}
+        <DialogContent
+          className="flex max-h-[85dvh] flex-col overflow-hidden sm:max-w-lg"
+          data-report-exclude="true"
+          // No DialogDescription any more; without this Radix warns about a
+          // missing description on every open.
+          aria-describedby={undefined}
+        >
+          <DialogHeader className="shrink-0">
             <DialogTitle>Report a problem</DialogTitle>
-            <DialogDescription>
-              This goes straight to the people building Homecast, with what was
-              on screen and the app's recent logs attached.
-            </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="report">
+          <Tabs defaultValue="report" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="report">Report</TabsTrigger>
               {/* Often the answer someone actually wants: it is already known,
@@ -239,11 +257,14 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               <TabsTrigger value="known">Already reported</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="known" className="mt-4">
+            <TabsContent value="known" className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
               <ReportedIssues />
             </TabsContent>
 
-            <TabsContent value="report" className="mt-4 space-y-4">
+            <TabsContent
+              value="report"
+              className="mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto"
+            >
             <div className="space-y-2">
               <Label htmlFor="report-summary">What went wrong?</Label>
               <Textarea
@@ -333,8 +354,11 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                     type="button" variant="outline"
                     disabled={sending || atLimit}
                     onClick={() => void beginRecording()}
+                    className="border-red-500/50 text-red-600 hover:bg-red-500/10 hover:text-red-600 dark:text-red-400 dark:hover:text-red-400"
                   >
-                    <Video className="mr-2 h-4 w-4" />
+                    {/* The red dot everyone already reads as "record", rather
+                        than a camera glyph that could equally mean playback. */}
+                    <span className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
                     Record screen
                   </Button>
                 )}
