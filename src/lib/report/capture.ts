@@ -66,7 +66,14 @@ export function canScreenshot(): boolean {
   return isNativeCaptureCapable() || typeof document !== 'undefined';
 }
 
-/** Whether the screen can be recorded here — false in iOS WKWebView. */
+/**
+ * Whether the screen can be recorded here.
+ *
+ * The native flag is not a statement about the platform but about this device:
+ * the shell sets it from `RPScreenRecorder.isAvailable`, which is false in the
+ * Simulator and while a call or another capture is in progress. Offering a
+ * button that cannot work is worse than not offering one.
+ */
 export function canRecord(): boolean {
   return (
     isNativeRecordingCapable() ||
@@ -128,30 +135,36 @@ export interface ActiveRecording {
  */
 export const MAX_RECORDING_MS = 60_000;
 
+/**
+ * Begin recording.
+ *
+ * Returns null **only** when the user declined — dismissing the desktop picker.
+ * A genuine failure throws, because the two used to be indistinguishable and
+ * the sheet treated both as "nothing to do": the button appeared dead on any
+ * device where recording was unavailable, with no message at all.
+ */
 export async function startRecording(
   onAutoStop?: () => void,
 ): Promise<ActiveRecording | null> {
   if (isNativeRecordingCapable()) {
-    try {
-      await nativeStartRecording();
-      return {
-        stop: async () => {
-          try {
-            const { data, mimeType } = await nativeStopRecording();
-            return wrap(fromBase64(data, mimeType), 'recording.mp4');
-          } catch (error) {
-            console.warn('[report] native recording failed', error);
-            return null;
-          }
-        },
-        cancel: () => {
-          void nativeStopRecording().catch(() => {});
-        },
-      };
-    } catch (error) {
-      console.warn('[report] could not start native recording', error);
-      return null;
-    }
+    // Deliberately not wrapped: a rejection here (RECORDING_UNAVAILABLE,
+    // ALREADY_RECORDING, a timeout) is a real failure and the caller has to be
+    // able to tell the user about it.
+    await nativeStartRecording();
+    return {
+      stop: async () => {
+        try {
+          const { data, mimeType } = await nativeStopRecording();
+          return wrap(fromBase64(data, mimeType), 'recording.mp4');
+        } catch (error) {
+          console.warn('[report] native recording failed', error);
+          return null;
+        }
+      },
+      cancel: () => {
+        void nativeStopRecording().catch(() => {});
+      },
+    };
   }
 
   let stream: MediaStream;

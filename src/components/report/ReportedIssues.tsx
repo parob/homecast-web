@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { openExternalUrl } from '@/lib/open-url';
 import {
   fetchReportedIssues, type IssueFilter, type ReportedIssue,
 } from '@/lib/report/issues';
@@ -74,7 +75,10 @@ export function ReportedIssues() {
   useEffect(() => { void load(filter, page); }, [filter, page, load]);
 
   return (
-    <div className="space-y-3">
+    // `min-w-0` all the way down: the dialog lays its children out in a grid,
+    // and a grid item defaults to min-width:auto — so without this a long issue
+    // title widens the column and the whole sheet overflows the screen.
+    <div className="w-full min-w-0 space-y-3">
       <div className="flex gap-1">
         {FILTERS.map((option) => (
           <button
@@ -92,7 +96,7 @@ export function ReportedIssues() {
         ))}
       </div>
 
-      <div className="min-h-[12rem] space-y-1">
+      <div className="min-h-[12rem] min-w-0 space-y-1">
         {loading && (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -112,12 +116,16 @@ export function ReportedIssues() {
         )}
 
         {!loading && !error && issues.map((issue) => (
-          <a
+          // A button, not an anchor. Inside the app's WKWebView a target=_blank
+          // navigation is silently dropped — github.com is not an app-bound
+          // domain — so the tap did nothing at all. `openExternalUrl` hands the
+          // URL to the native shell, which opens it in the system browser, and
+          // falls back to window.open in a real browser.
+          <button
             key={issue.issueNumber}
-            href={issue.url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-start gap-2 rounded-md border p-2 transition-colors hover:bg-muted/50"
+            type="button"
+            onClick={() => openExternalUrl(issue.url)}
+            className="flex w-full min-w-0 items-start gap-2 rounded-md border p-2 text-left transition-colors hover:bg-muted/50"
           >
             {issue.state === 'closed' ? (
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
@@ -125,8 +133,11 @@ export function ReportedIssues() {
               <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             )}
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm">{issue.title}</div>
-              <div className="text-xs text-muted-foreground">
+              {/* Two lines, then ellipsis. `truncate` at one line lost the end of
+                  almost every real issue title; a bug report's title is where
+                  the information is, so give it the room to be read. */}
+              <div className="line-clamp-2 break-words text-sm">{issue.title}</div>
+              <div className="truncate text-xs text-muted-foreground">
                 #{issue.issueNumber}
                 {when(issue.createdAt) && ` · ${when(issue.createdAt)}`}
                 {issue.commentCount > 0 &&
@@ -134,7 +145,7 @@ export function ReportedIssues() {
               </div>
             </div>
             <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          </a>
+          </button>
         ))}
       </div>
 
