@@ -1233,6 +1233,7 @@ const Dashboard = () => {
   const AdminApprovals = _cloud?.AdminApprovals ?? null;
   const AdminLogs = _cloud?.AdminLogs ?? null;
   const AdminTraceVisualiser = _cloud?.AdminTraceVisualiser ?? null;
+  const AdminIncidents = _cloud?.AdminIncidents ?? null;
   const AdminReliability = _cloud?.AdminReliability ?? null;
   const AdminInfrastructure = _cloud?.AdminInfrastructure ?? null;
   const AdminInfrastructurePods = _cloud?.AdminInfrastructurePods ?? null;
@@ -9564,6 +9565,10 @@ const Dashboard = () => {
                 {adminSubPath === '/infrastructure/mqtt' && AdminInfrastructureMqtt && <AdminInfrastructureMqtt />}
                 {adminSubPath === '/infrastructure/database' && AdminInfrastructureDatabase && <AdminInfrastructureDatabase />}
                 {adminSubPath === '/logs' && <AdminLogs />}
+                {/* Is something wrong right now, rather than what happened to
+                    this request. A correlated incident is invisible in any
+                    single-trace view, so it gets its own page. */}
+                {adminSubPath === '/incidents' && AdminIncidents && <AdminIncidents />}
                 {/* One trace, full width. The log explorer embeds the same
                     visualiser; this is for studying a journey without
                     losing room to the search around it. */}

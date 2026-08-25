@@ -13,9 +13,28 @@ const isPrivateIP = (h: string) =>
 // Dev-only escape hatch: `?cloud=1` on the dev server forces cloud mode so
 // marketing pages (/how-it-works, /pricing, …) can be previewed on localhost.
 // Compiled out of production builds (import.meta.env.DEV is false there).
+// Sticky for the tab once used: the flag is read at module load, so without
+// remembering it every hard refresh drops back to Community and the dev server
+// looks like a relay that cannot connect.
+function devCloudFlag(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('cloud') === '1') {
+      sessionStorage.setItem('homecast-dev-cloud', '1');
+      return true;
+    }
+    if (new URLSearchParams(window.location.search).get('cloud') === '0') {
+      sessionStorage.removeItem('homecast-dev-cloud');
+      return false;
+    }
+    return sessionStorage.getItem('homecast-dev-cloud') === '1';
+  } catch {
+    return false;
+  }
+}
+
 const forceCloud =
-  !!(window as any).__HOMECAST_FORCE_CLOUD__ ||
-  (import.meta.env.DEV && new URLSearchParams(window.location.search).get('cloud') === '1');
+  !!(window as any).__HOMECAST_FORCE_CLOUD__ || devCloudFlag();
 
 export const isCommunity: boolean =
   !forceCloud && (
