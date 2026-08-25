@@ -83,11 +83,62 @@ export function canRecord(): boolean {
   );
 }
 
+/**
+ * Largest edge an attached image keeps, and what it is re-encoded to.
+ *
+ * Not an upload limit — a GitHub one. Inline images in an issue are served
+ * through GitHub's camo proxy, which refuses anything over about 5 MB and
+ * renders it as a broken image whose link answers "Content length exceeded". A
+ * full-resolution iPhone screenshot is a 1320x2868 RGBA PNG and lands at 5.8 MB,
+ * so every screenshot filed from a phone was arriving blank.
+ *
+ * JPEG rather than a smaller PNG: a UI screenshot is mostly flat colour and
+ * text, and at q=0.85 it stays legible at a twentieth of the size. 1600px on
+ * the long edge still resolves body text on a phone screenshot.
+ */
+const MAX_IMAGE_EDGE = 1600;
+const IMAGE_QUALITY = 0.85;
+
+/**
+ * Downscale and re-encode an image so it survives the trip into a GitHub issue.
+ *
+ * Returns the original untouched if it is already small enough, or if anything
+ * goes wrong — a screenshot that is too big is a much better outcome than no
+ * screenshot, and this runs on the path that has just captured evidence.
+ */
+async function shrinkImage(blob: Blob): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    const scale = longEdge > MAX_IMAGE_EDGE ? MAX_IMAGE_EDGE / longEdge : 1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+
+    const context = canvas.getContext('2d');
+    if (!context) return blob;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const shrunk = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', IMAGE_QUALITY),
+    );
+    // Only take the re-encode if it actually won. A small PNG screenshot of a
+    // mostly-flat UI can beat its own JPEG.
+    return shrunk && shrunk.size < blob.size ? shrunk : blob;
+  } catch (error) {
+    console.warn('[report] could not shrink image, sending as captured', error);
+    return blob;
+  }
+}
+
 export async function captureScreenshot(): Promise<CapturedMedia | null> {
   if (isNativeCaptureCapable()) {
     try {
       const data = await nativeScreenshot();
-      return wrap(fromBase64(data, 'image/png'), 'screenshot.png');
+      const shrunk = await shrinkImage(fromBase64(data, 'image/png'));
+      return wrap(shrunk, shrunk.type === 'image/jpeg' ? 'screenshot.jpg' : 'screenshot.png');
     } catch (error) {
       // Fall through to the DOM route rather than giving up — a worse
       // screenshot beats none.
@@ -108,7 +159,9 @@ export async function captureScreenshot(): Promise<CapturedMedia | null> {
       filter: (node) =>
         !(node instanceof HTMLElement && node.dataset.reportExclude === 'true'),
     });
-    return blob ? wrap(blob, 'screenshot.png') : null;
+    if (!blob) return null;
+    const shrunk = await shrinkImage(blob);
+    return wrap(shrunk, shrunk.type === 'image/jpeg' ? 'screenshot.jpg' : 'screenshot.png');
   } catch (error) {
     console.warn('[report] screenshot failed', error);
     return null;
@@ -121,6 +174,11 @@ export async function captureScreenshot(): Promise<CapturedMedia | null> {
  * `stop` always settles: a recorder that never fires onstop would otherwise
  * leave the sheet waiting on a promise that never resolves.
  */
+/** Shrink a user-picked image the same way, for the same reason. */
+export async function prepareImageForUpload(file: File): Promise<Blob> {
+  return await shrinkImage(file);
+}
+
 export interface ActiveRecording {
   stop: () => Promise<CapturedMedia | null>;
   cancel: () => void;
