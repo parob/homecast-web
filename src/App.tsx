@@ -11,6 +11,7 @@ import { apolloClient } from "@/lib/apollo";
 import { isInNativeAppShell } from "@/lib/platform";
 import { resolveOpenTarget } from "@/lib/open-target";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ShakeToReport } from "@/components/report/ShakeToReport";
 import { PushRegistration } from "@/components/PushRegistration";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { DebugDock } from "@/components/debug/DebugDock";
@@ -125,6 +126,9 @@ const MainRoutes = () => (
   <WebSocketProvider>
     <AuthProvider>
       <PushRegistration />
+      {/* Shake to report a problem. Admin accounts only, and a no-op render
+          for everyone else — see ShakeToReport. */}
+      <ShakeToReport />
       {/* Wraps the signed-in app so the request log can dock beneath it. A
           no-op render unless the log is switched on in Settings → Account. */}
       <DebugDock>
