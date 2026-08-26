@@ -7477,7 +7477,13 @@ const Dashboard = () => {
                 aria-label="Open menu"
                 // Redundant once the sidebar is on screen in its own right —
                 // which is what happens when you turn a phone sideways.
-                className={`md:hidden flex items-center justify-center h-10 w-10 -ml-2 rounded-lg ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
+                //
+                // The inset mirrors AppHeader's left cluster (`px-[max(0.5rem,8px)]`
+                // inside the same `px-4` container) rather than pulling the other
+                // way. This bar covers the header, so the burger is the one control
+                // drawn in both — a different inset here and it jumps 20px left the
+                // moment Edit Layout comes on, which is what it used to do.
+                className={`md:hidden flex items-center justify-center h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] ml-[max(0.5rem,8px)] rounded-full ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
               >
                 <Menu className="h-5 w-5" />
               </button>
