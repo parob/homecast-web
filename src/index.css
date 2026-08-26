@@ -536,3 +536,52 @@ html.ios-app .selectable {
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
 }
+
+/* Content goes out of focus as it passes under the floating chrome, instead of
+   sliding sharply beneath it and being sliced off at the screen edge.
+
+   Note this blurs the BACKDROP and is not a mask on the scroller — which is the
+   other way to do it, and is what .tab-fade-* above does horizontally. Two
+   reasons it is wrong vertically:
+
+     - A mask fades content to transparent rather than blurring it, so a widget
+       still on screen loses its tint. An "on" toggle washing out to grey at the
+       top of the list is a loss of state, not polish.
+     - The scroller is an ancestor of every widget, and widgets carry their own
+       backdrop-filter. Masking an ancestor establishes a new backdrop root and
+       switches that glass off — the same trap as the animation notes at the top
+       of this file.
+
+   This strip is an ancestor of nothing and alters no content; it only blurs what
+   is painted beneath it.
+
+   The mask and the backdrop-filter sit on the SAME element, deliberately. Split
+   them — mask on a wrapper, filter on a child — and the wrapper becomes the
+   child's backdrop root, leaving it with nothing to blur.
+
+   Height comes from --scroll-scrim-size, set inline from the very expressions
+   the scroller already uses for its padding, so the blur covers exactly the band
+   the layout had reserved for chrome and no content is newly obscured. */
+.scroll-scrim {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: var(--scroll-scrim-size, 0px);
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Full strength for the first fifth, then out. Ramping from the very edge reads
+   as a smudge on the glass; holding it briefly reads as depth. */
+.scroll-scrim-top {
+  top: 0;
+  -webkit-mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
+}
+
+.scroll-scrim-bottom {
+  bottom: 0;
+  -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 20%, transparent 100%);
+}
