@@ -7491,11 +7491,20 @@ const Dashboard = () => {
                   says a hold does anything — so the bar that appears when you
                   find it explains what you can do next. `min-w-0` and wrapping
                   rather than truncating: an instruction cut off mid-sentence is
-                  worse than one on two lines, and the bar has the room. */}
+                  worse than one on a second line.
+
+                  Kept short because the bar does NOT have the room it was
+                  written for. Between the burger and Done this column is 196px
+                  on a 390pt phone and 234px on a 430pt one; "Press and hold a
+                  widget or menu item to rearrange" measures 248px, so it wrapped
+                  on every iPhone narrower than ~430 and cleared that one by 7px.
+                  This fits with room to spare down to a 375pt SE, which is what
+                  keeps the subtitle at the two lines it is meant to be —
+                  edit-layout-header.spec.ts holds it to that at three widths. */}
               <div className="flex min-w-0 flex-1 flex-col items-center">
                 <span className="text-sm font-semibold leading-tight">Editing Layout</span>
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
-                  Press and hold a widget or menu item to rearrange
+                  Press and hold to rearrange
                 </span>
                 {/* Says where the things you cannot see went. Editing reveals
                     hidden items, and they are sorted to the end rather than
