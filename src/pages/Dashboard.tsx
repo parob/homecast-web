@@ -9515,7 +9515,12 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
-              <main className={cn("flex-1 min-h-0 overflow-auto", isMobile ? "p-1" : "p-6")}>
+              {/* Mobile padding matches the header's px-4 above it — at p-1 the
+                  content sat flush against the dialog edge while the header was
+                  inset 16px, which read as a rendering fault. The dense admin
+                  tables scroll in their own overflow-x-auto wrappers, so they
+                  don't depend on this pane being edge-to-edge. */}
+              <main className={cn("flex-1 min-h-0 overflow-auto", isMobile ? "p-4" : "p-6")}>
                 {adminSubPath === '/' && <AdminDashboard />}
                 {adminSubPath.startsWith('/analytics') && <AdminAnalytics />}
                 {adminSubPath === '/users' && <AdminUsers />}
