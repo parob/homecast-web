@@ -902,9 +902,25 @@ export function MobileTabBar({
    *
    * The bar is `position: fixed` already, so moving it in the tree costs no
    * layout, and portals carry React context so everything it reads still works.
+   *
+   * ── The gap under the pill, floored ──
+   *
+   * That gap was `safe-area-bottom` here plus a `pb-2` on the pill row below —
+   * 42px on a phone with a home indicator, which sat higher off the edge than a
+   * floating iOS bar normally does. The 8px is gone and the inset alone places
+   * it: 34px on those phones, and the home indicator is inside the inset, so it
+   * cannot be crowded however the inset is reported.
+   *
+   * The `max()` is what keeps that honest on a home-button iPhone, where the
+   * inset is 0 and dropping the 8px outright would have parked the pill flush
+   * against the physical bottom edge of the screen.
    */
   return createPortal(
-    <div ref={barRef} className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-bottom safe-area-x">
+    <div
+      ref={barRef}
+      className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-x"
+      style={{ paddingBottom: 'max(6px, var(--safe-area-bottom, 0px))' }}
+    >
       {editingTab && (
         <TabEditSheet
           open
@@ -942,7 +958,10 @@ export function MobileTabBar({
           </div>
         </div>
       )}
-      <div className="flex justify-center px-4 pb-2">
+      {/* No bottom padding of its own — the wrapper's is now the only floor.
+          See the note on the wrapper. The callout above keeps its `pb-2`: that
+          is spacing between two elements, not a gap to the screen edge. */}
+      <div className="flex justify-center px-4">
         {/* Mounted whether or not we are arranging. On touch the drag is how
             edit mode is entered, so the context has to already be there when
             the hold starts — and mounting it underneath a running drag would
