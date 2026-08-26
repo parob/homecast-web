@@ -170,7 +170,20 @@ export interface HomeLayoutData {
 
 export interface RoomLayoutData {
   itemOrder?: string[];
-  visibility?: { hiddenGroups?: string[]; hiddenAccessories?: string[] };
+  visibility?: {
+    hiddenGroups?: string[];
+    /**
+     * The single pre-split hidden-accessories list. Still written, as the
+     * intersection of the two below, for bundled web builds that predate the
+     * split; still the fallback when neither per-surface key exists, which is
+     * what makes the split need no migration. See lib/accessory-visibility.ts.
+     */
+    hiddenAccessories?: string[];
+    /** Accessories hidden from the home view. Absent = inherit `hiddenAccessories`. */
+    hiddenAccessoriesHome?: string[];
+    /** Accessories hidden from this room's own view. Absent = inherit `hiddenAccessories`. */
+    hiddenAccessoriesRoom?: string[];
+  };
   expandedGroups?: string[];
   background?: BackgroundSettings;
 }
