@@ -5675,6 +5675,40 @@ const Dashboard = () => {
    */
   const editBarHeight = 80;
 
+  /**
+   * The band the scroller keeps clear at the bottom: room for the floating tab
+   * pill when tabs are pinned, otherwise just enough that the last tile is not
+   * flush with the screen edge. On top of the safe-area inset, like the strips
+   * below.
+   */
+  const bottomBandHeight = isPhone && pinnedTabs.length > 0 ? 72 : 16;
+
+  /**
+   * …and the heights of the two blur strips that float over those bands.
+   *
+   * These were the band expressions exactly, which had a tidy property: a strip
+   * covered only what the layout had already reserved for chrome, so nothing
+   * that had been legible became less so. They are their own numbers now.
+   *
+   * At the top that property is given up deliberately. A falloff that ends
+   * exactly where the chrome does reads as a hard edge rather than as depth, so
+   * the strip runs 24px past it and takes the first sliver of content out of
+   * focus with it — which is the point, not a side effect.
+   *
+   * At the bottom the opposite: 16px less than the band, so the pill has a
+   * little clear glass under it instead of blur running to the very edge. Only
+   * the tabs-pinned case is trimmed; the bare 16px band is already the minimum
+   * that keeps the last tile off the screen edge, so there is nothing there to
+   * take away.
+   *
+   * Sized apart from the padding, and not merely offset from it in the style
+   * attribute, because that is the invariant that actually matters here:
+   * changing where the blur ends must never move content. Nothing but
+   * `--scroll-scrim-size` reads these two.
+   */
+  const scrimTopHeight = editBarHeight + 24;
+  const scrimBottomHeight = isPhone && pinnedTabs.length > 0 ? 56 : 16;
+
   /** `inert` for the edit bar while it is parked off-screen. See its use. */
   const INERT = { inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>;
 
@@ -6914,20 +6948,20 @@ const Dashboard = () => {
               argument as the top strip here; it is left out because nobody has
               asked for it, not because it would be wrong.
 
-              Sized from the same expressions as the scroller's padding below,
-              so each strip covers exactly the band already reserved for chrome
-              and nothing that was legible becomes less so. */}
+              Heights are `scrimTopHeight` / `scrimBottomHeight`, which are
+              deliberately no longer the scroller's padding expressions — see
+              the note where they are declared for what each one trades. */}
           {isInMobileApp && (
             <>
               <div
                 aria-hidden
                 className="scroll-scrim scroll-scrim-top z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${editBarHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
+                style={{ '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
               />
               <div
                 aria-hidden
                 className="scroll-scrim scroll-scrim-bottom z-[10000]"
-                style={{ '--scroll-scrim-size': isPhone && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))' } as React.CSSProperties}
+                style={{ '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
               />
             </>
           )}
@@ -7868,7 +7902,7 @@ const Dashboard = () => {
             className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               paddingTop: `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
-              paddingBottom: isPhone && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))'
+              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`
             } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
