@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { hiddenRoomsFor } from '@/lib/room-visibility';
 
 // Matches the Dashboard's breadcrumb crumbs. Kept as a local copy rather than
 // exported from Dashboard.tsx, which is an 8,700-line page module.
@@ -401,9 +402,11 @@ export function SharedHomeView({
       names.sort();
     }
 
-    // Filter hidden rooms
-    if (layout?.visibility?.hiddenRooms && layout.visibility.hiddenRooms.length > 0) {
-      const hiddenSet = new Set(layout.visibility.hiddenRooms.map(id => id.toLowerCase().replace(/-/g, '')));
+    // Filter hidden rooms. A share link renders a home view, so it follows the
+    // home surface — a room hidden from the owner's left menu alone still shows.
+    const hiddenHere = hiddenRoomsFor(layout?.visibility, 'home');
+    if (hiddenHere && hiddenHere.length > 0) {
+      const hiddenSet = new Set(hiddenHere.map(id => id.toLowerCase().replace(/-/g, '')));
       const roomNameToId: Record<string, string> = {};
       for (const [id, name] of Object.entries(roomIdToName)) {
         roomNameToId[name] = id;

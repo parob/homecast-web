@@ -147,7 +147,17 @@ const DROP_ANIMATION_MS = 250;
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
-import { isRoomHidden as roomIsHidden, shouldFilterRoomOut, orderRoomsHiddenLast } from '@/lib/room-visibility';
+import {
+  shouldFilterRoomOut,
+  orderRoomsHiddenLast,
+  orderMenuTreeHiddenLast,
+  hiddenRoomsFor,
+  isRoomHiddenOn,
+  isRoomHiddenAnywhere,
+  toggleRoomHidden,
+  ROOM_SURFACES,
+  type RoomSurface,
+} from '@/lib/room-visibility';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { DEFAULT_TAB_BAR_MODE, normalizeTabBarMode, type TabBarMode } from '@/lib/tab-bar-mode';
@@ -2799,15 +2809,25 @@ const Dashboard = () => {
    * a hidden room sitting at the top, because the moment Edit Layout revealed it
    * the filter stopped calling it hidden.
    */
-  const isRoomHiddenState = useCallback((homeId: string, roomId: string): boolean => {
+  const isRoomHiddenState = useCallback((homeId: string, roomId: string, surface: RoomSurface): boolean => {
     if (homeId !== selectedHomeId) return false;
-    return roomIsHidden(homeLayout?.visibility?.hiddenRooms, roomId);
+    return isRoomHiddenOn(homeLayout?.visibility, roomId, surface);
   }, [selectedHomeId, homeLayout]);
 
-  /** Should this room be filtered out of the view as it stands? */
-  const isRoomHidden = useCallback((homeId: string, roomId: string): boolean => {
+  /**
+   * Hidden from at least one surface. Only the room's own dropdown asks this —
+   * it is reached from inside a room, so it belongs to neither surface and acts
+   * on both.
+   */
+  const isRoomHiddenSomewhere = useCallback((homeId: string, roomId: string): boolean => {
     if (homeId !== selectedHomeId) return false;
-    return shouldFilterRoomOut(homeLayout?.visibility?.hiddenRooms, roomId, showHiddenItems);
+    return isRoomHiddenAnywhere(homeLayout?.visibility, roomId);
+  }, [selectedHomeId, homeLayout]);
+
+  /** Should this room be filtered out of that surface as it stands? */
+  const isRoomHidden = useCallback((homeId: string, roomId: string, surface: RoomSurface): boolean => {
+    if (homeId !== selectedHomeId) return false;
+    return shouldFilterRoomOut(hiddenRoomsFor(homeLayout?.visibility, surface), roomId, showHiddenItems);
   }, [selectedHomeId, homeLayout, showHiddenItems]);
 
   const isHomeHidden = useCallback((homeId: string): boolean => {
@@ -2857,13 +2877,29 @@ const Dashboard = () => {
     return false;
   }, [apolloClient]);
 
-  const isRoomActuallyHidden = useCallback((homeId: string, roomId: string): boolean => {
-    // Check entity layout (StoredEntity) for hidden rooms
-    if (homeId === selectedHomeId) {
-      return homeLayout?.visibility?.hiddenRooms?.includes(roomId) ?? false;
-    }
-    return false;
-  }, [selectedHomeId, homeLayout]);
+  /**
+   * Hide or reveal a room on one surface, or on both.
+   *
+   * Split out of `toggleVisibility` because it never shared anything with it:
+   * the `room` case read and wrote the home's StoredEntity layout and returned
+   * before touching the `ui` blob the other cases live in. Now that each call
+   * site has to say *which* surface it speaks for, keeping it in there would
+   * mean threading a room-only argument through home, group and device too.
+   */
+  const toggleRoomVisibility = useCallback((
+    homeId: string,
+    roomId: string,
+    surfaces: readonly RoomSurface[],
+  ) => {
+    if (homeId !== selectedHomeId) return;
+    updateHomeLayout(prev => ({
+      ...prev,
+      visibility: {
+        ...prev?.visibility,
+        ...toggleRoomHidden(prev?.visibility, roomId, surfaces),
+      },
+    })).catch(err => console.error('Failed to save room visibility to entity layout:', err));
+  }, [selectedHomeId, updateHomeLayout]);
 
   const isHomeActuallyHidden = useCallback((homeId: string): boolean => {
     return visibility.ui.hiddenHomes.includes(homeId);
@@ -2871,7 +2907,7 @@ const Dashboard = () => {
 
   // === Toggle visibility (works for UI visibility edit mode) ===
   const toggleVisibility = useCallback((
-    type: 'home' | 'room' | 'group' | 'device',
+    type: 'home' | 'group' | 'device',  // rooms go through toggleRoomVisibility — they are per-surface
     _mode: 'ui' | 'server' | null,  // kept for call site compatibility, always uses 'ui'
     homeId: string,
     targetId?: string,
@@ -2891,25 +2927,6 @@ const Dashboard = () => {
           ? target.hiddenHomes.filter(id => id !== homeId)
           : [...target.hiddenHomes, homeId];
         break;
-      }
-      case 'room': {
-        if (!targetId) return;
-        // Room visibility is stored in entity layout (StoredEntity) only
-        if (homeId === selectedHomeId) {
-          const currentHidden = homeLayout?.visibility?.hiddenRooms || [];
-          const isHidden = currentHidden.includes(targetId);
-          const newHiddenRooms = isHidden
-            ? currentHidden.filter(id => id !== targetId)
-            : [...currentHidden, targetId];
-          updateHomeLayout(prev => ({
-            ...prev,
-            visibility: {
-              ...prev?.visibility,
-              hiddenRooms: newHiddenRooms,
-            },
-          })).catch(err => console.error('Failed to save room visibility to entity layout:', err));
-        }
-        return; // Don't save to user settings for room visibility
       }
       case 'group': {
         if (!targetId || !contextId) return;
@@ -2981,7 +2998,7 @@ const Dashboard = () => {
     setVisibilityVersion(v => v + 1);
     // Defer save to server to keep UI responsive
     setTimeout(() => saveSettings({ visibility: newVisibility }, 'visibility'), 0);
-  }, [visibility, saveSettings, selectedHomeId, homeLayout, updateHomeLayout, apolloClient, saveRoomLayoutForEntity]);
+  }, [visibility, saveSettings, apolloClient, saveRoomLayoutForEntity]);
 
   // Get ordered items (groups and accessories mixed) for a context
   // Uses room entity layout (StoredEntity) for ordering
@@ -3974,12 +3991,31 @@ const Dashboard = () => {
     return new Set(filteredAccessoryCountByRoom.keys());
   }, [filteredAccessoryCountByRoom]);
 
-  // Filter hidden rooms when not in edit mode, and exclude rooms that are in room groups
+  /*
+   * Hidden rooms come back as soon as the hold takes, not when you let go.
+   *
+   * `showHiddenItems` waits for the drop, because revealing hidden *tiles*
+   * inserts them into the grid the finger is in: new droppables, a changed
+   * SortableContext, and every sibling's index shifting under an active drag.
+   *
+   * A room is different in the one way that matters. Hidden rooms sort last, so
+   * revealing one appends a section *below everything* — nothing above it moves,
+   * and the drag is untouched. So rooms need not wait, and waiting was visible:
+   * the mode arrived, and then a moment later the room did.
+   *
+   * Declared here rather than beside `filteredRooms` because `sidebarTree`
+   * below reads it too, and a `const` referenced above its declaration is a
+   * temporal-dead-zone throw at render, not a lint warning.
+   */
+  const revealHiddenRooms = showHiddenItems || (isTouchDevice && editMode);
+
+  // Filter hidden rooms when not in edit mode, and exclude rooms that are in room groups.
+  // This feeds the sidebar tree only, so it asks the `menu` surface.
   const visibleRooms = useMemo(() => {
     if (!selectedHomeId) return sortedRooms;
     return sortedRooms.filter(r => {
-      // Exclude hidden rooms
-      if (isRoomHidden(selectedHomeId, r.id)) return false;
+      // Exclude rooms hidden from the menu
+      if (isRoomHidden(selectedHomeId, r.id, 'menu')) return false;
       // Exclude rooms that are in a room group
       const normalizedId = r.id.toLowerCase().replace(/-/g, '');
       if (roomIdsInGroups.has(normalizedId)) return false;
@@ -4094,8 +4130,19 @@ const Dashboard = () => {
       }
     }
 
-    return items;
-  }, [visibleRooms, rooms, roomGroups, homeLayout?.roomOrder, optimisticSidebarOrder, optimisticGroupRoomOrders, allowedRoomIds]);
+    /**
+     * A room hidden from the menu sits at the bottom of it, and only once edit
+     * mode reveals it — the same rule the home view already uses, and the only
+     * way back for a room whose row is otherwise gone. `visibleRooms` has
+     * already dropped them when nothing is revealing, so this is a reorder in
+     * practice; it filters too so the two can never disagree.
+     */
+    return orderMenuTreeHiddenLast(
+      items,
+      hiddenRoomsFor(homeLayout?.visibility, 'menu'),
+      revealHiddenRooms,
+    );
+  }, [visibleRooms, rooms, roomGroups, homeLayout?.roomOrder, homeLayout?.visibility, revealHiddenRooms, optimisticSidebarOrder, optimisticGroupRoomOrders, allowedRoomIds]);
 
   // Get root-level sortable IDs (rooms and room groups at top level)
   const sidebarRootIds = useMemo(() => {
@@ -4894,20 +4941,6 @@ const Dashboard = () => {
   helperAccessoriesRef.current = helperAccessories.helpers;
   helperTimersRef.current = helperAccessories.timers;
 
-  /*
-   * Hidden rooms come back as soon as the hold takes, not when you let go.
-   *
-   * `showHiddenItems` waits for the drop, because revealing hidden *tiles*
-   * inserts them into the grid the finger is in: new droppables, a changed
-   * SortableContext, and every sibling's index shifting under an active drag.
-   *
-   * A room is different in the one way that matters. Hidden rooms sort last, so
-   * revealing one appends a section *below everything* — nothing above it moves,
-   * and the drag is untouched. So rooms need not wait, and waiting was visible:
-   * the mode arrived, and then a moment later the room did.
-   */
-  const revealHiddenRooms = showHiddenItems || (isTouchDevice && editMode);
-
   const filteredRooms = useMemo(() => {
     /*
      * Hidden rooms are dropped, except while hidden things are being shown —
@@ -4926,7 +4959,7 @@ const Dashboard = () => {
     if (selectedHomeId) {
       visibleRooms = orderRoomsHiddenLast(
         sortedRooms,
-        homeLayout?.visibility?.hiddenRooms,
+        hiddenRoomsFor(homeLayout?.visibility, 'home'),
         revealHiddenRooms,
       );
     }
@@ -5205,8 +5238,10 @@ const Dashboard = () => {
     // Filter hidden devices and devices in hidden rooms (unless in edit mode where we show them dimmed)
     if (selectedHomeId) {
       filtered = filtered.filter(a => {
-        // If the accessory's room is hidden, filter it out
-        if (a.roomId && isRoomHidden(selectedHomeId, a.roomId)) return false;
+        // If the accessory's room is hidden from the home view, filter it out.
+        // This is view content, not navigation — a room hidden from the menu
+        // alone still shows its accessories.
+        if (a.roomId && isRoomHidden(selectedHomeId, a.roomId, 'home')) return false;
         // Filter by individual device visibility
         return !isDeviceHidden(selectedHomeId, contextId, a.id);
       });
@@ -7114,8 +7149,8 @@ const Dashboard = () => {
                                                         handleSelectRoom(room.id);
                                                         setSidebarOpen(false);
                                                       }}
-                                                      isHiddenUi={selectedHomeId ? isRoomActuallyHidden(selectedHomeId, room.id) : false}
-                                                      onToggleVisibility={() => selectedHomeId && toggleVisibility('room', 'ui', selectedHomeId, room.id)}
+                                                      isHiddenUi={selectedHomeId ? isRoomHiddenState(selectedHomeId, room.id, 'menu') : false}
+                                                      onToggleVisibility={() => selectedHomeId && toggleRoomVisibility(selectedHomeId, room.id, ['menu'])}
 
 
                                                       showHiddenItems={showHiddenItems}
@@ -7674,8 +7709,8 @@ const Dashboard = () => {
                                                 isSelected={selectedRoomId === room.id}
                                                 hideAccessoryCounts={hideAccessoryCounts}
                                                 onSelect={() => handleSelectRoom(room.id)}
-                                                isHiddenUi={selectedHomeId ? isRoomActuallyHidden(selectedHomeId, room.id) : false}
-                                                onToggleVisibility={() => selectedHomeId && toggleVisibility('room', 'ui', selectedHomeId, room.id)}
+                                                isHiddenUi={selectedHomeId ? isRoomHiddenState(selectedHomeId, room.id, 'menu') : false}
+                                                onToggleVisibility={() => selectedHomeId && toggleRoomVisibility(selectedHomeId, room.id, ['menu'])}
 
 
                                                 showHiddenItems={showHiddenItems}
@@ -8121,8 +8156,8 @@ const Dashboard = () => {
                                   sidebar row carries the badge. Desktop has no edit
                                   mode, so it keeps both items here. */}
                               {selectedHomeId && !isViewOnly && !isTouchDevice && (
-                                <DropdownMenuItem onClick={() => toggleVisibility('room', 'ui', selectedHomeId, selectedRoomId)}>
-                                  {isRoomActuallyHidden(selectedHomeId, selectedRoomId) ? (
+                                <DropdownMenuItem onClick={() => toggleRoomVisibility(selectedHomeId, selectedRoomId, ROOM_SURFACES)}>
+                                  {isRoomHiddenSomewhere(selectedHomeId, selectedRoomId) ? (
                                     <>
                                       <Eye className="h-4 w-4 mr-2" />
                                       Unhide Room
@@ -8377,7 +8412,7 @@ const Dashboard = () => {
                     // room whose tiles are all hidden would otherwise vanish
                     // again the moment you went looking for it.
                     const roomRevealed = revealHiddenRooms && !!room && !!selectedHomeId
-                      && isRoomHiddenState(selectedHomeId, room.id);
+                      && isRoomHiddenState(selectedHomeId, room.id, 'home');
                     if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
@@ -8389,7 +8424,7 @@ const Dashboard = () => {
                       {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
                         // A hidden room only reaches here while hidden things are
                         // being shown, and it comes last — see filteredRooms.
-                        const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id));
+                        const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id, 'home'));
                         // Same rule the tiles use: while arranging, every room
                         // offers to hide; outside that, only a revealed one
                         // offers to come back. A room with nothing to act on
@@ -8425,7 +8460,7 @@ const Dashboard = () => {
                                 size="tile"
                                 label={roomHidden ? 'Unhide' : 'Hide'}
                                 ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
-                                onClick={() => toggleVisibility('room', 'ui', selectedHomeId!, room!.id)}
+                                onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}
                               />
                             )}
                           </div>
