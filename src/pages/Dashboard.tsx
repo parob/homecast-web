@@ -6900,6 +6900,38 @@ const Dashboard = () => {
             onTopColorChange={setBgImageTopColor}
           />
 
+          {/* Tiles used to be sliced flat at both physical screen edges, with
+              the floating header buttons landing on top of whatever tile text
+              happened to be under them. These two strips blur the band the
+              chrome floats over, so content goes out of focus on its way off
+              screen instead.
+
+              Native mobile shell only. That is the one place the page runs
+              edge-to-edge under the status bar and the home indicator — in a
+              browser Safari's own chrome occupies those bands, and on a desktop
+              there is no bottom chrome at all, so a bottom strip would be
+              blurring content for no reason. The Mac app is arguably the same
+              argument as the top strip here; it is left out because nobody has
+              asked for it, not because it would be wrong.
+
+              Sized from the same expressions as the scroller's padding below,
+              so each strip covers exactly the band already reserved for chrome
+              and nothing that was legible becomes less so. */}
+          {isInMobileApp && (
+            <>
+              <div
+                aria-hidden
+                className="scroll-scrim scroll-scrim-top z-[10000]"
+                style={{ '--scroll-scrim-size': `calc(${editBarHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
+              />
+              <div
+                aria-hidden
+                className="scroll-scrim scroll-scrim-bottom z-[10000]"
+                style={{ '--scroll-scrim-size': isPhone && pinnedTabs.length > 0 ? 'calc(72px + var(--safe-area-bottom, 0px))' : 'calc(16px + var(--safe-area-bottom, 0px))' } as React.CSSProperties}
+              />
+            </>
+          )}
+
 
       {/* One status bubble, in leftBadge.
           Local Mode used to live in rightMenu, immediately left of the search
