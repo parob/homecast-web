@@ -5,22 +5,33 @@
 // that is simply what `1s × 1.5ⁿ` capped at 30s adds up to over ten attempts,
 // and the replacement pod was ready long before the relay next looked.
 //
-// Two things follow. A relay must not sleep as long as a browser tab: while it
-// is asleep the home is unreachable, so its ceiling is far lower. And a close
-// code that means "this server is going away" is an instruction to come back,
-// not a reason to back off — backing off there punishes us for the server's
-// own routine restart.
+// Two things follow. A close code that means "this server is going away" is an
+// instruction to come back, not a reason to back off — backing off there
+// punishes us for the server's own routine restart. And the early curve and
+// the ceiling are doing different jobs: the first attempts decide how fast one
+// relay recovers from a blip, while the ceiling decides how hard a whole fleet
+// hammers a server that is genuinely down.
 
 /** First retry, and the value backoff resets to. */
 export const INITIAL_RECONNECT_DELAY = 1000;
 /** Ceiling for an ordinary client, where a slow retry costs nobody anything. */
 export const MAX_RECONNECT_DELAY = 30_000;
 /**
- * Ceiling for the relay. Low because the cost of waiting is a home that does
- * not answer — and because pod replacement completes in seconds, so a longer
- * wait buys no politeness, it only extends the outage.
+ * Ceiling for the relay.
+ *
+ * This was 8s, reasoned from the lone-relay case: the cost of waiting is a
+ * home that does not answer, and pod replacement completes in seconds. But a
+ * deliberately cycling server says so (1001/1012, or its `reconnect` message)
+ * and resets backoff entirely, and the curve below 8s is identical either way
+ * — so the ceiling never governs a routine blip. It governs exactly one
+ * scenario: a fleet-wide outage with no server goodbye. There the 8s ceiling
+ * was the killer — the August 2026 staging collapse measured it turning the
+ * whole fleet into a sustained connect storm (1,000 relays ≈ 125 attempts/s,
+ * forever) that prevented the servers from ever re-admitting anyone. During a
+ * real outage, patience is what brings the home back. At 60s the same fleet
+ * asks ~17 times/s, which recovery can absorb.
  */
-export const MAX_RELAY_RECONNECT_DELAY = 8_000;
+export const MAX_RELAY_RECONNECT_DELAY = 60_000;
 export const RECONNECT_MULTIPLIER = 1.5;
 
 /**
