@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { hiddenAccessoriesFor } from '@/lib/accessory-visibility';
 
 interface SharedRoomGroupViewProps {
   entityData: SharedEntityData;
@@ -315,9 +316,12 @@ export function SharedRoomGroupView({
         const roomName = idToName[roomId];
         if (!roomName) continue;
 
-        // Filter hidden accessories
-        if (roomLayout.visibility?.hiddenAccessories && roomLayout.visibility.hiddenAccessories.length > 0 && byRoom[roomName]) {
-          const hiddenSet = new Set(roomLayout.visibility.hiddenAccessories.map(id => id.toLowerCase().replace(/-/g, '')));
+        // Filter hidden accessories. A room-group view is a slice of the home
+        // view, not a room's own, so it follows the home surface — the same
+        // call this file already makes for hidden rooms.
+        const hiddenHere = hiddenAccessoriesFor(roomLayout.visibility, 'home');
+        if (hiddenHere && hiddenHere.length > 0 && byRoom[roomName]) {
+          const hiddenSet = new Set(hiddenHere.map(id => id.toLowerCase().replace(/-/g, '')));
           byRoom[roomName] = byRoom[roomName].filter(a => !hiddenSet.has(a.id.toLowerCase().replace(/-/g, '')));
         }
 

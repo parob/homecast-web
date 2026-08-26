@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { hiddenAccessoriesFor } from '@/lib/accessory-visibility';
 
 interface SharedRoomViewProps {
   entityData: SharedEntityData;
@@ -416,9 +417,12 @@ export function SharedRoomView({
   const sortedAccessories = useMemo(() => {
     let filtered = [...accessories];
 
-    // Filter hidden accessories
-    if (layout?.visibility?.hiddenAccessories && layout.visibility.hiddenAccessories.length > 0) {
-      const hiddenSet = new Set(layout.visibility.hiddenAccessories.map(id => id.toLowerCase().replace(/-/g, '')));
+    // Filter hidden accessories. This is one room's own view, so it follows
+    // the room surface — an accessory hidden from the owner's home view alone
+    // still shows here. See lib/accessory-visibility.ts.
+    const hiddenHere = hiddenAccessoriesFor(layout?.visibility, 'room');
+    if (hiddenHere && hiddenHere.length > 0) {
+      const hiddenSet = new Set(hiddenHere.map(id => id.toLowerCase().replace(/-/g, '')));
       filtered = filtered.filter(a => !hiddenSet.has(a.id.toLowerCase().replace(/-/g, '')));
     }
 

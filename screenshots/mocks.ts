@@ -122,7 +122,13 @@ function resolveGraphQL(
       };
 
     case 'GetStoredEntities':
-      return { storedEntities: COLLECTIONS };
+      // The home view never asks for a room's layout by id — it bulk-fetches
+      // every room row here and writes them into the cache itself. So a layout
+      // seeded with overrideEntityLayouts has to come back from this query too,
+      // or it only ever reaches the room's own view.
+      return {
+        storedEntities: [...COLLECTIONS, ...overriddenStoredEntities(variables?.entityType as string)],
+      };
 
     case 'GetStoredEntityLayout':
       return { storedEntityLayout: getEntityLayout(variables?.entityType as string, variables?.entityId as string) };
@@ -376,6 +382,29 @@ let entityLayoutOverrides: LayoutMap = {};
  */
 export function overrideEntityLayouts(layouts: LayoutMap) {
   entityLayoutOverrides = layouts;
+}
+
+/**
+ * The overridden layouts as StoredEntity rows, for the bulk GetStoredEntities
+ * query. Filtered by entityType the way the real resolver filters.
+ */
+export function overriddenStoredEntities(entityType?: string) {
+  return Object.entries(entityLayoutOverrides)
+    .map(([key, layout]) => {
+      const sep = key.indexOf(':');
+      return { type: key.slice(0, sep), id: key.slice(sep + 1), layout };
+    })
+    .filter(e => !entityType || e.type === entityType)
+    .map(e => ({
+      __typename: 'StoredEntity',
+      id: `layout-${e.type}-${e.id}`,
+      entityType: e.type,
+      entityId: e.id,
+      parentId: null,
+      dataJson: null,
+      layoutJson: JSON.stringify(e.layout),
+      updatedAt: new Date().toISOString(),
+    }));
 }
 
 export function getEntityLayout(entityType?: string, entityId?: string) {
