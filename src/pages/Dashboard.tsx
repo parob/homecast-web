@@ -141,8 +141,6 @@ import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 
-/** dnd-kit's default drop animation, which the deferred reveal waits out. */
-const DROP_ANIMATION_MS = 250;
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
@@ -1634,16 +1632,26 @@ const Dashboard = () => {
    *
    * A long press on a tile starts a drag, and that same press turns the mode on
    * — so `beginLift` runs *while a finger is down and dnd-kit is measuring*.
-   * That rules out `setEditModeAndTidy`: both halves of its tidy-up change the
-   * layout under the finger. Revealing hidden tiles registers new droppables,
-   * and dnd-kit re-measures every rect when the container set changes, so the
-   * grid shifts mid-drag and the drop lands somewhere else. Collapsing a summary
-   * section can unmount the very card being dragged.
+   * That still rules out `setEditModeAndTidy`, whose collapse can unmount the
+   * very card being dragged. It exists to stop you editing behind an open
+   * section; arriving *from* a card inside one means that section is exactly
+   * where you are working, so on this route it never runs at all.
    *
-   * So the mode comes on now and the tidy-up waits — except the collapse, which
-   * never runs on this route at all. It exists to stop you editing behind an
-   * open section; arriving *from* a card inside one means that section is
-   * exactly where you are working.
+   * The hidden-item reveal used to wait for the drop for the same sort of
+   * reason — it registers new droppables mid-drag, and a changed container set
+   * makes dnd-kit re-measure. It no longer waits, because the objection turned
+   * out not to survive being driven: hidden items sort to the end of their grid
+   * (`getOrderedItems`), so a revealed tile appends below every visible one and
+   * no visible tile changes index. `screenshots/reveal-during-lift.spec.ts`
+   * holds both halves of that in a real browser — the tile appears while the
+   * finger is still down, and a drop still lands on the tile under it rather
+   * than one past. It has to be a browser test: jsdom has neither the CSS
+   * transforms `rectSortingStrategy` applies nor the rects dnd-kit picks a drop
+   * target from, so a stubbed version answers whatever the stub says.
+   *
+   * What still waits for the drop is everything that moves the layout *above*
+   * the finger — the sidebar width and the summary edit pills, both gated on
+   * `liftInFlight`.
    */
   const liftWatchdogRef = useRef<number | undefined>(undefined);
   const [liftInFlight, setLiftInFlight] = useState(false);
@@ -1657,13 +1665,7 @@ const Dashboard = () => {
 
   const endLift = useCallback(() => {
     window.clearTimeout(liftWatchdogRef.current);
-    setLiftInFlight(prev => {
-      if (!prev) return prev;
-      // After the drop animation, not during it — the overlay is still flying
-      // home, and new droppables appearing under it scramble the landing.
-      window.setTimeout(() => setShowHiddenItems(true), DROP_ANIMATION_MS);
-      return false;
-    });
+    setLiftInFlight(prev => (prev ? false : prev));
   }, []);
 
   const beginLift = useCallback(() => {
@@ -1674,6 +1676,11 @@ const Dashboard = () => {
     if (!isTouchDeviceRef.current) return;
     if (editModeRef.current) return;   // already arranging; nothing to enter
     setEditMode(true);
+    // At the lift, not after the drop. Hidden items sort to the end of their
+    // grid (`getOrderedItems`), so revealing one appends below every visible
+    // tile and moves nothing the finger is near — the same argument that
+    // already lets hidden *rooms* come back at the lift.
+    setShowHiddenItems(true);
     setLiftInFlight(true);
     // Insurance against a DndContext that forgets onDragCancel: without an end,
     // the deferred reveal never runs and the sidebar never widens.
@@ -3999,14 +4006,10 @@ const Dashboard = () => {
   /*
    * Hidden rooms come back as soon as the hold takes, not when you let go.
    *
-   * `showHiddenItems` waits for the drop, because revealing hidden *tiles*
-   * inserts them into the grid the finger is in: new droppables, a changed
-   * SortableContext, and every sibling's index shifting under an active drag.
-   *
-   * A room is different in the one way that matters. Hidden rooms sort last, so
-   * revealing one appends a section *below everything* — nothing above it moves,
-   * and the drag is untouched. So rooms need not wait, and waiting was visible:
-   * the mode arrived, and then a moment later the room did.
+   * `showHiddenItems` now does too, so the `||` is belt and braces rather than
+   * the load-bearing difference it once was: this stayed true through the drop
+   * while the tile reveal was still deferred, and it keeps rooms revealed on the
+   * menu route, where no lift ever happens.
    *
    * Declared here rather than beside `filteredRooms` because `sidebarTree`
    * below reads it too, and a `const` referenced above its declaration is a
