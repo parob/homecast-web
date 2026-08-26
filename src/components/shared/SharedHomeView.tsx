@@ -42,6 +42,7 @@ import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { hiddenRoomsFor } from '@/lib/room-visibility';
+import { hiddenAccessoriesFor } from '@/lib/accessory-visibility';
 
 // Matches the Dashboard's breadcrumb crumbs. Kept as a local copy rather than
 // exported from Dashboard.tsx, which is an 8,700-line page module.
@@ -345,9 +346,12 @@ export function SharedHomeView({
         const roomName = roomIdToName[roomId];
         if (!roomName) continue;
 
-        // Filter hidden accessories
-        if (roomLayout.visibility?.hiddenAccessories && roomLayout.visibility.hiddenAccessories.length > 0 && byRoom[roomName]) {
-          const hiddenSet = new Set(roomLayout.visibility.hiddenAccessories.map(id => id.toLowerCase().replace(/-/g, '')));
+        // Filter hidden accessories. A share link renders a home view, so it
+        // follows the home surface — an accessory hidden from the owner's room
+        // view alone still shows here. See lib/accessory-visibility.ts.
+        const hiddenHere = hiddenAccessoriesFor(roomLayout.visibility, 'home');
+        if (hiddenHere && hiddenHere.length > 0 && byRoom[roomName]) {
+          const hiddenSet = new Set(hiddenHere.map(id => id.toLowerCase().replace(/-/g, '')));
           byRoom[roomName] = byRoom[roomName].filter(a => !hiddenSet.has(a.id.toLowerCase().replace(/-/g, '')));
         }
 

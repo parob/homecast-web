@@ -72,7 +72,18 @@ const DialogContent = React.forwardRef<
       ref={ref}
       aria-describedby={undefined}
       className={cn(
-        "fixed left-[50%] top-[50%] z-[10050] grid w-full max-w-[95vw] sm:max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl",
+        // `grid-cols-[minmax(0,1fr)]` is load-bearing, not tidying. Without it
+        // the single column is an `auto` track, whose floor is the items'
+        // min-content width — and that floor is allowed to overflow the box it
+        // sits in. A recharts chart renders `<svg width="391" style="100%">`,
+        // and the pixel ATTRIBUTE is what min-content is taken from, so the
+        // Analytics popup's track sized itself to 391px inside a 378px content
+        // box: every row laid out 13px past the right padding, and the
+        // `overflow-x-hidden` those callers add clipped the right-hand captions
+        // mid-word. It ratchets, too — recharts then measures the wider track
+        // and re-renders to match, so nothing brings it back down. minmax(0,·)
+        // caps the track at the dialog's own width; content shrinks to fit.
+        "fixed left-[50%] top-[50%] z-[10050] grid grid-cols-[minmax(0,1fr)] w-full max-w-[95vw] sm:max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl",
         // A tall dialog must clear the notch. `100dvh` on iOS spans the whole
         // screen including the status bar, so capping against it alone slides
         // the header under the island. The dialog is centred, so it overhangs

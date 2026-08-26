@@ -158,6 +158,11 @@ import {
   ROOM_SURFACES,
   type RoomSurface,
 } from '@/lib/room-visibility';
+import {
+  isAccessoryHiddenOn,
+  toggleAccessoryHidden,
+  type AccessorySurface,
+} from '@/lib/accessory-visibility';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { deriveHomeActions, HOME_ACTION_ORDER, type HomeAction } from '@/components/actions/catalog';
 import { DEFAULT_TAB_BAR_MODE, normalizeTabBarMode, type TabBarMode } from '@/lib/tab-bar-mode';
@@ -2756,46 +2761,45 @@ const Dashboard = () => {
   }, [saveSettings]);
 
   // === UI Visibility check functions ===
-  // When showHiddenItems is true, these return false so hidden items are shown
-  const isDeviceHidden = useCallback((homeId: string, contextId: string, accessoryId: string): boolean => {
+
+  /**
+   * Which surface an accessory's Hide action speaks for.
+   *
+   * A tile hidden from the home view stays in the room you go into to find it,
+   * and vice versa — see lib/accessory-visibility.ts. There is nothing to
+   * choose between: the surface is wherever the tile is being rendered, and a
+   * room-group view is a slice of the home view, not a room's own.
+   */
+  const accessorySurface: AccessorySurface = selectedRoomId ? 'room' : 'home';
+
+  /** The room layout a context id resolves to, or null. */
+  const readRoomLayout = useCallback((contextId: string): RoomLayoutData | null => {
+    if (!contextId || contextId === 'all') return null;
+    try {
+      const cached = apolloClient.readQuery<GetStoredEntityLayoutResponse>({
+        query: GET_STORED_ENTITY_LAYOUT,
+        variables: { entityType: 'room', entityId: contextId },
+      });
+      if (cached?.storedEntityLayout?.layoutJson) {
+        return JSON.parse(cached.storedEntityLayout.layoutJson) as RoomLayoutData;
+      }
+    } catch {
+      // No cached layout
+    }
+    return null;
+  }, [apolloClient]);
+
+  // When showHiddenItems is true, this returns false so hidden items are shown
+  const isDeviceHidden = useCallback((homeId: string, contextId: string, accessoryId: string, surface: AccessorySurface): boolean => {
     if (showHiddenItems) return false;
     // Read from cache for the specific room (works in both home view and room view)
-    if (contextId && contextId !== 'all') {
-      try {
-        const cached = apolloClient.readQuery<GetStoredEntityLayoutResponse>({
-          query: GET_STORED_ENTITY_LAYOUT,
-          variables: { entityType: 'room', entityId: contextId },
-        });
-        if (cached?.storedEntityLayout?.layoutJson) {
-          const layout: RoomLayoutData = JSON.parse(cached.storedEntityLayout.layoutJson);
-          return layout?.visibility?.hiddenAccessories?.includes(accessoryId) ?? false;
-        }
-      } catch {
-        // No cached layout
-      }
-    }
-    return false;
-  }, [showHiddenItems, apolloClient]);
+    return isAccessoryHiddenOn(readRoomLayout(contextId)?.visibility, accessoryId, surface);
+  }, [showHiddenItems, readRoomLayout]);
 
   // Returns actual hidden state regardless of showHiddenItems (for badge display)
-  const isDeviceActuallyHidden = useCallback((homeId: string, contextId: string, accessoryId: string): boolean => {
-    // Read from cache for the specific room
-    if (contextId && contextId !== 'all') {
-      try {
-        const cached = apolloClient.readQuery<GetStoredEntityLayoutResponse>({
-          query: GET_STORED_ENTITY_LAYOUT,
-          variables: { entityType: 'room', entityId: contextId },
-        });
-        if (cached?.storedEntityLayout?.layoutJson) {
-          const layout: RoomLayoutData = JSON.parse(cached.storedEntityLayout.layoutJson);
-          return layout?.visibility?.hiddenAccessories?.includes(accessoryId) ?? false;
-        }
-      } catch {
-        // No cached layout
-      }
-    }
-    return false;
-  }, [apolloClient]);
+  const isDeviceActuallyHidden = useCallback((homeId: string, contextId: string, accessoryId: string, surface: AccessorySurface): boolean => {
+    return isAccessoryHiddenOn(readRoomLayout(contextId)?.visibility, accessoryId, surface);
+  }, [readRoomLayout]);
 
   /**
    * Is this room hidden — the stored state, whether or not hidden things are
@@ -2901,13 +2905,43 @@ const Dashboard = () => {
     })).catch(err => console.error('Failed to save room visibility to entity layout:', err));
   }, [selectedHomeId, updateHomeLayout]);
 
+  /**
+   * Hide or reveal an accessory on one surface, or on both.
+   *
+   * Split out of `toggleVisibility` for the same reason the room case was: it
+   * read and wrote the room's StoredEntity layout and returned before touching
+   * the `ui` blob the other cases live in, so now that each call site has to
+   * say which surface it speaks for, keeping it in there would mean threading
+   * an accessory-only argument through home and group too.
+   */
+  const toggleAccessoryVisibility = useCallback((
+    accessoryId: string,
+    contextId: string,
+    surfaces: readonly AccessorySurface[],
+  ) => {
+    if (!accessoryId || !contextId) return;
+    // Accessory visibility is stored in the room entity layout (StoredEntity).
+    const current = readRoomLayout(contextId);
+    const newLayout: RoomLayoutData = {
+      ...current,
+      visibility: {
+        ...current?.visibility,
+        ...toggleAccessoryHidden(current?.visibility, accessoryId, surfaces),
+      },
+    };
+    saveRoomLayoutForEntity(contextId, newLayout)
+      .catch(err => console.error('Failed to save accessory visibility to room layout:', err));
+  }, [readRoomLayout, saveRoomLayoutForEntity]);
+
   const isHomeActuallyHidden = useCallback((homeId: string): boolean => {
     return visibility.ui.hiddenHomes.includes(homeId);
   }, [visibility]);
 
   // === Toggle visibility (works for UI visibility edit mode) ===
   const toggleVisibility = useCallback((
-    type: 'home' | 'group' | 'device',  // rooms go through toggleRoomVisibility — they are per-surface
+    // Rooms and accessories go through toggleRoomVisibility /
+    // toggleAccessoryVisibility — they are per-surface.
+    type: 'home' | 'group',
     _mode: 'ui' | 'server' | null,  // kept for call site compatibility, always uses 'ui'
     homeId: string,
     targetId?: string,
@@ -2959,37 +2993,6 @@ const Dashboard = () => {
         saveRoomLayoutForEntity(contextId, newGroupLayout).catch(err => console.error('Failed to save group visibility to room layout:', err));
         return; // Don't save to user settings for group visibility
       }
-      case 'device': {
-        if (!targetId || !contextId) return;
-        // Device/accessory visibility is stored in room entity layout (StoredEntity)
-        // Read current layout from Apollo cache using contextId (roomId)
-        let currentDeviceLayout: RoomLayoutData | null = null;
-        try {
-          const cached = apolloClient.readQuery<GetStoredEntityLayoutResponse>({
-            query: GET_STORED_ENTITY_LAYOUT,
-            variables: { entityType: 'room', entityId: contextId },
-          });
-          if (cached?.storedEntityLayout?.layoutJson) {
-            currentDeviceLayout = JSON.parse(cached.storedEntityLayout.layoutJson);
-          }
-        } catch {
-          // No cached layout
-        }
-        const currentHiddenAccessories = currentDeviceLayout?.visibility?.hiddenAccessories || [];
-        const isAccessoryHidden = currentHiddenAccessories.includes(targetId);
-        const newHiddenAccessories = isAccessoryHidden
-          ? currentHiddenAccessories.filter(id => id !== targetId)
-          : [...currentHiddenAccessories, targetId];
-        const newDeviceLayout: RoomLayoutData = {
-          ...currentDeviceLayout,
-          visibility: {
-            ...currentDeviceLayout?.visibility,
-            hiddenAccessories: newHiddenAccessories,
-          },
-        };
-        saveRoomLayoutForEntity(contextId, newDeviceLayout).catch(err => console.error('Failed to save accessory visibility to room layout:', err));
-        return; // Don't save to user settings for device visibility
-      }
     }
 
     // Update local state immediately (optimistic)
@@ -3038,7 +3041,9 @@ const Dashboard = () => {
       if (item.type === 'group') {
         return effectiveRoomLayout?.visibility?.hiddenGroups?.includes(item.data.id) ?? false;
       } else {
-        return effectiveRoomLayout?.visibility?.hiddenAccessories?.includes(item.data.id) ?? false;
+        // Hidden *here*: an accessory hidden from the room's own view is not
+        // hidden on the home view, so it must not sort last on the home view.
+        return isAccessoryHiddenOn(effectiveRoomLayout?.visibility, item.data.id, accessorySurface);
       }
     };
 
@@ -3070,7 +3075,7 @@ const Dashboard = () => {
 
     return sortedItems;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showHiddenItems, apolloClient, itemOrderVersion]);
+  }, [showHiddenItems, apolloClient, itemOrderVersion, accessorySurface]);
 
   // Handle drag end for reordering (unified for groups and accessories)
   // Saves to room entity layout (StoredEntity)
@@ -5242,12 +5247,13 @@ const Dashboard = () => {
         // This is view content, not navigation — a room hidden from the menu
         // alone still shows its accessories.
         if (a.roomId && isRoomHidden(selectedHomeId, a.roomId, 'home')) return false;
-        // Filter by individual device visibility
-        return !isDeviceHidden(selectedHomeId, contextId, a.id);
+        // Filter by individual device visibility, on the surface being rendered:
+        // hiding a tile from the home view leaves it in the room's own view.
+        return !isDeviceHidden(selectedHomeId, contextId, a.id, accessorySurface);
       });
     }
     return filtered;
-  }, [hideInfoDevices,  selectedHomeId, isDeviceHidden, isRoomHidden]);
+  }, [hideInfoDevices,  selectedHomeId, isDeviceHidden, isRoomHidden, accessorySurface]);
 
   // Get effective value - just returns the server value (cache is the source of truth)
   // Must be defined before early returns to satisfy React hooks rules
@@ -8486,8 +8492,8 @@ const Dashboard = () => {
 
                     // Hide room if it has no visible items (unless showHiddenItems is on)
                     // Helper accessories hide exactly like real ones: the id goes in
-                    // the room layout's hiddenAccessories, so Show Hidden reveals them
-                    // and the same toggle puts them back.
+                    // the room layout's hidden list for the surface being rendered,
+                    // so Show Hidden reveals them and the same toggle puts them back.
                     // ...but a revealed hidden room stays, even with nothing in
                     // it: its heading is the only place to unhide it from, and a
                     // room whose tiles are all hidden would otherwise vanish
@@ -8621,9 +8627,21 @@ const Dashboard = () => {
                             // Accessory item
                             const accessory = item.data;
                           const isExpanded = compactMode && expandedWidgetId === accessory.id;
-                          const isHidden = selectedHomeId ? isDeviceActuallyHidden(selectedHomeId, contextId, accessory.id) : false;
+                          const isHidden = selectedHomeId ? isDeviceActuallyHidden(selectedHomeId, contextId, accessory.id, accessorySurface) : false;
                           
                           const isCurrentlyHidden = isHidden;
+
+                          /*
+                           * The label names the surface, because the same
+                           * gesture on the same tile now means two different
+                           * things depending on where you are looking at it.
+                           * "Hide Accessory" was unambiguous while there was
+                           * one list; with two it would be the only thing on
+                           * screen that did not say which one it wrote to.
+                           */
+                          const hideAccessoryLabel = accessorySurface === 'room'
+                            ? (isHidden ? 'Show in Room' : 'Hide from Room')
+                            : (isHidden ? 'Show on Home' : 'Hide from Home');
 
                           const accessoryContent = compactMode ? (
                             // Compact mode: show compact widget with click-to-expand
@@ -8650,8 +8668,8 @@ const Dashboard = () => {
                                 iconStyle={activeIconStyle}
                                 isHidden={isHidden}
 
-                                onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
+                                onHide={() => toggleAccessoryVisibility(accessory.id, contextId, [accessorySurface])}
+                                hideLabel={hideAccessoryLabel}
                                 showHiddenItems={showHiddenItems}
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
@@ -8675,8 +8693,8 @@ const Dashboard = () => {
                                   onDebug={isAdmin ? () => setDebugAccessory(accessory) : undefined}
                                   iconStyle={activeIconStyle}
                                   isHidden={isHidden}
-                                  onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                  hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
+                                  onHide={() => toggleAccessoryVisibility(accessory.id, contextId, [accessorySurface])}
+                                  hideLabel={hideAccessoryLabel}
                                 showHiddenItems={showHiddenItems}
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
@@ -8702,8 +8720,8 @@ const Dashboard = () => {
                                 iconStyle={activeIconStyle}
                                 isHidden={isHidden}
 
-                                onHide={() => selectedHomeId && toggleVisibility('device', 'ui', selectedHomeId, accessory.id, contextId)}
-                                hideLabel={isHidden ? 'Unhide Accessory' : 'Hide Accessory'}
+                                onHide={() => toggleAccessoryVisibility(accessory.id, contextId, [accessorySurface])}
+                                hideLabel={hideAccessoryLabel}
                                 showHiddenItems={showHiddenItems}
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}

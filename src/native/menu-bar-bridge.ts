@@ -12,6 +12,7 @@ import { resolveWidgetType } from '../components/widgets/resolve-widget-type';
 import type { ResolveWidgetTypeResult } from '../components/widgets/resolve-widget-type';
 import { GET_SETTINGS, GET_COLLECTIONS, GET_STORED_ENTITY_LAYOUT, GET_ROOM_GROUPS } from '../lib/graphql/queries';
 import { hiddenRoomsFor } from '../lib/room-visibility';
+import { hiddenAccessoriesFor } from '../lib/accessory-visibility';
 import type {
   GetSettingsResponse,
   GetCollectionsResponse,
@@ -356,7 +357,11 @@ export function setupMenuBarBridge(): void {
             if (roomLayoutData?.storedEntityLayout?.layoutJson) {
               const layout: RoomLayoutData = JSON.parse(roomLayoutData.storedEntityLayout.layoutJson);
               result.roomLayouts[roomId] = {
-                hiddenAccessories: layout.visibility?.hiddenAccessories ?? [],
+                // The menu bar drills into a room and lists that room's
+                // contents, so it follows the room surface — an accessory
+                // hidden from the home view alone still shows here.
+                // See lib/accessory-visibility.ts.
+                hiddenAccessories: hiddenAccessoriesFor(layout.visibility, 'room') ?? [],
                 hiddenGroups: layout.visibility?.hiddenGroups ?? [],
                 itemOrder: layout.itemOrder ?? [],
               };

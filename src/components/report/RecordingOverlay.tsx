@@ -14,6 +14,15 @@
  * the tabs stay tappable: someone reproducing a problem usually has to navigate
  * to it, and a recording control that blocks navigation defeats the recording.
  *
+ * It is above every dialog for the same reason, one bar higher. Clearing the
+ * tab bar at `z-[10002]` left it under the whole dialog band — dialogs at
+ * 10050 (raised past that again when they open over an expanded panel), alert
+ * dialogs, menus and selects at 10060, and the background-settings dialog at
+ * 10100 — so opening Analytics while recording buried the pill AND its scrim
+ * swallowed the tap, with no other way to stop the recording. Navigating to
+ * the problem is the point of a recording, and half this app's screens are
+ * reached through a dialog.
+ *
  * Bottom right and small, not centred and wide. While this is up, the app is
  * the thing being looked at; the control only has to be findable, not read.
  */
@@ -42,7 +51,7 @@ export function RecordingOverlay({ elapsedMs, maxMs, onStop }: RecordingOverlayP
       data-report-exclude="true"
       // pointer-events-none on the frame so it never eats a tap meant for the
       // app; the pill itself takes them back.
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[10002] flex justify-end px-4"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[10200] flex justify-end px-4"
       style={{ paddingBottom: 'calc(var(--safe-area-bottom, 0px) + 5rem)' }}
       role="status"
       aria-live="polite"
