@@ -33,17 +33,23 @@ describe('backoff growth', () => {
     expect(outageSeconds(10, false)).toBeGreaterThan(100);
   });
 
-  it('keeps a relay reachable across the same ten attempts', () => {
-    // Same failure, same number of attempts — the relay must not be the one
-    // paying two minutes for it.
-    expect(outageSeconds(10, true)).toBeLessThan(60);
+  it('retries a routine blip just as fast as it ever did', () => {
+    // The first six attempts land inside ~21s — the same curve the old 8s
+    // ceiling produced, because the two only diverge once delays pass 8s. A
+    // deliberate server cycle never even gets here: 1001/1012 resets backoff.
+    expect(outageSeconds(6, true)).toBeLessThan(25);
   });
 
-  it('caps a relay far below an ordinary client', () => {
+  it('decays to a whisper during a sustained outage', () => {
+    // The ceiling governs exactly one case: a fleet-wide outage with no
+    // server goodbye. The old 8s ceiling was measured (staging, Aug 2026)
+    // turning that into a permanent ~125 connect-attempts/s battering from a
+    // 1,000-relay fleet — the servers could never re-admit anyone. At ≥60s
+    // the same fleet asks ~17 times/s, which recovery can absorb.
     let delay = INITIAL_RECONNECT_DELAY;
     for (let i = 0; i < 40; i++) delay = nextReconnectDelay(delay, true);
     expect(delay).toBe(MAX_RELAY_RECONNECT_DELAY);
-    expect(MAX_RELAY_RECONNECT_DELAY).toBeLessThan(MAX_RECONNECT_DELAY);
+    expect(MAX_RELAY_RECONNECT_DELAY).toBeGreaterThanOrEqual(60_000);
   });
 
   it('still backs off — this is not a retry storm', () => {
