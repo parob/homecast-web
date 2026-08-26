@@ -969,7 +969,17 @@ export interface HomeLayoutData {
    */
   automationCardOrder?: string[];
   visibility?: {
+    /**
+     * The single pre-split hidden-rooms list. Still written, as the
+     * intersection of the two below, for bundled web builds that predate the
+     * split; still the fallback when neither per-surface key exists, which is
+     * what makes the split need no migration. See lib/room-visibility.ts.
+     */
     hiddenRooms?: string[];
+    /** Rooms hidden from the home view. Absent = inherit `hiddenRooms`. */
+    hiddenRoomsHome?: string[];
+    /** Rooms hidden from the left menu. Absent = inherit `hiddenRooms`. */
+    hiddenRoomsMenu?: string[];
     /** Summary-row pills turned off for this home. Absent = all shown. */
     hiddenSummarySections?: SummarySectionId[];
     /** Individual Actions turned off for this home. Absent = all shown. */

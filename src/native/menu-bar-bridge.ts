@@ -11,6 +11,7 @@ import { apolloClient } from '../lib/apollo';
 import { resolveWidgetType } from '../components/widgets/resolve-widget-type';
 import type { ResolveWidgetTypeResult } from '../components/widgets/resolve-widget-type';
 import { GET_SETTINGS, GET_COLLECTIONS, GET_STORED_ENTITY_LAYOUT, GET_ROOM_GROUPS } from '../lib/graphql/queries';
+import { hiddenRoomsFor } from '../lib/room-visibility';
 import type {
   GetSettingsResponse,
   GetCollectionsResponse,
@@ -328,7 +329,9 @@ export function setupMenuBarBridge(): void {
             if (homeLayoutData?.storedEntityLayout?.layoutJson) {
               const layout: HomeLayoutData = JSON.parse(homeLayoutData.storedEntityLayout.layoutJson);
               result.homeLayouts[homeId] = {
-                hiddenRooms: layout.visibility?.hiddenRooms ?? [],
+                // The menu bar is a navigation menu, so it follows the same
+                // hidden-rooms list the left menu does. See lib/room-visibility.ts.
+                hiddenRooms: hiddenRoomsFor(layout.visibility, 'menu') ?? [],
                 roomOrder: layout.roomOrder ?? [],
               };
             } else {
