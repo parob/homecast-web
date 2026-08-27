@@ -188,16 +188,25 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
         {/* The header is the name and nothing else. An action used to sit at the
             end of this row, where the close button's 40px hit circle reaches
             23px past the content edge — it collided whenever the name was long
-            enough to stop the row shrinking, which is most names on a phone. */}
-        <DialogHeader className="min-w-0">
-          <DialogTitle className="text-base leading-tight pr-8 flex items-center gap-2 min-w-0">
-            <LineChart className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 min-w-0 truncate">
-              {target?.accessory?.name ?? target?.group?.name ?? target?.status?.title ?? 'Analytics'}
-            </span>
+            enough to stop the row shrinking, which is most names on a phone.
+
+            Two columns — the icon, then the text — so the title and the
+            subtitle share a column and start on the same edge. The icon used
+            to lead a flex row *inside* the title, which put the two on
+            different axes: the title was laid out in the remainder after the
+            16px icon and its 8px gap, the subtitle across the whole header.
+            Below `sm`, where DialogHeader is `text-center`, that is half of
+            24px = a 12px difference in centre; at `sm` and up, `text-left`,
+            the same 24px as a left edge. Left-aligning at every width also
+            puts the header on the same edge as everything below it. */}
+        <DialogHeader className="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 space-y-0 text-left">
+          <LineChart className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <DialogTitle className="text-base leading-tight pr-8 min-w-0 truncate">
+            {target?.accessory?.name ?? target?.group?.name ?? target?.status?.title ?? 'Analytics'}
           </DialogTitle>
           {target?.status?.subtitle && (
-            <DialogDescription className="text-xs pr-8">
+            // col-start-2 keeps it under the title rather than under the icon.
+            <DialogDescription className="col-start-2 text-xs pr-8">
               {target.status.subtitle}
             </DialogDescription>
           )}
