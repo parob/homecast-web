@@ -56,9 +56,50 @@ describe('HistoryDialog header', () => {
     // `min-w-0` the row is floored at its min-content width and overflows.
     const title = screen.getByRole('heading', { level: 2 });
     expect(title.className).toContain('min-w-0');
-    const name = title.querySelector('.truncate');
-    expect(name).not.toBeNull();
-    expect(name!.className).toContain('min-w-0');
+    expect(title.className).toContain('truncate');
+  });
+
+  // The title and the subtitle have to start on the same edge. They did not:
+  // `DialogHeader` is `text-center sm:text-left`, so on a phone both were
+  // centred — but the title was centred inside the flex remainder after the
+  // icon and its gap, and the subtitle across the whole header, leaving the
+  // two on axes 12px apart (24px at ≥sm, as a left-edge offset instead).
+  it('puts the title and the subtitle in one column, left-aligned', () => {
+    render(
+      <HistoryDialog
+        target={{
+          homeId: 'HOME-1',
+          status: {
+            title: 'Status · County Hall',
+            subtitle: 'temperature, humidity, locks and 1 more · 13 sensors',
+            categories: [],
+          },
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    const title = screen.getByRole('heading', { level: 2 });
+    const header = title.parentElement!;
+    const subtitle = screen.getByText(/13 sensors/);
+
+    // Left at every width, not centred below `sm` — everything under the
+    // header is left-aligned at every width too.
+    expect(header.className).toContain('text-left');
+
+    // The icon owns column 1 and the text column 2, so the two share an edge
+    // without either carrying a padding that has to match the icon's width.
+    expect(header.className).toContain('grid-cols-[auto_minmax(0,1fr)]');
+    expect(subtitle.className).toContain('col-start-2');
+
+    // `DialogHeader`'s own `space-y-1.5` would push the title out of the
+    // icon's row, so it is neutralised in favour of the grid's gap.
+    expect(header.className).toContain('space-y-0');
+
+    // Nothing between the icon and the title text any more: the title element
+    // IS the text, so the header grid — not a nested flex row — decides where
+    // it starts.
+    expect(title.querySelector('span')).toBeNull();
   });
 
   it('still opens the accessory scope and closes the dialog', async () => {
