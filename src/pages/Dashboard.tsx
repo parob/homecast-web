@@ -8555,7 +8555,23 @@ const Dashboard = () => {
                         // offers to come back. A room with nothing to act on
                         // would otherwise be a one-way door.
                         const canToggleRoom = !!room && !!selectedHomeId && !isViewOnly && (editMode || roomHidden);
-                        return (
+                        /*
+                         * The same toggle, reachable without entering Edit
+                         * Layout first — which on a mouse was the only route to
+                         * it. The sidebar row's Hide Room writes `menu` and the
+                         * room view's writes both, so neither one answered
+                         * "hide this room from the home view".
+                         *
+                         * Not on touch, and not merely because a mouse has no
+                         * long press: Radix opens a context menu on its own
+                         * 700ms hold as well as on `contextmenu`, and an open
+                         * menu puts `pointer-events: none` on the body. The
+                         * heading is a <button>, so it sits in LIFT_OPT_OUT and
+                         * a hold on it does nothing today; touch keeps the
+                         * Edit Layout button it already has.
+                         */
+                        const canContextToggleRoom = !!room && !!selectedHomeId && !isViewOnly && !isTouchDevice;
+                        const headingRow = (
                           <div className={`flex items-center gap-2 ${compactMode ? 'mb-1.5 mt-1' : 'mb-3 mt-2'}`}>
                             <button
                               onClick={() => room && handleSelectRoom(room.id)}
@@ -8589,6 +8605,31 @@ const Dashboard = () => {
                               />
                             )}
                           </div>
+                        );
+                        if (!canContextToggleRoom) return headingRow;
+                        return (
+                          <ContextMenu>
+                            <ContextMenuTrigger asChild>{headingRow}</ContextMenuTrigger>
+                            <ContextMenuContent>
+                              {/* Names the surface, like the tiles' Hide from
+                                  Home does: a room can be hidden from the menu
+                                  independently, and this item speaks for one of
+                                  the two. */}
+                              <ContextMenuItem onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}>
+                                {roomHidden ? (
+                                  <>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Show Room on Home
+                                  </>
+                                ) : (
+                                  <>
+                                    <EyeOff className="h-4 w-4 mr-2" />
+                                    Hide Room from Home
+                                  </>
+                                )}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         );
                       })()}
                       {/* Compute context and ordered items for this room */}
