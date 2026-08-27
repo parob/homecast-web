@@ -109,9 +109,30 @@ export function errorCode(e: unknown): string | undefined {
  * These are the only ones worth rewording: for everything else the thrown
  * message says something specific about the accessory, and replacing it with
  * generic prose would throw away the useful half.
+ *
+ * `DEVICE_ERROR` used to be in here, and it was the wrong side of the line.
+ * The two codes come from adjacent branches of the same handler
+ * (`websocket/handler.py`): `TIMEOUT` is the *cloud* giving up on the relay —
+ * genuinely no verdict — while `DEVICE_ERROR` is raised when the relay
+ * **answered** and the answer was an error. It is the verdict, and its message
+ * is the only place the reason exists.
+ *
+ * parob/homecast-cloud#28: a lock answered in 87ms and the user was told
+ * "didn't respond in time", five times running. Both halves of that sentence
+ * were false, and the real reason had already been discarded.
  */
-const NO_VERDICT_CODES = new Set(['TIMEOUT', 'DEVICE_ERROR']);
+const NO_VERDICT_CODES = new Set(['TIMEOUT']);
 const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE', 'LOCAL_ONLY']);
+
+/**
+ * The relay's stable code, prepended to its own prose by the transport.
+ *
+ * A toast that opens "WRITE_FAILED: " asks the reader to skip a token before
+ * the sentence starts, and `errorCode()` already carries the code for callers
+ * that branch on it. Stripped for display only — `describeError` still keeps
+ * it, because a log search is exactly what it is for.
+ */
+const RELAY_CODE_PREFIX = /^[A-Z][A-Z0-9_]{2,}:\s+/;
 
 /**
  * What to tell someone whose device write did not land.
@@ -126,6 +147,10 @@ const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE', 'LOCAL_ONLY']);
  * connection: "didn't respond in time" is all we actually know. Whether the
  * connection is the cause is a separate question, now answered by the
  * connection indicator rather than guessed at here.
+ *
+ * Everything else answered, so it gets said rather than summarised. Only the
+ * machine prefix comes off: the sentence itself is the relay's to write, and
+ * inventing prose over the top of it is how #28 happened.
  */
 export function describeWriteFailure(e: unknown, accessoryName?: string): string {
   const name = typeof accessoryName === 'string' ? accessoryName.trim() : '';
@@ -136,6 +161,11 @@ export function describeWriteFailure(e: unknown, accessoryName?: string): string
   }
   if (code && UNREACHABLE_CODES.has(code)) {
     return `Couldn't reach ${name || 'the accessory'} — your home isn't connected.`;
+  }
+
+  if (e && typeof e === 'object') {
+    const message = readString(e as Record<string, unknown>, 'message').replace(RELAY_CODE_PREFIX, '');
+    if (message) return truncate(message);
   }
   return describeError(e);
 }
