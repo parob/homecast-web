@@ -81,3 +81,44 @@ export function isBackgroundTarget(target: EventTarget | null): boolean {
 export function exceededSlop(dx: number, dy: number, slop: number = LIFT_SLOP): boolean {
   return Math.abs(dx) > slop || Math.abs(dy) > slop;
 }
+
+/**
+ * The tolerance dnd-kit's `TouchSensor` is configured with. Past this it
+ * abandons the hold, so anything keyed to that hold has to abandon with it.
+ */
+export const LIFT_SENSOR_TOLERANCE = 5;
+
+/**
+ * Things that carry a lift of their own, and so are what this module's early
+ * reveal watches for. The inverse of the tail of {@link LIFT_OPT_OUT}: those are
+ * excluded from the *background* hold precisely because they have their own.
+ */
+export const LIFT_DRAGGABLE = '[data-draggable-item], [data-sortable-id], [data-tab-slot]';
+
+/**
+ * When hidden items are revealed, measured from the finger going down.
+ *
+ * **This has to be before the drag activates, and that ordering is the whole
+ * point.** Revealing grows the page — on the home view every room is its own
+ * grid, so a room above the drag getting taller moves everything below it, 127px
+ * on a 428pt phone. Do that *after* dnd-kit has measured and nothing can be
+ * done about it: it takes the active item's rect once at drag start and derives
+ * everything after from that plus the pointer delta, so a page that moves takes
+ * the drag's frame of reference with it.
+ *
+ * Two fixes were driven and neither worked. Re-measuring only corrects the
+ * targets, never the active rect. Cancelling the growth by scrolling the same
+ * distance holds the page still to the eye, but dnd-kit watches its scrollable
+ * ancestors and counts that scroll as the content having moved — trading a
+ * visible 127px error for an invisible one.
+ *
+ * So the growth happens *first* instead, in the gap between the finger settling
+ * and the sensor firing, and dnd-kit measures a page that has already finished
+ * moving. Nothing to compensate, nothing to miscount.
+ *
+ * {@link LIFT_DELAY_IDLE} minus this is the settling budget — the revealed
+ * tiles are real widgets and render asynchronously, so the gap has to be big
+ * enough for them to land, and small enough that a hold this long is already
+ * plainly a hold rather than a tap.
+ */
+export const LIFT_REVEAL_DELAY = 250;

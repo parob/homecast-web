@@ -98,6 +98,40 @@ async function centreOf(page: Page, name: string) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/**
+ * A finger that stays down, so the caller can measure between the hold and the
+ * drag. `pressHoldDrag` cannot: its `duringHold` runs before any movement, and
+ * the home-view case needs the target re-measured after the reveal has landed.
+ */
+async function finger(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (x: number, y: number) => [{ x, y, radiusX: 10, radiusY: 10, force: 1 }];
+  let at = { x: 0, y: 0 };
+  return {
+    async press(p: { x: number; y: number }) {
+      at = p;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(p.x, p.y) });
+      await page.waitForTimeout(HOLD_MS);
+    },
+    async dragTo(p: { x: number; y: number }) {
+      const STEPS = 14;
+      for (let i = 1; i <= STEPS; i++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: touch(at.x + ((p.x - at.x) * i) / STEPS, at.y + ((p.y - at.y) * i) / STEPS),
+        });
+        await page.waitForTimeout(40);
+      }
+      at = p;
+    },
+    async release() {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(800);
+      await cdp.detach();
+    },
+  };
+}
+
 test.describe('revealing hidden tiles at the lift', () => {
   test.beforeEach(() => {
     // One hidden tile in the Living Room, so there is something to reveal.
@@ -149,5 +183,79 @@ test.describe('revealing hidden tiles at the lift', () => {
     // after the revealed tile instead, which this catches.
     expect(after.slice(0, 2), `order went ${before.join(',')} -> ${after.join(',')}`)
       .toEqual([second, first]);
+  });
+});
+
+/**
+ * The home view stacks every room as its own grid, so a room ABOVE the drag can
+ * grow when its hidden tiles come back — and then the whole page moves under the
+ * finger. "Hidden items sort to the end" is a per-grid argument and says nothing
+ * about this.
+ *
+ * Re-measuring cannot fix it: dnd-kit captures the active item's rect once at
+ * drag start and derives its position from that plus the pointer delta, so a page
+ * that moves takes the drag's own frame of reference with it. The fix is to not
+ * let the page move — compensate the scroll by however much grew above.
+ */
+test.describe('revealing a room above the drag', () => {
+  const BEDROOM_FAN = 'acc-br-fan';
+
+  test.beforeEach(() => {
+    // The Bedroom sits above the Living Room on the home view.
+    overrideEntityLayouts({ 'room:room-bedroom': { visibility: { hiddenAccessories: [BEDROOM_FAN] } } });
+  });
+
+  async function openHomeViewAtLivingRoom(page: Page) {
+    await setupMocks(page);
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await expect(tile(page, 'Thermostat')).toBeVisible({ timeout: 20000 });
+    // The Living Room is the last section, far below the fold. A touch at an
+    // off-viewport coordinate hits nothing, so scroll it into view first.
+    await tile(page, 'Thermostat').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(900);
+  }
+
+  test('the tile under the finger does not move when a room above reveals', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — the lift is a touch gesture');
+
+    await openHomeViewAtLivingRoom(page);
+
+    const held = await tile(page, 'Thermostat').boundingBox();
+    const hand = await finger(page);
+    await hand.press({ x: held!.x + held!.width / 2, y: held!.y + held!.height / 2 });
+
+    // The reveal has landed by now; the held tile must still be where it was.
+    const revealed = await page.locator('main').getByText('Ceiling Fan', { exact: true }).count();
+    const nowAt = await tile(page, 'Thermostat').boundingBox();
+    await hand.release();
+
+    expect(revealed, 'the room above never revealed, so this proves nothing').toBeGreaterThan(0);
+    expect(
+      Math.abs(nowAt!.y - held!.y),
+      `the held tile moved ${Math.round(nowAt!.y - held!.y)}px when the room above revealed`,
+    ).toBeLessThanOrEqual(2);
+  });
+
+  test('the drop lands where the finger is, with a room above revealing', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — the lift is a touch gesture');
+
+    await openHomeViewAtLivingRoom(page);
+
+    const before = await tileOrder(page, ['Ceiling Light', 'Thermostat']);
+    expect(before, 'expected both Living Room tiles on screen').toEqual(['Ceiling Light', 'Thermostat']);
+
+    const held = await tile(page, 'Thermostat').boundingBox();
+    const hand = await finger(page);
+    await hand.press({ x: held!.x + held!.width / 2, y: held!.y + held!.height / 2 });
+
+    // Aim at where the target is NOW — after any reveal — because that is what
+    // the person holding the phone can see and aim at.
+    const target = await tile(page, 'Ceiling Light').boundingBox();
+    await hand.dragTo({ x: target!.x + target!.width / 2, y: target!.y + target!.height / 2 });
+    await hand.release();
+
+    const after = await tileOrder(page, ['Ceiling Light', 'Thermostat']);
+    expect(after, `order went ${before.join(',')} -> ${after.join(',')}`)
+      .toEqual(['Thermostat', 'Ceiling Light']);
   });
 });
