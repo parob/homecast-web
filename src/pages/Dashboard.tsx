@@ -140,9 +140,8 @@ import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
+import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 
-/** dnd-kit's default drop animation, which the deferred reveal waits out. */
-const DROP_ANIMATION_MS = 250;
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
@@ -1634,18 +1633,34 @@ const Dashboard = () => {
    *
    * A long press on a tile starts a drag, and that same press turns the mode on
    * — so `beginLift` runs *while a finger is down and dnd-kit is measuring*.
-   * That rules out `setEditModeAndTidy`: both halves of its tidy-up change the
-   * layout under the finger. Revealing hidden tiles registers new droppables,
-   * and dnd-kit re-measures every rect when the container set changes, so the
-   * grid shifts mid-drag and the drop lands somewhere else. Collapsing a summary
-   * section can unmount the very card being dragged.
+   * That still rules out `setEditModeAndTidy`, whose collapse can unmount the
+   * very card being dragged. It exists to stop you editing behind an open
+   * section; arriving *from* a card inside one means that section is exactly
+   * where you are working, so on this route it never runs at all.
    *
-   * So the mode comes on now and the tidy-up waits — except the collapse, which
-   * never runs on this route at all. It exists to stop you editing behind an
-   * open section; arriving *from* a card inside one means that section is
-   * exactly where you are working.
+   * The hidden-item reveal used to wait for the drop, because it grows the page
+   * and a page that grows mid-drag cannot be recovered from. It no longer waits
+   * — but nor does it happen here. It happens 250ms *earlier*, on the same
+   * press, before dnd-kit's sensor has fired and taken its measurements
+   * (`useRevealBeforeLift`, and `LIFT_REVEAL_DELAY` for why that ordering is the
+   * only thing that works). By the time this runs the page has finished moving
+   * and dnd-kit is about to measure it exactly once, at rest.
+   *
+   * `screenshots/reveal-during-lift.spec.ts` holds all of it in a real browser,
+   * including the case that disproved the first two attempts: a room *above* the
+   * drag revealing on the home view. It has to be a browser test — jsdom has
+   * neither the CSS transforms `rectSortingStrategy` applies nor the rects
+   * dnd-kit picks a drop target from, so a stubbed version answers whatever the
+   * stub says.
+   *
+   * What still waits for the drop is everything that moves the layout *above*
+   * the finger — the sidebar width and the summary edit pills, both gated on
+   * `liftInFlight`.
    */
   const liftWatchdogRef = useRef<number | undefined>(undefined);
+  // Through a ref so `beginLift` stays stable: it is handed to every DndContext
+  // by context, and a new identity each render rebuilds the sensors mid-gesture.
+  const releaseAnchorRef = useRef<() => void>(() => {});
   const [liftInFlight, setLiftInFlight] = useState(false);
   const editModeRef = useRef(editMode);
   editModeRef.current = editMode;
@@ -1657,13 +1672,7 @@ const Dashboard = () => {
 
   const endLift = useCallback(() => {
     window.clearTimeout(liftWatchdogRef.current);
-    setLiftInFlight(prev => {
-      if (!prev) return prev;
-      // After the drop animation, not during it — the overlay is still flying
-      // home, and new droppables appearing under it scramble the landing.
-      window.setTimeout(() => setShowHiddenItems(true), DROP_ANIMATION_MS);
-      return false;
-    });
+    setLiftInFlight(prev => (prev ? false : prev));
   }, []);
 
   const beginLift = useCallback(() => {
@@ -1673,12 +1682,45 @@ const Dashboard = () => {
     // wiggling and go inert, and the drop would reveal every hidden tile.
     if (!isTouchDeviceRef.current) return;
     if (editModeRef.current) return;   // already arranging; nothing to enter
+    // The drag is live from here, so the reveal's scroll anchor must stop: a
+    // correcting scroll is read by dnd-kit as the content having moved, and it
+    // would put the drop out by exactly what it just corrected.
+    releaseAnchorRef.current();
     setEditMode(true);
+    // Normally already true: `useRevealBeforeLift` ran it 250ms ago, precisely
+    // so the page finished moving before dnd-kit measured it. This is the
+    // backstop for a drag that arrives without that press — a mouse in a hybrid
+    // browser, a keyboard drag, a synthetic event in a test — where there is no
+    // hold to have hung it on. Idempotent either way.
+    setShowHiddenItems(true);
     setLiftInFlight(true);
     // Insurance against a DndContext that forgets onDragCancel: without an end,
-    // the deferred reveal never runs and the sidebar never widens.
+    // the sidebar never widens and the summary pills never come back.
     liftWatchdogRef.current = window.setTimeout(() => endLift(), LIFT_WATCHDOG_MS);
   }, [endLift]);
+
+  /*
+   * Hidden items come back a beat BEFORE the drag starts, not when it does.
+   *
+   * Revealing grows the page, and on the home view each room is its own grid, so
+   * a room above the drag getting taller moves everything below it. Doing that
+   * after dnd-kit has measured is unrecoverable — see LIFT_REVEAL_DELAY for the
+   * two fixes that were driven and failed. Doing it in the gap before the sensor
+   * fires costs nothing: dnd-kit simply measures a page that has stopped moving.
+   *
+   * Undone only if the press never became a drag. `editMode` is the test rather
+   * than a flag of its own, because a press that *did* become one ends with a
+   * touchend too, and that one must keep what it revealed.
+   */
+  const { releaseAnchor } = useRevealBeforeLift({
+    enabled: isTouchDevice && !editMode,
+    onReveal: useCallback(() => setShowHiddenItems(true), []),
+    onAbandon: useCallback(() => {
+      if (!editModeRef.current) setShowHiddenItems(false);
+    }, []),
+  });
+
+  releaseAnchorRef.current = releaseAnchor;
 
   useEffect(() => () => window.clearTimeout(liftWatchdogRef.current), []);
   // Scenes/Automations/Status sections, toggled by the pills in the summary
@@ -3999,14 +4041,10 @@ const Dashboard = () => {
   /*
    * Hidden rooms come back as soon as the hold takes, not when you let go.
    *
-   * `showHiddenItems` waits for the drop, because revealing hidden *tiles*
-   * inserts them into the grid the finger is in: new droppables, a changed
-   * SortableContext, and every sibling's index shifting under an active drag.
-   *
-   * A room is different in the one way that matters. Hidden rooms sort last, so
-   * revealing one appends a section *below everything* — nothing above it moves,
-   * and the drag is untouched. So rooms need not wait, and waiting was visible:
-   * the mode arrived, and then a moment later the room did.
+   * `showHiddenItems` now does too, so the `||` is belt and braces rather than
+   * the load-bearing difference it once was: this stayed true through the drop
+   * while the tile reveal was still deferred, and it keeps rooms revealed on the
+   * menu route, where no lift ever happens.
    *
    * Declared here rather than beside `filteredRooms` because `sidebarTree`
    * below reads it too, and a `const` referenced above its declaration is a
