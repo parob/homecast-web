@@ -62,9 +62,14 @@ export function HomeNotificationsSection({ home }: { home: { id: string; name: s
   return (
     <div className="space-y-3">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notifications</p>
+      {/* Every row below is a name and a switch, which is also what the
+          Automations page looks like — where the switch does something else.
+          So this line has to say what these ones silence, and what they leave
+          alone; "turn off individual automations" was read as turning the
+          automation off, which is the one thing it does not do. */}
       <p className="text-xs text-muted-foreground">
-        Applies to this device only. Turn off the home to silence everything in it, or turn off
-        individual automations that send notifications.
+        Applies to this device only. Turning one off silences its notifications — the automation
+        keeps running.
       </p>
 
       {/* The device-wide switch lives on a different screen now, so say why
