@@ -25,6 +25,7 @@ import { ScenesSection } from '@/components/scenes/ScenesSection';
 import { GET_SCENES, GET_HOMES } from '@/lib/graphql/queries';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { PinnedTabsProvider } from '@/contexts/PinnedTabsContext';
+import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 
 const HOME_ID = 'HOME-1';
 
@@ -88,6 +89,9 @@ const lockShut = acc('k2', 'lock', [['lock_current_state', 1], ['lock_target_sta
 const alarm = acc('s1', 'security_system', [
   ['security_system_current_state', 3], ['security_system_target_state', 3],
 ]);
+
+/** Hidden lists, so absent means shown and no migration was ever needed. */
+const HIDDEN_LIGHTS: HomeLayoutData = { visibility: { hiddenActions: ['lights'] } };
 
 /**
  * A one-way action's card is itself the button; a two-way action's card is not,
@@ -396,21 +400,22 @@ describe('hiding an action', () => {
   });
 
   it('offers Hide Scene on right-click, and reports which one', () => {
-    const onHideAction = vi.fn();
-    renderSection([lightOn], { homeId: 'HOME-1', onHideAction });
+    const onToggleActionHidden = vi.fn();
+    renderSection([lightOn], { homeId: 'HOME-1', onToggleActionHidden });
 
     fireEvent.contextMenu(card('lights'));
     fireEvent.click(screen.getByText('Hide Scene'));
 
-    expect(onHideAction).toHaveBeenCalledTimes(1);
+    expect(onToggleActionHidden).toHaveBeenCalledTimes(1);
     // The stable id, not the label — the label flips with live device state.
-    expect(onHideAction.mock.calls[0][0]).toBe('lights');
+    // `false` is the wanted *visibility*, i.e. hide it.
+    expect(onToggleActionHidden).toHaveBeenCalledWith('lights', false);
   });
 
   it('offers nothing to right-click on touch, where Edit Layout owns hiding', () => {
     renderSection(
       [lightOn],
-      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { homeId: 'HOME-1', onToggleActionHidden: vi.fn() },
       { touchMode: true, editMode: false },
     );
     fireEvent.contextMenu(card('lights'));
@@ -423,6 +428,50 @@ describe('hiding an action', () => {
     renderSection([lightOn], { homeId: 'HOME-1' });
     fireEvent.contextMenu(card('lights'));
     expect(screen.queryByText('Hide Scene')).toBeNull();
+  });
+
+  it('drops a hidden shortcut when nothing is revealing it', () => {
+    renderSection([lightOn], { homeId: 'HOME-1', homeLayout: HIDDEN_LIGHTS });
+    expect(screen.queryByTestId('action-lights')).toBeNull();
+  });
+
+  it('reveals a hidden shortcut under Show Hidden Items, without editing', () => {
+    renderSection([lightOn], {
+      homeId: 'HOME-1', homeLayout: HIDDEN_LIGHTS, showHidden: true,
+    });
+    expect(screen.getByTestId('action-lights')).toBeTruthy();
+    // Dimmed alone is a mystery; the badge is what says why.
+    expect(tile('lights').getByText('Hidden')).toBeTruthy();
+  });
+
+  it('offers Unhide on the revealed card — the way back Settings used to be', () => {
+    const onToggleActionHidden = vi.fn();
+    renderSection([lightOn], {
+      homeId: 'HOME-1', homeLayout: HIDDEN_LIGHTS, showHidden: true, onToggleActionHidden,
+    });
+
+    fireEvent.contextMenu(card('lights'));
+    fireEvent.click(screen.getByText('Unhide Scene'));
+
+    // `true` — wanted visibility, the opposite of the hide above.
+    expect(onToggleActionHidden).toHaveBeenCalledWith('lights', true);
+  });
+
+  it('unhides from the badge on touch, where there is no menu at all', () => {
+    // Edit Layout reveals hidden cards on touch the way Show Hidden Items does
+    // on a desktop. Before this, `visibleActions` took no reveal argument at
+    // all, so a shortcut hidden from a phone could not be brought back from
+    // one — Settings was the only route, on every platform.
+    const onToggleActionHidden = vi.fn();
+    renderSection(
+      [lightOn],
+      { homeId: 'HOME-1', homeLayout: HIDDEN_LIGHTS, onToggleActionHidden },
+      { touchMode: true, editMode: true },
+    );
+
+    expect(screen.getByTestId('action-lights')).toBeTruthy();
+    fireEvent.click(tile('lights').getByLabelText('Unhide Lights'));
+    expect(onToggleActionHidden).toHaveBeenCalledWith('lights', true);
   });
 });
 
@@ -437,7 +486,7 @@ describe('pinning', () => {
   it('offers nothing to long-press on a phone, where the press is a lift', () => {
     renderSection(
       [lightOn],
-      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { homeId: 'HOME-1', onToggleActionHidden: vi.fn() },
       { touchMode: true, editMode: false },
       PINS_ON,
     );
@@ -453,7 +502,7 @@ describe('pinning', () => {
   it('offers Pin on the tile while editing, which is where touch pins from now', () => {
     renderSection(
       [lightOn],
-      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { homeId: 'HOME-1', onToggleActionHidden: vi.fn() },
       { touchMode: true, editMode: true },
       PINS_ON,
     );
@@ -467,7 +516,7 @@ describe('pinning', () => {
   it('offers both on the desktop, where there is no edit mode', () => {
     renderSection(
       [lightOn],
-      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { homeId: 'HOME-1', onToggleActionHidden: vi.fn() },
       { touchMode: false, editMode: false },
       PINS_ON,
     );
@@ -483,7 +532,7 @@ describe('pinning', () => {
     // test is the stored name, and it has to hold on whichever route reaches it.
     renderSection(
       [lightOn],
-      { homeId: 'HOME-1', onHideAction: vi.fn() },
+      { homeId: 'HOME-1', onToggleActionHidden: vi.fn() },
       { touchMode: true, editMode: true },
       { ...PINS_ON, toggle },
     );
@@ -494,7 +543,7 @@ describe('pinning', () => {
   });
 
   it('shows no pin item where there is no tab bar to pin to', () => {
-    renderSection([lightOn], { homeId: 'HOME-1', onHideAction: vi.fn() });
+    renderSection([lightOn], { homeId: 'HOME-1', onToggleActionHidden: vi.fn() });
     fireEvent.contextMenu(card('lights'));
     expect(screen.queryByText('Pin to Tab Bar')).toBeNull();
   });
