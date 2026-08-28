@@ -28,7 +28,6 @@ describe('visibleHomeSettingsSections', () => {
   it('shows the always-on sections for a plain cloud home', () => {
     expect(visibleHomeSettingsSections(flags())).toEqual([
       'home-screen',
-      'actions',
       'notifications',
       'reliability',
       'analytics',
@@ -39,7 +38,7 @@ describe('visibleHomeSettingsSections', () => {
     const visible = visibleHomeSettingsSections(flags({ isCommunity: true }));
     expect(visible).not.toContain('notifications');
     expect(visible).not.toContain('reliability');
-    expect(visible).toEqual(['home-screen', 'actions', 'analytics']);
+    expect(visible).toEqual(['home-screen', 'analytics']);
   });
 
   it('hides MQTT unless developer mode is on', () => {

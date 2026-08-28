@@ -52,7 +52,18 @@ const light = acc('l', 'lightbulb', 'power_state', true);
 
 const scene = (id: string, name: string): HomeKitScene => ({ id, name, actionCount: 2 } as HomeKitScene);
 
-function renderSection(scenes: HomeKitScene[], accessories: HomeKitAccessory[], layout: HomeLayoutData | null) {
+function renderSection(
+  scenes: HomeKitScene[],
+  accessories: HomeKitAccessory[],
+  layout: HomeLayoutData | null,
+  {
+    showHidden = false,
+    onToggleSceneHidden,
+  }: {
+    showHidden?: boolean;
+    onToggleSceneHidden?: (sceneId: string, visible: boolean) => void;
+  } = {},
+) {
   const mocks: MockLink.MockedResponse[] = [
     { request: { query: GET_SCENES, variables: { homeId: HOME_ID } }, result: { data: { scenes } } },
     {
@@ -73,6 +84,8 @@ function renderSection(scenes: HomeKitScene[], accessories: HomeKitAccessory[], 
             open
             onRunAction={async () => {}}
             onReorderCards={() => {}}
+            showHidden={showHidden}
+            onToggleSceneHidden={onToggleSceneHidden}
           />
         </LayoutEditProvider>
       </PinnedTabsProvider>
@@ -177,6 +190,43 @@ describe('hiding an Apple Home scene', () => {
     renderSection([scene('s1', 'Movie Night')], [light], layout);
 
     expect(await names(2)).toEqual(['All lights', 'Turn everything off']);
+  });
+
+  it('reveals a hidden scene under Show Hidden Items, without editing', async () => {
+    const layout: HomeLayoutData = { visibility: { hiddenScenes: ['s2'] } };
+    renderSection(
+      [scene('s1', 'Movie Night'), scene('s2', 'Good Night')], [light], layout,
+      { showHidden: true },
+    );
+
+    expect(await names(4)).toContain('Good Night');
+    // Dimmed alone says nothing; the badge is what explains it.
+    expect(screen.getByText('Hidden')).toBeTruthy();
+  });
+
+  it('offers Unhide on the revealed card — the way back Settings used to be', async () => {
+    const onToggleSceneHidden = vi.fn();
+    const layout: HomeLayoutData = { visibility: { hiddenScenes: ['s2'] } };
+    renderSection(
+      [scene('s1', 'Movie Night'), scene('s2', 'Good Night')], [light], layout,
+      { showHidden: true, onToggleSceneHidden },
+    );
+    await names(4);
+
+    fireEvent.contextMenu(screen.getByText('Good Night'));
+    fireEvent.click(screen.getByText('Unhide Scene'));
+    // `true` is the wanted visibility — bring it back.
+    expect(onToggleSceneHidden).toHaveBeenCalledWith('s2', true);
+  });
+
+  it('still says Hide on a visible one, so the menu is not one-way', async () => {
+    const onToggleSceneHidden = vi.fn();
+    renderSection([scene('s1', 'Movie Night')], [light], null, { onToggleSceneHidden });
+    await names(3);
+
+    fireEvent.contextMenu(screen.getByText('Movie Night'));
+    fireEvent.click(screen.getByText('Hide Scene'));
+    expect(onToggleSceneHidden).toHaveBeenCalledWith('s1', false);
   });
 });
 

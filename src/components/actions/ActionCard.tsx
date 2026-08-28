@@ -1,4 +1,4 @@
-import { Loader2, Play, EyeOff } from 'lucide-react';
+import { Loader2, Play, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { actionKey } from '@/lib/pending-writes';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
@@ -7,7 +7,7 @@ import {
   ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { TileEditActions } from '@/components/shared/EditActions';
+import { TileEditActions, HiddenLabel } from '@/components/shared/EditActions';
 import { type HomeActionId } from '@/lib/summary-sections';
 import { getIconColor } from '@/components/widgets/iconColors';
 import { TriStateToggle } from '@/components/ui/tri-state-toggle';
@@ -23,7 +23,7 @@ import { ACTION_ICONS } from './icons';
  */
 export function ActionCard({
   action, homeId, isDarkBackground, isViewOnly, editMode, touchMode,
-  running, progress, runningTextOf, onPress, onRun, onHideAction,
+  running, progress, runningTextOf, onPress, onRun, isHidden, onToggleHidden,
 }: {
   action: HomeAction;
   homeId?: string | null;
@@ -36,7 +36,14 @@ export function ActionCard({
   runningTextOf: (action: HomeAction) => string;
   onPress: (action: HomeAction) => void;
   onRun: (action: HomeAction, direction?: boolean) => void;
-  onHideAction?: (id: HomeActionId) => void;
+  /**
+   * Hidden, and being shown anyway — Edit Layout on touch, Show Hidden Items on
+   * a desktop. A hidden card that is not being revealed is never rendered at
+   * all, so this is only ever true where there is a way to bring it back.
+   */
+  isHidden?: boolean;
+  /** Flips this shortcut's visibility. Bound to the id by the caller. */
+  onToggleHidden?: () => void;
 }) {
   const Icon = ACTION_ICONS[action.icon];
   const colors = getIconColor(action.serviceType);
@@ -55,6 +62,7 @@ export function ActionCard({
   // catalog's chosen direction from anywhere outside the toggle,
   // which is the guess the toggle exists to stop making.
   const toggle = editMode ? undefined : action.toggle;
+  const dimClass = isHidden ? 'opacity-40' : (inert ? 'opacity-50' : '');
 
   const card = (
     <div
@@ -70,7 +78,11 @@ export function ActionCard({
       className={cn(
         'relative rounded-2xl h-fit transition-all duration-300 ring-1 ring-inset',
         isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
-        inert && 'opacity-50',
+        // One class, not two conditions: a revealed hidden card that is also
+        // inert would otherwise carry `opacity-40` and `opacity-50` at once.
+        // Hidden wins — it is the fact the badge is offering to change, and an
+        // inert card that is also hidden still just reads as hidden.
+        dimClass,
         toggle ? 'cursor-default' : (inert ? 'cursor-default' : 'cursor-pointer'),
       )}
       style={{ contain: 'layout style paint' }}
@@ -177,13 +189,17 @@ export function ActionCard({
   const editable = (
     <div className="relative">
       {card}
+      {/* Not gated on `editMode`: a desktop reveals hidden cards through Show
+          Hidden Items without ever entering edit mode, and a dimmed card with
+          nothing saying why is just a mysterious one. */}
+      {isHidden && <HiddenLabel />}
       {/* Gated by `visible` so it can animate away — see SceneCard. The props
           are only meaningful when there is a home to hide it from, so they are
           built defensively rather than under the render condition. */}
       <TileEditActions
-        visible={!!(editMode && homeId && onHideAction)}
-        action={homeId && onHideAction
-          ? { kind: 'remove', label: `Hide ${HOME_ACTION_NAMES[action.id]}`, onRemove: () => onHideAction(action.id) }
+        visible={!!(editMode && homeId && onToggleHidden)}
+        action={homeId && onToggleHidden
+          ? { kind: 'hide', isHidden: !!isHidden, onToggle: onToggleHidden, name: HOME_ACTION_NAMES[action.id] }
           : null}
         tab={homeId
           ? { type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }
@@ -197,7 +213,7 @@ export function ActionCard({
   // does — the right-click menu. On touch there is no menu at all now: a long
   // press lifts the card into Edit Layout, which is where hiding and pinning
   // both live.
-  const canHideHere = !touchMode && !!homeId && !!onHideAction;
+  const canHideHere = !touchMode && !!homeId && !!onToggleHidden;
   if (touchMode || (!canHideHere && !homeId)) return editable;
   return (
     <ContextMenu>
@@ -214,10 +230,13 @@ export function ActionCard({
         <PinTabMenuItem
           tab={{ type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId: homeId! }}
         />
+        {/* Both directions, because a desktop has no Edit Layout to hide or
+            unhide from. Unhide is reachable because Show Hidden Items puts the
+            card back on screen to be right-clicked. */}
         {canHideHere && (
-          <ContextMenuItem onClick={() => onHideAction!(action.id)}>
-            <EyeOff className="mr-2 h-4 w-4" />
-            Hide Scene
+          <ContextMenuItem onClick={onToggleHidden}>
+            {isHidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+            {isHidden ? 'Unhide Scene' : 'Hide Scene'}
           </ContextMenuItem>
         )}
       </ContextMenuContent>

@@ -12,7 +12,6 @@ import { HomeScreenSection } from './HomeScreenSection';
 import { HomeHistorySettings } from './HistorySection';
 import { UptimeSection } from './UptimeSection';
 import { HomeOverviewSection } from './home/HomeOverviewSection';
-import { HomeActionsSection } from './home/HomeActionsSection';
 import { HomeNotificationsSection } from './home/HomeNotificationsSection';
 import { HomeMQTTSection } from './home/HomeMQTTSection';
 import { HomeSectionList } from './home/HomeSectionList';
@@ -82,8 +81,6 @@ export function HomeDetailView({
     switch (section) {
       case 'home-screen':
         return <HomeScreenSection home={home} />;
-      case 'actions':
-        return <HomeActionsSection home={home} />;
       case 'notifications':
         return <HomeNotificationsSection home={home} />;
       case 'reliability':

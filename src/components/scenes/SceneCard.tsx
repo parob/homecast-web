@@ -1,4 +1,4 @@
-import { EyeOff, Loader2, Play, Zap } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Play, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
@@ -111,8 +111,11 @@ export function SceneCard({
     <div className="relative">
       {card}
       {/* Outside the card, so dimming a hidden one does not also grey out
-          the button that brings it back. */}
-      {editMode && isHidden && <HiddenLabel />}
+          the button that brings it back. Not gated on `editMode`: a desktop
+          reveals hidden cards through Show Hidden Items without ever entering
+          it, and a dimmed card with nothing saying why is just a mysterious
+          one. */}
+      {isHidden && <HiddenLabel />}
       {/* Gated by `visible`, not by whether it renders: the badges stay put
           for the length of their exit animation. */}
       <TileEditActions
@@ -139,12 +142,13 @@ export function SceneCard({
         <ContextMenuSeparator />
         <PinTabMenuItem tab={tab} />
         {/* Desktop has no edit mode, so hiding lives where every other desktop
-            hide does. A hidden scene has no card to right-click, which is why
-            Settings carries the list that brings one back. */}
+            hide does. Both directions, because there is nowhere else: Unhide is
+            reachable because Show Hidden Items puts the card back on screen to
+            be right-clicked. */}
         {onToggleHidden && (
-          <ContextMenuItem onClick={() => onToggleHidden(scene, false)}>
-            <EyeOff className="mr-2 h-4 w-4" />
-            Hide Scene
+          <ContextMenuItem onClick={() => onToggleHidden(scene, !!isHidden)}>
+            {isHidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+            {isHidden ? 'Unhide Scene' : 'Hide Scene'}
           </ContextMenuItem>
         )}
       </ContextMenuContent>

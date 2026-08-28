@@ -15,9 +15,11 @@ import { describeError } from '@/lib/describe-error';
 
 /**
  * Per-home control over the summary row at the top of the home view — which
- * pills appear. Which shortcuts sit *inside* the Scenes pill is a page of its
- * own (`home/HomeActionsSection`); the two used to be stacked here, and the
- * shortcut list was long enough to bury everything below it.
+ * pills appear. Whether an *individual* card inside the Scenes pill appears is
+ * not set here: that lives on the card, through Edit Layout on touch and the
+ * right-click menu on a desktop. There was a page of switches for it
+ * (`home/HomeActionsSection`), stacked here before that; it went once the cards
+ * could be hidden and unhidden from both platforms.
  *
  * Scenes carries two switches rather than one. It holds two kinds of card —
  * Apple Home's scenes and the shortcuts derived from the home's accessories —

@@ -4991,9 +4991,9 @@ const Dashboard = () => {
      *
      * They used to be dropped unconditionally (the comment claimed otherwise),
      * so a hidden room could only be brought back from the sidebar. That is the
-     * one thing the room's own heading could not do, and the same hole
-     * `HomeActionsSection` exists to close for scenes: hidden, by definition,
-     * means there is nothing left on screen to act on.
+     * one thing the room's own heading could not do, and the same hole the
+     * Scenes grid had until its cards joined this reveal: hidden, by
+     * definition, means there is nothing left on screen to act on.
      *
      * Last rather than in place, so revealing them never reorders the rooms you
      * actually use — exactly what `getOrderedItems` does with hidden tiles.
@@ -5137,14 +5137,14 @@ const Dashboard = () => {
    * mean — and the pill removes itself once the last one goes, which Settings
    * can undo.
    */
-  const handleHideHomeAction = useCallback((id: HomeActionId) => {
+  const handleToggleHomeActionHidden = useCallback((id: HomeActionId, visible: boolean) => {
     void updateHomeLayout(prev => ({
       ...prev,
       visibility: {
         ...prev?.visibility,
-        hiddenActions: withHomeActionVisibility(HOME_ACTION_ORDER, prev?.visibility?.hiddenActions, id, false),
+        hiddenActions: withHomeActionVisibility(HOME_ACTION_ORDER, prev?.visibility?.hiddenActions, id, visible),
       },
-    })).catch(() => toast.error('Could not hide that scene'));
+    })).catch(() => toast.error(visible ? 'Could not unhide that scene' : 'Could not hide that scene'));
   }, [updateHomeLayout]);
 
   /**
@@ -8476,9 +8476,10 @@ const Dashboard = () => {
                       isViewOnly={isViewOnly}
                       dndEnabled
                       onRunAction={runHomeAction}
-                      onHideAction={selectedHomeId && !isViewOnly ? handleHideHomeAction : undefined}
+                      onToggleActionHidden={selectedHomeId && !isViewOnly ? handleToggleHomeActionHidden : undefined}
                       onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
                       onToggleSceneHidden={selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined}
+                      showHidden={showHiddenItems}
                     />}
                     {showAutomations && <AutomationsSection
                       homeId={selectedHomeId!}

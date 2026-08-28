@@ -15,7 +15,6 @@
 
 export type HomeSettingsSectionId =
   | 'home-screen'
-  | 'actions'
   | 'notifications'
   | 'reliability'
   | 'analytics'
@@ -24,7 +23,6 @@ export type HomeSettingsSectionId =
 /** Render order, top to bottom. Display preferences first, plumbing last. */
 export const HOME_SETTINGS_SECTION_ORDER: HomeSettingsSectionId[] = [
   'home-screen',
-  'actions',
   'notifications',
   'reliability',
   'analytics',
@@ -35,10 +33,6 @@ export const HOME_SETTINGS_SECTION_META: Record<HomeSettingsSectionId, { label: 
   'home-screen': {
     label: 'Home Screen',
     description: 'Which pills the summary row shows for this home',
-  },
-  actions: {
-    label: 'Scenes',
-    description: 'Which scenes this home shows, both Homecast\u2019s and Apple Home\u2019s',
   },
   notifications: {
     label: 'Notifications',
