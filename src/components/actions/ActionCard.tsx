@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Loader2, Play, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
 import { actionKey } from '@/lib/pending-writes';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import {
@@ -24,6 +26,7 @@ import { ACTION_ICONS } from './icons';
 export function ActionCard({
   action, homeId, isDarkBackground, isViewOnly, editMode, touchMode,
   running, progress, runningTextOf, onPress, onRun, isHidden, onToggleHidden,
+  renderPanel,
 }: {
   action: HomeAction;
   homeId?: string | null;
@@ -44,6 +47,15 @@ export function ActionCard({
   isHidden?: boolean;
   /** Flips this shortcut's visibility. Bound to the id by the caller. */
   onToggleHidden?: () => void;
+  /**
+   * The panel this card opens into, if it has one.
+   *
+   * A render prop rather than a node so the panel — a whole ServiceGroupWidget
+   * over every member — is not built for every card on every render of the
+   * grid, only for the one that is actually open. Absent ⇒ the card does not
+   * expand, which is the case for every one-way shortcut.
+   */
+  renderPanel?: () => React.ReactNode;
 }) {
   const Icon = ACTION_ICONS[action.icon];
   const colors = getIconColor(action.serviceType);
@@ -64,17 +76,50 @@ export function ActionCard({
   const toggle = editMode ? undefined : action.toggle;
   const dimClass = isHidden ? 'opacity-40' : (inert ? 'opacity-50' : '');
 
+  const [panelOpen, setPanelOpen] = useState(false);
+  /**
+   * The body opens the panel, and only on a two-way card.
+   *
+   * There is no conflict to resolve: on a card carrying a toggle the body is
+   * already inert — the toggle owns the press and the body deliberately does
+   * nothing, so that a click landing anywhere else cannot run the catalog's
+   * chosen direction. Giving that dead area the panel takes no behaviour away.
+   *
+   * A one-way card is left exactly as it was: its body IS the button, and a
+   * press has to keep running the action.
+   *
+   * `inert` covers the rest — editing (a mis-grab on the way to a drag must not
+   * open anything), view-only, and a disabled card.
+   */
+  const canExpand = !!renderPanel && !!toggle && !inert;
+  const openPanel = () => setPanelOpen(true);
+  // Entering Edit Layout under an open panel takes the panel away; leaving must
+  // not bring it back. Without this the flag survives the mode and the panel
+  // reappeared on its own the moment editing ended.
+  useEffect(() => { if (!canExpand) setPanelOpen(false); }, [canExpand]);
+
   const card = (
     <div
       data-testid={`action-${action.id}`}
-      role={toggle ? undefined : 'button'}
-      tabIndex={toggle ? undefined : (inert ? -1 : 0)}
+      role={toggle ? (canExpand ? 'button' : undefined) : 'button'}
+      tabIndex={toggle ? (canExpand ? 0 : undefined) : (inert ? -1 : 0)}
       aria-disabled={toggle ? undefined : inert}
-      onClick={toggle ? undefined : () => { if (!inert) onPress(action); }}
-      onKeyDown={toggle ? undefined : (e) => {
-        if (inert) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress(action); }
-      }}
+      // Named for what the press does, not for the card — the label beside it
+      // already says "All lights", and a button announced as "All lights" twice
+      // says nothing about where it goes.
+      aria-label={toggle && canExpand ? `${HOME_ACTION_NAMES[action.id]} controls` : undefined}
+      aria-expanded={toggle && canExpand ? panelOpen : undefined}
+      onClick={toggle
+        ? (canExpand ? openPanel : undefined)
+        : () => { if (!inert) onPress(action); }}
+      onKeyDown={toggle
+        ? (canExpand ? (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(); }
+          } : undefined)
+        : (e) => {
+            if (inert) return;
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress(action); }
+          }}
       className={cn(
         'relative rounded-2xl h-fit transition-all duration-300 ring-1 ring-inset',
         isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
@@ -83,7 +128,9 @@ export function ActionCard({
         // Hidden wins — it is the fact the badge is offering to change, and an
         // inert card that is also hidden still just reads as hidden.
         dimClass,
-        toggle ? 'cursor-default' : (inert ? 'cursor-default' : 'cursor-pointer'),
+        toggle
+          ? (canExpand ? 'cursor-pointer' : 'cursor-default')
+          : (inert ? 'cursor-default' : 'cursor-pointer'),
       )}
       style={{ contain: 'layout style paint' }}
       // The arithmetic the subtitle no longer carries. Native title rather than
@@ -205,6 +252,23 @@ export function ActionCard({
           ? { type: 'action', id: action.id, name: HOME_ACTION_NAMES[action.id], homeId }
           : null}
       />
+      {/* Anchored to this wrapper — ExpandedOverlay places itself against its
+          own DOM parent, which is why it lives here beside the card rather than
+          up in the section. Rendered only while open: `renderPanel` builds a
+          widget over every member of the home, and building one per card per
+          render of the grid is not free at 130 lights. */}
+      {canExpand && panelOpen && (
+        <ExpandedOverlay
+          isExpanded={panelOpen}
+          onClose={() => setPanelOpen(false)}
+          onMouseLeave={() => setPanelOpen(false)}
+          // Same width the group tile's own panel uses: two control bars side
+          // by side plus a two-column member grid need the room.
+          width={360}
+        >
+          {renderPanel()}
+        </ExpandedOverlay>
+      )}
     </div>
   );
   if (editMode) return editable;

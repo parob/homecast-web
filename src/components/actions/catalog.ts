@@ -129,6 +129,18 @@ export interface HomeAction {
   serviceType: string;
   /** How many accessories this press would write to. */
   targetCount: number;
+  /**
+   * Every accessory this action covers, whatever state it is in.
+   *
+   * Not derivable from `steps`: those hold only the accessories the *next
+   * press* would write to, which is a filtered subset and empty at either end
+   * of a toggle. The expanded panel needs the whole membership — it shows the
+   * set, not a press — so it is carried separately.
+   *
+   * Present only on the power actions, which are the ones whose members form a
+   * coherent set to expand. See `expandableAction`.
+   */
+  memberIds?: string[];
   /** True when the next press turns things on / opens / arms. */
   turningOn: boolean;
   /** Nothing left to do — render dimmed; the subtitle says why. */
@@ -338,6 +350,9 @@ function buildPowerAction(
     icon: opts.icon,
     serviceType: opts.serviceType,
     targetCount: writes.length,
+    // Every member, not `writes`: see the note on the field. Order follows the
+    // accessory list, so the panel's member grid reads the same way twice.
+    memberIds: targets.map(t => t.accessory.id),
     turningOn,
     // Always false, and now says so. A power action is never spent — one
     // direction or the other always has work — and a toggle must not dim at the
@@ -585,6 +600,72 @@ function buildEverythingOffAction(accessories: HomeKitAccessory[]): HomeAction |
     disabled: writes.length === 0,
     steps: oneStep(writes),
   };
+}
+
+/**
+ * Can this shortcut be opened into a panel of controls?
+ *
+ * The power actions, and only those. Their members are a set of devices that
+ * share a characteristic vocabulary, which is exactly what a group panel is for
+ * — "set the brightness of Lock up" is not a question, and `everything-off`
+ * spans four device kinds whose shared vocabulary is a single on/off it already
+ * has a control for.
+ *
+ * Keyed off `memberIds` rather than a list of ids so the two cannot drift: an
+ * action that grows a membership becomes expandable in the same edit.
+ */
+export function isExpandableAction(action: HomeAction): boolean {
+  return !!action.toggle && (action.memberIds?.length ?? 0) > 0;
+}
+
+/**
+ * Writes that set one characteristic to one value across an action's members.
+ *
+ * What the expanded panel's sliders produce. Three decisions are baked in here
+ * rather than left to the caller, because all three are things the user asked
+ * for by name:
+ *
+ * - **Absolute, not relative.** Every member is written the same value. A
+ *   group slider that shifted each light by a delta would drift apart on every
+ *   drag and could never be brought back into line.
+ * - **Every member, not only the ones that are on.** A light that is off still
+ *   takes a brightness, and setting it is how the next press comes up at the
+ *   level that was asked for.
+ * - **Silence, not failure, for a member that cannot.** An accessory with no
+ *   writable characteristic of this type produces no write at all. It must not
+ *   produce a *failed* write: that is what would put "62 accessories did not
+ *   respond" under a colour change in a home where most bulbs are white.
+ *
+ * `previousValue` is captured per accessory so a failed write reverts to what
+ * that light was actually at, not to the group average.
+ */
+export function memberWrites(
+  accessories: HomeKitAccessory[],
+  memberIds: string[],
+  characteristicType: string,
+  value: boolean | number,
+): HomeActionWrite[] {
+  const wanted = new Set(memberIds);
+  const writes: HomeActionWrite[] = [];
+  for (const accessory of accessories) {
+    if (!wanted.has(accessory.id)) continue;
+    const char = getCharacteristic(accessory, characteristicType);
+    if (!isWritable(char)) continue;
+    writes.push({
+      accessoryId: accessory.id,
+      characteristicType: canonicalCharacteristic(char!.type),
+      reportedCharacteristicType: char!.type,
+      value,
+      previousValue: char!.value,
+      // Reachability is the client's stale cache; the relay overwrites it from
+      // the write itself. Same reasoning as `powerWrites` — a member that
+      // cannot say what it is doing is not blamed for not doing it.
+      reachable: accessory.isReachable !== false
+        && char!.value !== undefined && char!.value !== null,
+      name: getAccessoryDisplayName(accessory),
+    });
+  }
+  return writes;
 }
 
 /**
