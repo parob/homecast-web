@@ -73,21 +73,6 @@ function isUnsupportedAction(error: unknown): boolean {
   return typeof message === 'string' && /unknown (action|method)/i.test(message);
 }
 
-/**
- * Name the ones that could not answer, without turning a toast into a list.
- *
- * Three names is about what someone reads off a toast before it goes; past
- * that a count carries more than a wall of text nobody finishes.
- */
-function describeUnreachable(writes: HomeActionWrite[]): string {
-  const names = writes.map(w => w.name).filter((n): n is string => !!n);
-  if (names.length === 0) return 'They may be switched off at the wall.';
-  const shown = names.slice(0, 3).join(', ');
-  const rest = names.length - Math.min(3, names.length);
-  const list = rest > 0 ? `${shown} and ${rest} other${rest === 1 ? '' : 's'}` : shown;
-  return `${list} — they may be switched off at the wall.`;
-}
-
 /** Pairs a change back to the write that asked for it. */
 function writeKey(accessoryId: string, characteristicType: string): string {
   return `${accessoryId}\u0000${characteristicType}`;
@@ -334,12 +319,23 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
           .filter(change => change.success)
           .map(change => writeKey(change.accessoryId, change.characteristicType)),
       );
+      // What the relay found when it actually tried. The write carries the
+      // client's own reading, taken from an accessory list that may be minutes
+      // old; this one is from the write itself, so it wins where it speaks.
+      // Only ever downgrades: silence means the relay claimed nothing, not that
+      // the accessory was reachable.
+      const foundUnreachable = new Set(
+        response.changes
+          .filter(change => change.unreachable)
+          .map(change => writeKey(change.accessoryId, change.characteristicType)),
+      );
       const stepFailed: HomeActionWrite[] = [];
       for (const write of stepWrites) {
-        if (landed.has(writeKey(write.accessoryId, write.characteristicType))) {
+        const key = writeKey(write.accessoryId, write.characteristicType);
+        if (landed.has(key)) {
           if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
         } else {
-          stepFailed.push(write);
+          stepFailed.push(foundUnreachable.has(key) ? { ...write, reachable: false } : write);
         }
       }
       if (stepFailed.length > 0) {
@@ -413,15 +409,16 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // back to them as a fault.
     if (opts?.signal?.aborted) return;
 
-    // An accessory that cannot answer is not a fault to report. A Hue bulb
-    // switched off at the wall is unreachable by design, it is already greyed
-    // out as No Response on its tile, and an error toast about it is the app
-    // shouting about something the grid is showing calmly.
+    // An accessory that cannot answer is not a fault to report, and is not
+    // worth interrupting for either. A Hue bulb switched off at the wall is
+    // unreachable by design; its tile is already greyed out as No Response,
+    // which says the same thing without a toast on top — and in a house with a
+    // few permanently-dark bulbs, a notice every single time is noise attached
+    // to a state the user already knows about.
     //
     // So the split is by cause, not by count: writes that failed at an
-    // accessory nobody could have reached are stated, and only writes that
-    // failed for some other reason are warned about.
-    const unreachable = failed.filter(w => w.reachable === false);
+    // accessory nobody could have reached are left to the grid, and only writes
+    // that failed for some other reason are reported at all.
     const broken = failed.filter(w => w.reachable !== false);
 
     if (broken.length > 0 && broken.length === writes.length) {
@@ -429,12 +426,6 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     } else if (broken.length > 0) {
       toast.warning(`${writes.length - broken.length} of ${writes.length} changed`, {
         description: `${broken.length} accessor${broken.length === 1 ? 'y' : 'ies'} did not respond`,
-      });
-    } else if (unreachable.length > 0) {
-      // Plain, not red, and never the relay's own words: "did not confirm the
-      // write within 10s" is a sentence about our timeout, not about the light.
-      toast(`${unreachable.length} not responding`, {
-        description: describeUnreachable(unreachable),
       });
     }
   }, [homeId, isViewOnly, updateCharacteristicInCache]);
