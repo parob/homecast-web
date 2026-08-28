@@ -22,8 +22,9 @@ import {
   isSummarySectionVisible, isHomeActionVisible, isSceneVisible, type HomeActionId,
 } from '@/lib/summary-sections';
 import { homeCardKey, applyHomeCardOrder } from '@/lib/home-cards';
-import { deriveHomeActions, type HomeAction } from '@/components/actions/catalog';
+import { deriveHomeActions, isExpandableAction, type HomeAction } from '@/components/actions/catalog';
 import { ActionCard } from '@/components/actions/ActionCard';
+import { ActionGroupPanel } from '@/components/actions/ActionGroupPanel';
 import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { useHomeActionRunner } from '@/components/actions/useHomeActionRunner';
 import type { RunHomeActionOverrides } from '@/components/actions/useRunHomeAction';
@@ -302,6 +303,20 @@ export function ScenesSection({
       isHidden={card.isHidden}
       onToggleHidden={onToggleActionHidden
         ? () => onToggleActionHidden(card.action.id, card.isHidden)
+        : undefined}
+      // Only the power shortcuts open into anything — see `isExpandableAction`.
+      // Absent here is what makes a one-way card keep its old press behaviour.
+      renderPanel={isExpandableAction(card.action)
+        ? () => (
+            <ActionGroupPanel
+              action={card.action}
+              accessories={accessories}
+              homeId={homeId}
+              isViewOnly={isViewOnly}
+              onRunAction={onRunAction}
+              onToggle={runner.run}
+            />
+          )
         : undefined}
     />
   ) : (

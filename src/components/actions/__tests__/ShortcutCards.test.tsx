@@ -29,6 +29,16 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
 
 const HOME_ID = 'HOME-1';
 
+// jsdom lacks this too, and ExpandedOverlay's `useIsMobile` reads it the moment
+// a card's panel opens. Same stub every test that renders an overlay carries.
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {},
+    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 // jsdom lacks this; AnimatedCollapse touches it on mount.
 class ResizeObserverStub {
   observe() {}
@@ -149,10 +159,12 @@ describe('shortcut cards', () => {
 
   it('gives a two-way action a toggle, and a one-way action a card that is the button', () => {
     renderSection([lightOn, lockOpen]);
-    // Lights can go either way, so the control says which way and the card
-    // itself is inert.
+    // Lights can go either way, so the control says which way — and the card
+    // body never runs it. The body is a button in its own right now, but for
+    // opening the panel, which is why it is labelled for that and not for the
+    // action: see 'opens its panel when the body is pressed'.
     expect(within(card('lights')).getByRole('switch')).toBeTruthy();
-    expect(card('lights').getAttribute('role')).toBeNull();
+    expect(card('lights').getAttribute('aria-label')).toBe('Lights controls');
     // Lock up is one-way on purpose: no toggle, and the card still presses.
     expect(within(card('locks')).queryByRole('switch')).toBeNull();
     expect(card('locks').getAttribute('role')).toBe('button');
@@ -195,12 +207,46 @@ describe('shortcut cards', () => {
   });
 
   it('no longer runs when the card body is pressed', () => {
-    // The toggle is the only way in: a press anywhere else would have to guess
-    // a direction, which is the guess the toggle exists to stop making.
+    // The toggle is the only way to run it: a press anywhere else would have to
+    // guess a direction, which is the guess the toggle exists to stop making.
+    // The body opens the panel instead — it never writes anything by itself.
     const { onRunAction } = renderSection([lightOn]);
     fireEvent.click(card('lights'));
     fireEvent.keyDown(card('lights'), { key: 'Enter' });
     expect(onRunAction).not.toHaveBeenCalled();
+  });
+
+  it('opens its panel when the body is pressed', () => {
+    renderSection([lightOn, lightOff]);
+    expect(card('lights').getAttribute('aria-expanded')).toBe('false');
+    // Nothing of the panel is built until it is asked for.
+    expect(screen.queryByTestId('action-panel-lights')).toBeNull();
+
+    fireEvent.click(card('lights'));
+
+    expect(card('lights').getAttribute('aria-expanded')).toBe('true');
+    // The panel is the real group widget over the action's members — the same
+    // component a HomeKit accessory group opens into.
+    expect(screen.getByTestId('action-panel-lights')).toBeTruthy();
+  });
+
+  it('does not open a one-way card into anything', () => {
+    // Lock up has no set to adjust, so the body stays the button that runs it.
+    const { onRunAction } = renderSection([lockOpen]);
+    expect(card('locks').getAttribute('aria-expanded')).toBeNull();
+
+    fireEvent.click(card('locks'));
+
+    expect(screen.queryByTestId('action-panel-locks')).toBeNull();
+    expect(onRunAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('will not open a panel while the layout is being edited', () => {
+    // A mis-grab on the way to a drag must not open anything — the same reason
+    // the card cannot be pressed to run in edit mode.
+    renderSection([lightOn, lightOff], {}, { touchMode: true, editMode: true });
+    fireEvent.click(card('lights'));
+    expect(screen.queryByTestId('action-panel-lights')).toBeNull();
   });
 
   it('stays live while it runs, and the next press calls off the last', async () => {
