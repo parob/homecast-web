@@ -144,9 +144,53 @@ describe('describeWriteFailure', () => {
   });
 
   it('keeps a specific refusal rather than replacing it with generic prose', () => {
-    // An accessory that refused the write has something worth reading.
+    // An accessory that refused the write has something worth reading. The
+    // code comes off for the toast — describeError still keeps it for the log.
     const refused = { code: 'CHARACTERISTIC_NOT_WRITABLE', message: 'Characteristic is not writable' };
-    expect(describeWriteFailure(refused, 'Lamp')).toBe(describeError(refused));
+    expect(describeWriteFailure(refused, 'Lamp')).toBe('Characteristic is not writable');
+    expect(describeError(refused)).toContain('CHARACTERISTIC_NOT_WRITABLE');
+  });
+
+  // parob/homecast-cloud#28. The lock answered in 87ms, five times, and every
+  // one of those answers was replaced with a timeout that had not happened.
+  describe('DEVICE_ERROR is an answer, not a silence', () => {
+    // Verbatim from the reporter's log buffer, entry id 77.
+    const fromRelay = {
+      code: 'DEVICE_ERROR',
+      message:
+        'WRITE_FAILED: Write failed: Aqara Smart Lock U200 did not confirm the write within 10s — it may be unreachable.',
+    };
+
+    it('does not claim a device that answered failed to respond', () => {
+      expect(describeWriteFailure(fromRelay, 'Aqara Smart Lock U200')).not.toMatch(/respond in time/);
+    });
+
+    it('shows the relay its own words, without the machine prefix', () => {
+      expect(describeWriteFailure(fromRelay, 'Aqara Smart Lock U200')).toBe(
+        'Write failed: Aqara Smart Lock U200 did not confirm the write within 10s — it may be unreachable.',
+      );
+    });
+
+    it('surfaces guidance the relay went to the trouble of writing', () => {
+      // The Apple Home edit-permission case. Reworded, this told the user their
+      // lock had not responded — when the truth was that it had, with a reason
+      // and a fix. Nothing about "didn't respond in time" would get them there.
+      const privileges = {
+        code: 'DEVICE_ERROR',
+        message:
+          "WRITE_FAILED: The relay's Apple ID doesn't have permission to edit this home. Turn on Allow Editing for it in Apple Home.",
+      };
+      const msg = describeWriteFailure(privileges, 'Aqara Smart Lock U200');
+      expect(msg).toContain('Allow Editing');
+      expect(msg).not.toMatch(/respond in time|WRITE_FAILED/);
+    });
+
+    it('still says nothing it does not know when the cloud itself gave up', () => {
+      // TIMEOUT stays on the other side of the line: nothing came back at all.
+      expect(describeWriteFailure({ code: 'TIMEOUT', message: 'Device did not respond in time' }, 'Lamp')).toBe(
+        "Lamp didn't respond in time.",
+      );
+    });
   });
 
   it('never returns an empty string, whatever was thrown', () => {
