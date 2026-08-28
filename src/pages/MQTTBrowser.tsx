@@ -3,7 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@apollo/client/react';
 import { Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRight, Clock, Key } from 'lucide-react';
 import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
-import { isMqttDomain, getApiBase, getAuthHeaders, getJWT, useIsLgUp } from './mqtt-browser/util';
+import {
+  isMqttDomain, getApiBase, getAuthHeaders, getJWT, useIsLgUp,
+  requestMqttToken, mqttSyncUrl, markSyncAttempted, syncAlreadyAttempted, clearSyncAttempt,
+} from './mqtt-browser/util';
 import { formatUptime, FmtVal } from './mqtt-browser/helpers';
 import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 import { HomeInfoDialog } from './mqtt-browser/HomeInfoDialog';
@@ -28,10 +31,18 @@ export default function MQTTBrowser() {
   const [searchParams, setSearchParams] = useSearchParams();
   const mockMode = searchParams.get('mock') === '1';
   // In mock mode we never need cookie sync — we skip the broker entirely.
-  const needsMqttSync = !mockMode && isMqttDomain() && !getJWT();
+  // The handshake runs at most once per tab: arriving back here still without a
+  // usable cookie means the main domain had no session to hand over either, and
+  // bouncing again would just shuttle the user between two domains. Past that
+  // point the page stays put and offers a Sign in button instead.
+  const needsMqttSync = !mockMode && isMqttDomain() && !getJWT() && !syncAlreadyAttempted();
   const [connected, setConnected] = useState(mockMode);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the server refuses our credential and refreshing it didn't help.
+  // Retrying can't fix that, so the retry loop stands down and the error banner
+  // grows a Sign in button — the page otherwise has no auth UI at all.
+  const [authBlocked, setAuthBlocked] = useState(false);
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
   const [filter, setFilter] = useState(() => searchParams.get('filter') || '');
   // The tree row whose inspector is showing. Selection never collapses or
@@ -170,9 +181,12 @@ export default function MQTTBrowser() {
   // relay-connected banner updates when the user brings their Mac online/offline.
   useEffect(() => {
     if (!onMqttDomain) return;
-    const headers = getAuthHeaders();
-    if (!headers) return;
     const fetchOnce = () => {
+      // Read the cookie per call, not once for the life of the effect: a
+      // refresh during connect() rewrites it, and a poll pinned to the old
+      // header would keep failing silently and leave the home chips empty.
+      const headers = getAuthHeaders();
+      if (!headers) return;
       fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled relayConnected ownerEmail } }' }) })
         .then(r => r.json())
         .then(d => {
@@ -231,10 +245,8 @@ export default function MQTTBrowser() {
   // start loading mqtt.js or touching the broker.
   useEffect(() => {
     if (!needsMqttSync) return;
-    const target = location.hostname.startsWith('staging.')
-      ? 'https://staging.homecast.cloud/'
-      : 'https://homecast.cloud/';
-    location.replace(`${target}?mqtt_sync=1&return=${encodeURIComponent(location.href)}`);
+    markSyncAttempted();
+    location.replace(mqttSyncUrl());
   }, [needsMqttSync]);
 
   // Load mqtt.js (skipped in mock mode — no broker needed)
@@ -302,20 +314,28 @@ export default function MQTTBrowser() {
     if (!mqttLibRef.current) { setError('MQTT library not loaded yet'); return; }
     setConnecting(true); setError(null); userDisconnected.current = false;
     try {
-      let token: string | null = null;
-      const headers = getAuthHeaders();
-      if (headers) {
-        const r = await fetch(getApiBase() + '/', { method: 'POST', headers, body: JSON.stringify({ query: 'mutation { createMqttToken }' }) });
-        const result = await r.json();
-        token = result?.data?.createMqttToken;
-        if (!token && result?.errors?.[0]?.message) throw new Error(result.errors[0].message);
+      const result = await requestMqttToken();
+      if (result.kind === 'signed-out') {
+        // No usable session. The handshake on the main domain is the only way
+        // to a login form from here, so take the user through it — once. Back
+        // still signed out means the handshake isn't the answer, and looping
+        // them between two domains would be worse than saying so.
+        if (!syncAlreadyAttempted()) {
+          markSyncAttempted();
+          setConnecting(false);
+          location.replace(mqttSyncUrl());
+          return;
+        }
+        setAuthBlocked(true);
+        setConnecting(false);
+        setError('Your session has expired. Sign in again to see device state from your homes.');
+        return;
       }
-      if (!token) {
-        const loginUrl = location.hostname.includes('staging')
-          ? 'https://staging.homecast.cloud/login'
-          : 'https://homecast.cloud/login';
-        throw new Error(`Not signed in. Sign in at ${loginUrl.replace('https://', '')} first, then return here.`);
-      }
+      if (result.kind === 'error') throw new Error(result.message);
+      const token = result.token;
+      // A working token means any future expiry deserves its own handshake.
+      clearSyncAttempt();
+      setAuthBlocked(false);
       const cid = 'browser_' + Math.random().toString(36).slice(2, 8);
       // reconnectPeriod: 0 disables mqtt.js' internal reconnect loop. We do
       // our own exponential backoff in the useEffect below; leaving both
@@ -466,14 +486,17 @@ export default function MQTTBrowser() {
   // longer (500ms, 1s, 2s, … capped at 10s) so a broken token or broker doesn't
   // peg the auth endpoint or the broker.
   useEffect(() => {
-    if (needsMqttSync || connected || connecting || userDisconnected.current) { setRetryDelay(0); return; }
+    // authBlocked: the server has refused our credential and refreshing it
+    // failed. Retrying that forever is what put "Retrying in 8s" under an error
+    // no retry could ever clear.
+    if (needsMqttSync || authBlocked || connected || connecting || userDisconnected.current) { setRetryDelay(0); return; }
     const delay = Math.min(500 * 2 ** failureCountRef.current, 10_000);
     setRetryDelay(delay);
     const t = setTimeout(() => {
       if (mqttLibRef.current && !connected && !connecting && !userDisconnected.current) connect();
     }, delay);
     return () => clearTimeout(t);
-  }, [connect, connected, connecting, needsMqttSync]);
+  }, [connect, connected, connecting, needsMqttSync, authBlocked]);
 
   useEffect(() => { return () => { clientRef.current?.end(); }; }, []);
 
@@ -582,7 +605,24 @@ export default function MQTTBrowser() {
           </div>
         </div>
       </div>
-      {error && <div className="max-w-7xl mx-auto px-4 pt-3"><div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2">{error}</div></div>}
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 pt-3">
+          <div className="text-sm text-red-500 bg-red-500/10 rounded-md px-3 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <span>{error}</span>
+            {/* An auth error is the one the user can act on, and mqtt.* serves
+                no login form of its own — so this is the way out of it. */}
+            {authBlocked && (
+              <a
+                href={mqttSyncUrl()}
+                onClick={clearSyncAttempt}
+                className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 no-underline"
+              >
+                Sign in
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
         {/* Connection Info */}
@@ -690,7 +730,11 @@ export default function MQTTBrowser() {
             tree takes the full width. */}
         {filteredTopics.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground text-sm">
-            {connected ? 'Waiting for messages...' : 'Connect to see device state from your homes'}
+            {connected
+              ? 'Waiting for messages...'
+              : authBlocked
+                ? 'Sign in to see device state from your homes'
+                : 'Connect to see device state from your homes'}
           </div>
         ) : (
           <div className={selectedTopic ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-4 lg:items-start' : undefined}>
