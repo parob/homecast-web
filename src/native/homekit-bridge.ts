@@ -83,6 +83,16 @@ export interface BulkWriteChange {
   value?: unknown;
   success: boolean;
   error?: string;
+  /**
+   * HomeKit could not reach the accessory when this write was attempted.
+   *
+   * Decided natively at write time (`BulkWriteResult.unreachable`), which is
+   * why it is worth carrying rather than re-deriving: a client's cached
+   * accessory list can be minutes old, and the relay is the one that just
+   * tried. Present only when true — absent means nothing was claimed, not that
+   * the accessory was reachable.
+   */
+  unreachable?: boolean;
 }
 
 /**

@@ -30,12 +30,18 @@ interface Asked { accessoryId: string; characteristicType: string; value: unknow
  * A relay that speaks the bulk action, answering per write the way
  * local-handler does.
  */
-function bulkRelay(opts: { failing?: string[] } = {}) {
+function bulkRelay(opts: { failing?: string[]; unreachable?: string[] } = {}) {
   const failing = new Set(opts.failing ?? []);
+  // Native flags these on the change itself — see BulkWriteResult.unreachable.
+  const unreachable = new Set(opts.unreachable ?? []);
   return async (name: string, payload: { writes?: Asked[] }) => {
     if (name !== 'characteristics.set') return {};
     const changes = (payload.writes ?? []).map(w => failing.has(w.accessoryId)
-      ? { accessoryId: w.accessoryId, characteristicType: w.characteristicType, success: false, error: 'no response' }
+      ? {
+          accessoryId: w.accessoryId, characteristicType: w.characteristicType, success: false,
+          error: unreachable.has(w.accessoryId) ? 'Not responding.' : 'no response',
+          ...(unreachable.has(w.accessoryId) ? { unreachable: true } : {}),
+        }
       : { accessoryId: w.accessoryId, characteristicType: w.characteristicType, value: w.value, success: true });
     const ok = changes.filter(c => c.success).length;
     return { success: ok === changes.length, ok, total: changes.length, changes };
@@ -647,19 +653,30 @@ describe('a bulb off at the wall is not an error', () => {
     value: true as const, previousValue: false, reachable, name: `Light ${id}`,
   });
 
-  it('states the unreachable ones plainly instead of warning', async () => {
+  it('says nothing at all about the unreachable ones', async () => {
     request.mockImplementation(bulkRelay({ failing: ['dead1', 'dead2'] }));
     const { run } = setup();
     await run(action({ steps: [{ writes: [w('ok', true), w('dead1', false), w('dead2', false)] }] }));
 
-    // Not an error, and not a warning: the tiles already grey out as No
-    // Response, and the relay's own "did not confirm within 10s" is a sentence
-    // about our timeout rather than about the light.
+    // No error, no warning and no notice: the tiles already grey out as No
+    // Response, which says the same thing without interrupting. A house with a
+    // couple of permanently-dark bulbs would otherwise get a toast every time.
     expect(toastError).not.toHaveBeenCalled();
     expect(toastWarning).not.toHaveBeenCalled();
-    expect(toastPlain).toHaveBeenCalledWith('2 not responding', expect.objectContaining({
-      description: expect.stringContaining('Light dead1'),
-    }));
+    expect(toastPlain).not.toHaveBeenCalled();
+  });
+
+  it('believes the relay over its own cached reachability', async () => {
+    // The cache says reachable — it was, when the accessory list was last
+    // fetched. The relay is answering from the write itself, minutes later,
+    // and it is the one that just tried.
+    request.mockImplementation(bulkRelay({ failing: ['gone'], unreachable: ['gone'] }));
+    const { run } = setup();
+    await run(action({ steps: [{ writes: [w('ok', true), w('gone', true)] }] }));
+
+    expect(toastWarning).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastPlain).not.toHaveBeenCalled();
   });
 
   it('still warns when something reachable refused', async () => {
