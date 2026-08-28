@@ -8,7 +8,7 @@
  * edge case: the Homecast half is only fetched once the section is open.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing/react';
 import type { MockLink } from '@apollo/client/testing';
 
@@ -52,7 +52,9 @@ function renderSection(
   hcAutomations: ReturnType<typeof hc>[],
   layout: HomeLayoutData | null,
   editMode = false,
-) {
+  { touchMode = false, showHidden = false }: { touchMode?: boolean; showHidden?: boolean } = {},
+): { onToggleAutomationHidden: ReturnType<typeof vi.fn> } {
+  const onToggleAutomationHidden = vi.fn();
   const mocks: MockLink.MockedResponse[] = [
     {
       request: { query: GET_AUTOMATIONS, variables: { homeId: HOME_ID } },
@@ -70,19 +72,21 @@ function renderSection(
       maxUsageCount: Number.POSITIVE_INFINITY,
     },
   ];
-  return render(
+  render(
     <MockedProvider mocks={mocks}>
-      <LayoutEditProvider value={{ touchMode: false, editMode }}>
+      <LayoutEditProvider value={{ touchMode, editMode }}>
         <AutomationsSection
           homeId={HOME_ID}
           open
           homeLayout={layout}
           onReorderCards={() => {}}
-          onToggleAutomationHidden={() => {}}
+          onToggleAutomationHidden={onToggleAutomationHidden}
+          showHidden={showHidden}
         />
       </LayoutEditProvider>
     </MockedProvider>,
   );
+  return { onToggleAutomationHidden };
 }
 
 /** Card names in the order they are painted. Every card titles its name. */
@@ -148,5 +152,86 @@ describe('the Automations grid', () => {
     renderSection([hk('a', 'Sunset lights')], [], null, true);
     await names(1);
     expect(screen.queryByTestId('new-automation-button')).toBeNull();
+  });
+});
+
+/**
+ * Hiding an automation from a desktop.
+ *
+ * Desktop never enters Edit Layout — the long press, the menu item and
+ * `beginLift` are all gated on touch — so the badge that touch hides with is
+ * unreachable there. Right-click is the desktop equivalent, exactly as it is
+ * for a scene card, and Show Hidden Items is what puts a hidden card back on
+ * screen to be right-clicked. Without that second half, hiding from a desktop
+ * would be a one-way door: it used to take a trip to Settings to undo.
+ */
+describe('hiding an automation from a desktop', () => {
+  afterEach(cleanup);
+  beforeEach(() => {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
+
+  const HIDDEN_B: HomeLayoutData = { visibility: { hiddenAutomations: ['hk:b'] } };
+
+  it('offers Hide Automation on right-click, and reports which one', async () => {
+    const { onToggleAutomationHidden } = renderSection([hk('a', 'Sunset lights')], [], null);
+    await names(1);
+
+    fireEvent.contextMenu(screen.getByTestId('automation-a'));
+    fireEvent.click(screen.getByText('Hide Automation'));
+
+    expect(onToggleAutomationHidden).toHaveBeenCalledTimes(1);
+    // The prefixed key, not the bare id — the two engines share no id space.
+    expect(onToggleAutomationHidden.mock.calls[0]).toEqual(['hk:a', false]);
+  });
+
+  it('reveals a hidden automation under Show Hidden Items, without editing', async () => {
+    renderSection([hk('a', 'Sunset lights'), hk('b', 'Wake up')], [], HIDDEN_B, false, { showHidden: true });
+    expect(await names(2)).toEqual(['Sunset lights', 'Wake up']);
+  });
+
+  it('offers Unhide on the revealed card — the way back that Settings used to be', async () => {
+    const { onToggleAutomationHidden } = renderSection(
+      [hk('a', 'Sunset lights'), hk('b', 'Wake up')], [], HIDDEN_B, false, { showHidden: true },
+    );
+    await names(2);
+
+    fireEvent.contextMenu(screen.getByTestId('automation-b'));
+    fireEvent.click(screen.getByText('Unhide Automation'));
+
+    expect(onToggleAutomationHidden.mock.calls[0]).toEqual(['hk:b', true]);
+  });
+
+  it('says Hidden on the revealed card, so a dimmed one is not just mysterious', async () => {
+    renderSection([hk('a', 'Sunset lights'), hk('b', 'Wake up')], [], HIDDEN_B, false, { showHidden: true });
+    await names(2);
+    expect(screen.getByText('Hidden')).toBeTruthy();
+  });
+
+  it('reaches a Homecast automation too, not only a HomeKit one', async () => {
+    const { onToggleAutomationHidden } = renderSection([], [hc('x', 'Away mode')], null);
+    await names(1);
+
+    fireEvent.contextMenu(screen.getByTestId('hc-automation-x'));
+    fireEvent.click(screen.getByText('Hide Automation'));
+
+    expect(onToggleAutomationHidden.mock.calls[0]).toEqual(['hc:x', false]);
+  });
+
+  it('offers nothing to right-click on touch, where Edit Layout owns hiding', async () => {
+    renderSection([hk('a', 'Sunset lights')], [], null, false, { touchMode: true });
+    await names(1);
+    fireEvent.contextMenu(screen.getByTestId('automation-a'));
+    expect(screen.queryByText('Hide Automation')).toBeNull();
+  });
+
+  it('offers nothing to right-click while editing, where the badge owns hiding', async () => {
+    // Radix opens this menu on a native `contextmenu` as well as its own hold
+    // timer, and an open menu puts `pointer-events: none` on the body — which
+    // would kill a drag that is already in flight.
+    renderSection([hk('a', 'Sunset lights')], [], null, true);
+    await names(1);
+    fireEvent.contextMenu(screen.getByTestId('automation-a'));
+    expect(screen.queryByText('Hide Automation')).toBeNull();
   });
 });

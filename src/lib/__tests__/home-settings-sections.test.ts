@@ -29,7 +29,6 @@ describe('visibleHomeSettingsSections', () => {
     expect(visibleHomeSettingsSections(flags())).toEqual([
       'home-screen',
       'actions',
-      'automations',
       'notifications',
       'reliability',
       'analytics',
@@ -40,7 +39,7 @@ describe('visibleHomeSettingsSections', () => {
     const visible = visibleHomeSettingsSections(flags({ isCommunity: true }));
     expect(visible).not.toContain('notifications');
     expect(visible).not.toContain('reliability');
-    expect(visible).toEqual(['home-screen', 'actions', 'automations', 'analytics']);
+    expect(visible).toEqual(['home-screen', 'actions', 'analytics']);
   });
 
   it('hides MQTT unless developer mode is on', () => {
