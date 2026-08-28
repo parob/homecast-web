@@ -47,6 +47,12 @@ interface AutomationsSectionProps {
   onReorderCards?: (order: string[]) => void;
   /** Turn one automation's card off for this home, or back on. */
   onToggleAutomationHidden?: (key: string, visible: boolean) => void;
+  /**
+   * The desktop "Show Hidden Items" toggle. Desktop has no Edit Layout to
+   * enter, so this is the only thing that can put a hidden automation back on
+   * screen to be right-clicked.
+   */
+  showHidden?: boolean;
 }
 
 /**
@@ -110,7 +116,7 @@ const cardKey = (c: AutomationCard) => automationCardKey(c.kind, c.id);
 
 export function AutomationsSection({
   homeId, compact, isDarkBackground, open: expanded, demoAutomations,
-  homeLayout, onReorderCards, onToggleAutomationHidden,
+  homeLayout, onReorderCards, onToggleAutomationHidden, showHidden,
 }: AutomationsSectionProps) {
   const { editMode, touchMode } = useLayoutEdit();
   /**
@@ -186,13 +192,16 @@ export function AutomationsSection({
       ...automations.map(a => ({ kind: 'hk' as const, id: a.id, automation: a })),
       ...hcAutomations.map(hc => ({ kind: 'hc' as const, id: hc.id, hc })),
     ];
-    // Editing reveals what is hidden — you cannot bring back what you cannot
-    // see, and hiding is only offered on the card itself.
-    const visible = editMode
+    // You cannot bring back what you cannot see, and hiding is only offered on
+    // the card itself — so whatever reveals hidden cards is what makes unhiding
+    // reachable at all. Touch reveals by entering Edit Layout; desktop never
+    // enters that mode and reveals with Show Hidden Items instead.
+    const reveal = editMode || !!showHidden;
+    const visible = reveal
       ? all
       : all.filter(c => isAutomationVisible(hiddenAutomations, cardKey(c)));
     return applyAutomationCardOrder(visible, optimisticOrder ?? savedOrder, cardKey);
-  }, [automations, hcAutomations, hiddenAutomations, savedOrder, optimisticOrder, editMode]);
+  }, [automations, hcAutomations, hiddenAutomations, savedOrder, optimisticOrder, editMode, showHidden]);
 
   // Let go once the saved order is the source of truth again.
   useEffect(() => { setOptimisticOrder(null); }, [savedOrder]);
@@ -219,6 +228,7 @@ export function AutomationsSection({
         onClick={() => handleCardClick(card.automation)}
         onUpdated={() => refetch()}
         editMode={editMode}
+        touchMode={touchMode}
         compact={compact}
         isDarkBackground={isDarkBackground}
         isHidden={hidden}
@@ -230,6 +240,7 @@ export function AutomationsSection({
         onClick={() => handleHcAutomationClick(card.hc)}
         onToggle={() => handleToggleHcAutomation(card.hc)}
         editMode={editMode}
+        touchMode={touchMode}
         compact={compact}
         isDarkBackground={isDarkBackground}
         isHidden={hidden}

@@ -8489,6 +8489,7 @@ const Dashboard = () => {
                       homeLayout={homeLayout}
                       onReorderCards={selectedHomeId && !isViewOnly ? handleReorderAutomationCards : undefined}
                       onToggleAutomationHidden={selectedHomeId && !isViewOnly ? handleToggleAutomationHidden : undefined}
+                      showHidden={showHiddenItems}
                     />}
                     {showStatus && <AnimatedCollapse open={statusOpen}>
                       <AreaSummary

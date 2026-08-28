@@ -5,7 +5,11 @@ import type React from 'react';
 import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { Switch } from '@/components/ui/switch';
-import { Trash2 } from 'lucide-react';
+import { Trash2, EyeOff, Eye } from 'lucide-react';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
+  ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { AutomationTriggerSummary } from './AutomationTriggerSummary';
 import { SET_AUTOMATION_ENABLED } from '@/lib/graphql/mutations';
 import { toast } from 'sonner';
@@ -26,16 +30,21 @@ interface AutomationCardProps {
   onToggle?: (enabled: boolean) => void;
   /** Edit Layout is running: arrange it, don't operate it. */
   editMode?: boolean;
+  /** This device hides by long press, not by right-click. See SceneCard. */
+  touchMode?: boolean;
   onDelete?: () => void;
   compact?: boolean;
   isDarkBackground?: boolean;
-  /** Turned off for this home. Only rendered at all while editing. */
+  /**
+   * Turned off for this home. Only rendered at all once something has revealed
+   * it — Edit Layout on touch, Show Hidden Items on a desktop.
+   */
   isHidden?: boolean;
   /** Absent where the layout cannot be written (a shared home, the tutorial). */
   onToggleHidden?: () => void;
 }
 
-export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground, editMode, isHidden, onToggleHidden }: AutomationCardProps) {
+export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, onToggle, onDelete, compact, isDarkBackground, editMode, touchMode, isHidden, onToggleHidden }: AutomationCardProps) {
   const isHomeKit = !!automation;
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
   const [setEnabled] = useMutation<SetAutomationEnabledResponse>(SET_AUTOMATION_ENABLED);
@@ -105,9 +114,13 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   // When enabled: solid blue bg → dark text (same as widgets). When disabled on dark bg: white text.
   const textClass = (isDarkBackground && !isEnabled) ? 'text-white' : '';
   const subtextClass = (isDarkBackground && !isEnabled) ? 'text-white/60' : 'text-muted-foreground';
+  // One opacity, not two: a hidden card that is also disabled would otherwise
+  // carry `opacity-40` and `opacity-60` at once and read as whichever Tailwind
+  // happened to order last. Hidden is the stronger statement, so it wins.
+  const dimClass = isHidden ? 'opacity-40' : (!isEnabled ? 'opacity-60' : '');
   const card = (
     <div
-      className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${!isEnabled ? 'opacity-60' : ''}`}
+      className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${dimClass}`}
       style={{ contain: 'layout style paint' }}
       onClick={editMode ? undefined : onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
@@ -200,7 +213,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
    * transform on one of those makes it a new backdrop root and the glass
    * switches off while it runs. index.css documents the same trap.
    */
-  return (
+  const editable = (
     <div className="relative">
       <div
         className={editMode ? 'wiggle' : ''}
@@ -210,7 +223,11 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       >
         {card}
       </div>
-      {editMode && isHidden && <HiddenLabel />}
+      {/* No `editMode &&` guard: a hidden card is only ever rendered once
+          something has revealed it, and on a desktop that is Show Hidden Items
+          rather than a mode. Labelling it only while editing left the desktop
+          reveal showing a dimmed card with nothing saying why. */}
+      {isHidden && <HiddenLabel />}
       {/* Gated by `visible` so it can animate away — see SceneCard. */}
       <TileEditActions
         visible={!!(editMode && onToggleHidden)}
@@ -221,5 +238,31 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
         tab={null}
       />
     </div>
+  );
+
+  // Right-click only, exactly as SceneCard and ActionCard do it. On touch the
+  // long press that would open this lifts the card into Edit Layout instead,
+  // and an open Radix menu puts `pointer-events: none` on the body — which
+  // would kill the drag that press just started.
+  if (editMode || touchMode || !onToggleHidden) return editable;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{editable}</ContextMenuTrigger>
+      <ContextMenuContent className="w-56">
+        <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+          {name}
+        </ContextMenuLabel>
+        <ContextMenuSeparator />
+        {/* Desktop never enters Edit Layout, so this is the whole of hiding
+            here. Unhide is reachable because Show Hidden Items puts the card
+            back on screen to be right-clicked — without that half, hiding from
+            a desktop would be a one-way door. */}
+        <ContextMenuItem onClick={onToggleHidden}>
+          {isHidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+          {isHidden ? 'Unhide Automation' : 'Hide Automation'}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

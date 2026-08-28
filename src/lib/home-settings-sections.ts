@@ -16,7 +16,6 @@
 export type HomeSettingsSectionId =
   | 'home-screen'
   | 'actions'
-  | 'automations'
   | 'notifications'
   | 'reliability'
   | 'analytics'
@@ -26,7 +25,6 @@ export type HomeSettingsSectionId =
 export const HOME_SETTINGS_SECTION_ORDER: HomeSettingsSectionId[] = [
   'home-screen',
   'actions',
-  'automations',
   'notifications',
   'reliability',
   'analytics',
@@ -41,10 +39,6 @@ export const HOME_SETTINGS_SECTION_META: Record<HomeSettingsSectionId, { label: 
   actions: {
     label: 'Scenes',
     description: 'Which scenes this home shows, both Homecast\u2019s and Apple Home\u2019s',
-  },
-  automations: {
-    label: 'Automations',
-    description: 'Which automations this home shows on its home screen',
   },
   notifications: {
     label: 'Notifications',
