@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { LogIn } from 'lucide-react';
@@ -29,6 +29,34 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // header reserves status-bar inset on first paint, not after a rerender.
   const inMobileApp = isInMobileApp || (typeof window !== 'undefined' && !!(window as Window & { HomecastAndroid?: unknown }).HomecastAndroid);
 
+  // Publish the line this row's controls are centred on, for anything drawn
+  // beside them — today that is the toaster, whose pill lands between the
+  // burger and Done while Edit Layout's bar covers this header. Measured, not
+  // derived: the row is 80px from the top of the viewport on a phone and 70px
+  // starting at a 33px title-bar inset in the Mac app, where the left cluster
+  // sets the height rather than the class asking for 56px does. Reading it off
+  // the element is what keeps the two in step through a text-scale change or
+  // anything else that moves the row.
+  const rowRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const publish = () => {
+      const box = row.getBoundingClientRect();
+      document.documentElement.style.setProperty('--top-row-center', `${box.top + box.height / 2}px`);
+    };
+    publish();
+    // The header is `fixed`, so it only moves when it resizes.
+    const observer = new ResizeObserver(publish);
+    observer.observe(row);
+    return () => {
+      observer.disconnect();
+      // Back to the stylesheet's default, which is what a page with no header
+      // — login, a share link — is positioned against.
+      document.documentElement.style.removeProperty('--top-row-center');
+    };
+  }, []);
+
   return (
     <header
       className={cn(
@@ -42,7 +70,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       {/* In the Mac app the 33px above this row already clears the traffic
           lights, so a full 80px row on top of it pushed the whole page down.
           56px is exactly the bubble's height — nothing to spare, nothing wasted. */}
-      <div className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
+      <div ref={rowRef} className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
         isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
         !isInMacApp && !fullWidth && "max-w-7xl")}>
         {/* Left content with bubble background on mobile */}
