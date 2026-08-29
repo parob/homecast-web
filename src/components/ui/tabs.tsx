@@ -12,7 +12,12 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+      // `p-1` insets the group from the track on all four outer edges; `gap-1`
+      // gives the seam between two tabs the same 4px. Without it the active
+      // pill butts straight up against its neighbour, which reads as one
+      // welded shape the moment the neighbour also has a background — on iOS
+      // `:hover` sticks after a tap, so that is the resting state there.
+      "inline-flex h-10 items-center justify-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground",
       className,
     )}
     {...props}
