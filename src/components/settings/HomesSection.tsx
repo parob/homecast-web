@@ -37,6 +37,7 @@ import type {
 import { toast } from 'sonner';
 import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useHomes } from '@/hooks/useHomeKitData';
+import { CLOUD_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -362,7 +363,7 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
       </div>
       {isOwner ? (
         <p className="text-xs text-muted-foreground">
-          {isCloud ? 'Hosted by Homecast — always on' : 'Connected via your Mac'}
+          {isCloud ? 'Hosted by Homecast, always on' : 'Connected via your Mac'}
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -519,15 +520,15 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               <div className="space-y-1">
                 <p className="text-sm font-medium">Signup for Cloud Relay</p>
                 <p className="text-xs text-muted-foreground">
-                  Always-on relay hosted by Homecast — no Mac needed. Available on the Cloud plan ({pricing.cloud.formatted}/mo).
+                  Always-on relay hosted by Homecast, with no Mac needed. Available on the Cloud plan ({pricing.cloud.formatted}/mo).
                 </p>
               </div>
             </div>
             {!cloudSignupsAvailable ? (
-              <p className="text-xs text-muted-foreground text-center">Signups paused — at capacity</p>
+              <p className="text-xs text-muted-foreground text-center">{CLOUD_SIGNUPS_PAUSED}</p>
             ) : (
               <Button size="sm" className="w-full text-xs" onClick={handleUpgradeToCloud}>
-                Upgrade to Cloud — {pricing.cloud.formatted}/mo
+                Upgrade to Cloud for {pricing.cloud.formatted}/mo
               </Button>
             )}
           </div>
