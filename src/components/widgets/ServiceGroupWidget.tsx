@@ -63,6 +63,22 @@ import {
   Tag,
 } from 'lucide-react';
 
+/**
+ * The count badges in a group header ("130/136 reachable", "4/9 on").
+ *
+ * `whitespace-nowrap` is load-bearing, not tidiness. `Badge` is a flex item
+ * with no nowrap of its own, so its `min-width: auto` resolves to its widest
+ * *word* rather than the whole string — meaning the row is free to squeeze it
+ * down to "130/136" and wrap "reachable" underneath. The box is pinned to
+ * `h-4`, so those two lines then straddle a pill that cannot grow to hold
+ * them and the text spills out above and below it. `shrink-0` stops the
+ * squeeze in the first place; the row wraps instead (`flex-wrap` below).
+ *
+ * A group of three bulbs never reached this — "2/3 reachable" has slack to
+ * spare. A home's worth of lights gathered into one shortcut does.
+ */
+const COUNT_BADGE_CLASS = 'text-[9px] px-1 py-0 h-4 bg-muted/25 whitespace-nowrap shrink-0';
+
 /** The member grid scrolls past this many rows — an expanded group that grows
  *  with its membership stops being a panel and becomes a page. */
 const MEMBER_ROWS_VISIBLE = 2;
@@ -702,18 +718,20 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 <CardTitle className={`truncate font-medium leading-tight text-sm `}>
                   {getDisplayName(group.name, roomName)}
                 </CardTitle>
-                <CardDescription className={`text-xs mt-0.5 flex items-center gap-1.5 `}>
-                  {allNoResponse
-                    ? 'No Response'
-                    : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                <CardDescription className={`text-xs mt-0.5 flex flex-wrap items-center gap-x-1.5 `}>
+                  <span className="whitespace-nowrap">
+                    {allNoResponse
+                      ? 'No Response'
+                      : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                  </span>
                   {locationSubtitle && <span className="opacity-60">{locationSubtitle}</span>}
                   {!allNoResponse && someNoResponse && (
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
+                    <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
                       {reachableCount}/{accessories.length} reachable
                     </Badge>
                   )}
                   {!allNoResponse && isPartiallyOn && (
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
+                    <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
                       {onCount}/{powerTotal} on
                     </Badge>
                   )}
@@ -977,17 +995,19 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               <CardTitle className={`truncate font-medium leading-tight text-base `}>
                 {getDisplayName(group.name, roomName)}
               </CardTitle>
-              <CardDescription className={`text-sm mt-0.5 flex items-center gap-1.5 `}>
-                {allNoResponse
-                  ? 'No Response'
-                  : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+              <CardDescription className={`text-sm mt-0.5 flex flex-wrap items-center gap-x-1.5 `}>
+                <span className="whitespace-nowrap">
+                  {allNoResponse
+                    ? 'No Response'
+                    : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                </span>
                 {!allNoResponse && someNoResponse && (
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
+                  <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
                     {reachableCount}/{accessories.length} reachable
                   </Badge>
                 )}
                 {!allNoResponse && isPartiallyOn && (
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-muted/25">
+                  <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
                     {onCount}/{powerTotal} on
                   </Badge>
                 )}
