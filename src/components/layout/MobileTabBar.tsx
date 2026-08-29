@@ -33,6 +33,7 @@ import { tabIconComponent } from './tabIconComponents';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import type { HomeActionId } from '@/lib/summary-sections';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
+import { useDebugDockHeight } from '@/lib/debug-dock';
 
 export { MAX_PINNED_TABS };
 
@@ -226,6 +227,16 @@ export function MobileTabBar({
   const barRef = useRef<HTMLDivElement>(null);
   /** The bar's own height, so a panel clears whichever shape it is wearing. */
   const [barHeight, setBarHeight] = useState(TAB_BAR_INSET - PANEL_GAP);
+  /**
+   * How much of the bottom edge the request log dock has taken, if it is open.
+   *
+   * The dock squashes the app by being a containing block for its `fixed`
+   * children — which this bar is not, because it portals to the body (see the
+   * note at the render). So it has to hold itself clear by hand, or it sits on
+   * top of the log; see lib/debug-dock.ts. Zero unless a developer has switched
+   * the log on.
+   */
+  const dockHeight = useDebugDockHeight();
   const scrollerRef = useRef<HTMLDivElement>(null);
   /** The last glyph each accessory pin actually resolved to. */
   const iconMemoRef = useRef(new Map<string, LucideIcon>());
@@ -803,7 +814,10 @@ export function MobileTabBar({
           <ExpandedOverlay
             isExpanded
             onClose={() => setOpenKey(null)}
-            bottomInset={barHeight + PANEL_GAP}
+            // Measured from the bottom of the viewport, so the dock counts
+            // twice over: the bar has moved up by it, and the panel must clear
+            // the dock itself as well.
+            bottomInset={barHeight + PANEL_GAP + dockHeight}
             // The chip is on its way to the middle, so the panel starts there
             // rather than setting off from wherever the chip happens to be and
             // chasing it across.
@@ -914,12 +928,24 @@ export function MobileTabBar({
    * The `max()` is what keeps that honest on a home-button iPhone, where the
    * inset is 0 and dropping the 8px outright would have parked the pill flush
    * against the physical bottom edge of the screen.
+   *
+   * ── Sitting above the request log ──
+   *
+   * `bottom` is the dock's height rather than 0, because portalling here is
+   * exactly what puts the bar beyond the dock's reach: `DebugDock` squashes the
+   * app by being a containing block for `fixed` children, and a child of `body`
+   * is not one of them. And once lifted off the bottom edge the safe-area inset
+   * belongs to the dock below, not to the bar — the 6px floor is the whole gap.
    */
   return createPortal(
     <div
       ref={barRef}
-      className="fixed bottom-0 left-0 right-0 z-[10001] pointer-events-none safe-area-x"
-      style={{ paddingBottom: 'max(6px, var(--safe-area-bottom, 0px))' }}
+      data-testid="tab-bar"
+      className="fixed left-0 right-0 z-[10001] pointer-events-none safe-area-x"
+      style={{
+        bottom: dockHeight,
+        paddingBottom: dockHeight ? 6 : 'max(6px, var(--safe-area-bottom, 0px))',
+      }}
     >
       {editingTab && (
         <TabEditSheet

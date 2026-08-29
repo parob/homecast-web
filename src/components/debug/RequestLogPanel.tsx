@@ -15,6 +15,7 @@ import {
   getRequestLog, subscribeRequestLog, clearRequestLog, formatRequestLog,
   type RequestLogEntry,
 } from '@/lib/request-log';
+import { setDebugDockHeight } from '@/lib/debug-dock';
 
 /** Height of the dock. Enough for ~12 rows without dominating a phone. */
 const DEFAULT_HEIGHT = 260;
@@ -79,6 +80,14 @@ export function RequestLogPanel() {
 
   useEffect(() => subscribeRequestLog(() => forceRender(n => n + 1)), []);
 
+  // What the dock is costing the bottom of the screen, for chrome that portals
+  // out of it and so cannot be squashed by it — the tab bar. See lib/debug-dock.
+  const dockHeight = minimised ? COLLAPSED_HEIGHT : height;
+  useEffect(() => {
+    setDebugDockHeight(dockHeight);
+    return () => setDebugDockHeight(0);
+  }, [dockHeight]);
+
   const entries = getRequestLog();
 
   // Stick to the bottom while following, so a launch scrolls past live. Reading
@@ -138,7 +147,7 @@ export function RequestLogPanel() {
         // collapse had saved.
         'border-t border-white/10',
       )}
-      style={{ height: minimised ? COLLAPSED_HEIGHT : height }}
+      style={{ height: dockHeight }}
     >
       {!minimised && (
         <div
