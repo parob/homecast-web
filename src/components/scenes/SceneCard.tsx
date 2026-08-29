@@ -61,6 +61,9 @@ export function SceneCard({
         isHidden && 'opacity-40',
         isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
       )}
+      // Marks it for the exit transition that plays when the reveal ends — the
+      // dimming above says it is hidden, this is what takes it away. index.css.
+      {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
       style={{ contain: 'layout style paint' }}
     >
       {/* Blur layer — matches WidgetWrapper */}

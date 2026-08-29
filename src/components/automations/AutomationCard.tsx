@@ -118,9 +118,12 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   // carry `opacity-40` and `opacity-60` at once and read as whichever Tailwind
   // happened to order last. Hidden is the stronger statement, so it wins.
   const dimClass = isHidden ? 'opacity-40' : (!isEnabled ? 'opacity-60' : '');
+  // A revealed card is also marked `data-hidden-item` (below), which is what
+  // fades it out when the reveal ends — `[data-hidden-exiting]` in index.css.
   const card = (
     <div
       className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${dimClass}`}
+      {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
       style={{ contain: 'layout style paint' }}
       onClick={editMode ? undefined : onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
