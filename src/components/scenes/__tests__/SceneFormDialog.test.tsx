@@ -282,3 +282,48 @@ describe('SceneFormDialog when the relay is view-only', () => {
     await expectStaysEditable();
   });
 });
+
+// A scene's actions and the accessory list are two different relay responses,
+// and they have not always agreed on which id space they speak: the cloud
+// server presented accessories as stable hc_ids while copying the scene's
+// action ids through untouched. Every row of an automation-owned scene then
+// read "Unknown device" with a raw characteristic value, because nothing
+// matched. The relay sends the device's name alongside each action — use it
+// rather than showing the user nothing.
+describe('SceneFormDialog when an action names a device that is not in the list', () => {
+  const automationScene = () => ({
+    id: 'SCENE-AUTO', name: 'Aircon Off Every 2 Hours 9am to 9pm',
+    automationName: 'Aircon Off Every 2 Hours 9am to 9pm', actionCount: 1,
+    actions: JSON.stringify([{
+      accessoryId: 'ACC-NOT-IN-LIST',
+      accessoryName: 'Bedroom 5 Aircon',
+      characteristicType: 'active',
+      targetValue: 0,
+    }]),
+  }) as unknown as HomeKitScene;
+
+  it('falls back to the name the relay sent with the action', async () => {
+    renderDialog(automationScene());
+
+    expect(await screen.findByText('Bedroom 5 Aircon')).toBeTruthy();
+    expect(screen.queryByText('Unknown device')).toBeNull();
+  });
+
+  it('still reads a boolean characteristic as On/Off, not as a raw number', async () => {
+    renderDialog(automationScene());
+
+    await screen.findByText('Bedroom 5 Aircon');
+    expect(screen.getByText('Power State')).toBeTruthy();
+    expect(screen.getByText('Off')).toBeTruthy();
+    expect(screen.queryByText('0')).toBeNull();
+  });
+
+  // Case is the other way the two can disagree: hc_ids are presented uppercase
+  // while plenty of stored references are lowercase, and UUIDs are
+  // case-insensitive. The automations dialog has always matched loosely.
+  it('matches the accessory regardless of id case', async () => {
+    renderDialog(scene([{ accessoryId: 'acc-lamp', characteristicType: 'brightness', targetValue: 30 }]));
+
+    expect(await screen.findByText('Reading Lamp')).toBeTruthy();
+  });
+});

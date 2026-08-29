@@ -8,8 +8,8 @@ import { Loader2, Plus, Trash2, X, Zap } from 'lucide-react';
 import { AccessoryPicker, getAccessoryIcon } from '@/components/AccessoryPicker';
 import { CharacteristicValueInput } from '@/components/automations/CharacteristicValueInput';
 import {
-  defaultValueFor, describeValue, getWritableCharacteristics, primaryWritableChar,
-  type WritableChar,
+  defaultValueFor, describeValue, findAccessoryById, getWritableCharacteristics,
+  primaryWritableChar, type WritableChar,
 } from '@/components/automations/characteristics';
 import { charLabel } from '@/components/automations/format';
 import { getIconColor } from '@/components/widgets/iconColors';
@@ -26,6 +26,12 @@ interface ActionData {
   accessoryId: string;
   characteristicType: string;
   targetValue: unknown;
+  /**
+   * The device's name as the relay sent it with the action. The only thing to
+   * show when the id doesn't resolve against the accessory list — the two are
+   * separate responses and have disagreed on id space before. Never sent back.
+   */
+  accessoryName?: string;
 }
 
 interface SceneFormDialogProps {
@@ -49,6 +55,7 @@ function parseSceneActions(scene: HomeKitScene | null | undefined): ActionData[]
     accessoryId: a.accessoryId,
     characteristicType: a.characteristicType,
     targetValue: parseCharacteristicValue(a.targetValue),
+    accessoryName: a.accessoryName || undefined,
   }));
 }
 
@@ -71,6 +78,9 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
   const Icon = accessory ? getAccessoryIcon(accessory) : Zap;
   const usedTypes = new Set(actions.map(a => a.characteristicType));
   const unusedChars = chars.filter(c => !usedTypes.has(c.type));
+  const name = accessory
+    ? getDisplayName(accessory.name, accessory.roomName)
+    : actions.find(a => a.accessoryName)?.accessoryName ?? 'Unknown device';
 
   const updateAction = (index: number, updates: Partial<ActionData>) => {
     onChange(actions.map((a, i) => i === index ? { ...a, ...updates } : a));
@@ -81,9 +91,7 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">
-            {accessory ? getDisplayName(accessory.name, accessory.roomName) : 'Unknown device'}
-          </p>
+          <p className="truncate text-sm font-medium">{name}</p>
           {accessory?.roomName && (
             <p className="truncate text-[11px] text-muted-foreground">{accessory.roomName}</p>
           )}
@@ -91,7 +99,7 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
         {!readOnly && (
           <button
             onClick={onRemove}
-            aria-label={`Remove ${accessory?.name ?? 'device'}`}
+            aria-label={`Remove ${accessory?.name ?? name}`}
             className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" />
@@ -106,7 +114,7 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
           return (
             <div key={index} className="flex items-center justify-between gap-2 text-xs">
               <span className="text-muted-foreground">{char?.label ?? charLabel(action.characteristicType)}</span>
-              <span className="font-medium">{describeValue(char, action.targetValue)}</span>
+              <span className="font-medium">{describeValue(char, action.targetValue, action.characteristicType)}</span>
             </div>
           );
         }
@@ -166,6 +174,7 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
             accessoryId,
             characteristicType: unusedChars[0].type,
             targetValue: defaultValueFor(unusedChars[0]),
+            accessoryName: actions.find(a => a.accessoryName)?.accessoryName,
           }])}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
@@ -285,7 +294,10 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
       setError('Scene names must end with a letter or number (no trailing punctuation)');
       return;
     }
-    const validActions = actions.filter(a => a.accessoryId && a.characteristicType && a.targetValue != null);
+    // `accessoryName` is display-only — the relay names the device itself.
+    const validActions = actions
+      .filter(a => a.accessoryId && a.characteristicType && a.targetValue != null)
+      .map(({ accessoryId, characteristicType, targetValue }) => ({ accessoryId, characteristicType, targetValue }));
     if (validActions.length === 0) { setError('Add at least one device'); return; }
 
     setSaving(true);
@@ -362,18 +374,23 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
                 {readOnly ? 'No actions.' : 'No devices yet — add the ones this scene should set.'}
               </p>
             ) : (
-              deviceIds.map(deviceId => (
-                <DeviceActionCard
-                  key={deviceId}
-                  accessoryId={deviceId}
-                  accessory={accessories.find(a => a.id === deviceId)}
-                  actions={actions.filter(a => a.accessoryId === deviceId)}
-                  chars={charsByAccessory.get(deviceId) ?? []}
-                  readOnly={readOnly}
-                  onChange={(next) => replaceDeviceActions(deviceId, next)}
-                  onRemove={() => setActions(prev => prev.filter(a => a.accessoryId !== deviceId))}
-                />
-              ))
+              deviceIds.map(deviceId => {
+                // Loose match: hc_ids arrive uppercase while plenty of stored
+                // references are lowercase, and a UUID is case-insensitive.
+                const accessory = findAccessoryById(accessories, deviceId);
+                return (
+                  <DeviceActionCard
+                    key={deviceId}
+                    accessoryId={deviceId}
+                    accessory={accessory}
+                    actions={actions.filter(a => a.accessoryId === deviceId)}
+                    chars={(accessory && charsByAccessory.get(accessory.id)) ?? []}
+                    readOnly={readOnly}
+                    onChange={(next) => replaceDeviceActions(deviceId, next)}
+                    onRemove={() => setActions(prev => prev.filter(a => a.accessoryId !== deviceId))}
+                  />
+                );
+              })
             )}
 
             {!readOnly && (
