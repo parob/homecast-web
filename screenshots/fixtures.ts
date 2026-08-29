@@ -270,9 +270,29 @@ export const HOMES = [
   { id: SHARED_HOME_ID, name: 'Beach House' },
 ];
 
+// Shape must match GET_CACHED_HOMES in src/lib/graphql/queries.ts — the app reads
+// `id` (SharedItemsSection groups by it), not `homeId`.
 export const CACHED_HOMES = [
-  { homeId: HOME_ID, name: 'My Home', role: 'owner', isConnected: true, memberCount: 2 },
-  { homeId: SHARED_HOME_ID, name: 'Beach House', role: 'control', isConnected: true, memberCount: 3 },
+  {
+    id: HOME_ID,
+    name: 'My Home',
+    updatedAt: '2025-08-01T09:00:00Z',
+    role: 'owner',
+    ownerEmail: 'alex@example.com',
+    mqttEnabled: false,
+    relayConnected: true,
+    relayLastSeenAt: '2025-08-01T09:00:00Z',
+  },
+  {
+    id: SHARED_HOME_ID,
+    name: 'Beach House',
+    updatedAt: '2025-07-20T18:30:00Z',
+    role: 'control',
+    ownerEmail: 'jordan@example.com',
+    mqttEnabled: false,
+    relayConnected: true,
+    relayLastSeenAt: '2025-07-20T18:30:00Z',
+  },
 ];
 
 // ── Rooms ────────────────────────────────────────────────────────────────────
