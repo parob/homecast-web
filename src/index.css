@@ -275,6 +275,24 @@ All colors MUST be HSL.
   }
 }
 
+/* Where the row of top-of-screen controls is centred, and how tall a one-line
+   toast pill is. The toaster sits on that line — `top: centre - half a pill` —
+   because a toast is drawn beside those controls (Edit Layout puts the burger
+   and Done either side of it) and a few pixels out reads as broken.
+
+   AppHeader overwrites `--top-row-center` with its row's measured centre while
+   it is mounted. It has to be measured: the row is 80px from the top of the
+   viewport on a phone and 70px starting at a 33px title-bar inset in the Mac
+   app, where the left cluster rather than the class sets the height. A constant
+   that was right for one was 4.25px wrong for the other.
+
+   The default is what pages with no header — login, a share link — fall back
+   to, and it is the 16px top inset they have always had. */
+:root {
+  --toast-pill-height: 40px;
+  --top-row-center: calc(16px + (var(--toast-pill-height) / 2) + var(--safe-area-top) + var(--mac-app-inset, 0px));
+}
+
 .safe-area-top {
   padding-top: var(--safe-area-top);
 }
