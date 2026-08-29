@@ -323,12 +323,18 @@ export function defaultValueFor(char: WritableChar | undefined): unknown {
   }
 }
 
-/** Compact "80%" / "Locked" style summary of a configured action's value. */
-export function describeValue(char: WritableChar | undefined, value: unknown): string {
+/**
+ * Compact "80%" / "Locked" style summary of a configured action's value.
+ *
+ * `fallbackType` is the characteristic type the action itself names, used when
+ * the accessory it belongs to isn't in the list and so `char` is undefined.
+ * Without it a power state reads as a bare "0" rather than "Off".
+ */
+export function describeValue(char: WritableChar | undefined, value: unknown, fallbackType?: string): string {
   if (char?.kind === 'boolean') return value === true || value === 1 ? 'On' : 'Off';
   if (char?.kind === 'enum') {
     const option = char.options?.find(o => o.value === Number(value));
     if (option) return option.label;
   }
-  return formatValue(value, char?.type) || '—';
+  return formatValue(value, char?.type ?? fallbackType) || '—';
 }
