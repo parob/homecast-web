@@ -214,29 +214,72 @@ html[data-theme="dark"] .a-cap.warn{color:hsl(38 92% 62%)}
   background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
   border:1px solid var(--hair);box-shadow:0 12px 34px rgb(0 0 0/.28);
 }
-.chain{display:flex;align-items:flex-start;margin:2px 0 9px}
-.node{display:flex;flex-direction:column;align-items:center;gap:4px;width:44px;flex:0 0 auto;text-align:center}
-.node .b{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fg) 9%,transparent);color:var(--muted-fg)}
-.node .b.lit{background:color-mix(in srgb,var(--success) 20%,transparent);color:var(--success)}
-.node .b.warn{background:color-mix(in srgb,var(--warning) 26%,transparent);color:hsl(38 92% 40%)}
-.node .b.bad{background:color-mix(in srgb,var(--destructive) 20%,transparent);color:var(--destructive)}
-.node .b.dim{opacity:.42}
-.node .t{font-size:9.5px;font-weight:560;color:var(--muted-fg);line-height:1.2}
-.node .t.on{color:var(--fg)}
-html[data-theme="dark"] .node .b.warn{color:hsl(38 92% 62%)}
-.hop{flex:1 1 auto;position:relative;height:26px;display:flex;align-items:center;padding:0 2px}
-.hop .ln{height:2px;width:100%;border-radius:2px;background:color-mix(in srgb,var(--fg) 14%,transparent)}
-.hop .ln.ok{background:var(--success)} .hop .ln.warn{background:var(--warning)}
-.hop .ln.bad{background:var(--destructive)}
-.hop .ln.dash{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fg) 22%,transparent) 0 4px,transparent 4px 8px)}
-.hop .lb{
+/* ---------- THE CHAIN, four styles ----------
+   Every option embeds this now, not just C. Tone words are shared:
+   ok / warn / bad / idle for a node, and the hop *into* that node. */
+.tone-ok{color:var(--success)} .tone-bad{color:var(--destructive)}
+.tone-warn{color:hsl(38 92% 40%)} .tone-idle{color:var(--muted-fg)}
+html[data-theme="dark"] .tone-warn{color:hsl(38 92% 62%)}
+.bg-ok{background:var(--success)} .bg-bad{background:var(--destructive)}
+.bg-warn{background:var(--warning)}
+.bg-idle{background:color-mix(in srgb,var(--fg) 16%,transparent)}
+.dash-idle{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fg) 24%,transparent) 0 3px,transparent 3px 7px)}
+
+/* — style 1: nodes — icons, labels, connectors. The most explicit. */
+/* top margin is clearance for the hop labels, which hang at top:-9px */
+.chain.st-nodes{display:flex;align-items:flex-start;margin:13px 0 9px}
+.chain.st-nodes .node{display:flex;flex-direction:column;align-items:center;gap:4px;width:44px;flex:0 0 auto;text-align:center}
+.chain.st-nodes .b{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fg) 9%,transparent);color:var(--muted-fg)}
+.chain.st-nodes .b.ok{background:color-mix(in srgb,var(--success) 20%,transparent)}
+.chain.st-nodes .b.warn{background:color-mix(in srgb,var(--warning) 26%,transparent)}
+.chain.st-nodes .b.bad{background:color-mix(in srgb,var(--destructive) 20%,transparent)}
+.chain.st-nodes .b.idle{opacity:.42}
+.chain.st-nodes .t{font-size:9.5px;font-weight:560;color:var(--muted-fg);line-height:1.2}
+.chain.st-nodes .t.on{color:var(--fg)}
+.chain.st-nodes .hop{flex:1 1 auto;position:relative;height:26px;display:flex;align-items:center;padding:0 2px}
+.chain.st-nodes .ln{height:2px;width:100%;border-radius:2px}
+.chain.st-nodes .lb{
   position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:640;
   font-variant-numeric:tabular-nums;color:var(--muted-fg);white-space:nowrap;
   background:color-mix(in srgb,var(--bg) 55%,transparent);padding:0 3px;border-radius:3px;
 }
+
+/* — style 2: bar — one capsule in three segments. The sleekest; no icons at all. */
+.chain.st-bar{margin:5px 0 8px}
+.chain.st-bar .segs{display:flex;gap:3px;height:5px}
+.chain.st-bar .seg{flex:1 1 0;border-radius:3px}
+.chain.st-bar .segs.brk .seg{flex:1 1 0}
+.chain.st-bar .names{display:flex;justify-content:space-between;margin-top:5px}
+.chain.st-bar .names span{font-size:9px;font-weight:560;color:var(--muted-fg);line-height:1.2}
+.chain.st-bar .names span.on{color:var(--fg)}
+.chain.st-bar .names span.fail{font-weight:700}
+
+/* — style 3: dots — four pips on a hairline. The most compact; fits a header pill. */
+.chain.st-dots{display:flex;align-items:center;margin:14px 0 7px;position:relative}
+.chain.st-dots .nd{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.chain.st-dots .ln{flex:1 1 auto;height:2px;border-radius:2px;min-width:10px}
+.chain.st-dots .lb{
+  position:absolute;top:-10px;font-size:8.5px;font-weight:640;font-variant-numeric:tabular-nums;
+  color:var(--muted-fg);white-space:nowrap;transform:translateX(-50%);
+}
+.chain.st-dots.micro{margin:0;gap:0;flex:0 0 auto;width:32px}
+.chain.st-dots.micro .nd{width:4px;height:4px}
+.chain.st-dots.micro .ln{min-width:5px;height:1.5px}
+
+/* — style 4: rail — one row per hop, vertical. Reads best in the sheet. */
+.chain.st-rail{display:flex;flex-direction:column;margin:4px 0 8px}
+.chain.st-rail .row{display:flex;align-items:center;gap:8px;position:relative;padding:2.5px 0}
+.chain.st-rail .nd{width:8px;height:8px;border-radius:50%;flex:0 0 auto;z-index:1}
+.chain.st-rail .stem{position:absolute;left:3px;top:0;bottom:0;width:2px;border-radius:2px}
+.chain.st-rail .nm{font-size:10.5px;font-weight:560;color:var(--muted-fg)}
+.chain.st-rail .nm.on{color:var(--fg)}
+.chain.st-rail .vl{margin-left:auto;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted-fg)}
+
+/* the Local Mode bypass, drawn in whichever style is active */
 .c-bypass{position:relative;height:20px;margin:-4px 0 8px}
 .c-bypass .arc{position:absolute;left:20px;right:20px;top:0;height:14px;border:2px solid var(--success);border-top:0;border-radius:0 0 14px 14px;opacity:.85}
 .c-bypass .lb{position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:9px;font-weight:640;color:var(--success);background:color-mix(in srgb,var(--bg) 70%,transparent);padding:0 4px}
+.bypass-note{font-size:9.5px;font-weight:640;color:var(--success);margin:-3px 0 7px}
 
 /* D — bottom sheet */
 .p-d{
@@ -303,6 +346,12 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
     <button data-wall="warm" aria-pressed="false">Warm</button>
     <button data-wall="flat" aria-pressed="false">Flat</button>
   </div>
+  <div class="seg" id="chainSeg" title="How the device → cloud → relay → home chain is drawn">
+    <button data-chain="nodes" aria-pressed="true">Nodes</button>
+    <button data-chain="bar" aria-pressed="false">Bar</button>
+    <button data-chain="dots" aria-pressed="false">Dots</button>
+    <button data-chain="rail" aria-pressed="false">Rail</button>
+  </div>
 </div>
 
 <div class="picker">
@@ -316,6 +365,22 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
     <h2>The status bubble</h2>
     <p>One dot in the header opens a <code>w-[280px] p-3</code> popover — <code>src/components/layout/StatusBadge.tsx</code>. Its body is up to three stacked sections: <code>ConnectionSection</code>, <code>LocalModeSection</code>, <code>RelaySection</code>.</p>
     <p>Four things are wrong with it, none of them a fault. It is an <b>opaque card on a glass app</b> — the one white rectangle on the screen. Its <b>headline repeats the dot</b>: a green dot followed by "Connection is good" says the same thing twice, and the only new information, <code>32ms</code>, is demoted to the smaller grey line. It is a <b>280px card carrying one line</b> in the healthy state, where there is no Reconnect button, no relay section and no Local Mode section — so it is a large empty box that covers the Scenes and Automations pills. And <b>nothing ties it to what you tapped</b>: no tail, <code>align="end"</code> against a mid-header trigger, two thirds of the width on a 440px phone.</p>
+  </div>
+
+  <div class="note">
+    <b>Every option now carries the chain.</b> The first pass had it only in C, which made the
+    choice "diagnosis or sleekness". It is not: <code>device → cloud → relay → home</code> is four
+    pips and three lines, and it fits in a header pill. So it is in all five, drawn in whichever
+    style the <b>Nodes / Bar / Dots / Rail</b> switch is set to — that switch drives every option at
+    once, the same way the state picker does. C is no longer "the one with the chain"; it is the one
+    <i>built around</i> it, where the chain is the content rather than a band above it.
+    <br><br>
+    The last four states exist to answer <b>when the chain is worth it</b>. In each, today's dot and
+    sentence are not just terse, they point somewhere wrong: <b>Relay unreachable</b> says "your home
+    is not responding" when the phone and internet are fine and the Mac is the problem;
+    <b>Mac answering slowly</b> says "your connection is slow" about a 28ms connection;
+    <b>Community · same Wi-Fi</b> has no cloud in the path at all; <b>Community · over a tunnel</b>
+    is slow at the tunnel and 8ms at the Mac behind it. One dot cannot separate any of those pairs.
   </div>
 
   <div class="note warn">
@@ -334,13 +399,13 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
       <td>Current</td><td>—</td><td>280×~72px opaque card over the pills</td><td>Everything is in one place</td><td>Wrong material, says the dot twice, mostly empty</td>
     </tr>
     <tr>
-      <td>A · Glass tail</td><td>Same structure, right material, number promoted to headline, tail at the dot</td><td>248×~62px, translucent</td><td>Cheapest to ship, fixes the material and the redundancy in one pass</td><td>Still a card for one line; does not answer <i>which hop</i> is slow</td>
+      <td>A · Glass tail</td><td>Same structure, right material, number promoted to headline, tail at the dot, chain as a band beneath</td><td>248×~86px, translucent</td><td>Cheapest to ship, and now diagnoses too — reading first, hop second</td><td>Still a card for what is often one line; the chain competes with the number for the top slot</td>
     </tr>
     <tr>
-      <td>B · Inline pill</td><td>No card when healthy — the dot grows into <code>32 ms</code> in the header</td><td>Nothing. Zero occlusion</td><td>Sleekest by a distance; the good state stops being a dialog</td><td>Two different interactions depending on state; detail needs a second tap</td>
+      <td>B · Inline pill</td><td>No card when healthy — the dot grows into four pips + <code>32 ms</code></td><td>Nothing. Zero occlusion</td><td>Sleekest by a distance, and the pips answer "all hops up?" with no tap at all</td><td>Two different interactions depending on state; which hop broke needs the tap</td>
     </tr>
     <tr>
-      <td>C · Path strip</td><td>Device → Cloud → Relay → Home as lit segments</td><td>262×~104px</td><td>Localises the fault — answers "is it me, the internet, or my Mac?"; Local Mode draws as a bypass</td><td>Tallest of the five; a chain is a concept to learn</td>
+      <td>C · Path strip</td><td>Built <i>around</i> the chain — the hop sentence is the headline</td><td>262×~104px</td><td>Clearest diagnosis: nothing competes with the path for the top slot</td><td>Tallest of the five; a chain is a concept to learn, and here you cannot skip it</td>
     </tr>
     <tr>
       <td>D · Bottom sheet</td><td>Touch-first sheet with a latency sparkline</td><td>Full-width sheet, ~190px tall</td><td>Only option that shows <i>flapping</i> rather than a single instant</td><td>Heaviest; a sheet for "32 ms" is a lot of gesture</td>
@@ -351,7 +416,12 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
   </table>
 
   <div class="note">
-    <b>If you want one:</b> <b>A</b> as the floor and <b>C</b> as the ceiling. A is a contained change to material and hierarchy that could ship on its own and would fix the screenshot. C is the only option that makes the box <i>more useful</i> rather than just smaller — it turns "your home is not responding" into "Homecast can't reach your Mac", which is the question the user actually has. They compose: C's chain can live inside A's glass tail card.
+    <b>Now that the chain is in all five, the choice is no longer "diagnosis or sleekness" — it is where the chain sits in the hierarchy.</b>
+    <b>C</b> puts it first and the reading second. <b>A</b> and <b>E</b> put the reading first and the chain second.
+    <b>B</b> puts a four-pip version in the header and everything else behind a tap. <b>D</b> puts it above history.
+    On the evidence of the last four states, the hop sentence is more often the useful half than the number is —
+    "Homecast can't reach your Mac" beats "9s" — which argues for C's ordering, in A's material, at B's resting size.
+    That hybrid is buildable: A's card, C's hierarchy, and B's header pips for the healthy state.
   </div>
 </main>
 
@@ -516,6 +586,46 @@ const S = [
   relay:{state:'connected_active', pill:'Active Relay', tone:'ok', uptime:'2d 5h', clients:'1 connected', hooks:'None', community:true},
   path:{community:true, cloud:'idle', relay:'ok', home:'ok', selfRelay:true, hopLabels:['','','']},
   spark:[],
+},
+
+/* ── The four below exist to answer "when is the chain actually worth it?" ──
+   Each is a case where today's single dot and single sentence are not merely
+   terse but point at the wrong thing. */
+{
+  key:'relay-down', name:'Relay unreachable', tone:'warn',
+  scenario:'The phone reaches Homecast in 34ms; Homecast cannot get an answer from the Mac at home. Today this is "your home is not responding", with nothing to say the internet is fine.',
+  badge:{tone:'warn', label:'Not responding', pulse:true, sr:'Connection is not responding'},
+  conn:{head:'Your home is not responding', sub:'A request has been waiting 9s.', rtt:null, when:null, warn:true, action:true},
+  path:{cloud:'ok', relay:'bad', home:'idle', hopLabels:['34 ms','no answer',''],
+        sentence:"Homecast can't reach your Mac at home. Your phone and your internet are both fine."},
+  spark:[36,33,38,35,2200,6400,9000,null,null],
+},
+{
+  key:'home-slow', name:'Mac answering slowly', tone:'warn',
+  scenario:'Every link is up; the relay Mac is slow to answer Apple Home. Today this reads "your connection is slow", which blames the network for something the network did not do.',
+  badge:{tone:'warn', label:'Slow', pulse:false, sr:'Connection is slow'},
+  conn:{head:'Your connection is slow', sub:'Round trip 2.1s · just now', rtt:'2.1', unit:'s', when:'just now', warn:true, action:true},
+  path:{cloud:'ok', relay:'ok', home:'warn', hopLabels:['28 ms','40 ms','2.0 s'],
+        sentence:'Your Mac is slow to answer Apple Home. The link to Homecast is fine — 28 ms.'},
+  spark:[900,1400,1800,2100,1900,2300,2100,2000],
+},
+{
+  key:'community-lan', name:'Community · same Wi-Fi', tone:'ok',
+  scenario:'Community Edition from a phone on the same network. There is no cloud in the path at all, which no amount of wording on a single dot can convey.',
+  badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
+  conn:{head:'Connection is good', sub:'Round trip 6ms · just now', rtt:'6', when:'just now', warn:false, action:false},
+  path:{cloud:'ok', relay:'ok', home:'ok', cloudName:'Your Wi-Fi', relayName:'Mac mini', hopLabels:['6 ms','',''],
+        sentence:'You are on the same network as your Mac. Nothing leaves the house.'},
+  spark:[7,5,6,8,6,5,7,6,6,5],
+},
+{
+  key:'community-tunnel', name:'Community · over a tunnel', tone:'warn',
+  scenario:'Community Edition reached at a public HTTPS origin. The tunnel is the slow hop and the Mac behind it is fast — the opposite of what one number suggests.',
+  badge:{tone:'warn', label:'Slow', pulse:false, sr:'Connection is slow'},
+  conn:{head:'Your connection is slow', sub:'Round trip 1.2s · just now', rtt:'1.2', unit:'s', when:'just now', warn:true, action:true},
+  path:{cloud:'warn', relay:'ok', home:'ok', cloudName:'Tunnel', relayName:'Mac mini', hopLabels:['1.2 s','8 ms',''],
+        sentence:'The tunnel is the slow part. Your Mac is answering in 8 ms behind it.'},
+  spark:[400,760,980,1150,1240,1180,1220,1200],
 }];
 
 /* ---------------- shared fragments ---------------- */
@@ -525,7 +635,7 @@ const dotEl = (b, extra='') =>
 /** The header trigger, faithful to StatusBadge: 24px circle, becomes a pill only when labelled. */
 function trigger(s, opts={}){
   const b = s.badge;
-  if (opts.asPill) return `<span class="b-pill">${dotEl(b)}${opts.pillText}</span>`;
+  if (opts.asPill) return `<span class="b-pill">${opts.pillLead || dotEl(b)}${opts.pillText}</span>`;
   return b.label
     ? `<button class="trig labelled" aria-label="${b.sr}">${dotEl(b)}${b.label}</button>`
     : `<button class="trig" aria-label="${b.sr}">${dotEl(b)}</button>`;
@@ -665,6 +775,8 @@ function optA(s){
   }
   return frame(s, `<div class="panel p-a">
       ${head}
+      ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
+      <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
       ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
       ${c && c.action && !s.local ? reconnectBtn : ''}
       ${localBlock(s, false, true)}${relayBlock(s)}
@@ -676,47 +788,120 @@ function optB(s){
   const c = s.conn;
   const L = lead(s);
   if (isHealthy(s) && !s.relay){
-    return frame(s, `<div class="panel b-none">No card. The dot grew into the reading, in place — nothing is covered.</div>`,
-      trigger(s, {asPill:true, pillText:s.badge.label || `${c.rtt} ${c.unit||'ms'}`}));
+    // the whole chain, four pips wide, inside the header pill — no card at all
+    return frame(s, `<div class="panel b-none">No card. The dot became the chain plus the reading, in place — nothing is covered, and it still says every hop is up.</div>`,
+      trigger(s, {asPill:true, pillLead:chain(s,'dots',{micro:true}),
+                  pillText:s.badge.label || `${c.rtt} ${c.unit||'ms'}`}));
   }
   const body = `<div class="hl">${L.head}</div><div class="sb">${L.sub}</div>
+      ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
+      <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
       ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
       ${c && c.action && !s.local ? reconnectBtn : ''}`;
   return frame(s, `<div class="panel p-b">${body}${localBlock(s,true)}${relayBlock(s,true)}</div>`,
     trigger(s, {asPill:true, pillText:s.badge.label || (hasMetric(s) ? `${c.rtt} ${c.unit||'ms'}` : L.cap)}));
 }
 
-/* C — PATH STRIP: which hop is the problem */
+/* ================= THE CHAIN =================
+ * Device → Homecast → Relay → Home, in whichever style is selected.
+ *
+ * This is no longer C's private trick — every option embeds it. What C keeps
+ * is being the option built AROUND it; the others carry it as one band.
+ *
+ * The four nodes and three hops are always the same facts. Only the drawing
+ * changes, which is the point of having styles: the question "is it me, the
+ * internet, or my Mac?" is worth answering in a header pill and in a sheet,
+ * and those cannot both be 26px icon boxes.
+ */
+function nodesOf(s){
+  const p = s.path;
+  return [
+    {key:'device', icon:'phone',  name:'This phone', tone:'ok'},
+    {key:'cloud',  icon:'cloud',  name:p.cloudName || 'Homecast', tone:p.cloud},
+    {key:'relay',  icon:'server', name:p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'), tone:p.relay},
+    {key:'home',   icon:'house',  name:'Home',       tone:p.home},
+  ];
+}
+/** The hop into node i+1, and its label. */
+const hopsOf = s => [s.path.cloud, s.path.relay, s.path.home]
+  .map((tone,i) => ({tone, label:(s.path.hopLabels||[])[i] || ''}));
+
+function chain(s, style, opts={}){
+  const N = nodesOf(s), H = hopsOf(s);
+  const bg = t => t==='idle' ? 'dash-idle' : `bg-${t}`;
+  const solid = t => `bg-${t==='idle'?'idle':t}`;
+
+  if (style === 'bar') {
+    return `<div class="chain st-bar">
+      <div class="segs">${H.map(h=>`<span class="seg ${bg(h.tone)}"></span>`).join('')}</div>
+      <div class="names">${N.map(n=>
+        `<span class="${n.tone==='ok'?'on':''}${n.tone==='bad'||n.tone==='warn'?' fail tone-'+n.tone:''}">${n.name}</span>`).join('')}</div>
+    </div>`;
+  }
+  if (style === 'dots') {
+    // labels are positioned over the hop they belong to: 4 pips, 3 gaps.
+    // micro is the header-pill size — there is no room for them, and they are
+    // absolutely positioned, so leaving them in overlaps whatever sits alongside.
+    const lbl = opts.micro ? '' : H.map((h,i)=> h.label
+      ? `<span class="lb" style="left:${((i+0.5)/3)*100}%">${h.label}</span>` : '').join('');
+    return `<div class="chain st-dots${opts.micro?' micro':''}">
+      ${lbl}${N.map((n,i)=>
+        `${i?`<span class="ln ${bg(H[i-1].tone)}"></span>`:''}<span class="nd ${solid(n.tone)}"></span>`).join('')}
+    </div>`;
+  }
+  if (style === 'rail') {
+    return `<div class="chain st-rail">${N.map((n,i)=>
+      `<div class="row">${i?`<span class="stem ${bg(H[i-1].tone)}" style="top:-11px;height:22px"></span>`:''}
+        <span class="nd ${solid(n.tone)}"></span>
+        <span class="nm ${n.tone==='ok'?'on':''}">${n.name}</span>
+        ${i&&H[i-1].label?`<span class="vl">${H[i-1].label}</span>`:''}</div>`).join('')}</div>`;
+  }
+  // nodes (default)
+  return `<div class="chain st-nodes">${N.map((n,i)=>
+    `${i?`<div class="hop">${H[i-1].label?`<span class="lb">${H[i-1].label}</span>`:''}<span class="ln ${bg(H[i-1].tone)}"></span></div>`:''}
+     <div class="node"><span class="b ${n.tone} tone-${n.tone}">${ic(n.icon,14)}</span>
+       <span class="t${n.tone==='ok'?' on':''}">${n.name}</span></div>`).join('')}</div>`;
+}
+
+/**
+ * The one sentence naming the hop — the sentence is the payload, the drawing
+ * is just what makes it quick to read. Written per scenario rather than
+ * derived, because "which hop" is a copy problem before it is a layout one.
+ */
+const SENTENCE = {
+  good:            'Every hop is healthy.',
+  unknown:         'Checking the route to your home.',
+  connecting:      'Re-establishing the link to Homecast.',
+  slow:            'Reaching Homecast is slow right now. Your Mac is answering normally behind it.',
+  stalled:         "Homecast can't get an answer from your Mac at home.",
+  offline:         "This device can't reach Homecast.",
+  reconnected:     'Every hop is healthy again.',
+  'local-mapped':  'Homecast is unreachable, so this device is talking to your home directly.',
+  'local-unmapped':'Homecast is unreachable, so this device is talking to your home directly.',
+  'relay-active':  'Every hop is healthy. This Mac is the one serving the home.',
+  'relay-standby': 'Another Mac is the active relay for this home.',
+  'relay-offline': "This Mac can't reach Homecast.",
+  community:       'This Mac is serving your home on its own. Nothing is going through the cloud.',
+};
+const pathSentence = s => s.path.sentence || SENTENCE[s.key] || 'Every hop is healthy.';
+function bypassMark(s, style){
+  if (!s.path.bypass) return '';
+  return style === 'nodes'
+    ? `<div class="c-bypass"><span class="arc"></span><span class="lb">direct to Apple Home</span></div>`
+    : `<div class="bypass-note">↳ bypassing both — direct to Apple Home</div>`;
+}
+
+/* C — PATH STRIP: the option built around the chain */
 function optC(s){
-  const p = s.path, L = p.hopLabels || ['','',''];
-  const cls = t => t==='ok'?'lit':t==='warn'?'warn':t==='bad'?'bad':'dim';
-  const line = t => t==='ok'?'ok':t==='warn'?'warn':t==='bad'?'bad':'dash';
-  const sentence =
-    p.community          ? 'This Mac is serving your home on its own. Nothing is going through the cloud.' :
-    p.bypass             ? 'Homecast is unreachable, so this device is talking to your home directly.' :
-    p.cloud==='bad'      ? "This device can't reach Homecast." :
-    p.cloud==='warn'     ? 'Reaching Homecast is slow right now.' :
-    p.relay==='warn'     ? "Homecast can't get an answer from your Mac at home." :
-    p.standby            ? 'Another Mac is the active relay for this home.' :
-    p.cloud==='idle'     ? 'Checking the route to your home.' :
-                           'Every hop is healthy.';
-  const relayName = p.selfRelay ? 'This Mac' : 'Relay';
+  const st = chainStyle;
   return frame(s, `<div class="panel p-c">
-      <div class="chain">
-        <div class="node"><span class="b lit">${ic('phone',14)}</span><span class="t on">This phone</span></div>
-        <div class="hop">${L[0]?`<span class="lb">${L[0]}</span>`:''}<span class="ln ${line(p.cloud)}"></span></div>
-        <div class="node"><span class="b ${cls(p.cloud)}">${ic('cloud',14)}</span><span class="t${p.cloud==='ok'?' on':''}">Homecast</span></div>
-        <div class="hop">${L[1]?`<span class="lb">${L[1]}</span>`:''}<span class="ln ${line(p.relay)}"></span></div>
-        <div class="node"><span class="b ${cls(p.relay)}">${ic('server',14)}</span><span class="t${p.relay==='ok'?' on':''}">${relayName}</span></div>
-        <div class="hop"><span class="ln ${line(p.home)}"></span></div>
-        <div class="node"><span class="b ${cls(p.home)}">${ic('house',14)}</span><span class="t${p.home==='ok'?' on':''}">Home</span></div>
-      </div>
-      ${p.bypass ? `<div class="c-bypass"><span class="arc"></span><span class="lb">direct to Apple Home</span></div>`:''}
-      <div class="hl" style="font-size:12px">${sentence}</div>
-      ${s.conn && s.conn.warn && !p.bypass ? `<div class="warnline">${WARN_TEXT}</div>`:''}
+      ${chain(s, st)}
+      ${bypassMark(s, st)}
+      <div class="hl" style="font-size:12px">${pathSentence(s)}</div>
+      ${s.conn && s.conn.warn && !s.path.bypass ? `<div class="warnline">${WARN_TEXT}</div>`:''}
       ${s.local ? `<div class="sb">Automations and notifications stay off until the relay is back.</div>`:''}
       ${s.relay && s.relay.standby ? `<button class="act">Take Over as Relay</button>` :
-        (s.conn && s.conn.action && !p.bypass ? reconnectBtn : '')}
+        (s.conn && s.conn.action && !s.path.bypass ? reconnectBtn : '')}
     </div>`, trigger(s));
 }
 
@@ -762,6 +947,8 @@ function optD(s){
       <div class="d-top">${dotEl(s.badge)}
         <div><div class="hl">${lead(s).head}</div>
         <div class="sb">${lead(s).sub}</div></div></div>
+      ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
+      <div class="sb" style="margin:-2px 0 6px">${pathSentence(s)}</div>
       ${sparkline(s.spark, s.badge.tone)}
       <div class="d-rows">${rows.map(r=>`<div class="d-row">${dotEl({tone:r.dot})}
         <span class="nm">${r.nm}</span><span class="vl">${r.vl}</span></div>`).join('')}</div>
@@ -779,11 +966,13 @@ function optE(s){
   const primary = hasMetric(s) ? `${c.rtt} ${c.unit||'ms'}` : (s.badge.label || L.cap);
   const secondary = isHealthy(s) ? `${c.head.replace('Connection is ','')} · ${c.when}` : L.head;
   return frame(s, `<div class="panel p-e" data-e>
-      <div class="e-hd">${dotEl(s.badge)}
+      <div class="e-hd">${chain(s,'dots',{micro:true})}
         <span class="tx"><span class="n">${primary}</span><br><span class="s">${secondary}</span></span>
         ${ic('chevron',14,'e-chev')}</div>
       <div class="e-more">
-        ${c?`<div class="sep" style="margin-top:0"></div><div class="hl" style="font-size:12px">${c.head}</div>
+        ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
+        <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
+        ${c?`<div class="sep"></div><div class="hl" style="font-size:12px">${c.head}</div>
            <div class="sb">${c.sub}</div>
            ${c.warn?`<div class="warnline">${WARN_TEXT}</div>`:''}
            ${c.action?reconnectBtn:''}`:''}
@@ -798,23 +987,24 @@ const OPTS = [
    blurb:'<code>w-[280px] p-3</code> shadcn popover, <code>--popover</code> background, <code>align="end" sideOffset={8}</code>. Opaque card on a glass app; the headline repeats the dot; no tail.',
    foot:'<b>Breaks on:</b> the healthy state, where the card is 280px of mostly nothing sitting over the Scenes and Automations pills.'},
   {id:'a', cls:'', tag:'A', tagCls:'', title:'Glass tail', fn:optA,
-   blurb:'Same three sections, app material: <code>backdrop-blur</code> + hairline, a tail at the dot, 248px. In the healthy state the <b>number becomes the headline</b> and the state drops to a small caps label.',
-   foot:'<b>Cost:</b> a background token and a tail on <code>PopoverContent</code>, plus a branch in <code>ConnectionSection</code> for the metric-first layout. No new state, no new concept.'},
+   blurb:'Same three sections, app material: <code>backdrop-blur</code> + hairline, a tail at the dot, 248px. In the healthy state the <b>number becomes the headline</b> and the state drops to a small caps label. The chain sits under it as one band.',
+   foot:'<b>Cost:</b> a background token and a tail on <code>PopoverContent</code>, a branch in <code>ConnectionSection</code> for the metric-first layout, and the chain component. The smallest change that still answers <i>which hop</i>.'},
   {id:'b', cls:'', tag:'B', tagCls:'', title:'Inline pill', fn:optB,
-   blurb:'The healthy state has no popover at all — the dot expands in the header into the reading. The card appears only when there is a reason, a relay or Local Mode to talk about.',
-   foot:'<b>Catch:</b> the same control does two different things depending on state. Keeps the always-present dot, so the merge rationale holds — what disappears is the box, not the indicator.'},
+   blurb:'The healthy state has no popover at all — the dot expands in the header into <b>the whole chain plus the reading</b>, four pips wide. The card appears only when there is a reason, a relay or Local Mode to talk about.',
+   foot:'<b>Catch:</b> the same control does two different things depending on state. Keeps the always-present dot, so the merge rationale holds — what disappears is the box, not the indicator. Four pips in the header say "every hop is up" without opening anything.'},
   {id:'c', cls:'pick', tag:'C', tagCls:'rec', title:'Path strip', fn:optC,
-   blurb:'Device → Homecast → Relay → Home as lit segments, latency on the hop it belongs to. Local Mode draws as a <b>bypass arc</b>: the cloud hop is dead and the home is still green.',
-   foot:'<b>Why this one:</b> the other four say the connection is bad. This one says <i>which hop</i>, which is the question behind the dot — and it renders the Offline-and-fine-anyway case that caused the three pills to be merged in the first place.'},
+   blurb:'The option <b>built around</b> the chain rather than carrying it — the path is the content, and the sentence naming the broken hop is the headline. Local Mode draws as a <b>bypass</b>: the cloud hop is dead and the home is still green.',
+   foot:'<b>Now that every option has the chain,</b> what C still has alone is <i>hierarchy</i> — no round-trip headline competing with it, and the hop sentence in the primary slot. Pick C if the diagnosis is the point; pick A or E if the reading is, with the chain underneath.'},
   {id:'d', cls:'', tag:'D', tagCls:'', title:'Bottom sheet', fn:optD,
    blurb:'Thumb-reachable sheet on touch, popover on desktop. A log-scaled sparkline of recent round trips with the 1s and 3s thresholds drawn in; gaps are left as gaps.',
    foot:'<b>Most work</b> of the five, and the only one that answers "has it been doing this all morning?". Needs an RTT ring buffer — <code>connection.ts</code> keeps only <code>RTT_WINDOW=5</code> today.'},
   {id:'e', cls:'', tag:'E', tagCls:'', title:'Morph from the dot', fn:optE,
-   blurb:'<code>sideOffset={0}</code>, transform-origin top-right: the panel grows out of the 24px circle, so it is attached by construction. Compact by default — tap the chevron to expand in place.',
+   blurb:'<code>sideOffset={0}</code>, transform-origin top-right: the panel grows out of the 24px circle, so it is attached by construction. Compact by default — the micro chain rides in the collapsed row; the chevron expands to the full one.',
    foot:'<b>Note:</b> Radix animates content, not the trigger. Matches the “menu morphed into its button” direction already being explored in <code>index.html</code> §2.'},
 ];
 
 let current = 'good';
+let chainStyle = 'nodes';
 
 function render(){
   const s = S.find(x => x.key === current);
@@ -845,6 +1035,12 @@ function render(){
 document.getElementById('states').addEventListener('click', e => {
   const b = e.target.closest('.st-btn'); if(!b) return;
   current = b.dataset.state; render();
+});
+document.getElementById('chainSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  chainStyle = b.dataset.chain;
+  [...e.currentTarget.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  render();
 });
 
 applyTheme('dark');
