@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homecast — status bubble proposals</title>
+<style>
+:root{
+  --bg:hsl(0 0% 100%); --fg:hsl(222.2 84% 4.9%);
+  --card:hsl(0 0% 100%); --popover:hsl(0 0% 100%);
+  --primary:hsl(217 91% 60%); --primary-fg:#fff;
+  --muted:hsl(214 32% 91%); --muted-fg:hsl(215.4 16.3% 46.9%);
+  --border:hsl(214.3 31.8% 91.4%);
+  --destructive:hsl(0 84.2% 60.2%); --success:hsl(142 76% 36%); --warning:hsl(38 92% 50%);
+  --page:hsl(210 20% 96%);
+  --glass:rgb(255 255 255 / .7); --glass-thick:rgb(255 255 255 / .85);
+  --hair:rgb(0 0 0 / .10);
+  --shadow-lg:0 10px 15px -3px rgb(0 0 0/.1),0 4px 6px -4px rgb(0 0 0/.1);
+  --shadow-xl:0 20px 25px -5px rgb(0 0 0/.12),0 8px 10px -6px rgb(0 0 0/.1);
+}
+html[data-theme="dark"]{
+  --bg:hsl(222 47% 6%); --fg:hsl(210 40% 98%);
+  --card:hsl(222 47% 8%); --popover:hsl(222 47% 8%);
+  --muted:hsl(217 32% 17%); --muted-fg:hsl(215 20% 65%);
+  --border:hsl(217 32% 17%);
+  --destructive:hsl(0 72% 51%); --success:hsl(142 70% 45%);
+  --page:hsl(222 47% 4%);
+  --glass:rgb(0 0 0 / .4); --glass-thick:rgb(20 22 30 / .62);
+  --hair:rgb(255 255 255 / .16);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  background:var(--page); color:var(--fg); -webkit-font-smoothing:antialiased;
+}
+code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--muted);padding:.1em .35em;border-radius:4px}
+
+/* ---------- chrome ---------- */
+.topbar{
+  position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 24px;background:var(--bg);border-bottom:1px solid var(--border);
+}
+.topbar h1{font-size:15px;font-weight:650;letter-spacing:-.01em;margin-right:auto}
+.topbar h1 span{color:var(--muted-fg);font-weight:400}
+.seg{display:inline-flex;background:var(--muted);border-radius:9px;padding:2px}
+.seg button{
+  font:inherit;font-size:12px;font-weight:550;border:0;background:transparent;color:var(--muted-fg);
+  padding:5px 12px;border-radius:7px;cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.08)}
+
+/* ---------- state picker ---------- */
+.picker{
+  position:sticky;top:53px;z-index:99;padding:10px 24px 11px;
+  background:color-mix(in srgb,var(--bg) 92%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+}
+.picker .lbl{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:7px}
+.states{display:flex;gap:6px;flex-wrap:wrap}
+.st-btn{
+  font:inherit;font-size:12px;font-weight:550;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px 5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--muted-fg);
+}
+.st-btn:hover{background:var(--muted);color:var(--fg)}
+.st-btn[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.st-btn .pip{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.st-btn .pip.ok{background:hsl(142 70% 45%)} .st-btn .pip.warn{background:hsl(38 92% 50%)}
+.st-btn .pip.bad{background:hsl(0 72% 51%)} .st-btn .pip.idle{background:var(--muted-fg);opacity:.55}
+
+main{max-width:1300px;margin:0 auto;padding:28px 24px 120px}
+.sec-head{margin-bottom:6px}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:6px}
+.sec-head h2{font-size:24px;font-weight:680;letter-spacing:-.02em}
+.sec-head p{color:var(--muted-fg);max-width:78ch;margin-top:8px}
+.sec-head p + p{margin-top:8px}
+
+.scenario{
+  margin:22px 0 4px;padding:11px 15px;border-radius:11px;border:1px solid var(--border);
+  background:var(--bg);font-size:13px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;
+}
+.scenario b{font-weight:640}
+.scenario .who{color:var(--muted-fg)}
+
+.grid{display:grid;gap:20px;margin-top:20px;grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.opt{background:var(--bg);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.opt.current{border-color:color-mix(in srgb,var(--destructive) 45%,var(--border))}
+.opt.pick{border-color:color-mix(in srgb,var(--success) 50%,var(--border))}
+.opt-head{padding:14px 16px 12px;border-bottom:1px solid var(--border)}
+.opt-head .row{display:flex;align-items:center;gap:8px}
+.opt-head h3{font-size:14px;font-weight:640}
+.tag{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--muted);color:var(--muted-fg)}
+.tag.now{background:color-mix(in srgb,var(--destructive) 15%,transparent);color:var(--destructive)}
+.tag.rec{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.opt-head p{font-size:12.5px;color:var(--muted-fg);margin-top:6px}
+.opt-body{padding:16px;display:flex;flex-direction:column;gap:12px;flex:1}
+.opt-foot{padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-fg);background:color-mix(in srgb,var(--muted) 35%,transparent)}
+.opt-foot b{color:var(--fg);font-weight:600}
+
+/* ---------- phone frame ----------
+   The stage is a REAL 440px viewport — the width the report came from — scaled
+   down to fit the card. So every panel width below is the true px value: the
+   280px popover really is 64% of the screen. Do not "fix" a panel by shrinking
+   it here; that would hide the thing being judged. */
+.stage{width:308px;height:420px;overflow:hidden;margin:0 auto;border-radius:22px}
+.frame{
+  position:relative;width:440px;height:600px;border-radius:31px;overflow:hidden;isolation:isolate;
+  transform:scale(.7);transform-origin:top left;
+  background-image:var(--wall);background-size:cover;background-position:center;
+}
+.frame::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgb(255 255 255/.14);border-radius:31px}
+.f-header{position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;z-index:30}
+.circ{
+  width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  background:rgb(60 55 60/.5);backdrop-filter:blur(10px);color:rgb(255 255 255/.85);
+}
+.hdr-right{display:flex;align-items:center;gap:8px}
+
+/* the trigger dot, faithful to StatusBadge */
+.trig{
+  height:24px;min-width:24px;border-radius:9999px;display:inline-flex;align-items:center;gap:6px;
+  padding:0;justify-content:center;border:0;cursor:pointer;font:inherit;
+  background:rgb(60 55 60/.5);backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:600;
+}
+.trig.labelled{padding:0 8px 0 7px;min-width:0}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dot.ok{background:rgb(16 185 129/.6)} .dot.ok.strong{background:rgb(16 185 129)}
+.dot.warn{background:hsl(38 92% 50%)} .dot.bad{background:hsl(0 72% 51%)}
+.dot.idle{background:rgb(255 255 255/.45)}
+.pulsing{animation:pl 2s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes pl{50%{opacity:.4}}
+
+.f-pills{position:absolute;top:64px;left:16px;right:16px;display:flex;gap:10px;z-index:5}
+.f-pills .p{
+  display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9999px;font-size:14px;font-weight:550;
+  background:rgb(0 0 0/.42);backdrop-filter:blur(10px);color:rgb(255 255 255/.92);
+}
+.f-rooms{position:absolute;top:112px;left:16px;right:16px;z-index:4}
+.f-rooms h4{font-size:16px;font-weight:620;color:rgb(255 255 255/.9);margin:0 0 9px 2px}
+.f-rooms h4+.tiles{margin-bottom:16px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{border-radius:19px;padding:12px 13px;height:92px;display:flex;flex-direction:column;justify-content:space-between;background:rgb(90 95 115/.42);backdrop-filter:blur(12px) saturate(140%)}
+.tile .nm{font-size:13px;font-weight:600;line-height:1.2;color:rgb(255 255 255/.95)}
+.tile .st{font-size:11.5px;color:rgb(255 255 255/.6)}
+.tile .ico{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgb(255 255 255/.22);color:#fff}
+
+/* ---------- panel primitives ---------- */
+.panel{position:absolute;z-index:25;text-align:left}
+.panel .hl{font-size:13px;font-weight:620;letter-spacing:-.005em}
+.panel .sb{font-size:11.5px;color:var(--muted-fg);line-height:1.45;margin-top:2px}
+.panel .warnline{font-size:11px;color:var(--muted-fg);line-height:1.4;margin-top:7px}
+.act{
+  display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:9px;
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:7px;border-radius:9px;
+  border:1px solid var(--hair);background:color-mix(in srgb,var(--fg) 7%,transparent);color:var(--fg);
+}
+.sep{height:1px;background:var(--hair);margin:10px -1px}
+.grp{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:5px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:2px 0}
+.kv .k{color:var(--muted-fg)} .kv .v{font-weight:560;font-variant-numeric:tabular-nums}
+.pill-s{font-size:10px;font-weight:700;padding:2px 7px;border-radius:9999px}
+.pill-s.ok{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success)}
+.pill-s.warn{background:color-mix(in srgb,var(--warning) 22%,transparent);color:hsl(38 92% 38%)}
+.pill-s.bad{background:color-mix(in srgb,var(--destructive) 16%,transparent);color:var(--destructive)}
+html[data-theme="dark"] .pill-s.warn{color:hsl(38 92% 62%)}
+.ck{display:flex;align-items:center;gap:6px;font-size:11px;padding:1.5px 0;color:var(--muted-fg)}
+.ck.on{color:var(--fg)} .ck.on svg{color:var(--success)} .ck.off svg{opacity:.45}
+
+/* CURRENT — opaque shadcn popover, align=end, sideOffset 8 */
+.p-now{
+  top:48px;right:102px;width:280px;padding:12px;border-radius:12px;
+  background:var(--popover);border:1px solid var(--border);box-shadow:var(--shadow-xl);color:var(--fg);
+}
+
+/* A — glass tail */
+.p-a{
+  top:48px;right:102px;width:248px;padding:12px 13px;border-radius:16px;color:var(--fg);
+  background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--hair);box-shadow:0 12px 34px rgb(0 0 0/.28);
+}
+.p-a::before{
+  content:"";position:absolute;top:-6px;right:16px;width:12px;height:12px;transform:rotate(45deg);
+  background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
+  border-left:1px solid var(--hair);border-top:1px solid var(--hair);border-radius:2px;
+}
+.a-metric{display:flex;align-items:baseline;gap:7px}
+.a-metric .n{font-size:19px;font-weight:660;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.a-metric .u{font-size:12px;font-weight:560;color:var(--muted-fg)}
+.a-cap{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+.a-cap.ok{color:var(--success)} .a-cap.warn{color:hsl(38 92% 42%)} .a-cap.bad{color:var(--destructive)}
+.a-cap.idle{color:var(--muted-fg)}
+html[data-theme="dark"] .a-cap.warn{color:hsl(38 92% 62%)}
+
+/* B — inline pill in the header, card only when degraded */
+.b-pill{
+  height:24px;border-radius:9999px;display:inline-flex;align-items:center;gap:6px;padding:0 9px 0 7px;
+  background:rgb(60 55 60/.5);backdrop-filter:blur(10px);color:#fff;
+  font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  animation:bgrow .26s cubic-bezier(.21,1.02,.73,1) both;
+}
+@keyframes bgrow{from{max-width:24px;opacity:.4}to{max-width:220px;opacity:1}}
+.p-b{
+  top:48px;right:102px;width:236px;padding:11px 12px;border-radius:15px;color:var(--fg);
+  background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--hair);box-shadow:0 12px 34px rgb(0 0 0/.28);
+}
+.b-none{
+  bottom:18px;left:16px;right:16px;font-size:10.5px;color:rgb(255 255 255/.72);background:rgb(0 0 0/.35);
+  padding:4px 9px;border-radius:8px;backdrop-filter:blur(8px);max-width:190px;line-height:1.35;
+}
+
+/* C — path strip */
+.p-c{
+  top:48px;right:102px;width:262px;padding:13px 13px 12px;border-radius:16px;color:var(--fg);
+  background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--hair);box-shadow:0 12px 34px rgb(0 0 0/.28);
+}
+.chain{display:flex;align-items:flex-start;margin:2px 0 9px}
+.node{display:flex;flex-direction:column;align-items:center;gap:4px;width:44px;flex:0 0 auto;text-align:center}
+.node .b{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fg) 9%,transparent);color:var(--muted-fg)}
+.node .b.lit{background:color-mix(in srgb,var(--success) 20%,transparent);color:var(--success)}
+.node .b.warn{background:color-mix(in srgb,var(--warning) 26%,transparent);color:hsl(38 92% 40%)}
+.node .b.bad{background:color-mix(in srgb,var(--destructive) 20%,transparent);color:var(--destructive)}
+.node .b.dim{opacity:.42}
+.node .t{font-size:9.5px;font-weight:560;color:var(--muted-fg);line-height:1.2}
+.node .t.on{color:var(--fg)}
+html[data-theme="dark"] .node .b.warn{color:hsl(38 92% 62%)}
+.hop{flex:1 1 auto;position:relative;height:26px;display:flex;align-items:center;padding:0 2px}
+.hop .ln{height:2px;width:100%;border-radius:2px;background:color-mix(in srgb,var(--fg) 14%,transparent)}
+.hop .ln.ok{background:var(--success)} .hop .ln.warn{background:var(--warning)}
+.hop .ln.bad{background:var(--destructive)}
+.hop .ln.dash{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fg) 22%,transparent) 0 4px,transparent 4px 8px)}
+.hop .lb{
+  position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:640;
+  font-variant-numeric:tabular-nums;color:var(--muted-fg);white-space:nowrap;
+  background:color-mix(in srgb,var(--bg) 55%,transparent);padding:0 3px;border-radius:3px;
+}
+.c-bypass{position:relative;height:20px;margin:-4px 0 8px}
+.c-bypass .arc{position:absolute;left:20px;right:20px;top:0;height:14px;border:2px solid var(--success);border-top:0;border-radius:0 0 14px 14px;opacity:.85}
+.c-bypass .lb{position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:9px;font-weight:640;color:var(--success);background:color-mix(in srgb,var(--bg) 70%,transparent);padding:0 4px}
+
+/* D — bottom sheet */
+.p-d{
+  left:8px;right:8px;bottom:8px;top:auto;padding:8px 14px 14px;border-radius:22px;color:var(--fg);
+  background:var(--glass-thick);backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--hair);box-shadow:0 -8px 40px rgb(0 0 0/.34);
+  animation:up .3s cubic-bezier(.21,1.02,.73,1) both;
+}
+@keyframes up{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.grab{width:34px;height:4px;border-radius:2px;background:color-mix(in srgb,var(--fg) 22%,transparent);margin:0 auto 11px}
+.d-top{display:flex;align-items:flex-start;gap:9px;margin-bottom:10px}
+.d-top .dot{margin-top:5px}
+.spark{position:relative;height:52px;margin:2px 0 4px}
+.spark svg{display:block;width:100%;height:52px;overflow:visible}
+.spark .axl{position:absolute;right:0;font-size:8.5px;font-weight:600;color:var(--muted-fg);opacity:.8;transform:translateY(-50%)}
+.d-rows{display:flex;flex-direction:column;gap:1px;margin-top:8px}
+.d-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--hair)}
+.d-row .nm{font-size:11.5px;font-weight:580;flex:0 0 78px}
+.d-row .vl{font-size:11.5px;color:var(--muted-fg);flex:1 1 auto;min-width:0}
+.d-acts{display:flex;gap:7px;margin-top:11px}
+.d-acts .act{margin-top:0}
+
+/* E — morph out of the dot */
+.p-e{
+  top:40px;right:102px;border-radius:14px;color:var(--fg);padding:9px 11px;min-width:172px;max-width:250px;
+  background:var(--glass-thick);backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--hair);box-shadow:0 12px 34px rgb(0 0 0/.28);
+  transform-origin:top right;animation:morph .28s cubic-bezier(.21,1.02,.73,1) both;
+}
+@keyframes morph{from{transform:scale(.24);opacity:0;border-radius:9999px}to{transform:none;opacity:1}}
+.e-hd{display:flex;align-items:center;gap:8px;cursor:pointer}
+.e-hd .tx{min-width:0;flex:1 1 auto}
+.e-hd .n{font-size:12px;font-weight:620;font-variant-numeric:tabular-nums;line-height:1.25}
+.e-hd .s{font-size:10.5px;color:var(--muted-fg);line-height:1.3}
+.e-chev{color:var(--muted-fg);transition:transform .24s ease;flex:0 0 auto}
+.p-e.open .e-chev{transform:rotate(180deg)}
+.e-more{max-height:0;opacity:0;overflow:hidden;transition:max-height .3s ease,opacity .22s ease}
+.p-e.open .e-more{max-height:320px;opacity:1;margin-top:9px}
+
+/* caption under each frame */
+.cap{font-size:11.5px;color:var(--muted-fg);line-height:1.45}
+.cap b{color:var(--fg);font-weight:600}
+.note{border-left:3px solid var(--primary);background:color-mix(in srgb,var(--primary) 7%,transparent);padding:12px 16px;border-radius:0 10px 10px 0;margin-top:22px;font-size:13px}
+.note b{font-weight:640}
+.note + .note{margin-top:10px}
+.note.warn{border-left-color:var(--warning);background:color-mix(in srgb,var(--warning) 9%,transparent)}
+ul.tight{margin:8px 0 0 18px} ul.tight li{margin-bottom:5px;font-size:13px}
+table.cmp{border-collapse:collapse;width:100%;margin-top:18px;font-size:12.5px}
+table.cmp th,table.cmp td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+table.cmp th{background:color-mix(in srgb,var(--muted) 45%,transparent);font-weight:640;font-size:11.5px}
+table.cmp td:first-child{font-weight:600;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Homecast <span>— status bubble, 5 options</span></h1>
+  <div class="seg" id="themeSeg">
+    <button data-theme="light" aria-pressed="false">Light</button>
+    <button data-theme="dark" aria-pressed="true">Dark</button>
+  </div>
+  <div class="seg" id="wallSeg">
+    <button data-wall="dusk" aria-pressed="true">Dusk</button>
+    <button data-wall="warm" aria-pressed="false">Warm</button>
+    <button data-wall="flat" aria-pressed="false">Flat</button>
+  </div>
+</div>
+
+<div class="picker">
+  <div class="lbl">State — every option below re-renders together</div>
+  <div class="states" id="states"></div>
+</div>
+
+<main>
+  <div class="sec-head">
+    <div class="kicker">homecast-cloud#38</div>
+    <h2>The status bubble</h2>
+    <p>One dot in the header opens a <code>w-[280px] p-3</code> popover — <code>src/components/layout/StatusBadge.tsx</code>. Its body is up to three stacked sections: <code>ConnectionSection</code>, <code>LocalModeSection</code>, <code>RelaySection</code>.</p>
+    <p>Four things are wrong with it, none of them a fault. It is an <b>opaque card on a glass app</b> — the one white rectangle on the screen. Its <b>headline repeats the dot</b>: a green dot followed by "Connection is good" says the same thing twice, and the only new information, <code>32ms</code>, is demoted to the smaller grey line. It is a <b>280px card carrying one line</b> in the healthy state, where there is no Reconnect button, no relay section and no Local Mode section — so it is a large empty box that covers the Scenes and Automations pills. And <b>nothing ties it to what you tapped</b>: no tail, <code>align="end"</code> against a mid-header trigger, two thirds of the width on a 440px phone.</p>
+  </div>
+
+  <div class="note warn">
+    <b>Two decisions these options must not unpick.</b> This one bubble is a deliberate merge of three pills that contradicted each other — a red "Offline" beside a green "Local Mode" while the home worked fine through the second. And the indicator is <b>present at every state, including good</b>, because one that appears only when something is wrong cannot be told apart from one that is broken or one that was never measuring. Rationale at <code>StatusBadge.tsx:1–30</code> and <code>lib/status-badge.ts:1–22</code>. Every option below keeps the dot always visible; what varies is the <b>box</b>.
+  </div>
+
+  <div class="scenario" id="scenario"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <table class="cmp">
+    <tr>
+      <th>Option</th><th>The move</th><th>Healthy state costs</th><th>Where it wins</th><th>Where it loses</th>
+    </tr>
+    <tr>
+      <td>Current</td><td>—</td><td>280×~72px opaque card over the pills</td><td>Everything is in one place</td><td>Wrong material, says the dot twice, mostly empty</td>
+    </tr>
+    <tr>
+      <td>A · Glass tail</td><td>Same structure, right material, number promoted to headline, tail at the dot</td><td>248×~62px, translucent</td><td>Cheapest to ship, fixes the material and the redundancy in one pass</td><td>Still a card for one line; does not answer <i>which hop</i> is slow</td>
+    </tr>
+    <tr>
+      <td>B · Inline pill</td><td>No card when healthy — the dot grows into <code>32 ms</code> in the header</td><td>Nothing. Zero occlusion</td><td>Sleekest by a distance; the good state stops being a dialog</td><td>Two different interactions depending on state; detail needs a second tap</td>
+    </tr>
+    <tr>
+      <td>C · Path strip</td><td>Device → Cloud → Relay → Home as lit segments</td><td>262×~104px</td><td>Localises the fault — answers "is it me, the internet, or my Mac?"; Local Mode draws as a bypass</td><td>Tallest of the five; a chain is a concept to learn</td>
+    </tr>
+    <tr>
+      <td>D · Bottom sheet</td><td>Touch-first sheet with a latency sparkline</td><td>Full-width sheet, ~190px tall</td><td>Only option that shows <i>flapping</i> rather than a single instant</td><td>Heaviest; a sheet for "32 ms" is a lot of gesture</td>
+    </tr>
+    <tr>
+      <td>E · Morph</td><td>Panel grows out of the 24px dot; compact, expands in place</td><td>~176×40px</td><td>Ties box to dot by construction; detail on demand</td><td>Two-step to reach the relay rows; animation needs care on Radix</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    <b>If you want one:</b> <b>A</b> as the floor and <b>C</b> as the ceiling. A is a contained change to material and hierarchy that could ship on its own and would fix the screenshot. C is the only option that makes the box <i>more useful</i> rather than just smaller — it turns "your home is not responding" into "Homecast can't reach your Mac", which is the question the user actually has. They compose: C's chain can live inside A's glass tail card.
+  </div>
+</main>
+
+<script>
+/* ---------------- icons (lucide paths) ---------------- */
+const P = {
+  check:'M20 6 9 17l-5-5',
+  x:'M18 6 6 18M6 6l12 12',
+  chevron:'m6 9 6 6 6-6',
+  refresh:'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5',
+  menu:'M4 12h16M4 6h16M4 18h16',
+  search:'m21 21-4.34-4.34M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
+  dots:'M12 5h.01M12 12h.01M12 19h.01',
+  bulb:'M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4',
+  lock:'M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4',
+  shield:'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+  phone:'M14 2H10a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM12 18h.01',
+  cloud:'M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6.5 19z',
+  server:'M20 4H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM20 13H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2zM6 8h.01M6 17h.01',
+  house:'M15 21v-8H9v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  chevR:'m9 18 6-6-6-6',
+  layers:'m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83zM2 12.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9M2 17.18l8.58 3.9a2 2 0 0 0 1.66 0l8.58-3.9',
+  settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+};
+const ic = (n, sz=16, cls='') =>
+  `<svg class="${cls}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+
+/* ---------------- theme + wallpaper ---------------- */
+const WALLS = {
+  dusk:'linear-gradient(160deg,#7d6f86 0%,#8b7f91 22%,#a68f86 52%,#d9a074 78%,#c98a63 100%)',
+  warm:'linear-gradient(160deg,#fdf0dc 0%,#f6d3ac 42%,#e8b78d 70%,#d99f74 100%)',
+  flat:'linear-gradient(160deg,#eef2f7 0%,#dde5ee 100%)',
+};
+const setWall = k => document.documentElement.style.setProperty('--wall', WALLS[k]);
+setWall('dusk');
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  [...document.getElementById('themeSeg').children].forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === t)));
+}
+document.getElementById('themeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return; applyTheme(b.dataset.theme); render();
+});
+document.getElementById('wallSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return; setWall(b.dataset.wall);
+  [...e.currentTarget.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+});
+
+/* ================= THE STATE TABLE =================
+   Every string here is the one the app actually renders — from
+   lib/connection-presentation.ts, lib/status-badge.ts, and the three
+   status/*.tsx sections. Do not invent copy; if it is not in that table
+   the app cannot show it.
+==================================================== */
+const S = [
+{
+  key:'good', name:'Good', tone:'ok',
+  scenario:'Everything normal. Cloud mode, phone, relay Mac at home is online and is not this device.',
+  badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
+  conn:{head:'Connection is good', sub:'Round trip 32ms · just now', rtt:'32', when:'just now', warn:false, action:false},
+  path:{cloud:'ok', relay:'ok', home:'ok', hopLabels:['32 ms','',''] },
+  spark:[38,34,31,36,29,33,40,32,30,35,31,28,33,36,32,30,34,31,29,32],
+},
+{
+  key:'unknown', name:'Checking', tone:'idle',
+  scenario:'Just opened, or nothing has been measured for 90s. The socket is up but no round trip has come back yet.',
+  badge:{tone:'idle', label:null, pulse:false, sr:'Checking connection'},
+  conn:{head:'Checking connection…', sub:'No round trip measured yet.', rtt:null, when:null, warn:false, action:false},
+  path:{cloud:'idle', relay:'idle', home:'idle', hopLabels:['','','']},
+  spark:[],
+},
+{
+  key:'connecting', name:'Connecting', tone:'idle',
+  scenario:'Socket has been down for more than 1.5s and is being re-established.',
+  badge:{tone:'idle', label:'Connecting…', pulse:true, sr:'Connecting'},
+  conn:{head:'Reconnecting…', sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  path:{cloud:'warn', relay:'idle', home:'idle', hopLabels:['…','','']},
+  spark:[42,55,120,340,null,null,null,null],
+},
+{
+  key:'slow', name:'Slow', tone:'warn',
+  scenario:'Round trip over 1000ms (SLOW_RTT_MS), or a request in flight over 2500ms.',
+  badge:{tone:'warn', label:'Slow', pulse:false, sr:'Connection is slow'},
+  conn:{head:'Your connection is slow', sub:'Round trip 1.4s · just now', rtt:'1.4', unit:'s', when:'just now', warn:true, action:true},
+  path:{cloud:'warn', relay:'ok', home:'ok', hopLabels:['1.4 s','','']},
+  spark:[120,240,410,760,1120,980,1340,1400,1260,1380],
+},
+{
+  key:'stalled', name:'Not responding', tone:'warn',
+  scenario:'A request has been in flight over 8s (STALLED_IN_FLIGHT_MS), or two checks failed in a row.',
+  badge:{tone:'warn', label:'Not responding', pulse:true, sr:'Connection is not responding'},
+  conn:{head:'Your home is not responding', sub:'A request has been waiting 6s.', rtt:null, when:null, warn:true, action:true},
+  path:{cloud:'ok', relay:'warn', home:'idle', hopLabels:['48 ms','6 s waiting','']},
+  spark:[44,38,52,600,2400,5200,null,null,null],
+},
+{
+  key:'offline', name:'Offline', tone:'bad',
+  scenario:'Socket down for more than 4s (OFFLINE_AFTER_MS) with no route back.',
+  badge:{tone:'bad', label:'Offline', pulse:false, sr:'Disconnected'},
+  conn:{head:"You're not connected", sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  path:{cloud:'bad', relay:'idle', home:'idle', hopLabels:['no route','','']},
+  spark:[36,33,40,180,null,null,null,null,null,null],
+},
+{
+  key:'reconnected', name:'Reconnected', tone:'ok', transient:true,
+  scenario:'Transient, 3s (RECONNECTED_VISIBLE_MS). Fires only when quality returns to good from a state that had a label.',
+  badge:{tone:'ok', strong:true, label:'Reconnected', pulse:false, sr:'Reconnected'},
+  conn:{head:'Connection is good', sub:'Round trip 48ms · just now', rtt:'48', when:'just now', warn:false, action:false},
+  path:{cloud:'ok', relay:'ok', home:'ok', hopLabels:['48 ms','','']},
+  spark:[null,null,2400,900,220,90,54,48],
+},
+{
+  key:'local-mapped', name:'Local Mode', tone:'ok',
+  scenario:'iPhone with its own Apple Home access, serving the home directly because the relay is offline. Identity fully matched.',
+  badge:{tone:'ok', strong:true, label:'Local Mode', pulse:false, sr:'Local Mode — this device is controlling Apple Home directly'},
+  conn:{head:"You're not connected", sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  local:{identity:'mapped', reason:'Your home relay is offline.', device:'device'},
+  path:{cloud:'bad', relay:'idle', home:'ok', bypass:true, hopLabels:['no route','','']},
+  spark:[],
+},
+{
+  key:'local-unmapped', name:'Local Mode · unmapped', tone:'warn',
+  scenario:'Same, but reconcileLocalTopology has not matched this device’s HomeKit UUIDs to the account’s hc_ids.',
+  badge:{tone:'warn', label:'Local Mode', pulse:false, sr:'Local Mode — this device is controlling Apple Home directly'},
+  conn:{head:"You're not connected", sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  local:{identity:'unmapped', reason:"This device can't reach Homecast's servers.", device:'device'},
+  path:{cloud:'bad', relay:'idle', home:'warn', bypass:true, hopLabels:['no route','','']},
+  spark:[],
+},
+{
+  key:'relay-active', name:'Relay · active', tone:'ok',
+  scenario:'The relay Mac itself, in cloud mode. Connection good and this Mac is the active relay.',
+  badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
+  conn:{head:'Connection is good', sub:'Round trip 18ms · just now', rtt:'18', when:'just now', warn:false, action:false},
+  relay:{state:'connected_active', pill:'Active Relay', tone:'ok', uptime:'3h 4m', clients:'2 connected', subs:'5 active', hooks:'None'},
+  path:{cloud:'ok', relay:'ok', home:'ok', selfRelay:true, hopLabels:['18 ms','','']},
+  spark:[20,17,19,22,18,16,21,18,17,19,18,20,17,18],
+},
+{
+  key:'relay-standby', name:'Relay · standby', tone:'warn',
+  scenario:'A second Mac. Connection is fine, but another device holds relay duty.',
+  badge:{tone:'warn', label:'Standby', pulse:false, sr:'Standby relay'},
+  conn:{head:'Connection is good', sub:'Round trip 24ms · just now', rtt:'24', when:'just now', warn:false, action:false},
+  relay:{state:'connected_standby', pill:'Standby', tone:'warn', standby:true},
+  path:{cloud:'ok', relay:'ok', home:'ok', standby:true, hopLabels:['24 ms','','']},
+  spark:[26,23,25,22,27,24,23,25,24,22],
+},
+{
+  key:'relay-offline', name:'Relay · disconnected', tone:'bad',
+  scenario:'The relay Mac has lost the server. Its own badge, seen on that Mac.',
+  badge:{tone:'bad', label:'Offline', pulse:false, sr:'Disconnected'},
+  conn:{head:"You're not connected", sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  relay:{state:'disconnected', pill:'Disconnected', tone:'bad', lastOnline:'Last online 3 minutes ago'},
+  path:{cloud:'bad', relay:'idle', home:'idle', hopLabels:['no route','','']},
+  spark:[30,28,33,410,null,null,null,null],
+},
+{
+  key:'community', name:'Community relay Mac', tone:'ok',
+  scenario:'Community Edition on the relay Mac. There is no socket at all, so quality is forced to good and ConnectionSection is omitted entirely.',
+  badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
+  conn:null,
+  relay:{state:'connected_active', pill:'Active Relay', tone:'ok', uptime:'2d 5h', clients:'1 connected', hooks:'None', community:true},
+  path:{community:true, cloud:'idle', relay:'ok', home:'ok', selfRelay:true, hopLabels:['','','']},
+  spark:[],
+}];
+
+/* ---------------- shared fragments ---------------- */
+const dotEl = (b, extra='') =>
+  `<span class="dot ${b.tone}${b.strong?' strong':''}${b.pulse?' pulsing':''} ${extra}"></span>`;
+
+/** The header trigger, faithful to StatusBadge: 24px circle, becomes a pill only when labelled. */
+function trigger(s, opts={}){
+  const b = s.badge;
+  if (opts.asPill) return `<span class="b-pill">${dotEl(b)}${opts.pillText}</span>`;
+  return b.label
+    ? `<button class="trig labelled" aria-label="${b.sr}">${dotEl(b)}${b.label}</button>`
+    : `<button class="trig" aria-label="${b.sr}">${dotEl(b)}</button>`;
+}
+
+const ROOMS = [
+  ['Front Door', [{ic:'shield', nm:'Alarm', st:'Disarmed'}, {ic:'lock', nm:'Aqara Smart Lock', st:'Locked'}]],
+  ['Kitchen',    [{ic:'bulb', nm:'Lights', st:'Off'},       {ic:'bulb', nm:'Air Conditioner', st:'Off · 21.0°'}]],
+  ['Living',     [{ic:'bulb', nm:'Room Lights', st:'Off'},  {ic:'bulb', nm:'Air Conditioner', st:'Off · 23.0°'}]],
+];
+
+/** The app behind the panel — header, the two pills the current box covers, and rooms. */
+function frame(s, panelHTML, triggerHTML){
+  return `<div class="stage"><div class="frame">
+    <div class="f-header">
+      <span class="circ">${ic('menu',18)}</span>
+      <span class="hdr-right">
+        ${triggerHTML}
+        <span class="circ">${ic('search',17)}</span>
+        <span class="circ">${ic('dots',17)}</span>
+      </span>
+    </div>
+    <div class="f-pills">
+      <span class="p">Scenes ${ic('chevR',12)}</span>
+      <span class="p">Automations ${ic('chevR',12)}</span>
+    </div>
+    <div class="f-rooms">
+      ${ROOMS.map(([nm,ts]) => `<h4>${nm}</h4><div class="tiles">${ts.map(tile).join('')}</div>`).join('')}
+    </div>
+    ${panelHTML}
+  </div></div>`;
+}
+const tile = t => `<div class="tile"><div class="ico">${ic(t.ic,17)}</div>
+  <div><div class="nm">${t.nm}</div><div class="st">${t.st}</div></div></div>`;
+
+const reconnectBtn = `<button class="act">${ic('refresh',13)} Reconnect now</button>`;
+const WARN_TEXT = 'Changes you make may take a while to apply, or may not apply at all.';
+
+/**
+ * What the panel LEADS with — the same priority ladder as lib/status-badge.ts.
+ *
+ * This is the whole reason the three pills were merged, and it is easy to lose
+ * again: `ConnectionSection` says "You're not connected" in Local Mode, because
+ * that is true of the socket. Lead with it and you print a green dot above
+ * "You're not connected" while the lights are working — the exact contradiction
+ * the merge removed, rebuilt inside one box. The connection fact is still shown,
+ * as a row, below the fact that actually governs.
+ *
+ * `Current` deliberately does NOT call this: it stacks the sections in file
+ * order, which is what it really does today, and that is the point of it.
+ */
+function lead(s){
+  if (s.local) return {
+    cap:'Local Mode', tone:s.local.identity==='unmapped'?'warn':'ok',
+    head:'This device is serving your home',
+    sub:`${s.local.reason} Lights, scenes and locks still work.`};
+  if (!s.conn) return {
+    cap:'Community', tone:'ok', head:'Serving this Mac',
+    sub:'Community mode — there is no cloud link to check.'};
+  if (s.relay && s.relay.standby) return {
+    cap:'Standby', tone:'warn', head:'Another device is the active relay', sub:s.conn.sub};
+  return {cap:s.badge.label || s.conn.head, tone:s.badge.tone, head:s.conn.head, sub:s.conn.sub};
+}
+/** There is a round trip worth showing as the headline. `slow` qualifies — the
+ *  number IS the reason there. */
+const hasMetric = s => !!(s.conn && s.conn.rtt && !s.local && !(s.relay && s.relay.standby));
+/** Nothing to say beyond the number. Stricter: `slow` has a metric but is not healthy. */
+const isHealthy = s => hasMetric(s) && !s.conn.warn;
+
+/** LocalModeSection, condensed to what fits a mock. */
+function localBlock(s, compact, skipIntro){
+  if (!s.local) return '';
+  const l = s.local;
+  const works = ['Lights, switches and plugs','Sensors and thermostats','Locks and blinds','Scenes and rooms'];
+  const nope  = ['Automations','Notifications','History recording','Sharing with other people'];
+  if (compact) return `<div class="sep"></div>
+    <div class="kv"><span class="k">Local Mode</span><span class="pill-s ok">Active</span></div>
+    <div class="sb" style="margin-top:4px">This ${l.device} is talking to your Apple Home directly.</div>`;
+  return `<div class="sep"></div>
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+      <span class="grp" style="margin:0">Local Mode</span><span class="pill-s ok">Active</span>
+    </div>
+    ${skipIntro ? '' : `<div class="sb" style="margin-top:0">This ${l.device} is talking to your Apple Home directly. ${l.reason}</div>`}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:7px">
+      ${works.map(w=>`<div class="ck on">${ic('check',11)}${w}</div>`).join('')}
+      ${nope.map(w=>`<div class="ck off">${ic('x',11)}${w}</div>`).join('')}
+    </div>
+    ${l.identity==='unmapped' ? `<div class="warnline" style="color:hsl(38 92% 46%)">Your custom names and layout will come back when this ${l.device} is next online.</div>` : ''}
+    ${l.identity==='partial' ? `<div class="warnline">${l.matched} of ${l.reported} accessories matched your Homecast layout.</div>` : ''}`;
+}
+
+/** RelaySection, condensed. */
+function relayBlock(s, compact){
+  if (!s.relay) return '';
+  const r = s.relay;
+  const head = `<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+      <span class="grp" style="margin:0">Relay Status</span><span class="pill-s ${r.tone}">${r.pill}</span></div>`;
+  if (compact) return `<div class="sep"></div><div class="kv"><span class="k">Relay</span><span class="pill-s ${r.tone}">${r.pill}</span></div>`;
+  if (r.standby) return `<div class="sep"></div>${head}
+    <div class="sb" style="margin-top:0">Another Mac is the active relay. Take over to handle HomeKit requests from this device.</div>
+    <button class="act">Take Over as Relay</button>`;
+  if (r.state==='disconnected') return `<div class="sep"></div>${head}
+    <div class="sb" style="margin-top:0">Not connected to the server. ${r.lastOnline}.</div>`;
+  return `<div class="sep"></div>${head}
+    <div class="kv"><span class="k">Uptime</span><span class="v">${r.uptime}</span></div>
+    <div class="kv"><span class="k">Clients</span><span class="v">${r.clients}</span></div>
+    ${r.subs ? `<div class="kv"><span class="k">Subscriptions</span><span class="v">${r.subs}</span></div>`:''}
+    <div class="kv"><span class="k">Webhooks</span><span class="v">${r.hooks}</span></div>`;
+}
+
+/* ================= OPTION RENDERERS ================= */
+
+/* CURRENT — faithful: opaque popover, 280px, align=end, sideOffset 8, headline repeats the dot */
+function optNow(s){
+  const c = s.conn;
+  const body = `
+    ${c ? `<div class="hl">${c.head}</div><div class="sb">${c.sub}</div>
+      ${c.warn ? `<div class="warnline">${WARN_TEXT}</div>`:''}
+      ${c.action ? reconnectBtn : ''}` : ''}
+    ${localBlock(s)}${relayBlock(s)}`;
+  return frame(s, `<div class="panel p-now">${body}</div>`, trigger(s));
+}
+
+/* A — GLASS TAIL: app material, tail at the dot, the number promoted to headline */
+function optA(s){
+  const c = s.conn, L = lead(s);
+  let head;
+  if (hasMetric(s)) {
+    // there is a number: it becomes the headline, the state drops to the caps label
+    head = `<div class="a-cap ${L.tone}">${dotEl(s.badge)} ${c.head}</div>
+            <div class="a-metric"><span class="n">${c.rtt}</span><span class="u">${c.unit||'ms'} round trip</span>
+            <span class="u" style="margin-left:auto">${c.when}</span></div>`;
+  } else {
+    // anything else: whatever the ladder says governs is the headline
+    head = `<div class="a-cap ${L.tone}">${dotEl(s.badge)} ${L.cap}</div>
+            <div class="hl">${L.head}</div><div class="sb">${L.sub}</div>`;
+  }
+  return frame(s, `<div class="panel p-a">
+      ${head}
+      ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
+      ${c && c.action && !s.local ? reconnectBtn : ''}
+      ${localBlock(s, false, true)}${relayBlock(s)}
+    </div>`, trigger(s));
+}
+
+/* B — INLINE PILL: healthy needs no card at all */
+function optB(s){
+  const c = s.conn;
+  const L = lead(s);
+  if (isHealthy(s) && !s.relay){
+    return frame(s, `<div class="panel b-none">No card. The dot grew into the reading, in place — nothing is covered.</div>`,
+      trigger(s, {asPill:true, pillText:s.badge.label || `${c.rtt} ${c.unit||'ms'}`}));
+  }
+  const body = `<div class="hl">${L.head}</div><div class="sb">${L.sub}</div>
+      ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
+      ${c && c.action && !s.local ? reconnectBtn : ''}`;
+  return frame(s, `<div class="panel p-b">${body}${localBlock(s,true)}${relayBlock(s,true)}</div>`,
+    trigger(s, {asPill:true, pillText:s.badge.label || (hasMetric(s) ? `${c.rtt} ${c.unit||'ms'}` : L.cap)}));
+}
+
+/* C — PATH STRIP: which hop is the problem */
+function optC(s){
+  const p = s.path, L = p.hopLabels || ['','',''];
+  const cls = t => t==='ok'?'lit':t==='warn'?'warn':t==='bad'?'bad':'dim';
+  const line = t => t==='ok'?'ok':t==='warn'?'warn':t==='bad'?'bad':'dash';
+  const sentence =
+    p.community          ? 'This Mac is serving your home on its own. Nothing is going through the cloud.' :
+    p.bypass             ? 'Homecast is unreachable, so this device is talking to your home directly.' :
+    p.cloud==='bad'      ? "This device can't reach Homecast." :
+    p.cloud==='warn'     ? 'Reaching Homecast is slow right now.' :
+    p.relay==='warn'     ? "Homecast can't get an answer from your Mac at home." :
+    p.standby            ? 'Another Mac is the active relay for this home.' :
+    p.cloud==='idle'     ? 'Checking the route to your home.' :
+                           'Every hop is healthy.';
+  const relayName = p.selfRelay ? 'This Mac' : 'Relay';
+  return frame(s, `<div class="panel p-c">
+      <div class="chain">
+        <div class="node"><span class="b lit">${ic('phone',14)}</span><span class="t on">This phone</span></div>
+        <div class="hop">${L[0]?`<span class="lb">${L[0]}</span>`:''}<span class="ln ${line(p.cloud)}"></span></div>
+        <div class="node"><span class="b ${cls(p.cloud)}">${ic('cloud',14)}</span><span class="t${p.cloud==='ok'?' on':''}">Homecast</span></div>
+        <div class="hop">${L[1]?`<span class="lb">${L[1]}</span>`:''}<span class="ln ${line(p.relay)}"></span></div>
+        <div class="node"><span class="b ${cls(p.relay)}">${ic('server',14)}</span><span class="t${p.relay==='ok'?' on':''}">${relayName}</span></div>
+        <div class="hop"><span class="ln ${line(p.home)}"></span></div>
+        <div class="node"><span class="b ${cls(p.home)}">${ic('house',14)}</span><span class="t${p.home==='ok'?' on':''}">Home</span></div>
+      </div>
+      ${p.bypass ? `<div class="c-bypass"><span class="arc"></span><span class="lb">direct to Apple Home</span></div>`:''}
+      <div class="hl" style="font-size:12px">${sentence}</div>
+      ${s.conn && s.conn.warn && !p.bypass ? `<div class="warnline">${WARN_TEXT}</div>`:''}
+      ${s.local ? `<div class="sb">Automations and notifications stay off until the relay is back.</div>`:''}
+      ${s.relay && s.relay.standby ? `<button class="act">Take Over as Relay</button>` :
+        (s.conn && s.conn.action && !p.bypass ? reconnectBtn : '')}
+    </div>`, trigger(s));
+}
+
+/* D — BOTTOM SHEET with a latency sparkline */
+function sparkline(vals, tone){
+  if (!vals || !vals.length) return `<div class="spark" style="display:grid;place-items:center;
+    font-size:11px;color:var(--muted-fg)">No samples yet</div>`;
+  // Floor the ceiling at 4s so both threshold lines always land inside the box.
+  // sqrt, not log: on a log axis 1s and 3s sit ~5px apart at the top and the two
+  // dashed lines read as one. sqrt keeps a 30ms trace flat along the bottom and
+  // still separates the thresholds.
+  const W=100, H=52, max=Math.max(4000, ...vals.filter(v=>v!=null));
+  const x = i => (i/(vals.length-1))*W;
+  const y = v => H - Math.sqrt(Math.max(v,0)/max)*H*0.86 - 3;
+  const col = tone==='bad'?'var(--destructive)':tone==='warn'?'var(--warning)':'var(--success)';
+  // break the line wherever a sample is missing — a gap is data, not something to interpolate over
+  const segs=[]; let cur=[];
+  vals.forEach((v,i)=>{ if(v==null){ if(cur.length)segs.push(cur); cur=[]; } else cur.push([x(i),y(v)]); });
+  if (cur.length) segs.push(cur);
+  const paths = segs.map(sg=>`<polyline points="${sg.map(p=>p.join(',')).join(' ')}"
+     fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+     vector-effect="non-scaling-stroke"/>`).join('');
+  const gapDots = vals.map((v,i)=>v==null?`<circle cx="${x(i)}" cy="${H-4}" r="1.1" fill="var(--muted-fg)" opacity=".5"/>`:'').join('');
+  const thr = v => `<line x1="0" y1="${y(v)}" x2="${W}" y2="${y(v)}" stroke="currentColor" stroke-width=".5"
+     stroke-dasharray="2 2" opacity=".26"/>`;
+  return `<div class="spark">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${thr(1000)}${thr(3000)}${paths}${gapDots}</svg>
+    <span class="axl" style="top:${(y(3000)/H)*100}%">3s</span>
+    <span class="axl" style="top:${(y(1000)/H)*100}%">1s</span>
+  </div>`;
+}
+function optD(s){
+  const c = s.conn;
+  const rows = [];
+  if (c) rows.push({dot:s.badge.tone, nm:'Link', vl:c.rtt?`${c.rtt}${c.unit||'ms'} round trip · ${c.when}`:c.sub});
+  else   rows.push({dot:'ok', nm:'Link', vl:'Community mode — served on this Mac'});
+  if (s.relay) rows.push({dot:s.relay.tone, nm:'Relay', vl:s.relay.standby?'Another Mac is active':
+    s.relay.state==='disconnected'?s.relay.lastOnline:`${s.relay.pill} · up ${s.relay.uptime||'—'}`});
+  if (s.local) rows.push({dot:s.local.identity==='unmapped'?'warn':'ok', nm:'Local Mode',
+    vl:s.local.identity==='unmapped'?'Active · names not matched yet':'Active · serving Apple Home directly'});
+  return frame(s, `<div class="panel p-d">
+      <div class="grab"></div>
+      <div class="d-top">${dotEl(s.badge)}
+        <div><div class="hl">${lead(s).head}</div>
+        <div class="sb">${lead(s).sub}</div></div></div>
+      ${sparkline(s.spark, s.badge.tone)}
+      <div class="d-rows">${rows.map(r=>`<div class="d-row">${dotEl({tone:r.dot})}
+        <span class="nm">${r.nm}</span><span class="vl">${r.vl}</span></div>`).join('')}</div>
+      <div class="d-acts">
+        ${c&&c.action?`<button class="act">${ic('refresh',13)} Reconnect now</button>`:''}
+        ${s.relay&&s.relay.standby?`<button class="act">Take Over as Relay</button>`:''}
+        ${!((c&&c.action)||(s.relay&&s.relay.standby))?`<button class="act">${ic('settings',13)} Connection settings</button>`:''}
+      </div>
+    </div>`, trigger(s));
+}
+
+/* E — MORPH out of the dot: compact by default, expands in place */
+function optE(s){
+  const c = s.conn, L = lead(s);
+  const primary = hasMetric(s) ? `${c.rtt} ${c.unit||'ms'}` : (s.badge.label || L.cap);
+  const secondary = isHealthy(s) ? `${c.head.replace('Connection is ','')} · ${c.when}` : L.head;
+  return frame(s, `<div class="panel p-e" data-e>
+      <div class="e-hd">${dotEl(s.badge)}
+        <span class="tx"><span class="n">${primary}</span><br><span class="s">${secondary}</span></span>
+        ${ic('chevron',14,'e-chev')}</div>
+      <div class="e-more">
+        ${c?`<div class="sep" style="margin-top:0"></div><div class="hl" style="font-size:12px">${c.head}</div>
+           <div class="sb">${c.sub}</div>
+           ${c.warn?`<div class="warnline">${WARN_TEXT}</div>`:''}
+           ${c.action?reconnectBtn:''}`:''}
+        ${localBlock(s,true)}${relayBlock(s)}
+      </div>
+    </div>`, trigger(s));
+}
+
+/* ================= deck ================= */
+const OPTS = [
+  {id:'now', cls:'current', tag:'Live', tagCls:'now', title:'Current', fn:optNow,
+   blurb:'<code>w-[280px] p-3</code> shadcn popover, <code>--popover</code> background, <code>align="end" sideOffset={8}</code>. Opaque card on a glass app; the headline repeats the dot; no tail.',
+   foot:'<b>Breaks on:</b> the healthy state, where the card is 280px of mostly nothing sitting over the Scenes and Automations pills.'},
+  {id:'a', cls:'', tag:'A', tagCls:'', title:'Glass tail', fn:optA,
+   blurb:'Same three sections, app material: <code>backdrop-blur</code> + hairline, a tail at the dot, 248px. In the healthy state the <b>number becomes the headline</b> and the state drops to a small caps label.',
+   foot:'<b>Cost:</b> a background token and a tail on <code>PopoverContent</code>, plus a branch in <code>ConnectionSection</code> for the metric-first layout. No new state, no new concept.'},
+  {id:'b', cls:'', tag:'B', tagCls:'', title:'Inline pill', fn:optB,
+   blurb:'The healthy state has no popover at all — the dot expands in the header into the reading. The card appears only when there is a reason, a relay or Local Mode to talk about.',
+   foot:'<b>Catch:</b> the same control does two different things depending on state. Keeps the always-present dot, so the merge rationale holds — what disappears is the box, not the indicator.'},
+  {id:'c', cls:'pick', tag:'C', tagCls:'rec', title:'Path strip', fn:optC,
+   blurb:'Device → Homecast → Relay → Home as lit segments, latency on the hop it belongs to. Local Mode draws as a <b>bypass arc</b>: the cloud hop is dead and the home is still green.',
+   foot:'<b>Why this one:</b> the other four say the connection is bad. This one says <i>which hop</i>, which is the question behind the dot — and it renders the Offline-and-fine-anyway case that caused the three pills to be merged in the first place.'},
+  {id:'d', cls:'', tag:'D', tagCls:'', title:'Bottom sheet', fn:optD,
+   blurb:'Thumb-reachable sheet on touch, popover on desktop. A log-scaled sparkline of recent round trips with the 1s and 3s thresholds drawn in; gaps are left as gaps.',
+   foot:'<b>Most work</b> of the five, and the only one that answers "has it been doing this all morning?". Needs an RTT ring buffer — <code>connection.ts</code> keeps only <code>RTT_WINDOW=5</code> today.'},
+  {id:'e', cls:'', tag:'E', tagCls:'', title:'Morph from the dot', fn:optE,
+   blurb:'<code>sideOffset={0}</code>, transform-origin top-right: the panel grows out of the 24px circle, so it is attached by construction. Compact by default — tap the chevron to expand in place.',
+   foot:'<b>Note:</b> Radix animates content, not the trigger. Matches the “menu morphed into its button” direction already being explored in <code>index.html</code> §2.'},
+];
+
+let current = 'good';
+
+function render(){
+  const s = S.find(x => x.key === current);
+
+  document.getElementById('states').innerHTML = S.map(x =>
+    `<button class="st-btn" data-state="${x.key}" aria-pressed="${x.key===current}">
+       <span class="pip ${x.tone}"></span>${x.name}</button>`).join('');
+
+  document.getElementById('scenario').innerHTML =
+    `<b>${s.name}</b><span class="who">${s.scenario}</span>`;
+
+  document.getElementById('grid').innerHTML = OPTS.map(o => `
+    <div class="opt ${o.cls}">
+      <div class="opt-head">
+        <div class="row"><h3>${o.title}</h3>
+          <span class="tag ${o.tagCls}">${o.tag}</span></div>
+        <p>${o.blurb}</p>
+      </div>
+      <div class="opt-body">${o.fn(s)}</div>
+      <div class="opt-foot">${o.foot}</div>
+    </div>`).join('');
+
+  // E expands in place
+  document.querySelectorAll('[data-e] .e-hd').forEach(hd =>
+    hd.addEventListener('click', () => hd.closest('[data-e]').classList.toggle('open')));
+}
+
+document.getElementById('states').addEventListener('click', e => {
+  const b = e.target.closest('.st-btn'); if(!b) return;
+  current = b.dataset.state; render();
+});
+
+applyTheme('dark');
+render();
+</script>
+</body>
+</html>
