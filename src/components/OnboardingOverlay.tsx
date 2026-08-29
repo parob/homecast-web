@@ -122,13 +122,13 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
   const cloudGoesToSettings = Boolean(onAddHomeInSettings) && (hasCloud || Boolean(hasHomes));
   const macLabel = isInMacApp ? 'Use this Mac as your relay' : 'I have a Mac at home';
   const macDescription = isInMacApp
-    ? 'Your Mac needs to stay on for remote access to work.'
-    : 'Use your Mac as a HomeKit relay. Your Mac needs to stay on for remote access.';
+    ? 'Your Mac needs to stay switched on for remote access.'
+    : 'Your Mac acts as the HomeKit relay. It needs to stay switched on for remote access.';
 
   return (
     <div className="space-y-3 py-2">
       <p className="text-xs text-muted-foreground">
-        Three ways to get started — pick the one that matches your situation.
+        Three ways to get started. Pick the one that matches your situation.
       </p>
 
       <OptionCard
@@ -149,9 +149,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
           </>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Free · 10 accessories
-            <span className="mx-1.5">·</span>
-            Standard · {pricing.standard.formatted}/mo · unlimited
+            Free for 10 accessories, or {pricing.standard.formatted}/mo on Standard for unlimited.
           </p>
         )}
       </OptionCard>
@@ -166,8 +164,8 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
       >
         <p className="text-xs text-muted-foreground">
           {isInMacApp
-            ? "Always on \u2014 your Mac doesn't need to stay running."
-            : "We run a relay for you \u2014 no Mac needed. Always on, even when your computer is off."}
+            ? "Always on, so your Mac doesn't need to stay running."
+            : 'We run the relay for you. No Mac needed, and it stays on even when your computer is off.'}
         </p>
         {/* Somebody already paying for this should be told they have it, not
             quoted the price of it again. */}
@@ -178,7 +176,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
               Cloud plan active · unlimited accessories
             </p>
             {cloudGoesToSettings && (
-              <p className="text-xs text-muted-foreground">Nothing to pay — opens Settings to register the home.</p>
+              <p className="text-xs text-muted-foreground">Nothing to pay. Opens Settings to register the home.</p>
             )}
           </>
         ) : cloudGoesToSettings ? (
@@ -187,7 +185,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused — at capacity'}
+            {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused while we are at capacity'}
           </p>
         )}
       </OptionCard>
@@ -201,13 +199,13 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
       >
         <p className="text-xs text-muted-foreground">
           Someone else has already set Homecast up and shared their home with you.
-          Nothing to install or pay for — you just need their invite.
+          Nothing to install or pay for. You just need their invitation.
         </p>
       </OptionCard>
 
       {!isInMacApp && (
         <button onClick={onSkip} className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-2">
-          Skip — I'll explore first
+          Skip for now and explore
         </button>
       )}
     </div>
@@ -245,7 +243,7 @@ function MacSetupStep({ isInMacApp, isInMobileApp, onComplete, onUpgradeStandard
 
           <div className="space-y-1.5 text-xs text-muted-foreground">
             <p>1. Download Homecast for Mac from the App Store</p>
-            <p>2. Open it and sign in — it connects automatically</p>
+            <p>2. Open it and sign in. It connects automatically</p>
             {isInMobileApp
               ? <p>3. Then open this app to control your home remotely</p>
               : <p>3. This page updates when your Mac connects</p>
@@ -390,7 +388,7 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
   return (
     <div className="space-y-4 py-2">
       <p className="text-sm text-muted-foreground">
-        We'll run a relay for you so your smart home is always accessible — even when your Mac is off.
+        We'll run a relay for you, so your smart home stays reachable even when your Mac is off.
       </p>
 
       <div className="space-y-2">
@@ -602,14 +600,14 @@ function CommunitySetupStep({ onComplete, onOpenSettings }: {
       <p className="text-sm text-muted-foreground">
         {onRelay
           ? 'Everything runs on this Mac. No account, no subscription, no limit on accessories.'
-          : `You're connected to ${health?.name || 'your relay'}. Everything runs on that Mac — nothing leaves your network.`}
+          : `You're connected to ${health?.name || 'your relay'}. Everything runs on that Mac, and nothing leaves your network.`}
       </p>
 
       {onRelay && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">Add your other devices</p>
           <p className="text-xs text-muted-foreground">
-            Open Homecast on an iPhone or iPad and pick this Mac from the list — there is
+            Open Homecast on an iPhone or iPad and pick this Mac from the list. There is
             nothing to type. In a browser, use this address:
           </p>
           {address ? (
@@ -643,7 +641,7 @@ function CommunitySetupStep({ onComplete, onOpenSettings }: {
           <p className="text-sm font-medium">Away from home</p>
           <p className="text-xs text-muted-foreground">
             Run a mesh VPN like Tailscale on this Mac and your phone, and Homecast will find
-            its way over it on its own — it learns the address the first time you connect here.
+            its way over it on its own. It learns the address the first time you connect here.
           </p>
         </div>
       )}
