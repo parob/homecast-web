@@ -27,6 +27,34 @@ export interface BrowserLogEntry {
 type Listener = () => void;
 
 const MAX_ENTRIES = 500;
+
+/**
+ * How many of those 500 may be routine WS traffic.
+ *
+ * The buffer is shared by everything, and on a home with live accessories
+ * inbound `characteristic_update` frames arrive far faster than anything else.
+ * Left alone they win: a real report filed from a busy home shipped 488 state
+ * frames out of 500, covering 25 seconds, with none of the request failures it
+ * was filed about (parob/homecast-web#43).
+ *
+ * So routine frames get a ceiling rather than the run of the buffer, leaving
+ * at least `MAX_ENTRIES - MAX_LOW_SIGNAL_ENTRIES` slots that a storm can never
+ * take. The frames are still worth having — they just cannot evict the errors.
+ */
+const MAX_LOW_SIGNAL_ENTRIES = 350;
+
+/**
+ * Traffic we drop before anything else: plain inbound/outbound WS frames.
+ *
+ * Deliberately narrow. `ship` is the tell for "someone thought this was worth
+ * sending to the server" — it is set on connection transitions, trace spans and
+ * every warn/error — so anything carrying it is kept, as is anything that is
+ * not an info-level WS frame at all (ERR, GQL, LOG).
+ */
+function isLowSignal(entry: BrowserLogEntry): boolean {
+  return entry.type === 'WS' && entry.severity === 'info' && !entry.ship;
+}
+
 let nextId = 1;
 
 /** Stable per-tab session id so server-side logs can group entries from
@@ -62,6 +90,8 @@ interface ShipOptions {
 
 class BrowserLogger {
   private entries: BrowserLogEntry[] = [];
+  /** Kept alongside `entries` so a storm does not re-count the buffer per frame. */
+  private lowSignalCount = 0;
   private listeners: Set<Listener> = new Set();
   private installed = false;
 
@@ -157,9 +187,8 @@ class BrowserLogger {
       timestamp: Date.now(),
     };
     this.entries.push(full);
-    if (this.entries.length > MAX_ENTRIES) {
-      this.entries = this.entries.slice(-MAX_ENTRIES);
-    }
+    if (isLowSignal(full)) this.lowSignalCount += 1;
+    this.evict();
     if (entry.ship) {
       this.pending.push({
         level: entry.severity === 'error' ? 'ERROR' : entry.severity === 'warn' ? 'WARNING' : 'INFO',
@@ -272,7 +301,31 @@ class BrowserLogger {
 
   clear() {
     this.entries = [];
+    this.lowSignalCount = 0;
     this.notify();
+  }
+
+  /**
+   * Trim to the caps, surplus state frames first.
+   *
+   * Order matters: dropping the oldest routine frame before falling back to
+   * dropping the oldest entry of any kind is the whole point — a plain
+   * `slice(-MAX_ENTRIES)` evicts by age alone, which is how a busy home's
+   * broadcasts flushed out the errors that made the report worth filing.
+   */
+  private evict() {
+    while (this.lowSignalCount > MAX_LOW_SIGNAL_ENTRIES) {
+      const oldest = this.entries.findIndex(isLowSignal);
+      if (oldest === -1) break;
+      this.entries.splice(oldest, 1);
+      this.lowSignalCount -= 1;
+    }
+    if (this.entries.length > MAX_ENTRIES) {
+      const dropped = this.entries.splice(0, this.entries.length - MAX_ENTRIES);
+      for (const entry of dropped) {
+        if (isLowSignal(entry)) this.lowSignalCount -= 1;
+      }
+    }
   }
 
   subscribe(listener: Listener): () => void {
