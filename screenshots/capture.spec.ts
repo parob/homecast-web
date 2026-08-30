@@ -10,7 +10,7 @@
  * Run: cd app-web/screenshots && npx playwright test capture.spec.ts
  */
 
-import { test, Page } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -360,25 +360,26 @@ test.describe('Dashboard screenshots', () => {
 
   test('shared items list — shared items dialog', async ({ page }) => {
     await openSettings(page, 'Sharing');
+    // Asserted, not guarded: a crash into the error boundary leaves no
+    // [role="dialog"], and an `if (isVisible())` here would skip the capture
+    // and still report a pass. That is how a broken CACHED_HOMES fixture went
+    // unnoticed — both of these captured nothing for as long as it was wrong.
     const dialog = page.locator('[role="dialog"]').first();
-    if (await dialog.isVisible()) {
-      await prepareDialogScreenshot(page);
-      await dialog.screenshot({ path: img('shared-items-list.png'), omitBackground: true });
-    }
+    await expect(dialog).toBeVisible();
+    await prepareDialogScreenshot(page);
+    await dialog.screenshot({ path: img('shared-items-list.png'), omitBackground: true });
   });
 
   test('shared items apps — authorized apps tab', async ({ page }) => {
     await openSettings(page, 'Sharing');
     const appsTab = page.getByRole('tab', { name: /Authorized Apps/i });
-    if (await appsTab.isVisible()) {
-      await appsTab.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(appsTab).toBeVisible();
+    await appsTab.click();
+    await page.waitForTimeout(500);
     const dialog = page.locator('[role="dialog"]').first();
-    if (await dialog.isVisible()) {
-      await prepareDialogScreenshot(page);
-      await dialog.screenshot({ path: img('shared-items-apps.png'), omitBackground: true });
-    }
+    await expect(dialog).toBeVisible();
+    await prepareDialogScreenshot(page);
+    await dialog.screenshot({ path: img('shared-items-apps.png'), omitBackground: true });
   });
 
   // ── Smart Deals Screenshots ──────────────────────────────────────────────
