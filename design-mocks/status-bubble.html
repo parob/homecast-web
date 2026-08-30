@@ -276,10 +276,19 @@ html[data-theme="dark"] .tone-warn{color:hsl(38 92% 62%)}
 .chain.st-rail .vl{margin-left:auto;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted-fg)}
 
 /* the Local Mode bypass, drawn in whichever style is active */
-.c-bypass{position:relative;height:20px;margin:-4px 0 8px}
+/* bottom margin clears the arc's label, which hangs to ~20px inside a 20px
+   box; the options that follow it pull up by 2px, so 8px was not enough */
+.c-bypass{position:relative;height:20px;margin:-4px 0 13px}
 .c-bypass .arc{position:absolute;left:20px;right:20px;top:0;height:14px;border:2px solid var(--success);border-top:0;border-radius:0 0 14px 14px;opacity:.85}
 .c-bypass .lb{position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:9px;font-weight:640;color:var(--success);background:color-mix(in srgb,var(--bg) 70%,transparent);padding:0 4px}
 .bypass-note{font-size:9.5px;font-weight:640;color:var(--success);margin:-3px 0 7px}
+/* the "there is nothing for you to do" slot, where a button would otherwise be */
+.noact{
+  display:flex;gap:6px;align-items:flex-start;margin-top:9px;padding:7px 9px;border-radius:9px;
+  background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--hair);
+  font-size:11px;line-height:1.4;color:var(--muted-fg);
+}
+.noact svg{flex:0 0 auto;margin-top:1px}
 
 /* D — bottom sheet */
 .p-d{
@@ -384,6 +393,29 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
   </div>
 
   <div class="note warn">
+    <b>Cloud-managed changes what the chain is allowed to say.</b> On the cloud plan the relay is a
+    Mac in <i>Homecast's</i> estate, joined to the customer's Apple Home as a Resident. They own an
+    Apple Home Hub and nothing else. So the third node is <b>Our relay</b>, never "your Mac", and
+    when it fails there is no button worth showing: the socket to Homecast is <i>fine</i>, so
+    "Reconnect now" reconnects something that was never broken, and "Take Over as Relay" invites
+    them to seize duty for a home this device may have no HomeKit access to. Compare
+    <b>Relay unreachable</b> with <b>Cloud-managed · relay down</b> — identical red hop, opposite advice.
+    <br><br>
+    The docs already take this line for the page-level card — <code>SetupState</code> routes cloud
+    homes to "Our cloud relay for this home is having trouble. We've been notified" instead of
+    "Start the Homecast app on your Mac". The <b>status bubble is the surface that never got the
+    memo</b>: its per-home cloud awareness (<code>selectedHomeRelayType</code>, with a "Cloud" label
+    and "A cloud relay is handling your home") was written, never wired by Dashboard, and deleted.
+    <br><br>
+    <b>And it must key on <code>accountType === 'cloud'</code>, not <code>isCloudManaged</code>.</b>
+    The per-home flag rides the WebSocket <code>homes.list</code> payload, and the locally-answered
+    <code>homes.list</code> does not carry it — so during Local Mode or a cloud outage the app
+    forgets which homes are cloud-managed, at exactly the moment this indicator matters most. That
+    is the <b>Cloud-managed · flag lost</b> state: keyed on the per-home flag it would silently
+    revert to "your Mac" copy. <code>accountType</code> comes from cached Apollo and survives.
+  </div>
+
+  <div class="note warn">
     <b>Two decisions these options must not unpick.</b> This one bubble is a deliberate merge of three pills that contradicted each other — a red "Offline" beside a green "Local Mode" while the home worked fine through the second. And the indicator is <b>present at every state, including good</b>, because one that appears only when something is wrong cannot be told apart from one that is broken or one that was never measuring. Rationale at <code>StatusBadge.tsx:1–30</code> and <code>lib/status-badge.ts:1–22</code>. Every option below keeps the dot always visible; what varies is the <b>box</b>.
   </div>
 
@@ -429,6 +461,7 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
 /* ---------------- icons (lucide paths) ---------------- */
 const P = {
   check:'M20 6 9 17l-5-5',
+  info:'M12 16v-4M12 8h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z',
   x:'M18 6 6 18M6 6l12 12',
   chevron:'m6 9 6 6 6-6',
   refresh:'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5',
@@ -626,6 +659,52 @@ const S = [
   path:{cloud:'warn', relay:'ok', home:'ok', cloudName:'Tunnel', relayName:'Mac mini', hopLabels:['1.2 s','8 ms',''],
         sentence:'The tunnel is the slow part. Your Mac is answering in 8 ms behind it.'},
   spark:[400,760,980,1150,1240,1180,1220,1200],
+},
+
+/* ── Cloud-managed: the relay is Homecast's Mac, not the user's ──────────────
+   They own an Apple Home Hub and nothing else; the relay is a machine in
+   Homecast's estate, joined to their Apple Home as a Resident. Every string
+   that sends them to check, restart or take over a Mac is wrong here. */
+{
+  key:'cloud-good', name:'Cloud-managed · healthy', tone:'ok',
+  scenario:'Cloud plan. No Mac of their own — Homecast operates the relay. The chain has to name the third hop as ours, or it implies hardware they do not have.',
+  badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
+  conn:{head:'Connection is good', sub:'Round trip 41ms · just now', rtt:'41', when:'just now', warn:false, action:false},
+  path:{cloud:'ok', relay:'ok', home:'ok', managed:true, hopLabels:['41 ms','',''],
+        sentence:'Homecast is running the relay for this home. Every hop is healthy.'},
+  spark:[44,39,42,45,41,38,43,40,41,39],
+},
+{
+  key:'cloud-relay-down', name:'Cloud-managed · relay down', tone:'warn',
+  scenario:'The flagship contrast with "Relay unreachable". Identical red hop — but the Mac is ours, the socket is fine, and there is nothing the user can do. Today they get "your home is not responding" and a Reconnect button that reconnects something that was never broken.',
+  badge:{tone:'warn', label:'Not responding', pulse:true, sr:'Connection is not responding'},
+  conn:{head:'Your home is not responding', sub:'A request has been waiting 12s.', rtt:null, when:null, warn:true, action:true},
+  path:{cloud:'ok', relay:'bad', home:'idle', managed:true, hopLabels:['41 ms','no answer',''],
+        noUserAction:true,
+        noUserActionText:"Homecast's relay for this home is down. We monitor these and are already on it — nothing to restart at your end.",
+        sentence:"Our relay for this home isn't answering. Your phone and your internet are both fine."},
+  spark:[42,40,45,43,3100,7400,12000,null,null],
+},
+{
+  key:'cloud-enrolling', name:'Cloud-managed · still enrolling', tone:'idle',
+  scenario:'Enrollment is pending or invite_sent — paid for, relay assigned, but the Apple Home invitation has not been accepted yet, so isCloudManaged is still false and no relay serves the home.',
+  badge:{tone:'idle', label:'Setting up', pulse:true, sr:'Setting up'},
+  conn:{head:'Setting up your cloud relay', sub:'Waiting for the Apple Home invitation.', rtt:null, when:null, warn:false, action:false},
+  path:{cloud:'ok', relay:'idle', home:'idle', managed:true, hopLabels:['41 ms','not yet',''],
+        noUserAction:true,
+        noUserActionText:'Send the Apple Home invitation to finish setup — Settings → Homes.',
+        sentence:'Your relay is assigned but has not joined your Apple Home yet.'},
+  spark:[],
+},
+{
+  key:'cloud-forgotten', name:'Cloud-managed · flag lost', tone:'warn',
+  scenario:'The trap. Socket is down, so homes.list is answered locally — and the local answer carries no isCloudManaged. The app has just forgotten this home is cloud-managed, at the exact moment the indicator matters most.',
+  badge:{tone:'ok', strong:true, label:'Local Mode', pulse:false, sr:'Local Mode — this device is controlling Apple Home directly'},
+  conn:{head:"You're not connected", sub:'No reply to the last connection check.', rtt:null, when:null, warn:true, action:true},
+  local:{identity:'mapped', reason:"This device can't reach Homecast's servers.", device:'device'},
+  path:{cloud:'bad', relay:'idle', home:'ok', managed:true, bypass:true, hopLabels:['no route','',''],
+        sentence:'Homecast is unreachable, so this device is serving your home directly.'},
+  spark:[],
 }];
 
 /* ---------------- shared fragments ---------------- */
@@ -673,6 +752,29 @@ const tile = t => `<div class="tile"><div class="ico">${ic(t.ic,17)}</div>
 
 const reconnectBtn = `<button class="act">${ic('refresh',13)} Reconnect now</button>`;
 const WARN_TEXT = 'Changes you make may take a while to apply, or may not apply at all.';
+
+/**
+ * What goes in the action slot — one place, because the wrong button here is
+ * worse than no button.
+ *
+ * On a cloud-managed home the relay is a Mac in Homecast's estate, joined to
+ * the user's Apple Home as a Resident. When it goes down the socket to
+ * Homecast is *fine*, so "Reconnect now" reconnects something that was never
+ * broken and changes nothing — and "Take Over as Relay" invites them to seize
+ * duty for a home this device may have no HomeKit access to at all.
+ *
+ * The docs already take this line for the page-level card: "Cloud relays are
+ * monitored — we detect and resolve outages automatically. No action needed on
+ * your end." The status bubble is the surface that never got the memo.
+ */
+function actionSlot(s){
+  if (s.path && s.path.noUserAction)
+    return `<div class="noact">${ic('info',12)}<span>${s.path.noUserActionText ||
+      'Nothing to fix at your end — Homecast has been notified.'}</span></div>`;
+  if (s.relay && s.relay.standby) return `<button class="act">Take Over as Relay</button>`;
+  if (s.conn && s.conn.action && !s.local && !(s.path && s.path.bypass)) return reconnectBtn;
+  return '';
+}
 
 /**
  * What the panel LEADS with — the same priority ladder as lib/status-badge.ts.
@@ -778,7 +880,7 @@ function optA(s){
       ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
       <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
       ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
-      ${c && c.action && !s.local ? reconnectBtn : ''}
+      ${actionSlot(s)}
       ${localBlock(s, false, true)}${relayBlock(s)}
     </div>`, trigger(s));
 }
@@ -797,7 +899,7 @@ function optB(s){
       ${chain(s, chainStyle)}${bypassMark(s, chainStyle)}
       <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
       ${c && c.warn && !s.local ? `<div class="warnline">${WARN_TEXT}</div>`:''}
-      ${c && c.action && !s.local ? reconnectBtn : ''}`;
+      ${actionSlot(s)}`;
   return frame(s, `<div class="panel p-b">${body}${localBlock(s,true)}${relayBlock(s,true)}</div>`,
     trigger(s, {asPill:true, pillText:s.badge.label || (hasMetric(s) ? `${c.rtt} ${c.unit||'ms'}` : L.cap)}));
 }
@@ -822,7 +924,10 @@ function nodesOf(s){
     // owns — so this node must never be named in a way that sends them to look
     // at hardware, and nothing here may offer to take relay duty over.
     {key:'relay',  icon:'server',
-     name:p.managed ? 'Homecast relay' : p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'),
+     // "Our relay" rather than "Homecast relay": next to a cloud node already
+     // called Homecast the longer form reads as one repeated word and crowds
+     // the 236px card, and first person is what the hop sentences use anyway.
+     name:p.managed ? 'Our relay' : p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'),
      tone:p.relay},
     {key:'home',   icon:'house',  name:'Home',       tone:p.home},
   ];
@@ -905,8 +1010,7 @@ function optC(s){
       <div class="hl" style="font-size:12px">${pathSentence(s)}</div>
       ${s.conn && s.conn.warn && !s.path.bypass ? `<div class="warnline">${WARN_TEXT}</div>`:''}
       ${s.local ? `<div class="sb">Automations and notifications stay off until the relay is back.</div>`:''}
-      ${s.relay && s.relay.standby ? `<button class="act">Take Over as Relay</button>` :
-        (s.conn && s.conn.action && !s.path.bypass ? reconnectBtn : '')}
+      ${actionSlot(s)}
     </div>`, trigger(s));
 }
 
@@ -958,9 +1062,7 @@ function optD(s){
       <div class="d-rows">${rows.map(r=>`<div class="d-row">${dotEl({tone:r.dot})}
         <span class="nm">${r.nm}</span><span class="vl">${r.vl}</span></div>`).join('')}</div>
       <div class="d-acts">
-        ${c&&c.action?`<button class="act">${ic('refresh',13)} Reconnect now</button>`:''}
-        ${s.relay&&s.relay.standby?`<button class="act">Take Over as Relay</button>`:''}
-        ${!((c&&c.action)||(s.relay&&s.relay.standby))?`<button class="act">${ic('settings',13)} Connection settings</button>`:''}
+        ${actionSlot(s) || `<button class="act">${ic('settings',13)} Connection settings</button>`}
       </div>
     </div>`, trigger(s));
 }
@@ -979,8 +1081,8 @@ function optE(s){
         <div class="sb" style="margin-top:-2px">${pathSentence(s)}</div>
         ${c?`<div class="sep"></div><div class="hl" style="font-size:12px">${c.head}</div>
            <div class="sb">${c.sub}</div>
-           ${c.warn?`<div class="warnline">${WARN_TEXT}</div>`:''}
-           ${c.action?reconnectBtn:''}`:''}
+           ${c.warn?`<div class="warnline">${WARN_TEXT}</div>`:''}`:''}
+        ${actionSlot(s)}
         ${localBlock(s,true)}${relayBlock(s)}
       </div>
     </div>`, trigger(s));
