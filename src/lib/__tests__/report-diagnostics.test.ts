@@ -1,3 +1,11 @@
+// @vitest-environment jsdom
+//
+// `buildDiagnosticsBundle` reads `navigator.userAgent`, which is exactly right
+// for code that only ever runs in a browser — but the suite's default
+// environment is `node`, and CI pins Node 20, where `navigator` is not a global
+// at all (it arrived in Node 21). Without this the file passes on a developer's
+// newer Node and fails only in CI.
+
 /**
  * What a shake report actually carries.
  *
