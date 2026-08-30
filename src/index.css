@@ -84,11 +84,21 @@
    shortcut), and a transition starts from whatever that is. A `from` frame
    would have to name one number and would snap the others to it.
    The root attribute rather than a prop because the left menu renders in a
-   portal, outside the Dashboard tree the prop would travel down. */
+   portal, outside the Dashboard tree the prop would travel down.
+
+   The numbers are the ones that make it READ, which is a different question
+   from whether it animates. The first version borrowed the badges' shape whole
+   — 200ms of `cubic-bezier(0.4, 0, 1, 1)`, scale 0.94 — and measured correctly
+   while looking like nothing had happened. Two reasons, both about starting
+   from 0.4 rather than from 1: that curve is an ease-IN, so a third of the way
+   through, a tile that began at 0.4 was still at 0.33 and had shrunk by 1%;
+   and 6% of scale is legible on a 28px badge and invisible on a whole room.
+   So: `ease-standard`, which moves furthest first, over 260ms, down to 0.86.
+   It leaves immediately and you can see it go. */
 [data-hidden-exiting='true'] [data-hidden-item='true'] {
   opacity: 0;
-  transform: scale(0.94);
-  transition: opacity 200ms cubic-bezier(0.4, 0, 1, 1), transform 200ms cubic-bezier(0.4, 0, 1, 1);
+  transform: scale(0.86);
+  transition: opacity 260ms cubic-bezier(0.32, 0.72, 0, 1), transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
   /* It is on its way out and no longer means anything — without this a tile
      you can still see is still tappable for the length of the fade. */
   pointer-events: none;

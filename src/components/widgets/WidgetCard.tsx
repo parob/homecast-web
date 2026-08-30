@@ -464,18 +464,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Use isHidden prop (for context menu hide) or isHiddenUi (for edit mode)
   const isCurrentlyHidden = isHidden || (editModeType === 'ui' && isHiddenUi);
   const hiddenClass = isCurrentlyHidden ? 'opacity-40 grayscale' : '';
-  /**
-   * What the stylesheet animates away when the reveal ends — see
-   * `[data-hidden-exiting]` in `index.css` and HIDDEN_EXIT_MS in Dashboard.
-   *
-   * On the Card and not on the wrapper around it, for the reason the wiggle and
-   * the timer animations both document: an animated opacity or transform on an
-   * ANCESTOR of a backdrop-filter element establishes a new backdrop root and
-   * switches the tile's glass off while it runs. The Card is the element that
-   * already carries `opacity-40` and `hover:opacity-80`, so this is the one
-   * opacity it has always had.
+  /*
+   * Handed to WidgetWrapper rather than put on anything here — it owns the two
+   * layers that have to leave together, and the reasons are documented on its
+   * `hiddenItem` prop. Short version: the Card is transparent, so fading it
+   * fades the writing and leaves the tile.
    */
-  const hiddenItemMark = isCurrentlyHidden ? { 'data-hidden-item': 'true' } : {};
 
   /**
    * What Edit Layout offers on this tile.
@@ -779,7 +773,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (hasContextMenuContent && !touchMode && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <Card
@@ -787,7 +781,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                 onClick={handleCardClick}
                 {...pressHandlers}
                 className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
-                {...hiddenItemMark}
                 style={style}
               >
                 {cardInner}
@@ -901,13 +894,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   return (
     <WidgetColorContext.Provider value={colorContextValue}>
       <div className={wiggleClass} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
           <Card
             ref={ref}
             onClick={handleCardClick}
             {...pressHandlers}
             className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
-            {...hiddenItemMark}
           >
             {cardInner}
           </Card>

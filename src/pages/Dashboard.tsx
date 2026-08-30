@@ -152,10 +152,11 @@ const LIFT_WATCHDOG_MS = 8000;
  *
  * Must match the transition on `[data-hidden-item]` in `index.css` — this is
  * what takes them off the page, and that is what moves them while it waits.
- * Slightly longer than the 150ms badges so the control on a tile goes before
- * the tile it was attached to.
+ * Comfortably longer than the 150ms badges, so the control on a tile goes
+ * before the tile it was attached to; and long enough to be seen, which 200ms
+ * starting from an already-dimmed 0.4 was not — see the note beside the rule.
  */
-const HIDDEN_EXIT_MS = 200;
+const HIDDEN_EXIT_MS = 260;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
 import {
   shouldFilterRoomOut,
