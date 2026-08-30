@@ -204,6 +204,11 @@ interface PendingRequest {
    * nothing completes and a completions-only metric goes silent.
    */
   sentAt: number;
+  /**
+   * What was asked for, so the classifier can tell a slow link from a big job.
+   * See `isHousework` in ./connection-quality.ts.
+   */
+  action: string;
 }
 
 // Reconnection settings
@@ -214,6 +219,7 @@ import {
 import {
   type ConnectionQuality, type HysteresisState,
   classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
+  oldestCountedInFlight,
 } from './connection-quality';
 const HEARTBEAT_INTERVAL = 30000;
 const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
@@ -849,6 +855,7 @@ export class ServerWebSocket {
         reject,
         timeout,
         sentAt,
+        action,
       });
       // A request going out is itself news: it starts the clock the quality
       // classifier reads, and arms the ticker that watches it age.
@@ -940,15 +947,19 @@ export class ServerWebSocket {
   private evaluateQuality(): void {
     const now = Date.now();
 
-    // The oldest unanswered request. `Math.min` over the map rather than a
-    // separately-maintained pointer: the map is small (a launch burst is
-    // single digits) and a derived value cannot drift out of sync with it.
-    let oldestInFlightSentAt: number | null = null;
-    for (const pending of this.pendingRequests.values()) {
-      if (oldestInFlightSentAt === null || pending.sentAt < oldestInFlightSentAt) {
-        oldestInFlightSentAt = pending.sentAt;
-      }
-    }
+    // The oldest unanswered request that says anything about the link. Derived
+    // over the map rather than kept as a separate pointer: the map is small and
+    // a derived value cannot drift out of sync with it.
+    //
+    // Housework is skipped — a bulk write across a whole house is long because
+    // the house is big, not because the connection is bad, and counting it here
+    // is what made "All lights" report "Your home is not responding" every time.
+    // See `oldestCountedInFlight`.
+    const oldestInFlightSentAt = oldestCountedInFlight(this.pendingRequests.values());
+    // The ticker still watches every request, housework included: one has to
+    // stop the classifier idling while a batch runs, and the ordinary requests
+    // alongside it are exactly what the in-flight signal is reading.
+    const hasInFlight = this.pendingRequests.size > 0;
 
     const raw = classifyQuality({
       socketState: this.state,
@@ -966,7 +977,7 @@ export class ServerWebSocket {
       this.callbacks.onQualityChange?.(this.qualityState.shown);
     }
 
-    this.syncQualityTicker(oldestInFlightSentAt !== null);
+    this.syncQualityTicker(hasInFlight);
   }
 
   /**
@@ -1039,12 +1050,14 @@ export class ServerWebSocket {
    * leading indicator the classifier ranks first — so it is what the popover
    * should say, rather than a round trip that may be perfectly healthy and
    * entirely beside the point.
+   *
+   * Counts what the classifier counts, housework excluded, because this line is
+   * offered as *the reason for the verdict*. Reporting "A request has been
+   * waiting 14s" under a headline that no longer follows from it would be the
+   * same self-contradiction this function was written to remove, inverted.
    */
   getOldestInFlightMs(): number | null {
-    let oldest: number | null = null;
-    for (const p of this.pendingRequests.values()) {
-      if (oldest === null || p.sentAt < oldest) oldest = p.sentAt;
-    }
+    const oldest = oldestCountedInFlight(this.pendingRequests.values());
     return oldest === null ? null : Math.max(0, Date.now() - oldest);
   }
 

@@ -66,6 +66,76 @@ export const STALLED_IN_FLIGHT_MS = 8_000;
 export const FAILURES_FOR_STALLED = 2;
 
 /**
+ * Requests whose length is set by the house, not by the link.
+ *
+ * The thresholds above measure **latency**. A `characteristics.set` across 130
+ * accessories measures **how much work HomeKit has to do**, and the two are not
+ * the same quantity. Timing the second against the first is a category error,
+ * and it had a real cost: pressing "All lights" on a 130-accessory home sent one
+ * bulk write that answered in 14,558ms — with 469 `characteristic_update`
+ * broadcasts arriving while it ran, and the 10s `automation.virtual_states` poll
+ * round-tripping in 108-252ms throughout — and the badge went "Slow" at 2.5s and
+ * "Your home is not responding" at 8s. The link was never the problem; the
+ * lights were visibly moving the whole time.
+ *
+ * No threshold fixes that, which is why this is a list and not a bigger number:
+ * a large enough home outgrows any value you pick.
+ *
+ * These are excused from the **in-flight clock only**. Every other signal still
+ * applies to them — the socket state, the 30s `REQUEST_TIMEOUT`, and the failure
+ * that timeout books. And ordinary requests keep feeding the in-flight clock
+ * while housework runs, so the half-open socket this signal exists for stays
+ * detectable mid-write rather than going blind for the length of a batch.
+ *
+ * Progress on the work itself is not this indicator's job and never was: the
+ * action's own pending ring and progress count report that, next to the control
+ * the user pressed.
+ */
+const HOUSEWORK_ACTIONS: ReadonlySet<string> = new Set([
+  /** The bulk write behind every Homecast shortcut. One request, N accessories. */
+  'characteristics.set',
+  /** The older bulk write, still what MCP and AI callers use. */
+  'state.set',
+  /** Writes every member of a service group. */
+  'serviceGroup.set',
+  /** HomeKit runs the scene; how long that takes is the scene's business. */
+  'scene.execute',
+]);
+
+/**
+ * Is this request housework — work whose duration says nothing about the link?
+ *
+ * Deliberately **not** extended to the single-accessory `characteristic.set`.
+ * One write that takes eight seconds is genuinely worth reporting: it is a
+ * device that is not answering, which is a fault and not a workload.
+ */
+export function isHousework(action: string): boolean {
+  return HOUSEWORK_ACTIONS.has(action);
+}
+
+/** The bit of a pending request this module needs to judge it. */
+export interface InFlightRequest {
+  action: string;
+  sentAt: number;
+}
+
+/**
+ * When the oldest request that counts went out, or null if none does.
+ *
+ * The derivation lives here rather than in the socket so the rule and the
+ * thresholds it feeds are read and tested together — the bug above was not in
+ * either half, it was in the join between them.
+ */
+export function oldestCountedInFlight(pending: Iterable<InFlightRequest>): number | null {
+  let oldest: number | null = null;
+  for (const request of pending) {
+    if (isHousework(request.action)) continue;
+    if (oldest === null || request.sentAt < oldest) oldest = request.sentAt;
+  }
+  return oldest;
+}
+
+/**
  * How old the newest round-trip sample may be before it stops being evidence.
  *
  * Three heartbeats at the 30s interval. Beyond that we have not measured
@@ -140,6 +210,9 @@ export interface QualityInputs {
    * When the oldest still-unanswered request was sent, or null when nothing is
    * in flight. Sent-at rather than an age so the caller does not have to
    * recompute it against the same clock we are using.
+   *
+   * Build it with `oldestCountedInFlight`, not a bare minimum over the pending
+   * map: housework does not belong in this number. See `isHousework`.
    */
   oldestInFlightSentAt: number | null;
   /** Requests that have failed in a row, reset by any success. */
