@@ -818,7 +818,12 @@ function nodesOf(s){
   return [
     {key:'device', icon:'phone',  name:'This phone', tone:'ok'},
     {key:'cloud',  icon:'cloud',  name:p.cloudName || 'Homecast', tone:p.cloud},
-    {key:'relay',  icon:'server', name:p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'), tone:p.relay},
+    // A cloud-managed home is served by Homecast's own Mac, not one the user
+    // owns — so this node must never be named in a way that sends them to look
+    // at hardware, and nothing here may offer to take relay duty over.
+    {key:'relay',  icon:'server',
+     name:p.managed ? 'Homecast relay' : p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'),
+     tone:p.relay},
     {key:'home',   icon:'house',  name:'Home',       tone:p.home},
   ];
 }
