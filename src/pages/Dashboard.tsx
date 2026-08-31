@@ -145,6 +145,18 @@ import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
 const LIFT_WATCHDOG_MS = 8000;
+
+/**
+ * How long the revealed hidden things stay mounted after you have finished with
+ * them, so they can animate away instead of blinking out.
+ *
+ * Must match the transition on `[data-hidden-item]` in `index.css` — this is
+ * what takes them off the page, and that is what moves them while it waits.
+ * Comfortably longer than the 150ms badges, so the control on a tile goes
+ * before the tile it was attached to; and long enough to be seen, which 200ms
+ * starting from an already-dimmed 0.4 was not — see the note beside the rule.
+ */
+const HIDDEN_EXIT_MS = 260;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
 import {
   shouldFilterRoomOut,
@@ -435,6 +447,11 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
   };
 
   const contentOpacity = isHiddenUi ? 'opacity-40' : '';
+  /* Animated away when the reveal ends — `[data-hidden-exiting]` in index.css.
+     Inside the sortable wrapper, not on it: that one carries an inline
+     `opacity`, and an inline style beats the stylesheet, so a rule that set
+     opacity out there would simply never apply. */
+  const hiddenItemMark = isHiddenUi ? { 'data-hidden-item': 'true' } : {};
   const RoomIcon = getRoomIcon(room.name);
 
   const wiggleOffset = editMode ? { '--wiggle-offset': `${(room.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
@@ -445,7 +462,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
 
   const innerContent = (
     <div ref={setNodeRef} style={style} className="relative cursor-pointer" data-sortable-id={room.id} onClick={onSelect}>
-      <div className={editMode ? 'wiggle' : ''} style={wiggleOffset}>
+      <div className={editMode ? 'wiggle' : ''} style={wiggleOffset} {...hiddenItemMark}>
         <button
           {...attributes}
           {...listeners}
@@ -828,13 +845,15 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
   };
 
   const contentOpacity = isHiddenUi ? 'opacity-40' : '';
+  /** Same marker a room row carries, for the same reason — see SortableRoomItem. */
+  const hiddenItemMark = isHiddenUi ? { 'data-hidden-item': 'true' } : {};
   const wiggleOffset = editMode ? { '--wiggle-offset': `${(home.id.charCodeAt(0) % 5) * 0.05}deg` } as React.CSSProperties : undefined;
   // Sibling of the drag-listener button, never a child of it — see SortableRoomItem.
   const showEditBadge = editMode && !!onToggleVisibility;
 
   const buttonContent = (
     <div ref={setNodeRef} style={style} className="relative cursor-pointer" onClick={onSelect}>
-      <div className={editMode ? 'wiggle' : ''} style={wiggleOffset}>
+      <div className={editMode ? 'wiggle' : ''} style={wiggleOffset} {...hiddenItemMark}>
         <button
           {...attributes}
           {...listeners}
@@ -1629,6 +1648,63 @@ const Dashboard = () => {
   const [showHiddenItems, setShowHiddenItems] = useState(false);
 
   /**
+   * …and the beat between "put them away" and their actually going.
+   *
+   * `setShowHiddenItems(false)` unmounts them, and an element that is gone
+   * cannot animate — the same thing `useBadgePresence` exists for one layer
+   * down. So the two are separated: this goes true first, the CSS rule keyed on
+   * it fades every `data-hidden-item` out, and only then does the reveal end.
+   *
+   * Nothing reads it in React. It is stamped on the document root by the effect
+   * below, because the left menu renders in a portal and a prop would not reach
+   * the rooms and homes in it.
+   */
+  const [hiddenExiting, setHiddenExiting] = useState(false);
+  const hiddenExitRef = useRef<number | undefined>(undefined);
+  // Read through a ref, the way `editModeRef` below is: these two callbacks are
+  // handed out to menus and to the edit bar, and a new identity every time the
+  // reveal changed would be one more thing rebuilding under a gesture.
+  const showHiddenRef = useRef(showHiddenItems);
+  showHiddenRef.current = showHiddenItems;
+
+  /** Reveal them, now. Cancels an exit that was already running — you can come
+   *  back into Edit Layout inside the 200ms, and a stale timer would then take
+   *  the reveal away underneath you. */
+  const revealHiddenItems = useCallback(() => {
+    window.clearTimeout(hiddenExitRef.current);
+    setHiddenExiting(false);
+    setShowHiddenItems(true);
+  }, []);
+
+  /** Put them away, over HIDDEN_EXIT_MS. A no-op if none are showing, so Done
+   *  on a dashboard with nothing hidden costs nothing. */
+  const putHiddenItemsAway = useCallback(() => {
+    window.clearTimeout(hiddenExitRef.current);
+    if (!showHiddenRef.current) {
+      setHiddenExiting(false);
+      return;
+    }
+    setHiddenExiting(true);
+    hiddenExitRef.current = window.setTimeout(() => {
+      setHiddenExiting(false);
+      setShowHiddenItems(false);
+    }, HIDDEN_EXIT_MS);
+  }, []);
+
+  // The flag the stylesheet reads. On the root rather than anywhere in the
+  // tree: the left menu is a portal, and so is anything else Radix draws.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (hiddenExiting) root.setAttribute('data-hidden-exiting', 'true');
+    else root.removeAttribute('data-hidden-exiting');
+    return () => root.removeAttribute('data-hidden-exiting');
+  }, [hiddenExiting]);
+
+  // A dashboard that unmounts mid-exit must not leave a timer behind that then
+  // sets state on it.
+  useEffect(() => () => window.clearTimeout(hiddenExitRef.current), []);
+
+  /**
    * Entering Edit Layout from the gesture instead of the menu.
    *
    * A long press on a tile starts a drag, and that same press turns the mode on
@@ -1692,12 +1768,12 @@ const Dashboard = () => {
     // backstop for a drag that arrives without that press — a mouse in a hybrid
     // browser, a keyboard drag, a synthetic event in a test — where there is no
     // hold to have hung it on. Idempotent either way.
-    setShowHiddenItems(true);
+    revealHiddenItems();
     setLiftInFlight(true);
     // Insurance against a DndContext that forgets onDragCancel: without an end,
     // the sidebar never widens and the summary pills never come back.
     liftWatchdogRef.current = window.setTimeout(() => endLift(), LIFT_WATCHDOG_MS);
-  }, [endLift]);
+  }, [endLift, revealHiddenItems]);
 
   /*
    * Hidden items come back a beat BEFORE the drag starts, not when it does.
@@ -1714,10 +1790,12 @@ const Dashboard = () => {
    */
   const { releaseAnchor } = useRevealBeforeLift({
     enabled: isTouchDevice && !editMode,
-    onReveal: useCallback(() => setShowHiddenItems(true), []),
+    onReveal: revealHiddenItems,
     onAbandon: useCallback(() => {
-      if (!editModeRef.current) setShowHiddenItems(false);
-    }, []),
+      // Animated away rather than cut, same as Done: the reveal you are undoing
+      // has been on screen for 250ms and is a thing the eye has already found.
+      if (!editModeRef.current) putHiddenItemsAway();
+    }, [putHiddenItemsAway]),
   });
 
   releaseAnchorRef.current = releaseAnchor;
@@ -5708,9 +5786,13 @@ const Dashboard = () => {
       compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
       isTouchDevice, editMode, groupByRoom]);
 
+  // Desktop's Show Hidden Items, off the context menus. Switching it off is the
+  // same act as Done — the revealed things are being put away — so it leaves the
+  // same way rather than blinking out.
   const handleToggleShowHidden = useCallback(() => {
-    setShowHiddenItems(prev => !prev);
-  }, []);
+    if (showHiddenRef.current) putHiddenItemsAway();
+    else revealHiddenItems();
+  }, [putHiddenItemsAway, revealHiddenItems]);
 
   /**
    * How far down the page starts. The edit bar deliberately matches the header
@@ -5773,9 +5855,13 @@ const Dashboard = () => {
     // Editing always shows hidden things — you cannot bring back what you cannot
     // see, and a toggle for it was one more control to misread. `getOrderedItems`
     // already sorts revealed items to the end of the grid, so they are out of the
-    // way of the ones you are actually arranging. Leaving puts them back.
-    setShowHiddenItems(next);
-  }, []);
+    // way of the ones you are actually arranging. Leaving puts them back — over
+    // HIDDEN_EXIT_MS rather than in the frame Done was tapped, which is the one
+    // thing on this screen that used to vanish while everything around it (the
+    // bar, the badges on every tile) animated out.
+    if (next) revealHiddenItems();
+    else putHiddenItemsAway();
+  }, [revealHiddenItems, putHiddenItemsAway]);
 
   /**
    * Holding the page itself, rather than anything on it.
@@ -8546,7 +8632,13 @@ const Dashboard = () => {
                     visibleRoomIdx++;
 
                     return (
-                    <div key={roomName} data-room-container data-room-name={roomName} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
+                    /* A revealed hidden room leaves as one thing — heading and
+                       tiles together. Marked here rather than tile by tile
+                       because its tiles need not be hidden themselves: hiding
+                       the ROOM takes the whole section, and half of it fading
+                       while the other half blinked out would be worse than
+                       either. See `[data-hidden-exiting]` in index.css. */
+                    <div key={roomName} data-room-container data-room-name={roomName} {...(roomRevealed ? { 'data-hidden-item': 'true' } : {})} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
                       {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
                         // A hidden room only reaches here while hidden things are

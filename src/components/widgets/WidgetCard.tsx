@@ -464,6 +464,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Use isHidden prop (for context menu hide) or isHiddenUi (for edit mode)
   const isCurrentlyHidden = isHidden || (editModeType === 'ui' && isHiddenUi);
   const hiddenClass = isCurrentlyHidden ? 'opacity-40 grayscale' : '';
+  /*
+   * Handed to WidgetWrapper rather than put on anything here — it owns the two
+   * layers that have to leave together, and the reasons are documented on its
+   * `hiddenItem` prop. Short version: the Card is transparent, so fading it
+   * fades the writing and leaves the tile.
+   */
 
   /**
    * What Edit Layout offers on this tile.
@@ -767,7 +773,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (hasContextMenuContent && !touchMode && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <Card
@@ -888,7 +894,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   return (
     <WidgetColorContext.Provider value={colorContextValue}>
       <div className={wiggleClass} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
           <Card
             ref={ref}
             onClick={handleCardClick}

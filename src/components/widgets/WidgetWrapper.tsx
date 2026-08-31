@@ -49,6 +49,22 @@ interface WidgetWrapperProps {
   intensity?: number | null;
   /** Pressed — the whole tile shrinks, glass included. */
   pressed?: boolean;
+  /**
+   * This tile is one of the hidden ones Edit Layout revealed, so it has to
+   * leave when the reveal ends rather than blink out.
+   *
+   * Marks the glass and the content — the same two layers `pressClass` moves,
+   * and for the same reason. The wrapper is an ancestor of the backdrop-blur
+   * layer, so an animated opacity out here would make it a new backdrop root
+   * and switch the glass off for the length of the exit.
+   *
+   * It also cannot go any deeper. The Card inside is `!bg-transparent`: every
+   * pixel of the tile you actually see is painted by the blur layer, which is
+   * the Card's SIBLING. Marking the Card faded the title and the icon and left
+   * a solid coloured rectangle sitting there until React took it away, which is
+   * the blink this exists to remove, wearing a fade.
+   */
+  hiddenItem?: boolean;
 }
 
 export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -60,6 +76,7 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   tintAlpha,
   intensity,
   pressed = false,
+  hiddenItem = false,
 }) => {
   const { isDarkBackground, effectiveLuminance } = useBackgroundContext();
 
@@ -107,6 +124,9 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   // background sitting still while everything inside it moved.
   const pressClass = `transition-transform duration-fast ease-standard ${pressed ? 'scale-[0.97]' : ''}`;
 
+  /** See `hiddenItem`. Both layers, never the wrapper. */
+  const leavingMark = hiddenItem ? { 'data-hidden-item': 'true' } : {};
+
   return (
     <div
       className={`relative rounded-2xl h-fit ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`}
@@ -116,9 +136,10 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       <div
         className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 transform-gpu ${pressClass}`}
         style={{ backgroundColor }}
+        {...leavingMark}
       />
       {/* Content */}
-      <div className={`relative z-[1] transform-gpu ${pressClass}`}>
+      <div className={`relative z-[1] transform-gpu ${pressClass}`} {...leavingMark}>
         {children}
       </div>
     </div>

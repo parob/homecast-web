@@ -74,6 +74,8 @@ export function ActionCard({
   // catalog's chosen direction from anywhere outside the toggle,
   // which is the guess the toggle exists to stop making.
   const toggle = editMode ? undefined : action.toggle;
+  // A revealed card carries `data-hidden-item` as well as this dimming (below),
+  // which is what fades it out when the reveal ends — see index.css.
   const dimClass = isHidden ? 'opacity-40' : (inert ? 'opacity-50' : '');
 
   const [panelOpen, setPanelOpen] = useState(false);
@@ -132,6 +134,7 @@ export function ActionCard({
           ? (canExpand ? 'cursor-pointer' : 'cursor-default')
           : (inert ? 'cursor-default' : 'cursor-pointer'),
       )}
+      {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
       style={{ contain: 'layout style paint' }}
       // The arithmetic the subtitle no longer carries. Native title rather than
       // a Radix tooltip: this card is a press target on touch, and Radix closes
