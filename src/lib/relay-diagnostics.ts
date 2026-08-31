@@ -11,6 +11,7 @@
  */
 
 import { browserLogger } from '@/lib/browser-logger';
+import { getRequestLog } from '@/lib/request-log';
 import { serverConnection } from '@/server/connection';
 import { config } from '@/lib/config';
 import { getCacheTimestamp } from '@/hooks/useHomeKitData';
@@ -67,7 +68,17 @@ export function buildDiagnosticsBundle(extra?: Record<string, unknown>) {
     },
     userAgent: navigator.userAgent,
     ...(extra || {}),
-    entries: browserLogger.getEntries().slice(-500),
+    // No `.slice()` here on purpose. The ring is already bounded, and it is now
+    // bounded in a way that reserves room for errors and connection transitions
+    // against a flood of state frames. Taking the newest N on top of that would
+    // hand the flood back its win — the entries the ring deliberately kept are
+    // the older ones, so a tail slice is exactly what drops them.
+    entries: browserLogger.getEntries(),
+    // The request log: what this client asked for, what came back, and the error
+    // code when it did not. Reports are filed *because* requests failed, and
+    // this is the only buffer that records that — it is not derivable from
+    // `entries`, which sees a request outcome only when activity logging is on.
+    requests: [...getRequestLog()],
   };
 }
 
