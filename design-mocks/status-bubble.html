@@ -395,7 +395,12 @@ table.cmp td:first-child{font-weight:600;white-space:nowrap}
   <div class="note warn">
     <b>Cloud-managed changes what the chain is allowed to say.</b> On the cloud plan the relay is a
     Mac in <i>Homecast's</i> estate, joined to the customer's Apple Home as a Resident. They own an
-    Apple Home Hub and nothing else. So the third node is <b>Our relay</b>, never "your Mac", and
+    Apple Home Hub and nothing else. There are exactly two kinds and the product already names
+    them — a <b>cloud relay</b> is one we provide, a <b>self-hosted relay</b> is a Mac the user
+    owns (<code>HomeOverviewSection</code> and <code>HomesSection</code> label them "Cloud Relay"
+    and "Self-hosted relay"; <code>useRelayCannotEdit</code> types them <code>'cloud' |
+    'self-hosted'</code>). So the third node is <b>Cloud relay</b> or <b>Your relay</b> — "This Mac"
+    only when it is the very device being looked at — never a third invented word. And
     when it fails there is no button worth showing: the socket to Homecast is <i>fine</i>, so
     "Reconnect now" reconnects something that was never broken, and "Take Over as Relay" invites
     them to seize duty for a home this device may have no HomeKit access to. Compare
@@ -671,7 +676,7 @@ const S = [
   badge:{tone:'ok', label:null, pulse:false, sr:'Connection is good'},
   conn:{head:'Connection is good', sub:'Round trip 41ms · just now', rtt:'41', when:'just now', warn:false, action:false},
   path:{cloud:'ok', relay:'ok', home:'ok', managed:true, hopLabels:['41 ms','',''],
-        sentence:'Homecast is running the relay for this home. Every hop is healthy.'},
+        sentence:'A cloud relay serves this home. Every hop is healthy.'},
   spark:[44,39,42,45,41,38,43,40,41,39],
 },
 {
@@ -681,8 +686,10 @@ const S = [
   conn:{head:'Your home is not responding', sub:'A request has been waiting 12s.', rtt:null, when:null, warn:true, action:true},
   path:{cloud:'ok', relay:'bad', home:'idle', managed:true, hopLabels:['41 ms','no answer',''],
         noUserAction:true,
-        noUserActionText:"Homecast's relay for this home is down. We monitor these and are already on it — nothing to restart at your end.",
-        sentence:"Our relay for this home isn't answering. Your phone and your internet are both fine."},
+        // deliberately close to SetupState's RELAY_OFFLINE_CLOUD, which already
+        // says this correctly on the page-level card
+        noUserActionText:"Our cloud relay for this home is having trouble. We've been notified and are looking into it — nothing to restart at your end.",
+        sentence:"The cloud relay for this home isn't answering. Your phone and your internet are both fine."},
   spark:[42,40,45,43,3100,7400,12000,null,null],
 },
 {
@@ -693,7 +700,7 @@ const S = [
   path:{cloud:'ok', relay:'idle', home:'idle', managed:true, hopLabels:['41 ms','not yet',''],
         noUserAction:true,
         noUserActionText:'Send the Apple Home invitation to finish setup — Settings → Homes.',
-        sentence:'Your relay is assigned but has not joined your Apple Home yet.'},
+        sentence:'A cloud relay is assigned but has not joined your Apple Home yet.'},
   spark:[],
 },
 {
@@ -924,10 +931,14 @@ function nodesOf(s){
     // owns — so this node must never be named in a way that sends them to look
     // at hardware, and nothing here may offer to take relay duty over.
     {key:'relay',  icon:'server',
-     // "Our relay" rather than "Homecast relay": next to a cloud node already
-     // called Homecast the longer form reads as one repeated word and crowds
-     // the 236px card, and first person is what the hop sentences use anyway.
-     name:p.managed ? 'Our relay' : p.selfRelay ? 'This Mac' : (p.relayName || 'Relay'),
+     // The product already has exactly two words for this and they are not
+     // ours to reinvent: a **cloud relay** is one Homecast provides, and a
+     // **self-hosted relay** is a Mac the user owns. `HomeOverviewSection` and
+     // `HomesSection` label them "Cloud Relay" / "Self-hosted relay", and
+     // `useRelayCannotEdit` types them `'cloud' | 'self-hosted'`. From the
+     // user's side of the screen the self-hosted one is "your relay" — or
+     // "This Mac" when it is the very device being looked at.
+     name:p.managed ? 'Cloud relay' : p.selfRelay ? 'This Mac' : (p.relayName || 'Your relay'),
      tone:p.relay},
     {key:'home',   icon:'house',  name:'Home',       tone:p.home},
   ];
@@ -1047,7 +1058,8 @@ function optD(s){
   const rows = [];
   if (c) rows.push({dot:s.badge.tone, nm:'Link', vl:c.rtt?`${c.rtt}${c.unit||'ms'} round trip · ${c.when}`:c.sub});
   else   rows.push({dot:'ok', nm:'Link', vl:'Community mode — served on this Mac'});
-  if (s.relay) rows.push({dot:s.relay.tone, nm:'Relay', vl:s.relay.standby?'Another Mac is active':
+  if (s.relay) rows.push({dot:s.relay.tone, nm:s.path.managed?'Cloud relay':'Your relay',
+    vl:s.relay.standby?'Another Mac is active':
     s.relay.state==='disconnected'?s.relay.lastOnline:`${s.relay.pill} · up ${s.relay.uptime||'—'}`});
   if (s.local) rows.push({dot:s.local.identity==='unmapped'?'warn':'ok', nm:'Local Mode',
     vl:s.local.identity==='unmapped'?'Active · names not matched yet':'Active · serving Apple Home directly'});
