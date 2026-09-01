@@ -39,10 +39,21 @@ import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
-import { warnsUser, RECONNECTED_VISIBLE_MS } from '@/lib/connection-presentation';
+import { warnsUser, RECONNECTED_VISIBLE_MS, formatRtt } from '@/lib/connection-presentation';
+import { buildChain } from '@/lib/connection-chain';
+import type { ChainVariant } from './status/ConnectionChain';
 import { ConnectionSection } from './status/ConnectionSection';
 import { LocalModeSection } from './status/LocalModeSection';
 import { RelaySection } from './status/RelaySection';
+
+/**
+ * Which drawing of the path the panel uses.
+ *
+ * One constant rather than a setting: this is a design decision to be made
+ * once, not a preference to expose. It sits here so switching it while the
+ * choice is being judged is a one-line change — see parob/homecast-cloud#38.
+ */
+const CHAIN_VARIANT: ChainVariant = 'nodes';
 
 interface StatusBadgeProps {
   isDarkBackground?: boolean;
@@ -125,6 +136,21 @@ export function StatusBadge({
 
   if (communityRelayMac && !showRelay) return null;
 
+  // Keyed on `accountType`, never on a home's `isCloudManaged` — that flag
+  // rides the WebSocket `homes.list` payload and the locally-answered one does
+  // not carry it, so it goes missing during Local Mode and cloud outages,
+  // which is exactly when this panel is being read. See lib/connection-chain.ts.
+  const chain = buildChain({
+    quality: effectiveQuality,
+    reconnected,
+    relayStatus,
+    localMode: { active: localMode.active, unmapped: localMode.identityState === 'unmapped' },
+    managed: accountType === 'cloud',
+    selfRelay: relayStatus === true,
+    community: communityRelayMac,
+    rtt: formatRtt(serverConnection.getLastRttMs()),
+  });
+
   return (
     <Popover open={open} onOpenChange={(o) => {
       if (o) openTimeRef.current = Date.now();
@@ -179,6 +205,8 @@ export function StatusBadge({
               quality={effectiveQuality}
               headline={p.headline}
               onReconnect={() => { serverConnection.reconnect(); setOpen(false); }}
+              chain={chain}
+              chainVariant={CHAIN_VARIANT}
             />
           )}
 
