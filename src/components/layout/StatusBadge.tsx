@@ -50,10 +50,22 @@ import { RelaySection } from './status/RelaySection';
  * Which drawing of the path the panel uses.
  *
  * One constant rather than a setting: this is a design decision to be made
- * once, not a preference to expose. It sits here so switching it while the
- * choice is being judged is a one-line change — see parob/homecast-cloud#38.
+ * once, not a preference to expose.
+ *
+ * **Rail is the decision** (parob/homecast-cloud#38, chosen from real
+ * screenshots of all three). It was picked over the sleeker Bar because the
+ * popover is 280px, and the horizontal treatments all spend their width
+ * fighting for it — Nodes truncates a long relay name and Bar's node labels
+ * are tight at four words. Rail spends vertical space, which a popover has,
+ * and is the only one where "Cloud relay" and a hop label are both
+ * full-length in every state.
+ *
+ * The other two are kept rather than deleted: they are three renderings of
+ * one model, the alternatives cost a few lines each, and a bottom sheet or a
+ * header pill would want a different one. `design-mocks/status-chain-real.html`
+ * renders all three.
  */
-const CHAIN_VARIANT: ChainVariant = 'nodes';
+const CHAIN_VARIANT: ChainVariant = 'rail';
 
 interface StatusBadgeProps {
   isDarkBackground?: boolean;

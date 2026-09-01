@@ -90,7 +90,7 @@ export function ConnectionSection({
   headline,
   onReconnect,
   chain,
-  chainVariant = 'nodes',
+  chainVariant = 'rail',
 }: ConnectionSectionProps) {
   return (
     <div className="space-y-3">

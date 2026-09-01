@@ -64,7 +64,7 @@ interface ConnectionChainProps {
   className?: string;
 }
 
-export function ConnectionChain({ model, variant = 'nodes', className }: ConnectionChainProps) {
+export function ConnectionChain({ model, variant = 'rail', className }: ConnectionChainProps) {
   if (variant === 'bar') return <BarChain model={model} className={className} />;
   if (variant === 'rail') return <RailChain model={model} className={className} />;
   return <NodesChain model={model} className={className} />;
