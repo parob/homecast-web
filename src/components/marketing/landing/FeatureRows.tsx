@@ -15,7 +15,7 @@ export function FeatureRows() {
           const Demo = DEMOS[f.id];
           const reversed = i % 2 === 1;
           return (
-            <div key={f.id} className="grid grid-cols-1 items-center gap-8 py-14 lg:grid-cols-2 lg:gap-16">
+            <div key={f.id} className="grid grid-cols-1 items-center gap-6 py-10 lg:grid-cols-2 lg:gap-16">
               <div className={`flex justify-center ${reversed ? 'lg:order-2' : ''}`}>
                 {Demo && <Demo />}
               </div>
