@@ -90,6 +90,59 @@ test.describe('Toast alignment', () => {
   });
 
   /**
+   * The phone with a notch — the case the report on homecast-cloud#59 was filed
+   * from, and the one every other test here misses because a desktop Chromium
+   * has no safe area to get wrong.
+   *
+   * `isInMobileApp` arrives a render late (Dashboard seeds it `false` and flips
+   * it in an effect), so the header's first layout has no `safe-area-top`
+   * padding and its row sits at the very top of the viewport. That is the layout
+   * AppHeader measures and publishes as `--top-row-center`. When the flag lands
+   * the row slides down by the inset — at constant height, and the inset arrives
+   * as the header's `padding-top`, so neither a ResizeObserver on the row nor a
+   * default (content-box) one on the header sees anything happen. The toaster
+   * goes on aiming at the line the row has left: on the reporter's iPhone that
+   * put the pill at y=20–61, under a ~62pt status bar.
+   */
+  test('a one-line toast is centred on the header row under a notch', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Phone geometry — the header row is 80px there');
+
+    await page.addInitScript(() => {
+      (window as Window & { isHomecastIOSApp?: boolean }).isHomecastIOSApp = true;
+      // Chromium reports no inset, so stand one in the way the Android shell
+      // does. 59px is an iPhone 16 Pro Max's. This runs at document-start,
+      // before <html> exists, so it has to wait for it — and it must land
+      // before React mounts, which is the whole point: the inset is there from
+      // the first layout, and it is the *flag* that arrives late.
+      const apply = () => {
+        if (document.documentElement) {
+          document.documentElement.style.setProperty('--safe-area-top', '59px');
+        } else {
+          setTimeout(apply, 0);
+        }
+      };
+      apply();
+    });
+    await setupMocks(page);
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await expect(headerBurger(page)).toBeVisible({ timeout: 20000 });
+
+    // Both measured after the toast has landed. The header itself moves once
+    // the app works out it is in a native shell, so a burger read at first
+    // paint is read from a layout that no longer exists.
+    await raiseToast(page, 'Sent as #36. Thank you.');
+    const burger = await centreY(headerBurger(page));
+    const toast = await centreY(toastPill(page));
+    const pill = await toastPill(page).boundingBox();
+
+    expect(pill!.y, `pill top is ${pill!.y.toFixed(1)}px — inside the 59px status bar`).toBeGreaterThanOrEqual(59);
+    expect(
+      Math.abs(toast - burger),
+      `toast centre is ${(burger - toast).toFixed(1)}px above the menu button's`,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  /**
    * The Mac app is the case a better constant would have broken. Its header row
    * starts at the 33px title-bar inset and renders 70px tall rather than the
    * 56px its class asks for — the left cluster sets the height — so the old
