@@ -130,4 +130,69 @@ test.describe('hidden items on the way into Edit Layout', () => {
     expect(stillThere, 'and it has to actually stay').toBe(true);
     await expect(tile(page, 'Coffee Maker')).toBeVisible();
   });
+
+  /**
+   * …and the space they take, which is the other half and a separate mechanism.
+   *
+   * Two hidden tiles in the FIRST room, so revealing them adds a row to that
+   * room's grid and every room below it has to move. Measured on this fixture,
+   * that move was 128px in a single frame — the tile faded in politely while
+   * four rooms jumped underneath it.
+   *
+   * The assertion is the same shape as the others: a frame where the room below
+   * is neither where it started nor where it ends up. A jump has no such frame.
+   */
+  test('the rooms below a revealed row move over time, not in one frame', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
+
+    overrideEntityLayouts({
+      ['room:room-bedroom']: { visibility: { hiddenAccessoriesHome: ['acc-br-blinds', 'acc-br-fan'], hiddenAccessoriesRoom: [] } },
+    });
+    await setupMocks(page);
+
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await page.waitForTimeout(3500);
+    // Fail loudly if the home never rendered, rather than reading an empty
+    // screen as "the accessories were hidden".
+    await expect(page.locator('main [data-room-name="Front Door"]')).toBeVisible();
+    await expect(tileCount(page, 'Ceiling Fan')).toHaveCount(0);
+
+    await page.locator('[data-tour="header-menu"]').click();
+    await expect(page.getByRole('menuitem', { name: 'Edit Layout' })).toBeVisible();
+
+    // The room directly below the one that grows. Its top is the whole
+    // measurement: it starts at one value and ends at another ~128px lower.
+    const tops = await page.evaluate(async () => {
+      const top = () => {
+        const el = document.querySelector('main [data-room-name="Front Door"]');
+        return el ? Math.round((el as HTMLElement).getBoundingClientRect().top * 10) / 10 : null;
+      };
+      const item = Array.from(document.querySelectorAll('[role="menuitem"]'))
+        .find(n => n.textContent?.trim() === 'Edit Layout') as HTMLElement | undefined;
+      if (!item) throw new Error('no Edit Layout menu item — is the ⋮ menu open?');
+
+      const seen: number[] = [];
+      const t0 = performance.now();
+      item.click();
+      await new Promise<void>(resolve => {
+        const step = () => {
+          const t = top();
+          if (t !== null) seen.push(t);
+          if (performance.now() - t0 < 1500) requestAnimationFrame(step);
+          else resolve();
+        };
+        requestAnimationFrame(step);
+      });
+      return seen;
+    });
+
+    expect(tops.length, 'Front Door was never on the page').toBeGreaterThan(0);
+    const start = tops[0];
+    const end = tops[tops.length - 1];
+    expect(end - start, 'the revealed row should have pushed the room below it down').toBeGreaterThan(40);
+    expect(
+      tops.some(t => t > start + 4 && t < end - 4),
+      `the room below should be caught part way down; saw ${JSON.stringify(tops)}`,
+    ).toBe(true);
+  });
 });

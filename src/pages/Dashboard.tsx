@@ -141,6 +141,7 @@ import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
+import { captureHeights, heightChanges, playHeightChanges, prefersReducedMotion, type HeightMap } from '@/lib/reflow';
 
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
@@ -1699,19 +1700,55 @@ const Dashboard = () => {
     }, HIDDEN_ENTER_MS);
   }, []);
 
+  /**
+   * …and the space they take, which is a separate problem from the items.
+   *
+   * A room grid that gains a row gets taller and every room below it moves. The
+   * fade above covers the arriving tiles; without this, those rooms jumped the
+   * whole distance in one frame while the tile that displaced them was still
+   * fading in. Measured on the fixture home: revealing two tiles in the first
+   * room moved the four rooms under it 128px, between one paint and the next.
+   *
+   * Captured here, synchronously, BEFORE the state change that reflows the
+   * page — after it there is nothing left to compare against.
+   */
+  const reflowRef = useRef<HeightMap | null>(null);
+  const reflowCancelRef = useRef<(() => void) | null>(null);
+  const captureReflow = useCallback(() => {
+    reflowCancelRef.current?.();
+    reflowCancelRef.current = null;
+    reflowRef.current = prefersReducedMotion() ? null : captureHeights();
+  }, []);
+
   /** Reveal them, now. Cancels an exit that was already running — you can come
    *  back into Edit Layout inside the 200ms, and a stale timer would then take
-   *  the reveal away underneath you. */
-  const revealHiddenItems = useCallback(() => {
+   *  the reveal away underneath you.
+   *
+   *  `animateReflow` is false on the lift path and true everywhere else. A hold
+   *  reveals the hidden items a beat BEFORE the drag starts, and dnd-kit
+   *  measures every droppable rect at that start — so a room still growing when
+   *  it measures gives it rects that are wrong by however far it had left to go,
+   *  and the drop lands somewhere else. The tiles' own fade is safe there
+   *  because opacity moves nothing. */
+  const revealHiddenItems = useCallback((animateReflow = true) => {
     window.clearTimeout(hiddenExitRef.current);
     setHiddenExiting(false);
     // Only when there is an arrival to animate. This runs again on every route
     // into the reveal — the hold before a lift, then the lift itself, then Edit
     // Layout proper — and re-stamping would replay the entrance on tiles that
     // have been sitting on screen since the first of them.
-    if (!showHiddenRef.current) markHiddenItemsEntering();
+    if (!showHiddenRef.current) {
+      markHiddenItemsEntering();
+      if (animateReflow) captureReflow();
+    }
     setShowHiddenItems(true);
-  }, [markHiddenItemsEntering]);
+  }, [markHiddenItemsEntering, captureReflow]);
+
+  /** The lift's own route in — same reveal, no reflow animation. Its own
+   *  callback rather than an argument, because it is handed straight to
+   *  `useRevealBeforeLift` as a prop and a bare `revealHiddenItems` there would
+   *  be called with whatever that hook passes. */
+  const revealHiddenItemsForLift = useCallback(() => revealHiddenItems(false), [revealHiddenItems]);
 
   /** Put them away, over HIDDEN_EXIT_MS. A no-op if none are showing, so Done
    *  on a dashboard with nothing hidden costs nothing. */
@@ -1728,10 +1765,31 @@ const Dashboard = () => {
     }
     setHiddenExiting(true);
     hiddenExitRef.current = window.setTimeout(() => {
+      // The space closes after the things in it have gone, not with them: the
+      // items are still mounted for the whole fade, so their room's height only
+      // becomes wrong at this instant. Measuring the collapsed height early
+      // would mean unmounting them to find it out.
+      captureReflow();
       setHiddenExiting(false);
       setShowHiddenItems(false);
     }, HIDDEN_EXIT_MS);
-  }, []);
+  }, [captureReflow]);
+
+  /**
+   * The reflow itself, on the commit that caused it.
+   *
+   * A LAYOUT effect: it reads the new heights and writes the old ones back for
+   * one frame, and a passive effect would let the jumped layout paint first —
+   * which is the jump this exists to remove, now with an animation after it.
+   */
+  useLayoutEffect(() => {
+    const before = reflowRef.current;
+    reflowRef.current = null;
+    if (!before) return;
+    const changes = heightChanges(before, captureHeights());
+    if (!changes.length) return;
+    reflowCancelRef.current = playHeightChanges(changes);
+  }, [showHiddenItems]);
 
   // The flag the stylesheet reads. On the root rather than anywhere in the
   // tree: the left menu is a portal, and so is anything else Radix draws.
@@ -1749,6 +1807,9 @@ const Dashboard = () => {
     window.clearTimeout(hiddenExitRef.current);
     window.clearTimeout(hiddenEnterRef.current);
     document.documentElement.removeAttribute('data-hidden-entering');
+    // An inline height that outlives its animation would freeze that room at
+    // whatever size it had reached.
+    reflowCancelRef.current?.();
   }, []);
 
   /**
@@ -1814,13 +1875,15 @@ const Dashboard = () => {
     // so the page finished moving before dnd-kit measured it. This is the
     // backstop for a drag that arrives without that press — a mouse in a hybrid
     // browser, a keyboard drag, a synthetic event in a test — where there is no
-    // hold to have hung it on. Idempotent either way.
-    revealHiddenItems();
+    // hold to have hung it on. Idempotent either way — and never with the
+    // reflow animation, for the reason on `revealHiddenItems`: dnd-kit is about
+    // to measure, and a room still growing measures wrong.
+    revealHiddenItemsForLift();
     setLiftInFlight(true);
     // Insurance against a DndContext that forgets onDragCancel: without an end,
     // the sidebar never widens and the summary pills never come back.
     liftWatchdogRef.current = window.setTimeout(() => endLift(), LIFT_WATCHDOG_MS);
-  }, [endLift, revealHiddenItems]);
+  }, [endLift, revealHiddenItemsForLift]);
 
   /*
    * Hidden items come back a beat BEFORE the drag starts, not when it does.
@@ -1837,7 +1900,7 @@ const Dashboard = () => {
    */
   const { releaseAnchor } = useRevealBeforeLift({
     enabled: isTouchDevice && !editMode,
-    onReveal: revealHiddenItems,
+    onReveal: revealHiddenItemsForLift,
     onAbandon: useCallback(() => {
       // Animated away rather than cut, same as Done: the reveal you are undoing
       // has been on screen for 250ms and is a thing the eye has already found.
