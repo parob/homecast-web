@@ -11,9 +11,17 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80",
-        outline: "bg-[hsl(217,91%,97%)] hover:bg-[hsl(217,91%,94%)] active:bg-[hsl(217,91%,91%)]",
+        // `text-foreground` is not cosmetic: without it the label inherits the
+        // container's colour, which on a dark surface is near-white — on these
+        // two near-white fills. Measured 1.04:1 (outline) and 1.05:1 (ghost)
+        // against 18.40:1 and 20.01:1 in light. The `dark:` fills are the other
+        // half: pinning the text alone would have left a light label on a
+        // hardcoded light background. Both keep their light rendering exactly.
+        outline:
+          "bg-[hsl(217,91%,97%)] text-foreground hover:bg-[hsl(217,91%,94%)] active:bg-[hsl(217,91%,91%)] dark:bg-secondary dark:hover:bg-secondary/80 dark:active:bg-secondary/70",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/70",
-        ghost: "bg-white hover:bg-white/60 active:bg-white/40",
+        ghost:
+          "bg-white text-foreground hover:bg-white/60 active:bg-white/40 dark:bg-white/10 dark:hover:bg-white/20 dark:active:bg-white/5",
         link: "text-primary underline-offset-4 hover:underline active:opacity-70",
       },
       size: {
