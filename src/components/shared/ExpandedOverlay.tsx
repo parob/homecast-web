@@ -65,6 +65,19 @@ const MIN_TOP = 8;
 // How long after a resize a pointer-leave is treated as the panel having moved
 // rather than the user having left.
 const RESIZE_GRACE_MS = 600;
+// How long after opening the panel's placement counts as still being
+// established, and so is corrected by moving it rather than by easing it there.
+//
+// The overlay measures its panel once, in its layout effect, and clamps `top`
+// so the panel fits — but a child need not be its final size by then. A service
+// group's member grid renders in full, measures itself, and only then caps to
+// two rows (useGridRowCap in ServiceGroupWidget), so the first height the
+// overlay sees can overflow the viewport when the real one does not. `top`
+// collapses to MIN_TOP, and the correction arrives a frame later — after
+// `ready` has armed the transition, which turned a placement into a 200px
+// journey down the screen. Matches the open animation, which is the window in
+// which anything of that kind lands.
+const OPEN_SETTLE_MS = 200;
 // If a resize leaves the pointer outside and it never comes back, the panel
 // should not sit there indefinitely.
 const RESIZE_ABANDON_MS = 5000;
@@ -144,6 +157,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [position, setPosition] = useState<'left' | 'center' | 'right'>('center');
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [ready, setReady] = useState(false);
+  // Whether the panel has finished arriving. `ready` says the open animation has
+  // STARTED; this says its placement has stopped changing, and only then may a
+  // move be eased. See OPEN_SETTLE_MS.
+  const [settled, setSettled] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
@@ -182,10 +199,21 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
         setShouldRender(false);
         setIsClosing(false);
         setReady(false);
+        setSettled(false);
       }, 150); // Match animation duration
       return () => clearTimeout(timeout);
     }
   }, [isExpanded, shouldRender]);
+
+  // Arm the glide once the panel has arrived, not the moment it starts to.
+  useEffect(() => {
+    if (!ready || isClosing) {
+      setSettled(false);
+      return;
+    }
+    const timeout = setTimeout(() => setSettled(true), OPEN_SETTLE_MS);
+    return () => clearTimeout(timeout);
+  }, [ready, isClosing]);
 
   /**
    * Put the panel where its trigger is, wherever that is now. Called when the
@@ -606,8 +634,13 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
             // Glide when the panel resizes itself. Not while opening — the
             // position is being established then, and easing it would drag the
             // panel across the screen on every expand.
+            //
+            // Gated on `settled` rather than `ready`, because `ready` is set the
+            // frame the open BEGINS: a child that lays out in two passes, as a
+            // service group's member grid does, corrected the height one frame
+            // after that and the correction was eased. See OPEN_SETTLE_MS.
             className={`fixed pointer-events-auto ${
-              ready && !isClosing ? 'transition-[top] duration-base ease-standard' : ''
+              settled && !isClosing ? 'transition-[top] duration-base ease-standard' : ''
             }`}
             style={{
               zIndex: baseZ + 1,
