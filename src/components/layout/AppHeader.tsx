@@ -38,17 +38,40 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // the element is what keeps the two in step through a text-scale change or
   // anything else that moves the row.
   const rowRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const row = rowRef.current;
-    if (!row) return;
+    const header = headerRef.current;
+    if (!row || !header) return;
     const publish = () => {
       const box = row.getBoundingClientRect();
       document.documentElement.style.setProperty('--top-row-center', `${box.top + box.height / 2}px`);
     };
     publish();
-    // The header is `fixed`, so it only moves when it resizes.
+    // The header is `fixed`, so the row moves only when the header's own box
+    // changes — and that is NOT the same as the row resizing, which is all this
+    // used to watch. The row is 80px tall whether or not it has been pushed down
+    // past a notch, so the one thing that moves it moved it silently.
+    //
+    // It moves because `safe-area-top` arrives late. `isInMobileApp` is seeded
+    // false and flipped in an effect, so the first layout is always the
+    // uninset one; on iOS `env(safe-area-inset-top)` can resolve a beat late as
+    // well. Either way the row slides down by the inset at constant height, and
+    // the toaster went on aiming at the line it had left — which on a notched
+    // iPhone put the pill at y=20–61, underneath the status bar
+    // (parob/homecast-cloud#59).
+    //
+    // Watching the header covers every case, because header height is its
+    // padding plus this row: the safe-area inset landing, the Mac app's 33px
+    // title bar, an orientation change, and a text-scale change that resizes
+    // the row itself.
+    //
+    // `border-box` is load-bearing: the inset arrives as `padding-top`, and a
+    // default ResizeObserver watches the CONTENT box, which padding leaves at
+    // 80px. Observed the default way the header grows 80 → 139 in silence.
     const observer = new ResizeObserver(publish);
     observer.observe(row);
+    observer.observe(header, { box: 'border-box' });
     return () => {
       observer.disconnect();
       // Back to the stylesheet's default, which is what a page with no header
@@ -59,6 +82,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
 
   return (
     <header
+      ref={headerRef}
       className={cn(
         "fixed top-0 left-0 right-0 z-[10001]",
         "overscroll-none pointer-events-none",
