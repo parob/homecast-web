@@ -157,6 +157,18 @@ const LIFT_WATCHDOG_MS = 8000;
  * starting from an already-dimmed 0.4 was not — see the note beside the rule.
  */
 const HIDDEN_EXIT_MS = 260;
+
+/**
+ * …and how long they take to arrive, which is the same distance in the other
+ * direction and so the same number.
+ *
+ * Must match the `hidden-item-in` animation in `index.css`; this is only the
+ * window the root carries `data-hidden-entering`, and that rule is what moves
+ * them inside it. Shorter and the animation would be cut off part way; much
+ * longer and a second reveal arriving straight after the first would find the
+ * attribute still set and not replay.
+ */
+const HIDDEN_ENTER_MS = 260;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
 import {
   shouldFilterRoomOut,
@@ -1667,19 +1679,49 @@ const Dashboard = () => {
   const showHiddenRef = useRef(showHiddenItems);
   showHiddenRef.current = showHiddenItems;
 
+  const hiddenEnterRef = useRef<number | undefined>(undefined);
+
+  /**
+   * The other half: the beat the arriving items animate over.
+   *
+   * Stamped on the root imperatively rather than held as state, which is the
+   * one difference from the exit above and the whole reason it works. These
+   * items do not exist yet — they mount in the commit this call schedules — and
+   * a CSS animation is picked up when an element is first styled, so the
+   * attribute has to be on the root BEFORE that commit paints. An effect, even
+   * a layout effect, runs after it. Nothing in React reads it either way.
+   */
+  const markHiddenItemsEntering = useCallback(() => {
+    window.clearTimeout(hiddenEnterRef.current);
+    document.documentElement.setAttribute('data-hidden-entering', 'true');
+    hiddenEnterRef.current = window.setTimeout(() => {
+      document.documentElement.removeAttribute('data-hidden-entering');
+    }, HIDDEN_ENTER_MS);
+  }, []);
+
   /** Reveal them, now. Cancels an exit that was already running — you can come
    *  back into Edit Layout inside the 200ms, and a stale timer would then take
    *  the reveal away underneath you. */
   const revealHiddenItems = useCallback(() => {
     window.clearTimeout(hiddenExitRef.current);
     setHiddenExiting(false);
+    // Only when there is an arrival to animate. This runs again on every route
+    // into the reveal — the hold before a lift, then the lift itself, then Edit
+    // Layout proper — and re-stamping would replay the entrance on tiles that
+    // have been sitting on screen since the first of them.
+    if (!showHiddenRef.current) markHiddenItemsEntering();
     setShowHiddenItems(true);
-  }, []);
+  }, [markHiddenItemsEntering]);
 
   /** Put them away, over HIDDEN_EXIT_MS. A no-op if none are showing, so Done
    *  on a dashboard with nothing hidden costs nothing. */
   const putHiddenItemsAway = useCallback(() => {
     window.clearTimeout(hiddenExitRef.current);
+    // Leaving inside the entrance: drop it rather than let the two run at once.
+    // An animation and a transition on the same properties do not average, the
+    // animation simply wins, and the exit would not start until it finished.
+    window.clearTimeout(hiddenEnterRef.current);
+    document.documentElement.removeAttribute('data-hidden-entering');
     if (!showHiddenRef.current) {
       setHiddenExiting(false);
       return;
@@ -1701,8 +1743,13 @@ const Dashboard = () => {
   }, [hiddenExiting]);
 
   // A dashboard that unmounts mid-exit must not leave a timer behind that then
-  // sets state on it.
-  useEffect(() => () => window.clearTimeout(hiddenExitRef.current), []);
+  // sets state on it — nor, mid-entrance, an attribute behind on a root that
+  // outlives it.
+  useEffect(() => () => {
+    window.clearTimeout(hiddenExitRef.current);
+    window.clearTimeout(hiddenEnterRef.current);
+    document.documentElement.removeAttribute('data-hidden-entering');
+  }, []);
 
   /**
    * Entering Edit Layout from the gesture instead of the menu.
