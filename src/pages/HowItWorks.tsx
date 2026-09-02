@@ -59,7 +59,6 @@ const ArchitectureDiagram = () => {
   const icon2Ref = React.useRef<HTMLDivElement>(null);
   const icon3Ref = React.useRef<HTMLDivElement>(null);
   const appBoxRef = React.useRef<HTMLDivElement>(null);
-  const apisBoxRef = React.useRef<HTMLDivElement>(null);
   const selfHostedRef = React.useRef<HTMLDivElement>(null);
   const cloudManagedRef = React.useRef<HTMLDivElement>(null);
   const card1Ref = React.useRef<HTMLDivElement>(null);
@@ -71,7 +70,7 @@ const ArchitectureDiagram = () => {
   React.useEffect(() => {
     const updatePaths = () => {
       if (!containerRef.current || !icon1Ref.current || !icon2Ref.current ||
-          !icon3Ref.current || !appBoxRef.current || !apisBoxRef.current) return;
+          !icon3Ref.current || !appBoxRef.current) return;
 
       const containerRect = containerRef.current.getBoundingClientRect();
       const icons = [icon1Ref, icon2Ref, icon3Ref].map(ref =>
@@ -114,8 +113,8 @@ const ArchitectureDiagram = () => {
         const head = `${tx},${ty} ${tx - 8},${ty - 5} ${tx - 8},${ty + 5}`;
         return { path, head };
       };
+      // One arrow, into the single Apps + APIs card.
       newArrows.push(branchTo(appBoxRef.current.getBoundingClientRect()));
-      newArrows.push(branchTo(apisBoxRef.current.getBoundingClientRect()));
       setArrows(newArrows);
 
       // Relay connecting arrows: selfHosted icons → card1, cloudManaged icon → card2.
@@ -210,7 +209,6 @@ const ArchitectureDiagram = () => {
               </div>
             </div>
             <span className="text-sm font-medium mt-3 whitespace-nowrap">Apple Home Hub</span>
-            <span className="text-xs text-muted-foreground text-center leading-relaxed max-w-[180px]">Required only if the Relay is running outside of your home network</span>
             <div className="flex gap-3 mt-2">
               <div className="flex flex-col items-center">
                 <AppleTVIcon />
@@ -226,17 +224,17 @@ const ArchitectureDiagram = () => {
             </div>
           </div>
 
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center pr-6">
             <div className="flex h-[72px] items-center justify-center">
               <div ref={icon3Ref} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/25">
                 <HomecastMark className="h-6 w-6 text-primary-foreground" />
               </div>
             </div>
             <span className="text-base font-medium mt-3 whitespace-nowrap">Homecast Relay</span>
-            <p className="text-[11px] text-muted-foreground text-center mt-1">Run on your own Mac or let us host it for you.</p>
             <div className="flex w-full justify-evenly mt-3 items-start">
               <div className="flex flex-col items-center gap-1.5">
                 <span className="bg-primary/10 text-primary text-[9px] font-medium px-2 py-0.5 rounded-full">Option 1</span>
+                <span className="text-[9px] text-muted-foreground">Run on your own Mac.</span>
                 <div ref={selfHostedRef} className="flex gap-4">
                   <div className="flex flex-col items-center">
                     <MacMiniIcon />
@@ -251,6 +249,7 @@ const ArchitectureDiagram = () => {
               <span className="text-[10px] font-medium text-muted-foreground self-center pt-3">or</span>
               <div className="flex flex-col items-center gap-1.5">
                 <span className="bg-blue-500/10 text-blue-500 text-[9px] font-medium px-2 py-0.5 rounded-full">Option 2</span>
+                <span className="text-[9px] text-muted-foreground">Let us host it for you.</span>
                 <div ref={cloudManagedRef} className="flex flex-col items-center">
                   <Cloud className="h-6 w-6 text-foreground" />
                   <span className="text-[9px] text-muted-foreground">homecast.cloud</span>
@@ -259,30 +258,28 @@ const ArchitectureDiagram = () => {
             </div>
           </div>
 
-          {/* App + APIs */}
-          <div className="flex flex-col items-center justify-center gap-5">
-            {/* Homecast App — visually distinct, primary-tinted */}
-            <div ref={appBoxRef} className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
-                  <HomecastMark className="h-4 w-4 text-primary-foreground" />
+          {/* Apps + APIs — one card, a titled section each, so the relay needs only one arrow */}
+          <div className="flex flex-col items-center justify-center">
+            <div ref={appBoxRef} className="w-full rounded-2xl border border-border bg-background shadow-sm">
+              <div className="flex flex-col gap-2 p-3">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Apps</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
+                    <HomecastMark className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                  <span className="text-[11px] font-semibold">Homecast App</span>
                 </div>
-                <span className="text-[11px] font-semibold">Homecast App</span>
+                <div className="flex items-center gap-2 pl-0.5">
+                  <Globe className="h-5 w-5 text-blue-500" />
+                  <span className="text-[10px] font-medium">Web</span>
+                </div>
+                <div className="flex items-center gap-2 pl-0.5">
+                  <Smartphone className="h-5 w-5 text-green-500" />
+                  <span className="text-[10px] font-medium">iOS / Android</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 pl-0.5">
-                <Globe className="h-5 w-5 text-blue-500" />
-                <span className="text-[10px] font-medium">Web</span>
-              </div>
-              <div className="flex items-center gap-2 pl-0.5">
-                <Smartphone className="h-5 w-5 text-green-500" />
-                <span className="text-[10px] font-medium">iOS / Android</span>
-              </div>
-            </div>
-
-            {/* APIs */}
-            <div className="flex flex-col items-center gap-1.5 w-full">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground self-start pl-1">APIs</span>
-              <div ref={apisBoxRef} className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border w-full">
+              <div className="flex flex-col gap-2 border-t border-border p-3">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">APIs</span>
                 <div className="flex items-center gap-2">
                   <GraphQLLogo />
                   <span className="text-[10px] font-medium">GraphQL</span>
@@ -335,7 +332,6 @@ const ArchitectureDiagram = () => {
             <img src="/homekit_logo.png" alt="HomeKit" className="h-10 w-10" />
           </div>
           <span className="text-base font-medium whitespace-nowrap">Apple Home Hub</span>
-          <span className="text-xs text-muted-foreground text-center leading-relaxed">Required only if the Relay is running outside of your home network</span>
         </div>
 
         <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
@@ -345,15 +341,15 @@ const ArchitectureDiagram = () => {
             <HomecastMark className="h-6 w-6 text-primary-foreground" />
           </div>
           <span className="text-base font-medium whitespace-nowrap">Homecast Relay</span>
-          <p className="text-[11px] text-muted-foreground text-center">Run on your own Mac or let us host it for you.</p>
+          <p className="text-[11px] text-muted-foreground text-center">Option 1: run on your own Mac. Option 2: let us host it for you.</p>
         </div>
 
         <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
 
-        {/* Access Methods */}
-        <div className="flex flex-col items-center gap-4 w-[200px]">
-          {/* Homecast App — visually distinct */}
-          <div className="flex flex-col gap-2 p-3 rounded-2xl bg-primary/5 border border-primary/30 shadow-sm shadow-primary/10 w-full">
+        {/* Access Methods — same one combined card as the desktop diagram */}
+        <div className="w-[200px] rounded-2xl border border-border bg-background shadow-sm">
+          <div className="flex flex-col gap-2 p-3">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Apps</span>
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-sm shadow-primary/25">
                 <HomecastMark className="h-4 w-4 text-primary-foreground" />
@@ -369,27 +365,23 @@ const ArchitectureDiagram = () => {
               <span className="text-[10px] font-medium">iOS / Android</span>
             </div>
           </div>
-
-          {/* APIs */}
-          <div className="flex flex-col items-center gap-1.5 w-full">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground self-start pl-1">APIs</span>
-            <div className="flex flex-col gap-2 p-3 rounded-2xl bg-background border border-border w-full">
-              <div className="flex items-center gap-2">
-                <GraphQLLogo />
-                <span className="text-[10px] font-medium">GraphQL</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <RestLogo />
-                <span className="text-[10px] font-medium">REST API</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MCPLogo />
-                <span className="text-[10px] font-medium">MCP</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Bell className="h-5 w-5 text-amber-500" />
-                <span className="text-[10px] font-medium">Webhooks</span>
-              </div>
+          <div className="flex flex-col gap-2 border-t border-border p-3">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">APIs</span>
+            <div className="flex items-center gap-2">
+              <GraphQLLogo />
+              <span className="text-[10px] font-medium">GraphQL</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <RestLogo />
+              <span className="text-[10px] font-medium">REST API</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MCPLogo />
+              <span className="text-[10px] font-medium">MCP</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-amber-500" />
+              <span className="text-[10px] font-medium">Webhooks</span>
             </div>
           </div>
         </div>
@@ -434,7 +426,7 @@ const ArchitectureDiagram = () => {
                 <Cloud className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold">Cloud Managed Relay</h3>
+                <h3 className="text-lg font-semibold">Cloud Relay</h3>
                 <p className="text-sm text-muted-foreground">We run it for you</p>
               </div>
             </div>
@@ -476,11 +468,11 @@ const HowItWorks = () => {
 
       <main className="pt-16">
         {/* Hero + Architecture Section */}
-        <section className="w-full pt-16 md:pt-24 pb-24 px-6 relative">
+        <section className="w-full pt-10 pb-24 px-6 relative">
 
           {/* Hero Content */}
           <div className="relative mx-auto max-w-4xl text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold mb-6">How Homecast Works</h1>
+            <h1 className="text-4xl font-bold mb-6">How Homecast Works</h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               The Homecast Relay connects to Apple Home and sends your device data to homecast.cloud — giving you control from any browser, phone, API, or AI assistant. Run the relay on your own Mac, or let us host it for you.
             </p>
@@ -636,7 +628,7 @@ const HowItWorks = () => {
                     <Cloud className="h-6 w-6 text-blue-500" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold">Cloud Managed Relay</h3>
+                    <h3 className="text-xl font-semibold">Cloud Relay</h3>
                     <p className="text-sm text-muted-foreground">We run it for you</p>
                   </div>
                 </div>
