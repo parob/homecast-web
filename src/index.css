@@ -104,6 +104,32 @@
   pointer-events: none;
 }
 
+/* …and the same things arriving when Edit Layout begins.
+   The mirror of the rule above, and it exists for the same complaint read the
+   other way round: Done was fixed, entering was not, so the revealed tiles
+   still mounted in a single frame at full strength while the bar above them
+   slid in and every badge on them scaled up. Half the screen appearing with no
+   motion in the middle of a transition that is otherwise animated.
+
+   Keyframes rather than a transition, which is the opposite choice to the exit
+   and for the same reason it gives: a revealed item rests at whatever dimming
+   its own surface chose, and that number differs per surface. There is no `to`
+   frame here — an omitted 100% is synthesised from the element's own computed
+   values, so each one animates up to ITS resting opacity (1 on a tile's glass,
+   0.4 on a revealed shortcut, which carries the dimming on the marked element
+   itself) without this rule having to know which. Naming `opacity: 1` would
+   overshoot the dimmed ones and then snap them back as the animation ended.
+
+   Same 260ms and same curve as the exit — it is the same distance travelled in
+   the other direction, and a faster entrance next to that exit reads as two
+   different animations rather than one gesture reversed. */
+@keyframes hidden-item-in {
+  from { opacity: 0; transform: scale(0.86); }
+}
+[data-hidden-entering='true'] [data-hidden-item='true'] {
+  animation: hidden-item-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timer-alarm { animation: none; }
   /* The words carry it on their own. */
@@ -114,6 +140,8 @@
   /* Straight to gone. The hold in Dashboard still runs, so a hidden item leaves
      a beat later than it used to; nothing moves in the meantime. */
   [data-hidden-exiting='true'] [data-hidden-item='true'] { transition: none; transform: none; }
+  /* Straight to there. It still has to arrive; it just does. */
+  [data-hidden-entering='true'] [data-hidden-item='true'] { animation: none; }
 }
 
 
