@@ -152,4 +152,39 @@ test.describe('Edit Layout holds your place', () => {
 
     heldStill(await framesWhile(page, 'Done'), 2);
   });
+
+  /**
+   * …including from the end of a long page, which is where it went twice.
+   *
+   * Scrolled to the bottom, the offset is already as large as the page allows —
+   * so when Done takes the revealed items away, the browser has to reduce it by
+   * the whole shrink just to keep it in range. That reduction is the correction,
+   * made for free and before anything here runs. `unexplainedShift` could not
+   * tell it from a viewer's own flick, cancelled it as one, and applied the
+   * shrink a second time: measured on the fixture home, 127px of reveal moved
+   * the page 254 (parob/homecast-cloud#58). The reporter's home hides enough to
+   * make the second one the length of the list, which lands at the top.
+   *
+   * The scroll is to the very end rather than a number: a clamp only happens
+   * against the end of the range, which is exactly what "scrolled down through a
+   * long list of rooms" leaves you at.
+   */
+  test('and Done from the bottom of the page does not scroll you up past it', async ({ page }) => {
+    await page.locator('[data-tour="header-menu"]').click();
+    await page.getByRole('menuitem', { name: 'Edit Layout' }).click();
+    await expect(page.locator('[data-testid="edit-layout-bar"]')).toBeVisible();
+    await page.waitForTimeout(700);
+
+    // Reveal grew the page, so the end of it is only known now.
+    const atEnd = await page.evaluate(() => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: max, behavior: 'instant' as ScrollBehavior });
+      return max;
+    });
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => Math.round(window.scrollY)), 'not at the end of the page')
+      .toBe(Math.round(atEnd));
+
+    heldStill(await framesWhile(page, 'Done'), 2);
+  });
 });

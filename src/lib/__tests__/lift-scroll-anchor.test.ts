@@ -8,7 +8,7 @@
  * correction ends up chasing itself.
  */
 import { describe, it, expect } from 'vitest';
-import { isAboveAnchor, pickAnchor, unexplainedShift, type AnchorCandidate } from '../lift-scroll-anchor';
+import { forcedByClamp, isAboveAnchor, pickAnchor, unexplainedShift, type AnchorCandidate } from '../lift-scroll-anchor';
 
 describe('unexplainedShift', () => {
   it('is zero when nothing happens', () => {
@@ -42,6 +42,79 @@ describe('unexplainedShift', () => {
 
   it('is signed, so content removed above scrolls the other way', () => {
     expect(unexplainedShift({ top: 920, scrollTop: 0 }, { top: 793, scrollTop: 0 })).toBe(-127);
+  });
+
+  /**
+   * The half that took the reporter to the top of the page: the offset moving
+   * because the page could no longer hold it (parob/homecast-cloud#58).
+   *
+   * Measured on the fixture home, scrolled to the end: 1595px of page in a 500px
+   * screen sits at 1095, the reveal going away takes it to 1468, and 968 is the
+   * furthest it can then be. The browser's own clamp has already moved the page
+   * by the whole shrink, and the anchor has not moved at all.
+   */
+  describe('when the page shrinks out from under the offset', () => {
+    const atTheEnd = { top: 300, scrollTop: 1095, maxScrollTop: 1095 };
+
+    it('has nothing left to correct once the clamp has done it', () => {
+      const clamped = { top: 300, scrollTop: 968, maxScrollTop: 968 };
+      expect(unexplainedShift(atTheEnd, clamped)).toBe(0);
+    });
+
+    it('still corrects the part the clamp could not reach', () => {
+      // 300 gone above, of which the range could only absorb 127: the anchor is
+      // 173 short and that is what is left to do.
+      const clamped = { top: 300 - 300 + 127, scrollTop: 968, maxScrollTop: 968 };
+      expect(unexplainedShift(atTheEnd, clamped)).toBe(-173);
+    });
+
+    it('leaves a flick in the same frame to the viewer', () => {
+      // Clamped by 127 and then flicked 468 further up: the shrink is accounted
+      // for, and fighting the rest would be fighting the finger.
+      const flicked = { top: 300 + 468, scrollTop: 500, maxScrollTop: 968 };
+      expect(unexplainedShift(atTheEnd, flicked)).toBe(0);
+    });
+
+    it('treats a scroll inside the range as a scroll, as before', () => {
+      // Room to spare below, so nothing was forced: this is the viewer moving.
+      const scrolled = { top: 350, scrollTop: 1045, maxScrollTop: 2000 };
+      expect(unexplainedShift(atTheEnd, scrolled)).toBe(0);
+    });
+  });
+});
+
+describe('forcedByClamp', () => {
+  it('is the drop the range left no room for', () => {
+    expect(forcedByClamp(
+      { top: 0, scrollTop: 1095 },
+      { top: 0, scrollTop: 968, maxScrollTop: 968 },
+    )).toBe(127);
+  });
+
+  it('is never more than the offset actually dropped', () => {
+    // Flicked further than the clamp needed; only the clamp's share is forced.
+    expect(forcedByClamp(
+      { top: 0, scrollTop: 1095 },
+      { top: 0, scrollTop: 100, maxScrollTop: 968 },
+    )).toBe(127);
+  });
+
+  it('is nothing when the offset still fits', () => {
+    expect(forcedByClamp(
+      { top: 0, scrollTop: 1095 },
+      { top: 0, scrollTop: 1000, maxScrollTop: 2000 },
+    )).toBe(0);
+  });
+
+  it('is nothing when the offset went up', () => {
+    expect(forcedByClamp(
+      { top: 0, scrollTop: 900 },
+      { top: 0, scrollTop: 968, maxScrollTop: 968 },
+    )).toBe(0);
+  });
+
+  it('is nothing at all when the range was not measured', () => {
+    expect(forcedByClamp({ top: 0, scrollTop: 1095 }, { top: 0, scrollTop: 968 })).toBe(0);
   });
 });
 
