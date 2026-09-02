@@ -91,17 +91,20 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
       onTouchStart={swallow}
       onClick={(e) => { swallow(e); if (!disabled) onClick(); }}
       className={cn(
-        // Quieter than it was: these sit on top of the thing they act on, and
-        // a near-opaque chip with a lifted shadow read as the loudest object on
-        // the screen while arranging. Backed off to a translucent, blurred chip
-        // with a hairline shadow — the same glass the tiles use.
+        // The same blue as Done, which is the only other control Edit Layout
+        // puts on screen. These were a translucent dark chip, on the reasoning
+        // that a badge sitting on top of the thing it acts on should be quiet —
+        // but quiet is what made them read as chrome rather than as the controls
+        // of a mode you are in, and it left the two kinds of button in that mode
+        // looking unrelated. `bg-primary` is Done's own class, so they cannot
+        // drift apart again.
         //
-        // Not all the way transparent: 10px text over a photographic wallpaper
-        // needs something behind it, which is what the blur is for. The weight
-        // stays semibold for the same reason.
-        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-900/70 backdrop-blur-sm font-semibold text-white shadow-sm',
-        'transition-colors duration-fast hover:bg-zinc-900/85 active:bg-zinc-900/85',
-        'disabled:opacity-50 disabled:hover:bg-zinc-900/70',
+        // Opaque, so no `backdrop-blur`: the blur existed to give 10px text
+        // something to sit on over a photographic wallpaper, and a solid fill
+        // does that outright. The weight stays semibold for the same reason.
+        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground shadow-sm',
+        'transition-colors duration-fast hover:bg-primary/85 active:bg-primary/80',
+        'disabled:opacity-50 disabled:hover:bg-primary',
         size === 'tile' ? TILE_BADGE
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.

@@ -141,7 +141,8 @@ import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
-import { captureHeights, heightChanges, playHeightChanges, prefersReducedMotion, type HeightMap } from '@/lib/reflow';
+import { captureHeights, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
+import { holdScrollAnchor, isAboveAnchor, pickPageAnchor } from '@/lib/lift-scroll-anchor';
 
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
@@ -170,6 +171,15 @@ const HIDDEN_EXIT_MS = 260;
  * attribute still set and not replay.
  */
 const HIDDEN_ENTER_MS = 260;
+
+/**
+ * …and how long the scroll anchor keeps hold after a reveal or a put-away.
+ *
+ * Long enough to outlast `REFLOW_MS` and the frame after it that takes the
+ * reflow's inline heights back off, since either can still move the page.
+ * Nothing releases it early the way a lift does, so it has to end by itself.
+ */
+const ANCHOR_HOLD_MS = REFLOW_MS + 120;
 import { RowEditActions, EditActionButton } from '@/components/shared/EditActions';
 import {
   shouldFilterRoomOut,
@@ -1714,10 +1724,38 @@ const Dashboard = () => {
    */
   const reflowRef = useRef<HeightMap | null>(null);
   const reflowCancelRef = useRef<(() => void) | null>(null);
+
+  /**
+   * …and your place on the page, which is a third problem again.
+   *
+   * All of the above moves the rooms BELOW the one that changed. When the room
+   * that changed is above where you are looking — which it usually is, because
+   * you scroll to the part you want to rearrange and the reveal touches every
+   * room — the scroll offset stays put and the entire screen slides instead.
+   * Animating it only makes it a slide rather than a jump; the distance is the
+   * same, and on the reporter's home it was 173px, a quarter of a viewport,
+   * every time they tapped Done.
+   *
+   * Chrome and Firefox correct this themselves (scroll anchoring). Safari does
+   * not implement it at all, and an iPhone is Safari — so on the one platform
+   * where Edit Layout is the only way to rearrange anything, this is what holds
+   * your place. Captured with the heights, and unlike them NOT skipped under
+   * reduced motion: holding still is the absence of movement, not more of it.
+   *
+   * The same `holdScrollAnchor` the lift path uses, which exists for the same
+   * growth measured from the other end — there it holds the tile under your
+   * finger, here whatever is at the top of the screen.
+   */
+  const anchorRef = useRef<ReturnType<typeof pickPageAnchor>>(null);
+  const anchorReleaseRef = useRef<(() => void) | null>(null);
+
   const captureReflow = useCallback(() => {
     reflowCancelRef.current?.();
     reflowCancelRef.current = null;
+    anchorReleaseRef.current?.();
+    anchorReleaseRef.current = null;
     reflowRef.current = prefersReducedMotion() ? null : captureHeights();
+    anchorRef.current = pickPageAnchor(document.querySelector('main') ?? document);
   }, []);
 
   /** Reveal them, now. Cancels an exit that was already running — you can come
@@ -1784,11 +1822,32 @@ const Dashboard = () => {
    */
   useLayoutEffect(() => {
     const before = reflowRef.current;
+    const anchor = anchorRef.current;
     reflowRef.current = null;
-    if (!before) return;
-    const changes = heightChanges(before, captureHeights());
-    if (!changes.length) return;
-    reflowCancelRef.current = playHeightChanges(changes);
+    anchorRef.current = null;
+    if (before) {
+      const changes = heightChanges(before, captureHeights());
+      /*
+       * Only the ones the viewer can see. A room above the anchor has its whole
+       * movement corrected away by the hold below, so animating it would not be
+       * invisible — it would be a fight: the transition holds that room tall for
+       * 260ms while the anchor corrects for a shrink that has not visibly
+       * happened yet, and then corrects back as it does. Measured, that cost
+       * 48px of overshoot on the way out before it settled.
+       *
+       * Document order rather than rects, because this is being decided across
+       * a layout change and the two sides of it do not share coordinates.
+       */
+      const visible = anchor ? changes.filter(c => !isAboveAnchor(c.el, anchor.el)) : changes;
+      if (visible.length) reflowCancelRef.current = playHeightChanges(visible);
+    }
+    // Outside the `before` guard on purpose. A revealed ROOM unmounts whole on
+    // the way out, and `heightChanges` cannot animate an element that is gone —
+    // so the page can shrink by an entire room with nothing here to animate and
+    // everything to hold on to.
+    if (anchor) {
+      anchorReleaseRef.current = holdScrollAnchor(anchor.el, { from: anchor.from, forMs: ANCHOR_HOLD_MS });
+    }
   }, [showHiddenItems]);
 
   // The flag the stylesheet reads. On the root rather than anywhere in the
@@ -1810,6 +1869,9 @@ const Dashboard = () => {
     // An inline height that outlives its animation would freeze that room at
     // whatever size it had reached.
     reflowCancelRef.current?.();
+    // …and an anchor that outlives the page would keep scrolling whatever
+    // replaced it.
+    anchorReleaseRef.current?.();
   }, []);
 
   /**
