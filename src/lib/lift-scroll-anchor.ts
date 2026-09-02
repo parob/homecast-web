@@ -33,6 +33,34 @@ export interface AnchorSample {
   top: number;
   /** Its scroller's offset at the same moment. */
   scrollTop: number;
+  /**
+   * The largest offset that scroller could hold at that moment.
+   *
+   * Only the "after" sample's is read, and only to tell a clamp from a flick —
+   * see `forcedByClamp`. Absent means the range was not measured, and the two
+   * are then indistinguishable; every caller here measures it.
+   */
+  maxScrollTop?: number;
+}
+
+/**
+ * The part of a drop in the offset the scroller had no choice about.
+ *
+ * A page that shrinks while you are at the end of it takes the offset down with
+ * it: the browser cannot hold 1095 in a range that now stops at 968, so it
+ * clamps. That reduction is not the viewer scrolling — it is the shrink,
+ * already applied to the offset, and counting it as a scroll is what made
+ * leaving Edit Layout at the bottom of a long page correct for the same shrink
+ * twice (parob/homecast-cloud#58).
+ *
+ * Never more than the drop actually observed: a viewer who flicked further up
+ * in the same frame did the rest of it themselves.
+ */
+export function forcedByClamp(before: AnchorSample, after: AnchorSample): number {
+  if (after.maxScrollTop === undefined) return 0;
+  const dropped = before.scrollTop - after.scrollTop;
+  if (dropped <= 0) return 0;
+  return Math.max(0, Math.min(dropped, before.scrollTop - after.maxScrollTop));
 }
 
 /**
@@ -43,10 +71,15 @@ export interface AnchorSample {
  * zero and only real growth survives. That is what keeps a correction from
  * chasing its own tail, and what would let this coexist with a scroll it did
  * not cause.
+ *
+ * A clamp is held out of that cancelling, because it is not a scroll that
+ * happened alongside the change — it *is* the change, showing up in the offset
+ * because there was nowhere else for it to go.
  */
 export function unexplainedShift(before: AnchorSample, after: AnchorSample): number {
   const movedBy = after.top - before.top;
-  const explainedByScrolling = -(after.scrollTop - before.scrollTop);
+  const scrolled = (after.scrollTop - before.scrollTop) + forcedByClamp(before, after);
+  const explainedByScrolling = -scrolled;
   return movedBy - explainedByScrolling;
 }
 
@@ -70,6 +103,14 @@ function scrollParentOf(el: Element): HTMLElement | null {
 
 function readScrollTop(scroller: HTMLElement | null): number {
   return scroller ? scroller.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
+}
+
+/** How far that scroller can go — the offset a shrinking page clamps down to. */
+function readMaxScrollTop(scroller: HTMLElement | null): number {
+  const doc = document.documentElement;
+  return scroller
+    ? Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    : Math.max(0, doc.scrollHeight - (window.innerHeight || doc.clientHeight));
 }
 
 function scrollBy(scroller: HTMLElement | null, delta: number): void {
@@ -177,7 +218,14 @@ export function pickPageAnchor(
   }), viewportTop);
 
   return picked
-    ? { el: picked.el, from: { top: picked.top, scrollTop: readScrollTop(scroller) } }
+    ? {
+      el: picked.el,
+      from: {
+        top: picked.top,
+        scrollTop: readScrollTop(scroller),
+        maxScrollTop: readMaxScrollTop(scroller),
+      },
+    }
     : null;
 }
 
@@ -210,6 +258,7 @@ export function holdScrollAnchor(
   const sample = (): AnchorSample => ({
     top: anchor.getBoundingClientRect().top,
     scrollTop: readScrollTop(scroller),
+    maxScrollTop: readMaxScrollTop(scroller),
   });
   let last: AnchorSample = from ?? sample();
   const started = performance.now();
