@@ -2,7 +2,6 @@ import React, { useState, useCallback, useContext, useMemo, useLayoutEffect } fr
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TriStateToggle } from '@/components/ui/tri-state-toggle';
 import { isOn as isPowerOn, triState, powerCountDescription } from '@/components/widgets/shared/powerState';
-import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { SliderControl } from '@/components/widgets/shared/SliderControl';
@@ -64,20 +63,55 @@ import {
 } from 'lucide-react';
 
 /**
- * The count badges in a group header ("130/136 reachable", "4/9 on").
+ * The group header's status line: how many members are on, and how many are
+ * not answering.
  *
- * `whitespace-nowrap` is load-bearing, not tidiness. `Badge` is a flex item
- * with no nowrap of its own, so its `min-width: auto` resolves to its widest
- * *word* rather than the whole string — meaning the row is free to squeeze it
- * down to "130/136" and wrap "reachable" underneath. The box is pinned to
- * `h-4`, so those two lines then straddle a pill that cannot grow to hold
- * them and the text spills out above and below it. `shrink-0` stops the
- * squeeze in the first place; the row wraps instead (`flex-wrap` below).
+ * This was two filled `Badge` pills sitting inline after the subtitle —
+ * "130/136 reachable" and "4/9 on". They were the only containers in a card
+ * whose title and subtitle are plain type, so the least important fact on the
+ * card was the loudest thing on it; over a home's worth of lights the first
+ * wrapped onto a line of its own and aligned with nothing, and with some of
+ * the group switched on you got two grey boxes crowding one row. See
+ * homecast-cloud#56.
  *
- * A group of three bulbs never reached this — "2/3 reachable" has slack to
- * spare. A home's worth of lights gathered into one shortcut does.
+ * Words rather than a ratio, for the reason `compactSubtitle` already gives
+ * below: the arithmetic is slower to read and grows with the group. And the
+ * number worth acting on is the exception, not the total — the total is on the
+ * line above, so "6 not responding" beats "130/136 reachable", which makes you
+ * subtract. `No Response`, the all-unreachable case, has always been plain
+ * text; this makes the partial case speak the same way.
+ *
+ * The warning is carried by a dot rather than by colouring the words:
+ * `CardDescription` sets `text-muted-foreground` on the paragraph, and tinting
+ * these words while `No Response` stays grey would swap one inconsistency for
+ * another.
+ *
+ * `whitespace-nowrap` survives from the pills, and for the same reason: this is
+ * a flex row whose `min-width: auto` resolves to its widest *word*, so without
+ * it "not responding" is free to break across lines mid-phrase.
  */
-const COUNT_BADGE_CLASS = 'text-[9px] px-1 py-0 h-4 bg-muted/25 whitespace-nowrap shrink-0';
+const GroupStatusLine: React.FC<{
+  onCount: number;
+  showOn: boolean;
+  unreachableCount: number;
+}> = ({ onCount, showOn, unreachableCount }) => {
+  if (!showOn && unreachableCount <= 0) return null;
+  return (
+    <span className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
+      {/* A bare text node, not a span: wrapping it would put an element with
+          the line's exact text inside the line, which is one ambiguous node
+          for every "what does the header say" query to trip over. */}
+      {showOn && `${onCount} on`}
+      {showOn && unreachableCount > 0 && <span aria-hidden="true">·</span>}
+      {unreachableCount > 0 && (
+        <>
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" aria-hidden="true" />
+          <span>{unreachableCount} not responding</span>
+        </>
+      )}
+    </span>
+  );
+};
 
 /** The member grid scrolls past this many rows — an expanded group that grows
  *  with its membership stops being a panel and becomes a page. */
@@ -215,6 +249,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   const reachableCount = accessories.filter(a => a.isReachable).length;
   const allNoResponse = accessories.length > 0 && reachableCount === 0;
   const someNoResponse = reachableCount > 0 && reachableCount < accessories.length;
+  const unreachableCount = accessories.length - reachableCount;
 
   // Read interaction context (provided by shared views for view-only mode)
   const interactionCtx = useContext(WidgetInteractionContext);
@@ -718,22 +753,21 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
                 <CardTitle className={`truncate font-medium leading-tight text-sm `}>
                   {getDisplayName(group.name, roomName)}
                 </CardTitle>
-                <CardDescription className={`text-xs mt-0.5 flex flex-wrap items-center gap-x-1.5 `}>
-                  <span className="whitespace-nowrap">
-                    {allNoResponse
-                      ? 'No Response'
-                      : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                <CardDescription className={`text-xs mt-0.5 `}>
+                  <span className="flex flex-wrap items-center gap-x-1.5">
+                    <span className="whitespace-nowrap">
+                      {allNoResponse
+                        ? 'No Response'
+                        : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
+                    </span>
+                    {locationSubtitle && <span className="opacity-60">{locationSubtitle}</span>}
                   </span>
-                  {locationSubtitle && <span className="opacity-60">{locationSubtitle}</span>}
-                  {!allNoResponse && someNoResponse && (
-                    <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
-                      {reachableCount}/{accessories.length} reachable
-                    </Badge>
-                  )}
-                  {!allNoResponse && isPartiallyOn && (
-                    <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
-                      {onCount}/{powerTotal} on
-                    </Badge>
+                  {!allNoResponse && (
+                    <GroupStatusLine
+                      onCount={onCount}
+                      showOn={isPartiallyOn}
+                      unreachableCount={someNoResponse ? unreachableCount : 0}
+                    />
                   )}
                 </CardDescription>
               </div>
@@ -995,21 +1029,18 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
               <CardTitle className={`truncate font-medium leading-tight text-base `}>
                 {getDisplayName(group.name, roomName)}
               </CardTitle>
-              <CardDescription className={`text-sm mt-0.5 flex flex-wrap items-center gap-x-1.5 `}>
+              <CardDescription className={`text-sm mt-0.5 `}>
                 <span className="whitespace-nowrap">
                   {allNoResponse
                     ? 'No Response'
                     : isBlindsGroup ? blindsStatus : `${accessories.length} device${accessories.length !== 1 ? 's' : ''}`}
                 </span>
-                {!allNoResponse && someNoResponse && (
-                  <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
-                    {reachableCount}/{accessories.length} reachable
-                  </Badge>
-                )}
-                {!allNoResponse && isPartiallyOn && (
-                  <Badge variant="secondary" className={COUNT_BADGE_CLASS}>
-                    {onCount}/{powerTotal} on
-                  </Badge>
+                {!allNoResponse && (
+                  <GroupStatusLine
+                    onCount={onCount}
+                    showOn={isPartiallyOn}
+                    unreachableCount={someNoResponse ? unreachableCount : 0}
+                  />
                 )}
               </CardDescription>
             </div>

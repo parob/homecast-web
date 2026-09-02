@@ -95,10 +95,14 @@ function renderGroup(accessories: unknown[], overrides: Record<string, unknown> 
 const groupControl = () => screen.getByLabelText('Downstairs');
 
 /**
- * The count badge. Built from three nodes — `{onCount}/{total} on` — so it has
- * to be matched on the element's whole text rather than a single node's. It
- * only exists on the full-size header; the compact tile has no room for it,
+ * The header's status line. Built from several nodes — `{onCount} on` — so it
+ * has to be matched on the element's whole text rather than a single node's.
+ * It only exists on the full-size header; the compact tile has no room for it,
  * which is part of why the toggle itself has to carry the state.
+ *
+ * It used to be a filled `Badge` reading `{onCount}/{total} on`; the ratio and
+ * the box both went in homecast-cloud#56. The denominator survives where it
+ * matters most — in the toggle's own screen-reader description, below.
  */
 const badge = (text: string) => screen.queryByText((_content, el) => el?.textContent === text);
 const renderFull = (accessories: unknown[]) => renderGroup(accessories, { compact: false });
@@ -123,9 +127,9 @@ describe('a group where some members are on', () => {
     expect(onToggle).toHaveBeenLastCalledWith(true);
   });
 
-  it('tells a screen reader the count the badge shows everyone else', () => {
+  it('tells a screen reader the full ratio the line shortens', () => {
     renderFull([lamp('a', true), lamp('b', false)]);
-    expect(badge('1/2 on')).toBeTruthy();
+    expect(badge('1 on')).toBeTruthy();
     const describedBy = groupControl().getAttribute('aria-describedby')!;
     expect(document.getElementById(describedBy)?.textContent).toBe('1 of 2 on');
   });
@@ -160,16 +164,17 @@ describe('members that cannot be on do not count against the ones that can', () 
 
   it('reaches fully on with a sensor in the group', () => {
     // The denominator used to be every accessory, so a group holding two lamps
-    // and a motion sensor could never read as on and its badge counted the
-    // sensor as an unlit lamp.
+    // and a motion sensor could never read as on and its status line counted
+    // the sensor as an unlit lamp.
     renderFull([lamp('a', true), lamp('b', true), SENSOR]);
     expect(groupControl().getAttribute('aria-checked')).toBe('true');
-    expect(badge('2/2 on')).toBeNull();
+    // Fully on is not partly on, so there is no status line at all.
+    expect(badge('2 on')).toBeNull();
   });
 
   it('counts only the ones that can be on when it is mixed', () => {
     renderFull([lamp('a', true), lamp('b', false), SENSOR]);
-    expect(badge('1/2 on')).toBeTruthy();
+    expect(badge('1 on')).toBeTruthy();
   });
 });
 
