@@ -4086,6 +4086,21 @@ const Dashboard = () => {
   }, [homes]);
   const getHomeName = useCallback((homeId?: string) => homeId ? homeNameMap.get(homeId) : undefined, [homeNameMap]);
 
+  /**
+   * The home the status bubble's chain is describing, named.
+   *
+   * Normally the selected one. A collection can be open with no home selected
+   * at all, and on a single-home account that is still unambiguously *the*
+   * home — which is most accounts, and the case where "Home" reads worst. With
+   * several homes and none selected there is no honest answer, so the chain
+   * falls back to its generic (parob/homecast-cloud#61).
+   */
+  const statusHomeName = useMemo(() => {
+    const selected = selectedHomeId ? homeNameMap.get(selectedHomeId) : undefined;
+    if (selected) return selected;
+    return homeNameMap.size === 1 ? [...homeNameMap.values()][0] : null;
+  }, [homeNameMap, selectedHomeId]);
+
   // Auto-refresh while the page is visible:
   //  - every 5s when there's no data at all (first load / empty account)
   //  - every 20s while any home's relay isn't fully connected — relay status
@@ -7396,7 +7411,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} homeName={statusHomeName} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

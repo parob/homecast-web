@@ -233,9 +233,28 @@ function RailChain({ model, className }: { model: ChainModel; className?: string
               >
                 <Icon className={cn('h-3 w-3', INK[node.tone])} strokeWidth={2} />
               </span>
+              {/*
+                The home node carries a name the user chose, so it can be
+                arbitrarily long — "The Old Rectory, Little Snoring" is a
+                perfectly ordinary Apple Home name.
+
+                It wraps rather than ellipsising. Rail was picked over the two
+                horizontal treatments for exactly this (see StatusBadge's
+                CHAIN_VARIANT): it is the variant that never has to truncate a
+                name, and truncating the *home* would be the worst place to
+                start — the panel is a 280px popover on a phone, where there is
+                no hover to reveal what was cut, so an ellipsis would hide the
+                name this node exists to show.
+
+                `leading-tight` rather than `leading-none`: a second line under
+                a line box exactly as tall as the text sits right on top of the
+                first. The row is `items-center` around a 24px icon, so on the
+                single-line names — which is all of them but this one — the
+                taller line box costs no height at all.
+              */}
               <span
                 className={cn(
-                  'text-[11px] leading-none',
+                  'min-w-0 text-[11px] leading-tight',
                   node.tone === 'ok' ? 'text-foreground/80' : INK[node.tone],
                 )}
               >

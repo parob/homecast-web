@@ -12,7 +12,7 @@
  * next door, so the rules below can be tested rather than eyeballed against a
  * throttled browser.
  *
- * ── Three rules here are load-bearing ──────────────────────────────────────
+ * ── Four rules here are load-bearing ───────────────────────────────────────
  *
  *  1. **Key the cloud-managed test on the account type, never on
  *     `isCloudManaged`.** That per-home flag rides the WebSocket `homes.list`
@@ -39,6 +39,16 @@
  *     `'cloud' | 'self-hosted'`. From the user's side of the screen the
  *     self-hosted one is "Your relay" — or "This Mac" when it is the very
  *     device being looked at.
+ *
+ *  4. **The last node is the user's home by name when we know it.**
+ *     Every other node in the chain is named for the situation it is actually
+ *     in; the home was the one that stayed generic, and "Home" reads as vague
+ *     to someone whose home is called George Street
+ *     (parob/homecast-cloud#61). The caller supplies the name, because which
+ *     home this chain describes is a question about what the user is looking
+ *     at, not about the connection. `'Home'` remains the fallback — during
+ *     onboarding, or with several homes and none selected, there is genuinely
+ *     no name to give.
  */
 
 import type { ConnectionQuality } from '@/server/connection-quality';
@@ -100,10 +110,28 @@ export interface ChainInput {
   community: boolean;
   /** Formatted round trip, e.g. `34ms`. Rendered on the first hop when known. */
   rtt: string | null;
+  /**
+   * The home this chain describes, named. `null` when there is none to name —
+   * see rule 4. Whitespace-only is treated as absent, because a HomeKit home
+   * can be renamed to one and a chain node of pure spaces is worse than the
+   * generic.
+   */
+  homeName: string | null;
 }
 
 const CLOUD_DOWN =
   "Homecast has been notified and is already on it — nothing to restart at your end.";
+
+/**
+ * What the last node is called. Rule 4.
+ *
+ * Exported so the one fallback lives in one place: three branches of
+ * `buildChain` build the home node and all three must agree about what an
+ * absent name means.
+ */
+export function homeNodeName(homeName: string | null | undefined): string {
+  return homeName?.trim() || 'Home';
+}
 
 /** What the third node is called. Rule 3. */
 export function relayNodeName(input: Pick<ChainInput, 'managed' | 'selfRelay' | 'community'>): string {
@@ -144,6 +172,7 @@ export function buildChain(input: ChainInput): ChainModel {
   const { quality, reconnected, localMode, managed, community } = input;
 
   const relayName = relayNodeName(input);
+  const homeName = homeNodeName(input.homeName);
 
   // ── Community: no cloud in the path at all ───────────────────────────────
   //
@@ -155,7 +184,7 @@ export function buildChain(input: ChainInput): ChainModel {
       nodes: [
         { key: 'device', name: 'This Mac', tone: 'ok' },
         { key: 'relay', name: 'Local server', tone: 'ok' },
-        { key: 'home', name: 'Home', tone: 'ok' },
+        { key: 'home', name: homeName, tone: 'ok' },
       ],
       hops: [
         { tone: 'ok', label: null },
@@ -179,7 +208,7 @@ export function buildChain(input: ChainInput): ChainModel {
         { key: 'device', name: 'This device', tone: 'ok' },
         { key: 'cloud', name: 'Homecast', tone: 'bad' },
         { key: 'relay', name: relayName, tone: 'idle' },
-        { key: 'home', name: 'Home', tone: 'ok' },
+        { key: 'home', name: homeName, tone: 'ok' },
       ],
       hops: [
         { tone: 'bad', label: 'no answer' },
@@ -198,7 +227,7 @@ export function buildChain(input: ChainInput): ChainModel {
     { key: 'device', name: 'This device', tone: 'ok' },
     { key: 'cloud', name: 'Homecast', tone: 'ok' },
     { key: 'relay', name: relayName, tone: 'ok' },
-    { key: 'home', name: 'Home', tone: 'ok' },
+    { key: 'home', name: homeName, tone: 'ok' },
   ];
   const hops: ChainHop[] = [
     { tone: 'ok', label: input.rtt },

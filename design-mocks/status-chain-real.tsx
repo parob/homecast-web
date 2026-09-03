@@ -86,6 +86,20 @@ const SCENES: Scene[] = [
     input: { localMode: { active: true, unmapped: false } },
     conn: { rtt: null, rttAt: null, inFlight: null, ping: null },
   },
+  {
+    title: 'A home with no name yet',
+    note: 'Onboarding, or several homes and none selected. "Home" is still the honest answer.',
+    quality: 'good',
+    input: { homeName: null },
+    conn: { rtt: 34, rttAt: now(), inFlight: null, ping: null },
+  },
+  {
+    title: 'A very long home name',
+    note: 'Apple Home names are the user’s. It wraps rather than ellipsising — no hover on a phone.',
+    quality: 'good',
+    input: { homeName: 'The Old Rectory, Little Snoring, Norfolk' },
+    conn: { rtt: 34, rttAt: now(), inFlight: null, ping: null },
+  },
 ];
 
 const BASE: ChainInput = {
@@ -97,6 +111,7 @@ const BASE: ChainInput = {
   selfRelay: false,
   community: false,
   rtt: '34ms',
+  homeName: 'George Street',
 };
 
 /**

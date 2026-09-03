@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChain, relayNodeName, type ChainInput } from '../connection-chain';
+import { buildChain, homeNodeName, relayNodeName, type ChainInput } from '../connection-chain';
 
 const base: ChainInput = {
   quality: 'good',
@@ -10,11 +10,14 @@ const base: ChainInput = {
   selfRelay: false,
   community: false,
   rtt: '34ms',
+  homeName: null,
 };
 
 const at = (input: Partial<ChainInput> = {}) => buildChain({ ...base, ...input });
 const relay = (input: Partial<ChainInput> = {}) =>
   at(input).nodes.find(n => n.key === 'relay')!;
+const home = (input: Partial<ChainInput> = {}) =>
+  at(input).nodes.find(n => n.key === 'home')!;
 
 describe('relay node naming', () => {
   // The product already has exactly two words for this and they are not ours
@@ -36,6 +39,63 @@ describe('relay node naming', () => {
     // managed wins over selfRelay: a cloud customer's device is not the relay
     // for that home, whatever the socket happens to say.
     expect(relayNodeName({ managed: true, selfRelay: true, community: false })).toBe('Cloud relay');
+  });
+});
+
+describe('home node naming', () => {
+  // parob/homecast-cloud#61: the chain named every node for the situation it
+  // was in except the last one, which said "Home" to someone whose home is
+  // called George Street.
+  it('names the home the chain is describing', () => {
+    expect(home({ homeName: 'George Street' }).name).toBe('George Street');
+  });
+
+  it('names it in every branch, not just the healthy path', () => {
+    // Three separate branches build this node — community, Local Mode, and the
+    // normal path — and all three used to hardcode it.
+    expect(home({ community: true, homeName: 'George Street' }).name).toBe('George Street');
+    expect(
+      home({
+        quality: 'offline',
+        localMode: { active: true, unmapped: false },
+        homeName: 'George Street',
+      }).name,
+    ).toBe('George Street');
+    expect(home({ quality: 'stalled', homeName: 'George Street' }).name).toBe('George Street');
+  });
+
+  it('falls back to the generic when there is no name to give', () => {
+    // Onboarding, or several homes with none selected. "Home" is still the
+    // honest answer there.
+    expect(home({ homeName: null }).name).toBe('Home');
+    expect(homeNodeName(null)).toBe('Home');
+    expect(homeNodeName(undefined)).toBe('Home');
+  });
+
+  it('treats a whitespace-only name as no name', () => {
+    // A HomeKit home can be renamed to a space, and a chain row of spaces is
+    // worse than the generic.
+    expect(home({ homeName: '   ' }).name).toBe('Home');
+    expect(homeNodeName('  ')).toBe('Home');
+  });
+
+  it('keeps the name it was given rather than tidying it', () => {
+    // The name is the user's, shown as they wrote it — only the surrounding
+    // whitespace goes.
+    expect(homeNodeName('  George Street  ')).toBe('George Street');
+    expect(homeNodeName("Mum & Dad's")).toBe("Mum & Dad's");
+  });
+
+  it('does not rename any other node', () => {
+    // The relay words are settled (rule 3) and a home name must not leak into
+    // them.
+    const c = at({ homeName: 'George Street' });
+    expect(c.nodes.map(n => n.name)).toEqual([
+      'This device',
+      'Homecast',
+      'Your relay',
+      'George Street',
+    ]);
   });
 });
 
