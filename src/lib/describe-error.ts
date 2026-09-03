@@ -125,6 +125,38 @@ const NO_VERDICT_CODES = new Set(['TIMEOUT']);
 const UNREACHABLE_CODES = new Set(['DISCONNECTED', 'NO_DEVICE', 'LOCAL_ONLY']);
 
 /**
+ * The one `DEVICE_ERROR` whose verdict is that there is no verdict.
+ *
+ * The line #28 drew is right and this sits on the far side of it: the relay
+ * answered, so the message is real, but what it says is that it asked the
+ * native bridge and the bridge never came back —
+ * `BRIDGE_TIMEOUT: HomeKit bridge did not answer characteristics.set within
+ * 15s`. `native/homekit-bridge.ts` raises it and leaves the underlying call in
+ * flight *on purpose*, because it cannot be cancelled and may still land. It
+ * routinely does: in parob/homecast-cloud#62 every light in the house went off
+ * and the relay was still broadcasting the changes half a minute later.
+ *
+ * Matched on the relay's own code prefix rather than on prose, so it survives
+ * a reworded message and cannot catch a bulb whose name happens to say it.
+ */
+const NO_VERDICT_RELAY_PREFIX = /^BRIDGE_TIMEOUT\b/;
+
+/**
+ * Whether this failure leaves the write's outcome genuinely unknown.
+ *
+ * The distinction a caller needs before it decides what to show: a refused
+ * write is a fact and can be put back, while an unanswered one is a question,
+ * and answering it with the old value is how a house that is already dark ends
+ * up drawn as fully lit.
+ */
+export function isUndecidedWrite(e: unknown): boolean {
+  const code = errorCode(e);
+  if (code && NO_VERDICT_CODES.has(code)) return true;
+  if (!e || typeof e !== 'object') return false;
+  return NO_VERDICT_RELAY_PREFIX.test(readString(e as Record<string, unknown>, 'message'));
+}
+
+/**
  * The relay's stable code, prepended to its own prose by the transport.
  *
  * A toast that opens "WRITE_FAILED: " asks the reader to skip a token before
