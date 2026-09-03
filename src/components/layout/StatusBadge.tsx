@@ -72,6 +72,13 @@ interface StatusBadgeProps {
   accountType?: string;
   accessoryLimit?: number | null;
   includedAccessoryCount?: number;
+  /**
+   * The home the chain's last node is named for. Absent falls back to "Home" —
+   * see rule 4 in `lib/connection-chain.ts`. Passed in rather than resolved
+   * here because which home this is describing is a fact about what the user
+   * is looking at, and the Dashboard is what knows that.
+   */
+  homeName?: string | null;
   /** Opens Settings → Local Mode. Absent unless Developer Mode is on. */
   onOpenLocalModeSettings?: () => void;
 }
@@ -81,6 +88,7 @@ export function StatusBadge({
   accountType,
   accessoryLimit,
   includedAccessoryCount,
+  homeName,
   onOpenLocalModeSettings,
 }: StatusBadgeProps) {
   const { quality } = useWebSocket();
@@ -161,6 +169,7 @@ export function StatusBadge({
     selfRelay: relayStatus === true,
     community: communityRelayMac,
     rtt: formatRtt(serverConnection.getLastRttMs()),
+    homeName: homeName ?? null,
   });
 
   return (
