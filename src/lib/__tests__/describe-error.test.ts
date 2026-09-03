@@ -8,7 +8,7 @@
 // result is non-empty, is not "[object Object]", and keeps the code.
 
 import { describe, it, expect } from 'vitest';
-import { describeError, errorCode, describeWriteFailure } from '../describe-error';
+import { describeError, errorCode, describeWriteFailure, isUndecidedWrite } from '../describe-error';
 
 /** Every shape we have actually seen thrown in this codebase. */
 const THROWN_SHAPES: [string, unknown][] = [
@@ -202,5 +202,36 @@ describe('describeWriteFailure', () => {
 
   it('ignores a blank accessory name rather than rendering an empty subject', () => {
     expect(describeWriteFailure(timeout, '   ')).toBe("The accessory didn't respond in time.");
+  });
+});
+
+describe('isUndecidedWrite', () => {
+  it('is true when nothing ever came back', () => {
+    expect(isUndecidedWrite({ code: 'TIMEOUT', message: 'Request timed out: characteristic.set' })).toBe(true);
+  });
+
+  it('is true for the relay saying its own bridge went quiet', () => {
+    // A DEVICE_ERROR whose verdict is that there is no verdict — the relay
+    // answered, and what it answered was "I do not know". parob/homecast-cloud#62.
+    expect(isUndecidedWrite({
+      code: 'DEVICE_ERROR',
+      message: 'BRIDGE_TIMEOUT: HomeKit bridge did not answer characteristics.set within 15s',
+    })).toBe(true);
+  });
+
+  it('is false for a DEVICE_ERROR that carries a real reason', () => {
+    // #28's line, held: this one answered, and the answer is the useful part.
+    expect(isUndecidedWrite({ code: 'DEVICE_ERROR', message: 'Accessory is not responding.' })).toBe(false);
+  });
+
+  it('is false for a bulb whose own name says the word', () => {
+    // Matched on the relay's code prefix, not on prose anywhere in the message.
+    expect(isUndecidedWrite({ code: 'DEVICE_ERROR', message: 'Write failed for BRIDGE_TIMEOUT Lamp' })).toBe(false);
+  });
+
+  it('is false for the shapes that are not errors at all', () => {
+    expect(isUndecidedWrite(null)).toBe(false);
+    expect(isUndecidedWrite('timed out')).toBe(false);
+    expect(isUndecidedWrite({ code: 'DISCONNECTED', message: 'offline' })).toBe(false);
   });
 });

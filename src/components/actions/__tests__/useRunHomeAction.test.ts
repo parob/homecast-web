@@ -4,6 +4,7 @@ import { renderHook } from '@testing-library/react';
 
 const request = vi.fn();
 const markPendingUpdate = vi.fn();
+const clearPendingUpdate = vi.fn();
 const toastError = vi.fn();
 const toastWarning = vi.fn();
 
@@ -12,6 +13,7 @@ vi.mock('@/server/connection', () => ({
 }));
 vi.mock('@/hooks/useHomeKitData', () => ({
   markPendingUpdate: (...args: unknown[]) => markPendingUpdate(...args),
+  clearPendingUpdate: (...args: unknown[]) => clearPendingUpdate(...args),
 }));
 const toastPlain = vi.fn();
 vi.mock('sonner', () => {
@@ -105,6 +107,7 @@ beforeEach(() => {
   __setBulkWriteSupport(true);
   request.mockReset().mockImplementation(bulkRelay());
   markPendingUpdate.mockReset();
+  clearPendingUpdate.mockReset();
   toastError.mockReset();
   toastWarning.mockReset();
   toastPlain.mockReset();
@@ -227,6 +230,83 @@ describe('useRunHomeAction', () => {
       description: expect.stringContaining('relay offline'),
     }));
     expect(toastWarning).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Exactly what the relay answered in parob/homecast-cloud#62: it asked its
+   * native bridge, the bridge did not come back inside 15s, and it said so —
+   * having deliberately left the write in flight.
+   */
+  function bridgeTimeout() {
+    return Object.assign(
+      new Error('BRIDGE_TIMEOUT: HomeKit bridge did not answer characteristics.set within 15s'),
+      { name: 'HomecastError', code: 'DEVICE_ERROR' },
+    );
+  }
+
+  it('leaves the tiles alone when the relay never got a verdict', async () => {
+    request.mockRejectedValue(bridgeTimeout());
+    const { run, updateCharacteristicInCache } = setup();
+    await run(action());
+
+    // Moved off optimistically, and left there. Putting them back would be
+    // asserting an outcome nobody has — and in #62 the lights really were off.
+    expect(updateCharacteristicInCache).toHaveBeenCalledWith('a', 'power_state', 'false');
+    expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('a', 'power_state', 'true');
+    expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('b', 'power_state', 'true');
+    expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('b', 'on', 'true');
+  });
+
+  it('drops the pending mark so the relay can still correct it', async () => {
+    request.mockRejectedValue(bridgeTimeout());
+    const { run } = setup();
+    await run(action());
+
+    // The mark is what makes an echo lose to a write still travelling. Nothing
+    // is travelling now, and #62 stayed wrong until a reload because the revert
+    // re-armed it with `true` and every broadcast saying `false` was discarded.
+    expect(markPendingUpdate).not.toHaveBeenCalledWith('a', 'power_state', true);
+    expect(markPendingUpdate).not.toHaveBeenCalledWith('b', 'on', true);
+    expect(clearPendingUpdate).toHaveBeenCalledWith('a', 'power_state');
+    expect(clearPendingUpdate).toHaveBeenCalledWith('b', 'power_state');
+    expect(clearPendingUpdate).toHaveBeenCalledWith('b', 'on');
+  });
+
+  it('says it could not confirm, rather than that it failed', async () => {
+    request.mockRejectedValue(bridgeTimeout());
+    const { run } = setup();
+    await run(action());
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).toHaveBeenCalledWith("Couldn't confirm All lights", expect.objectContaining({
+      description: expect.stringContaining('may still be going through'),
+    }));
+  });
+
+  it('still reverts and still says failed when the relay gave a real answer', async () => {
+    // A verdict, not a silence — #28's line. The old value is a fact here.
+    request.mockRejectedValue(Object.assign(
+      new Error('WRITE_FAILED: HomeKit refused the write'),
+      { name: 'HomecastError', code: 'DEVICE_ERROR' },
+    ));
+    const { run, updateCharacteristicInCache } = setup();
+    await run(action());
+
+    expect(updateCharacteristicInCache).toHaveBeenCalledWith('a', 'power_state', 'true');
+    expect(toastError).toHaveBeenCalledWith('All lights failed', expect.anything());
+  });
+
+  it('treats a transport timeout on the fallback path as undecided too', async () => {
+    __setBulkWriteSupport(false);
+    request.mockRejectedValue(Object.assign(
+      new Error('Request timed out: characteristic.set'),
+      { name: 'HomecastError', code: 'TIMEOUT' },
+    ));
+    const { run, updateCharacteristicInCache } = setup();
+    await run(action());
+
+    expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('a', 'power_state', 'true');
+    expect(toastWarning).toHaveBeenCalledWith("Couldn't confirm All lights", expect.anything());
   });
 
   it('reports progress from zero, and completes the step in one movement', async () => {

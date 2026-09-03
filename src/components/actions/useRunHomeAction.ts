@@ -2,9 +2,9 @@ import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { trackWrite, accessoryKey, actionKey } from '@/lib/pending-writes';
-import { markPendingUpdate } from '@/hooks/useHomeKitData';
+import { markPendingUpdate, clearPendingUpdate } from '@/hooks/useHomeKitData';
 import { runWithConcurrency } from '@/lib/concurrency';
-import { describeError } from '@/lib/describe-error';
+import { describeError, isUndecidedWrite } from '@/lib/describe-error';
 import type { BulkWriteResponse } from '@/native/homekit-bridge';
 import type { HomeAction, HomeActionWrite } from './catalog';
 
@@ -141,6 +141,24 @@ function applyToCache(
   }
 }
 
+/**
+ * Stand back from a write we optimistically moved but never got a verdict on.
+ *
+ * The cache keeps whatever it is showing — we have nothing truer to put there —
+ * but the pending mark has to go. That mark exists to make a *stale* echo lose
+ * to an optimistic value still in flight, and once the request has settled with
+ * no answer there is nothing left in flight for an echo to be stale against.
+ * Leaving it set means `shouldIgnoreServerUpdate` spends its whole window
+ * discarding the relay's own broadcasts — the only thing that could still
+ * correct the tile.
+ */
+function forgetOptimistic(write: HomeActionWrite) {
+  clearPendingUpdate(write.accessoryId, write.characteristicType);
+  if (write.reportedCharacteristicType !== write.characteristicType) {
+    clearPendingUpdate(write.accessoryId, write.reportedCharacteristicType);
+  }
+}
+
 /** Per-call overrides, for running an action against a home you are not in. */
 export interface RunHomeActionOverrides {
   homeId?: string | null;
@@ -244,6 +262,15 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // 2. Fan out, one step at a time so a step's delay actually separates it
     //    from the next. Every action here has a single step today.
     const failed: HomeActionWrite[] = [];
+    /**
+     * Of those, the ones whose outcome nobody ever established.
+     *
+     * A separate set rather than a flag on the write, because "did not land" and
+     * "we never found out" are answers to different questions and the second one
+     * is not the write's own property — it belongs to the request that carried
+     * it, and the same write can be either on the two paths below.
+     */
+    const undecided = new Set<string>();
     let firstError: unknown;
     let settled = 0;
     // Counts across every step, not per step, so the card shows one run of
@@ -288,6 +315,11 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
           return null;
         }
         firstError ??= e;
+        // One request carried the whole step, so whatever it could not tell us
+        // it could not tell us about any of them.
+        if (isUndecidedWrite(e)) {
+          for (const write of stepWrites) undecided.add(writeKey(write.accessoryId, write.characteristicType));
+        }
         settled += stepWrites.length;
         opts?.onProgress?.(settled, writes.length);
         return stepWrites;
@@ -384,6 +416,11 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
         if (result.status === 'rejected') {
           stepFailed.push(stepWrites[i]);
           firstError ??= result.reason;
+          // Per request here, so one wedged bulb can be undecided while the
+          // rest of the step got real answers.
+          if (isUndecidedWrite(result.reason)) {
+            undecided.add(writeKey(stepWrites[i].accessoryId, stepWrites[i].characteristicType));
+          }
         }
       });
       return stepFailed;
@@ -400,8 +437,25 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // 3. Revert only what actually failed — the rest already moved and stayed.
     //    An interruptible run never moved anything it did not confirm, so it has
     //    nothing to put back.
+    //
+    //    A write nobody ever got a verdict on is not in that set. Putting it
+    //    back asserts an outcome we do not have, and the assertion is usually
+    //    the false one: the relay gives up on its native bridge at 15s and
+    //    leaves the call in flight precisely because it may still land, and in
+    //    parob/homecast-cloud#62 it did — every light in the house went off
+    //    while the app drew them all back on and then ignored the relay's own
+    //    broadcasts saying otherwise, because the revert had re-armed the
+    //    stale-echo filter with the old value. Nothing corrected it short of a
+    //    reload. So: leave the tiles where they are, and stand out of the way
+    //    of the truth arriving.
     if (!interruptible) {
-      for (const write of failed) applyToCache(write, write.previousValue, updateCharacteristicInCache);
+      for (const write of failed) {
+        if (undecided.has(writeKey(write.accessoryId, write.characteristicType))) {
+          forgetOptimistic(write);
+        } else {
+          applyToCache(write, write.previousValue, updateCharacteristicInCache);
+        }
+      }
     }
 
     // Called off on purpose: the replacement run is the report, and a toast
@@ -421,8 +475,21 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     // that failed for some other reason are reported at all.
     const broken = failed.filter(w => w.reachable !== false);
 
+    const allUndecided = broken.length > 0
+      && broken.every(w => undecided.has(writeKey(w.accessoryId, w.characteristicType)));
+
     if (broken.length > 0 && broken.length === writes.length) {
-      toast.error(`${action.label} failed`, { description: describeError(firstError) });
+      // "All lights failed" was the sentence #62 complained about, and it was
+      // simply untrue — the lights were off by the time it appeared. Nothing
+      // answered, so the only honest thing to say is that we do not know, and
+      // the useful half is that the house may still be catching up.
+      if (allUndecided) {
+        toast.warning(`Couldn't confirm ${action.label}`, {
+          description: 'Your home didn’t answer in time. The change may still be going through — the tiles will catch up when it does.',
+        });
+      } else {
+        toast.error(`${action.label} failed`, { description: describeError(firstError) });
+      }
     } else if (broken.length > 0) {
       toast.warning(`${writes.length - broken.length} of ${writes.length} changed`, {
         description: `${broken.length} accessor${broken.length === 1 ? 'y' : 'ies'} did not respond`,
