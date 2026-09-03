@@ -7,8 +7,8 @@
  * `screenshots/hidden-items-enter.spec.ts` samples the real thing in a real
  * browser, which is the only place that claim can be made honestly.
  */
-import { describe, it, expect } from 'vitest';
-import { heightChanges, type HeightMap } from '../reflow';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { emptyingContainers, heightChanges, type HeightMap } from '../reflow';
 
 /** A detached tree, so `contains` is real rather than mocked. */
 function tree() {
@@ -62,5 +62,77 @@ describe('heightChanges', () => {
     const { outer, other } = tree();
     const changes = heightChanges(map([outer, 150], [other, 100]), map([outer, 278], [other, 228]));
     expect(new Set(changes.map(c => c.el))).toEqual(new Set([outer, other]));
+  });
+});
+
+/**
+ * `heightChanges` above is the reason this exists: it walks the map taken AFTER
+ * the change, so an element that is gone by then is invisible to it. A room
+ * whose every tile was a revealed hidden one is exactly that element — it
+ * unmounts whole when the reveal ends — and its height then closed in a single
+ * frame (parob/homecast-cloud#60).
+ *
+ * `collapseContainers` is not unit tested, for the reason at the top of this
+ * file: it is `Element.animate`, which jsdom does not have. The browser spec
+ * `screenshots/edit-layout-exit-motion.spec.ts` measures the real thing.
+ */
+describe('emptyingContainers', () => {
+  /** A room container holding `count` draggables, `hidden` of them revealed. */
+  function room(count: number, hidden: number) {
+    const el = document.createElement('div');
+    el.setAttribute('data-room-container', '');
+    for (let i = 0; i < count; i++) {
+      const item = document.createElement('div');
+      item.setAttribute('data-draggable-item', '');
+      if (i < hidden) {
+        // Where WidgetWrapper puts it: inside the draggable, not around it.
+        const widget = document.createElement('div');
+        widget.setAttribute('data-hidden-item', 'true');
+        item.appendChild(widget);
+      }
+      el.appendChild(item);
+    }
+    document.body.appendChild(el);
+    return el;
+  }
+
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('finds a room whose every tile is a revealed one', () => {
+    const el = room(2, 2);
+    expect(emptyingContainers(document)).toEqual([el]);
+  });
+
+  it('leaves a room that keeps something — the space it loses can be animated', () => {
+    room(3, 2);
+    expect(emptyingContainers(document)).toEqual([]);
+  });
+
+  it('leaves a room with nothing in it: already empty is not emptying', () => {
+    room(0, 0);
+    expect(emptyingContainers(document)).toEqual([]);
+  });
+
+  it('finds a whole revealed room, where the mark is on the container itself', () => {
+    // Hiding a room takes the section, so its own tiles are not marked — the
+    // container is. Both directions have to be asked, which is the bug this
+    // catches if `closest` is ever dropped for `querySelector` alone.
+    const el = room(2, 0);
+    el.setAttribute('data-hidden-item', 'true');
+    expect(emptyingContainers(document)).toEqual([el]);
+  });
+
+  it('keeps only the outermost when a room and its drop container empty together', () => {
+    const outer = room(0, 0);
+    const inner = document.createElement('div');
+    inner.setAttribute('data-drop-container', '');
+    const item = document.createElement('div');
+    item.setAttribute('data-draggable-item', '');
+    const widget = document.createElement('div');
+    widget.setAttribute('data-hidden-item', 'true');
+    item.appendChild(widget);
+    inner.appendChild(item);
+    outer.appendChild(inner);
+    expect(emptyingContainers(document)).toEqual([outer]);
   });
 });

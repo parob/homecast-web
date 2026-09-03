@@ -141,7 +141,7 @@ import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
-import { captureHeights, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
+import { captureHeights, collapseContainers, emptyingContainers, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
 import { holdScrollAnchor, isAboveAnchor, pickPageAnchor } from '@/lib/lift-scroll-anchor';
 
 /** Backstop for a drag that never reports an end. Long enough to never race a
@@ -1724,6 +1724,10 @@ const Dashboard = () => {
    */
   const reflowRef = useRef<HeightMap | null>(null);
   const reflowCancelRef = useRef<(() => void) | null>(null);
+  /** The collapse of a room that is emptying — see `putHiddenItemsAway`. Its own
+   *  ref rather than `reflowCancelRef`: that one belongs to the reflow after the
+   *  unmount, and this runs before it, so the two are in flight together. */
+  const emptyCancelRef = useRef<(() => void) | null>(null);
 
   /**
    * …and your place on the page, which is a third problem again.
@@ -1749,13 +1753,50 @@ const Dashboard = () => {
   const anchorRef = useRef<ReturnType<typeof pickPageAnchor>>(null);
   const anchorReleaseRef = useRef<(() => void) | null>(null);
 
-  const captureReflow = useCallback(() => {
+  /**
+   * `heights: false` takes the anchor and nothing else.
+   *
+   * For a change with nothing to animate — undoing a reveal that was never
+   * painted (see `dropPendingReveal`). The page still moves, so your place
+   * still has to be held; there is simply no arrival to ease.
+   */
+  const captureReflow = useCallback(({ heights = true }: { heights?: boolean } = {}) => {
     reflowCancelRef.current?.();
     reflowCancelRef.current = null;
     anchorReleaseRef.current?.();
     anchorReleaseRef.current = null;
-    reflowRef.current = prefersReducedMotion() ? null : captureHeights();
+    reflowRef.current = heights && !prefersReducedMotion() ? captureHeights() : null;
     anchorRef.current = pickPageAnchor(document.querySelector('main') ?? document);
+  }, []);
+
+  /**
+   * Revealed so the page can be measured, but not yet shown.
+   *
+   * The hold that enters Edit Layout reveals hidden items 250ms in, a beat
+   * before dnd-kit's sensor fires at 500ms — `LIFT_REVEAL_DELAY` says why that
+   * ordering is the only one that works. But a press is not a promise: release
+   * inside that 250ms gap and the mode never comes on, so anything the reveal
+   * had already painted has to be taken back. It read as a glitch, and it fired
+   * on **any** tap held longer than a quarter of a second, not just on an
+   * abandoned lift (parob/homecast-cloud#60).
+   *
+   * So the reveal is split from its appearance. The items mount and take their
+   * space — which is all the measurement needs — and stay at `opacity: 0` until
+   * the lift actually commits. Nothing is promised until something is entered,
+   * and an abandoned press has nothing to take back.
+   *
+   * On the root, like its two siblings, because the left menu is a portal.
+   * Nothing in React reads it.
+   */
+  const markHiddenItemsPending = useCallback(() => {
+    document.documentElement.setAttribute('data-hidden-pending', 'true');
+  }, []);
+
+  /** Clear it, and say whether it was set — i.e. whether anything is unpainted. */
+  const clearHiddenItemsPending = useCallback(() => {
+    const was = document.documentElement.hasAttribute('data-hidden-pending');
+    document.documentElement.removeAttribute('data-hidden-pending');
+    return was;
   }, []);
 
   /** Reveal them, now. Cancels an exit that was already running — you can come
@@ -1767,26 +1808,68 @@ const Dashboard = () => {
    *  measures every droppable rect at that start — so a room still growing when
    *  it measures gives it rects that are wrong by however far it had left to go,
    *  and the drop lands somewhere else. The tiles' own fade is safe there
-   *  because opacity moves nothing. */
-  const revealHiddenItems = useCallback((animateReflow = true) => {
+   *  because opacity moves nothing.
+   *
+   *  `pending` holds them at zero opacity instead of playing them in — see
+   *  `markHiddenItemsPending`. Only the hold before a lift uses it, because only
+   *  that route can still turn out not to have been a lift at all. */
+  const revealHiddenItems = useCallback((
+    { animateReflow = true, pending = false }: { animateReflow?: boolean; pending?: boolean } = {},
+  ) => {
     window.clearTimeout(hiddenExitRef.current);
+    // …and put back the height of any room that was collapsing on the way out.
+    emptyCancelRef.current?.();
+    emptyCancelRef.current = null;
     setHiddenExiting(false);
     // Only when there is an arrival to animate. This runs again on every route
     // into the reveal — the hold before a lift, then the lift itself, then Edit
     // Layout proper — and re-stamping would replay the entrance on tiles that
     // have been sitting on screen since the first of them.
     if (!showHiddenRef.current) {
-      markHiddenItemsEntering();
+      if (pending) markHiddenItemsPending();
+      else markHiddenItemsEntering();
       if (animateReflow) captureReflow();
     }
     setShowHiddenItems(true);
-  }, [markHiddenItemsEntering, captureReflow]);
+  }, [markHiddenItemsEntering, markHiddenItemsPending, captureReflow]);
 
-  /** The lift's own route in — same reveal, no reflow animation. Its own
-   *  callback rather than an argument, because it is handed straight to
-   *  `useRevealBeforeLift` as a prop and a bare `revealHiddenItems` there would
-   *  be called with whatever that hook passes. */
-  const revealHiddenItemsForLift = useCallback(() => revealHiddenItems(false), [revealHiddenItems]);
+  /** The lift's own route in — same reveal, no reflow animation, and nothing
+   *  painted until the mode is actually entered. Its own callback rather than an
+   *  argument, because it is handed straight to `useRevealBeforeLift` as a prop
+   *  and a bare `revealHiddenItems` there would be called with whatever that
+   *  hook passes. */
+  const revealHiddenItemsForLift = useCallback(
+    () => revealHiddenItems({ animateReflow: false, pending: true }),
+    [revealHiddenItems],
+  );
+
+  /** The lift took. Show what was grown for it, with the entrance it would have
+   *  had. A no-op when nothing is pending, which is the case for a drag that
+   *  arrived without a press to hang the reveal on. */
+  const commitPendingReveal = useCallback(() => {
+    if (clearHiddenItemsPending()) markHiddenItemsEntering();
+  }, [clearHiddenItemsPending, markHiddenItemsEntering]);
+
+  /**
+   * …and the other way out: the press ended before it ever became a lift.
+   *
+   * Nothing was painted, so there is nothing to fade — the whole point of
+   * `markHiddenItemsPending`. It still has to be undone properly: the growth was
+   * cancelled by a compensating scroll while the finger was down, so letting the
+   * page shrink back unanchored would leave it somewhere the press never took
+   * it. Hence the anchor, and only the anchor.
+   */
+  const dropPendingReveal = useCallback(() => {
+    window.clearTimeout(hiddenExitRef.current);
+    window.clearTimeout(hiddenEnterRef.current);
+    document.documentElement.removeAttribute('data-hidden-entering');
+    setHiddenExiting(false);
+    // Both in the same batch as the unmount below, so the browser never gets a
+    // frame in which the items are still mounted and no longer held invisible.
+    clearHiddenItemsPending();
+    captureReflow({ heights: false });
+    setShowHiddenItems(false);
+  }, [captureReflow, clearHiddenItemsPending]);
 
   /** Put them away, over HIDDEN_EXIT_MS. A no-op if none are showing, so Done
    *  on a dashboard with nothing hidden costs nothing. */
@@ -1801,7 +1884,25 @@ const Dashboard = () => {
       setHiddenExiting(false);
       return;
     }
+    // Still unpainted: there is nothing on screen to fade, so putting it away
+    // is the same act as abandoning it. Fading here would show the items in
+    // order to hide them.
+    if (document.documentElement.hasAttribute('data-hidden-pending')) {
+      dropPendingReveal();
+      return;
+    }
     setHiddenExiting(true);
+    // A room whose every tile was a revealed one unmounts the moment the reveal
+    // ends, and `heightChanges` cannot animate an element that is already gone —
+    // so it is collapsed here instead, over the same beat its contents fade, and
+    // occupies nothing by the time React removes it. Without this its whole
+    // height closed in one frame (parob/homecast-cloud#60).
+    emptyCancelRef.current?.();
+    emptyCancelRef.current = null;
+    if (!prefersReducedMotion()) {
+      const emptying = emptyingContainers(document.querySelector('main') ?? document);
+      if (emptying.length) emptyCancelRef.current = collapseContainers(emptying, HIDDEN_EXIT_MS);
+    }
     hiddenExitRef.current = window.setTimeout(() => {
       // The space closes after the things in it have gone, not with them: the
       // items are still mounted for the whole fade, so their room's height only
@@ -1811,7 +1912,7 @@ const Dashboard = () => {
       setHiddenExiting(false);
       setShowHiddenItems(false);
     }, HIDDEN_EXIT_MS);
-  }, [captureReflow]);
+  }, [captureReflow, dropPendingReveal]);
 
   /**
    * The reflow itself, on the commit that caused it.
@@ -1866,9 +1967,12 @@ const Dashboard = () => {
     window.clearTimeout(hiddenExitRef.current);
     window.clearTimeout(hiddenEnterRef.current);
     document.documentElement.removeAttribute('data-hidden-entering');
+    // …and a reveal that was still waiting to be painted when the page went.
+    document.documentElement.removeAttribute('data-hidden-pending');
     // An inline height that outlives its animation would freeze that room at
     // whatever size it had reached.
     reflowCancelRef.current?.();
+    emptyCancelRef.current?.();
     // …and an anchor that outlives the page would keep scrolling whatever
     // replaced it.
     anchorReleaseRef.current?.();
@@ -1940,12 +2044,17 @@ const Dashboard = () => {
     // hold to have hung it on. Idempotent either way — and never with the
     // reflow animation, for the reason on `revealHiddenItems`: dnd-kit is about
     // to measure, and a room still growing measures wrong.
-    revealHiddenItemsForLift();
+    //
+    // Not the `pending` variant: this IS the commit. Where the press did happen
+    // the items are already mounted and this does nothing, and `commitPendingReveal`
+    // below is what finally paints them.
+    revealHiddenItems({ animateReflow: false });
+    commitPendingReveal();
     setLiftInFlight(true);
     // Insurance against a DndContext that forgets onDragCancel: without an end,
     // the sidebar never widens and the summary pills never come back.
     liftWatchdogRef.current = window.setTimeout(() => endLift(), LIFT_WATCHDOG_MS);
-  }, [endLift, revealHiddenItemsForLift]);
+  }, [endLift, revealHiddenItems, commitPendingReveal]);
 
   /*
    * Hidden items come back a beat BEFORE the drag starts, not when it does.
@@ -1964,10 +2073,17 @@ const Dashboard = () => {
     enabled: isTouchDevice && !editMode,
     onReveal: revealHiddenItemsForLift,
     onAbandon: useCallback(() => {
-      // Animated away rather than cut, same as Done: the reveal you are undoing
-      // has been on screen for 250ms and is a thing the eye has already found.
-      if (!editModeRef.current) putHiddenItemsAway();
-    }, [putHiddenItemsAway]),
+      if (editModeRef.current) return;
+      // Cut, not faded. The reveal being undone was never painted — it has been
+      // sitting at zero opacity since it mounted — so there is nothing on screen
+      // for a fade to take away, and fading it would only put it on screen to do
+      // so. That flash, on any tap held past 250ms, is homecast-cloud#60.
+      //
+      // The fallback is for a reveal that arrived by some other route and is
+      // genuinely visible; that one still leaves the way Done does.
+      if (document.documentElement.hasAttribute('data-hidden-pending')) dropPendingReveal();
+      else putHiddenItemsAway();
+    }, [putHiddenItemsAway, dropPendingReveal]),
   });
 
   releaseAnchorRef.current = releaseAnchor;
