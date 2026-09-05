@@ -17,6 +17,16 @@ export interface SubmitReportInput {
   media: CapturedMedia[];
   /** Extra context worth recording, e.g. the route the user was on. */
   extra?: Record<string, unknown>;
+  /**
+   * Add this report to an issue that is already open, rather than filing a
+   * new one. What the reporter picked in Previous.
+   *
+   * The answer still comes back from the server — never assume the report
+   * landed where it was asked to. A server that predates the field ignores it
+   * and files a new issue, and saying otherwise would be a lie the reporter
+   * cannot check.
+   */
+  issueNumber?: number;
 }
 
 export interface SubmitReportResult {
@@ -41,6 +51,9 @@ export async function submitReport(
   const form = new FormData();
   form.append('summary', input.summary);
   form.append('severity', input.severity);
+  if (input.issueNumber !== undefined) {
+    form.append('issueNumber', String(input.issueNumber));
+  }
   form.append(
     'diagnostics',
     JSON.stringify(
