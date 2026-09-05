@@ -12,6 +12,13 @@ import type { TriState } from "@/components/widgets/shared/powerState";
  * press becomes a choice: all off, or all on. The middle is display-only. The
  * world puts the thumb there; the user can only move it off.
  *
+ * Position alone did not carry that. The track is fully on-coloured from the
+ * halfway point, so the middle differed from `on` by a thumb a few pixels short
+ * of the end in a slightly longer track — legible only with the two side by
+ * side. The middle now takes a *dark* thumb in a *wider* track, so it is a
+ * different object rather than the same one slightly moved. See
+ * homecast-cloud#67.
+ *
  * Deliberately not built on @radix-ui/react-switch. Radix's Root is boolean and
  * swallows the click to flip it, so splitting the hit target would mean fighting
  * the primitive for the one behaviour that matters here. `shared/VerticalToggle`
@@ -30,7 +37,7 @@ interface TriStateToggleProps {
   /** Track fill for the on state; mirrors the same prop on `ui/switch.tsx`. */
   checkedColorClass?: string;
   /**
-   * A quarter wider *while it is in the middle*, for a control that can reach it.
+   * Wider *while it is in the middle*, for a control that can reach it.
    *
    * Off by default, and that default is load-bearing: this component backs
    * every ordinary accessory switch through `ColoredSwitch`, and widening it
@@ -103,7 +110,21 @@ const THUMB = len(20);    // ui/switch.tsx's h-4 w-4, at the large setting
 const PAD = len(5);       // its translate-x-1
 const HEIGHT = len(30);   // its h-6
 const NARROW = len(50);   // its w-10
-const WIDE = len(62.5);   // a quarter wider, for three stops
+/**
+ * Forty percent wider, for three stops.
+ *
+ * It was a quarter, and a quarter was not enough to be seen: with the track at
+ * full on-colour from the halfway point, the *only* thing separating "3 of 8
+ * on" from "all on" was the thumb sitting a few pixels short of the end in a
+ * track slightly longer than the one beside it — two relative cues, with
+ * nothing absolute to measure either against unless the two tiles happened to
+ * be side by side. See homecast-cloud#67.
+ *
+ * The extra room is still taken only in the middle, so a row of tiles keeps the
+ * ordinary switch width at both ends rather than standing permanently wider
+ * than every other control on the screen.
+ */
+const WIDE = len(70);
 
 function geometry(wide: boolean) {
   const track = wide ? WIDE : NARROW;
@@ -279,8 +300,20 @@ export function TriStateToggle({
       aria-hidden
       className={cn(
         'pointer-events-none absolute left-0 block rounded-full shadow-sm',
-        !dragging && 'transition-transform duration-base ease-standard',
-        state === 'off' && !dragging ? offThumb : 'bg-white/60',
+        !dragging && 'transition-[transform,background-color] duration-base ease-standard',
+        // The middle takes a dark thumb, and that is the cue that actually
+        // carries: at either end the thumb is a pale disc on its track, so a
+        // dark one is a different object rather than the same one a few pixels
+        // along. Black at 60% rather than a colour, because it composites over
+        // whatever `checkedColorClass` the tile is using — yellow for lights,
+        // blue for a fan — instead of being right for one of them.
+        //
+        // Only at rest. The moment a drag starts the thumb is heading for an
+        // end and is no longer describing the house, so it takes the ordinary
+        // pale disc and the darkness stops claiming something untrue.
+        state === 'off' && !dragging ? offThumb
+          : state === 'mixed' && !dragging ? 'bg-black/60'
+          : 'bg-white/60',
       )}
       style={{ width: css(THUMB), height: css(THUMB), top: css(PAD), transform: `translateX(${offset})` }}
     />

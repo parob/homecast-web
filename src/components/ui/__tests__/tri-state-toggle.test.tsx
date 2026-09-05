@@ -148,16 +148,23 @@ describe('TriStateToggle — where the thumb sits', () => {
     thumb(root).style.transform.slice('translateX('.length, -1);
 
   it.each([
-    ['off', 5, '0'],
-    ['mixed', 21.25, '1'],
-    ['on', 25, '1'],
-  ] as const)('parks a wide %s at %spx with the track at %s of the on colour', (state, px, opacity) => {
+    ['off', 5, 50, '0'],
+    ['mixed', 25, 70, '1'],
+    ['on', 25, 50, '1'],
+  ] as const)('parks a wide %s at %spx in a %spx track, at %s of the on colour', (state, px, width, opacity) => {
     const { container } = render(<TriStateToggle state={state} onCheckedChange={vi.fn()} wide />);
     const root = container.firstElementChild as HTMLElement;
     // Off and on take the ordinary geometry, because the extra room is only
     // there to hold three stops and at either end there are two — so `on` lands
-    // at 25, an ordinary switch's far stop, not at the wide track's 37.5.
+    // at 25, an ordinary switch's far stop, not at the wide track's 45.
+    //
+    // The offset alone no longer separates mixed from on — both are 25 — and
+    // that is exactly why the width is asserted beside it: in the middle those
+    // 25px are the centre of a 70px track, and at the end they are the far stop
+    // of a 50px one. Position was never the cue that carried anyway; the dark
+    // thumb below is.
     expect(at(offsetOf(root), 20)).toBe(px);
+    expect(at(root.style.width, 20)).toBe(width);
     // Anything on means fully on-coloured: seven of eight lights lit must not
     // look half switched off. The thumb is what says how many.
     expect(fill(root).style.opacity).toBe(opacity);
@@ -207,7 +214,7 @@ describe('TriStateToggle — where the thumb sits', () => {
       <TriStateToggle state="mixed" onCheckedChange={vi.fn()} wide />
     );
     const root = () => container.firstElementChild as HTMLElement;
-    expect(at(root().style.width, 20)).toBe(62.5);               // the wide track
+    expect(at(root().style.width, 20)).toBe(70);                 // the wide track
     // and the change is animated, not a jump
     expect(root().className).toContain('transition-[width,background-color]');
 
@@ -216,6 +223,39 @@ describe('TriStateToggle — where the thumb sits', () => {
 
     rerender(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide />);
     expect(at(root().style.width, 20)).toBe(50);
+  });
+
+  it('darkens the thumb in the middle, and only there', () => {
+    // The cue that actually carries. At either end the thumb is a pale disc on
+    // its track; in the middle it is a dark one, so it reads as a different
+    // object rather than the same one a few pixels along. Black rather than a
+    // colour, because it sits over whatever `checkedColorClass` the tile uses.
+    const { container, rerender } = render(
+      <TriStateToggle state="mixed" onCheckedChange={vi.fn()} wide checkedColorClass="bg-yellow-500" />
+    );
+    const root = () => container.firstElementChild as HTMLElement;
+    expect(thumb(root()).className).toContain('bg-black/60');
+
+    rerender(<TriStateToggle state="on" onCheckedChange={vi.fn()} wide checkedColorClass="bg-yellow-500" />);
+    expect(thumb(root()).className).toContain('bg-white/60');
+    expect(thumb(root()).className).not.toContain('bg-black/60');
+
+    rerender(<TriStateToggle state="off" onCheckedChange={vi.fn()} wide checkedColorClass="bg-yellow-500" />);
+    expect(thumb(root()).className).not.toContain('bg-black/60');
+  });
+
+  it('gives the dark thumb up as soon as a drag starts', () => {
+    // Mid-drag the thumb is heading for an end and has stopped describing the
+    // house, so it takes the ordinary pale disc rather than claiming the group
+    // is still part-way.
+    const { container } = render(<TriStateToggle state="mixed" onCheckedChange={vi.fn()} wide />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(thumb(root).className).toContain('bg-black/60');
+
+    fireEvent.pointerDown(screen.getByRole('group'), { clientX: 100 });
+    fireEvent(window, new PointerEvent('pointermove', { clientX: 120, bubbles: true }));
+    expect(thumb(root).className).not.toContain('bg-black/60');
+    expect(thumb(root).className).toContain('bg-white/60');
   });
 
   it('takes the track colour from the wallpaper behind it', () => {
