@@ -113,23 +113,43 @@ const _probeCursors = new Map<string, number>();
 // "not fully verified" — we fall through to the next accessory until one reads.
 const PROBE_MAX_ATTEMPTS = 5;
 
-// Characteristics we prefer to read: sensor-like, frequently updated by the
-// underlying framework, and effectively always present where they apply. If
-// none match, we fall back to any readable characteristic.
+// Characteristics we prefer to read, best first. These are real device reads:
+// HomeKit has to reach the accessory to answer one, which is the entire point
+// of an end-to-end probe.
+//
+// These are the relay's canonical snake_case names (CharacteristicMapper.swift).
+// They used to be HomeKit's PascalCase spellings — 'On', 'CurrentTemperature' —
+// which match nothing that ever reaches this code, so `indexOf` was always -1,
+// every candidate tied on priority, and the "highest-priority tier" was the
+// whole list. The probe then read whatever happened to come first, in practice
+// often `manufacturer` or `firmware_revision`. HomeKit answers those from its
+// own cache without touching the accessory, so a home whose every device was
+// unreachable still reported `verified`. Observed on 2026-09-04: live probes
+// returning `manufacturer = "Signify Nether..."` while every real read failed.
 const PREFERRED_CHARS = [
-  'CurrentTemperature',
-  'CurrentRelativeHumidity',
-  'CurrentAmbientLightLevel',
-  'CurrentLightLevel',
-  'BatteryLevel',
-  'CurrentPosition',
-  'On',
-  'CurrentDoorState',
-  'LockCurrentState',
-  'CurrentHeatingCoolingState',
-  'AirQuality',
-  'Name',
+  'current_temperature',
+  'relative_humidity',
+  'battery_level',
+  'current_position',
+  'power_state',
+  'current_door_state',
+  'lock_current_state',
+  'heating_cooling_current',
+  'air_quality',
+  'motion_detected',
+  'contact_state',
+  'status_active',
 ];
+
+// Metadata HomeKit serves from its own cache. Reading one proves the framework
+// is alive and nothing else, so it ranks BELOW an unrecognised characteristic —
+// an unknown name is at least probably a real device read. Kept as a last
+// resort rather than excluded, so a home offering only these still gets probed
+// instead of reporting `no_readable_accessory`.
+const CACHED_CHARS = new Set([
+  'name', 'configured_name', 'model', 'manufacturer',
+  'serial_number', 'firmware_revision', 'hardware_revision',
+]);
 
 interface ProbeCandidate {
   accessoryId: string;
@@ -148,7 +168,12 @@ function collectProbeCandidates(accessories: any[]): ProbeCandidate[] {
       for (const ch of chars) {
         if (!ch?.isReadable) continue;
         const idx = PREFERRED_CHARS.indexOf(ch.characteristicType);
-        const priority = idx >= 0 ? idx : PREFERRED_CHARS.length;
+        const priority =
+          idx >= 0
+            ? idx
+            : CACHED_CHARS.has(ch.characteristicType)
+              ? PREFERRED_CHARS.length + 1
+              : PREFERRED_CHARS.length;
         out.push({
           accessoryId: acc.id,
           accessoryName: acc.name,
@@ -181,25 +206,34 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
     return { noProbeTarget: true, reason: 'no_readable_accessory' };
   }
 
+  // One candidate per accessory — its best characteristic — so every attempt
+  // exercises a different physical device. `candidates` is already sorted
+  // best-first, so the first entry seen for an accessory is the one to keep.
+  const bestPerAccessory = new Map<string, ProbeCandidate>();
+  for (const c of candidates) {
+    if (!bestPerAccessory.has(c.accessoryId)) bestPerAccessory.set(c.accessoryId, c);
+  }
+  const ranked = [...bestPerAccessory.values()];
+
   // Round-robin within the highest-priority tier so we exercise different
-  // accessories over time but always prefer sensors over Name reads. The cursor
-  // sets the STARTING point; we then try up to PROBE_MAX_ATTEMPTS distinct
-  // accessories from there so one dead device doesn't fail the whole probe.
-  const topPriority = candidates[0].priority;
-  const topTier = candidates.filter((c) => c.priority === topPriority);
+  // accessories over time but always prefer a real sensor read over a cached
+  // string. The cursor sets the STARTING point inside that tier.
+  //
+  // The tier is rotated, then the REST of the accessories follow as fallback.
+  // Restricting attempts to the tier alone would mean a home with a single
+  // thermometer probes that one accessory forever, and reports the whole home
+  // unverified whenever it is unplugged — which is exactly what
+  // PROBE_MAX_ATTEMPTS exists to prevent.
+  const topPriority = ranked[0].priority;
+  const topTier = ranked.filter((c) => c.priority === topPriority);
+  const rest = ranked.filter((c) => c.priority !== topPriority);
   const cursor = _probeCursors.get(homeId) ?? 0;
   _probeCursors.set(homeId, cursor + 1);
 
-  // Attempt order: one characteristic per accessory (so each try exercises a
-  // different physical device), starting at the cursor.
-  const attempts: ProbeCandidate[] = [];
-  const seenAccessories = new Set<string>();
-  for (let i = 0; i < topTier.length && attempts.length < PROBE_MAX_ATTEMPTS; i++) {
-    const c = topTier[(cursor + i) % topTier.length];
-    if (seenAccessories.has(c.accessoryId)) continue;
-    seenAccessories.add(c.accessoryId);
-    attempts.push(c);
-  }
+  const attempts: ProbeCandidate[] = [
+    ...topTier.map((_, i) => topTier[(cursor + i) % topTier.length]),
+    ...rest,
+  ].slice(0, PROBE_MAX_ATTEMPTS);
 
   // Try each in turn; return on the FIRST successful read. Only if every
   // attempt fails do we report the (last) error as connected-not-verified.

@@ -15,12 +15,21 @@ import { executeHomeKitAction } from '@/relay/local-handler';
 const listAccessories = HomeKit.listAccessories as unknown as ReturnType<typeof vi.fn>;
 const getCharacteristic = HomeKit.getCharacteristic as unknown as ReturnType<typeof vi.fn>;
 
-function acc(id: string, name: string, charType = 'On') {
+// Characteristic names are the relay's canonical snake_case. This fixture used
+// to default to 'On' — HomeKit's PascalCase spelling — which is why the probe's
+// PascalCase preference list looked like it worked in tests and matched nothing
+// in production.
+function acc(id: string, name: string, ...charTypes: string[]) {
+  const types = charTypes.length ? charTypes : ['power_state'];
   return {
     id,
     name,
     isReachable: true,
-    services: [{ characteristics: [{ characteristicType: charType, isReadable: true }] }],
+    services: [{
+      characteristics: types.map((characteristicType) => ({
+        characteristicType, isReadable: true,
+      })),
+    }],
   };
 }
 
@@ -74,5 +83,76 @@ describe('relay.probe accessory selection', () => {
     });
     await executeHomeKitAction('relay.probe', { homeId: 'h4' });
     expect(getCharacteristic.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('relay.probe characteristic preference', () => {
+  beforeEach(() => {
+    listAccessories.mockReset();
+    getCharacteristic.mockReset();
+  });
+
+  it('prefers a real device read over cached metadata', async () => {
+    // `manufacturer` and friends are answered from HomeKit's own cache without
+    // touching the accessory, so probing with one proves nothing about the
+    // home. A home whose every device was unreachable still reported
+    // `verified` because the probe read one of these.
+    listAccessories.mockResolvedValue([
+      acc('meta', 'Hue color candle', 'manufacturer', 'serial_number'),
+      acc('real', 'Kitchen sensor', 'current_temperature'),
+    ]);
+    getCharacteristic.mockResolvedValue({ value: 19.5 });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'p1' });
+    expect(res.accessoryId).toBe('real');
+    expect(res.characteristicType).toBe('current_temperature');
+  });
+
+  it('ranks cached metadata below an unrecognised characteristic', async () => {
+    // An unknown name is at least probably a real read; a known-cached one is
+    // definitely not.
+    listAccessories.mockResolvedValue([
+      acc('meta', 'a', 'model'),
+      acc('unknown', 'b', 'eve_blinds_movement'),
+    ]);
+    getCharacteristic.mockResolvedValue({ value: 1 });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'p2' });
+    expect(res.accessoryId).toBe('unknown');
+  });
+
+  it('still uses cached metadata rather than giving up when it is all there is', async () => {
+    listAccessories.mockResolvedValue([acc('only', 'a', 'name')]);
+    getCharacteristic.mockResolvedValue({ value: 'Lamp' });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'p3' });
+    expect(res.noProbeTarget).toBeUndefined();
+    expect(res.value).toBe('Lamp');
+  });
+
+  it('falls past a dead top-tier accessory into the next tier', async () => {
+    // The top tier can legitimately hold ONE accessory (a home with a single
+    // thermometer). Restricting attempts to the tier would report the whole
+    // home unverified whenever that one device was unplugged.
+    listAccessories.mockResolvedValue([
+      acc('probe-me-first', 'Thermostat', 'current_temperature'),
+      acc('fallback', 'Lamp', 'power_state'),
+    ]);
+    getCharacteristic.mockImplementation(async (id: string) => {
+      if (id === 'probe-me-first') throw unreachable();
+      return { value: true };
+    });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'p4' });
+    expect(res.error).toBeUndefined();
+    expect(res.accessoryId).toBe('fallback');
+  });
+
+  it('does not treat HomeKit PascalCase spellings as preferred', async () => {
+    // Guards the regression directly: if the list ever goes back to PascalCase,
+    // 'On' would outrank a genuine snake_case sensor read.
+    listAccessories.mockResolvedValue([
+      acc('pascal', 'a', 'On'),
+      acc('canonical', 'b', 'current_temperature'),
+    ]);
+    getCharacteristic.mockResolvedValue({ value: 20 });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'p5' });
+    expect(res.accessoryId).toBe('canonical');
   });
 });
