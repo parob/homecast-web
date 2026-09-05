@@ -104,14 +104,25 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0 [&>button]:hidden">
-          {/* Header */}
-          <div className="shrink-0 px-6 pt-6 pb-3">
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0">
+          {/* Header — the ✕ is DialogContent's own, so this row is padded to
+              clear it on the right and to share its centre line at the top.
+
+              That top padding is a calc rather than `pt-5` because the ✕ is
+              anchored in PX (`top-[16px]`) and sized in REM (`p-2` + `h-4`, so
+              2rem tall, centre at 16px + 1rem), while padding is rem — and the
+              app scales its root font size up on a phone. `pt-5` lines the two
+              up at 16px root and is 4px low at 20px. calc(16px + 0.25rem) puts
+              the switch's centre at 16px + 1rem too, at any root size, and is
+              exactly pt-5 at the default one. The switch's wrapper is `flex`
+              for the same reason: Switch is inline-flex, and a block wrapper
+              would sit it on a line box's baseline, a few pixels lower again. */}
+          <div className="shrink-0 pl-6 pr-14 pt-[calc(16px+0.25rem)] pb-3">
             <div className="flex items-start gap-3">
               <DialogTitle className="text-base font-semibold leading-tight flex-1 min-w-0">
                 {automation.name}
               </DialogTitle>
-              <div className="shrink-0 pt-0.5">
+              <div className="shrink-0 flex">
                 <Switch checked={isEnabled} onCheckedChange={handleToggleEnabled} />
               </div>
             </div>
@@ -199,9 +210,10 @@ export function AutomationDetailDialog({ open, onOpenChange, automation, onEdit,
             )}
           </div>
 
-          {/* Footer — Edit + Delete together, Close on other side */}
-          <DialogFooter className="shrink-0 px-6 pb-6 pt-2 flex-row justify-between sm:justify-between">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Close</Button>
+          {/* Footer — Edit + Delete only. Dismiss is the ✕ in the corner, the
+              same place as every other dialog; a second Close down here put it
+              in the one spot the app never puts it. */}
+          <DialogFooter className="shrink-0 px-6 pb-6 pt-2 flex-row justify-end">
             <div className="flex gap-2">
               {!isReadOnlyTrigger(trigger) && (
                 <Button variant="outline" size="sm" onClick={onEdit}>

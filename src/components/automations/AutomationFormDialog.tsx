@@ -354,7 +354,7 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0 [&>button]:hidden">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">{isEditing ? 'Edit Automation' : 'Create Automation'}</DialogTitle>
         {/* Header with HomeKit branding + name */}
         <div className="shrink-0 px-6 pt-5 pb-2">
