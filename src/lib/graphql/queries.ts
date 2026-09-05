@@ -1105,6 +1105,10 @@ export const GET_HISTORY = gql`
         stateMsJson
         transitions
       }
+      gaps {
+        fromTs
+        toTs
+      }
     }
   }
 `;

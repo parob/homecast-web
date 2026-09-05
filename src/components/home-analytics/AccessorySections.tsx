@@ -134,6 +134,7 @@ export function AccessorySeriesSection({
           <Suspense fallback={<div className="h-[200px] w-full" />}>
             <HistoryChart
               points={s.points}
+              gaps={s.gaps}
               carriedValue={s.prevValue}
               unit={s.unit}
               gradientId={`hist-${gradientKey}-${s.characteristicType}`}

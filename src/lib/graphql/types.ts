@@ -2511,6 +2511,21 @@ export interface HistorySeriesData {
   points: HistoryPointData[];
   states: HistoryStateSpanData[];
   stateBuckets: HistoryStateBucketData[];
+  /**
+   * Stretches of the window in which the HOME recorded nothing at all — the
+   * relay was gone, so nothing about this series was known either.
+   *
+   * Not the same as "no points here", which is the ordinary case and means the
+   * value did not move. Optional because the Community resolver does not
+   * compute it: absent reads as "no reason to think anything was missed".
+   */
+  gaps?: HistoryGapData[];
+}
+
+/** @see HistorySeriesData.gaps */
+export interface HistoryGapData {
+  fromTs: number;
+  toTs: number;
 }
 
 export interface HistoryStorageStatsData {

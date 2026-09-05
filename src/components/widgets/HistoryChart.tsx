@@ -8,7 +8,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { HistoryPointData } from '@/lib/graphql/types';
+import type { HistoryGapData, HistoryPointData } from '@/lib/graphql/types';
+import { type ChartDatum, holdUntil, usableGaps, withGapBreaks } from '@/history/gaps';
 import { PLOT_LEFT, PLOT_RIGHT } from '@/components/home-analytics/chartGeometry';
 
 /**
@@ -44,6 +45,14 @@ export interface HistoryChartProps {
    */
   fromTs?: number;
   toTs?: number;
+  /**
+   * Stretches the home recorded nothing across (`HistorySeriesData.gaps`).
+   * The line breaks over these instead of holding the last reading flat, which
+   * is what made a nine-hour power cut look like nine hours of a steady 18°.
+   * Absent — an older server, or the Community resolver — leaves the chart
+   * exactly as it was.
+   */
+  gaps?: HistoryGapData[];
 }
 
 function formatTick(ts: number, spanMs: number): string {
@@ -55,10 +64,15 @@ function formatTick(ts: number, spanMs: number): string {
 }
 
 export default function HistoryChart({
-  points: rawPoints, unit, gradientId, sparkline = false, fromTs, toTs, carriedValue,
+  points: rawPoints, unit, gradientId, sparkline = false, fromTs, toTs, carriedValue, gaps,
 }: HistoryChartProps) {
   const windowed = fromTs !== undefined && toTs !== undefined;
-  const carried = windowed && carriedValue !== null && carriedValue !== undefined
+  // A carried opening value covers the window from its start — unless the
+  // window OPENED inside an outage, where there was nothing to carry.
+  const outages = windowed ? usableGaps(gaps, rawPoints, fromTs, toTs) : [];
+  const openedInOutage = outages.some(g => g.fromTs <= fromTs!);
+  const carried = windowed && !openedInOutage
+    && carriedValue !== null && carriedValue !== undefined
     && (rawPoints.length === 0 || rawPoints[0].ts > fromTs);
   const points = carried
     ? [{ ts: fromTs!, min: carriedValue!, avg: carriedValue!, max: carriedValue!, last: carriedValue!, count: 0 }, ...rawPoints]
@@ -71,10 +85,15 @@ export default function HistoryChart({
 
   // Hold the last reading to the edge of the window — the value did not stop
   // existing when recording paused, and a line ending mid-panel reads as a
-  // rendering bug rather than as "now".
-  const data = windowed && points.length > 0 && points[points.length - 1].ts < toTs
-    ? [...points, { ...points[points.length - 1], ts: toTs }]
+  // rendering bug rather than as "now". Not across an outage, though: holding
+  // it there asserts the one stretch we know nothing about.
+  const hold = windowed && points.length > 0 && points[points.length - 1].ts < toTs
+    ? holdUntil(toTs, points[points.length - 1].ts, outages)
+    : null;
+  const held = hold !== null
+    ? [...points, { ...points[points.length - 1], ts: hold }]
     : points;
+  const data = withGapBreaks(held, outages);
 
   // Blank chart on the left of a 30d view is ambiguous: is that flat nothing,
   // a dead sensor, or a window that reaches back further than the recording?
@@ -116,6 +135,27 @@ export default function HistoryChart({
               }}
             />
           )}
+          {/* Same shading as the lead-in, for the same reason: this stretch was
+              not recorded. It is only labelled where there is room for the
+              words — a narrow band gets the shading alone rather than a caption
+              spilling over its neighbours. */}
+          {!sparkline && outages.map(g => (
+            <ReferenceArea
+              key={g.fromTs}
+              x1={g.fromTs}
+              x2={g.toTs}
+              className="fill-muted-foreground"
+              fillOpacity={0.07}
+              strokeOpacity={0}
+              ifOverflow="extendDomain"
+              label={g.toTs - g.fromTs > spanMs * 0.12 ? {
+                value: 'Not recorded',
+                position: 'center',
+                className: 'fill-muted-foreground',
+                fontSize: 10,
+              } : undefined}
+            />
+          ))}
           {!sparkline && (
             <XAxis
               dataKey="ts"
@@ -154,7 +194,7 @@ export default function HistoryChart({
             <Area
               name="band"
               type="stepAfter"
-              dataKey={(p: HistoryPointData) => [p.min, p.max]}
+              dataKey={(p: ChartDatum) => [p.min, p.max]}
               stroke="none"
               fill="currentColor"
               fillOpacity={0.12}
