@@ -26,6 +26,8 @@
  * binding is `hooks/usePendingWrite.ts`.
  */
 
+import { REQUEST_TIMEOUT_MS } from '@/server/request-timeout';
+
 /**
  * How long a burst must run before the ring appears.
  *
@@ -91,12 +93,17 @@ export const IDLE_GRACE_MS = 400;
 /**
  * How long one burst may hold the ring before we stop believing it.
  *
- * Matched to `REQUEST_TIMEOUT` in `server/websocket.ts` (30s), so a legitimately
- * slow write keeps its ring right up to the moment the transport gives up and
- * the rejection toast fires. Cutting it shorter would leave a silent gap where
- * the ring has gone but nothing has been reported yet.
+ * Matched to the request timeout, so a legitimately slow write keeps its ring
+ * right up to the moment the transport gives up and the rejection toast fires.
+ * Cutting it shorter would leave a silent gap where the ring has gone but
+ * nothing has been reported yet.
+ *
+ * Imported rather than restated. This used to be a `30000` literal held in step
+ * by a comment naming the other file, which is exactly the coupling #59 was
+ * about: raising the request timeout without noticing this would have opened
+ * that silent gap.
  */
-export const MAX_VISIBLE_MS = 30000;
+export const MAX_VISIBLE_MS = REQUEST_TIMEOUT_MS;
 
 type Timer = ReturnType<typeof setTimeout>;
 

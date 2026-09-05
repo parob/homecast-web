@@ -221,8 +221,11 @@ import {
   classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
   oldestCountedInFlight,
 } from './connection-quality';
+import { REQUEST_TIMEOUT_MS } from './request-timeout';
 const HEARTBEAT_INTERVAL = 30000;
-const REQUEST_TIMEOUT = 30000; // 30 second timeout for requests
+// Derived from the server's own relay timeout rather than picked, so the server
+// can always name a failure before this fires — see `request-timeout.ts`.
+const REQUEST_TIMEOUT = REQUEST_TIMEOUT_MS;
 /**
  * How often connection quality is re-judged while a request is outstanding.
  *
