@@ -167,10 +167,22 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
             </div>
           </div>
           {/* Enabling an automation is operating it, not arranging it — and the
-              switch sits exactly where a mis-grab on the way to a drag lands. */}
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+              switch sits exactly where a mis-grab on the way to a drag lands.
+
+              The height is the icon's, and it is what centres the switch. The
+              row above is `items-start` on purpose, so without a height of its
+              own this group shrink-wraps the switch and pins it to the top of
+              the row — leaving it ~5px above the middle of every card whose
+              name fits on one line, which is nearly all of them. Matching the
+              icon centres it against the card in that case and keeps it beside
+              the icon when a long name wraps, which is what `items-start` is
+              there to protect. */}
+          <div className={`flex items-center gap-1 shrink-0 ${compact ? 'h-8' : 'h-9'}`} onClick={(e) => e.stopPropagation()}>
             {!editMode && (
-              <div onClick={handleToggle}>
+              // `flex`, not a bare div: `Switch` is `inline-flex`, so a block
+              // wrapper gives it a text line box and drops it onto the baseline
+              // a couple of pixels off its own centre.
+              <div className="flex items-center" onClick={handleToggle}>
                 <Switch checked={isEnabled} className={compact ? 'scale-90' : ''} />
               </div>
             )}
