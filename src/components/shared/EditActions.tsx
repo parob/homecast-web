@@ -34,12 +34,17 @@ interface ActionButtonProps {
    * padding, same text, same box. A person reading the screen sees one control
    * that means one thing, whether it is on a tile or on a pill.
    *
-   * What differs is only what it contributes to *layout*: `-my-0.5` cancels the
-   * 4px by which it overflows the pill's 16px line box, so it hangs into the
-   * pill rather than stretching it. That matters because this row sits above the
+   * What differs is only what it contributes to *layout*: `-my-1` cancels the
+   * padding by which it overflows the pill's line box, so it hangs into the pill
+   * rather than stretching it. That matters because this row sits above the
    * accessory grid and swaps in mid-drag — Edit Layout is entered by a long
    * press that is already dragging — so a taller row pushes what the finger is
    * holding down the page.
+   *
+   * The badge's padding is now the pill's own, so the two cancel exactly and the
+   * badge fills the pill's height rather than floating inside it. That is the
+   * ceiling on how tall this can grow while the row stays the height it is; the
+   * rest of the target is `HIT_SLOP`, which costs no layout at all.
    *
    * Shrinking the button was the first attempt and was wrong twice over: it made
    * the two badges different sizes for no reason a user could see, and the
@@ -57,7 +62,7 @@ interface ActionButtonProps {
    *
    * A white ring rather than a different fill, so it is still recognisably the
    * same control as the ones on the rows above and below it — only outlined.
-   * `ring` and not `border`: the caller reserves a measured 81px for this
+   * `ring` and not `border`: the caller reserves a measured 5rem for this
    * cluster (see RowEditActions), and a border would grow each pill by 2px and
    * push the pair into the name's truncation.
    */
@@ -87,11 +92,34 @@ interface ActionButtonProps {
  * — visible the moment the summary row and the tiles are on screen together,
  * which they always are.
  *
- * Pinned to the taller of the two, 16px + 4px of padding = 20px, so the tile and
- * the pill agree and neither depends on its surroundings. Both the hide and the
- * pin button render through here, so they move together.
+ * Pinned to one line box, so the tile and the pill agree and neither depends on
+ * its surroundings. Both the hide and the pin button render through here, so
+ * they move together.
+ *
+ * `py-1` and not `py-0.5`: a badge was one line box plus 4px, which measured
+ * 25px tall on the phone this was reported from — Edit Layout is a touch mode
+ * whose only two controls were half the 44px a fingertip needs. `py-1` fills the
+ * summary pill exactly (its own padding is the same 5px), so the badge grows
+ * without the row it hangs in growing; see the `pill` size below.
  */
-const TILE_BADGE = 'px-2 py-0.5 text-[10px] leading-4';
+const TILE_BADGE = 'px-2 py-1 text-[10px] leading-4';
+
+/**
+ * The part of the badge you can hit but cannot see.
+ *
+ * The visible pill cannot simply be grown to 44px square: two of them sit in a
+ * ~200px tile corner beside the accessory's glyph, and the sidebar reserves a
+ * measured strip for the pair before the room name truncates. So the target is
+ * extended past the paint instead — a pseudo-element, which is hit-tested as the
+ * button itself, so nothing about the layout moves.
+ *
+ * The horizontal reach is exactly half the `gap-2` between Hide and Pin, so the
+ * two targets meet and neither reaches into the other: slop that swallows its
+ * neighbour's edge is worse than none, because the wrong thing then happens on a
+ * press that looked accurate. `screenshots/edit-badge-hit-target.spec.ts`
+ * measures both facts in a real browser — jsdom has no hit testing.
+ */
+const HIT_SLOP = "relative before:absolute before:-inset-x-1 before:-inset-y-1.5 before:content-['']";
 
 export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile', onPrimary }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
@@ -118,16 +146,17 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
         // something to sit on over a photographic wallpaper, and a solid fill
         // does that outright. The weight stays semibold for the same reason.
         'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground shadow-sm',
+        HIT_SLOP,
         'transition-colors duration-fast hover:bg-primary/85 active:bg-primary/80',
         'disabled:opacity-50 disabled:hover:bg-primary',
         // See `onPrimary` on ActionButtonProps. Inset, so the ring lands on the
         // pill's own edge instead of outside it — an outset ring would eat into
-        // the 4px gap between Hide and Pin and read as one blurred blob.
+        // the gap between Hide and Pin and read as one blurred blob.
         onPrimary && 'ring-1 ring-inset ring-primary-foreground',
         size === 'tile' ? TILE_BADGE
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.
-          : size === 'pill' ? `${TILE_BADGE} -my-0.5`
+          : size === 'pill' ? `${TILE_BADGE} -my-1`
           // Identical to a tile's. It used to be narrower, which made the
           // sidebar's badges visibly smaller than the ones on the tiles right
           // beside them — the same control, three sizes. The name is kept
@@ -247,7 +276,9 @@ export function TileEditActions({ action, tab, visible = true }: {
   if (!rendered || (!primary && !pinned)) return null;
   return (
     <div className={cn(
-      'absolute right-2.5 top-2.5 z-30 flex items-center gap-1 pointer-events-none',
+      // `gap-2` and not `gap-1`: the gap is what the two hit targets divide
+      // between them, so at 4px each badge could only reach 2px past its paint.
+      'absolute right-2.5 top-2.5 z-30 flex items-center gap-2 pointer-events-none',
       exiting ? 'edit-badge-out' : 'edit-badge-in',
     )}>
       {primary}
@@ -261,8 +292,14 @@ export function TileEditActions({ action, tab, visible = true }: {
  *
  * The caller must add right padding to the row's own content so the name has
  * somewhere to truncate to rather than running underneath these. Measured, the
- * Hide+Pin cluster is 73px and sits 8px in from the edge, so that padding is
- * 81px — `pr-14` was 56px and the name had been truncating under the badges.
+ * Hide+Pin cluster is 4.37rem and sits 0.5rem in from the edge, so that padding
+ * is `pr-20` (5rem) — `pr-14` was 3.5rem and the name had been truncating under
+ * the badges.
+ *
+ * In **rem**, and that is not cosmetic: the app scales its root font size, so on
+ * a phone the same cluster measures 87px against a desktop's 70. The reserve was
+ * a flat `81px`, which covered the desktop and was ~11px short in the mobile
+ * drawer — the case the badges are actually pressed in.
  */
 export function RowEditActions({ action, tab, visible = true, onPrimary }: {
   action: PrimaryEditAction;
@@ -286,8 +323,11 @@ export function RowEditActions({ action, tab, visible = true, onPrimary }: {
     // `-translate-y-1/2`, and the enter animation animates `transform` — on one
     // element the keyframe would replace the centring and the badge would jump
     // half its height as it arrived. Same clash the wiggle documents.
-    <div className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1">
-      <div className={cn('flex items-center gap-1', exiting ? 'edit-badge-out' : 'edit-badge-in')}>
+    <div className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 items-center gap-2">
+      {/* `gap-2` for the same reason as the tile's — it is what the two hit
+          targets divide between them. It widens the cluster, which is why the
+          caller's reserved strip below is measured rather than guessed. */}
+      <div className={cn('flex items-center gap-2', exiting ? 'edit-badge-out' : 'edit-badge-in')}>
         {primary}
         {pinned}
       </div>

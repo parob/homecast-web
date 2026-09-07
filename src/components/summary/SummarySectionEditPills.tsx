@@ -40,11 +40,19 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
  * inside — that is what made the hidden one 8px taller, and a row that jumps
  * under your thumb as you use it is the wrong thing to have built.
  */
-// `pr-0.5` on the trailing edge, against `pl-2.5` on the leading one. The eye is
+// `pr-0` on the trailing edge, against `pl-2.5` on the leading one. The badge is
 // a filled chip with an edge of its own, so the padding that correctly frames
-// text left it looking inset from the pill's own rim; the label keeps the full
-// 2.5. Narrower is also fewer pixels of row, which is what wraps it.
-const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-0.5 text-xs font-medium transition-colors';
+// text only left it looking inset from the pill's own rim; the label keeps the
+// full 2.5. Narrower is also fewer pixels of row, which is what wraps it.
+//
+// Zero and not a hair of padding, because the badge is now exactly as tall as
+// this shell and both are `rounded-full`: at the same height their corner radii
+// are the same number, so sitting the badge flush makes the two curves coincide
+// and the badge becomes the pill's end cap. Any padding at all and its arc sits
+// inside the shell's, which reads as a chip that nearly fits rather than one
+// that does. Nudging either height without the other breaks that — see the
+// `pill` size in EditActions.
+const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-0 text-xs font-medium transition-colors';
 
 export function SummarySectionEditPills({
   layout, isDarkBackground, openSection, onToggleOpen, onToggleHidden,
