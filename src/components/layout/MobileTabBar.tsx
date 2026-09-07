@@ -794,7 +794,6 @@ export function MobileTabBar({
         {editMode && onUnpin && (
           <EditBadge
             kind="remove"
-            size="sm"
             label={`Unpin ${tab.customName || tab.name}`}
             onClick={() => {
               // Unpinning the tab whose editor is open would leave the
@@ -806,7 +805,18 @@ export function MobileTabBar({
             // horizontally while editing, and `overflow-x: auto` forces
             // `overflow-y` to compute to `auto` as well — an overhanging badge
             // would be clipped off the top rather than drawn over the edge.
-            className="absolute top-0 right-0"
+            //
+            // And inset from that box's corner, which is not a corner the bar
+            // actually has. The bar is `rounded-3xl` — a flat 40px, against a
+            // pill measuring 81px tall, so it is very nearly a stadium — and
+            // the LAST slot's top-right corner sits *past* that arc. Pinned to
+            // it, the badge came out exactly tangent to the bar's outline:
+            // 0.2px over, no bar around it at all, with the glass curving away
+            // behind it. That is what reads as hanging off the end rather than
+            // sitting on the tab. Measured both ways in
+            // `screenshots/tab-bar-unpin-badge.spec.ts`, which asserts real
+            // clearance rather than merely "not outside".
+            className="absolute top-0.5 right-0.5"
           />
         )}
 
