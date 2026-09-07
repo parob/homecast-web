@@ -135,15 +135,18 @@ export function StatusBadge({
 
   const showRelay = isRelayEnabled();
 
-  // Community mode on the relay Mac has no connection to describe: Apple Home
-  // is served from this very process and no socket is ever opened, so quality
-  // sits on `unknown` for ever. Reporting that would be a dot permanently
-  // saying "checking" about a hop that does not exist.
+  // Community mode on the relay Mac has no *socket* to describe: Apple Home is
+  // served from this very process and none is ever opened, so `quality` sits on
+  // `unknown` for ever. Pinning it to `good` is what keeps a dot from
+  // permanently saying "checking" about a hop that does not exist.
   //
-  // What it reports instead is the truth of that setup: the home is reachable,
-  // because this machine *is* the home's server. The relay section carries the
-  // detail. With the relay switched off too there is nothing left to say, so
-  // the bubble goes rather than sitting there empty.
+  // It does have a connection to describe, though, and the chain describes it —
+  // This Mac -> Local server -> Home, with no cloud node at all. That is why
+  // the panel is no longer hidden here: it reports the truth of the setup
+  // rather than a socket reading it does not have.
+  //
+  // With the relay switched off, this machine is not serving the home and the
+  // chain would be claiming something false, so the bubble still goes.
   const communityRelayMac = isCommunity && isRelayCapable();
   const effectiveQuality: ConnectionQuality = communityRelayMac ? 'good' : quality;
 
@@ -221,19 +224,31 @@ export function StatusBadge({
         <div className="space-y-3">
           {/* Sections in the same order the badge itself ranks them, so the
               headline you tapped is the first thing you read. */}
-          {!communityRelayMac && (
-            <ConnectionSection
-              quality={effectiveQuality}
-              headline={p.headline}
-              onReconnect={() => { serverConnection.reconnect(); setOpen(false); }}
-              chain={chain}
-              chainVariant={CHAIN_VARIANT}
-            />
-          )}
+          {/* Community used to be gated out of here entirely, on the grounds
+              that its `quality` sits on `unknown` for ever — no socket is
+              opened when the home is served from this very process, and a dot
+              permanently saying "checking" about a hop that does not exist is
+              worse than nothing.
+
+              The chain answers that objection rather than arguing with it. It
+              does not report the missing hop, it shows there isn't one:
+              This Mac -> Local server -> Home, and "Nothing is going through
+              the cloud." Which left the one path shape written for this case
+              as the only one that never reached a screen, and a Community user
+              opening the bubble getting an empty box. `effectiveQuality` is
+              already pinned to `good` above, so nothing here renders a socket
+              reading either way. */}
+          <ConnectionSection
+            quality={effectiveQuality}
+            headline={p.headline}
+            onReconnect={() => { serverConnection.reconnect(); setOpen(false); }}
+            chain={chain}
+            chainVariant={CHAIN_VARIANT}
+          />
 
           {localMode.active && (
             <>
-              {!communityRelayMac && <div className="border-t" />}
+              <div className="border-t" />
               <LocalModeSection
                 onOpenSettings={onOpenLocalModeSettings
                   ? () => { setOpen(false); onOpenLocalModeSettings(); }
@@ -244,7 +259,7 @@ export function StatusBadge({
 
           {showRelay && (
             <>
-              {(!communityRelayMac || localMode.active) && <div className="border-t" />}
+              <div className="border-t" />
               <RelaySection
                 accountType={accountType}
                 accessoryLimit={accessoryLimit}
