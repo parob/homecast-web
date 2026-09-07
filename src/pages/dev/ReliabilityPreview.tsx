@@ -1,0 +1,145 @@
+/**
+ * Dev-only preview of the Reliability section, fed a week shaped like the one
+ * that prompted it: a relay outage of fourteen hours, a power cut at the house
+ * of two and a half hours, and a short stretch of the home not responding.
+ *
+ * Mounted at /dev/reliability by App.tsx in development builds only, so the
+ * hover links between the strip and the outage list can be looked at without
+ * signing in, and without waiting for a real outage.
+ */
+import { UptimeSectionView, type UptimeBucket, type UptimeOutage, type UptimeSummary } from '@/components/settings/UptimeSection';
+
+const HOUR = 60 * 60 * 1000;
+const MIN = 60 * 1000;
+
+interface Span {
+  start: number;
+  end: number;
+  severity: UptimeOutage['severity'];
+}
+
+/** How much of [hourStart, hourStart + 1h) the span covers, in minutes. */
+function overlapMinutes(span: Span, hourStart: number): number {
+  const s = Math.max(span.start, hourStart);
+  const e = Math.min(span.end, hourStart + HOUR);
+  return e > s ? Math.round((e - s) / MIN) : 0;
+}
+
+/** A week of hourly buckets, as the sampler would have written them: a ping a
+ *  minute and a probe every five while connected, and the given spans of
+ *  relay-offline or home-not-responding minutes carved out of that. */
+function buildWeek(now: number, spans: Span[], cachedOnlyHours: number[] = []): UptimeBucket[] {
+  const firstHour = Math.floor((now - 7 * 24 * HOUR) / HOUR) * HOUR;
+  const buckets: UptimeBucket[] = [];
+  for (let h = firstHour; h <= now; h += HOUR) {
+    const minutesInHour = h + HOUR <= now ? 60 : Math.max(1, Math.round((now - h) / MIN));
+    let offline = 0;
+    let degraded = 0;
+    for (const span of spans) {
+      const m = overlapMinutes(span, h);
+      if (span.severity === 'offline') offline += m;
+      else degraded += m;
+    }
+    offline = Math.min(offline, minutesInHour);
+    degraded = Math.min(degraded, minutesInHour - offline);
+    const upMinutes = minutesInHour - offline - degraded;
+    // 12 probes an hour while up; verified unless this was a cached-only hour.
+    const probes = Math.round((upMinutes / 60) * 12);
+    const verified = cachedOnlyHours.includes(h) ? 0 : probes;
+    const connected = upMinutes + (probes - verified);
+    buckets.push({
+      bucketStart: new Date(h).toISOString(),
+      verified,
+      connected,
+      degraded,
+      offline,
+      total: verified + connected + degraded + offline,
+    });
+  }
+  return buckets;
+}
+
+function outage(span: Span): UptimeOutage {
+  return {
+    startedAt: new Date(span.start).toISOString(),
+    endedAt: span.end === Infinity ? null : new Date(span.end).toISOString(),
+    durationSeconds: Math.round(((span.end === Infinity ? Date.now() : span.end) - span.start) / 1000),
+    severity: span.severity,
+  };
+}
+
+function healthyWeek(now: number): UptimeSummary {
+  const relayOut: Span = { start: now - 52 * HOUR - 10 * MIN, end: now - 52 * HOUR - 10 * MIN + (14 * HOUR + 12 * MIN), severity: 'offline' };
+  const powerCut: Span = { start: now - 76 * HOUR + 46 * MIN, end: now - 76 * HOUR + 46 * MIN + (2 * HOUR + 30 * MIN), severity: 'degraded' };
+  const blip: Span = { start: now - 20 * HOUR + 3 * MIN, end: now - 20 * HOUR + 16 * MIN, severity: 'degraded' };
+  const spans = [relayOut, powerCut, blip];
+  const cachedOnly = [1, 2, 3].map((k) => Math.floor((powerCut.start - k * HOUR) / HOUR) * HOUR);
+  return {
+    currentStatus: 'verified',
+    uptimePercent24h: 99.2,
+    uptimePercent7d: 93.7,
+    uptimePercent30d: 95.8,
+    verifiedRatio7d: 54.2,
+    avgLatencyMs: 398,
+    statusSince: null,
+    lastProbe: {
+      probedAt: new Date(now - 3 * MIN).toISOString(),
+      status: 'verified',
+      accessoryName: 'Bedroom 1 Spot 1',
+      characteristicType: 'power_state',
+      value: 'true',
+      reason: null,
+    },
+    timeline: buildWeek(now, spans, cachedOnly),
+    outages: [outage(blip), outage(relayOut), outage(powerCut)],
+  };
+}
+
+function offlineNow(now: number): UptimeSummary {
+  const ongoing: Span = { start: now - 3 * HOUR - 7 * MIN, end: Infinity, severity: 'offline' };
+  const earlier: Span = { start: now - 5 * 24 * HOUR, end: now - 5 * 24 * HOUR + 10 * MIN, severity: 'offline' };
+  const spans = [{ ...ongoing, end: now }, earlier];
+  return {
+    currentStatus: 'offline',
+    uptimePercent24h: 87.1,
+    uptimePercent7d: 98.0,
+    uptimePercent30d: 97.4,
+    verifiedRatio7d: 96.0,
+    avgLatencyMs: 361,
+    statusSince: new Date(ongoing.start).toISOString(),
+    lastProbe: {
+      probedAt: new Date(ongoing.start - 2 * MIN).toISOString(),
+      status: 'verified',
+      accessoryName: 'Kitchen',
+      characteristicType: 'brightness',
+      value: '70',
+      reason: null,
+    },
+    timeline: buildWeek(now, spans),
+    outages: [outage(ongoing), outage(earlier)],
+  };
+}
+
+export default function ReliabilityPreview() {
+  const now = Date.now();
+  return (
+    <div className="min-h-screen bg-background text-foreground p-6">
+      <div className="mx-auto max-w-[440px] space-y-10">
+        <div>
+          <h1 className="text-sm font-semibold">Reliability section, preview</h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            Development only. A week shaped like the real one: a fourteen-hour relay outage, a two-and-a-half-hour power cut at the house, a short blip, and three cached-only hours before the cut. Hover the strip, and hover the outages.
+          </p>
+        </div>
+        <section className="space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground">A healthy home today</h2>
+          <UptimeSectionView summary={healthyWeek(now)} />
+        </section>
+        <section className="space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground">While the relay is offline</h2>
+          <UptimeSectionView summary={offlineNow(now)} />
+        </section>
+      </div>
+    </div>
+  );
+}
