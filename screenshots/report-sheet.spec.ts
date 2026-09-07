@@ -6,6 +6,10 @@
  * an empty state. Captures what someone actually sees when they report
  * something, which is the only way to judge an affordance that lives in a
  * list.
+ *
+ * The whole add-to-an-existing-report path now starts on the compose tab, so
+ * that is where these drive it from; Previous is captured as the reference list
+ * it is, with nothing to press on a row but the row itself.
  */
 import { test, type Page } from '@playwright/test';
 import { setupMocks } from './mocks';
@@ -119,10 +123,18 @@ test('report sheet — previous reports tab', async ({ page }) => {
   await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-previous.png' });
 });
 
+test('report sheet — choosing an existing report', async ({ page }) => {
+  await asAdminReporter(page);
+  await openReportSheet(page);
+  await page.getByRole('button', { name: 'Add to an existing report' }).click();
+  await page.waitForTimeout(800);
+  await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-picking.png' });
+});
+
 test('report sheet — adding to an open issue', async ({ page }) => {
   await asAdminReporter(page);
   await openReportSheet(page);
-  await page.getByRole('tab', { name: 'Previous' }).click();
+  await page.getByRole('button', { name: 'Add to an existing report' }).click();
   await page.getByRole('button', { name: 'Add this report to #71' }).click();
   await page.waitForTimeout(500);
   await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-adding-to.png' });
@@ -131,7 +143,7 @@ test('report sheet — adding to an open issue', async ({ page }) => {
 test('report sheet — adding to an issue already marked fixed', async ({ page }) => {
   await asAdminReporter(page);
   await openReportSheet(page);
-  await page.getByRole('tab', { name: 'Previous' }).click();
+  await page.getByRole('button', { name: 'Add to an existing report' }).click();
   await page.getByRole('button', { name: 'Fixed' }).click();
   await page.getByRole('button', { name: 'Add this report to #64' }).click();
   await page.waitForTimeout(500);
