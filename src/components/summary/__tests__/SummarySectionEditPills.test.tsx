@@ -126,6 +126,19 @@ describe('a pill is the same size whichever state it is in', () => {
     expect(badge).toContain('-my-1');       // ...tucked into the line box
   });
 
+  it('sits the badge flush with the pill’s trailing edge', () => {
+    // Both are `rounded-full` and the same height, so their radii are the same
+    // number: flush, the two arcs coincide and the badge caps the pill. Any
+    // right padding and its curve sits inside the pill's — a chip that nearly
+    // fits. The rendered geometry is asserted in
+    // screenshots/edit-badge-hit-target.spec.ts; this guards the class that
+    // produces it, since a `pr-*` here is the easy thing to add back.
+    setup(null);
+    const shell = screen.getByRole('button', { name: 'Hide Scenes' }).parentElement!.className;
+    expect(shell).toContain('pr-0');
+    expect(shell.split(/\s+/).filter(c => /^pr-/.test(c))).toEqual(['pr-0']);
+  });
+
   it('builds both states from the same shell', () => {
     // jsdom has no layout, so measuring heights would be theatre. The invariant
     // that actually prevents the jump is structural: both states put their

@@ -144,6 +144,41 @@ test.describe('the Edit Layout badges', () => {
     expect(Math.abs(shell - live), `the row grew ${shell - live}px on entering Edit Layout`).toBeLessThanOrEqual(1);
   });
 
+  /**
+   * The badge is the pill's end cap, not a chip sitting near its edge.
+   *
+   * Both are `rounded-full`, so their corner radius is half their height — at
+   * the same height the two arcs are the same arc, and flush against the right
+   * edge they coincide exactly. A hair of padding on either side of that and
+   * the badge's curve sits inside the pill's, which reads as a chip that nearly
+   * fits. Two numbers, and only a browser has them: the shell's padding and the
+   * badge's height are written in different files.
+   */
+  test('the badge caps the pill it sits in', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
+
+    await setupMocks(page);
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 20000 });
+    await enterEditLayout(page);
+
+    const badge = page.getByRole('button', { name: 'Hide Scenes' });
+    await expect(badge).toBeVisible();
+
+    const cap = await badge.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const s = el.parentElement!.getBoundingClientRect();
+      return {
+        rightGap: +(s.right - b.right).toFixed(2),
+        heightGap: +(s.height - b.height).toFixed(2),
+      };
+    });
+
+    console.log('end cap:', JSON.stringify(cap));
+    expect(cap.rightGap, `the badge sits ${cap.rightGap}px inside the pill's right edge`).toBe(0);
+    expect(cap.heightGap, `the badge is ${cap.heightGap}px shorter than the pill`).toBe(0);
+  });
+
   test('capture', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
 
