@@ -62,7 +62,7 @@ describe('the edit badge on a selected row', () => {
   });
 
   it('outlines without changing the badge’s size', () => {
-    // The sidebar row reserves a measured 81px for the Hide+Pin cluster, so a
+    // The sidebar row reserves a measured 5rem for the Hide+Pin cluster, so a
     // border (which grows the box) would push the name into truncation. `ring`
     // is drawn as a shadow and takes no layout.
     const sizing = (el: HTMLElement) =>

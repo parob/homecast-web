@@ -48,7 +48,7 @@ export function PinnedActionCard({ action, homeId, isViewOnly, onRunAction }: {
       editMode={false}
       touchMode
       running={runner.runningId === action.id}
-      progress={runner.runningId === action.id ? runner.progress : null}
+      elapsed={runner.runningId === action.id ? runner.elapsed : null}
       runningTextOf={runner.runningTextOf}
       onPress={runner.press}
       onRun={runner.run}

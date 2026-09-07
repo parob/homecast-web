@@ -350,29 +350,34 @@ describe('shortcut cards', () => {
     expect(within(card('lights')).getByText(/Turning off/)).toBeTruthy();
   });
 
-  it('says what it is doing, and counts up as writes settle', async () => {
-    let release: () => void = () => {};
-    let report: (done: number, total: number) => void = () => {};
-    const onRunAction = vi.fn((_a, opts) => {
-      report = opts.onProgress;
-      return new Promise<void>(resolve => { release = resolve; });
-    });
-    render(
-      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
-    );
+  it('says what it is doing, and starts counting the seconds once it is slow', async () => {
+    // It used to say `done of total`, and on a bulk-capable relay that count
+    // could not move — one request, so it sat at `0 of 41` for the whole run.
+    // See running-subtitle.ts and homecast-cloud#87.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let release: () => void = () => {};
+      const onRunAction = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+      render(
+        <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      );
 
-    fireEvent.click(switchOn('lights'));
-    // Seeded before the first write settles, so the count never starts blank
-    expect(within(card('lights')).getByText('Turning off · 0 of 1')).toBeTruthy();
+      fireEvent.click(switchOn('lights'));
+      // The verb on its own to begin with: most presses answer inside a second,
+      // and a counter that appears and vanishes on every one is a flicker.
+      expect(within(card('lights')).getByText('Turning off')).toBeTruthy();
 
-    await act(async () => { report(1, 4); });
-    const line = within(card('lights')).getByText('Turning off · 1 of 4');
-    // and the live region is marked so it is announced, not just seen
-    expect(line.getAttribute('aria-live')).toBe('polite');
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      const line = within(card('lights')).getByText('Turning off · 2s');
+      // and the live region is marked so it is announced, not just seen
+      expect(line.getAttribute('aria-live')).toBe('polite');
 
-    await act(async () => { release(); });
-    // back to reporting state once it finishes
-    expect(within(card('lights')).getByText('All on')).toBeTruthy();
+      await act(async () => { release(); });
+      // back to reporting state once it finishes
+      expect(within(card('lights')).getByText('All on')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves a nothing-to-do action in place, dimmed and unpressable', () => {

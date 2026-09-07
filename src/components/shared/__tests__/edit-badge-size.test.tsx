@@ -88,6 +88,32 @@ describe('the edit badge', () => {
     expect(row).toBe(sizing(screen.getByRole('button', { name: 'Hide Lamp' })));
   });
 
+  /**
+   * The visible pill is as big as the tile corner allows; the rest of the
+   * target is a pseudo-element, which is hit-tested as the button itself.
+   * jsdom cannot hit-test, so this only guards that the slop is still declared
+   * on every badge — `screenshots/edit-badge-hit-target.spec.ts` measures what
+   * a fingertip actually gets, in a real browser.
+   */
+  it('carries hit slop past its paint, on both buttons', () => {
+    render(
+      <PinnedTabsProvider value={PINS as never}>
+        <TileEditActions
+          action={{ kind: 'hide', isHidden: false, onToggle: vi.fn(), name: 'Lamp' }}
+          tab={{ type: 'accessory', id: 'a', name: 'Lamp', homeId: 'h' }}
+        />
+      </PinnedTabsProvider>,
+    );
+    for (const name of ['Hide Lamp', 'Pin to Tab Bar']) {
+      const cls = screen.getByRole('button', { name }).className;
+      // `relative` is load-bearing: without it the slop positions against some
+      // ancestor and lands nowhere near the badge.
+      expect(cls, name).toContain('relative');
+      expect(cls, name).toContain('before:absolute');
+      expect(cls, name).toContain("before:content-['']");
+    }
+  });
+
   it('sizes the pin button the same way, since it is the same control', () => {
     render(
       <PinnedTabsProvider value={PINS as never}>

@@ -16,14 +16,17 @@ vi.mock('@/hooks/useHomeKitData', () => ({
   clearPendingUpdate: (...args: unknown[]) => clearPendingUpdate(...args),
 }));
 const toastPlain = vi.fn();
+const toastSuccess = vi.fn();
 vi.mock('sonner', () => {
   const toast = (...args: unknown[]) => toastPlain(...args);
   toast.error = (...args: unknown[]) => toastError(...args);
   toast.warning = (...args: unknown[]) => toastWarning(...args);
+  toast.success = (...args: unknown[]) => toastSuccess(...args);
   return { toast };
 });
 
 const { useRunHomeAction, __resetWriteQueue, __setBulkWriteSupport } = await import('../useRunHomeAction');
+const { closeActionFailures, getActionFailures } = await import('../action-failures');
 type HomeAction = import('../catalog').HomeAction;
 
 interface Asked { accessoryId: string; characteristicType: string; value: unknown; homeId?: string }
@@ -90,6 +93,25 @@ function action(overrides: Partial<HomeAction> = {}): HomeAction {
   };
 }
 
+/**
+ * The sentence the toast is showing.
+ *
+ * The description is a node rather than a string wherever there is a failure
+ * sheet to open — it carries the tap that opens it — so the text lives in its
+ * props. Plain strings still pass straight through, which is what the branches
+ * with nothing to show keep using.
+ */
+function descriptionText(opts: unknown): string {
+  const d = (opts as { description?: unknown } | undefined)?.description;
+  if (typeof d === 'string') return d;
+  return (d as { props?: { text?: string } })?.props?.text ?? '';
+}
+
+/** Tap the description, which is the way through to the failure sheet. */
+function openDetails(opts: unknown): void {
+  (opts as { description: { props: { onDetails: () => void } } }).description.props.onDetails();
+}
+
 function setup(opts: { isViewOnly?: boolean } = {}) {
   const updateCharacteristicInCache = vi.fn();
   const { result } = renderHook(() => useRunHomeAction({
@@ -111,6 +133,8 @@ beforeEach(() => {
   toastError.mockReset();
   toastWarning.mockReset();
   toastPlain.mockReset();
+  toastSuccess.mockReset();
+  closeActionFailures();
 });
 
 describe('useRunHomeAction', () => {
@@ -213,9 +237,10 @@ describe('useRunHomeAction', () => {
     expect(updateCharacteristicInCache).toHaveBeenCalledWith('b', 'on', 'true');
     expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('a', 'power_state', 'true');
 
-    expect(toastWarning).toHaveBeenCalledWith('1 of 2 changed', expect.objectContaining({
-      description: '1 accessory did not respond',
-    }));
+    // These writes carry no `name` — only the power actions populate one — so
+    // the description is still the count it always was.
+    expect(toastWarning.mock.calls.at(-1)?.[0]).toBe('1 of 2 changed');
+    expect(descriptionText(toastWarning.mock.calls.at(-1)?.[1])).toBe('1 accessory didn’t respond');
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -765,9 +790,129 @@ describe('a bulb off at the wall is not an error', () => {
     await run(action({ steps: [{ writes: [w('ok', true), w('broken', true), w('dead1', false)] }] }));
 
     // The reachable failure is the one worth reporting, and it is counted on
-    // its own — lumping the unreachable in would inflate the number.
-    expect(toastWarning).toHaveBeenCalledWith('2 of 3 changed', expect.objectContaining({
-      description: '1 accessory did not respond',
-    }));
+    // its own — lumping the unreachable in would inflate the number. It is also
+    // named: these writes come from a power action, which carries names.
+    expect(toastWarning.mock.calls.at(-1)?.[0]).toBe('2 of 3 changed');
+    expect(descriptionText(toastWarning.mock.calls.at(-1)?.[1])).toBe('Light broken didn’t respond');
+  });
+
+  it('names the accessories that failed rather than only counting them', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['broken1', 'broken2'] }));
+    const { run } = setup();
+    await run(action({ steps: [{ writes: [w('ok', true), w('broken1', true), w('broken2', true)] }] }));
+
+    // The whole point of homecast-cloud#87: the app knew which two all along.
+    // Finding them otherwise means hunting the grid for greyed-out tiles.
+    expect(toastWarning.mock.calls.at(-1)?.[0]).toBe('1 of 3 changed');
+    expect(descriptionText(toastWarning.mock.calls.at(-1)?.[1]))
+      .toBe('Light broken1 and Light broken2 didn’t respond');
+  });
+});
+
+describe('retrying what did not land', () => {
+  const w = (id: string) => ({
+    accessoryId: id, characteristicType: 'power_state', reportedCharacteristicType: 'power_state',
+    value: true as const, previousValue: false, reachable: true, name: `Light ${id}`,
+  });
+  const threeLights = () => action({
+    steps: [{ writes: [w('ok'), w('bad1'), w('bad2')] }],
+  });
+
+  /** The options object the partial-run toast was given. */
+  const lastWarning = () => toastWarning.mock.calls.at(-1)?.[1] as {
+    action: { label: string; onClick: () => void };
+  };
+
+  it('offers a one-tap Retry, and hands the detail to the sentence itself', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+
+    // One button, not two: a second chip beside Retry leaves the sentence
+    // about 115px on a 290px phone toast, which wraps it onto three lines.
+    expect(lastWarning().action.label).toBe('Retry');
+    expect(toastWarning.mock.calls.at(-1)?.[1]).not.toHaveProperty('cancel');
+    expect(descriptionText(toastWarning.mock.calls.at(-1)?.[1]))
+      .toBe('Light bad1 and Light bad2 didn’t respond');
+  });
+
+  it('re-sends only the writes that failed, not the whole action', async () => {
+    // Pressing "All lights" again would re-write all three — and on a two-way
+    // card would read as a second toggle. Retry means these two.
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+
+    request.mockClear();
+    await lastWarning().action.onClick();
+    await vi.waitFor(() => expect(request).toHaveBeenCalled());
+
+    expect(asked().map(a => a.accessoryId)).toEqual(['bad1', 'bad2']);
+    expect(asked().every(a => a.homeId === 'home-1')).toBe(true);
+  });
+
+  it('answers a successful retry out loud, and names what came back', async () => {
+    // The ordinary path stays silent on success — nobody needs telling the
+    // lights they just turned on came on. A retry is a question the user asked
+    // by pressing a button, so it gets an answer.
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+
+    request.mockImplementation(bulkRelay());
+    await lastWarning().action.onClick();
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+
+    expect(toastSuccess).toHaveBeenCalledWith('Light bad1 and Light bad2 responded');
+  });
+
+  it('does not report a failed retry as the whole action failing', async () => {
+    // The retry's writes are the previous run's failures, so `0 of 2 changed`
+    // is arithmetic about a set the user never chose, and "All lights failed"
+    // blames the action for two bulbs.
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+
+    toastError.mockClear();
+    await lastWarning().action.onClick();
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalled());
+
+    expect(toastError.mock.calls.at(-1)?.[0]).toBe('Still not responding');
+    expect(descriptionText(toastError.mock.calls.at(-1)?.[1]))
+      .toBe('Light bad1 and Light bad2 didn’t respond');
+    expect(toastError).not.toHaveBeenCalledWith(
+      'All lights failed', expect.anything(),
+    );
+  });
+
+  it('opens the sheet with a row per accessory, each carrying its own reason', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+
+    expect(getActionFailures()).toBeNull();
+    openDetails(toastWarning.mock.calls.at(-1)?.[1]);
+
+    const open = getActionFailures();
+    expect(open?.actionLabel).toBe('All lights');
+    expect(open?.failures.map(f => f.name)).toEqual(['Light bad1', 'Light bad2']);
+    // The relay's own words for this accessory, not a summary of all of them —
+    // this is the only surface that keeps them apart.
+    expect(open?.failures[0].reason).toContain('no response');
+  });
+
+  it('clears a row from the open sheet once its retry lands', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['bad1', 'bad2'] }));
+    const { run } = setup();
+    await run(threeLights());
+    openDetails(toastWarning.mock.calls.at(-1)?.[1]);
+
+    // Only bad1 comes back this time.
+    request.mockImplementation(bulkRelay({ failing: ['bad2'] }));
+    getActionFailures()!.retry(getActionFailures()!.failures);
+    await vi.waitFor(() => expect(getActionFailures()?.failures).toHaveLength(1));
+
+    expect(getActionFailures()?.failures[0].accessoryId).toBe('bad2');
   });
 });

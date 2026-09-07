@@ -109,17 +109,34 @@ describe('a pill is the same size whichever state it is in', () => {
     // Same badge as an accessory tile: one control that means one thing, on a
     // pill or on a tile. Measured at 39px wide either way.
     //
-    // And `-my-0.5`, which cancels the 4px by which it overflows the pill's
+    // And `-my-1`, which cancels the padding by which it overflows the pill's
     // line box — so the pill stays the height of the live one beside it. This
     // row swaps in while a tile is being dragged, and it sits above that grid,
-    // so a taller row pushes what the finger is holding down the page.
+    // so a taller row pushes what the finger is holding down the page. The
+    // negative margin has to track the badge's own `py-`: growing the badge for
+    // a fingertip without growing this is exactly how the row gets taller.
     //
-    // Asserted as classes because jsdom has no layout to measure.
+    // Asserted as classes because jsdom has no layout to measure — the real
+    // height is measured in screenshots/edit-badge-hit-target.spec.ts.
     setup(null);
     const badge = screen.getByRole('button', { name: 'Hide Scenes' }).className;
     expect(badge).toContain('px-2');        // the tile's padding, not a shrunk one
     expect(badge).toContain('text-[10px]'); // ...and its text
-    expect(badge).toContain('-my-0.5');     // ...tucked into the line box
+    expect(badge).toContain('py-1');        // ...its height
+    expect(badge).toContain('-my-1');       // ...tucked into the line box
+  });
+
+  it('sits the badge flush with the pill’s trailing edge', () => {
+    // Both are `rounded-full` and the same height, so their radii are the same
+    // number: flush, the two arcs coincide and the badge caps the pill. Any
+    // right padding and its curve sits inside the pill's — a chip that nearly
+    // fits. The rendered geometry is asserted in
+    // screenshots/edit-badge-hit-target.spec.ts; this guards the class that
+    // produces it, since a `pr-*` here is the easy thing to add back.
+    setup(null);
+    const shell = screen.getByRole('button', { name: 'Hide Scenes' }).parentElement!.className;
+    expect(shell).toContain('pr-0');
+    expect(shell.split(/\s+/).filter(c => /^pr-/.test(c))).toEqual(['pr-0']);
   });
 
   it('builds both states from the same shell', () => {

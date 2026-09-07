@@ -112,12 +112,13 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
       </div>
 
       {onAddTo && (
-        // The plus on each row is small and easy to miss when you came here to
-        // read rather than to file. One line saying what it does costs less
-        // than a reporter opening a second issue for the same fault.
+        // Given `onAddTo`, the reader pressed something that said "add to an
+        // existing report" and is here to choose one — so the line says which
+        // of the two things a tap does, rather than advertising that adding is
+        // possible at all.
         <p className="text-xs text-muted-foreground">
-          Tap a report to open it, or <strong className="font-medium">Add</strong> to
-          send yours to it instead of opening a new one.
+          <strong className="font-medium">Add</strong> sends your report to that
+          one instead of opening a new one. Tapping the title opens it on GitHub.
         </p>
       )}
 
@@ -185,7 +186,7 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
               // add a third of the list's height for a button most rows never
               // get pressed. The label is short because the column is narrow;
               // what it adds to is in the aria-label and, once pressed, in the
-              // banner on the compose tab.
+              // banner that replaces the picker.
               <button
                 type="button"
                 onClick={() => onAddTo(issue)}
