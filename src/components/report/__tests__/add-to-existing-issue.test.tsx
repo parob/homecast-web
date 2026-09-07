@@ -9,10 +9,14 @@ import type { ReportedIssue } from '@/lib/report/issues';
  * Sending a report to an issue that is already open.
  *
  * The point of the feature is one field on one request, so that is what these
- * pin down: that picking a report in Previous puts its number on the submitted
- * report, that clearing the banner takes it off again, and — the part that is
- * easy to get wrong — that the confirmation names where the report ACTUALLY
- * went rather than where it was asked to go.
+ * pin down: that picking a report puts its number on the submitted report, that
+ * clearing the banner takes it off again, and — the part that is easy to get
+ * wrong — that the confirmation names where the report ACTUALLY went rather
+ * than where it was asked to go.
+ *
+ * The picker is reached from the compose tab, not from Previous, and the last
+ * test here is what holds that: Previous offers no way to add, so a report can
+ * only be aimed at an issue from the tab it is being written on.
  */
 
 const ISSUES: ReportedIssue[] = [
@@ -60,8 +64,9 @@ async function compose(addToIssue: boolean) {
   render(<ReportSheet open onOpenChange={() => {}} />);
 
   if (addToIssue) {
-    // Radix switches tabs on mousedown, not click.
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Previous' }));
+    // Both steps are on the compose tab: the picker opens in place of the form
+    // and closes again onto it.
+    fireEvent.click(screen.getByRole('button', { name: 'Add to an existing report' }));
     fireEvent.click(await screen.findByRole('button', { name: /Add this report to #71/ }));
   }
 
@@ -86,6 +91,36 @@ describe('adding a report to an existing issue', () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+  });
+
+  it('offers the choice on the compose tab, and nowhere on Previous', async () => {
+    render(<ReportSheet open onOpenChange={() => {}} />);
+
+    expect(screen.getByRole('button', { name: 'Add to an existing report' })).toBeTruthy();
+
+    // Radix switches tabs on mousedown, not click.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Previous' }));
+
+    // The list is there to read — and that is all it is there for.
+    expect(await screen.findByText(/Analytics draws a value/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Add this report to #71/ })).toBeNull();
+  });
+
+  it('shows the picker in place of the form, and the form again once one is picked', async () => {
+    render(<ReportSheet open onOpenChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to an existing report' }));
+
+    // While picking, the form is out of the way — no field, no Send.
+    expect(await screen.findByText(/Analytics draws a value/)).toBeTruthy();
+    expect(screen.queryByLabelText('Your feedback')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Add this report to #71/ }));
+
+    expect(screen.getByText('Adding to #71')).toBeTruthy();
+    expect(screen.getByLabelText('Your feedback')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
 
   it('sends no issue number when nothing was picked', async () => {

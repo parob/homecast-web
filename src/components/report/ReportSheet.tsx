@@ -23,15 +23,23 @@
  * What IS attached is listed, with a preview, and can be removed. Attaching a
  * screenshot and a log buffer silently would be a poor trade for trust.
  *
- * A report can be added to an issue that is already open, chosen from the
- * Previous tab. The server has always done this by itself when two reports
- * fingerprint alike; this is the same destination, chosen deliberately, for
- * the far commoner case of the same fault described in different words.
+ * A report can be added to an issue that is already open. The server has always
+ * done this by itself when two reports fingerprint alike; this is the same
+ * destination, chosen deliberately, for the far commoner case of the same fault
+ * described in different words.
+ *
+ * That choice is made HERE, on the compose tab, and not on Previous. Where the
+ * report goes is a property of the report being written, so it belongs beside
+ * the field you are writing it in — the same slot, empty or filled, all the way
+ * through. It used to live as a small plus on every row of Previous, which meant
+ * the one place someone could learn the option existed was a tab they had no
+ * reason to open, and the ordinary way to reach it was to abandon what they were
+ * typing. Previous is a reference again: what is known, and what is fixed.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, CornerDownRight, ImagePlus, Loader2, Play, Trash2, Video, X,
+  AlertCircle, ChevronRight, CornerDownRight, ImagePlus, Loader2, Play, Trash2, Video, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -147,7 +155,12 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // The issue this report is being added to, if the reporter picked one in
   // Previous. Null is the ordinary case: file a new one.
   const [addingTo, setAddingTo] = useState<ReportedIssue | null>(null);
-  // Controlled, so picking an issue can bring the compose tab back with it.
+  // Choosing that issue, which happens on this tab. It replaces the form rather
+  // than expanding under it: the list is up to 20 rows and needs the sheet's
+  // whole height, and a second scroller nested inside the form's is a poor thing
+  // to hand someone one-handed on a phone. Nothing typed is lost — it is the
+  // same state either way, still here when the picker closes.
+  const [picking, setPicking] = useState(false);
   const [tab, setTab] = useState('report');
 
   const recordingRef = useRef<ActiveRecording | null>(null);
@@ -163,6 +176,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     setError(null);
     setPreview(null);
     setAddingTo(null);
+    setPicking(false);
     setTab('report');
   }, [open, initialScreenshot]);
 
@@ -379,15 +393,10 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               value="known"
               className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto px-2 py-1"
             >
-              {/* Picking one carries you back to what you were writing — the
-                  choice is about where the report goes, not a place to be
-                  left standing. */}
-              <ReportedIssues
-                onAddTo={(issue) => {
-                  setAddingTo(issue);
-                  setTab('report');
-                }}
-              />
+              {/* No `onAddTo`: a reference, which is all this tab claims to be.
+                  Choosing where a report goes happens on the tab where the
+                  report is written. */}
+              <ReportedIssues />
             </TabsContent>
 
             {/* `px-1 -mx-1`: the focus ring is drawn outside the element's box,
@@ -399,10 +408,30 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               value="report"
               className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-2 py-1"
             >
+            {picking ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">Add to an existing report</div>
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={() => setPicking(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <ReportedIssues
+                  onAddTo={(issue) => {
+                    setAddingTo(issue);
+                    setPicking(false);
+                  }}
+                />
+              </>
+            ) : (
+              <>
             {/* Above the field, not below the Send button: it changes what
                 pressing Send means, so it has to be read before anything is
                 typed rather than discovered afterwards. */}
-            {addingTo && (
+            {addingTo ? (
               <div className="flex items-start gap-2 rounded-md border border-primary/40 bg-primary/5 p-2">
                 <CornerDownRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
@@ -430,6 +459,21 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+            ) : (
+              // The same slot, unfilled. Dashed rather than solid because
+              // nothing has been chosen yet: pressing it and picking a report
+              // turns this exact row into the banner above, which is the whole
+              // of the state there is to understand.
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => setPicking(true)}
+                className="flex w-full items-center gap-2 rounded-md border border-dashed p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+              >
+                <CornerDownRight className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1">Add to an existing report</span>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </button>
             )}
 
             <Textarea
@@ -587,6 +631,8 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
                 )}
               </Button>
             </div>
+              </>
+            )}
             </TabsContent>
           </Tabs>
         </DialogContent>
