@@ -214,6 +214,9 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
               </div>
             ))}
           </div>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Reachable is your relay's connection to the cloud, so every home on the same relay shares it. Verified and Home not responding are this home's own checks.
+          </p>
         </div>
         {s.uptimePercent7d > 0 && (
           <p className="text-[10px] text-muted-foreground">
@@ -246,9 +249,12 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
               return (
                 <div key={`${o.startedAt}-${idx}`} className="flex items-center justify-between rounded border bg-background/60 px-2 py-1">
                   <span className={o.severity === 'offline' ? 'text-red-600' : 'text-orange-600'}>
+                    {/* An offline outage is the relay's, and it shows on every
+                        home that relay serves; say so, or a power cut at one
+                        house reads as three houses going down. */}
                     {ongoing
-                      ? `Currently ${o.severity === 'offline' ? 'offline' : 'degraded'} since ${formatRelativeAgo(o.startedAt)}`
-                      : `${o.severity === 'offline' ? 'Offline' : 'Degraded'} ${formatRelativeAgo(o.startedAt)}`}
+                      ? `${o.severity === 'offline' ? 'Relay offline' : 'Home not responding'} since ${formatRelativeAgo(o.startedAt)}`
+                      : `${o.severity === 'offline' ? 'Relay offline' : 'Home not responding'} ${formatRelativeAgo(o.startedAt)}`}
                   </span>
                   <span className="text-muted-foreground">
                     {ongoing ? `${formatDuration(o.durationSeconds)} so far` : formatDuration(o.durationSeconds)}
