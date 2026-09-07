@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { createElement, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { serverConnection } from '@/server/connection';
 import { trackWrite, accessoryKey, actionKey } from '@/lib/pending-writes';
@@ -6,7 +6,9 @@ import { markPendingUpdate, clearPendingUpdate } from '@/hooks/useHomeKitData';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { describeError, isUndecidedWrite } from '@/lib/describe-error';
 import type { BulkWriteResponse } from '@/native/homekit-bridge';
-import { describeFailedWrites } from './failure-summary';
+import { buildActionFailures, describeFailedWrites, describeRetrySuccess } from './failure-summary';
+import { openActionFailures, resolveActionFailures, type ActionFailure } from './action-failures';
+import { FailureToastDescription } from './FailureToastDescription';
 import type { HomeAction, HomeActionWrite } from './catalog';
 
 /**
@@ -191,6 +193,16 @@ export interface RunHomeActionOverrides {
    * recalled; this stops the queue, which on a big home is most of it.
    */
   signal?: AbortSignal;
+  /**
+   * This run is a retry of writes that failed, not a fresh press.
+   *
+   * Only the reporting differs. A retry's writes are the previous run's
+   * failures, so "0 of 2 changed" would be arithmetic about a set the user
+   * never chose, and `${label} failed` would blame the whole action for two
+   * bulbs. It also earns a success notice, which an ordinary run does not: the
+   * user asked a question by pressing Retry, and silence is not an answer.
+   */
+  isRetry?: boolean;
 }
 
 interface RunHomeActionArgs {
@@ -222,7 +234,8 @@ interface RunHomeActionArgs {
  * identically either way.
  */
 export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCache }: RunHomeActionArgs) {
-  return useCallback(async (action: HomeAction, opts?: RunHomeActionOverrides) => {
+  const runRef = useRef<((action: HomeAction, opts?: RunHomeActionOverrides) => Promise<void>) | null>(null);
+  const runAction = useCallback(async (action: HomeAction, opts?: RunHomeActionOverrides) => {
     // A pinned action can target a home other than the one on screen, so both
     // the destination and the permission check have to be overridable.
     const effectiveHomeId = opts?.homeId !== undefined ? opts.homeId : homeId;
@@ -272,6 +285,17 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
      * it, and the same write can be either on the two paths below.
      */
     const undecided = new Set<string>();
+    /**
+     * Why each write failed, kept per write rather than collapsed into
+     * `firstError`.
+     *
+     * The relay answers a bulk write with an `error` per accessory, and they
+     * genuinely differ — one bulb off at the wall, one that timed out, one that
+     * refused. The toast can only carry one line for all of them; the failure
+     * sheet is where they are told apart, and this is the only place they are
+     * kept.
+     */
+    const reasons = new Map<string, unknown>();
     let firstError: unknown;
     let settled = 0;
     // Counts across every step, not per step, so the card shows one run of
@@ -318,8 +342,10 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
         firstError ??= e;
         // One request carried the whole step, so whatever it could not tell us
         // it could not tell us about any of them.
-        if (isUndecidedWrite(e)) {
-          for (const write of stepWrites) undecided.add(writeKey(write.accessoryId, write.characteristicType));
+        for (const write of stepWrites) {
+          const key = writeKey(write.accessoryId, write.characteristicType);
+          reasons.set(key, e);
+          if (isUndecidedWrite(e)) undecided.add(key);
         }
         settled += stepWrites.length;
         opts?.onProgress?.(settled, writes.length);
@@ -342,6 +368,14 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
         if (wholeStepLanded && interruptible) {
           for (const write of stepWrites) applyToCache(write, write.value, updateCharacteristicInCache);
         }
+        if (!wholeStepLanded) {
+          for (const write of stepWrites) {
+            reasons.set(
+              writeKey(write.accessoryId, write.characteristicType),
+              new Error('The relay did not confirm the write'),
+            );
+          }
+        }
         settled += stepWrites.length;
         opts?.onProgress?.(settled, writes.length);
         return wholeStepLanded ? [] : stepWrites;
@@ -362,12 +396,23 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
           .filter(change => change.unreachable)
           .map(change => writeKey(change.accessoryId, change.characteristicType)),
       );
+      // Each accessory's own account of what went wrong, which is the thing the
+      // sheet shows and the toast cannot.
+      const errorByKey = new Map<string, string | undefined>(
+        response.changes
+          .filter(change => !change.success)
+          .map(change => [writeKey(change.accessoryId, change.characteristicType), change.error]),
+      );
       const stepFailed: HomeActionWrite[] = [];
       for (const write of stepWrites) {
         const key = writeKey(write.accessoryId, write.characteristicType);
         if (landed.has(key)) {
           if (interruptible) applyToCache(write, write.value, updateCharacteristicInCache);
         } else {
+          // A write the relay simply did not mention is a failure with nothing
+          // said about it — which is worth recording as exactly that rather
+          // than borrowing another accessory's reason.
+          reasons.set(key, new Error(errorByKey.get(key) ?? 'The relay did not confirm the write'));
           stepFailed.push(foundUnreachable.has(key) ? { ...write, reachable: false } : write);
         }
       }
@@ -417,11 +462,14 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
         if (result.status === 'rejected') {
           stepFailed.push(stepWrites[i]);
           firstError ??= result.reason;
+          const key = writeKey(stepWrites[i].accessoryId, stepWrites[i].characteristicType);
+          // One request per accessory here, so the reason really is that
+          // accessory's own — this path is the specific one, and the bulk path
+          // above is the one that had to be taught to keep them apart.
+          reasons.set(key, result.reason);
           // Per request here, so one wedged bulb can be undecided while the
           // rest of the step got real answers.
-          if (isUndecidedWrite(result.reason)) {
-            undecided.add(writeKey(stepWrites[i].accessoryId, stepWrites[i].characteristicType));
-          }
+          if (isUndecidedWrite(result.reason)) undecided.add(key);
         }
       });
       return stepFailed;
@@ -479,6 +527,54 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
     const allUndecided = broken.length > 0
       && broken.every(w => undecided.has(writeKey(w.accessoryId, w.characteristicType)));
 
+    // A retry that fixed everything it was asked to fix says so. The ordinary
+    // path stays silent on success — nobody needs telling that the lights they
+    // just turned on came on — but a retry is a question the user asked out
+    // loud, and silence is not an answer to it.
+    if (opts?.isRetry) {
+      resolveActionFailures(
+        writes
+          .filter(w => !failed.some(f => f.accessoryId === w.accessoryId))
+          .map(w => w.accessoryId),
+      );
+      if (broken.length === 0) {
+        toast.success(describeRetrySuccess(writes));
+        return;
+      }
+    }
+
+    const failures = buildActionFailures(
+      broken,
+      write => reasons.get(writeKey(write.accessoryId, write.characteristicType)),
+    );
+    /** Re-send exactly these writes, as a one-way action of their own. */
+    const retry = (subset: ActionFailure[]) => {
+      runRef.current?.(
+        // `toggle` deliberately dropped: a retry is one press in one direction,
+        // not a control, and leaving it on would make the executor skip the
+        // optimistic pass and compute directions from a toggle nobody is
+        // holding.
+        { ...action, toggle: undefined, steps: [{ writes: subset.map(f => f.write) }] },
+        { homeId: effectiveHomeId, isViewOnly: effectiveViewOnly, isRetry: true },
+      );
+    };
+    const openDetails = () => openActionFailures({
+      id: `${action.id}:${Date.now()}`,
+      actionLabel: action.label,
+      at: Date.now(),
+      failures,
+      retry,
+    });
+    /**
+     * The description, as the way through to the detail.
+     *
+     * Retry takes the toast's one action slot; a second chip beside it would
+     * leave the sentence about 115px on a 290px phone toast and wrap it onto
+     * three lines. See FailureToastDescription.
+     */
+    const describedFailure = (text: string) =>
+      createElement(FailureToastDescription, { text, onDetails: openDetails });
+
     if (broken.length > 0 && broken.length === writes.length) {
       // "All lights failed" was the sentence #62 complained about, and it was
       // simply untrue — the lights were off by the time it appeared. Nothing
@@ -488,13 +584,29 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
         toast.warning(`Couldn't confirm ${action.label}`, {
           description: 'Your home didn’t answer in time. The change may still be going through — the tiles will catch up when it does.',
         });
+      } else if (opts?.isRetry) {
+        // Retried, and nothing moved. Saying "failed" a second time adds
+        // nothing; what has changed since the first toast is that trying again
+        // did not help, so say that and keep both routes open.
+        toast.error('Still not responding', {
+          description: describedFailure(describeFailedWrites(broken)),
+          action: { label: 'Retry', onClick: () => retry(failures) },
+        });
       } else {
         toast.error(`${action.label} failed`, { description: describeError(firstError) });
       }
     } else if (broken.length > 0) {
       toast.warning(`${writes.length - broken.length} of ${writes.length} changed`, {
-        description: describeFailedWrites(broken),
+        description: describedFailure(describeFailedWrites(broken)),
+        // Retry is the one-tap answer for the common case; the sentence itself
+        // is the way to "why", which needs room the toast does not have.
+        action: { label: 'Retry', onClick: () => retry(failures) },
       });
     }
   }, [homeId, isViewOnly, updateCharacteristicInCache]);
+  // Lets the toast's Retry re-enter the runner. A ref rather than a second
+  // callback because the retry is created inside the run it belongs to, and a
+  // callback cannot name itself in its own initialiser.
+  runRef.current = runAction;
+  return runAction;
 }

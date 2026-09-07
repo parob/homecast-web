@@ -15,6 +15,7 @@ import { getIconColor } from '@/components/widgets/iconColors';
 import { TriStateToggle } from '@/components/ui/tri-state-toggle';
 import { HOME_ACTION_NAMES, type HomeAction } from './catalog';
 import { ACTION_ICONS } from './icons';
+import { runningSubtitle } from './running-subtitle';
 
 /**
  * One shortcut card in the Scenes section.
@@ -25,7 +26,7 @@ import { ACTION_ICONS } from './icons';
  */
 export function ActionCard({
   action, homeId, isDarkBackground, isViewOnly, editMode, touchMode,
-  running, progress, runningTextOf, onPress, onRun, isHidden, onToggleHidden,
+  running, elapsed, runningTextOf, onPress, onRun, isHidden, onToggleHidden,
   renderPanel,
 }: {
   action: HomeAction;
@@ -35,7 +36,8 @@ export function ActionCard({
   editMode: boolean;
   touchMode: boolean;
   running: boolean;
-  progress: { done: number; total: number } | null;
+  /** Whole seconds since the press, or null when this card is not running. */
+  elapsed: number | null;
   runningTextOf: (action: HomeAction) => string;
   onPress: (action: HomeAction) => void;
   onRun: (action: HomeAction, direction?: boolean) => void;
@@ -174,20 +176,21 @@ export function ActionCard({
           </p>
           {/* While it runs the subtitle carries what is happening
               instead of the state: the state it describes is
-              mid-change and about to be wrong. The count rides
-              along because it is the only thing that distinguishes
-              a slow action from a stuck one — a wedged accessory
-              holds its write for the native 10s timeout, and a bare
-              verb gives no way to tell that apart from nothing
-              happening. aria-live so it is announced, not just
-              seen. */}
+              mid-change and about to be wrong. Something has to
+              distinguish a slow action from a stuck one — a wedged
+              accessory holds its write for the native 10s timeout,
+              and a bare verb gives no way to tell that apart from
+              nothing happening. That used to be `done of total`,
+              which on a bulk-capable relay cannot move; it is the
+              elapsed seconds now. See running-subtitle.ts.
+              tabular-nums so the count does not jitter the text
+              beside it as it ticks. aria-live so it is announced,
+              not just seen. */}
           <p
             aria-live={running ? 'polite' : undefined}
-            className={cn('text-[10px] truncate transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
+            className={cn('text-[10px] truncate tabular-nums transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
           >
-            {running
-              ? `${runningTextOf(action)}${progress ? ` · ${progress.done} of ${progress.total}` : ''}`
-              : action.subtitle}
+            {running ? runningSubtitle(runningTextOf(action), elapsed) : action.subtitle}
           </p>
         </div>
         {toggle ? (

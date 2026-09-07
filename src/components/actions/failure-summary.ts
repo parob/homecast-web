@@ -1,3 +1,5 @@
+import { describeWriteFailure } from '@/lib/describe-error';
+import type { ActionFailure } from './action-failures';
 import type { HomeActionWrite } from './catalog';
 
 /**
@@ -59,4 +61,66 @@ export function describeFailedWrites(failed: HomeActionWrite[]): string {
       ? names[0]
       : `${names[0]} and ${names[1]}`;
   return `${subject} didn’t respond`;
+}
+
+/**
+ * Turn the writes that failed into one row per accessory, each with its own
+ * reason.
+ *
+ * `describeWriteFailure` is the same function the single-accessory path has
+ * always used, which is the point: a lone write that times out already says
+ * "Kitchen Light didn't respond in time", and a row in the sheet should say
+ * exactly that rather than a second, parallel wording for the same fault.
+ *
+ * The reason is looked up through a callback rather than a map this module
+ * indexes itself, so the key format stays in the one place that builds it.
+ *
+ * Deduped by accessory, on the same reasoning as `describeFailedWrites`: two
+ * characteristics on one device are one broken light, and one row.
+ */
+export function buildActionFailures(
+  failed: HomeActionWrite[],
+  reasonFor: (write: HomeActionWrite) => unknown,
+): ActionFailure[] {
+  const seen = new Set<string>();
+  const rows: ActionFailure[] = [];
+  for (const write of failed) {
+    if (seen.has(write.accessoryId)) continue;
+    seen.add(write.accessoryId);
+    const name = write.name?.trim();
+    rows.push({
+      accessoryId: write.accessoryId,
+      ...(name ? { name } : {}),
+      reason: describeWriteFailure(reasonFor(write), name),
+      write,
+    });
+  }
+  return rows;
+}
+
+/**
+ * What a retry says when it worked.
+ *
+ * Names them for the same reason a failure does — "Hall Lamp responded" is an
+ * answer, "Retry succeeded" is a receipt. Falls back to a count when the writes
+ * carry no names, exactly as the failure line does.
+ */
+export function describeRetrySuccess(writes: HomeActionWrite[]): string {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const write of writes) {
+    if (seen.has(write.accessoryId)) continue;
+    seen.add(write.accessoryId);
+    const name = write.name?.trim();
+    if (name && names.length < MAX_NAMES) names.push(name);
+  }
+  const total = seen.size;
+  if (names.length === 0) {
+    return `${total} accessor${total === 1 ? 'y' : 'ies'} responded`;
+  }
+  const rest = total - names.length;
+  if (rest > 0) return `${names.join(', ')} and ${rest} more responded`;
+  return names.length === 1
+    ? `${names[0]} responded`
+    : `${names[0]} and ${names[1]} responded`;
 }
