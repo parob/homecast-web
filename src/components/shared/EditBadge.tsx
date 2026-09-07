@@ -39,8 +39,6 @@ export interface EditBadgeProps {
   /** Accessible name. Worth passing — "Hide" alone is ambiguous in a grid. */
   label?: string;
   className?: string;
-  /** Smaller variant for the tab bar, where the target is only 44px wide. */
-  size?: 'default' | 'sm';
 }
 
 export const EditBadge: React.FC<EditBadgeProps> = ({
@@ -48,7 +46,6 @@ export const EditBadge: React.FC<EditBadgeProps> = ({
   onClick,
   label,
   className,
-  size = 'default',
 }) => {
   const Icon = ICONS[kind];
   const swallow = (e: React.SyntheticEvent) => {
@@ -72,11 +69,25 @@ export const EditBadge: React.FC<EditBadgeProps> = ({
         'z-30 flex items-center justify-center rounded-full shadow-md',
         'bg-zinc-700 text-white active:bg-zinc-600 hover:bg-zinc-600',
         'transition-colors duration-fast',
-        size === 'sm' ? 'h-4 w-4' : 'h-6 w-6',
+        // One size. There was an `h-4` `sm` for the tab bar and an `h-6`
+        // default for everyone else, and the tab bar is the only caller left —
+        // so `sm` was simply the size, and the "default" was nobody's.
+        //
+        // `h-5`, between the two. Against the fixed 20px root (lib/text-scale.ts)
+        // that renders 25px, where `sm` rendered 20px — the size the report
+        // called too small, and the one thing Edit Layout puts on a thing that
+        // was smaller than all the others (see EditActions and its size test).
+        //
+        // Not the old `h-6` either, which is why this is a third value rather
+        // than a deletion: a tab is ~63px wide on a full bar and carries a 25px
+        // glyph up the middle, and at 30px the badge covered enough of it that
+        // you could no longer tell a bedroom from a kitchen while arranging —
+        // which is the one thing the bar is for in that mode.
+        'h-5 w-5',
         className,
       )}
     >
-      <Icon className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} />
+      <Icon className="h-3 w-3" />
     </button>
   );
 };
