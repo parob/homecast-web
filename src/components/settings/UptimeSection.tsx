@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
 import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle } from 'lucide-react';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
+import { describeProbeReason, describeStatus } from '@/lib/uptime-copy';
 
 interface UptimeBucket {
   bucketStart: string;
@@ -35,6 +36,8 @@ interface UptimeSummary {
   uptimePercent30d: number;
   verifiedRatio7d: number;
   avgLatencyMs: number | null;
+  /** Offline only: when the relay was last seen, so the badge can say since when. */
+  statusSince: string | null;
   lastProbe: LastProbe | null;
   timeline: UptimeBucket[];
   outages: UptimeOutage[];
@@ -69,45 +72,18 @@ function formatDuration(seconds: number): string {
 }
 
 function statusBadge(status: string): { label: string; tooltip: string; icon: JSX.Element; classes: string } {
+  const { label, explanation: tooltip } = describeStatus(status);
   switch (status) {
     case 'verified':
-      return {
-        label: 'Verified',
-        tooltip:
-          'We just confirmed your relay can read live values from one of your accessories. The full pipeline is working.',
-        icon: <ShieldCheck className="h-3.5 w-3.5" />,
-        classes: 'bg-green-500/10 text-green-700 dark:text-green-400',
-      };
+      return { label, tooltip, icon: <ShieldCheck className="h-3.5 w-3.5" />, classes: 'bg-green-500/10 text-green-700 dark:text-green-400' };
     case 'connected':
-      return {
-        label: 'Connected — not fully verified',
-        tooltip:
-          "We can reach your relay, but we haven't recently confirmed it can read from your accessories. Either no probable accessory was available or the last probe didn't return a value.",
-        icon: <ShieldAlert className="h-3.5 w-3.5" />,
-        classes: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
-      };
+      return { label, tooltip, icon: <ShieldAlert className="h-3.5 w-3.5" />, classes: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' };
     case 'degraded':
-      return {
-        label: 'Degraded',
-        tooltip:
-          'Your relay is connected, but multiple recent probes have timed out. The HomeKit pipeline appears stuck.',
-        icon: <AlertTriangle className="h-3.5 w-3.5" />,
-        classes: 'bg-orange-500/10 text-orange-700 dark:text-orange-400',
-      };
+      return { label, tooltip, icon: <AlertTriangle className="h-3.5 w-3.5" />, classes: 'bg-orange-500/10 text-orange-700 dark:text-orange-400' };
     case 'offline':
-      return {
-        label: 'Offline',
-        tooltip: 'Your relay is not connected to the cloud right now.',
-        icon: <WifiOff className="h-3.5 w-3.5" />,
-        classes: 'bg-red-500/10 text-red-700 dark:text-red-400',
-      };
+      return { label, tooltip, icon: <WifiOff className="h-3.5 w-3.5" />, classes: 'bg-red-500/10 text-red-700 dark:text-red-400' };
     default:
-      return {
-        label: 'Unknown',
-        tooltip: 'No recent uptime data yet.',
-        icon: <HelpCircle className="h-3.5 w-3.5" />,
-        classes: 'bg-muted text-muted-foreground',
-      };
+      return { label, tooltip, icon: <HelpCircle className="h-3.5 w-3.5" />, classes: 'bg-muted text-muted-foreground' };
   }
 }
 
@@ -192,52 +168,57 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reliability</p>
       <div className="rounded-lg border bg-muted/30 p-3 space-y-3 text-xs">
-        {/* Live status */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2">
-            <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${badge.classes}`}>
-              {badge.icon}
-              {badge.label}
-            </span>
-          </div>
+        {/* Live status. The server answers this from the sessions table, so
+            it agrees with the Connection block above it — and says since when. */}
+        <div className="flex items-center justify-between gap-2">
+          <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${badge.classes}`}>
+            {badge.icon}
+            {badge.label}
+          </span>
+          {s.currentStatus === 'offline' && s.statusSince && (
+            <span className="text-muted-foreground">went offline {formatRelativeAgo(s.statusSince)}</span>
+          )}
         </div>
         <p className="text-muted-foreground text-[11px] leading-snug">{badge.tooltip}</p>
 
-        {/* Last probe detail */}
-        {lastProbe && (
+        {/* Last probe detail — not while offline, when the last check is
+            older than the outage and says nothing the badge doesn't. */}
+        {lastProbe && s.currentStatus !== 'offline' && (
           <div className="rounded border bg-background/60 p-2 text-[11px]">
             {lastProbe.status === 'verified' ? (
               <span>
                 <span className="font-medium">Verified</span> — live accessory read
                 {' '}<span className="text-muted-foreground">{formatRelativeAgo(lastProbe.probedAt)}</span>
               </span>
-            ) : lastProbe.reason ? (
-              <span className="text-muted-foreground">
-                Last probe {formatRelativeAgo(lastProbe.probedAt)}: {lastProbe.reason}
-              </span>
             ) : (
-              <span className="text-muted-foreground">Last probe {formatRelativeAgo(lastProbe.probedAt)}</span>
+              <span className="text-muted-foreground">
+                Last check {formatRelativeAgo(lastProbe.probedAt)}: {describeProbeReason(lastProbe.reason)}
+              </span>
             )}
           </div>
         )}
 
-        {/* KPI tiles */}
-        <div className="grid grid-cols-3 gap-2">
-          {([
-            { label: '24h', value: s.uptimePercent24h },
-            { label: '7d', value: s.uptimePercent7d },
-            { label: '30d', value: s.uptimePercent30d },
-          ] as const).map((kpi) => (
-            <div key={kpi.label} className="rounded border bg-background/60 p-2">
-              <div className="text-[10px] text-muted-foreground">{kpi.label}</div>
-              <div className={`text-base font-semibold ${percentColor(kpi.value)}`}>{formatPercent(kpi.value)}</div>
-            </div>
-          ))}
+        {/* KPI tiles — the share of each window the relay was reachable. An
+            hour offline is an hour, whether or not anything sampled it. */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-medium text-muted-foreground">Reachable</div>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { label: '24h', value: s.uptimePercent24h },
+              { label: '7d', value: s.uptimePercent7d },
+              { label: '30d', value: s.uptimePercent30d },
+            ] as const).map((kpi) => (
+              <div key={kpi.label} className="rounded border bg-background/60 p-2">
+                <div className="text-[10px] text-muted-foreground">{kpi.label}</div>
+                <div className={`text-base font-semibold ${percentColor(kpi.value)}`}>{formatPercent(kpi.value)}</div>
+              </div>
+            ))}
+          </div>
         </div>
         {s.uptimePercent7d > 0 && (
           <p className="text-[10px] text-muted-foreground">
-            7-day uptime: {s.verifiedRatio7d.toFixed(0)}% fully verified, {(100 - s.verifiedRatio7d).toFixed(0)}% connected-only
-            {s.avgLatencyMs !== null ? `, avg latency ${s.avgLatencyMs}ms` : ''}
+            Verified {s.verifiedRatio7d.toFixed(0)}% of checks over 7 days
+            {s.avgLatencyMs !== null ? `, average read ${s.avgLatencyMs} ms` : ''}
           </p>
         )}
 
