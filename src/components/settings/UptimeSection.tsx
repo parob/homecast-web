@@ -91,6 +91,12 @@ function statusBadge(status: string): { label: string; tooltip: string; icon: JS
 
 const HOUR_MS = 60 * 60 * 1000;
 
+// This section lives inside the settings dialog, which sits at 10050 (see
+// ui/dialog.tsx). The tooltip's default layer, 10005, is for the dashboard; in
+// here it opened underneath the dialog. 10060 is where select and dropdown
+// menus inside dialogs already sit.
+const TOOLTIP_Z = 'z-[10060]';
+
 function fmtHour(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
@@ -220,7 +226,7 @@ function TimelineStrip({ buckets, outages, highlight, onHoverHour }: TimelineStr
     cells.push(
       <Tooltip key={i}>
         <TooltipTrigger asChild>{bar}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[300px] text-xs">
+        <TooltipContent side="top" className={`${TOOLTIP_Z} max-w-[300px] text-xs`}>
           <div className="font-medium">{title}</div>
           {lines.map((line, j) => (
             <div key={j} className="flex items-center gap-1.5 opacity-80">
@@ -268,7 +274,7 @@ function OutageRow({ outage: o, lit, onHover }: OutageRowProps) {
       </TooltipTrigger>
       {/* Below the row, not above it: above would sit on the strip, hiding
           the hours this row has just lit up. */}
-      <TooltipContent side="bottom" align="start" className="max-w-[300px] text-xs">
+      <TooltipContent side="bottom" align="start" className={`${TOOLTIP_Z} max-w-[300px] text-xs`}>
         <div className="font-medium">{label}</div>
         <div className="opacity-80">Started {fmtDayTime(new Date(start))}</div>
         <div className="opacity-80">{ongoing ? 'Still going' : `Ended ${fmtDayTime(new Date(end))}`}</div>

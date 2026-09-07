@@ -8,6 +8,7 @@
  * signing in, and without waiting for a real outage.
  */
 import { UptimeSectionView, type UptimeBucket, type UptimeOutage, type UptimeSummary } from '@/components/settings/UptimeSection';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 const HOUR = 60 * 60 * 1000;
 const MIN = 60 * 1000;
@@ -139,6 +140,15 @@ export default function ReliabilityPreview() {
           <h2 className="text-xs font-medium text-muted-foreground">While the relay is offline</h2>
           <UptimeSectionView summary={offlineNow(now)} />
         </section>
+        {/* The real section sits inside the settings dialog, which stacks
+            above the dashboard's tooltip layer; a hover that is fine on this
+            page can be hidden in there. So one copy lives in a dialog. */}
+        <Dialog open>
+          <DialogContent hideCloseButton className="max-w-[460px]">
+            <DialogTitle className="text-sm">Inside the settings dialog</DialogTitle>
+            <UptimeSectionView summary={healthyWeek(now)} />
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
