@@ -22,11 +22,16 @@
  *
  * What IS attached is listed, with a preview, and can be removed. Attaching a
  * screenshot and a log buffer silently would be a poor trade for trust.
+ *
+ * A report can be added to an issue that is already open, chosen from the
+ * Previous tab. The server has always done this by itself when two reports
+ * fingerprint alike; this is the same destination, chosen deliberately, for
+ * the far commoner case of the same fault described in different words.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, ImagePlus, Loader2, Play, Trash2, Video,
+  AlertCircle, CornerDownRight, ImagePlus, Loader2, Play, Trash2, Video, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,6 +47,8 @@ import {
   type ActiveRecording, type CapturedMedia,
 } from '@/lib/report/capture';
 import { submitReport } from '@/lib/report/submit';
+
+import type { ReportedIssue } from '@/lib/report/issues';
 
 import { AttachmentPreview } from './AttachmentPreview';
 import { RecordingOverlay } from './RecordingOverlay';
@@ -137,6 +144,11 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // than letting someone press a dead button over and over.
   const [recordingRefused, setRecordingRefused] = useState(false);
   const [preview, setPreview] = useState<CapturedMedia | null>(null);
+  // The issue this report is being added to, if the reporter picked one in
+  // Previous. Null is the ordinary case: file a new one.
+  const [addingTo, setAddingTo] = useState<ReportedIssue | null>(null);
+  // Controlled, so picking an issue can bring the compose tab back with it.
+  const [tab, setTab] = useState('report');
 
   const recordingRef = useRef<ActiveRecording | null>(null);
   recordingRef.current = recording;
@@ -150,6 +162,8 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     setSummary('');
     setError(null);
     setPreview(null);
+    setAddingTo(null);
+    setTab('report');
   }, [open, initialScreenshot]);
 
   // Object URLs outlive the component unless revoked, and a screen recording is
@@ -279,17 +293,38 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     }
 
     try {
+      const chosen = addingTo?.issueNumber;
       const result = await submitReport(
-        { summary: text, severity: REPORT_SEVERITY, media: mediaRef.current }, token,
-      );
-      toast.success(
-        result.deduplicated
-          ? `Added to #${result.issueNumber} — this is already known.`
-          : `Sent as #${result.issueNumber}. Thank you.`,
         {
-          description: result.attachmentsSkipped.length
-            ? `Not included: ${result.attachmentsSkipped.join(', ')}`
-            : undefined,
+          summary: text,
+          severity: REPORT_SEVERITY,
+          media: mediaRef.current,
+          ...(chosen !== undefined ? { issueNumber: chosen } : {}),
+        },
+        token,
+      );
+
+      // What is announced is where the report actually went, never where it was
+      // asked to go. A server that predates `issueNumber` ignores it and files
+      // a new issue; saying "added to #71" then would be a lie the reporter has
+      // no way to catch.
+      const landedElsewhere = chosen !== undefined && result.issueNumber !== chosen;
+      const skipped = result.attachmentsSkipped.length
+        ? `Not included: ${result.attachmentsSkipped.join(', ')}`
+        : undefined;
+
+      toast.success(
+        landedElsewhere
+          ? `Sent as #${result.issueNumber}.`
+          : chosen !== undefined
+            ? `Added to #${result.issueNumber}. Thank you.`
+            : result.deduplicated
+              ? `Added to #${result.issueNumber} — this is already known.`
+              : `Sent as #${result.issueNumber}. Thank you.`,
+        {
+          description: landedElsewhere
+            ? [`It could not be added to #${chosen}.`, skipped].filter(Boolean).join(' ')
+            : skipped,
         },
       );
       onOpenChange(false);
@@ -300,7 +335,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     } finally {
       setSending(false);
     }
-  }, [summary, finishRecording, onOpenChange]);
+  }, [summary, finishRecording, onOpenChange, addingTo]);
 
   const atLimit = media.length >= MAX_ATTACHMENTS;
   const offerRecording = canRecord() && !recordingRefused;
@@ -328,7 +363,11 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
             <DialogTitle>Feedback</DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="report" className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Tabs
+            value={tab}
+            onValueChange={setTab}
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="report">New</TabsTrigger>
               {/* Often the answer someone actually wants: it is already known,
@@ -340,7 +379,15 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               value="known"
               className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto px-2 py-1"
             >
-              <ReportedIssues />
+              {/* Picking one carries you back to what you were writing — the
+                  choice is about where the report goes, not a place to be
+                  left standing. */}
+              <ReportedIssues
+                onAddTo={(issue) => {
+                  setAddingTo(issue);
+                  setTab('report');
+                }}
+              />
             </TabsContent>
 
             {/* `px-1 -mx-1`: the focus ring is drawn outside the element's box,
@@ -352,6 +399,39 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
               value="report"
               className="-mx-2 mt-4 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-2 py-1"
             >
+            {/* Above the field, not below the Send button: it changes what
+                pressing Send means, so it has to be read before anything is
+                typed rather than discovered afterwards. */}
+            {addingTo && (
+              <div className="flex items-start gap-2 rounded-md border border-primary/40 bg-primary/5 p-2">
+                <CornerDownRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    Adding to #{addingTo.issueNumber}
+                  </div>
+                  <div className="line-clamp-2 break-words text-xs text-muted-foreground">
+                    {addingTo.title}
+                  </div>
+                  {addingTo.state === 'closed' && (
+                    // Worth saying out loud rather than hiding fixed issues:
+                    // a fault that has come back is the report we most want.
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      This one is marked fixed — send it if the problem is back.
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="button" variant="ghost" size="icon"
+                  disabled={sending}
+                  onClick={() => setAddingTo(null)}
+                  aria-label="File a new report instead"
+                  className="h-6 w-6 shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
             <Textarea
               id="report-summary"
               aria-label="Your feedback"
