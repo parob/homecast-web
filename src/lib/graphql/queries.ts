@@ -1013,6 +1013,7 @@ export const GET_HOME_UPTIME = gql`
       uptimePercent30d
       verifiedRatio7d
       avgLatencyMs
+      statusSince
       lastProbe {
         probedAt
         status
