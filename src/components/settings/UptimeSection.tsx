@@ -3,6 +3,7 @@ import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
 import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle } from 'lucide-react';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { describeProbeReason, describeStatus } from '@/lib/uptime-copy';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface UptimeBucket {
   bucketStart: string;
@@ -87,54 +88,100 @@ function statusBadge(status: string): { label: string; tooltip: string; icon: JS
   }
 }
 
-function TimelineStrip({ buckets }: { buckets: UptimeBucket[] }) {
+const HOUR_MS = 60 * 60 * 1000;
+
+function fmtHour(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDay(d: Date): string {
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** What the hover on one hour of the strip says: the split of the hour, the
+ *  verified reads in it, and any outage that overlapped it with its real
+ *  start and end, not just this hour's slice. Sample counts are turned into
+ *  minutes of the hour, which is what the reader is actually asking. */
+function describeHour(
+  b: UptimeBucket | undefined,
+  hourStart: Date,
+  outages: UptimeOutage[],
+): { title: string; lines: string[] } {
+  const hourEnd = new Date(hourStart.getTime() + HOUR_MS);
+  const title = `${fmtDay(hourStart)}, ${fmtHour(hourStart)}–${fmtHour(hourEnd)}`;
+  const total = b?.total ?? 0;
+  if (!b || total === 0) return { title, lines: ['Nothing recorded for this hour.'] };
+  const minutes = (n: number) => Math.round((n / total) * 60);
+  const lines: string[] = [];
+  const up = minutes(b.verified + b.connected);
+  if (up > 0) lines.push(`Reachable about ${up} min`);
+  if (b.degraded > 0) lines.push(`Home not responding about ${minutes(b.degraded)} min`);
+  if (b.offline > 0) lines.push(`Relay offline about ${minutes(b.offline)} min`);
+  lines.push(b.verified > 0 ? `${b.verified} verified read${b.verified === 1 ? '' : 's'}` : 'No verified reads');
+  for (const o of outages) {
+    const start = new Date(o.startedAt).getTime();
+    const end = o.endedAt ? new Date(o.endedAt).getTime() : Date.now();
+    if (start < hourEnd.getTime() && end > hourStart.getTime()) {
+      const label = o.severity === 'offline' ? 'Relay offline' : 'Home not responding';
+      const endText = o.endedAt ? fmtHour(new Date(end)) : 'now';
+      lines.push(`${label} ${fmtHour(new Date(start))} → ${endText}, ${formatDuration(o.durationSeconds)}`);
+    }
+  }
+  return { title, lines };
+}
+
+function TimelineStrip({ buckets, outages }: { buckets: UptimeBucket[]; outages: UptimeOutage[] }) {
   // Render exactly 7 × 24 = 168 cells, filling missing hours with neutral grey.
   const now = new Date();
-  const startMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-  const startHour = new Date(startMs);
+  const startHour = new Date(now.getTime() - 7 * 24 * HOUR_MS);
   startHour.setMinutes(0, 0, 0);
 
   const byHour = new Map<number, UptimeBucket>();
   for (const b of buckets) {
     const t = new Date(b.bucketStart).getTime();
-    byHour.set(t - (t % (60 * 60 * 1000)), b);
+    byHour.set(t - (t % HOUR_MS), b);
   }
 
   const cells: JSX.Element[] = [];
   for (let i = 0; i < 168; i++) {
-    const hourTs = startHour.getTime() + i * 60 * 60 * 1000;
+    const hourTs = startHour.getTime() + i * HOUR_MS;
     const b = byHour.get(hourTs);
     const total = b?.total ?? 0;
-    const hourDate = new Date(hourTs);
+    const { title, lines } = describeHour(b, new Date(hourTs), outages);
+    let bar: JSX.Element;
     if (!b || total === 0) {
-      cells.push(
-        <div
-          key={i}
-          className="flex-1 h-6 rounded-sm bg-muted/40"
-          title={`${hourDate.toLocaleString()}: no data`}
-        />,
+      bar = <div className="flex-1 h-6 rounded-sm bg-muted/40" />;
+    } else {
+      const v = (b.verified / total) * 100;
+      const c = (b.connected / total) * 100;
+      const d = (b.degraded / total) * 100;
+      const o = (b.offline / total) * 100;
+      bar = (
+        <div className="flex-1 h-6 rounded-sm overflow-hidden flex flex-col">
+          {v > 0 && <div className="bg-green-500" style={{ height: `${v}%` }} />}
+          {c > 0 && <div className="bg-green-300 dark:bg-green-700" style={{ height: `${c}%` }} />}
+          {d > 0 && <div className="bg-orange-500" style={{ height: `${d}%` }} />}
+          {o > 0 && <div className="bg-red-500" style={{ height: `${o}%` }} />}
+        </div>
       );
-      continue;
     }
-    const v = (b.verified / total) * 100;
-    const c = (b.connected / total) * 100;
-    const d = (b.degraded / total) * 100;
-    const o = (b.offline / total) * 100;
-    const title = `${hourDate.toLocaleString()}: verified ${v.toFixed(0)}%, connected ${c.toFixed(0)}%, degraded ${d.toFixed(0)}%, offline ${o.toFixed(0)}%`;
     cells.push(
-      <div
-        key={i}
-        className="flex-1 h-6 rounded-sm overflow-hidden flex flex-col"
-        title={title}
-      >
-        {v > 0 && <div className="bg-green-500" style={{ height: `${v}%` }} />}
-        {c > 0 && <div className="bg-green-300 dark:bg-green-700" style={{ height: `${c}%` }} />}
-        {d > 0 && <div className="bg-orange-500" style={{ height: `${d}%` }} />}
-        {o > 0 && <div className="bg-red-500" style={{ height: `${o}%` }} />}
-      </div>,
+      <Tooltip key={i}>
+        <TooltipTrigger asChild>{bar}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[280px] text-xs">
+          <div className="font-medium">{title}</div>
+          {lines.map((line, j) => (
+            <div key={j} className="opacity-80">{line}</div>
+          ))}
+        </TooltipContent>
+      </Tooltip>,
     );
   }
-  return <div className="flex gap-[1px] w-full">{cells}</div>;
+  return (
+    <TooltipProvider delayDuration={80} skipDelayDuration={400}>
+      <div className="flex gap-[1px] w-full">{cells}</div>
+    </TooltipProvider>
+  );
 }
 
 interface UptimeSectionProps {
@@ -231,7 +278,7 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
             <span>7 days ago</span>
             <span>Now</span>
           </div>
-          <TimelineStrip buckets={s.timeline} />
+          <TimelineStrip buckets={s.timeline} outages={s.outages} />
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5">
             <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-green-500" /> Verified</span>
             <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-green-300 dark:bg-green-700" /> Connected only</span>

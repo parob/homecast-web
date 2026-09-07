@@ -16,6 +16,7 @@ export function describeProbeReason(reason: string | null | undefined): string {
   if (reason.startsWith('accessory_error: unreachable')) return 'The accessory we tried was unreachable.';
   if (reason.startsWith('accessory_error: homekit_error')) return 'Apple Home did not answer the relay.';
   if (reason.startsWith('accessory_error')) return 'The accessory we tried returned an error.';
+  if (reason.startsWith('cached_read')) return 'Apple Home answered from its cache; nothing in the house was asked.';
   if (reason.startsWith('probe_error')) return 'The check could not be sent to the relay.';
   return 'The last check did not read a value.';
 }

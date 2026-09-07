@@ -12,6 +12,8 @@ describe('describeProbeReason', () => {
       'accessory_error: homekit_error',
       'probe_error: ValueError',
       'probe_error: TimeoutError',
+      'cached_read: manufacturer',
+      'accessory_error: read_error (consecutive=2)',
     ];
     for (const code of codes) {
       const text = describeProbeReason(code);
@@ -25,6 +27,7 @@ describe('describeProbeReason', () => {
     expect(describeProbeReason('accessory_error: unreachable')).toContain('unreachable');
     expect(describeProbeReason('probe_timeout (consecutive=2)')).toContain('in time');
     expect(describeProbeReason('no_probe_target')).toContain('No accessory');
+    expect(describeProbeReason('cached_read: model')).toContain('cache');
   });
 
   it('has an answer for nothing and for codes it has never seen', () => {

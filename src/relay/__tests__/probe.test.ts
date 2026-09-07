@@ -86,6 +86,31 @@ describe('relay.probe accessory selection', () => {
   });
 });
 
+describe('relay.probe during a power cut', () => {
+  beforeEach(() => {
+    listAccessories.mockReset();
+    getCharacteristic.mockReset();
+  });
+
+  it('does not fall back to cached metadata when a live read fails', async () => {
+    // George Street, 4 Sep 2026: every device unreachable, but HomeKit still
+    // answers manufacturer/model from its cache. Reading one of those after
+    // the live read failed reported the dark house as verified for six hours.
+    listAccessories.mockResolvedValue([
+      acc('dead', 'Hue bridge', 'power_state'),
+      acc('meta', 'Hue bridge info', 'manufacturer'),
+    ]);
+    getCharacteristic.mockImplementation(async (id: string) => {
+      if (id === 'dead') throw unreachable();
+      return { value: 'Signify Netherlands B.V.' };
+    });
+    const res: any = await executeHomeKitAction('relay.probe', { homeId: 'pc1' });
+    expect(res.error).toBe('unreachable');
+    expect(res.value).toBeUndefined();
+    expect(getCharacteristic).not.toHaveBeenCalledWith('meta', 'manufacturer');
+  });
+});
+
 describe('relay.probe characteristic preference', () => {
   beforeEach(() => {
     listAccessories.mockReset();

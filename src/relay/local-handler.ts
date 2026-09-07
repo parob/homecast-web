@@ -224,9 +224,18 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
   // thermometer probes that one accessory forever, and reports the whole home
   // unverified whenever it is unplugged — which is exactly what
   // PROBE_MAX_ATTEMPTS exists to prevent.
-  const topPriority = ranked[0].priority;
-  const topTier = ranked.filter((c) => c.priority === topPriority);
-  const rest = ranked.filter((c) => c.priority !== topPriority);
+  // A cached string is only ever a last resort for a home with nothing live
+  // to read. Once a live characteristic exists, falling through to a cached
+  // one after it fails turns a power cut into a verified home: HomeKit
+  // answers manufacturer and model from its cache with the house dark
+  // (George Street, 4 Sep 2026, six hours). So the fallback pool is the live
+  // candidates, and the cached ones are used only when they are all there is.
+  const live = ranked.filter((c) => !CACHED_CHARS.has(c.characteristicType));
+  const pool = live.length ? live : ranked;
+
+  const topPriority = pool[0].priority;
+  const topTier = pool.filter((c) => c.priority === topPriority);
+  const rest = pool.filter((c) => c.priority !== topPriority);
   const cursor = _probeCursors.get(homeId) ?? 0;
   _probeCursors.set(homeId, cursor + 1);
 
