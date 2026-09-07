@@ -119,7 +119,15 @@ const marketing = (page: ReactElement) =>
 // import.meta.env.DEV is statically false in a production build, so both the
 // route and the lazy chunk drop out entirely.
 const BgDemo = import.meta.env.DEV ? lazy(() => import("./pages/BgDemo")) : null;
-const devRoutes = BgDemo ? <Route path="/bgdemo" element={<BgDemo />} /> : null;
+// Same for the Reliability section fed a fixture week, so its hover links can
+// be looked at without signing in or waiting for an outage.
+const ReliabilityPreview = import.meta.env.DEV ? lazy(() => import("./pages/dev/ReliabilityPreview")) : null;
+const devRoutes = BgDemo && ReliabilityPreview ? (
+  <>
+    <Route path="/bgdemo" element={<BgDemo />} />
+    <Route path="/dev/reliability" element={<ReliabilityPreview />} />
+  </>
+) : null;
 
 // Routes that need auth + websocket providers
 const MainRoutes = () => (
