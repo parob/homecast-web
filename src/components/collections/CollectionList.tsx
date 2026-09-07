@@ -130,7 +130,14 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
       </button>
       </div>
       {/* A collection isn't hideable, so pin is the only action it offers. */}
-      <RowEditActions visible={!!(editMode && pinTab)} action={null} tab={pinTab} />
+      {/* Only the light branch fills with `bg-primary` — on a dark background a
+          selected collection is `bg-white/20`, which the badge still reads on. */}
+      <RowEditActions
+        visible={!!(editMode && pinTab)}
+        action={null}
+        tab={pinTab}
+        onPrimary={!isDarkBackground && isSelected && !hasSelectedChild}
+      />
     </div>
   );
 

@@ -47,6 +47,21 @@ interface ActionButtonProps {
    * what rewraps the row.
    */
   size?: 'tile' | 'row' | 'pill';
+  /**
+   * The badge is sitting on the primary fill itself — a selected sidebar row.
+   *
+   * `bg-primary` on `bg-primary` leaves no edge at all: the pill vanishes into
+   * the row and only its label survives, which reads as part of the row's own
+   * text rather than as a button you can press. Everywhere else these sit on a
+   * wallpaper or a tile, where the fill is the whole affordance.
+   *
+   * A white ring rather than a different fill, so it is still recognisably the
+   * same control as the ones on the rows above and below it — only outlined.
+   * `ring` and not `border`: the caller reserves a measured 81px for this
+   * cluster (see RowEditActions), and a border would grow each pill by 2px and
+   * push the pair into the name's truncation.
+   */
+  onPrimary?: boolean;
 }
 
 /**
@@ -78,7 +93,7 @@ interface ActionButtonProps {
  */
 const TILE_BADGE = 'px-2 py-0.5 text-[10px] leading-4';
 
-export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
+export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile', onPrimary }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
   return (
     <button
@@ -105,6 +120,10 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
         'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground shadow-sm',
         'transition-colors duration-fast hover:bg-primary/85 active:bg-primary/80',
         'disabled:opacity-50 disabled:hover:bg-primary',
+        // See `onPrimary` on ActionButtonProps. Inset, so the ring lands on the
+        // pill's own edge instead of outside it — an outset ring would eat into
+        // the 4px gap between Hide and Pin and read as one blurred blob.
+        onPrimary && 'ring-1 ring-inset ring-primary-foreground',
         size === 'tile' ? TILE_BADGE
           // Literally the tile's badge, tucked into the line box around it —
           // see the `pill` doc on ActionButtonProps.
@@ -137,11 +156,11 @@ export type PrimaryEditAction =
   | { kind: 'remove'; label: string; onRemove: () => void }
   | null;
 
-function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row') {
+function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row', onPrimary?: boolean) {
   if (!action) return null;
   if (action.kind === 'remove') {
     return (
-      <EditActionButton label="Remove" ariaLabel={action.label} onClick={action.onRemove} size={size} />
+      <EditActionButton label="Remove" ariaLabel={action.label} onClick={action.onRemove} size={size} onPrimary={onPrimary} />
     );
   }
   const verb = action.isHidden ? 'Unhide' : 'Hide';
@@ -151,14 +170,16 @@ function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row') {
       ariaLabel={`${verb} ${action.name}`}
       onClick={action.onToggle}
       size={size}
+      onPrimary={onPrimary}
     />
   );
 }
 
-function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
+function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row', onPrimary?: boolean) {
   if (!pin) return null;
   return (
     <EditActionButton
+      onPrimary={onPrimary}
       // Still "Pin" when the bar is full — greyed out, not relabelled. "Full"
       // named the tab bar's problem on a button about this tile, so it read as
       // a state of the accessory. Disabled says the same thing without the
@@ -243,11 +264,13 @@ export function TileEditActions({ action, tab, visible = true }: {
  * Hide+Pin cluster is 73px and sits 8px in from the edge, so that padding is
  * 81px — `pr-14` was 56px and the name had been truncating under the badges.
  */
-export function RowEditActions({ action, tab, visible = true }: {
+export function RowEditActions({ action, tab, visible = true, onPrimary }: {
   action: PrimaryEditAction;
   tab?: PinnedTab | null;
   /** False while Edit Layout is ending — see TileEditActions. */
   visible?: boolean;
+  /** This row is the selected one, so the badges sit on `bg-primary`. */
+  onPrimary?: boolean;
 }) {
   const { rendered, exiting } = useBadgePresence(visible);
   const held = useRef({ action, tab });
@@ -255,8 +278,8 @@ export function RowEditActions({ action, tab, visible = true }: {
   const shown = visible ? { action, tab } : held.current;
 
   const pin = usePinAction(shown.tab);
-  const primary = primaryButton(shown.action, 'row');
-  const pinned = pinButton(pin, 'row');
+  const primary = primaryButton(shown.action, 'row', onPrimary);
+  const pinned = pinButton(pin, 'row', onPrimary);
   if (!rendered || (!primary && !pinned)) return null;
   return (
     // Two elements, and it has to stay that way: this one centres itself with
