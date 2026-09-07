@@ -7,8 +7,13 @@
  * hover links between the strip and the outage list can be looked at without
  * signing in, and without waiting for a real outage.
  */
+import { useState } from 'react';
 import { UptimeSectionView, type UptimeBucket, type UptimeOutage, type UptimeSummary } from '@/components/settings/UptimeSection';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { ConnectionSection } from '@/components/layout/status/ConnectionSection';
+import { ReliabilitySectionView } from '@/components/layout/status/ReliabilitySection';
+import { buildChain } from '@/lib/connection-chain';
+import { statusPresentation } from '@/lib/status-badge';
 
 const HOUR = 60 * 60 * 1000;
 const MIN = 60 * 1000;
@@ -121,8 +126,29 @@ function offlineNow(now: number): UptimeSummary {
   };
 }
 
+/** The status popover's content, at its real width, around the new section. */
+function PopoverMock({ summary }: { summary: UptimeSummary }) {
+  const quality = 'good' as const;
+  const localMode = { active: false, unmapped: false };
+  const chain = buildChain({
+    quality, reconnected: false, relayStatus: null, localMode,
+    managed: true, selfRelay: false, community: false, rtt: '34ms', homeName: 'George Street',
+  });
+  const p = statusPresentation({ quality, reconnected: false, localMode, relayStatus: null });
+  return (
+    <div className="w-[280px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-md">
+      <div className="space-y-3">
+        <ConnectionSection quality={quality} headline={p.headline} onReconnect={() => {}} chain={chain} chainVariant="rail" />
+        <div className="border-t" />
+        <ReliabilitySectionView summary={summary} homeName="George Street" onOpenDetails={() => {}} />
+      </div>
+    </div>
+  );
+}
+
 export default function ReliabilityPreview() {
   const now = Date.now();
+  const [dialogOpen, setDialogOpen] = useState(false);
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
       <div className="mx-auto max-w-[440px] space-y-10">
@@ -133,6 +159,13 @@ export default function ReliabilityPreview() {
           </p>
         </div>
         <section className="space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground">The connection popover, from the green dot</h2>
+          <div className="flex flex-wrap gap-6">
+            <PopoverMock summary={healthyWeek(now)} />
+            <PopoverMock summary={offlineNow(now)} />
+          </div>
+        </section>
+        <section className="space-y-2">
           <h2 className="text-xs font-medium text-muted-foreground">A healthy home today</h2>
           <UptimeSectionView summary={healthyWeek(now)} />
         </section>
@@ -142,9 +175,19 @@ export default function ReliabilityPreview() {
         </section>
         {/* The real section sits inside the settings dialog, which stacks
             above the dashboard's tooltip layer; a hover that is fine on this
-            page can be hidden in there. So one copy lives in a dialog. */}
-        <Dialog open>
-          <DialogContent hideCloseButton className="max-w-[460px]">
+            page can be hidden in there. So one copy can be opened in a dialog. */}
+        <section className="space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground">Inside the settings dialog</h2>
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+          >
+            Open the section in a dialog
+          </button>
+        </section>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-[460px]">
             <DialogTitle className="text-sm">Inside the settings dialog</DialogTitle>
             <UptimeSectionView summary={healthyWeek(now)} />
           </DialogContent>

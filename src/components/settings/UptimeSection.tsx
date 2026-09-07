@@ -62,7 +62,7 @@ function percentColor(value: number): string {
   return 'text-red-600';
 }
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   if (seconds < 86400) {
@@ -171,6 +171,33 @@ function describeHour(
     });
   }
   return { title, lines };
+}
+
+/** The strip at popover size: the same 168 hours and colours, eight pixels
+ *  tall, no hover. A glance, not a reading; the reading is on the settings page. */
+export function CompactTimelineStrip({ buckets }: { buckets: UptimeBucket[] }) {
+  const now = new Date();
+  const startHour = new Date(now.getTime() - 7 * 24 * HOUR_MS);
+  startHour.setMinutes(0, 0, 0);
+  const byHour = new Map<number, UptimeBucket>();
+  for (const b of buckets) {
+    const t = new Date(b.bucketStart).getTime();
+    byHour.set(t - (t % HOUR_MS), b);
+  }
+  const cells: JSX.Element[] = [];
+  for (let i = 0; i < 168; i++) {
+    const b = byHour.get(startHour.getTime() + i * HOUR_MS);
+    const total = b?.total ?? 0;
+    if (!b || total === 0) {
+      cells.push(<div key={i} className="flex-1 h-2 rounded-[1px] bg-muted/40" />);
+      continue;
+    }
+    // One colour per hour, the worst thing that happened in it — at eight
+    // pixels a stacked column is noise.
+    const worst = b.offline > 0 ? 'bg-red-500' : b.degraded > 0 ? 'bg-orange-500' : b.verified > 0 ? 'bg-green-500' : 'bg-green-300 dark:bg-green-700';
+    cells.push(<div key={i} className={`flex-1 h-2 rounded-[1px] ${worst}`} />);
+  }
+  return <div className="flex gap-px w-full">{cells}</div>;
 }
 
 interface TimelineStripProps {

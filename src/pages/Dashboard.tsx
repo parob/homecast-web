@@ -269,6 +269,7 @@ import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialo
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { StatusBadge } from '@/components/layout/StatusBadge';
+import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
@@ -2426,6 +2427,8 @@ const Dashboard = () => {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
+  // A deep link inside the Homes tab: which home, and which of its sections.
+  const [settingsInitialHome, setSettingsInitialHome] = useState<{ homeId: string; section: HomeSettingsSectionId } | null>(null);
 
   // Open Settings to a specific tab if ?settings= is in the URL
   useEffect(() => {
@@ -7411,7 +7414,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} homeName={statusHomeName} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} homeName={statusHomeName} homeId={selectedHomeId} onOpenReliability={selectedHomeId ? () => { setSettingsInitialHome({ homeId: selectedHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -7797,8 +7800,10 @@ const Dashboard = () => {
                 header menu meant to open the index. */}
             <SettingsDialog
               open={settingsOpen}
-              onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); setSettingsInitialTab(undefined); updateUrlParams({ settings: null }); } }}
+              onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); setSettingsInitialTab(undefined); setSettingsInitialHome(null); updateUrlParams({ settings: null }); } }}
               initialTab={settingsInitialTab}
+              initialHomeId={settingsInitialHome?.homeId ?? null}
+              initialHomeSection={settingsInitialHome?.section ?? null}
               accountType={accountType}
               usedAccessorySlots={usedAccessorySlots}
               accessoryLimit={accessoryLimit}
