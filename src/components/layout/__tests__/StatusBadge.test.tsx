@@ -11,7 +11,7 @@
 // `good` there is no label and no motion.
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { RECONNECTED_VISIBLE_MS } from '@/lib/connection-presentation';
 
@@ -40,6 +40,11 @@ vi.mock('@/server/connection', () => ({
     subscribe: () => () => {},
     getLastRttMs: () => 42,
     getLastRttAt: () => Date.now(),
+    // Read by ConnectionSection's reason line. Absent from this mock until the
+    // popover was actually opened by a test — the badge alone never rendered
+    // the section, so nothing here reached them.
+    getOldestInFlightMs: () => null,
+    getPendingPingMs: () => null,
     getConnectedAt: () => Date.now(),
     getLastConnectedAt: () => Date.now(),
     getSubscriberStatus: () => null,
@@ -185,6 +190,32 @@ describe('the Community relay Mac', () => {
     mockRelayEnabled = false;
     const { container } = render(<StatusBadge />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it('opens on the chain rather than an empty box', () => {
+    // The Community path shape — This Mac -> Local server -> Home, no cloud
+    // node — existed, was tested, shipped in the bundle, and was the one shape
+    // that never reached a screen: the whole connection section was gated out
+    // here. A Community user tapping the badge got an empty box, and the one
+    // fact no other surface states went unsaid.
+    mockIsCommunity = true;
+    mockRelayCapable = true;
+    mockRelayEnabled = true;
+    mockQuality = 'unknown';
+    render(<StatusBadge />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText(/Nothing is going through the cloud/i)).toBeTruthy();
+  });
+
+  it('names the local hops, and no cloud hop', () => {
+    mockIsCommunity = true;
+    mockRelayCapable = true;
+    mockRelayEnabled = true;
+    render(<StatusBadge />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('Local server')).toBeTruthy();
+    // The point of the branch: there is no cloud node to name.
+    expect(screen.queryByText(/Homecast cloud/i)).toBeNull();
   });
 
   it('is still shown in cloud mode on a relay-capable Mac', () => {
