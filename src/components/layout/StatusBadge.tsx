@@ -45,6 +45,7 @@ import type { ChainVariant } from './status/ConnectionChain';
 import { ConnectionSection } from './status/ConnectionSection';
 import { LocalModeSection } from './status/LocalModeSection';
 import { RelaySection } from './status/RelaySection';
+import { ReliabilitySection } from './status/ReliabilitySection';
 
 /**
  * Which drawing of the path the panel uses.
@@ -81,6 +82,14 @@ interface StatusBadgeProps {
   homeName?: string | null;
   /** Opens Settings → Local Mode. Absent unless Developer Mode is on. */
   onOpenLocalModeSettings?: () => void;
+  /**
+   * The home the dashboard is showing, whose reliability the popover previews
+   * under the connection chain. Absent (nothing selected, or Community mode,
+   * which has no uptime record) and the section is not rendered.
+   */
+  homeId?: string | null;
+  /** Opens Settings → that home → Reliability. */
+  onOpenReliability?: () => void;
 }
 
 export function StatusBadge({
@@ -90,6 +99,8 @@ export function StatusBadge({
   includedAccessoryCount,
   homeName,
   onOpenLocalModeSettings,
+  homeId,
+  onOpenReliability,
 }: StatusBadgeProps) {
   const { quality } = useWebSocket();
   const localMode = useLocalMode();
@@ -245,6 +256,22 @@ export function StatusBadge({
             chain={chain}
             chainVariant={CHAIN_VARIANT}
           />
+
+          {/* What the path has been like, not just what it is now. Cloud
+              only: Community keeps no uptime record, and the settings page
+              hides its Reliability section there for the same reason. */}
+          {homeId && !isCommunity && (
+            <>
+              <div className="border-t" />
+              <ReliabilitySection
+                homeId={homeId}
+                homeName={homeName ?? null}
+                onOpenDetails={onOpenReliability
+                  ? () => { setOpen(false); onOpenReliability(); }
+                  : undefined}
+              />
+            </>
+          )}
 
           {localMode.active && (
             <>

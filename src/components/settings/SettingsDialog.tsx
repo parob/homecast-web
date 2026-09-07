@@ -80,6 +80,13 @@ export interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialTab?: SettingsTab;
+  /**
+   * With `initialTab: 'homes'`, open straight onto this home and, if given,
+   * one of its sub-sections — the connection popover's "Details" link lands
+   * on Reliability this way. Read only when the dialog opens.
+   */
+  initialHomeId?: string | null;
+  initialHomeSection?: HomeSettingsSectionId | null;
   // Account / billing
   accountType: string;
   usedAccessorySlots: number;
@@ -156,6 +163,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     open,
     onOpenChange,
     initialTab,
+    initialHomeId,
+    initialHomeSection,
     developerMode,
     isInMacApp,
     isInMobileApp,
@@ -260,10 +269,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (open) {
       setActiveTab(initialTab || 'plan');
       setMobileSection(initialTab ?? null);
-      setSelectedHomeId(null);
-      setHomeSection(null);
+      const deepLinked = initialTab === 'homes' && initialHomeId ? initialHomeId : null;
+      setSelectedHomeId(deepLinked);
+      setHomeSection(deepLinked ? initialHomeSection ?? null : null);
     }
-  }, [open, initialTab]);
+  }, [open, initialTab, initialHomeId, initialHomeSection]);
 
   // Clear home selection whenever neither the desktop tab nor the mobile section is on 'homes'
   useEffect(() => {
