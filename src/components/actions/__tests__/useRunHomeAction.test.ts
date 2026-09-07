@@ -213,8 +213,10 @@ describe('useRunHomeAction', () => {
     expect(updateCharacteristicInCache).toHaveBeenCalledWith('b', 'on', 'true');
     expect(updateCharacteristicInCache).not.toHaveBeenCalledWith('a', 'power_state', 'true');
 
+    // These writes carry no `name` — only the power actions populate one — so
+    // the description is still the count it always was.
     expect(toastWarning).toHaveBeenCalledWith('1 of 2 changed', expect.objectContaining({
-      description: '1 accessory did not respond',
+      description: '1 accessory didn’t respond',
     }));
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -765,9 +767,22 @@ describe('a bulb off at the wall is not an error', () => {
     await run(action({ steps: [{ writes: [w('ok', true), w('broken', true), w('dead1', false)] }] }));
 
     // The reachable failure is the one worth reporting, and it is counted on
-    // its own — lumping the unreachable in would inflate the number.
+    // its own — lumping the unreachable in would inflate the number. It is also
+    // named: these writes come from a power action, which carries names.
     expect(toastWarning).toHaveBeenCalledWith('2 of 3 changed', expect.objectContaining({
-      description: '1 accessory did not respond',
+      description: 'Light broken didn’t respond',
+    }));
+  });
+
+  it('names the accessories that failed rather than only counting them', async () => {
+    request.mockImplementation(bulkRelay({ failing: ['broken1', 'broken2'] }));
+    const { run } = setup();
+    await run(action({ steps: [{ writes: [w('ok', true), w('broken1', true), w('broken2', true)] }] }));
+
+    // The whole point of homecast-cloud#87: the app knew which two all along.
+    // Finding them otherwise means hunting the grid for greyed-out tiles.
+    expect(toastWarning).toHaveBeenCalledWith('1 of 3 changed', expect.objectContaining({
+      description: 'Light broken1 and Light broken2 didn’t respond',
     }));
   });
 });

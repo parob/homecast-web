@@ -6,6 +6,7 @@ import { markPendingUpdate, clearPendingUpdate } from '@/hooks/useHomeKitData';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { describeError, isUndecidedWrite } from '@/lib/describe-error';
 import type { BulkWriteResponse } from '@/native/homekit-bridge';
+import { describeFailedWrites } from './failure-summary';
 import type { HomeAction, HomeActionWrite } from './catalog';
 
 /**
@@ -492,7 +493,7 @@ export function useRunHomeAction({ homeId, isViewOnly, updateCharacteristicInCac
       }
     } else if (broken.length > 0) {
       toast.warning(`${writes.length - broken.length} of ${writes.length} changed`, {
-        description: `${broken.length} accessor${broken.length === 1 ? 'y' : 'ies'} did not respond`,
+        description: describeFailedWrites(broken),
       });
     }
   }, [homeId, isViewOnly, updateCharacteristicInCache]);
