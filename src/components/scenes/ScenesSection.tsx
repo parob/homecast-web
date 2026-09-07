@@ -296,7 +296,7 @@ export function ScenesSection({
       editMode={editMode}
       touchMode={touchMode}
       running={runner.runningId === card.action.id}
-      progress={runner.runningId === card.action.id ? runner.progress : null}
+      elapsed={runner.runningId === card.action.id ? runner.elapsed : null}
       runningTextOf={runner.runningTextOf}
       onPress={runner.press}
       onRun={runner.run}

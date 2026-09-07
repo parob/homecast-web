@@ -14,6 +14,16 @@ export function useHomeActionRunner(
 ) {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  /**
+   * Whole seconds since the press, or null when nothing is running.
+   *
+   * This is what the card narrates now, in place of `progress` — see
+   * `running-subtitle.ts` for why a count that cannot move was worse than no
+   * count. `progress` is still tracked and still returned: the pre-bulk relay
+   * path genuinely counts up, and a future change that streams partial results
+   * would want it back.
+   */
+  const [elapsed, setElapsed] = useState<number | null>(null);
   const [confirming, setConfirming] = useState<HomeAction | null>(null);
   // Which way the run in flight is going, so it can be narrated. A two-way
   // action's own runningLabel follows the direction the *catalog* picked, which
@@ -48,6 +58,13 @@ export function useHomeActionRunner(
     setRunningId(action.id);
     setRunningDirection(direction);
     setProgress({ done: 0, total });
+    setElapsed(0);
+    // Owned by this run rather than by a ref: a superseding press starts its own
+    // timer, and a shared handle would leave the abandoned one ticking.
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (inFlight.current === controller) setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     try {
       await onRunAction(action, {
         direction,
@@ -60,6 +77,9 @@ export function useHomeActionRunner(
         },
       });
     } finally {
+      // Unconditional: each run clears the timer it started, whether or not it
+      // is still the one on screen.
+      clearInterval(timer);
       // Only the current run owns the running state. An aborted one finishes
       // late, and clearing here would wipe its replacement's.
       if (inFlight.current === controller) {
@@ -67,6 +87,7 @@ export function useHomeActionRunner(
         setRunningId(null);
         setRunningDirection(undefined);
         setProgress(null);
+        setElapsed(null);
       }
     }
   };
@@ -92,5 +113,5 @@ export function useHomeActionRunner(
     else run(action);
   };
 
-  return { runningId, progress, runningTextOf, run, press, confirming, setConfirming };
+  return { runningId, progress, elapsed, runningTextOf, run, press, confirming, setConfirming };
 }

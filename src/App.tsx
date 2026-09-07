@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { ActionFailureSheet } from "@/components/actions/ActionFailureSheet";
 import { MacAppInsetVar } from "@/components/MacAppInsetVar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -205,6 +206,10 @@ const App = () => (
       <TooltipProvider>
         <MacAppInsetVar />
         <Toaster />
+        {/* Beside the Toaster, and for the same reason: it is opened from a
+            toast callback, and a pinned shortcut can be pressed from anywhere
+            in the app. */}
+        <ActionFailureSheet />
         <RelayRouteBanner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ScrollToTop />
