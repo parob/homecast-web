@@ -771,8 +771,20 @@ export function MobileTabBar({
             // — and with the clamp's ellipsis on the end of it, slightly past.
             // Eight characters at this size, with the tab's own padding and
             // this one together keeping them 8px clear of the bubble edge.
-            <span className="h-[23px] w-full px-1 text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
-              {label}
+            // The box reserves the two lines and CENTRES what is in it, rather
+            // than the type filling it from the top. A one-line name laid out
+            // at the top of a two-line box sat half a line high — "Bedroom"
+            // level with the "Living" of "Living Room" beside it rather than
+            // with the pair of them. Measured at 6px in
+            // `screenshots/tab-bar-label-centring.spec.ts`.
+            //
+            // A flex box around the type rather than a line-height trick,
+            // because `line-clamp-2` is `display: -webkit-box` and owns its own
+            // vertical layout; centring has to happen outside it.
+            <span data-tab-label className="flex h-[23px] w-full items-center justify-center px-1">
+              <span className="w-full text-[10px] font-medium leading-tight text-center break-words line-clamp-2">
+                {label}
+              </span>
             </span>
           ) : (
             /* Collapsed to nothing rather than unmounted: animating a width is

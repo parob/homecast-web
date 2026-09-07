@@ -1136,20 +1136,35 @@ describe('how the row is divided', () => {
     setup([TABS.home, TABS.room], { mode: 'compact' });
     // Sized to their own labels, a one-line name made a visibly shorter tab
     // than a two-line one beside it.
-    const label = tab(/Kitchen/).querySelector('span')!;
-    expect(label.className).toContain('h-[23px]');
+    const box = tab(/Kitchen/).querySelector('[data-tab-label]')!;
+    expect(box.className).toContain('h-[23px]');
     // Inset from the bubble behind it: given the tab's full width the last line
     // ran right to the edge of its own background, and with the clamp's
     // ellipsis on the end of it, slightly past.
-    expect(label.className).toContain('px-1');
+    expect(box.className).toContain('px-1');
+  });
+
+  it('centres the name in that box rather than filling it from the top', () => {
+    setup([TABS.home, TABS.room], { mode: 'compact' });
+    // A one-line name laid out at the top of a two-line box sat half a line
+    // above the wrapped name beside it. This can only assert the classes —
+    // `screenshots/tab-bar-label-centring.spec.ts` measures the 6px in a real
+    // browser, which is where the box's fixed height makes jsdom blind to it.
+    const box = tab(/Kitchen/).querySelector('[data-tab-label]')!;
+    expect(box.className).toContain('flex');
+    expect(box.className).toContain('items-center');
   });
 
   it('wraps a compact name to two lines and then truncates it', () => {
     setup([TABS.home, TABS.room], { mode: 'compact' });
-    const label = tab(/Kitchen/).querySelector('span')!;
-    expect(label.className).toContain('line-clamp-2');
-    expect(label.className).toContain('break-words');
-    expect(label.className).toContain('w-full');
+    // The type is inside the centring box, not the box itself: `line-clamp-2`
+    // is `display: -webkit-box` and owns its own vertical layout, so the two
+    // cannot be the same element.
+    const box = tab(/Kitchen/).querySelector('[data-tab-label]')!;
+    const type = box.firstElementChild!;
+    expect(type.className).toContain('line-clamp-2');
+    expect(type.className).toContain('break-words');
+    expect(type.className).toContain('w-full');
   });
 });
 
