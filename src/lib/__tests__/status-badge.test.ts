@@ -59,19 +59,31 @@ describe('statusPresentation', () => {
     expect(p.pulse).toBe(false);
   });
 
-  it('says Standby while the cloud relay serves every cloud-managed home', () => {
-    // This Mac is its account's active relay (relayStatus true) but the
-    // server has said the cloud relay holds every home; the dot must not read
-    // as a quiet green "all good" about a machine that is doing nothing.
-    const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: true }));
+  it('says Standby, in green, while the cloud relay serves every cloud-managed home', () => {
+    // This Mac is its account's active relay (relayStatus true) and the
+    // server has said the cloud relay holds every home. That is the healthy
+    // shape of a cloud-plan Mac, so the dot is green — it is standing by,
+    // which is what it is for — and the label says so.
+    const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: 'standby' }));
     expect(p.label).toBe('Standby');
-    expect(p.dotClass).toContain('amber');
+    expect(p.dotClass).toContain('green');
     expect(p.headline).toMatch(/Homecast Cloud/);
   });
 
+  it('turns amber once the standby has been activated', () => {
+    // The cloud relay has been gone for the takeover grace and this Mac is
+    // serving. The amber is about the cloud relay being offline.
+    const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: 'serving' }));
+    expect(p.label).toBe('Standby active');
+    expect(p.dotClass).toContain('amber');
+    expect(p.headline).toMatch(/cloud relay is offline/);
+  });
+
   it('lets connection trouble and Local Mode outrank cloud standby', () => {
-    expect(statusPresentation(inputs({ cloudStandby: true, quality: 'offline' })).label).not.toBe('Standby');
-    expect(statusPresentation(inputs({ cloudStandby: true, localMode: { active: true, unmapped: false } })).label).toBe('Local Mode');
+    for (const cs of ['standby', 'serving'] as const) {
+      expect(statusPresentation(inputs({ cloudStandby: cs, quality: 'offline' })).label).not.toMatch(/Standby/);
+      expect(statusPresentation(inputs({ cloudStandby: cs, localMode: { active: true, unmapped: false } })).label).toBe('Local Mode');
+    }
   });
 
   it('is unchanged when the server has not said (older server)', () => {
