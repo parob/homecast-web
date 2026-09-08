@@ -57,6 +57,19 @@ export interface LocalModeInputs {
    * keeps the behaviour it had.
    */
   unreachableHomeIds?: ReadonlySet<string>;
+  /**
+   * The same homes, with the moment each was refused — see
+   * relay-reachability.ts. Takes precedence over `unreachableHomeIds` when
+   * both are given; the set alone is kept for callers that have no clock.
+   */
+  refusedHomes?: ReadonlyMap<string, number>;
+  /**
+   * When the cached homes list was last fetched, or null if never.
+   *
+   * This is what lets a refusal and a `relayState` be compared instead of
+   * ranked: neither is authoritative, the *later* one is.
+   */
+  homesFetchedAt?: number | null;
   now: number;
 }
 
@@ -136,32 +149,39 @@ export const ENGAGE_AFTER_MS_RELAY_CAPABLE = 30_000;
 export const DISENGAGE_AFTER_MS = 20_000;
 
 /** A home is served by its relay if that relay is actually answering. */
-function relayServesHome(home: LocalModeHome, unreachable: ReadonlySet<string>): boolean {
-  // A definite 'connected' outranks everything below it: the server is saying
-  // a live relay session exists *right now*, which is a stronger statement
-  // than any refusal we collected before it.
-  if (home.relayState === 'connected') return true;
+function relayServesHome(
+  home: LocalModeHome,
+  refused: ReadonlyMap<string, number>,
+  homesFetchedAt: number | null,
+): boolean {
+  const refusedAt = refused.get(home.id.toUpperCase());
 
-  // Otherwise our own evidence wins. The cloud answering `NO_DEVICE` for this
-  // home is the cloud stating there is no relay session for it — a fact that
-  // arrives seconds after the relay dies, where every field below arrives
-  // late, stale, or not at all:
-  //
-  //   - 'reconnecting' is the server's 120s grace (relay_status.py). It is a
-  //     guess that a blip is in progress, and it is the right default — but a
-  //     refused request is that guess being disproven, not a second opinion.
-  //   - the cached value is only as fresh as the last homes.list, which is
-  //     asked once at launch and then only when something invalidates it. On
-  //     homecast-cloud#99 that was a single answer, 61 seconds before the
-  //     report, taken inside the grace and never revisited.
-  //
-  // Safe against flapping without any debounce of its own: engaging still
-  // waits out ENGAGE_AFTER_MS below, and disengaging waits DISENGAGE_AFTER_MS.
-  if (unreachable.has(home.id.toUpperCase())) return false;
+  // Nothing has been refused: the cached fields are all we have, and the
+  // server's grace applies as it always did.
+  if (refusedAt === undefined) {
+    if (home.relayState) return home.relayState === 'connected' || home.relayState === 'reconnecting';
+    return home.relayConnected !== false;
+  }
 
-  // Fall back to the boolean on payloads that predate the field.
-  if (home.relayState) return home.relayState === 'reconnecting';
-  return home.relayConnected !== false;
+  // A refusal and a cached `relayState` are two observations of one fact, and
+  // the honest tie-break is *which was made later* — not which sounds more
+  // definite. Ranking them was the mistake in #85: a definite 'connected' was
+  // given the last word, and the state where that is most wrong is precisely
+  // the one the user hits.
+  //
+  // During the five-minute takeover grace the standby Mac holds a session for
+  // the home, so `get_connected_home_ids` counts it and `homes.list` reports
+  // a flat `relayState: 'connected'` — while `_get_device_for_home` returns
+  // None and every request comes back NO_DEVICE. "A relay has a session for
+  // this home" and "a relay may serve this home" are different questions, and
+  // only the second one is about whether anything works.
+  //
+  // So a cached 'connected' overrules a refusal only when the answer carrying
+  // it was fetched *after* the refusal. Otherwise the refusal stands, because
+  // nothing since has contradicted it.
+  const answeredAfterRefusal = homesFetchedAt !== null && homesFetchedAt > refusedAt;
+  if (answeredAfterRefusal && home.relayState === 'connected') return true;
+  return false;
 }
 
 /**
@@ -173,10 +193,11 @@ function relayServesHome(home: LocalModeHome, unreachable: ReadonlySet<string>):
  */
 function anyHomeNeedsLocal(
   homes: ReadonlyArray<LocalModeHome>,
-  unreachable: ReadonlySet<string>,
+  refused: ReadonlyMap<string, number>,
+  homesFetchedAt: number | null,
 ): boolean {
   if (homes.length === 0) return true;
-  return homes.some((h) => !relayServesHome(h, unreachable));
+  return homes.some((h) => !relayServesHome(h, refused, homesFetchedAt));
 }
 
 /**
@@ -231,8 +252,12 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
   // returns `off()`, which clears `pendingSince`, so the 8s/30s engage delay
   // below is the debounce. Nothing engages on a blip.
   const cloudDown = i.socketState === 'disconnected' || i.socketState === 'reconnecting';
-  const unreachable = i.unreachableHomeIds ?? EMPTY_UNREACHABLE;
-  const wants = !i.anyRelayKnown || cloudDown || anyHomeNeedsLocal(i.homes, unreachable);
+  // A caller with no clock may pass only the set; treat those refusals as
+  // having happened now, which keeps them unanswerable by an older fetch.
+  const refused = i.refusedHomes
+    ?? new Map([...(i.unreachableHomeIds ?? EMPTY_UNREACHABLE)].map((id) => [id, i.now]));
+  const wants = !i.anyRelayKnown || cloudDown
+    || anyHomeNeedsLocal(i.homes, refused, i.homesFetchedAt ?? null);
 
   const reason: LocalModeReason | null = !wants
     ? null
