@@ -76,20 +76,6 @@ const STANDBY_PRESENTATION: ConnectionPresentation = {
 };
 
 /**
- * Relaying, but the cloud relay serves every cloud-managed home.
- *
- * Green, not amber: this is the healthy shape of a cloud-plan Mac. Standing by
- * is what it is for, and nothing about the home needs attention.
- */
-export const CLOUD_STANDBY_PRESENTATION: ConnectionPresentation = {
-  label: 'Standby',
-  dotClass: 'bg-green-500',
-  pulse: false,
-  srLabel: 'Standby relay. Homecast Cloud is serving your homes',
-  headline: 'Homecast Cloud is serving your homes',
-};
-
-/**
  * The standby has been activated: the cloud relay has been gone for the
  * takeover grace and this Mac is serving at least one cloud-managed home.
  * Amber, because the thing worth knowing is that the cloud relay is offline.
@@ -134,7 +120,9 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
   //    nothing about the connection is wrong.
   if (i.relayStatus === false) return STANDBY_PRESENTATION;
   if (i.cloudStandby === 'serving') return CLOUD_SERVING_PRESENTATION;
-  if (i.cloudStandby === 'standby') return CLOUD_STANDBY_PRESENTATION;
+  // Standing by for the cloud relay (`cloudStandby === 'standby'`) is the
+  // healthy shape of a cloud-plan Mac and says nothing here: the quiet dot.
+  // The popover's relay section explains it to anyone who opens it.
 
   // 5. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);

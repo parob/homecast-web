@@ -59,15 +59,15 @@ describe('statusPresentation', () => {
     expect(p.pulse).toBe(false);
   });
 
-  it('says Standby, in green, while the cloud relay serves every cloud-managed home', () => {
+  it('stays a quiet green dot while the cloud relay serves every cloud-managed home', () => {
     // This Mac is its account's active relay (relayStatus true) and the
     // server has said the cloud relay holds every home. That is the healthy
-    // shape of a cloud-plan Mac, so the dot is green — it is standing by,
-    // which is what it is for — and the label says so.
+    // shape of a cloud-plan Mac: nothing to report, so no label — the same
+    // quiet dot as any other good connection. The popover explains standby.
     const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: 'standby' }));
-    expect(p.label).toBe('Standby');
+    expect(p).toEqual(statusPresentation(inputs()));
+    expect(p.label).toBeNull();
     expect(p.dotClass).toContain('green');
-    expect(p.headline).toMatch(/Homecast Cloud/);
   });
 
   it('turns amber once the standby has been activated', () => {
