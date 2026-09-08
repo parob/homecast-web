@@ -87,9 +87,21 @@ export function noteServed(memo: ReachabilityMemo, homeId: string, now: number):
  * a flap manufactured by the very mechanism meant to prevent one.
  */
 export function unreachableHomeIds(memo: ReachabilityMemo): ReadonlySet<string> {
-  const out = new Set<string>();
+  return new Set(refusedHomes(memo).keys());
+}
+
+/**
+ * The refused homes and *when* each was refused.
+ *
+ * The time is what makes the mark answerable. A refusal is a statement about
+ * one instant, and the only thing that can overturn it is evidence gathered
+ * after it — which is why `relayServesHome` compares this against the age of
+ * the cached homes list rather than letting either win by rank.
+ */
+export function refusedHomes(memo: ReachabilityMemo): ReadonlyMap<string, number> {
+  const out = new Map<string, number>();
   for (const [id, m] of memo) {
-    if (m.refusedAt > m.servedAt) out.add(id);
+    if (m.refusedAt > m.servedAt) out.set(id, m.refusedAt);
   }
   return out;
 }
@@ -100,6 +112,7 @@ export function unreachableHomeIds(memo: ReachabilityMemo): ReadonlySet<string> 
 
 let memo: ReachabilityMemo = EMPTY_REACHABILITY;
 let unreachable: ReadonlySet<string> = new Set();
+let refused: ReadonlyMap<string, number> = new Map();
 const listeners = new Set<(ids: ReadonlySet<string>) => void>();
 
 /**
@@ -110,7 +123,12 @@ const listeners = new Set<(ids: ReadonlySet<string>) => void>();
  * header on every tile refresh.
  */
 function republish(): void {
-  const next = unreachableHomeIds(memo);
+  // Always recomputed, even when the membership is unchanged: a second
+  // refusal of an already-refused home moves its timestamp, and the timestamp
+  // is what `relayServesHome` weighs against the age of the homes list. Only
+  // the *notification* is conditional.
+  refused = refusedHomes(memo);
+  const next = new Set(refused.keys());
   if (next.size === unreachable.size && [...next].every((id) => unreachable.has(id))) return;
   unreachable = next;
   for (const fn of listeners) fn(unreachable);
@@ -141,8 +159,14 @@ export function getUnreachableHomeIds(): ReadonlySet<string> {
   return unreachable;
 }
 
+/** The same homes, with the moment each was refused. */
+export function getRefusedHomes(): ReadonlyMap<string, number> {
+  return refused;
+}
+
 /** Test seam. */
 export function resetRelayReachability(): void {
   memo = EMPTY_REACHABILITY;
   unreachable = new Set();
+  refused = new Map();
 }

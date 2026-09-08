@@ -15,7 +15,8 @@ import {
   HomeKit, isLocalCapable, isRelayCapable, withCallReason, type HomeKitStatus,
 } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
-import { getUnreachableHomeIds } from './relay-reachability';
+import { getCacheTimestamp } from '../hooks/useHomeKitData';
+import { getRefusedHomes } from './relay-reachability';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
   type LocalModeRouter,
@@ -185,10 +186,12 @@ class LocalModeController implements LocalModeRouter {
       homes,
       anyRelayKnown: homes.length > 0,
       homesLoaded: cachedHomes !== null,
-      // What this device has learned by asking, rather than by being told.
-      // The cached homes above are only as fresh as the last homes.list, and
-      // carry the server's 120s "reconnecting" grace on top of that.
-      unreachableHomeIds: getUnreachableHomeIds(),
+      // What this device has learned by asking, rather than by being told,
+      // and when. Weighed against how fresh the cached homes list is, because
+      // a refusal and a cached relayState are two observations of one fact and
+      // the later one wins — see relayServesHome.
+      refusedHomes: getRefusedHomes(),
+      homesFetchedAt: getCacheTimestamp('homes'),
       now: Date.now(),
     };
 
