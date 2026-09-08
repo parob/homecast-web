@@ -45,6 +45,12 @@ export interface StatusInputs {
    * over because the cloud relay is gone. Optional: older callers never say.
    */
   cloudStandby?: CloudStandby;
+  /**
+   * The home on screen cannot be reached: the cloud has refused a request for
+   * it with `NO_DEVICE`, and nothing since has said otherwise. Optional, so
+   * older callers keep exactly the presentation they had.
+   */
+  homeUnreachable?: boolean;
 }
 
 /**
@@ -89,6 +95,22 @@ export const CLOUD_SERVING_PRESENTATION: ConnectionPresentation = {
 };
 
 /**
+ * The cloud is answering perfectly, and it is answering "there is no relay".
+ *
+ * Worth its own state because every other one here is about *this device's*
+ * link, and that link is flawless in this case — which is exactly why the dot
+ * used to sit on quiet emerald while every write to the home failed. Amber
+ * rather than red: the app is fine, the home is not.
+ */
+export const HOME_UNREACHABLE_PRESENTATION: ConnectionPresentation = {
+  label: 'Relay offline',
+  dotClass: 'bg-amber-500',
+  pulse: false,
+  srLabel: "Relay offline. This home's relay is not answering",
+  headline: "This home's relay isn't answering",
+};
+
+/**
  * The one thing worth saying, chosen from the three.
  *
  * **Local Mode wins over Offline, deliberately.** It is not merely the more
@@ -113,10 +135,17 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
     return connectionPresentation(i.quality);
   }
 
-  // 3. The transient "it's back", once there is nothing louder to say.
+  // 3. The home itself is unreachable. Ranked below the connection because a
+  //    broken link *explains* an unreachable home and is the more actionable
+  //    of the two, and above the recovery confirmation because "it's back" is
+  //    a claim about the link that would read, wrongly, as "and your home
+  //    works again".
+  if (i.homeUnreachable) return HOME_UNREACHABLE_PRESENTATION;
+
+  // 4. The transient "it's back", once there is nothing louder to say.
   if (i.reconnected) return RECONNECTED_PRESENTATION;
 
-  // 4. Standing by while another device relays. Worth a word, but only when
+  // 5. Standing by while another device relays. Worth a word, but only when
   //    nothing about the connection is wrong.
   if (i.relayStatus === false) return STANDBY_PRESENTATION;
   if (i.cloudStandby === 'serving') return CLOUD_SERVING_PRESENTATION;
@@ -124,6 +153,6 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
   // healthy shape of a cloud-plan Mac and says nothing here: the quiet dot.
   // The popover's relay section explains it to anyone who opens it.
 
-  // 5. Nothing to report: a quiet dot, emerald for good, muted for unknown.
+  // 6. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);
 }

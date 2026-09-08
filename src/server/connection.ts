@@ -17,6 +17,7 @@ import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
 import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
+import { recordRelayRefusal, recordRelayServed } from './relay-reachability';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -249,6 +250,33 @@ function summarisePayload(payload: Record<string, unknown>): string | undefined 
   }
   if (payload.includeValues === true) bits.push('values');
   return bits.length ? bits.join(' ') : undefined;
+}
+
+/**
+ * Keep the per-home reachability record honest, from the one request funnel.
+ *
+ * Only cloud-routed requests count. A Local Mode or Community answer says
+ * nothing about whether the *relay* is reachable — it says this device did not
+ * need to ask — and recording it as a success would clear the very mark that
+ * put Local Mode in charge.
+ */
+function noteRelayOutcome(
+  payload: Record<string, unknown>,
+  transport: string,
+  err: unknown,
+): void {
+  if (transport !== 'ws') return;
+  const homeId = payload.homeId;
+  if (typeof homeId !== 'string' || !homeId) return;
+  if (err === null) {
+    recordRelayServed(homeId);
+    return;
+  }
+  // NO_DEVICE is the cloud saying, in as many words, "No relay device
+  // connected for this home". Every other failure — a timeout, a dropped
+  // socket, a rejected write — is about this connection or this request, and
+  // must not be read as a statement about the relay.
+  if ((err as { code?: string })?.code === 'NO_DEVICE') recordRelayRefusal(homeId);
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
@@ -853,10 +881,12 @@ class ServerConnection {
     try {
       const result = await this.routeRequest<T>(action, payload, via, span.traceId);
       log.ok(via.transport);
+      noteRelayOutcome(payload, via.transport, null);
       span.done({ success: true, transport: via.transport });
       return result;
     } catch (err) {
       log.fail(err);
+      noteRelayOutcome(payload, via.transport, err);
       span.done({
         success: false,
         transport: via.transport,

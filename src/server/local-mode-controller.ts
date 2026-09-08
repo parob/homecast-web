@@ -15,6 +15,7 @@ import {
   HomeKit, isLocalCapable, isRelayCapable, withCallReason, type HomeKitStatus,
 } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
+import { getUnreachableHomeIds } from './relay-reachability';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
   type LocalModeRouter,
@@ -184,6 +185,10 @@ class LocalModeController implements LocalModeRouter {
       homes,
       anyRelayKnown: homes.length > 0,
       homesLoaded: cachedHomes !== null,
+      // What this device has learned by asking, rather than by being told.
+      // The cached homes above are only as fresh as the last homes.list, and
+      // carry the server's 120s "reconnecting" grace on top of that.
+      unreachableHomeIds: getUnreachableHomeIds(),
       now: Date.now(),
     };
 

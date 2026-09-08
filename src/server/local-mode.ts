@@ -49,6 +49,14 @@ export interface LocalModeInputs {
    * the truth was only that the homes had not arrived yet.
    */
   homesLoaded: boolean;
+  /**
+   * Homes the cloud has just refused with `NO_DEVICE`, uppercased.
+   *
+   * First-hand evidence, and the only kind this device gathers for itself —
+   * see relay-reachability.ts. Optional, so every existing caller and test
+   * keeps the behaviour it had.
+   */
+  unreachableHomeIds?: ReadonlySet<string>;
   now: number;
 }
 
@@ -68,6 +76,9 @@ export interface LocalModeDecision {
 }
 
 export const EMPTY_MEMO: LocalModeMemo = { active: false, pendingSince: null };
+
+/** No home has been refused. Shared so the default costs no allocation. */
+const EMPTY_UNREACHABLE: ReadonlySet<string> = new Set();
 
 /** How much of this device's HomeKit lines up with the account's own layout. */
 export type IdentityState = 'mapped' | 'partial' | 'unmapped';
@@ -125,11 +136,31 @@ export const ENGAGE_AFTER_MS_RELAY_CAPABLE = 30_000;
 export const DISENGAGE_AFTER_MS = 20_000;
 
 /** A home is served by its relay if that relay is actually answering. */
-function relayServesHome(home: LocalModeHome): boolean {
-  // relayState is the grace-applied field: 'reconnecting' still counts as
-  // connected, because the server has already decided the blip is not an
-  // outage. Fall back to the boolean on payloads that predate the field.
-  if (home.relayState) return home.relayState === 'connected' || home.relayState === 'reconnecting';
+function relayServesHome(home: LocalModeHome, unreachable: ReadonlySet<string>): boolean {
+  // A definite 'connected' outranks everything below it: the server is saying
+  // a live relay session exists *right now*, which is a stronger statement
+  // than any refusal we collected before it.
+  if (home.relayState === 'connected') return true;
+
+  // Otherwise our own evidence wins. The cloud answering `NO_DEVICE` for this
+  // home is the cloud stating there is no relay session for it — a fact that
+  // arrives seconds after the relay dies, where every field below arrives
+  // late, stale, or not at all:
+  //
+  //   - 'reconnecting' is the server's 120s grace (relay_status.py). It is a
+  //     guess that a blip is in progress, and it is the right default — but a
+  //     refused request is that guess being disproven, not a second opinion.
+  //   - the cached value is only as fresh as the last homes.list, which is
+  //     asked once at launch and then only when something invalidates it. On
+  //     homecast-cloud#99 that was a single answer, 61 seconds before the
+  //     report, taken inside the grace and never revisited.
+  //
+  // Safe against flapping without any debounce of its own: engaging still
+  // waits out ENGAGE_AFTER_MS below, and disengaging waits DISENGAGE_AFTER_MS.
+  if (unreachable.has(home.id.toUpperCase())) return false;
+
+  // Fall back to the boolean on payloads that predate the field.
+  if (home.relayState) return home.relayState === 'reconnecting';
   return home.relayConnected !== false;
 }
 
@@ -140,9 +171,12 @@ function relayServesHome(home: LocalModeHome): boolean {
  * they are served by separate infrastructure that is usually fine, and taking
  * them over locally would be a downgrade rather than a rescue.
  */
-function anyHomeNeedsLocal(homes: ReadonlyArray<LocalModeHome>): boolean {
+function anyHomeNeedsLocal(
+  homes: ReadonlyArray<LocalModeHome>,
+  unreachable: ReadonlySet<string>,
+): boolean {
   if (homes.length === 0) return true;
-  return homes.some((h) => !relayServesHome(h));
+  return homes.some((h) => !relayServesHome(h, unreachable));
 }
 
 /**
@@ -197,7 +231,8 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
   // returns `off()`, which clears `pendingSince`, so the 8s/30s engage delay
   // below is the debounce. Nothing engages on a blip.
   const cloudDown = i.socketState === 'disconnected' || i.socketState === 'reconnecting';
-  const wants = !i.anyRelayKnown || cloudDown || anyHomeNeedsLocal(i.homes);
+  const unreachable = i.unreachableHomeIds ?? EMPTY_UNREACHABLE;
+  const wants = !i.anyRelayKnown || cloudDown || anyHomeNeedsLocal(i.homes, unreachable);
 
   const reason: LocalModeReason | null = !wants
     ? null
