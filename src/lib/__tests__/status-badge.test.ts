@@ -67,7 +67,7 @@ describe('statusPresentation', () => {
     const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: 'standby' }));
     expect(p).toEqual(statusPresentation(inputs()));
     expect(p.label).toBeNull();
-    expect(p.dotClass).toContain('green');
+    expect(p.dotClass).toContain('emerald');
   });
 
   it('turns amber once the standby has been activated', () => {
