@@ -126,7 +126,7 @@ export function StatusBadge({
   // Standing by for the cloud relay is a fact about the homes, so it needs
   // the homes list: which of them are cloud-managed, and what role we hold.
   const { data: homes } = useHomes();
-  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] }) === 'standby';
+  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
 
   // Re-render the popover's relative times while it is open, and only then.
   const [, setTick] = useState(0);

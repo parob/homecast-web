@@ -24,12 +24,23 @@ import { formatLastOnline } from '@/lib/relay-last-seen';
 import { cloudStandbyState, homesServedInsteadOfCloud, type RelayHomeRoles } from '@/lib/relay-roles';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-type EffectiveState = 'connected_active' | 'connected_standby' | 'connected_cloud_standby' | 'connecting' | 'reconnecting' | 'disconnected';
+type EffectiveState =
+  | 'connected_active'
+  | 'connected_standby'
+  | 'connected_cloud_standby'
+  | 'connected_cloud_serving'
+  | 'connecting'
+  | 'reconnecting'
+  | 'disconnected';
 
+// Standing by for the cloud relay is the healthy shape of a cloud-plan Mac,
+// so it is green; the standby having been ACTIVATED means the cloud relay is
+// offline, which is what the amber is for.
 const dotColorMap: Record<EffectiveState, string> = {
   connected_active: 'bg-green-500',
   connected_standby: 'bg-amber-500',
-  connected_cloud_standby: 'bg-amber-500',
+  connected_cloud_standby: 'bg-green-500',
+  connected_cloud_serving: 'bg-amber-500',
   connecting: 'bg-amber-500 animate-pulse',
   reconnecting: 'bg-amber-500 animate-pulse',
   disconnected: 'bg-red-500',
@@ -39,6 +50,7 @@ const statusLabelMap: Record<EffectiveState, string> = {
   connected_active: 'Active Relay',
   connected_standby: 'Standby',
   connected_cloud_standby: 'Standby',
+  connected_cloud_serving: 'Standby active',
   connecting: 'Connecting...',
   reconnecting: 'Reconnecting...',
   disconnected: 'Disconnected',
@@ -147,9 +159,12 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
   // has said so (an older server never does, and then nothing here changes).
   const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
   const effectiveState: EffectiveState =
-    baseState === 'connected_active' && cloudStandby === 'standby' ? 'connected_cloud_standby' : baseState;
+    baseState !== 'connected_active' ? baseState
+    : cloudStandby === 'standby' ? 'connected_cloud_standby'
+    : cloudStandby === 'serving' ? 'connected_cloud_serving'
+    : baseState;
   const isStandby = effectiveState === 'connected_standby';
-  const servingInsteadOfCloud = baseState === 'connected_active' && cloudStandby === 'serving'
+  const servingInsteadOfCloud = effectiveState === 'connected_cloud_serving'
     ? homesServedInsteadOfCloud({ relayRoles, homes: homes ?? [] }).map(h => h.name).filter(Boolean)
     : [];
   const allHomesCloudManaged = effectiveState === 'connected_active'
@@ -165,7 +180,8 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
         <span className="text-xs font-semibold">Relay Status</span>
         <span className={cn(
           "flex items-center gap-1.5 text-[11px] font-medium px-1.5 py-0.5 rounded-full",
-          effectiveState === 'connected_active' ? "bg-green-500/10 text-green-600" :
+          effectiveState === 'connected_active' || effectiveState === 'connected_cloud_standby'
+            ? "bg-green-500/10 text-green-600" :
           effectiveState === 'disconnected' ? "bg-red-500/10 text-red-600" :
           "bg-amber-500/10 text-amber-600"
         )}>
@@ -200,9 +216,9 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
         </p>
       ) : (
         <>
-          {servingInsteadOfCloud.length > 0 && (
+          {effectiveState === 'connected_cloud_serving' && (
             <p className="text-xs text-amber-600">
-              The cloud relay is offline. This Mac is serving {servingInsteadOfCloud.join(', ')}.
+              The cloud relay is offline. This Mac is serving {servingInsteadOfCloud.join(', ') || 'your homes'} until it is back.
             </p>
           )}
           <div className="space-y-2 text-xs">

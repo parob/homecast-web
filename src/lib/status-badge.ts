@@ -22,6 +22,7 @@
  */
 
 import type { ConnectionQuality } from '@/server/connection-quality';
+import type { CloudStandby } from './relay-roles';
 import {
   connectionPresentation,
   RECONNECTED_PRESENTATION,
@@ -39,10 +40,11 @@ export interface StatusInputs {
    */
   relayStatus: boolean | null;
   /**
-   * This Mac relays, but every cloud-managed home is served by the cloud
-   * relay and it is only standing by. Optional: older callers never say.
+   * What this Mac is doing for the cloud-managed homes: `standby` while the
+   * cloud relay serves them all, `serving` once it has taken at least one
+   * over because the cloud relay is gone. Optional: older callers never say.
    */
-  cloudStandby?: boolean;
+  cloudStandby?: CloudStandby;
 }
 
 /**
@@ -73,13 +75,31 @@ const STANDBY_PRESENTATION: ConnectionPresentation = {
   headline: 'Another device is the active relay',
 };
 
-/** Relaying, but the cloud relay serves every cloud-managed home. */
+/**
+ * Relaying, but the cloud relay serves every cloud-managed home.
+ *
+ * Green, not amber: this is the healthy shape of a cloud-plan Mac. Standing by
+ * is what it is for, and nothing about the home needs attention.
+ */
 export const CLOUD_STANDBY_PRESENTATION: ConnectionPresentation = {
   label: 'Standby',
-  dotClass: 'bg-amber-500',
+  dotClass: 'bg-green-500',
   pulse: false,
   srLabel: 'Standby relay. Homecast Cloud is serving your homes',
   headline: 'Homecast Cloud is serving your homes',
+};
+
+/**
+ * The standby has been activated: the cloud relay has been gone for the
+ * takeover grace and this Mac is serving at least one cloud-managed home.
+ * Amber, because the thing worth knowing is that the cloud relay is offline.
+ */
+export const CLOUD_SERVING_PRESENTATION: ConnectionPresentation = {
+  label: 'Standby active',
+  dotClass: 'bg-amber-500',
+  pulse: false,
+  srLabel: 'Standby relay active. The cloud relay is offline and this Mac is serving your homes',
+  headline: 'This Mac is serving your homes while the cloud relay is offline',
 };
 
 /**
@@ -113,7 +133,8 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
   // 4. Standing by while another device relays. Worth a word, but only when
   //    nothing about the connection is wrong.
   if (i.relayStatus === false) return STANDBY_PRESENTATION;
-  if (i.cloudStandby) return CLOUD_STANDBY_PRESENTATION;
+  if (i.cloudStandby === 'serving') return CLOUD_SERVING_PRESENTATION;
+  if (i.cloudStandby === 'standby') return CLOUD_STANDBY_PRESENTATION;
 
   // 5. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);
