@@ -101,17 +101,46 @@ describe('Local Mode, given a refused home', () => {
     ).active).toBe(true);
   });
 
-  it('lets a definite "connected" outrank a stale refusal', () => {
-    // The server saying a live relay session exists *now* is a stronger
-    // statement than any refusal collected before it. Without this the mark
-    // would never clear on a device that has stopped asking the cloud.
-    const unreachableHomeIds = new Set(['D08CB174']);
-    const homes = [{ id: 'D08CB174', relayState: 'connected' }];
+  it('ignores a "connected" that was fetched BEFORE the refusal', () => {
+    // The takeover grace: the standby Mac holds a session for the home, so
+    // homes.list reports a flat `connected` while every request is refused.
+    // Ranking `connected` above the refusal — the mistake in #85 — leaves
+    // Local Mode asleep for the whole five minutes.
+    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
+    const refusedHomes = new Map([['D08CB174', 10_000]]);
+    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 5_000 };
     let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, homes, unreachableHomeIds, now: 0 }, memo).memo;
-    expect(decideLocalMode(
-      { ...REPORTED, homes, unreachableHomeIds, now: 90_000 }, memo,
-    ).active).toBe(false);
+    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
+    expect(decideLocalMode({ ...inputs, now: 10_000 + ENGAGE_AFTER_MS }, memo).active).toBe(true);
+  });
+
+  it('accepts a "connected" fetched AFTER the refusal — the relay is back', () => {
+    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
+    const refusedHomes = new Map([['D08CB174', 10_000]]);
+    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 20_000 };
+    let memo = EMPTY_MEMO;
+    memo = decideLocalMode({ ...inputs, now: 20_000 }, memo).memo;
+    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
+  });
+
+  it('a refusal with no homes.list answer at all still counts', () => {
+    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
+    const refusedHomes = new Map([['D08CB174', 10_000]]);
+    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: null };
+    let memo = EMPTY_MEMO;
+    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
+    expect(decideLocalMode({ ...inputs, now: 10_000 + ENGAGE_AFTER_MS }, memo).active).toBe(true);
+  });
+
+  it('leaves an unrefused home entirely alone, grace and all', () => {
+    const homes = [{ id: 'OTHER', relayState: 'reconnecting' }];
+    const refusedHomes = new Map([['D08CB174', 10_000]]);
+    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 5_000, anyRelayKnown: true };
+    let memo = EMPTY_MEMO;
+    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
+    // 'reconnecting' on a home nothing has refused is the server's grace, and
+    // it still means served — that debounce is not ours to override.
+    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
   });
 
   it('disengages on the slow timer once the relay is back', () => {
