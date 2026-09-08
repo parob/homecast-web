@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { clearStorageKeeping } from '@/lib/relay-preference';
 import { useMutation, useLazyQuery } from '@apollo/client/react';
 import { LOGIN, SIGNUP } from '@/lib/graphql/mutations';
 import { GET_ME } from '@/lib/graphql/queries';
@@ -414,7 +415,7 @@ const CommunityAuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Full reset — wipe all data and return to mode selector (called from Settings)
   const resetAndUninstall = async () => {
-    localStorage.clear();
+    clearStorageKeeping();
     sessionStorage.clear();
     try {
       const { wipeAllData } = await import('@/server/local-db');

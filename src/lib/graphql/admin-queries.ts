@@ -1087,6 +1087,7 @@ export const ADMIN_RELAY_DETAIL = gql`
         enrollmentStatus
         currentStatus
         uptimePercent7d
+        relayRole
       }
       activity {
         days
@@ -1173,6 +1174,22 @@ export const ADMIN_HOMES = gql`
           degraded
           offline
         }
+        hcId
+        primaryKind
+        contexts {
+          homeId
+          liveUuid
+          ownerUserId
+          ownerEmail
+          ownerAccountType
+          relayDeviceId
+          connected
+          role
+          accessoryCount
+          roomCount
+          isAdmin
+          holdsHcId
+        }
       }
     }
   }
@@ -1195,6 +1212,22 @@ export const ADMIN_HOME_DETAIL = gql`
       memberCount
       relayLastSeenAt
       updatedAt
+      hcId
+      primaryKind
+      contexts {
+        homeId
+        liveUuid
+        ownerUserId
+        ownerEmail
+        ownerAccountType
+        relayDeviceId
+        connected
+        role
+        accessoryCount
+        roomCount
+        isAdmin
+        holdsHcId
+      }
     }
   }
 `;

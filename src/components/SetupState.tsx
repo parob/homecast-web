@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { writeRelayDisabled } from '@/lib/relay-preference';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,7 +35,7 @@ function openExternalUrl(url: string) {
 }
 
 function enableRelayHere() {
-  localStorage.removeItem('homecast-relay-disabled');
+  writeRelayDisabled(false);
   serverConnection.reconnect();
 }
 

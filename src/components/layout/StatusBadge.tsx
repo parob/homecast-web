@@ -39,6 +39,8 @@ import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
+import { cloudStandbyState, type RelayHomeRoles } from '@/lib/relay-roles';
+import { useHomes } from '@/hooks/useHomeKitData';
 import { warnsUser, RECONNECTED_VISIBLE_MS, formatRtt } from '@/lib/connection-presentation';
 import { buildChain } from '@/lib/connection-chain';
 import type { ChainVariant } from './status/ConnectionChain';
@@ -111,10 +113,20 @@ export function StatusBadge({
   // polled `getState()` every second for the whole life of the app to learn
   // this one boolean.
   const [relayStatus, setRelayStatus] = useState<boolean | null>(null);
+  const [relayRoles, setRelayRoles] = useState<RelayHomeRoles | null>(null);
   useEffect(() => {
-    setRelayStatus(serverConnection.getState().relayStatus);
-    return serverConnection.subscribe((s) => setRelayStatus(s.relayStatus));
+    const s0 = serverConnection.getState();
+    setRelayStatus(s0.relayStatus);
+    setRelayRoles(s0.relayRoles);
+    return serverConnection.subscribe((s) => {
+      setRelayStatus(s.relayStatus);
+      setRelayRoles(s.relayRoles);
+    });
   }, []);
+  // Standing by for the cloud relay is a fact about the homes, so it needs
+  // the homes list: which of them are cloud-managed, and what role we hold.
+  const { data: homes } = useHomes();
+  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] }) === 'standby';
 
   // Re-render the popover's relative times while it is open, and only then.
   const [, setTick] = useState(0);
@@ -166,6 +178,7 @@ export function StatusBadge({
     reconnected,
     localMode: { active: localMode.active, unmapped: localMode.identityState === 'unmapped' },
     relayStatus,
+    cloudStandby,
   });
 
   if (communityRelayMac && !showRelay) return null;

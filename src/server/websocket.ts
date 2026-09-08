@@ -6,6 +6,7 @@
  */
 
 import { HomeKit, HomeKitEvent, isRelayCapable, isRelayEnabled, withCallReason } from '../native/homekit-bridge';
+import { parseHomeRoles, type RelayHomeRoles } from '@/lib/relay-roles';
 import { executeHomeKitAction, setAccessoryLimit as setLocalHandlerAccessoryLimit, isAccessoryAllowed } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { logEvent } from '../lib/request-log';
@@ -188,6 +189,8 @@ interface ServerWebSocketCallbacks {
   onBroadcast?: (message: BroadcastMessage) => void;
   onConnected?: () => void;
   onRelayStatusChange?: (isActiveRelay: boolean) => void;
+  /** The server said which role this relay holds per home. See lib/relay-roles.ts. */
+  onRelayRolesChange?: (roles: RelayHomeRoles) => void;
   /** Connection quality changed. See ./connection-quality.ts. */
   onQualityChange?: (quality: ConnectionQuality) => void;
 }
@@ -372,6 +375,7 @@ export class ServerWebSocket {
 
   // Relay status — server-controlled runtime state (not the same as isRelayCapable())
   private isActiveRelay = false;
+  private homeRoles: RelayHomeRoles | null = null;
   // Owned home IDs — cached from homes.list response for routing decisions
   private ownedHomeIds = new Set<string>();
   /**
@@ -465,6 +469,11 @@ export class ServerWebSocket {
    */
   isCurrentlyActiveRelay(): boolean {
     return this.isActiveRelay;
+  }
+
+  /** Per-home roles last sent by the server; null until it has said. */
+  getHomeRoles(): RelayHomeRoles | null {
+    return this.homeRoles;
   }
 
   /**
@@ -1535,8 +1544,15 @@ export class ServerWebSocket {
         }
         if (import.meta.env.DEV) console.log(`[ServerWS] Subscribers: clients=${this.webClientCount}, webhooks=${this.webhookCount}, subs=${this.subscriptionCount}, accessoryLimit=${this.accessoryLimit}`);
       } else if (message.type === 'relay_status') {
-        // Server telling us our relay status (active or standby)
-        const payload = message.payload as { isActiveRelay: boolean } | undefined;
+        // Server telling us our relay status (active or standby), and — per
+        // home — whether we serve it or stand by for the cloud relay. The two
+        // are independent: `homeRoles` never starts or stops relay duties.
+        const payload = message.payload as { isActiveRelay?: boolean; homeRoles?: unknown } | undefined;
+        const roles = parseHomeRoles(payload?.homeRoles);
+        if (roles) {
+          this.homeRoles = roles;
+          this.callbacks.onRelayRolesChange?.(roles);
+        }
         if (payload?.isActiveRelay !== undefined) {
           const wasActive = this.isActiveRelay;
           this.isActiveRelay = payload.isActiveRelay;

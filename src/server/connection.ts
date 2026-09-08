@@ -8,6 +8,7 @@
  */
 
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated, HomecastError } from './websocket';
+import type { RelayHomeRoles } from '@/lib/relay-roles';
 import type { ConnectionQuality } from './connection-quality';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
@@ -64,6 +65,12 @@ export interface ServerConnectionState {
   connectionState: ConnectionState;
   error: Error | null;
   relayStatus: boolean | null; // null = not relay-capable, true = active relay, false = standby
+  /**
+   * Per home, whether this relay serves it or stands by for the cloud relay.
+   * Null until the server has said (an older server never does), which keeps
+   * every presentation exactly as it was. See lib/relay-roles.ts.
+   */
+  relayRoles: RelayHomeRoles | null;
   /**
    * How well the connection is working, as opposed to whether it exists.
    *
@@ -456,6 +463,7 @@ class ServerConnection {
     connectionState: 'disconnected',
     error: null,
     relayStatus: null,
+    relayRoles: null,
     quality: 'unknown',
   };
 
@@ -701,6 +709,7 @@ class ServerConnection {
             if (connectionState === 'disconnected' || connectionState === 'reconnecting') {
               // Reset relay status — will be reassigned by server on reconnect
               updates.relayStatus = null;
+              updates.relayRoles = null;
               this.activeSubscriptions.clear();
               this.stopSubscriptionRenewal();
             }
@@ -762,6 +771,9 @@ class ServerConnection {
           onRelayStatusChange: (isActive) => {
             this.updateState({ relayStatus: isActive });
           },
+          onRelayRolesChange: (roles) => {
+            this.updateState({ relayRoles: roles });
+          },
         }
       );
 
@@ -801,6 +813,7 @@ class ServerConnection {
       connectionState: 'disconnected',
       error: null,
       relayStatus: null,
+    relayRoles: null,
       quality: 'unknown',
     });
   }

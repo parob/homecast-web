@@ -59,6 +59,25 @@ describe('statusPresentation', () => {
     expect(p.pulse).toBe(false);
   });
 
+  it('says Standby while the cloud relay serves every cloud-managed home', () => {
+    // This Mac is its account's active relay (relayStatus true) but the
+    // server has said the cloud relay holds every home; the dot must not read
+    // as a quiet green "all good" about a machine that is doing nothing.
+    const p = statusPresentation(inputs({ relayStatus: true, cloudStandby: true }));
+    expect(p.label).toBe('Standby');
+    expect(p.dotClass).toContain('amber');
+    expect(p.headline).toMatch(/Homecast Cloud/);
+  });
+
+  it('lets connection trouble and Local Mode outrank cloud standby', () => {
+    expect(statusPresentation(inputs({ cloudStandby: true, quality: 'offline' })).label).not.toBe('Standby');
+    expect(statusPresentation(inputs({ cloudStandby: true, localMode: { active: true, unmapped: false } })).label).toBe('Local Mode');
+  });
+
+  it('is unchanged when the server has not said (older server)', () => {
+    expect(statusPresentation(inputs({ relayStatus: true }))).toEqual(statusPresentation(inputs()));
+  });
+
   it('stays quiet on an active relay with a healthy connection', () => {
     // The standing "Relay" word is gone by design: when all is well the bubble
     // says nothing, and the popover still reports Active Relay.
