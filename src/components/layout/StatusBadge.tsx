@@ -40,6 +40,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { cloudStandbyState, type RelayHomeRoles } from '@/lib/relay-roles';
+import { getUnreachableHomeIds, subscribeRelayReachability } from '@/server/relay-reachability';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { warnsUser, RECONNECTED_VISIBLE_MS, formatRtt } from '@/lib/connection-presentation';
 import { buildChain } from '@/lib/connection-chain';
@@ -128,6 +129,14 @@ export function StatusBadge({
   const { data: homes } = useHomes();
   const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
 
+  // Whether the home on screen is one the cloud is currently refusing. This is
+  // the app's own evidence rather than a pushed field — see
+  // server/relay-reachability.ts — and without it the dot sat on quiet emerald
+  // while every write to the home came back NO_DEVICE (homecast-cloud#99).
+  const [unreachableHomes, setUnreachableHomes] = useState(getUnreachableHomeIds);
+  useEffect(() => subscribeRelayReachability(setUnreachableHomes), []);
+  const homeUnreachable = !!homeId && unreachableHomes.has(homeId.toUpperCase());
+
   // Re-render the popover's relative times while it is open, and only then.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -179,6 +188,7 @@ export function StatusBadge({
     localMode: { active: localMode.active, unmapped: localMode.identityState === 'unmapped' },
     relayStatus,
     cloudStandby,
+    homeUnreachable,
   });
 
   if (communityRelayMac && !showRelay) return null;
