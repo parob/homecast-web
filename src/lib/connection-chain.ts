@@ -117,6 +117,13 @@ export interface ChainInput {
    * generic.
    */
   homeName: string | null;
+  /**
+   * The cloud has refused a request for this home with `NO_DEVICE`, and
+   * nothing since has said otherwise — see `server/relay-reachability.ts`.
+   *
+   * Optional, so every existing caller keeps the chain it had.
+   */
+  homeUnreachable?: boolean;
 }
 
 const CLOUD_DOWN =
@@ -234,6 +241,39 @@ export function buildChain(input: ChainInput): ChainModel {
     { tone: 'ok', label: null },
     { tone: 'ok', label: null },
   ];
+
+  // ── The cloud is answering, and its answer is "there is no relay" ────────
+  //
+  // Ranked above the healthy return below, and reached only when the socket
+  // itself has nothing to report — the same order `statusPresentation` uses,
+  // so the dot and the panel under it cannot say different things.
+  //
+  // Without this the popover contradicted its own header: the bubble read
+  // amber "Relay offline" while the panel two lines beneath it drew four green
+  // nodes and said "Every hop is healthy", with `Cloud relay` — the dead one —
+  // among them. That is precisely the sin the three-pill merge existed to end,
+  // reintroduced one layer down (homecast-cloud#99).
+  //
+  // The break lands on hop 1 (Homecast → relay) and the copy is `stalled`'s,
+  // because it is the same fault told two ways. `stalled` infers it from a
+  // request that never came back; this is the server naming it outright in a
+  // NO_DEVICE, which is the stronger evidence and arrives without a timeout.
+  if (input.homeUnreachable && (quality === 'good' || quality === 'unknown')) {
+    hops[1].tone = 'bad';
+    hops[1].label = 'no relay';
+    nodes[2].tone = 'bad';
+    hops[2].tone = 'idle';
+    nodes[3].tone = 'idle';
+    return {
+      nodes,
+      hops,
+      sentence: managed
+        ? "The cloud relay for this home isn't answering. Your device and your internet are both fine."
+        : "Homecast can't get an answer from your relay. Your device and your internet are both fine.",
+      bypass: false,
+      noUserAction: managed ? CLOUD_DOWN : null,
+    };
+  }
 
   if (quality === 'good' || quality === 'unknown' || reconnected) {
     const sentence = reconnected
