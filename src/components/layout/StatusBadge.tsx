@@ -207,6 +207,7 @@ export function StatusBadge({
     community: communityRelayMac,
     rtt: formatRtt(serverConnection.getLastRttMs()),
     homeName: homeName ?? null,
+    homeUnreachable,
   });
 
   return (

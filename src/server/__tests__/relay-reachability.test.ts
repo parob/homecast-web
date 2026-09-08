@@ -14,6 +14,7 @@ import {
 } from '../relay-reachability';
 import { decideLocalMode, EMPTY_MEMO, ENGAGE_AFTER_MS, DISENGAGE_AFTER_MS } from '../local-mode';
 import { statusPresentation } from '@/lib/status-badge';
+import { buildChain } from '@/lib/connection-chain';
 
 describe('relay reachability', () => {
   it('marks a home the cloud has refused', () => {
@@ -216,5 +217,65 @@ describe('the status dot, given a refused home', () => {
   it('outranks the transient "Reconnected", which is about the link', () => {
     const p = statusPresentation({ ...base, reconnected: true, homeUnreachable: true });
     expect(p.label).toBe('Relay offline');
+  });
+});
+
+describe('the connection chain, given a refused home', () => {
+  const base = {
+    quality: 'good' as const,
+    reconnected: false,
+    relayStatus: null,
+    localMode: { active: false, unmapped: false },
+    selfRelay: false,
+    community: false,
+    rtt: '26ms',
+    homeName: 'County Hall',
+  };
+
+  it('used to call every hop healthy while the home refused every write', () => {
+    const c = buildChain({ ...base, managed: true });
+    expect(c.sentence).toBe('Every hop is healthy.');
+    expect(c.nodes.map((n) => n.tone)).toEqual(['ok', 'ok', 'ok', 'ok']);
+  });
+
+  it('breaks the Homecast→relay hop instead', () => {
+    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
+    expect(c.hops[1].tone).toBe('bad');
+    expect(c.hops[1].label).toBe('no relay');
+    // The relay node carries it; nothing past a break is claimed either way.
+    expect(c.nodes.map((n) => n.tone)).toEqual(['ok', 'ok', 'bad', 'idle']);
+    expect(c.sentence).toMatch(/cloud relay for this home isn't answering/);
+  });
+
+  it('offers a cloud customer no action to take', () => {
+    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
+    expect(c.noUserAction).toMatch(/nothing to restart at your end/);
+  });
+
+  it('names a self-hosted relay as theirs, and does offer an action', () => {
+    const c = buildChain({ ...base, managed: false, homeUnreachable: true });
+    expect(c.nodes[2].name).toBe('Your relay');
+    expect(c.sentence).toMatch(/can't get an answer from your relay/);
+    expect(c.noUserAction).toBeNull();
+  });
+
+  it('agrees with the badge: a broken socket outranks it', () => {
+    const c = buildChain({ ...base, managed: true, quality: 'offline', homeUnreachable: true });
+    expect(c.sentence).toMatch(/can't reach Homecast/);
+    expect(c.hops[0].tone).toBe('bad');
+  });
+
+  it('agrees with the badge: Local Mode outranks it', () => {
+    const c = buildChain({
+      ...base, managed: true, homeUnreachable: true,
+      localMode: { active: true, unmapped: false },
+    });
+    expect(c.bypass).toBe(true);
+    expect(c.nodes[3].tone).toBe('ok');
+  });
+
+  it('keeps the home named', () => {
+    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
+    expect(c.nodes[3].name).toBe('County Hall');
   });
 });
