@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { clearStorageKeeping } from '@/lib/relay-preference';
 import { Link, Navigate, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ const isInNativeApp = !!(window as any).webkit?.messageHandlers?.homecast;
 const isOnRelayMac = !!(window as any).isHomeKitRelayCapable;
 
 function switchMode() {
-  localStorage.clear();
+  clearStorageKeeping();
   sessionStorage.clear();
   const win = window as any;
   if (win.webkit?.messageHandlers?.homecast) {
@@ -556,7 +557,7 @@ const Login = () => {
                         disabled={isLoading}
                         onClick={async () => {
                           setIsLoading(true);
-                          localStorage.clear();
+                          clearStorageKeeping();
                           sessionStorage.clear();
                           try {
                             const { wipeAllData } = await import('@/server/local-db');

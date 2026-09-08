@@ -204,6 +204,7 @@ import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
 import { describeError } from '../lib/describe-error';
+import { readRelayDisabled } from '@/lib/relay-preference';
 import { getAccessoryDisplayName } from '../components/widgets/types';
 
 /**
@@ -241,9 +242,11 @@ export function isRelayCapable(): boolean {
   return (window as Window & { isHomeKitRelayCapable?: boolean }).isHomeKitRelayCapable === true;
 }
 
-// Check if the relay is enabled (capable + not manually disabled)
+// Check if the relay is enabled (capable + not manually disabled). The
+// preference lives in lib/relay-preference.ts, which is also what a storage
+// wipe consults so that it survives one.
 export function isRelayEnabled(): boolean {
-  return isRelayCapable() && localStorage.getItem('homecast-relay-disabled') !== 'true';
+  return isRelayCapable() && !readRelayDisabled();
 }
 
 /**

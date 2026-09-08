@@ -1770,6 +1770,8 @@ export interface AdminRelayHomeInfo {
   enrollmentStatus: string | null;
   currentStatus: string;
   uptimePercent7d: number;
+  /** The role this relay holds for the home: `primary`, `standby`, or null when it is not serving it. */
+  relayRole?: 'primary' | 'standby' | null;
 }
 
 export interface AdminRelayActivityDay {

@@ -38,6 +38,11 @@ export interface StatusInputs {
    * `true` when it is the active relay, `false` when it is standing by.
    */
   relayStatus: boolean | null;
+  /**
+   * This Mac relays, but every cloud-managed home is served by the cloud
+   * relay and it is only standing by. Optional: older callers never say.
+   */
+  cloudStandby?: boolean;
 }
 
 /**
@@ -66,6 +71,15 @@ const STANDBY_PRESENTATION: ConnectionPresentation = {
   pulse: false,
   srLabel: 'Standby relay',
   headline: 'Another device is the active relay',
+};
+
+/** Relaying, but the cloud relay serves every cloud-managed home. */
+export const CLOUD_STANDBY_PRESENTATION: ConnectionPresentation = {
+  label: 'Standby',
+  dotClass: 'bg-amber-500',
+  pulse: false,
+  srLabel: 'Standby relay. Homecast Cloud is serving your homes',
+  headline: 'Homecast Cloud is serving your homes',
 };
 
 /**
@@ -99,6 +113,7 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
   // 4. Standing by while another device relays. Worth a word, but only when
   //    nothing about the connection is wrong.
   if (i.relayStatus === false) return STANDBY_PRESENTATION;
+  if (i.cloudStandby) return CLOUD_STANDBY_PRESENTATION;
 
   // 5. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);

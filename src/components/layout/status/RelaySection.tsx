@@ -21,13 +21,15 @@ import { isCommunity } from '@/lib/config';
 import type { HomeKitStats } from '@/native/homekit-bridge';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { formatLastOnline } from '@/lib/relay-last-seen';
+import { cloudStandbyState, homesServedInsteadOfCloud, type RelayHomeRoles } from '@/lib/relay-roles';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-type EffectiveState = 'connected_active' | 'connected_standby' | 'connecting' | 'reconnecting' | 'disconnected';
+type EffectiveState = 'connected_active' | 'connected_standby' | 'connected_cloud_standby' | 'connecting' | 'reconnecting' | 'disconnected';
 
 const dotColorMap: Record<EffectiveState, string> = {
   connected_active: 'bg-green-500',
   connected_standby: 'bg-amber-500',
+  connected_cloud_standby: 'bg-amber-500',
   connecting: 'bg-amber-500 animate-pulse',
   reconnecting: 'bg-amber-500 animate-pulse',
   disconnected: 'bg-red-500',
@@ -36,6 +38,7 @@ const dotColorMap: Record<EffectiveState, string> = {
 const statusLabelMap: Record<EffectiveState, string> = {
   connected_active: 'Active Relay',
   connected_standby: 'Standby',
+  connected_cloud_standby: 'Standby',
   connecting: 'Connecting...',
   reconnecting: 'Reconnecting...',
   disconnected: 'Disconnected',
@@ -94,6 +97,7 @@ interface RelaySectionProps {
 export function RelaySection({ accountType, accessoryLimit, includedAccessoryCount }: RelaySectionProps) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [relayStatus, setRelayStatus] = useState<boolean | null>(null);
+  const [relayRoles, setRelayRoles] = useState<RelayHomeRoles | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [lastConnectedAt, setLastConnectedAt] = useState<number | null>(null);
   const [subscriberStatus, setSubscriberStatus] = useState<ReturnType<typeof serverConnection.getSubscriberStatus> | null>(null);
@@ -114,6 +118,7 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
       const state = serverConnection.getState();
       setConnectionState(state.connectionState);
       setRelayStatus(state.relayStatus);
+      setRelayRoles(state.relayRoles);
       const at = serverConnection.getConnectedAt();
       setConnectedAt(at);
       setLastConnectedAt(serverConnection.getLastConnectedAt());
@@ -134,10 +139,19 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
 
   // Community mode on the relay Mac: always active — direct HomeKit access,
   // and no server WebSocket whose state could say otherwise.
-  const effectiveState = (isCommunity && isRelayCapable())
+  const baseState = (isCommunity && isRelayCapable())
     ? 'connected_active' as EffectiveState
     : getEffectiveState(connectionState, relayStatus);
+  // Standing by for the cloud relay: this Mac IS the account's active relay,
+  // but every cloud-managed home is served by Homecast Cloud and the server
+  // has said so (an older server never does, and then nothing here changes).
+  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
+  const effectiveState: EffectiveState =
+    baseState === 'connected_active' && cloudStandby === 'standby' ? 'connected_cloud_standby' : baseState;
   const isStandby = effectiveState === 'connected_standby';
+  const servingInsteadOfCloud = baseState === 'connected_active' && cloudStandby === 'serving'
+    ? homesServedInsteadOfCloud({ relayRoles, homes: homes ?? [] }).map(h => h.name).filter(Boolean)
+    : [];
   const allHomesCloudManaged = effectiveState === 'connected_active'
     && homes != null && homes.length > 0 && selfHostedHomeCount === 0;
 
@@ -176,12 +190,21 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
         <p className="text-xs text-muted-foreground">
           Not connected to the server. {formatLastOnline(lastConnectedAt)}.
         </p>
+      ) : effectiveState === 'connected_cloud_standby' ? (
+        <p className="text-xs text-muted-foreground">
+          Your homes are served by Homecast Cloud. This Mac will take over if the cloud relay goes offline.
+        </p>
       ) : allHomesCloudManaged ? (
         <p className="text-xs text-muted-foreground">
           All your homes are cloud-managed. You can switch off the relay in Settings.
         </p>
       ) : (
         <>
+          {servingInsteadOfCloud.length > 0 && (
+            <p className="text-xs text-amber-600">
+              The cloud relay is offline. This Mac is serving {servingInsteadOfCloud.join(', ')}.
+            </p>
+          )}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Uptime</span>
