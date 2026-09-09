@@ -44,8 +44,9 @@ vi.mock('@/hooks/useLocalMode', () => ({
   useLocalMode: () => mockLocalMode,
 }));
 
+let mockHomes: Array<{ id: string; name: string; isCloudManaged: boolean }> = [];
 vi.mock('@/hooks/useHomeKitData', () => ({
-  useHomes: () => ({ data: [] }),
+  useHomes: () => ({ data: mockHomes }),
 }));
 
 vi.mock('@/server/connection', () => ({
@@ -78,10 +79,10 @@ vi.mock('@/native/homekit-bridge', () => ({
   HomeKit: { getStats: () => Promise.resolve(null) },
 }));
 
-// The reliability preview is an Apollo query of its own, tested in its own
-// file; here it would only demand a provider the popover tests do not need.
-vi.mock('../status/ReliabilitySection', () => ({
-  ReliabilitySection: () => <div data-testid="reliability" />,
+// The Reliability row is an Apollo query; here it would only demand a provider
+// the popover tests do not need, so it answers "checking…".
+vi.mock('@apollo/client/react', () => ({
+  useQuery: () => ({ data: undefined }),
 }));
 
 import { StatusBadge } from '../StatusBadge';
@@ -92,6 +93,7 @@ beforeEach(() => {
   mockRelayCapable = false;
   mockRelayEnabled = false;
   mockLocalMode = { active: false, identityState: 'mapped', reason: null, matched: 0, reported: 0 };
+  mockHomes = [];
   resetHomeServing();
   setThisDevice(ME);
 });
@@ -165,32 +167,48 @@ describe('shape', () => {
 
 // The reason the three pills became one.
 describe('the merge', () => {
-  it('says Local Mode rather than Offline when both are true', () => {
+  it('says Standing in rather than Offline when both are true', () => {
     // These co-occur by design — Local Mode engages *because* the cloud is
     // unreachable. The app used to render them as a red pill and a green pill
     // on the same row, contradicting each other, separated by the Guest pill.
     mockQuality = 'offline';
     mockLocalMode = { ...mockLocalMode, active: true };
     render(<StatusBadge />);
-    expect(screen.getByRole('button').textContent).toBe('Local Mode');
+    expect(screen.getByRole('button').textContent).toBe('Standing in');
   });
 
-  it('says Local Mode for the home on screen when this device serves it', () => {
+  it('says Standing in for the home on screen when this device serves it in place of a dead relay', () => {
     // The composed fact: the server says the relay is gone, this device says
     // it is serving the home itself, and the second outranks the first.
     mockLocalMode = { ...mockLocalMode, active: true };
     setDeviceServing((id) => ({ active: id === HOME }));
     heard(fact({ state: 'offline', by: null, kind: null }));
     render(<StatusBadge homeId={HOME} />);
-    expect(screen.getByRole('button').textContent).toBe('Local Mode');
+    expect(screen.getByRole('button').textContent).toBe('Standing in');
   });
 
-  it('says Standby when another of your Macs is the relay', () => {
-    mockRelayCapable = true;
-    mockRelayEnabled = true;
+  it('says Local Mode, green, when it was switched on by hand', () => {
+    mockLocalMode = { ...mockLocalMode, active: true, reason: 'manual' };
+    setDeviceServing((id) => ({ active: id === HOME }));
     heard(fact({ by: MINI }));
     render(<StatusBadge homeId={HOME} />);
-    expect(screen.getByRole('button').textContent).toBe('Standby');
+    expect(screen.getByRole('button').textContent).toBe('Local Mode');
+    expect(screen.getByRole('button').innerHTML).toContain('bg-green-500');
+  });
+
+  it('stays quiet when another of your Macs is the relay (homecast-cloud#109)', () => {
+    // This was an amber "Standby" pill over a home that worked perfectly. Duty
+    // is what this machine is doing, not whether you can reach anything; it is
+    // a row in the popover now.
+    mockRelayCapable = true;
+    mockRelayEnabled = true;
+    mockHomes = [{ id: HOME, name: 'County Hall', isCloudManaged: false }];
+    heard(fact({ by: MINI }));
+    render(<StatusBadge homeId={HOME} />);
+    expect(screen.getByRole('button').textContent).toBe('');
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('This Mac')).toBeTruthy();
+    expect(screen.getByText('Standing by')).toBeTruthy();
   });
 
   it('stays quiet on a healthy active relay', () => {
@@ -216,50 +234,71 @@ describe('the merge', () => {
 // parob/homecast-cloud#103: the popover, in the state the report was filed
 // from — a cloud-plan account on an iPhone, the cloud relay gone, Local Mode
 // carrying the home — said the same thing three times and ran off the bottom
-// of the screen.
-describe('the popover in Local Mode (#103)', () => {
-  const reported = () => {
-    mockLocalMode = { ...mockLocalMode, active: true, reason: 'relay-offline', identityState: 'partial', matched: 728, reported: 751 };
+// of the screen. #109: it still did, one layer down, as four sections. It is
+// one answer now.
+describe('the popover in Local Mode (#103, #109)', () => {
+  const reported = (over: Partial<typeof mockLocalMode> = {}) => {
+    mockLocalMode = { ...mockLocalMode, active: true, reason: 'relay-offline', identityState: 'partial', matched: 728, reported: 751, ...over };
     setDeviceServing((id) => ({ active: id === HOME }));
     heard(fact({ state: 'offline', by: null, kind: null }));
     render(<StatusBadge homeId={HOME} homeName="County Hall" accountType="cloud" />);
-    fireEvent.click(screen.getByRole('button', { name: /Local Mode/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Standing in/ }));
   };
 
-  it('says why once, in the chain, and draws the relay as the broken node', () => {
+  it('leads with the verdict, says why once, and draws the relay as the broken node', () => {
     reported();
+    expect(screen.getByText('County Hall is working')).toBeTruthy();
     expect(screen.getByText("The cloud relay isn't answering, so this device is talking to your home directly.")).toBeTruthy();
-    // The reason line the Local Mode section used to add underneath is gone —
-    // the chain has just said it — and the cloud node is not painted dead.
-    expect(screen.queryByText(/Your home relay is offline/)).toBeNull();
-    expect(screen.queryByText(/talking to your Apple Home directly/)).toBeNull();
     expect(screen.queryByText('no answer')).toBeNull();
     expect(screen.getByText('no relay')).toBeTruthy();
   });
 
-  it('keeps what only it can say', () => {
+  it('has no section headings, no relay stats, and no second live status', () => {
     reported();
-    expect(screen.getByText(/728 of 751 accessories/)).toBeTruthy();
+    expect(screen.queryByText('Local Mode')).toBeNull();
+    expect(screen.queryByText('Relay Status')).toBeNull();
+    expect(screen.queryByText('Uptime')).toBeNull();
+    expect(screen.queryByText(/Offline/)).toBeNull();
+    // The identity count that only the Local Mode section reported is gone
+    // with it — the one caveat that survives is the unmapped one.
+    expect(screen.queryByText(/728 of 751/)).toBeNull();
   });
 
-  // #107: still far too long. The capability list and the automations line
-  // both describe the mode rather than report on it, and both are on the
-  // mode's own Settings page — which this section links to.
+  it('keeps the one caveat with nowhere else to live', () => {
+    reported({ identityState: 'unmapped' });
+    expect(screen.getByText(/Some devices show their Apple Home names/)).toBeTruthy();
+  });
+
   it('leaves the reference material to Settings (#107)', () => {
     reported();
     expect(screen.queryByRole('button', { name: /What works in Local Mode/ })).toBeNull();
     expect(screen.queryByText('Lights, switches and plugs')).toBeNull();
     expect(screen.queryByText(/Automations keep running on your relay/)).toBeNull();
+    expect(screen.queryByText('Local Mode settings')).toBeNull();
   });
 
-  it('still gives the reason when the chain has not', () => {
+  it('says it was a choice when it was, and draws no chain', () => {
     mockLocalMode = { ...mockLocalMode, active: true, reason: 'manual' };
     setDeviceServing((id) => ({ active: id === HOME }));
     heard(fact({ by: MINI }));
-    render(<StatusBadge homeId={HOME} />);
+    render(<StatusBadge homeId={HOME} homeName="County Hall" />);
     fireEvent.click(screen.getByRole('button', { name: /Local Mode/ }));
-    expect(screen.getByText('This device is talking to your home directly.')).toBeTruthy();
-    expect(screen.getByText('Local Mode is switched on in Settings.')).toBeTruthy();
+    expect(screen.getByText('This device is talking to your home directly — Local Mode is switched on in Settings.')).toBeTruthy();
+    expect(screen.queryByText('Homecast')).toBeNull();
+  });
+
+  it('shows the reliability row only when there is a home and a link', () => {
+    heard(fact({ by: MINI }));
+    render(<StatusBadge homeId={HOME} homeName="County Hall" />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('Reliability')).toBeTruthy();
+    cleanup();
+    mockQuality = 'offline';
+    render(<StatusBadge homeId={HOME} homeName="County Hall" />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.queryByText('Reliability')).toBeNull();
+    expect(screen.getByText("This device can't reach Homecast")).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Reconnect now/ })).toBeTruthy();
   });
 });
 
@@ -300,15 +339,18 @@ describe('the Community relay Mac', () => {
     expect(screen.getByText(/Nothing is going through the cloud/i)).toBeTruthy();
   });
 
-  it('names the local hops, and no cloud hop', () => {
+  it('says the home works and offers no cloud hop, relay row or reliability row', () => {
     mockIsCommunity = true;
     mockRelayCapable = true;
     mockRelayEnabled = true;
-    render(<StatusBadge />);
+    render(<StatusBadge homeName="County Hall" />);
     fireEvent.click(screen.getByRole('button'));
-    expect(screen.getByText('Local server')).toBeTruthy();
-    // The point of the branch: there is no cloud node to name.
+    expect(screen.getByText('County Hall is working')).toBeTruthy();
+    // Nothing is broken, so the drawing stays hidden; and Community has no
+    // uptime record and no Settings → Relay pane to link to.
     expect(screen.queryByText(/Homecast cloud/i)).toBeNull();
+    expect(screen.queryByText('Reliability')).toBeNull();
+    expect(screen.queryByText('This Mac')).toBeNull();
   });
 
   it('is still shown in cloud mode on a relay-capable Mac', () => {

@@ -1,5 +1,9 @@
+// The drawing, and only the drawing. What the popover *says* about these
+// states is `answer-card.test.ts`; this file pins which node and which hop are
+// painted which colour, from which fact.
+
 import { describe, expect, it } from 'vitest';
-import { buildChain, homeNodeName, relayNodeName, takeoverIn, type ChainInput } from '../connection-chain';
+import { buildChain, chainHasFault, homeNodeName, relayNodeName, takeoverIn, type ChainInput } from '../connection-chain';
 import { composeServing, type HomeServing } from '@/server/home-serving';
 
 const ME = 'mac_d6de42ce';
@@ -15,16 +19,13 @@ const local = (under: HomeServing | null = null): Pick<ChainInput, 'serving' | '
 
 const base: ChainInput = {
   quality: 'good',
-  reconnected: false,
   serving: servedBy(MINI),
   relayServing: servedBy(MINI),
   thisDevice: ME,
-  unmapped: false,
   managed: false,
   community: false,
   rtt: '34ms',
   homeName: null,
-  now: Date.parse('2026-09-08T11:33:02Z'),
 };
 
 const at = (input: Partial<ChainInput> = {}) => buildChain({ ...base, ...input });
@@ -130,7 +131,7 @@ describe('home node naming', () => {
   });
 
   it('does not rename any other node', () => {
-    // The relay words are settled (rule 3) and a home name must not leak into
+    // The relay words are settled (rule 2) and a home name must not leak into
     // them.
     const c = at({ homeName: 'George Street' });
     expect(c.nodes.map(n => n.name)).toEqual([
@@ -143,12 +144,18 @@ describe('home node naming', () => {
 });
 
 describe('healthy states', () => {
-  it('says every hop is healthy, with the round trip on the first hop', () => {
+  it('paints every hop green, with the round trip on the first hop', () => {
     const c = at({ quality: 'good' });
-    expect(c.sentence).toBe('Every hop is healthy.');
     expect(c.nodes.every(n => n.tone === 'ok')).toBe(true);
     expect(c.hops[0].label).toBe('34ms');
-    expect(c.noUserAction).toBeNull();
+    expect(chainHasFault(c)).toBe(false);
+  });
+
+  it('draws no round trip when the caller has none it trusts', () => {
+    // parob/homecast-web#98: a 14.6s round trip painted green. The caller
+    // decides whether the number is a reading (`rttForDisplay`); the chain
+    // just draws what it is given, and given nothing draws nothing.
+    expect(at({ quality: 'good', rtt: null }).hops[0].label).toBeNull();
   });
 
   it('makes no claim at all when the evidence has expired', () => {
@@ -159,20 +166,14 @@ describe('healthy states', () => {
     expect(c.nodes.every(n => n.tone === 'idle')).toBe(true);
     expect(c.hops.every(h => h.tone === 'idle')).toBe(true);
     expect(c.hops[0].label).toBeNull();
-    expect(c.sentence).toBe('Checking the route to your home.');
-  });
-
-  it('confirms recovery without claiming a fault', () => {
-    const c = at({ quality: 'good', reconnected: true });
-    expect(c.sentence).toBe('Every hop is healthy again.');
   });
 });
 
 describe('which hop is broken', () => {
-  it('puts offline on the near hop and says what the user can check', () => {
+  it('puts offline on the near hop', () => {
     const c = at({ quality: 'offline' });
     expect(c.hops[0].tone).toBe('bad');
-    expect(c.sentence).toContain("can't reach Homecast");
+    expect(c.hops[0].label).toBe('no answer');
     // Nothing beyond the break has been measured, so nothing beyond it is
     // painted as failing.
     expect(c.hops[1].tone).toBe('idle');
@@ -180,19 +181,16 @@ describe('which hop is broken', () => {
     expect(c.nodes[3].tone).toBe('idle');
   });
 
-  it('puts a stall on the far hop and says the user side is fine', () => {
+  it('puts a stall on the far hop', () => {
     const c = at({ quality: 'stalled' });
     expect(c.hops[0].tone).toBe('ok');
     expect(c.hops[1].tone).toBe('bad');
-    expect(c.sentence).toContain('Your device and your internet are both fine');
   });
 
-  it('corrects the copy that is actively wrong today about a fast link', () => {
-    // Today this state says "Your connection is slow" about a 28ms connection,
-    // because the slowness is further along the path.
-    const c = at({ quality: 'slow', rtt: '28ms' });
+  it('marks a slow link amber on the near hop, with the number', () => {
+    const c = at({ quality: 'slow', rtt: '2.4s' });
     expect(c.hops[0].tone).toBe('warn');
-    expect(c.sentence).toContain('answering normally behind it');
+    expect(c.hops[0].label).toBe('2.4s');
   });
 
   it('does not idle the rest of the path for a merely slow hop', () => {
@@ -201,27 +199,12 @@ describe('which hop is broken', () => {
     expect(c.hops[1].tone).toBe('ok');
     expect(c.hops[2].tone).toBe('ok');
   });
-});
 
-describe('a cloud relay that has died', () => {
-  it('offers no action, because the user owns nothing to restart', () => {
-    const c = at({ quality: 'stalled', managed: true });
-    expect(c.noUserAction).toBeTruthy();
-    expect(c.sentence).toContain('cloud relay');
-    expect(c.sentence).not.toContain('your Mac');
-  });
-
-  it('offers the reconnect path when the relay is the user own', () => {
-    const c = at({ quality: 'stalled', managed: false });
-    expect(c.noUserAction).toBeNull();
-  });
-
-  it('draws the identical broken hop as the self-hosted case', () => {
-    // Same picture, opposite advice — that contrast is the point.
+  it('draws the identical broken hop for a dead cloud relay and a dead self-hosted one', () => {
+    // Same picture, opposite advice (in the card) — that contrast is the point.
     const managed = at({ quality: 'stalled', managed: true });
     const own = at({ quality: 'stalled', managed: false });
     expect(managed.hops.map(h => h.tone)).toEqual(own.hops.map(h => h.tone));
-    expect(managed.sentence).not.toBe(own.sentence);
   });
 });
 
@@ -233,17 +216,7 @@ describe('Local Mode is a bypass, not a break', () => {
     // The whole reason the three pills were merged: a green home and
     // "You're not connected" must never appear in the same box.
     expect(c.nodes.find(n => n.key === 'home')!.tone).toBe('ok');
-    expect(c.sentence).toContain('talking to your home directly');
-  });
-
-  it('says so when the device cannot recognise everything yet', () => {
-    const c = at({ quality: 'offline', ...local(), unmapped: true });
-    expect(c.sentence).toContain('may not be recognised');
-  });
-
-  it('offers no reconnect, because the socket being down is the design', () => {
-    const c = at({ quality: 'offline', ...local() });
-    expect(c.bypass).toBe(true);
+    expect(c.hops[2].label).toBe('direct');
   });
 
   // homecast-cloud#103's screenshot: a phone with a healthy socket drew
@@ -256,7 +229,6 @@ describe('Local Mode is a bypass, not a break', () => {
     expect(c.nodes.find(n => n.key === 'relay')!.tone).toBe('bad');
     expect(c.hops[1].label).toBe('no relay');
     expect(c.nodes.find(n => n.key === 'home')!.tone).toBe('ok');
-    expect(c.sentence).toBe("The cloud relay isn't answering, so this device is talking to your home directly.");
     expect(c.bypass).toBe(true);
   });
 
@@ -266,13 +238,12 @@ describe('Local Mode is a bypass, not a break', () => {
     // Nothing beyond a dead hop has been measured — the server's last word
     // about the relay is not evidence about it now.
     expect(c.nodes.find(n => n.key === 'relay')!.tone).toBe('idle');
-    expect(c.sentence).toContain('Homecast is unreachable');
   });
 
-  it('says only that it is direct when nothing is broken (switched on by hand)', () => {
+  it('has no fault to point at when nothing is broken (switched on by hand)', () => {
     const c = at({ quality: 'good', ...local(servedBy(MINI)) });
     expect(c.nodes.every(n => n.tone === 'ok')).toBe(true);
-    expect(c.sentence).toBe('This device is talking to your home directly.');
+    expect(chainHasFault(c)).toBe(false);
   });
 
   it('warns rather than condemns a relay the server expects back', () => {
@@ -292,27 +263,17 @@ describe('the cloud says nothing may serve the home', () => {
     expect(c.hops[1].label).toBe('no relay');
     expect(c.nodes[2].tone).toBe('bad');
     expect(c.nodes[3].tone).toBe('idle');
-    expect(c.sentence).toContain('Your device and your internet are both fine');
   });
 
-  it('counts down the takeover during the grace', () => {
-    const grace = '2026-09-08T11:36:02Z';   // three minutes after `now`
-    const c = at({ serving: notServed('waiting', grace), relayServing: notServed('waiting', grace), managed: true });
-    expect(c.sentence).toBe("The cloud relay for this home isn't answering. Your own relay takes over in 3 min.");
-    expect(c.noUserAction).toBeTruthy();
-  });
-
-  it('warns, and offers no reassurance, for a relay that is expected back', () => {
+  it('warns for a relay that is expected back', () => {
     const c = at({ serving: notServed('reconnecting'), relayServing: notServed('reconnecting'), managed: true });
     expect(c.hops[1].tone).toBe('warn');
-    expect(c.sentence).toContain('should be back shortly');
-    expect(c.noUserAction).toBeNull();
   });
 
   it('defers to the link when that is broken too, because the link explains it', () => {
     const c = at({ quality: 'offline', serving: notServed('offline'), relayServing: notServed('offline') });
     expect(c.hops[0].tone).toBe('bad');
-    expect(c.sentence).toContain("can't reach Homecast");
+    expect(c.hops[1].tone).toBe('idle');
   });
 
   it('names this Mac as the relay when the fact says so', () => {
@@ -340,7 +301,6 @@ describe('community mode', () => {
     const c = at({ community: true });
     expect(c.nodes.map(n => n.key)).not.toContain('cloud');
     expect(c.hops).toHaveLength(c.nodes.length - 1);
-    expect(c.sentence).toContain('Nothing is going through the cloud');
   });
 });
 
@@ -352,7 +312,6 @@ describe('model invariants', () => {
     { quality: 'slow' },
     { quality: 'stalled' },
     { quality: 'offline' },
-    { quality: 'good', reconnected: true },
     { quality: 'stalled', managed: true },
     { quality: 'offline', ...local() },
     { quality: 'good', ...local(notServed('offline')) },
@@ -368,7 +327,9 @@ describe('model invariants', () => {
     expect(c.hops).toHaveLength(c.nodes.length - 1);
   });
 
-  it.each(states)('always says something: %j', state => {
-    expect(at(state).sentence.length).toBeGreaterThan(0);
+  it.each(states)('never labels an idle hop: %j', state => {
+    for (const h of at(state).hops) {
+      if (h.tone === 'idle') expect(h.label).toBeNull();
+    }
   });
 });
