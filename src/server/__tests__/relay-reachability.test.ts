@@ -13,8 +13,6 @@ import {
   EMPTY_REACHABILITY, noteRefused, noteServed, unreachableHomeIds,
 } from '../relay-reachability';
 import { decideLocalMode, EMPTY_MEMO, ENGAGE_AFTER_MS, DISENGAGE_AFTER_MS } from '../local-mode';
-import { statusPresentation } from '@/lib/status-badge';
-import { buildChain } from '@/lib/connection-chain';
 
 describe('relay reachability', () => {
   it('marks a home the cloud has refused', () => {
@@ -184,98 +182,8 @@ describe('Local Mode, given a refused home', () => {
   });
 });
 
-describe('the status dot, given a refused home', () => {
-  const base = {
-    quality: 'good' as const,
-    reconnected: false,
-    localMode: { active: false, unmapped: false },
-    relayStatus: null,
-  };
-
-  it('used to sit on the quiet emerald dot — the bug', () => {
-    expect(statusPresentation(base).label).toBeNull();
-  });
-
-  it('says so when the home is unreachable', () => {
-    const p = statusPresentation({ ...base, homeUnreachable: true });
-    expect(p.label).toBe('Relay offline');
-    expect(p.dotClass).toBe('bg-amber-500');
-  });
-
-  it('yields to a broken connection, which explains it', () => {
-    const p = statusPresentation({ ...base, quality: 'offline', homeUnreachable: true });
-    expect(p.label).toBe('Offline');
-  });
-
-  it('yields to Local Mode, which is the home working', () => {
-    const p = statusPresentation({
-      ...base, localMode: { active: true, unmapped: false }, homeUnreachable: true,
-    });
-    expect(p.label).toBe('Local Mode');
-  });
-
-  it('outranks the transient "Reconnected", which is about the link', () => {
-    const p = statusPresentation({ ...base, reconnected: true, homeUnreachable: true });
-    expect(p.label).toBe('Relay offline');
-  });
-});
-
-describe('the connection chain, given a refused home', () => {
-  const base = {
-    quality: 'good' as const,
-    reconnected: false,
-    relayStatus: null,
-    localMode: { active: false, unmapped: false },
-    selfRelay: false,
-    community: false,
-    rtt: '26ms',
-    homeName: 'County Hall',
-  };
-
-  it('used to call every hop healthy while the home refused every write', () => {
-    const c = buildChain({ ...base, managed: true });
-    expect(c.sentence).toBe('Every hop is healthy.');
-    expect(c.nodes.map((n) => n.tone)).toEqual(['ok', 'ok', 'ok', 'ok']);
-  });
-
-  it('breaks the Homecast→relay hop instead', () => {
-    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
-    expect(c.hops[1].tone).toBe('bad');
-    expect(c.hops[1].label).toBe('no relay');
-    // The relay node carries it; nothing past a break is claimed either way.
-    expect(c.nodes.map((n) => n.tone)).toEqual(['ok', 'ok', 'bad', 'idle']);
-    expect(c.sentence).toMatch(/cloud relay for this home isn't answering/);
-  });
-
-  it('offers a cloud customer no action to take', () => {
-    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
-    expect(c.noUserAction).toMatch(/nothing to restart at your end/);
-  });
-
-  it('names a self-hosted relay as theirs, and does offer an action', () => {
-    const c = buildChain({ ...base, managed: false, homeUnreachable: true });
-    expect(c.nodes[2].name).toBe('Your relay');
-    expect(c.sentence).toMatch(/can't get an answer from your relay/);
-    expect(c.noUserAction).toBeNull();
-  });
-
-  it('agrees with the badge: a broken socket outranks it', () => {
-    const c = buildChain({ ...base, managed: true, quality: 'offline', homeUnreachable: true });
-    expect(c.sentence).toMatch(/can't reach Homecast/);
-    expect(c.hops[0].tone).toBe('bad');
-  });
-
-  it('agrees with the badge: Local Mode outranks it', () => {
-    const c = buildChain({
-      ...base, managed: true, homeUnreachable: true,
-      localMode: { active: true, unmapped: false },
-    });
-    expect(c.bypass).toBe(true);
-    expect(c.nodes[3].tone).toBe('ok');
-  });
-
-  it('keeps the home named', () => {
-    const c = buildChain({ ...base, managed: true, homeUnreachable: true });
-    expect(c.nodes[3].name).toBe('County Hall');
-  });
-});
+// The status dot and the connection chain used to be tested here against a
+// `homeUnreachable` input fed from this module. That input is gone: both now
+// read the one serving fact (`server/home-serving.ts`), and a refusal is a
+// refetch trigger rather than a belief. Their tests live next to them —
+// lib/__tests__/status-badge.test.ts and connection-chain.test.ts.

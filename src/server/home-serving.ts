@@ -180,7 +180,12 @@ export function ingestHomeServingPush(message: { homeId?: unknown; serving?: unk
   if (parsed) set(message.homeId, parsed);
 }
 
-/** The server's fact for a home, as last heard. Surfaces should not read this — see `effectiveServing`. */
+/**
+ * The server's fact for a home, as last heard, uncomposed. Surfaces read
+ * `effectiveServing`; the one legitimate reader of this is the connection
+ * chain, whose relay node is drawn from the server's fact precisely because
+ * Local Mode is the thing bypassing it.
+ */
 export function getHomeServing(homeId: string): HomeServing | null {
   return facts.get(key(homeId)) ?? null;
 }

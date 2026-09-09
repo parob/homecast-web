@@ -129,12 +129,15 @@ function offlineNow(now: number): UptimeSummary {
 /** The status popover's content, at its real width, around the new section. */
 function PopoverMock({ summary }: { summary: UptimeSummary }) {
   const quality = 'good' as const;
-  const localMode = { active: false, unmapped: false };
+  const serving = { state: 'served' as const, by: 'mac_cloud01', kind: 'cloud' as const, since: null, graceEndsAt: null };
   const chain = buildChain({
-    quality, reconnected: false, relayStatus: null, localMode,
-    managed: true, selfRelay: false, community: false, rtt: '34ms', homeName: 'George Street',
+    quality, reconnected: false, serving, relayServing: serving, thisDevice: 'mac_me', unmapped: false,
+    managed: true, community: false, rtt: '34ms', homeName: 'George Street',
   });
-  const p = statusPresentation({ quality, reconnected: false, localMode, relayStatus: null });
+  const p = statusPresentation({
+    quality, reconnected: false, serving, thisDevice: 'mac_me', unmapped: false,
+    relayEnabled: false, managed: true, community: false,
+  });
   return (
     <div className="w-[280px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-md">
       <div className="space-y-3">

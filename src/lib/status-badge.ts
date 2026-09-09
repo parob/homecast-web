@@ -1,5 +1,5 @@
 /**
- * Which of three overlapping facts the one status bubble should say.
+ * Which of the overlapping facts the one status bubble should say.
  *
  * The header used to carry three separate pills, each with its own dot and its
  * own popover, all answering versions of the same question — "can this app
@@ -19,10 +19,21 @@
  * So the pixels merge, and this module decides what the single label says.
  * Pure, so the ordering is testable rather than something you have to
  * reproduce by pulling a network cable.
+ *
+ * ── Two inputs, not five ───────────────────────────────────────────────────
+ *
+ * Everything about the *home* — whether a relay may serve it, which one, and
+ * whether that relay is this device or this device's own HomeKit — arrives as
+ * one value: `serving`, the composed `effectiveServing` from
+ * `server/home-serving.ts`. It used to be four separate booleans
+ * (`localMode.active`, `relayStatus`, `cloudStandby`, `homeUnreachable`),
+ * each derived from a different source, and the pairs that disagreed were
+ * homecast-cloud#99. Now the only other input is the *link*: `quality`, which
+ * is about this device's socket and nothing else.
  */
 
 import type { ConnectionQuality } from '@/server/connection-quality';
-import type { CloudStandby } from './relay-roles';
+import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
 import {
   connectionPresentation,
   RECONNECTED_PRESENTATION,
@@ -33,24 +44,22 @@ export interface StatusInputs {
   quality: ConnectionQuality;
   /** The transient recovery confirmation is currently showing. */
   reconnected: boolean;
-  localMode: { active: boolean; unmapped: boolean };
   /**
-   * This device's relay duty. `null` when it is not relay-capable at all,
-   * `true` when it is the active relay, `false` when it is standing by.
+   * `effectiveServing(homeId)` for the home on screen: the server's fact with
+   * this device's own Local Mode composed over it. `null` when no home is on
+   * screen, or nothing has been heard about it yet.
    */
-  relayStatus: boolean | null;
-  /**
-   * What this Mac is doing for the cloud-managed homes: `standby` while the
-   * cloud relay serves them all, `serving` once it has taken at least one
-   * over because the cloud relay is gone. Optional: older callers never say.
-   */
-  cloudStandby?: CloudStandby;
-  /**
-   * The home on screen cannot be reached: the cloud has refused a request for
-   * it with `NO_DEVICE`, and nothing since has said otherwise. Optional, so
-   * older callers keep exactly the presentation they had.
-   */
-  homeUnreachable?: boolean;
+  serving: HomeServing | null;
+  /** This device's id, so `serving.by` can be recognised as "me". */
+  thisDevice: string | null;
+  /** Local Mode is running under Apple Home's names rather than the user's. */
+  unmapped: boolean;
+  /** This device is relay-capable and the relay is switched on. */
+  relayEnabled: boolean;
+  /** `accountType === 'cloud'`: the relay is Homecast's, not the user's. */
+  managed: boolean;
+  /** Community mode: no cloud, this Mac is the server, nothing to stand by for. */
+  community: boolean;
 }
 
 /**
@@ -83,8 +92,8 @@ const STANDBY_PRESENTATION: ConnectionPresentation = {
 
 /**
  * The standby has been activated: the cloud relay has been gone for the
- * takeover grace and this Mac is serving at least one cloud-managed home.
- * Amber, because the thing worth knowing is that the cloud relay is offline.
+ * takeover grace and this Mac is serving the home. Amber, because the thing
+ * worth knowing is that the cloud relay is offline.
  */
 export const CLOUD_SERVING_PRESENTATION: ConnectionPresentation = {
   label: 'Standby active',
@@ -111,7 +120,35 @@ export const HOME_UNREACHABLE_PRESENTATION: ConnectionPresentation = {
 };
 
 /**
- * The one thing worth saying, chosen from the three.
+ * The state that had no name before the fact did: the relay is gone, a
+ * standby is connected, and the server is holding it back for the takeover
+ * grace. Same label as offline — from the user's side the home is equally
+ * unreachable — but the headline says what happens next.
+ */
+export const HOME_WAITING_PRESENTATION: ConnectionPresentation = {
+  label: 'Relay offline',
+  dotClass: 'bg-amber-500',
+  pulse: false,
+  srLabel: "Relay offline. This home's relay is not answering; a standby is about to take over",
+  headline: "This home's relay isn't answering — a standby takes over shortly",
+};
+
+/**
+ * The relay dropped off within the last couple of minutes and is expected
+ * back: the server's reconnect grace. Pulsing amber, the same treatment
+ * `connecting` gets on the link, because it is the same kind of claim — a
+ * fault that is probably transient.
+ */
+export const HOME_RECONNECTING_PRESENTATION: ConnectionPresentation = {
+  label: 'Relay reconnecting',
+  dotClass: 'bg-amber-500',
+  pulse: true,
+  srLabel: "Relay reconnecting. This home's relay dropped off and should be back shortly",
+  headline: "This home's relay dropped off and should be back shortly",
+};
+
+/**
+ * The one thing worth saying.
  *
  * **Local Mode wins over Offline, deliberately.** It is not merely the more
  * important fact, it is a *superset* of the other one: it says the cloud is
@@ -120,14 +157,17 @@ export const HOME_UNREACHABLE_PRESENTATION: ConnectionPresentation = {
  * is lost — the connection detail moves into the popover, which is where a
  * second-order fact belongs.
  *
- * Relay duty ranks last of the three because it describes what this machine is
- * doing rather than whether you can reach anything. When the connection is
- * broken, why is more useful than who.
+ * Relay duty ranks last because it describes what this machine is doing
+ * rather than whether you can reach anything. When the connection is broken,
+ * why is more useful than who.
  */
 export function statusPresentation(i: StatusInputs): ConnectionPresentation {
+  const s = i.serving;
+
   // 1. Local Mode: the most consequential fact, and the explanation for the
-  //    connection state underneath it.
-  if (i.localMode.active) return localModePresentation(i.localMode.unmapped);
+  //    connection state underneath it. `kind: 'local'` is a value only this
+  //    device ever writes — see composeServing.
+  if (s?.kind === 'local') return localModePresentation(i.unmapped);
 
   // 2. Anything the connection itself wants to report. `good` and `unknown`
   //    carry no label, so they fall through rather than pre-empting the rest.
@@ -135,23 +175,33 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
     return connectionPresentation(i.quality);
   }
 
-  // 3. The home itself is unreachable. Ranked below the connection because a
+  // 3. The home itself is not served. Ranked below the connection because a
   //    broken link *explains* an unreachable home and is the more actionable
   //    of the two, and above the recovery confirmation because "it's back" is
   //    a claim about the link that would read, wrongly, as "and your home
   //    works again".
-  if (i.homeUnreachable) return HOME_UNREACHABLE_PRESENTATION;
+  if (s && s.state !== 'served') {
+    if (s.state === 'waiting') return HOME_WAITING_PRESENTATION;
+    if (s.state === 'reconnecting') return HOME_RECONNECTING_PRESENTATION;
+    return HOME_UNREACHABLE_PRESENTATION;
+  }
 
   // 4. The transient "it's back", once there is nothing louder to say.
   if (i.reconnected) return RECONNECTED_PRESENTATION;
 
-  // 5. Standing by while another device relays. Worth a word, but only when
-  //    nothing about the connection is wrong.
-  if (i.relayStatus === false) return STANDBY_PRESENTATION;
-  if (i.cloudStandby === 'serving') return CLOUD_SERVING_PRESENTATION;
-  // Standing by for the cloud relay (`cloudStandby === 'standby'`) is the
-  // healthy shape of a cloud-plan Mac and says nothing here: the quiet dot.
-  // The popover's relay section explains it to anyone who opens it.
+  // 5. Relay duty, from the same fact: who `by` is. Only a device that could
+  //    be the relay has a duty to report, and a Community Mac has nobody to
+  //    stand by for.
+  if (i.relayEnabled && s && !i.community) {
+    const mine = servedByThisDevice(s, i.thisDevice);
+    // A cloud-plan Mac serving the home is the activated standby: the cloud
+    // relay is gone and this Mac took over. Amber, about the cloud relay.
+    if (mine && i.managed) return CLOUD_SERVING_PRESENTATION;
+    // A cloud-plan Mac *not* serving is the healthy shape of that plan — the
+    // cloud relay holds the home — and says nothing here: the quiet dot. The
+    // popover's relay section explains standby to anyone who opens it.
+    if (!mine && !i.managed) return STANDBY_PRESENTATION;
+  }
 
   // 6. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);

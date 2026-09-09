@@ -39,9 +39,13 @@ import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
-import { cloudStandbyState, type RelayHomeRoles } from '@/lib/relay-roles';
-import { getUnreachableHomeIds, subscribeRelayReachability } from '@/server/relay-reachability';
-import { useHomes } from '@/hooks/useHomeKitData';
+import {
+  composeServing,
+  effectiveServing,
+  getHomeServing,
+  getThisDevice,
+  subscribeHomeServing,
+} from '@/server/home-serving';
 import { warnsUser, RECONNECTED_VISIBLE_MS, formatRtt } from '@/lib/connection-presentation';
 import { buildChain } from '@/lib/connection-chain';
 import type { ChainVariant } from './status/ConnectionChain';
@@ -110,32 +114,23 @@ export function StatusBadge({
   const [open, setOpen] = useState(false);
   const openTimeRef = useRef(0);
 
-  // Relay duty, read from the subscription rather than sampled. The old badge
-  // polled `getState()` every second for the whole life of the app to learn
-  // this one boolean.
-  const [relayStatus, setRelayStatus] = useState<boolean | null>(null);
-  const [relayRoles, setRelayRoles] = useState<RelayHomeRoles | null>(null);
-  useEffect(() => {
-    const s0 = serverConnection.getState();
-    setRelayStatus(s0.relayStatus);
-    setRelayRoles(s0.relayRoles);
-    return serverConnection.subscribe((s) => {
-      setRelayStatus(s.relayStatus);
-      setRelayRoles(s.relayRoles);
-    });
-  }, []);
-  // Standing by for the cloud relay is a fact about the homes, so it needs
-  // the homes list: which of them are cloud-managed, and what role we hold.
-  const { data: homes } = useHomes();
-  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
-
-  // Whether the home on screen is one the cloud is currently refusing. This is
-  // the app's own evidence rather than a pushed field — see
-  // server/relay-reachability.ts — and without it the dot sat on quiet emerald
-  // while every write to the home came back NO_DEVICE (homecast-cloud#99).
-  const [unreachableHomes, setUnreachableHomes] = useState(getUnreachableHomeIds);
-  useEffect(() => subscribeRelayReachability(setUnreachableHomes), []);
-  const homeUnreachable = !!homeId && unreachableHomes.has(homeId.toUpperCase());
+  // Everything about the *home* — whether a relay may serve it, which one,
+  // whether that is this device — is one fact, read from one store. It used
+  // to be four separate readings here (relay duty from the socket, cloud
+  // standby from the roles map, a refusal from relay-reachability, Local Mode
+  // from its controller), and the pairs that disagreed were homecast-cloud#99.
+  // The store notifies on change; the fact itself is read at render time so
+  // the Local Mode composition is never a frame stale.
+  const [, bumpServing] = useState(0);
+  useEffect(() => subscribeHomeServing(() => bumpServing(n => n + 1)), []);
+  const thisDevice = getThisDevice();
+  // With several homes and none selected there is no home to ask about, and
+  // the only fact left is this device's own — which is still worth the label.
+  const serving = homeId
+    ? effectiveServing(homeId)
+    : composeServing(null, { active: localMode.active }, thisDevice);
+  const relayServing = homeId ? getHomeServing(homeId) : null;
+  const unmapped = localMode.identityState === 'unmapped';
 
   // Re-render the popover's relative times while it is open, and only then.
   const [, setTick] = useState(0);
@@ -182,13 +177,16 @@ export function StatusBadge({
   const communityRelayMac = isCommunity && isRelayCapable();
   const effectiveQuality: ConnectionQuality = communityRelayMac ? 'good' : quality;
 
+  const managed = accountType === 'cloud';
   const p = statusPresentation({
     quality: effectiveQuality,
     reconnected,
-    localMode: { active: localMode.active, unmapped: localMode.identityState === 'unmapped' },
-    relayStatus,
-    cloudStandby,
-    homeUnreachable,
+    serving,
+    thisDevice,
+    unmapped,
+    relayEnabled: showRelay,
+    managed,
+    community: communityRelayMac,
   });
 
   if (communityRelayMac && !showRelay) return null;
@@ -200,14 +198,14 @@ export function StatusBadge({
   const chain = buildChain({
     quality: effectiveQuality,
     reconnected,
-    relayStatus,
-    localMode: { active: localMode.active, unmapped: localMode.identityState === 'unmapped' },
-    managed: accountType === 'cloud',
-    selfRelay: relayStatus === true,
+    serving,
+    relayServing,
+    thisDevice,
+    unmapped,
+    managed,
     community: communityRelayMac,
     rtt: formatRtt(serverConnection.getLastRttMs()),
     homeName: homeName ?? null,
-    homeUnreachable,
   });
 
   return (
@@ -297,7 +295,7 @@ export function StatusBadge({
             </>
           )}
 
-          {localMode.active && (
+          {serving?.kind === 'local' && (
             <>
               <div className="border-t" />
               <LocalModeSection
