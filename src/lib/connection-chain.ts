@@ -12,6 +12,22 @@
  * next door, so the rules below can be tested rather than eyeballed against a
  * throttled browser.
  *
+ * ── One node per fact ──────────────────────────────────────────────────────
+ *
+ * The drawing is honest because each node is painted from the one thing that
+ * actually knows about it:
+ *
+ *   device → Homecast    `quality`, this device's socket
+ *   Homecast → relay     the server's `HomeServing` fact for the home
+ *   relay → home         whether the home is served at all, and by what
+ *
+ * Before the fact existed the middle hop was inferred — from a refusal, from a
+ * stalled request, from a cached `relayState` — and in Local Mode it was not
+ * even that: the branch painted "Homecast · no answer" unconditionally, so a
+ * phone whose socket was perfectly healthy drew a dead cloud two lines above a
+ * section saying the *relay* was the thing that had gone
+ * (parob/homecast-cloud#103).
+ *
  * ── Four rules here are load-bearing ───────────────────────────────────────
  *
  *  1. **Key the cloud-managed test on the account type, never on
@@ -52,6 +68,7 @@
  */
 
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
 
 /**
  * How a node or a hop is doing.
@@ -83,7 +100,7 @@ export interface ChainModel {
   /** The headline. The drawing only makes it quick to read. */
   sentence: string;
   /**
-   * Local Mode: the cloud hop is dead and the home is green anyway, because
+   * Local Mode: the home is green whatever the hops before it say, because
    * this device is talking to Apple Home directly. Drawn as a bypass rather
    * than as a break, since nothing is actually broken from the user's side.
    */
@@ -99,13 +116,24 @@ export interface ChainInput {
   quality: ConnectionQuality;
   /** The transient "it's back" state, which is not a ConnectionQuality. */
   reconnected: boolean;
-  /** Is this device the active relay? `null` while unknown. */
-  relayStatus: boolean | null;
-  localMode: { active: boolean; unmapped: boolean };
+  /**
+   * `effectiveServing(homeId)`: the server's fact for the home with this
+   * device's own Local Mode composed over it. `null` when nothing is known.
+   */
+  serving: HomeServing | null;
+  /**
+   * The server's fact on its own, for the relay node. Equal to `serving`
+   * except in Local Mode, where the composition hides it — and the relay node
+   * is precisely the thing Local Mode is bypassing, so the drawing wants the
+   * uncomposed answer. `null` when nothing is known.
+   */
+  relayServing: HomeServing | null;
+  /** This device's id, so `serving.by` can be recognised as "me". */
+  thisDevice: string | null;
+  /** Local Mode is running under Apple Home's names rather than the user's. */
+  unmapped: boolean;
   /** `accountType === 'cloud'` — see rule 1. NOT the per-home flag. */
   managed: boolean;
-  /** This device can be, and is, the relay serving the home. */
-  selfRelay: boolean;
   /** Community mode: nothing leaves the house, so there is no cloud hop. */
   community: boolean;
   /** Formatted round trip, e.g. `34ms`. Rendered on the first hop when known. */
@@ -117,13 +145,8 @@ export interface ChainInput {
    * generic.
    */
   homeName: string | null;
-  /**
-   * The cloud has refused a request for this home with `NO_DEVICE`, and
-   * nothing since has said otherwise — see `server/relay-reachability.ts`.
-   *
-   * Optional, so every existing caller keeps the chain it had.
-   */
-  homeUnreachable?: boolean;
+  /** For the takeover countdown in `waiting`. Defaults to `Date.now()`. */
+  now?: number;
 }
 
 const CLOUD_DOWN =
@@ -141,11 +164,21 @@ export function homeNodeName(homeName: string | null | undefined): string {
 }
 
 /** What the third node is called. Rule 3. */
-export function relayNodeName(input: Pick<ChainInput, 'managed' | 'selfRelay' | 'community'>): string {
+export function relayNodeName(input: { managed: boolean; selfRelay: boolean; community: boolean }): string {
   if (input.managed) return 'Cloud relay';
   if (input.community) return 'This Mac';
   if (input.selfRelay) return 'This Mac';
   return 'Your relay';
+}
+
+/** "in 3 min" / "in 40s" / "any moment" — the takeover countdown. */
+export function takeoverIn(graceEndsAt: string | null, now: number): string {
+  const end = graceEndsAt ? Date.parse(graceEndsAt) : NaN;
+  if (Number.isNaN(end)) return 'shortly';
+  const s = Math.ceil((end - now) / 1000);
+  if (s <= 5) return 'any moment';
+  if (s < 90) return `in ${s}s`;
+  return `in ${Math.round(s / 60)} min`;
 }
 
 /**
@@ -175,10 +208,36 @@ function brokenHop(quality: ConnectionQuality): number | null {
   }
 }
 
-export function buildChain(input: ChainInput): ChainModel {
-  const { quality, reconnected, localMode, managed, community } = input;
+const linkFine = (q: ConnectionQuality) => q === 'good' || q === 'unknown';
 
-  const relayName = relayNodeName(input);
+/** The sentence for a relay the server says is not serving, by its state. */
+function unservedSentence(state: HomeServing['state'], managed: boolean, graceEndsAt: string | null, now: number): string {
+  const who = managed ? 'The cloud relay for this home' : 'Your relay';
+  switch (state) {
+    case 'reconnecting':
+      return `${who} dropped off a moment ago and should be back shortly.`;
+    case 'waiting':
+      return managed
+        ? `${who} isn't answering. Your own relay takes over ${takeoverIn(graceEndsAt, now)}.`
+        : `${who} isn't answering. Another of your relays takes over ${takeoverIn(graceEndsAt, now)}.`;
+    default:
+      return managed
+        ? "The cloud relay for this home isn't answering. Your device and your internet are both fine."
+        : "Homecast can't get an answer from your relay. Your device and your internet are both fine.";
+  }
+}
+
+export function buildChain(input: ChainInput): ChainModel {
+  const { quality, reconnected, managed, community } = input;
+  const now = input.now ?? Date.now();
+  const serving = input.serving;
+  const relayServing = input.relayServing ?? (serving?.kind === 'local' ? null : serving);
+
+  const relayName = relayNodeName({
+    managed,
+    community,
+    selfRelay: servedByThisDevice(relayServing, input.thisDevice),
+  });
   const homeName = homeNodeName(input.homeName);
 
   // ── Community: no cloud in the path at all ───────────────────────────────
@@ -205,26 +264,44 @@ export function buildChain(input: ChainInput): ChainModel {
 
   // ── Local Mode: a bypass, not a break ────────────────────────────────────
   //
-  // Homecast is unreachable and the home works anyway, because this device is
-  // talking to Apple Home directly. Leading with the socket here is what the
-  // three-pill merge existed to stop: a green home and "You're not connected"
-  // in the same box.
-  if (localMode.active) {
+  // The home works because this device is talking to Apple Home directly. The
+  // hops before it are painted from what actually broke — the link, if it is
+  // down; otherwise the relay, from the server's own fact — so the drawing
+  // agrees with the sentence and with the Local Mode section beneath it. It
+  // used to paint the cloud dead unconditionally (homecast-cloud#103).
+  if (serving?.kind === 'local') {
+    const linkDown = !linkFine(quality);
+    const relayState = linkDown ? null : relayServing?.state ?? null;
+    const relayDown = relayState !== null && relayState !== 'served';
+    const relayTone: ChainTone = linkDown ? 'idle'
+      : relayState === null ? 'idle'
+      : relayState === 'served' ? 'ok'
+      : relayState === 'reconnecting' ? 'warn'
+      : 'bad';
+    const why = linkDown
+      ? 'Homecast is unreachable, so this device is talking to your home directly.'
+      : relayDown
+        ? `${managed ? 'The cloud relay' : 'Your relay'} isn't answering, so this device is talking to your home directly.`
+        : 'This device is talking to your home directly.';
     return {
       nodes: [
         { key: 'device', name: 'This device', tone: 'ok' },
-        { key: 'cloud', name: 'Homecast', tone: 'bad' },
-        { key: 'relay', name: relayName, tone: 'idle' },
+        { key: 'cloud', name: 'Homecast', tone: linkDown ? 'bad' : quality === 'unknown' ? 'idle' : 'ok' },
+        { key: 'relay', name: relayName, tone: relayTone },
         { key: 'home', name: homeName, tone: 'ok' },
       ],
       hops: [
-        { tone: 'bad', label: 'no answer' },
-        { tone: 'idle', label: null },
+        linkDown
+          ? { tone: 'bad', label: 'no answer' }
+          : { tone: quality === 'unknown' ? 'idle' : 'ok', label: quality === 'unknown' ? null : input.rtt },
+        relayTone === 'idle'
+          ? { tone: 'idle', label: null }
+          : relayTone === 'ok'
+            ? { tone: 'ok', label: null }
+            : { tone: relayTone, label: relayState === 'reconnecting' ? 'reconnecting' : 'no relay' },
         { tone: 'ok', label: 'direct' },
       ],
-      sentence: localMode.unmapped
-        ? 'Homecast is unreachable, so this device is talking to your home directly. Some devices may not be recognised yet.'
-        : 'Homecast is unreachable, so this device is talking to your home directly.',
+      sentence: input.unmapped ? `${why} Some devices may not be recognised yet.` : why,
       bypass: true,
       noUserAction: null,
     };
@@ -242,7 +319,7 @@ export function buildChain(input: ChainInput): ChainModel {
     { tone: 'ok', label: null },
   ];
 
-  // ── The cloud is answering, and its answer is "there is no relay" ────────
+  // ── The cloud is answering, and its answer is "nothing may serve this home" ─
   //
   // Ranked above the healthy return below, and reached only when the socket
   // itself has nothing to report — the same order `statusPresentation` uses,
@@ -256,26 +333,26 @@ export function buildChain(input: ChainInput): ChainModel {
   //
   // The break lands on hop 1 (Homecast → relay) and the copy is `stalled`'s,
   // because it is the same fault told two ways. `stalled` infers it from a
-  // request that never came back; this is the server naming it outright in a
-  // NO_DEVICE, which is the stronger evidence and arrives without a timeout.
-  if (input.homeUnreachable && (quality === 'good' || quality === 'unknown')) {
-    hops[1].tone = 'bad';
-    hops[1].label = 'no relay';
-    nodes[2].tone = 'bad';
+  // request that never came back; this is the server stating it as the fact
+  // for the home, which is the stronger evidence and arrives without a timeout.
+  if (serving && serving.state !== 'served' && linkFine(quality)) {
+    const tone: ChainTone = serving.state === 'reconnecting' ? 'warn' : 'bad';
+    hops[1].tone = tone;
+    hops[1].label = serving.state === 'reconnecting' ? 'reconnecting' : 'no relay';
+    nodes[2].tone = tone;
     hops[2].tone = 'idle';
     nodes[3].tone = 'idle';
     return {
       nodes,
       hops,
-      sentence: managed
-        ? "The cloud relay for this home isn't answering. Your device and your internet are both fine."
-        : "Homecast can't get an answer from your relay. Your device and your internet are both fine.",
+      sentence: unservedSentence(serving.state, managed, serving.graceEndsAt, now),
       bypass: false,
-      noUserAction: managed ? CLOUD_DOWN : null,
+      // A blip needs no reassurance; an outage on the cloud plan gets rule 2.
+      noUserAction: managed && serving.state !== 'reconnecting' ? CLOUD_DOWN : null,
     };
   }
 
-  if (quality === 'good' || quality === 'unknown' || reconnected) {
+  if (linkFine(quality) || reconnected) {
     const sentence = reconnected
       ? 'Every hop is healthy again.'
       : quality === 'unknown'

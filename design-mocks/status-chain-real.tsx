@@ -83,7 +83,7 @@ const SCENES: Scene[] = [
     title: 'Local Mode — a bypass, not a break',
     note: 'Cloud hop dead, home green. A break would be a lie.',
     quality: 'offline',
-    input: { localMode: { active: true, unmapped: false } },
+    input: { serving: { state: 'served', by: 'mac_me', kind: 'local', since: null, graceEndsAt: null }, relayServing: null },
     conn: { rtt: null, rttAt: null, inFlight: null, ping: null },
   },
   {
@@ -105,10 +105,11 @@ const SCENES: Scene[] = [
 const BASE: ChainInput = {
   quality: 'good',
   reconnected: false,
-  relayStatus: false,
-  localMode: { active: false, unmapped: false },
+  serving: { state: 'served', by: 'mac_other', kind: 'self_hosted', since: null, graceEndsAt: null },
+  relayServing: { state: 'served', by: 'mac_other', kind: 'self_hosted', since: null, graceEndsAt: null },
+  thisDevice: 'mac_me',
+  unmapped: false,
   managed: false,
-  selfRelay: false,
   community: false,
   rtt: '34ms',
   homeName: 'George Street',

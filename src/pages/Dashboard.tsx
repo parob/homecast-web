@@ -4109,6 +4109,13 @@ const Dashboard = () => {
     if (selected) return selected;
     return homeNameMap.size === 1 ? [...homeNameMap.values()][0] : null;
   }, [homeNameMap, selectedHomeId]);
+  // The same rule for the id, so the badge reads the serving fact (and the
+  // reliability preview) for the one home a single-home account is looking
+  // at even when a collection is open with nothing selected.
+  const statusHomeId = useMemo(() => {
+    if (selectedHomeId) return selectedHomeId;
+    return homeNameMap.size === 1 ? [...homeNameMap.keys()][0] : null;
+  }, [homeNameMap, selectedHomeId]);
 
   // Auto-refresh while the page is visible:
   //  - every 5s when there's no data at all (first load / empty account)
@@ -7420,7 +7427,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} homeName={statusHomeName} homeId={selectedHomeId} onOpenReliability={selectedHomeId ? () => { setSettingsInitialHome({ homeId: selectedHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} accessoryLimit={accessoryLimit} includedAccessoryCount={usedAccessorySlots} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenLocalModeSettings={developerMode ? () => { setSettingsInitialTab('local-mode'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

@@ -1,16 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { buildChain, homeNodeName, relayNodeName, type ChainInput } from '../connection-chain';
+import { buildChain, homeNodeName, relayNodeName, takeoverIn, type ChainInput } from '../connection-chain';
+import { composeServing, type HomeServing } from '@/server/home-serving';
+
+const ME = 'mac_d6de42ce';
+const MINI = 'mac_8ca2d5a2';
+
+const servedBy = (by: string | null, kind: HomeServing['kind'] = 'self_hosted'): HomeServing =>
+  ({ state: 'served', by, kind, since: null, graceEndsAt: null });
+const notServed = (state: 'waiting' | 'reconnecting' | 'offline', graceEndsAt: string | null = null): HomeServing =>
+  ({ state, by: null, kind: null, since: null, graceEndsAt });
+/** Local Mode over whatever the server says — `relayServing` keeps the server's half. */
+const local = (under: HomeServing | null = null): Pick<ChainInput, 'serving' | 'relayServing'> =>
+  ({ serving: composeServing(under, { active: true }, ME), relayServing: under });
 
 const base: ChainInput = {
   quality: 'good',
   reconnected: false,
-  relayStatus: false,
-  localMode: { active: false, unmapped: false },
+  serving: servedBy(MINI),
+  relayServing: servedBy(MINI),
+  thisDevice: ME,
+  unmapped: false,
   managed: false,
-  selfRelay: false,
   community: false,
   rtt: '34ms',
   homeName: null,
+  now: Date.parse('2026-09-08T11:33:02Z'),
 };
 
 const at = (input: Partial<ChainInput> = {}) => buildChain({ ...base, ...input });
@@ -54,13 +68,7 @@ describe('home node naming', () => {
     // Three separate branches build this node — community, Local Mode, and the
     // normal path — and all three used to hardcode it.
     expect(home({ community: true, homeName: 'George Street' }).name).toBe('George Street');
-    expect(
-      home({
-        quality: 'offline',
-        localMode: { active: true, unmapped: false },
-        homeName: 'George Street',
-      }).name,
-    ).toBe('George Street');
+    expect(home({ quality: 'offline', ...local(), homeName: 'George Street' }).name).toBe('George Street');
     expect(home({ quality: 'stalled', homeName: 'George Street' }).name).toBe('George Street');
   });
 
@@ -184,7 +192,7 @@ describe('a cloud relay that has died', () => {
 
 describe('Local Mode is a bypass, not a break', () => {
   it('shows the home green while the cloud hop is dead', () => {
-    const c = at({ quality: 'offline', localMode: { active: true, unmapped: false } });
+    const c = at({ quality: 'offline', ...local() });
     expect(c.bypass).toBe(true);
     expect(c.nodes.find(n => n.key === 'cloud')!.tone).toBe('bad');
     // The whole reason the three pills were merged: a green home and
@@ -194,13 +202,101 @@ describe('Local Mode is a bypass, not a break', () => {
   });
 
   it('says so when the device cannot recognise everything yet', () => {
-    const c = at({ quality: 'offline', localMode: { active: true, unmapped: true } });
+    const c = at({ quality: 'offline', ...local(), unmapped: true });
     expect(c.sentence).toContain('may not be recognised');
   });
 
   it('offers no reconnect, because the socket being down is the design', () => {
-    const c = at({ quality: 'offline', localMode: { active: true, unmapped: false } });
+    const c = at({ quality: 'offline', ...local() });
     expect(c.bypass).toBe(true);
+  });
+
+  // homecast-cloud#103's screenshot: a phone with a healthy socket drew
+  // "Homecast · no answer" two lines above a section saying the *relay* was
+  // what had gone. The cloud hop was painted dead unconditionally.
+  it('paints the relay, not the cloud, when the relay is what went', () => {
+    const c = at({ quality: 'good', ...local(notServed('offline')), managed: true });
+    expect(c.nodes.find(n => n.key === 'cloud')!.tone).toBe('ok');
+    expect(c.hops[0].label).toBe('34ms');
+    expect(c.nodes.find(n => n.key === 'relay')!.tone).toBe('bad');
+    expect(c.hops[1].label).toBe('no relay');
+    expect(c.nodes.find(n => n.key === 'home')!.tone).toBe('ok');
+    expect(c.sentence).toBe("The cloud relay isn't answering, so this device is talking to your home directly.");
+    expect(c.bypass).toBe(true);
+  });
+
+  it('paints the cloud when the cloud is what went, and makes no claim about the relay', () => {
+    const c = at({ quality: 'offline', ...local(notServed('offline')) });
+    expect(c.nodes.find(n => n.key === 'cloud')!.tone).toBe('bad');
+    // Nothing beyond a dead hop has been measured — the server's last word
+    // about the relay is not evidence about it now.
+    expect(c.nodes.find(n => n.key === 'relay')!.tone).toBe('idle');
+    expect(c.sentence).toContain('Homecast is unreachable');
+  });
+
+  it('says only that it is direct when nothing is broken (switched on by hand)', () => {
+    const c = at({ quality: 'good', ...local(servedBy(MINI)) });
+    expect(c.nodes.every(n => n.tone === 'ok')).toBe(true);
+    expect(c.sentence).toBe('This device is talking to your home directly.');
+  });
+
+  it('warns rather than condemns a relay the server expects back', () => {
+    const c = at({ quality: 'good', ...local(notServed('reconnecting')) });
+    expect(c.nodes.find(n => n.key === 'relay')!.tone).toBe('warn');
+    expect(c.hops[1].label).toBe('reconnecting');
+  });
+});
+
+describe('the cloud says nothing may serve the home', () => {
+  // The same fault `stalled` infers from a timeout, stated outright by the
+  // server as the fact for the home. Same picture, no timeout to wait for.
+  it('draws the break on the relay hop while the link is fine', () => {
+    const c = at({ quality: 'good', serving: notServed('offline'), relayServing: notServed('offline') });
+    expect(c.hops[0].tone).toBe('ok');
+    expect(c.hops[1].tone).toBe('bad');
+    expect(c.hops[1].label).toBe('no relay');
+    expect(c.nodes[2].tone).toBe('bad');
+    expect(c.nodes[3].tone).toBe('idle');
+    expect(c.sentence).toContain('Your device and your internet are both fine');
+  });
+
+  it('counts down the takeover during the grace', () => {
+    const grace = '2026-09-08T11:36:02Z';   // three minutes after `now`
+    const c = at({ serving: notServed('waiting', grace), relayServing: notServed('waiting', grace), managed: true });
+    expect(c.sentence).toBe("The cloud relay for this home isn't answering. Your own relay takes over in 3 min.");
+    expect(c.noUserAction).toBeTruthy();
+  });
+
+  it('warns, and offers no reassurance, for a relay that is expected back', () => {
+    const c = at({ serving: notServed('reconnecting'), relayServing: notServed('reconnecting'), managed: true });
+    expect(c.hops[1].tone).toBe('warn');
+    expect(c.sentence).toContain('should be back shortly');
+    expect(c.noUserAction).toBeNull();
+  });
+
+  it('defers to the link when that is broken too, because the link explains it', () => {
+    const c = at({ quality: 'offline', serving: notServed('offline'), relayServing: notServed('offline') });
+    expect(c.hops[0].tone).toBe('bad');
+    expect(c.sentence).toContain("can't reach Homecast");
+  });
+
+  it('names this Mac as the relay when the fact says so', () => {
+    expect(relay({ serving: servedBy(ME), relayServing: servedBy(ME) }).name).toBe('This Mac');
+    expect(relay({ serving: servedBy(MINI), relayServing: servedBy(MINI) }).name).toBe('Your relay');
+  });
+});
+
+describe('takeoverIn', () => {
+  const now = Date.parse('2026-09-08T11:33:02Z');
+  it('speaks in minutes, then seconds, then any moment', () => {
+    expect(takeoverIn('2026-09-08T11:36:02Z', now)).toBe('in 3 min');
+    expect(takeoverIn('2026-09-08T11:34:02Z', now)).toBe('in 60s');
+    expect(takeoverIn('2026-09-08T11:33:05Z', now)).toBe('any moment');
+    expect(takeoverIn('2026-09-08T11:32:00Z', now)).toBe('any moment');
+  });
+  it('has a word for not knowing', () => {
+    expect(takeoverIn(null, now)).toBe('shortly');
+    expect(takeoverIn('soon', now)).toBe('shortly');
   });
 });
 
@@ -223,7 +319,12 @@ describe('model invariants', () => {
     { quality: 'offline' },
     { quality: 'good', reconnected: true },
     { quality: 'stalled', managed: true },
-    { quality: 'offline', localMode: { active: true, unmapped: false } },
+    { quality: 'offline', ...local() },
+    { quality: 'good', ...local(notServed('offline')) },
+    { serving: notServed('waiting'), relayServing: notServed('waiting') },
+    { serving: notServed('reconnecting'), relayServing: notServed('reconnecting') },
+    { serving: notServed('offline'), relayServing: notServed('offline'), managed: true },
+    { serving: null, relayServing: null },
     { community: true },
   ];
 
