@@ -5,15 +5,16 @@
  *
  * Mounted at /dev/reliability by App.tsx in development builds only, so the
  * hover links between the strip and the outage list can be looked at without
- * signing in, and without waiting for a real outage.
+ * signing in, and without waiting for a real outage. The status popover is
+ * drawn at its real width above it, in the states that matter, from the pure
+ * model — no socket needed.
  */
 import { useState } from 'react';
 import { UptimeSectionView, type UptimeBucket, type UptimeOutage, type UptimeSummary } from '@/components/settings/UptimeSection';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { ConnectionSection } from '@/components/layout/status/ConnectionSection';
-import { ReliabilitySectionView } from '@/components/layout/status/ReliabilitySection';
-import { buildChain } from '@/lib/connection-chain';
-import { statusPresentation } from '@/lib/status-badge';
+import { AnswerCardView, StatusRow } from '@/components/layout/status/AnswerCard';
+import { buildAnswerCard, type AnswerCardInput } from '@/lib/answer-card';
+import type { HomeServing } from '@/server/home-serving';
 
 const HOUR = 60 * 60 * 1000;
 const MIN = 60 * 1000;
@@ -126,24 +127,29 @@ function offlineNow(now: number): UptimeSummary {
   };
 }
 
-/** The status popover's content, at its real width, around the new section. */
-function PopoverMock({ summary }: { summary: UptimeSummary }) {
-  const quality = 'good' as const;
-  const serving = { state: 'served' as const, by: 'mac_cloud01', kind: 'cloud' as const, since: null, graceEndsAt: null };
-  const chain = buildChain({
-    quality, reconnected: false, serving, relayServing: serving, thisDevice: 'mac_me', unmapped: false,
-    managed: true, community: false, rtt: '34ms', homeName: 'George Street',
-  });
-  const p = statusPresentation({
-    quality, reconnected: false, serving, thisDevice: 'mac_me', unmapped: false,
-    relayEnabled: false, managed: true, community: false,
-  });
+const CLOUD: HomeServing = { state: 'served', by: 'mac_cloud01', kind: 'cloud', since: null, graceEndsAt: null };
+const GONE: HomeServing = { state: 'offline', by: null, kind: null, since: null, graceEndsAt: null };
+
+const BASE: AnswerCardInput = {
+  quality: 'good', reconnected: false, serving: CLOUD, relayServing: CLOUD, thisDevice: 'mac_me',
+  unmapped: false, localReason: null, managed: true, community: false, rtt: '34ms',
+  homeName: 'George Street', deviceNoun: 'Mac',
+};
+
+/** The status popover's content, at its real width, from the pure model. */
+function PopoverMock({ title, input, week }: { title: string; input: Partial<AnswerCardInput>; week: string }) {
+  const card = buildAnswerCard({ ...BASE, ...input });
   return (
-    <div className="w-[280px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-md">
-      <div className="space-y-3">
-        <ConnectionSection quality={quality} headline={p.headline} onReconnect={() => {}} chain={chain} chainVariant="rail" />
-        <div className="border-t" />
-        <ReliabilitySectionView summary={summary} homeName="George Street" onOpenDetails={() => {}} />
+    <div className="space-y-2">
+      <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
+      <div className="w-[280px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-md">
+        <div className="space-y-3">
+          <AnswerCardView card={card} onReconnect={() => {}} />
+          <div className="divide-y border-t pt-1">
+            <StatusRow label="Reliability" value={week} onOpen={() => {}} />
+            <StatusRow label="This Mac" value={card.tone === 'ok' ? 'Standing by' : 'Standing in'} tone={card.tone === 'ok' ? 'ok' : 'warn'} onOpen={() => {}} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -154,7 +160,7 @@ export default function ReliabilityPreview() {
   const [dialogOpen, setDialogOpen] = useState(false);
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
-      <div className="mx-auto max-w-[440px] space-y-10">
+      <div className="mx-auto max-w-[900px] space-y-10">
         <div>
           <h1 className="text-sm font-semibold">Reliability section, preview</h1>
           <p className="text-xs text-muted-foreground mt-1">
@@ -162,10 +168,15 @@ export default function ReliabilityPreview() {
           </p>
         </div>
         <section className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">The connection popover, from the green dot</h2>
+          <h2 className="text-xs font-medium text-muted-foreground">The status popover, from the dot</h2>
           <div className="flex flex-wrap gap-6">
-            <PopoverMock summary={healthyWeek(now)} />
-            <PopoverMock summary={offlineNow(now)} />
+            <PopoverMock title="Healthy" input={{}} week="94% this week" />
+            <PopoverMock
+              title="Cloud relay down · this Mac standing in"
+              input={{ serving: { ...CLOUD, by: 'mac_me', kind: 'local' }, relayServing: GONE, localReason: 'relay-offline' }}
+              week="98% this week"
+            />
+            <PopoverMock title="Cloud relay down · nothing standing in" input={{ serving: GONE, relayServing: GONE }} week="98% this week" />
           </div>
         </section>
         <section className="space-y-2">

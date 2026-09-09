@@ -1,5 +1,5 @@
 /**
- * The one status bubble: how you are reaching your home, and how well.
+ * The one status bubble: does your home work, and if not, why.
  *
  * This replaces three separate pills that were all answering versions of the
  * same question, each with its own dot and its own popover —
@@ -10,8 +10,19 @@
  * got a red "Offline" in the header's left cluster and a green "Local Mode" in
  * the right one, separated by the Guest pill, while the home was working
  * perfectly through the second of them. Which of the three facts is worth
- * saying is now decided in one place, `lib/status-badge.ts`, and the rest goes
- * in the popover.
+ * saying is now decided in one place, `lib/status-badge.ts`.
+ *
+ * ── The popover is one answer, not four sections ───────────────────────────
+ *
+ * After the merge the popover still stacked four sections — the chain, a
+ * Reliability preview, a Local Mode section and Relay Status — each an honest
+ * rendering of its own source, and together three different tellings of who
+ * was serving the home, with "Offline" printed over a home that worked
+ * (parob/homecast-cloud#109 and the screenshots under it). It is now the
+ * answer card from `lib/answer-card.ts` — verdict, because, the chain only when
+ * a hop is not green, at most one action — and two rows linking to the pages
+ * that hold the detail. Everything that left is still one tap away, on a page
+ * that already showed it.
  *
  * ── Present at every state, including good ─────────────────────────────────
  *
@@ -34,11 +45,15 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
+import { SLOW_IN_FLIGHT_MS, SLOW_RTT_MS } from '@/server/connection-quality';
 import { isCommunity } from '@/lib/config';
+import { thisDeviceNoun } from '@/lib/platform';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
+import { buildAnswerCard } from '@/lib/answer-card';
+import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
   effectiveServing,
@@ -46,68 +61,59 @@ import {
   getThisDevice,
   subscribeHomeServing,
 } from '@/server/home-serving';
-import { warnsUser, RECONNECTED_VISIBLE_MS, formatRtt } from '@/lib/connection-presentation';
-import { buildChain } from '@/lib/connection-chain';
-import type { ChainVariant } from './status/ConnectionChain';
-import { ConnectionSection } from './status/ConnectionSection';
-import { LocalModeSection } from './status/LocalModeSection';
-import { RelaySection } from './status/RelaySection';
-import { ReliabilitySection } from './status/ReliabilitySection';
-
-/**
- * Which drawing of the path the panel uses.
- *
- * One constant rather than a setting: this is a design decision to be made
- * once, not a preference to expose.
- *
- * **Rail is the decision** (parob/homecast-cloud#38, chosen from real
- * screenshots of all three). It was picked over the sleeker Bar because the
- * popover is 280px, and the horizontal treatments all spend their width
- * fighting for it — Nodes truncates a long relay name and Bar's node labels
- * are tight at four words. Rail spends vertical space, which a popover has,
- * and is the only one where "Cloud relay" and a hop label are both
- * full-length in every state.
- *
- * The other two are kept rather than deleted: they are three renderings of
- * one model, the alternatives cost a few lines each, and a bottom sheet or a
- * header pill would want a different one. `design-mocks/status-chain-real.html`
- * renders all three.
- */
-const CHAIN_VARIANT: ChainVariant = 'rail';
+import { warnsUser, RECONNECTED_VISIBLE_MS, rttForDisplay } from '@/lib/connection-presentation';
+import { AnswerCardView, RelayRow, ReliabilityRow } from './status/AnswerCard';
 
 interface StatusBadgeProps {
   isDarkBackground?: boolean;
   accountType?: string;
-  accessoryLimit?: number | null;
-  includedAccessoryCount?: number;
   /**
-   * The home the chain's last node is named for. Absent falls back to "Home" —
-   * see rule 4 in `lib/connection-chain.ts`. Passed in rather than resolved
-   * here because which home this is describing is a fact about what the user
-   * is looking at, and the Dashboard is what knows that.
+   * The home the card's verdict and the chain's last node are named for.
+   * Absent falls back to "Your home" / "Home" — see `homeSubject` and rule 3
+   * in `lib/connection-chain.ts`. Passed in rather than resolved here because
+   * which home this is describing is a fact about what the user is looking
+   * at, and the Dashboard is what knows that.
    */
   homeName?: string | null;
-  /** Opens Settings → Local Mode. Absent unless Developer Mode is on. */
-  onOpenLocalModeSettings?: () => void;
   /**
-   * The home the dashboard is showing, whose reliability the popover previews
-   * under the connection chain. Absent (nothing selected, or Community mode,
-   * which has no uptime record) and the section is not rendered.
+   * The home the dashboard is showing, whose reliability the popover's row
+   * summarises. Absent (nothing selected, or Community mode, which has no
+   * uptime record) and the row is not rendered.
    */
   homeId?: string | null;
   /** Opens Settings → that home → Reliability. */
   onOpenReliability?: () => void;
+  /** Opens Settings → Relay. Absent hides the row's chevron. */
+  onOpenRelaySettings?: () => void;
+}
+
+/** Seconds, for a duration someone is watching tick upward. */
+function secs(ms: number): string {
+  return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms)}ms`;
+}
+
+/**
+ * What the socket is waiting on, ranked exactly as `classifyQuality` reads it.
+ *
+ * Shown only while the link is the thing being complained about. The round
+ * trip itself is not repeated here — it is on the chain's first hop, or in the
+ * card's `via` line, and never in both places at once.
+ */
+function linkEvidence(): string | null {
+  const inFlight = serverConnection.getOldestInFlightMs();
+  if (inFlight !== null && inFlight >= SLOW_IN_FLIGHT_MS) return `A request has been waiting ${secs(inFlight)}.`;
+  const pendingPing = serverConnection.getPendingPingMs();
+  if (pendingPing !== null && pendingPing >= SLOW_RTT_MS) return 'No reply to the last connection check.';
+  return null;
 }
 
 export function StatusBadge({
   isDarkBackground,
   accountType,
-  accessoryLimit,
-  includedAccessoryCount,
   homeName,
-  onOpenLocalModeSettings,
   homeId,
   onOpenReliability,
+  onOpenRelaySettings,
 }: StatusBadgeProps) {
   const { quality } = useWebSocket();
   const localMode = useLocalMode();
@@ -132,7 +138,7 @@ export function StatusBadge({
   const relayServing = homeId ? getHomeServing(homeId) : null;
   const unmapped = localMode.identityState === 'unmapped';
 
-  // Re-render the popover's relative times while it is open, and only then.
+  // Re-render the popover's live figures while it is open, and only then.
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!open) return;
@@ -167,13 +173,12 @@ export function StatusBadge({
   // `unknown` for ever. Pinning it to `good` is what keeps a dot from
   // permanently saying "checking" about a hop that does not exist.
   //
-  // It does have a connection to describe, though, and the chain describes it —
-  // This Mac -> Local server -> Home, with no cloud node at all. That is why
-  // the panel is no longer hidden here: it reports the truth of the setup
-  // rather than a socket reading it does not have.
+  // It does have a connection to describe, though, and the card describes it —
+  // This Mac -> Local server -> Home, with no cloud node at all, and "Nothing is
+  // going through the cloud."
   //
   // With the relay switched off, this machine is not serving the home and the
-  // chain would be claiming something false, so the bubble still goes.
+  // card would be claiming something false, so the bubble still goes.
   const communityRelayMac = isCommunity && isRelayCapable();
   const effectiveQuality: ConnectionQuality = communityRelayMac ? 'good' : quality;
 
@@ -182,8 +187,10 @@ export function StatusBadge({
     quality: effectiveQuality,
     reconnected,
     serving,
+    relayServing,
     thisDevice,
     unmapped,
+    localReason: localMode.reason,
     relayEnabled: showRelay,
     managed,
     community: communityRelayMac,
@@ -195,18 +202,35 @@ export function StatusBadge({
   // rides the WebSocket `homes.list` payload and the locally-answered one does
   // not carry it, so it goes missing during Local Mode and cloud outages,
   // which is exactly when this panel is being read. See lib/connection-chain.ts.
-  const chain = buildChain({
+  //
+  // The round trip is drawn only when the classifier would stand behind it: a
+  // missed pong is recorded as a lower bound, and painting that green on the
+  // first hop was parob/homecast-web#98.
+  const card = buildAnswerCard({
     quality: effectiveQuality,
     reconnected,
     serving,
     relayServing,
     thisDevice,
     unmapped,
+    localReason: localMode.reason,
     managed,
     community: communityRelayMac,
-    rtt: formatRtt(serverConnection.getLastRttMs()),
+    rtt: rttForDisplay(
+      serverConnection.getLastRttMs(),
+      serverConnection.getPendingPingMs(),
+      serverConnection.getOldestInFlightMs(),
+      { slowRttMs: SLOW_RTT_MS, slowInFlightMs: SLOW_IN_FLIGHT_MS },
+    ),
     homeName: homeName ?? null,
+    deviceNoun: thisDeviceNoun(),
   });
+
+  // The rows need the server: neither is worth a stale figure under a card
+  // that has just said this device cannot reach Homecast.
+  const linkUp = linkFine(effectiveQuality);
+  const showReliabilityRow = !!homeId && !isCommunity && linkUp;
+  const showRelayRow = showRelay && !communityRelayMac && linkUp;
 
   return (
     <Popover open={open} onOpenChange={(o) => {
@@ -255,66 +279,30 @@ export function StatusBadge({
         }}
       >
         <div className="space-y-3">
-          {/* Sections in the same order the badge itself ranks them, so the
-              headline you tapped is the first thing you read. */}
-          {/* Community used to be gated out of here entirely, on the grounds
-              that its `quality` sits on `unknown` for ever — no socket is
-              opened when the home is served from this very process, and a dot
-              permanently saying "checking" about a hop that does not exist is
-              worse than nothing.
-
-              The chain answers that objection rather than arguing with it. It
-              does not report the missing hop, it shows there isn't one:
-              This Mac -> Local server -> Home, and "Nothing is going through
-              the cloud." Which left the one path shape written for this case
-              as the only one that never reached a screen, and a Community user
-              opening the bubble getting an empty box. `effectiveQuality` is
-              already pinned to `good` above, so nothing here renders a socket
-              reading either way. */}
-          <ConnectionSection
-            quality={effectiveQuality}
-            headline={p.headline}
+          <AnswerCardView
+            card={card}
+            evidence={linkUp ? null : linkEvidence()}
             onReconnect={() => { serverConnection.reconnect(); setOpen(false); }}
-            chain={chain}
-            chainVariant={CHAIN_VARIANT}
           />
 
-          {/* What the path has been like, not just what it is now. Cloud
-              only: Community keeps no uptime record, and the settings page
-              hides its Reliability section there for the same reason. */}
-          {homeId && !isCommunity && (
-            <>
-              <div className="border-t" />
-              <ReliabilitySection
-                homeId={homeId}
-                homeName={homeName ?? null}
-                onOpenDetails={onOpenReliability
-                  ? () => { setOpen(false); onOpenReliability(); }
-                  : undefined}
-              />
-            </>
-          )}
-
-          {serving?.kind === 'local' && (
-            <>
-              <div className="border-t" />
-              <LocalModeSection
-                onOpenSettings={onOpenLocalModeSettings
-                  ? () => { setOpen(false); onOpenLocalModeSettings(); }
-                  : undefined}
-              />
-            </>
-          )}
-
-          {showRelay && (
-            <>
-              <div className="border-t" />
-              <RelaySection
-                accountType={accountType}
-                accessoryLimit={accessoryLimit}
-                includedAccessoryCount={includedAccessoryCount}
-              />
-            </>
+          {(showReliabilityRow || showRelayRow) && (
+            <div className="divide-y border-t pt-1">
+              {showReliabilityRow && (
+                <ReliabilityRow
+                  homeId={homeId!}
+                  onOpen={onOpenReliability
+                    ? () => { setOpen(false); onOpenReliability(); }
+                    : undefined}
+                />
+              )}
+              {showRelayRow && (
+                <RelayRow
+                  onOpen={onOpenRelaySettings
+                    ? () => { setOpen(false); onOpenRelaySettings(); }
+                    : undefined}
+                />
+              )}
+            </div>
           )}
         </div>
       </PopoverContent>

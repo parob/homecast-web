@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  connectionPresentation, formatRtt, warnsUser, RECONNECTED_PRESENTATION,
+  connectionPresentation, formatRtt, rttForDisplay, warnsUser, RECONNECTED_PRESENTATION,
 } from '../connection-presentation';
 import type { ConnectionQuality } from '@/server/connection-quality';
 
@@ -95,5 +95,26 @@ describe('RECONNECTED_PRESENTATION', () => {
   it('says it plainly and does not draw attention to itself', () => {
     expect(RECONNECTED_PRESENTATION.label).toBe('Reconnected');
     expect(RECONNECTED_PRESENTATION.pulse).toBe(false);
+  });
+});
+
+// parob/homecast-web#98: the chain's first hop drew `14.6s` in green, because
+// `getLastRttMs()` was drawn raw while the classifier — reading a missed pong
+// as a lower bound, not a measurement — still said the socket was fine.
+describe('rttForDisplay', () => {
+  const T = { slowRttMs: 1_000, slowInFlightMs: 2_500 };
+  it('formats a reading the classifier stands behind', () => {
+    expect(rttForDisplay(54, null, null, T)).toBe('54ms');
+    expect(rttForDisplay(54, 120, 900, T)).toBe('54ms');
+  });
+  it('draws nothing while a pong is overdue, whatever the last number was', () => {
+    expect(rttForDisplay(14_600, 1_200, null, T)).toBeNull();
+    expect(rttForDisplay(54, 1_000, null, T)).toBeNull();
+  });
+  it('draws nothing while a request has been waiting past the slow line', () => {
+    expect(rttForDisplay(54, null, 2_500, T)).toBeNull();
+  });
+  it('has nothing to say when nothing was measured', () => {
+    expect(rttForDisplay(null, null, null, T)).toBeNull();
   });
 });

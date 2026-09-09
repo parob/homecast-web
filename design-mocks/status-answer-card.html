@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Answer Card</title>
+<style>
+  :root {
+    --page: #f2f4f7;
+    --ink: #0b1220;
+    --ink-2: #3a4356;
+    --muted: #65708a;
+    --hair: #e3e7ee;
+    --card: #ffffff;
+    --card-2: #f7f8fa;
+    --accent: #2f6fe4;
+    --ok: #10b981;
+    --ok-ink: #047857;
+    --warn: #f59e0b;
+    --warn-ink: #b45309;
+    --bad: #ef4444;
+    --bad-ink: #b91c1c;
+    --idle: rgba(101, 112, 138, .28);
+    --glass: rgba(0, 0, 0, .42);
+    --shadow: 0 10px 15px -3px rgba(11, 18, 32, .10), 0 4px 6px -4px rgba(11, 18, 32, .10);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: hsl(222 47% 5%);
+      --ink: hsl(210 40% 98%);
+      --ink-2: hsl(215 25% 82%);
+      --muted: hsl(215 20% 65%);
+      --hair: hsl(217 32% 17%);
+      --card: hsl(222 47% 9%);
+      --card-2: hsl(222 40% 12%);
+      --accent: #6ea0ff;
+      --ok: #34d399; --ok-ink: #6ee7b7;
+      --warn: #fbbf24; --warn-ink: #fcd34d;
+      --bad: #f87171; --bad-ink: #fca5a5;
+      --idle: rgba(150, 160, 185, .3);
+      --glass: rgba(0, 0, 0, .55);
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, .5), 0 4px 6px -4px rgba(0, 0, 0, .5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: hsl(222 47% 5%);
+    --ink: hsl(210 40% 98%);
+    --ink-2: hsl(215 25% 82%);
+    --muted: hsl(215 20% 65%);
+    --hair: hsl(217 32% 17%);
+    --card: hsl(222 47% 9%);
+    --card-2: hsl(222 40% 12%);
+    --accent: #6ea0ff;
+    --ok: #34d399; --ok-ink: #6ee7b7;
+    --warn: #fbbf24; --warn-ink: #fcd34d;
+    --bad: #f87171; --bad-ink: #fca5a5;
+    --idle: rgba(150, 160, 185, .3);
+    --glass: rgba(0, 0, 0, .55);
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, .5), 0 4px 6px -4px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 15px/1.55 var(--sys); -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  code { font: 12.5px/1.4 var(--mono); background: var(--card-2); border: 1px solid var(--hair); padding: .05em .35em; border-radius: 4px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -.015em; }
+  h1 { font-size: 30px; font-weight: 650; line-height: 1.15; }
+  h2 { font-size: 20px; font-weight: 640; margin-top: 56px; }
+  h3 { font-size: 15px; font-weight: 640; }
+  p { margin: 0; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 22px 120px; }
+  .prose { max-width: 68ch; }
+  .prose p + p, .prose ul { margin-top: 12px; }
+  .prose ul { padding-left: 1.2em; }
+  .prose li + li { margin-top: 6px; }
+  .kicker { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .dek { font-size: 17px; color: var(--ink-2); margin-top: 14px; }
+  .muted { color: var(--muted); }
+  .hair { border: 0; border-top: 1px solid var(--hair); margin: 40px 0; }
+
+  table.t { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 16px; }
+  table.t th, table.t td { text-align: left; vertical-align: top; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--hair); }
+  table.t th { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  table.t td:first-child { white-space: nowrap; font-weight: 600; }
+  .tw { overflow-x: auto; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 18px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  .qa { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; }
+  .qa h3 { margin-bottom: 8px; }
+  .qa ol, .qa ul { margin: 0; padding-left: 1.2em; font-size: 14px; }
+  .qa li + li { margin-top: 6px; }
+  .src { display: block; font: 11.5px/1.4 var(--mono); color: var(--muted); }
+
+  /* ── dots & semantic ink ── */
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); vertical-align: middle; }
+  .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); } .dot.idle { background: var(--idle); }
+  .dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot.pulse { animation: none; } }
+  .ink-ok { color: var(--ok-ink); } .ink-warn { color: var(--warn-ink); } .ink-bad { color: var(--bad-ink); }
+
+  /* ── state picker ── */
+  .picker { position: sticky; top: 0; z-index: 20; margin: 28px -22px 0; padding: 10px 22px 12px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--hair); }
+  .picker .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .states { display: flex; gap: 6px; flex-wrap: wrap; }
+  .st { font: 600 12.5px/1 var(--sys); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px 7px 9px; border-radius: 9px; border: 1px solid var(--hair); background: var(--card); color: var(--muted); }
+  .st:hover { color: var(--ink); }
+  .st:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .st[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); }
+  .st .dot { width: 7px; height: 7px; }
+
+  /* ── comparison stage ── */
+  .stage { display: grid; grid-template-columns: 280px 280px 1fr; gap: 28px; align-items: start; margin-top: 26px; }
+  @media (max-width: 960px) { .stage { grid-template-columns: 280px 1fr; } .stage .notes { grid-column: 1 / -1; } }
+  @media (max-width: 640px) { .stage { grid-template-columns: 1fr; justify-items: start; } }
+  .col-h { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+  .col-h .h { font: 500 11px/1 var(--mono); letter-spacing: 0; text-transform: none; }
+  .notes { font-size: 14px; color: var(--ink-2); }
+  .notes h3 { color: var(--ink); margin-bottom: 8px; }
+  .notes ul { margin: 0; padding-left: 1.15em; }
+  .notes li + li { margin-top: 7px; }
+  .notes .fn { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+
+  /* the header dot/pill, as the app draws it, above each popover */
+  .hdr { display: flex; justify-content: flex-end; margin-bottom: 8px; height: 26px; }
+  .badge { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 26px; min-width: 26px; padding: 0 9px; border-radius: 999px; background: var(--glass); color: #fff; font: 500 12px/1 var(--sys); backdrop-filter: blur(10px); }
+  .badge.dotonly { padding: 0; width: 26px; }
+  .badge .dot { width: 8px; height: 8px; }
+
+  /* ── the popover, at its real width ── */
+  .pop { width: 280px; padding: 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--hair); box-shadow: var(--shadow); color: var(--ink); font-family: var(--sys); }
+  .pop > * + * { margin-top: 12px; }
+  .pop .sep { border: 0; border-top: 1px solid var(--hair); margin: 12px 0 0; }
+  .sent { font-size: 13px; font-weight: 500; line-height: 1.35; }
+  .why { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .warnline { font-size: 12px; color: var(--muted); }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 30px; border-radius: 6px; border: 1px solid var(--hair); background: var(--card); font: 500 12px/1 var(--sys); color: var(--ink); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .info { display: flex; gap: 8px; border-radius: 6px; background: var(--card-2); padding: 8px; font-size: 11px; line-height: 1.35; color: var(--muted); }
+  .info svg { flex: 0 0 auto; margin-top: 1px; }
+
+  /* rail chain — geometry from ConnectionChain.tsx `rail` */
+  .chain .node { display: flex; align-items: center; gap: 8px; }
+  .chain .chip { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 1px var(--ring); background: var(--bg); }
+  .chain .chip svg { width: 12px; height: 12px; }
+  .chain .name { font-size: 11px; line-height: 1.25; min-width: 0; }
+  .chain .stem { display: flex; align-items: center; gap: 8px; padding-left: 11px; }
+  .chain .stem i { display: block; width: 2px; height: 14px; border-radius: 2px; }
+  .chain .stem i.idle { width: 0; border-left: 2px dashed var(--idle); background: transparent; }
+  .chain .stem b { font-size: 9.5px; font-weight: 500; line-height: 1; }
+  .t-ok  { --ring: rgba(16,185,129,.25); --bg: rgba(16,185,129,.10); color: var(--ok-ink); }
+  .t-warn{ --ring: rgba(245,158,11,.35); --bg: rgba(245,158,11,.15); color: var(--warn-ink); }
+  .t-bad { --ring: rgba(239,68,68,.35);  --bg: rgba(239,68,68,.15);  color: var(--bad-ink); }
+  .t-idle{ --ring: rgba(101,112,138,.15); --bg: rgba(101,112,138,.10); color: rgba(101,112,138,.55); }
+  .chain .node.t-ok .name { color: var(--ink); opacity: .82; }
+  .chain .stem i.ok { background: var(--ok); } .chain .stem i.warn { background: var(--warn); } .chain .stem i.bad { background: var(--bad); }
+
+  /* current: Reliability / Local Mode / Relay Status sections */
+  .sech { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 500; color: var(--muted); }
+  .sech .lnk { display: inline-flex; align-items: center; gap: 2px; }
+  .relrow { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; font-size: 13px; }
+  .relrow .st-w { font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .relrow .pc { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .strip { height: 12px; margin-top: 8px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--ok) 0 2px, transparent 2px 4px); position: relative; overflow: hidden; }
+  .strip::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 2px, transparent 2px 4px); }
+  .strip .out { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, var(--bad) 0 2px, transparent 2px 4px); }
+  .lastout { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .sh { font-size: 12px; font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 var(--sys); padding: 4px 6px; border-radius: 999px; }
+  .pill.ok { background: rgba(16,185,129,.10); color: var(--ok-ink); } .pill.warn { background: rgba(245,158,11,.10); color: var(--warn-ink); } .pill.bad { background: rgba(239,68,68,.10); color: var(--bad-ink); }
+  .pill .dot { width: 6px; height: 6px; }
+  .kv { display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; }
+  .kv .k { color: var(--muted); } .kv .v { font-weight: 500; } .kv .v.g { color: var(--ok-ink); } .kv .v.m { color: var(--muted); font-weight: 500; }
+  .para { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .para.warn { color: var(--warn-ink); }
+  .link11 { font-size: 11px; color: var(--accent); }
+
+  /* proposed: the answer card */
+  .verdict { display: flex; align-items: flex-start; gap: 9px; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -.005em; }
+  .verdict .dot { width: 9px; height: 9px; margin-top: 6px; flex: 0 0 auto; }
+  .because { font-size: 12.5px; line-height: 1.4; color: var(--ink-2); margin-top: 6px; }
+  .via { font-size: 11.5px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .caveat { font-size: 11.5px; line-height: 1.4; margin-top: 8px; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; padding: 7px 0; }
+  .foot + .foot { border-top: 1px solid var(--hair); }
+  .foot .k { color: var(--muted); }
+  .foot .v { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .foot .v .chev { color: var(--muted); }
+  .foots { margin-top: 6px !important; }
+  .foots > .foot:first-child { padding-top: 10px; }
+
+  /* anatomy */
+  .anat { display: grid; grid-template-columns: 310px 1fr; padding-left: 30px; gap: 28px; align-items: start; margin-top: 18px; }
+  @media (max-width: 640px) { .anat { grid-template-columns: 1fr; } }
+  .anat ol { margin: 0; padding-left: 0; list-style: none; counter-reset: a; font-size: 14px; }
+  .anat li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hair); }
+  .anat li:first-child { border-top: 1px solid var(--hair); }
+  .anat li::before { counter-increment: a; content: counter(a); font: 600 11px/22px var(--mono); color: var(--page); background: var(--ink); border-radius: 50%; width: 22px; height: 22px; text-align: center; }
+  .anat b { display: block; color: var(--ink); }
+  .anat li > span { color: var(--ink-2); grid-column: 2; }
+  .tag { position: absolute; left: -30px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--page); font: 600 11px/22px var(--mono); text-align: center; }
+  .rel { position: relative; }
+
+  .calls li { padding: 12px 0; border-bottom: 1px solid var(--hair); }
+  .calls li:first-child { border-top: 1px solid var(--hair); }
+  .calls b { display: block; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="prose">
+    <div class="kicker">Homecast · the status popover</div>
+    <h1>One question, one answer</h1>
+    <p class="dek">Tap the dot and you are asking <em>does my home work?</em> The popover answers with four reports, one per component. This is the case for replacing them with one card that answers the question — and shows the chain only when something in it is broken.</p>
+  </header>
+
+  <div class="two">
+    <div class="qa">
+      <h3>What a person is asking</h3>
+      <ol>
+        <li><b>Does County Hall work right now?</b> Yes, yes-but, or no.</li>
+        <li><b>If not — why, and is it me?</b> One sentence. Whether there is anything to do.</li>
+        <li><b>Has it been like this?</b> A number, and a way to the full story.</li>
+      </ol>
+    </div>
+    <div class="qa">
+      <h3>What the popover shows today</h3>
+      <ul>
+        <li><b>Connection</b> — the chain, a sentence, the round trip <span class="src">quality + serving → buildChain()</span></li>
+        <li><b>Reliability</b> — live status, two percentages, a strip, the last outage <span class="src">GET_HOME_UPTIME (the server's probe)</span></li>
+        <li><b>Local Mode</b> — a reason, an identity caveat, a link <span class="src">useLocalMode()</span></li>
+        <li><b>Relay Status</b> — a pill, a paragraph, six stats, a sparkline, three counts <span class="src">relaySectionState() + serverConnection + HomeKit.getStats()</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="prose" style="margin-top:28px">
+    <p>Each section is an honest rendering of its own source. That is exactly the trouble: the sources agree with each other now (<code>HomeServing</code> saw to that), but the popover still lets each one speak. Your second screenshot — cloud relay down, this Mac standing in — is the whole argument in one frame:</p>
+    <ul>
+      <li><b>Three tellings of who is serving County Hall.</b> The chain: <em>this device is talking to your home directly</em>. Reliability: <em>● Offline · went offline 3 minutes ago</em>. Relay Status: <em>This Mac is serving Clitheroe Road, George Street and County Hall</em>. All true from where each is standing; together they read as a disagreement.</li>
+      <li><b>“Offline” over a working home.</b> Reliability's live status is the server's view of the cloud relay. The home was fine.</li>
+      <li><b>“Homes 0 · Accessories 0”</b> directly under “serving three homes”. The counts filter to self-hosted homes and label the result “Homes”.</li>
+      <li><b>Nothing above the fold is for the person who tapped.</b> Uptime, clients, subscriptions, webhooks, activity — a relay operator's dashboard, shown to someone who wanted to know if the lights would turn on.</li>
+    </ul>
+    <p>Trimming inside each section is what #103 and #107 did, and the shape survived both. The shape is the problem.</p>
+  </div>
+
+  <h2>The shape: an answer, then its evidence</h2>
+  <p class="prose" style="margin-top:10px">The architecture already produces one verdict — <code>statusPresentation()</code> ranks the two facts (this device's link, the home's <code>serving</code>) to decide what the dot says. The card is that verdict, explained, in a fixed order. Nothing else gets a heading.</p>
+
+  <div class="anat">
+    <div class="rel" id="anatomy"></div>
+    <ol>
+      <li><b>Verdict</b><span>The home by name and whether it works, in the dot's own colour. Green: working as normal. Amber: working, but not the normal way — or slowly. Red: not working. Same ranking as the header dot, so the two can never disagree.</span></li>
+      <li><b>Because</b><span>One sentence: why, and what happens next. This is where “while Homecast is open”, the takeover countdown and “under Apple Home's names” live — as clauses, not sections.</span></li>
+      <li><b>Where — only when a hop is not green</b><span>The chain from #38, unchanged. It is the best thing in the popover when something is broken and four green rows when nothing is. Healthy, it collapses to <em>via Cloud relay · 14ms</em>.</span></li>
+      <li><b>Do</b><span>At most one thing. <em>Reconnect now</em> when this device's link is the fault; a quiet “nothing to do, Homecast has been notified” when it is the cloud relay; nothing at all when the home works.</span></li>
+      <li><b>Then — two rows, not two sections</b><span><em>Reliability · 92% this week ›</em> and, on a relay Mac, <em>This Mac · Standing by ›</em>. History and duty, one line each, linking to the pages that already hold the full story. No live status here — the verdict owns “now”.</span></li>
+    </ol>
+  </div>
+
+  <h2>Where things move</h2>
+  <p class="prose" style="margin-top:10px">Nothing is deleted from the product. Everything below already has a page; the popover stops duplicating it.</p>
+  <div class="tw"><table class="t">
+    <thead><tr><th>Leaves the popover</th><th>Lives at</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Uptime, Clients, Subscriptions, Webhooks, Activity, Homes, Accessories, Plan limit</td><td>Settings → Relay <span class="src">id: self-hosted-relay</span></td><td>Operator instrumentation. Meaningful only on the relay Mac, and only to whoever runs it.</td></tr>
+      <tr><td>Take Over as Relay</td><td>Settings → Relay</td><td>A configuration decision on a home that is working, not a repair for one that isn't.</td></tr>
+      <tr><td>Reliability's live status, strip, last outage</td><td>Settings → Homes → <em>home</em> → Reliability</td><td>The popover keeps one number and the link. The live status was the one place it contradicted the headline.</td></tr>
+      <tr><td>Local Mode reason, identity caveat, “Local Mode settings”</td><td>The <em>Because</em> line; Settings → Local Mode</td><td>They were already the chain's sentence in different words (#103). The one caveat with nowhere else to go becomes a clause.</td></tr>
+      <tr><td>“Every hop is healthy.” / round trip line</td><td><em>via Cloud relay · 14ms</em></td><td>#109. One line carries the route and the number; the drawing appears only when it has something to point at.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Every state, current beside proposed</h2>
+  <p class="prose" style="margin-top:10px">Both at the popover's real 280px. Above each, the header dot as it would appear for that state — the ranking change is visible there too. Pick a state; the notes say what moved and why.</p>
+
+  <div class="picker">
+    <div class="lbl">State</div>
+    <div class="states" id="states"></div>
+  </div>
+
+  <div class="stage" id="stage"></div>
+
+  <h2>Three calls that are yours</h2>
+  <ul class="calls prose" style="list-style:none;padding:0;margin-top:10px">
+    <li><b>Is “working on a backup path” amber or green?</b> Today Local Mode is green (“your home works”) and Standby active is amber (“the cloud relay is offline”) — two colours for one situation. I've drawn both amber, because the caveat is real: on a phone it ends when the app closes, automations on the relay aren't running, and other people at home may not have the same access. If you'd rather it be green, both should be green. Consistency is the point, not the hue.</li>
+    <li><b>Relay duty comes off the dot.</b> A self-hosted Mac that is standing by for another Mac shows an amber “Standby” pill today, over a home that works perfectly. In the proposal that is a green dot and a footer row. The code's own rationale already says duty “describes what this machine is doing rather than whether you can reach anything” — this follows it through.</li>
+    <li><b>The pill word for a backup path.</b> Today two labels name two mechanisms: “Local Mode” and “Standby active”. One label for the situation reads better — I've used <em>Standing in</em>. “Local Mode” stays as the name of the mechanism and its settings page.</li>
+  </ul>
+
+  <hr class="hair">
+  <p class="prose muted" style="font-size:13.5px">Found on the way and worth their own issues rather than a footnote: the second screenshot paints a <b>14.6s round trip green</b> on the first hop — that reading is a missed-pong lower bound being shown as a fresh measurement, and the proposed cards use the classifier's verdict for that hop's colour instead of the raw number; and <b>Homes 0 / Accessories 0</b> counts self-hosted homes under a label that says “Homes” — moot if the rows leave the popover, a bug if they don't.</p>
+</div>
+
+<script>
+(() => {
+  const ICON = {
+    device: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
+    cloud:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>',
+    relay:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>',
+    home:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  };
+  const INFO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
+  const REFRESH = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
+  const CHEV = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ── the chain (rail), from a ChainModel-shaped object ──
+  function chain(m) {
+    let h = '<div class="chain">';
+    m.nodes.forEach((n, i) => {
+      if (i > 0) {
+        const hop = m.hops[i - 1];
+        h += `<div class="stem t-${hop.tone}"><i class="${hop.tone}"></i>${hop.label ? `<b>${esc(hop.label)}</b>` : ''}</div>`;
+      }
+      h += `<div class="node t-${n.tone}"><span class="chip">${ICON[n.key]}</span><span class="name">${esc(n.name)}</span></div>`;
+    });
+    return h + '</div>';
+  }
+  const N = (key, name, tone = 'ok') => ({ key, name, tone });
+  const H = (tone = 'ok', label = null) => ({ tone, label });
+
+  // ── current: the four sections as ConnectionSection / ReliabilitySection / LocalModeSection / RelaySection render them ──
+  function reliability(r) {
+    const tone = r.status === 'verified' ? 'ok' : 'bad';
+    const outs = (r.outages || []).map(o => `<span class="out" style="left:${o[0]}%;width:${o[1]}%"></span>`).join('');
+    return `<hr class="sep"><div>
+      <div class="sech"><span>Reliability · ${esc(r.home)}</span><span class="lnk">Details ${CHEV}</span></div>
+      <div class="relrow"><span class="st-w"><span class="dot ${tone}"></span>${esc(r.word)}</span><span class="pc">${esc(r.pc)}</span></div>
+      <div class="strip">${outs}</div>
+      <div class="lastout">${esc(r.last)}</div>
+    </div>`;
+  }
+  function localMode(l) {
+    return `<hr class="sep"><div>
+      <div class="sh">Local Mode</div>
+      ${l.unmapped ? `<p class="caveat ink-warn" style="font-size:11px">Your custom names and layout will come back when this ${esc(l.deviceWord)} is next online.</p>` : ''}
+      ${l.phone ? `<p class="why" style="margin-top:8px">Works while Homecast is open.</p>` : ''}
+      <p class="link11" style="margin-top:8px">Local Mode settings</p>
+    </div>`;
+  }
+  const spark = () => '<svg width="160" height="24" viewBox="0 0 160 24" style="color:var(--muted)"><polygon points="0,24 0,22 10,23 20,20 28,21 34,3 40,22 50,23 60,22 70,23 80,22 90,23 96,5 104,22 112,23 120,22 130,23 140,22 146,4 154,22 160,23 160,24" fill="currentColor" opacity=".1"/><polyline points="0,22 10,23 20,20 28,21 34,3 40,22 50,23 60,22 70,23 80,22 90,23 96,5 104,22 112,23 120,22 130,23 140,22 146,4 154,22 160,23" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" opacity=".6"/></svg>';
+  function relay(r) {
+    let body = '';
+    if (r.kind === 'standby') {
+      body = `<p class="para">Another Mac is the active relay. Take over to handle HomeKit requests from this device.</p><button class="btn primary" style="margin-top:8px">Take Over as Relay</button>`;
+    } else if (r.kind === 'cloud_standby') {
+      body = `<p class="para">Your homes are served by Homecast Cloud. This Mac will take over if the cloud relay goes offline.</p>`;
+    } else if (r.kind === 'cloud_serving') {
+      body = `<p class="para warn">The cloud relay is offline. This Mac is serving Clitheroe Road, George Street and County Hall until it is back.</p>
+        <div class="kv"><span class="k">Uptime</span><span class="v">1m</span></div>
+        <div class="kv"><span class="k">Clients</span><span class="v g">1 connected</span></div>
+        <div class="kv"><span class="k">Subscriptions</span><span class="v g">1 active</span></div>
+        <div class="kv"><span class="k">Webhooks</span><span class="v m">None</span></div>
+        <div class="kv" style="align-items:center"><span class="k">Activity</span>${spark()}</div>
+        <hr class="sep"><div class="kv" style="margin-top:12px"><span class="k">Homes</span><span class="v">0</span></div>
+        <div class="kv"><span class="k">Accessories</span><span class="v">0</span></div>`;
+    }
+    return `<hr class="sep"><div>
+      <div class="sech" style="color:var(--ink)"><span class="sh">Relay Status</span><span class="pill ${r.tone}"><span class="dot ${r.tone}"></span>${esc(r.label)}</span></div>
+      <div style="margin-top:12px">${body}</div>
+    </div>`;
+  }
+  function current(s) {
+    const c = s.current;
+    let h = `<div class="pop">${chain(c.chain)}<div><p class="sent">${esc(c.sentence)}</p><p class="why">${esc(c.reason)}</p></div>`;
+    if (c.warn) h += `<p class="warnline">Changes you make may take a while to apply, or may not apply at all.</p>`;
+    if (c.info) h += `<div class="info">${INFO}<span>Homecast has been notified and is already on it — nothing to restart at your end.</span></div>`;
+    if (c.reconnect) h += `<button class="btn">${REFRESH} Reconnect now</button>`;
+    if (c.reliability) h += reliability(c.reliability);
+    if (c.local) h += localMode(c.local);
+    if (c.relay) h += relay(c.relay);
+    return h + '</div>';
+  }
+
+  // ── proposed: the answer card ──
+  function proposed(s) {
+    const p = s.proposed;
+    const broken = p.chain && p.chain.hops.some(h => h.tone !== 'ok');
+    let h = `<div class="pop">
+      <div><div class="verdict"><span class="dot ${p.tone}${p.pulse ? ' pulse' : ''}"></span><span>${esc(p.verdict)}</span></div>`;
+    if (p.because) h += `<p class="because">${esc(p.because)}</p>`;
+    if (!broken && p.via) h += `<p class="via">${esc(p.via)}</p>`;
+    h += '</div>';
+    if (broken) h += chain(p.chain);
+    if (p.caveat) h += `<p class="caveat ink-warn">${esc(p.caveat)}</p>`;
+    if (p.note) h += `<div class="info">${INFO}<span>${esc(p.note)}</span></div>`;
+    if (p.reconnect) h += `<button class="btn">${REFRESH} Reconnect now</button>`;
+    if (p.foots && p.foots.length) {
+      h += `<hr class="sep"><div class="foots">` + p.foots.map(f => `<div class="foot"><span class="k">${esc(f[0])}</span><span class="v">${f[2] ? `<span class="dot ${f[2]}"></span>` : ''}${esc(f[1])}<span class="chev">${CHEV}</span></span></div>`).join('') + '</div>';
+    }
+    return h + '</div>';
+  }
+  function badge(b) {
+    if (!b.label) return `<div class="hdr"><span class="badge dotonly"><span class="dot ${b.tone}"></span></span></div>`;
+    return `<div class="hdr"><span class="badge"><span class="dot ${b.tone}${b.pulse ? ' pulse' : ''}"></span>${esc(b.label)}</span></div>`;
+  }
+
+  // ── the states ──
+  const REL_OK = { home: 'County Hall', status: 'verified', word: 'Verified', pc: '90% today · 92% this week', last: 'Relay offline 4 hours ago, 2m.', outages: [[38, 4], [52, 3], [78, 5]] };
+  const REL_OFF = { ...REL_OK, status: 'offline', word: 'Offline', pc: 'went offline 3 minutes ago', outages: [[38, 4], [52, 3], [78, 5], [96, 4]] };
+  const cloudChain = (rtt, homeTone = 'ok') => ({ nodes: [N('device', 'This device'), N('cloud', 'Homecast'), N('relay', 'Cloud relay'), N('home', 'County Hall', homeTone)], hops: [H('ok', rtt), H(), H()] });
+  const coveringChain = (rtt) => ({ nodes: [N('device', 'This device'), N('cloud', 'Homecast'), N('relay', 'Cloud relay', 'bad'), N('home', 'County Hall')], hops: [H('ok', rtt), H('bad', 'no relay'), H('ok', 'direct')] });
+  const relayDownChain = (rtt) => ({ nodes: [N('device', 'This device'), N('cloud', 'Homecast'), N('relay', 'Cloud relay', 'bad'), N('home', 'County Hall', 'idle')], hops: [H('ok', rtt), H('bad', 'no relay'), H('idle')] });
+
+  const STATES = [
+    {
+      id: 'healthy', name: 'Healthy', tone: 'ok', who: 'Mac · cloud plan · standing by',
+      current: { chain: cloudChain('14ms'), sentence: 'Every hop is healthy.', reason: 'Round trip 14ms · 14s ago', reliability: REL_OK, relay: { kind: 'cloud_standby', tone: 'ok', label: 'Standby' }, badge: { tone: 'ok' } },
+      proposed: { tone: 'ok', verdict: 'County Hall is working', via: 'via Cloud relay · 14ms', badge: { tone: 'ok' }, foots: [['Reliability', '92% this week'], ['This Mac', 'Standing by']] },
+      notes: ['Your first screenshot. Three sections, about 300px tall, to say nothing is wrong.', 'The chain, “Every hop is healthy” and the round trip collapse into one line: the route and the number.', 'Reliability keeps one figure and the link; Relay Status becomes a row. Both open the page that already holds the detail.'],
+    },
+    {
+      id: 'covering', name: 'Cloud relay down · this Mac standing in', tone: 'warn', who: 'Mac · cloud plan · Local Mode + standby active',
+      current: { chain: coveringChain('14.6s'), sentence: "The cloud relay isn't answering, so this device is talking to your home directly.", reason: 'Round trip 14.6s · just now', reliability: REL_OFF, local: { phone: true }, relay: { kind: 'cloud_serving', tone: 'warn', label: 'Standby active' }, badge: { tone: 'ok', label: 'Local Mode' } },
+      proposed: { tone: 'warn', verdict: 'County Hall is working', because: "The cloud relay is offline, so this Mac is standing in — for you, and for everyone else at home — until it's back.", chain: coveringChain('14ms'), note: 'Nothing to do here. Homecast has been notified.', badge: { tone: 'warn', label: 'Standing in' }, foots: [['Reliability', '92% this week'], ['This Mac', 'Standing in', 'warn']] },
+      notes: ['Your second screenshot. Three sections each say who is serving the home, in three different ways, and Reliability says “Offline” over a home that works.', 'One verdict: it works, this Mac is covering, nothing to do. The chain stays because it now has something to point at — the dead relay and the direct hop past it.', 'The nine relay stats go to Settings → Relay. “Homes 0 / Accessories 0” goes with them.'],
+      fn: 'The green 14.6s on the first hop is the raw last-RTT being drawn regardless of what the classifier concluded. The proposed card colours that hop from the verdict, so a reading like that would show as amber or not at all.',
+    },
+    {
+      id: 'phone-local', name: 'iPhone in Local Mode, unmapped', tone: 'warn', who: 'iPhone · cloud plan · Local Mode, names not yet matched',
+      current: { chain: coveringChain('41ms'), sentence: "The cloud relay isn't answering, so this device is talking to your home directly. Some devices may not be recognised yet.", reason: 'Round trip 41ms · just now', reliability: REL_OFF, local: { phone: true, unmapped: true, deviceWord: 'device' }, badge: { tone: 'warn', label: 'Local Mode' } },
+      proposed: { tone: 'warn', verdict: 'County Hall is working', because: 'The cloud relay is offline, so this iPhone is talking to your home directly — while Homecast is open.', chain: coveringChain('41ms'), caveat: 'Some devices show their Apple Home names until the relay is back.', badge: { tone: 'warn', label: 'Standing in' }, foots: [['Reliability', '92% this week']] },
+      notes: ['The Local Mode section carried three things: a caveat, “works while Homecast is open”, and a link. The first two become clauses of the answer; the link is Settings → Local Mode, one tap away as it was.', 'No relay row on a phone — a phone has no duty to report.'],
+    },
+    {
+      id: 'relay-offline', name: 'Cloud relay down · nothing standing in', tone: 'bad', who: 'iPhone · cloud plan · no Local Mode',
+      current: { chain: relayDownChain('41ms'), sentence: "The cloud relay for this home isn't answering. Your device and your internet are both fine.", reason: 'Round trip 41ms · just now', info: true, reliability: REL_OFF, badge: { tone: 'warn', label: 'Relay offline' } },
+      proposed: { tone: 'bad', verdict: "County Hall can't be reached", because: "The cloud relay isn't answering. Your iPhone and your internet are both fine.", chain: relayDownChain('41ms'), note: 'Nothing to do — Homecast has been notified and is on it.', badge: { tone: 'bad', label: 'Relay offline' }, foots: [['Reliability', '92% this week']] },
+      notes: ["The one state where today's panel is already close to right — the chain and the sentence are doing their job.", "Red rather than amber. Today's amber reasons from the app's side (“the app is fine, the home is not”); from the user's side the home does not work, which is the worst thing this dot can say.", 'Reliability stops shouting “Offline” a second time under a headline that already said so.'],
+    },
+    {
+      id: 'waiting', name: 'Cloud relay down · your Mac takes over in 3 min', tone: 'warn', who: 'iPhone · cloud plan · a standby Mac is connected',
+      current: { chain: relayDownChain('38ms'), sentence: "The cloud relay for this home isn't answering. Your own relay takes over in 3 min.", reason: 'Round trip 38ms · just now', info: true, reliability: REL_OFF, badge: { tone: 'warn', label: 'Relay offline' } },
+      proposed: { tone: 'warn', pulse: true, verdict: "County Hall can't be reached right now", because: "The cloud relay isn't answering. Your Mac takes over in 3 min.", chain: relayDownChain('38ms'), badge: { tone: 'warn', pulse: true, label: 'Relay offline' }, foots: [['Reliability', '92% this week']] },
+      notes: ['The state #99 was about — five minutes with no word for it. The countdown is the whole message, so it is the second line, not buried under an info box.', 'Amber and pulsing, because it is expected to resolve itself; the “notified” note is dropped since the next thing that happens is already stated.'],
+    },
+    {
+      id: 'offline', name: 'This device has no network', tone: 'bad', who: 'iPhone · no wifi or signal',
+      current: { chain: { nodes: [N('device', 'This device'), N('cloud', 'Homecast', 'bad'), N('relay', 'Cloud relay', 'idle'), N('home', 'County Hall', 'idle')], hops: [H('bad', 'no answer'), H('idle'), H('idle')] }, sentence: "This device can't reach Homecast. Check your wifi or mobile signal.", reason: 'No reply to the last connection check.', warn: true, reconnect: true, badge: { tone: 'bad', label: 'Offline' } },
+      proposed: { tone: 'bad', verdict: "This iPhone can't reach Homecast", because: "Check your wifi or mobile signal. County Hall itself may be fine — it's this device that's cut off.", chain: { nodes: [N('device', 'This device'), N('cloud', 'Homecast', 'bad'), N('relay', 'Cloud relay', 'idle'), N('home', 'County Hall', 'idle')], hops: [H('bad', 'no answer'), H('idle'), H('idle')] }, reconnect: true, badge: { tone: 'bad', label: 'Offline' } },
+      notes: ['The verdict names the device, not the home — the one state where “is it me?” is answered yes.', "No footer rows: both need the server, and a stale “92% this week” under “can't reach Homecast” would be a small lie.", '“Changes may not apply” is folded into the verdict; a device with no network does not need a second sentence to say so.'],
+    },
+    {
+      id: 'slow', name: 'Slow link to Homecast', tone: 'warn', who: 'iPhone · cloud plan · 2.4s round trip',
+      current: { chain: { nodes: [N('device', 'This device'), N('cloud', 'Homecast', 'warn'), N('relay', 'Cloud relay'), N('home', 'County Hall')], hops: [H('warn', '2.4s'), H(), H()] }, sentence: 'Reaching Homecast is slow right now. The cloud relay is answering normally behind it.', reason: 'A request has been waiting 6s.', warn: true, reconnect: true, reliability: REL_OK, badge: { tone: 'warn', label: 'Slow' } },
+      proposed: { tone: 'warn', verdict: 'County Hall is working, slowly', because: 'Reaching Homecast is slow right now — a request has been waiting 6s. The cloud relay is answering normally behind it.', chain: { nodes: [N('device', 'This device'), N('cloud', 'Homecast', 'warn'), N('relay', 'Cloud relay'), N('home', 'County Hall')], hops: [H('warn', '2.4s'), H(), H()] }, reconnect: true, badge: { tone: 'warn', label: 'Slow' }, foots: [['Reliability', '92% this week']] },
+      notes: ["“Working, slowly” is the honest verdict: things happen, late. The reason line's evidence (“a request has been waiting 6s”) joins the sentence rather than sitting under it.", "Reconnect stays — the fault is this device's link, which is the one thing that button fixes."],
+    },
+    {
+      id: 'standby', name: 'Self-hosted · another Mac is the relay', tone: 'ok', who: 'Mac · self-hosted · standing by',
+      current: { chain: { nodes: [N('device', 'This device'), N('cloud', 'Homecast'), N('relay', 'Your relay'), N('home', 'George Street')], hops: [H('ok', '22ms'), H(), H()] }, sentence: 'Every hop is healthy.', reason: 'Round trip 22ms · just now', reliability: { ...REL_OK, home: 'George Street', pc: '100% today · 99% this week', last: 'No outages in the last 7 days.', outages: [] }, relay: { kind: 'standby', tone: 'warn', label: 'Standby' }, badge: { tone: 'warn', label: 'Standby' } },
+      proposed: { tone: 'ok', verdict: 'George Street is working', via: 'via Your relay · 22ms', badge: { tone: 'ok' }, foots: [['Reliability', '99% this week'], ['This Mac', 'Standing by']] },
+      notes: ['Today the header shows an amber “Standby” pill over a home that works perfectly, and the popover offers “Take Over as Relay” — a configuration change dressed as a repair.', 'The dot goes green; duty becomes a row that opens Settings → Relay, where the take-over button lives.', 'This is the ranking change in call 2, and the clearest example of the dot reporting the machine instead of the home.'],
+    },
+    {
+      id: 'reconnected', name: 'Just came back', tone: 'ok', who: 'iPhone · the 3s recovery confirmation',
+      current: { chain: cloudChain('31ms'), sentence: 'Every hop is healthy again.', reason: 'Round trip 31ms · just now', reliability: REL_OK, badge: { tone: 'ok', label: 'Reconnected' } },
+      proposed: { tone: 'ok', verdict: 'County Hall is working again', via: 'via Cloud relay · 31ms', badge: { tone: 'ok', label: 'Reconnected' }, foots: [['Reliability', '92% this week']] },
+      notes: ['The one “healthy” sentence that was not redundant: “again” is a transition the drawing cannot show. It survives as the verdict.'],
+    },
+  ];
+
+  // ── render ──
+  const statesEl = document.getElementById('states');
+  const stageEl = document.getElementById('stage');
+  let active = 'covering';
+  try { active = new URLSearchParams(location.search).get('state') || localStorage.getItem('answer-card-state') || active; } catch (e) {}
+  if (!STATES.some(s => s.id === active)) active = 'covering';
+
+  function renderPicker() {
+    statesEl.innerHTML = STATES.map(s => `<button class="st" type="button" data-id="${s.id}" aria-pressed="${s.id === active}"><span class="dot ${s.tone}"></span>${esc(s.name)}</button>`).join('');
+  }
+  function renderStage() {
+    const s = STATES.find(x => x.id === active);
+    stageEl.innerHTML = `
+      <div><div class="col-h"><span>Current</span><span class="h">${esc(s.who)}</span></div>${badge(s.current.badge)}${current(s)}</div>
+      <div><div class="col-h"><span>Proposed</span></div>${badge(s.proposed.badge)}${proposed(s)}</div>
+      <div class="notes"><h3>${esc(s.name)}</h3><ul>${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>${s.fn ? `<p class="fn">${esc(s.fn)}</p>` : ''}</div>`;
+  }
+  statesEl.addEventListener('click', e => {
+    const b = e.target.closest('.st'); if (!b) return;
+    active = b.dataset.id;
+    try { localStorage.setItem('answer-card-state', active); } catch (err) {}
+    renderPicker(); renderStage();
+  });
+  renderPicker(); renderStage();
+
+  // the anatomy exemplar: the covering state, with the five parts numbered
+  const ex = STATES.find(x => x.id === 'covering');
+  const an = document.getElementById('anatomy');
+  an.innerHTML = proposed(ex);
+  const pop = an.firstElementChild;
+  const parts = [pop.children[0], pop.children[0].querySelector('.because'), pop.querySelector('.chain'), pop.querySelector('.info'), pop.querySelector('.foots')];
+  parts.forEach((el, i) => { if (!el) return; el.classList.add('rel'); el.insertAdjacentHTML('afterbegin', `<span class="tag" aria-hidden="true">${i + 1}</span>`); });
+})();
+</script>
+
+</body>
+</html>

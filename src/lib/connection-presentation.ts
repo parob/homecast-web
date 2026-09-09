@@ -101,6 +101,30 @@ export function formatRtt(ms: number | null | undefined): string | null {
 }
 
 /**
+ * The round trip worth drawing on the chain's first hop, or nothing.
+ *
+ * `getLastRttMs()` is not always a measurement. A missed pong is recorded as a
+ * one-interval lower bound, and a request that has been outstanding for
+ * seconds is the leading indicator the classifier actually reads — so the raw
+ * number can say `14.6s` while the classifier, quite correctly, still says
+ * `good` about the socket (parob/homecast-web#98: a 14.6s round trip painted
+ * green). The reason line under the card already ranks its evidence this way;
+ * the hop label has to rank the same way or the two contradict each other on
+ * the same screen. Returns null whenever the number is not a reading the
+ * classifier would stand behind.
+ */
+export function rttForDisplay(
+  lastRttMs: number | null | undefined,
+  pendingPingMs: number | null | undefined,
+  inFlightMs: number | null | undefined,
+  thresholds: { slowRttMs: number; slowInFlightMs: number },
+): string | null {
+  if (typeof inFlightMs === 'number' && inFlightMs >= thresholds.slowInFlightMs) return null;
+  if (typeof pendingPingMs === 'number' && pendingPingMs >= thresholds.slowRttMs) return null;
+  return formatRtt(lastRttMs);
+}
+
+/**
  * How long the recovery confirmation stays up.
  *
  * The old toast used 3000ms for "Reconnected" and this keeps that, because the
