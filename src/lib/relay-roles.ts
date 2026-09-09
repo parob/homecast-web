@@ -26,44 +26,8 @@ export function parseHomeRoles(raw: unknown): RelayHomeRoles | null {
   return out;
 }
 
-export interface CloudStandbyHome {
-  id: string;
-  name?: string;
-  isCloudManaged?: boolean;
-}
-
-export type CloudStandby =
-  /** Every cloud-managed home is served by the cloud relay; this Mac waits. */
-  | 'standby'
-  /** The cloud relay is gone and this Mac has taken at least one home over. */
-  | 'serving'
-  /** Nothing to say: no roles known (an older server) or no cloud-managed homes. */
-  | null;
-
-/**
- * Whether this Mac is standing by for, or standing in for, the cloud relay.
- *
- * `null` roles means the server has not said, which keeps every older
- * presentation exactly as it was. Home ids are compared case-insensitively:
- * the server keys by uppercase hc_id and the homes list is not guaranteed to.
- */
-export function cloudStandbyState(i: {
-  relayRoles: RelayHomeRoles | null;
-  homes: ReadonlyArray<CloudStandbyHome>;
-}): CloudStandby {
-  if (!i.relayRoles) return null;
-  const cloudHomes = i.homes.filter((h) => h.isCloudManaged);
-  if (cloudHomes.length === 0) return null;
-  const roleOf = (h: CloudStandbyHome) => i.relayRoles?.[h.id.toUpperCase()];
-  if (cloudHomes.some((h) => roleOf(h) === 'primary')) return 'serving';
-  return 'standby';
-}
-
-/** The cloud-managed homes this Mac is currently serving, for the copy. */
-export function homesServedInsteadOfCloud(i: {
-  relayRoles: RelayHomeRoles | null;
-  homes: ReadonlyArray<CloudStandbyHome>;
-}): CloudStandbyHome[] {
-  if (!i.relayRoles) return [];
-  return i.homes.filter((h) => h.isCloudManaged && i.relayRoles?.[h.id.toUpperCase()] === 'primary');
-}
+// `cloudStandbyState` and `homesServedInsteadOfCloud` used to live here: what
+// this Mac was doing for the cloud-managed homes, derived from this map and
+// the homes list. That is now read from the serving fact per home
+// (`lib/relay-section-state.ts`); the map is kept only because the server
+// still sends it and the connection still records it.

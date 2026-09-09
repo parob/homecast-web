@@ -14,3 +14,14 @@ export function useHomeServing(homeId: string | null | undefined): HomeServing |
   }), [homeId]);
   return homeId ? effectiveServing(homeId) : null;
 }
+
+/**
+ * Re-render on any home's transition. For a surface that reads the fact for
+ * a *list* of homes through `isHomeServed` / `isHomeUnserved`: put the
+ * returned number in the memo's deps and the memo recomputes on a push.
+ */
+export function useHomeServingVersion(): number {
+  const [v, bump] = useState(0);
+  useEffect(() => subscribeHomeServing(() => bump((n) => n + 1)), []);
+  return v;
+}

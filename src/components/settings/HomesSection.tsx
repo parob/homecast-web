@@ -38,6 +38,8 @@ import { toast } from 'sonner';
 import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { CLOUD_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
+import { isHomeUnserved } from '@/server/home-serving';
+import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -322,7 +324,8 @@ const ROLE_LABELS: Record<string, string> = { owner: 'Owner', admin: 'Admin', co
 function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitHome; onSwitchToCloud?: () => void; onClick?: () => void }) {
   const isCloud = home.isCloudManaged;
   const isOwner = !home.role || home.role === 'owner';
-  const isOffline = home.relayConnected === false;
+  useHomeServingVersion();
+  const isOffline = isHomeUnserved(home.id);
   return (
     <div
       className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}

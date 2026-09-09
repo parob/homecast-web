@@ -106,18 +106,18 @@ describe('servedByThisDevice', () => {
 
 describe('the store', () => {
   it('is fed by homes.list, preferring the server field', () => {
-    ingestHomesList([{ id: 'd08cb174', name: 'x', isPrimary: false, roomCount: 0, accessoryCount: 0,
+    ingestHomesList([{ id: 'd08cb174',
       relayState: 'connected', serving: waiting() }]);
     expect(getHomeServing('D08CB174')?.state).toBe('waiting');
   });
   it('falls back to the older fields when the server has none', () => {
-    ingestHomesList([{ id: 'D08CB174', name: 'x', isPrimary: false, roomCount: 0, accessoryCount: 0,
+    ingestHomesList([{ id: 'D08CB174',
       relayState: 'reconnecting' }]);
     expect(getHomeServing('D08CB174')?.state).toBe('reconnecting');
   });
   it('leaves a home alone on a bare answer', () => {
     ingestHomeServingPush({ homeId: 'D08CB174', serving: waiting() });
-    ingestHomesList([{ id: 'D08CB174', name: 'x', isPrimary: false, roomCount: 0, accessoryCount: 0 }]);
+    ingestHomesList([{ id: 'D08CB174' }]);
     expect(getHomeServing('D08CB174')?.state).toBe('waiting');
   });
   it('is fed by the push', () => {
@@ -139,7 +139,7 @@ describe('the store', () => {
   });
   it('seeds Community mode as served by this Mac, and nothing else ever writes it', () => {
     setThisDevice(ME);
-    ingestHomesList([{ id: 'D08CB174', name: 'x', isPrimary: false, roomCount: 0, accessoryCount: 0 }], { community: true });
+    ingestHomesList([{ id: 'D08CB174' }], { community: true });
     expect(getHomeServing('D08CB174')).toMatchObject({ state: 'served', by: ME, kind: 'self_hosted' });
     expect(servedByThisDevice(effectiveServing('D08CB174'), ME)).toBe(true);
   });

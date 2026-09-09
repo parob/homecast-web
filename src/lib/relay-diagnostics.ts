@@ -16,6 +16,7 @@ import { serverConnection } from '@/server/connection';
 import { config } from '@/lib/config';
 import { getCacheTimestamp } from '@/hooks/useHomeKitData';
 import type { HomeKitHome } from '@/native/homekit-bridge';
+import { effectiveServing, type HomeServing } from '@/server/home-serving';
 
 // ---------------------------------------------------------------------------
 // relay_status_update history — the broadcasts are the only push channel for
@@ -103,6 +104,8 @@ export interface RelayOfflineSnapshot {
   isCloudManaged: boolean | undefined;
   role: string | undefined;
   offlineHomeIds: string[];
+  /** The composed serving fact for the home, as the surfaces read it. */
+  serving: HomeServing | null;
   homesCacheAgeSeconds: number | null;
   wsConnectionState: string;
   recentRelayStatusUpdates: RecordedStatusUpdate[];
@@ -134,6 +137,7 @@ export function buildRelayOfflineSnapshot(args: {
     isCloudManaged: home?.isCloudManaged,
     role: home?.role,
     offlineHomeIds: homes.filter(h => h.relayConnected === false).map(h => h.id),
+    serving: homeId ? effectiveServing(homeId) : null,
     homesCacheAgeSeconds: homesCacheTs ? Math.round((Date.now() - homesCacheTs) / 1000) : null,
     wsConnectionState: serverConnection.getState().connectionState,
     recentRelayStatusUpdates: getRecentRelayStatusUpdates(),

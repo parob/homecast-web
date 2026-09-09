@@ -18,6 +18,9 @@ import {
   getEffectivePayload as getEffectivePayloadPure, rowTypeForTopic,
 } from './mqtt-browser/topic-tree';
 import type { TopicMessage } from './mqtt-browser/topic-tree';
+// The browser's homes come from GraphQL rather than homes.list, so it feeds
+// the serving store itself and reads the fact back like every other surface.
+import { ingestHomesList, isHomeUnserved } from '@/server/home-serving';
 
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
 interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean; ownerEmail?: string | null }
@@ -191,7 +194,7 @@ export default function MQTTBrowser() {
         .then(r => r.json())
         .then(d => {
           if (d?.data?.me) setCookieUser(d.data.me);
-          if (d?.data?.cachedHomes) setCookieHomes(d.data.cachedHomes);
+          if (d?.data?.cachedHomes) { ingestHomesList(d.data.cachedHomes); setCookieHomes(d.data.cachedHomes); }
         })
         .catch(() => {});
     };
@@ -267,10 +270,12 @@ export default function MQTTBrowser() {
     const now = Date.now();
     const mk = (payload: object, ageSec = 0): TopicMessage => ({ payload: JSON.stringify(payload), timestamp: now - ageSec * 1000, updates: 1 });
     setCookieUser({ id: 'mock-user', email: 'mock@homecast.cloud', name: 'Mock User' });
-    setCookieHomes([
+    const mockHomes: CookieHome[] = [
       { id: '11111111-1111-1111-1111-111111111111', name: 'Beach House', role: 'owner', mqttEnabled: true, relayConnected: true, ownerEmail: 'mock@homecast.cloud' },
       { id: '22222222-2222-2222-2222-222222222222', name: 'County Hall', role: 'owner', mqttEnabled: true, relayConnected: false, ownerEmail: 'mock@homecast.cloud' },
-    ]);
+    ];
+    ingestHomesList(mockHomes);
+    setCookieHomes(mockHomes);
     const topics: Record<string, TopicMessage> = {
       // --- Beach House / kitchen ---
       'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2':       mk({ on: true,  brightness: 72, color_temp: 350, hue: 45, saturation: 80 }, 3),
@@ -550,7 +555,7 @@ export default function MQTTBrowser() {
       message={selectedMessage}
       effectivePayload={selectedEp}
       rowType={rowTypeForTopic(selectedTopic, groupMembers)}
-      homeOffline={homeForSlug(selectedTopic.split('/')[1] || '')?.relayConnected === false}
+      homeOffline={(() => { const h = homeForSlug(selectedTopic.split('/')[1] || ''); return !!h && isHomeUnserved(h.id); })()}
       rawMode={rawMode}
       onRawModeChange={(v) => { setRawMode(v); updateUrlParams({ view: v ? 'json' : null }); }}
       publishValue={publishValues[selectedTopic] ?? selectedEp}
@@ -648,7 +653,7 @@ export default function MQTTBrowser() {
               {homes.map(home => {
                 const slug = homeSlugForName(home.name);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
-                const relayOffline = home.relayConnected === false;
+                const relayOffline = isHomeUnserved(home.id);
                 const chipClass = !home.mqttEnabled
                   ? 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
                   : relayOffline

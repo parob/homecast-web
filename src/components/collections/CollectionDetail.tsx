@@ -110,6 +110,8 @@ import {
 import { randomUUID } from '@/lib/uuid';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
+import { isHomeUnserved } from '@/server/home-serving';
+import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 // Measuring configuration to reduce layout measurements during drag
 const measuringConfig = {
@@ -236,6 +238,7 @@ export function CollectionDetail({
   onDragActiveChange,
   developerMode,
 }: CollectionDetailProps) {
+  const servingVersion = useHomeServingVersion();
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [payload, setPayload] = useState<CollectionPayload>(() => parseCollectionPayload(collection.payload));
@@ -430,13 +433,14 @@ export function CollectionDetail({
       if (!home) {
         // Home ID not in current homes list — UUID has changed (e.g. HomeKit architecture migration)
         stale.add(homeId);
-      } else if (home.relayConnected === false) {
-        // Shared home with relay explicitly offline
+      } else if (isHomeUnserved(home.id)) {
+        // The serving fact says nothing may serve this home right now
         offline.add(homeId);
       }
     }
     return { staleHomeIds: stale, offlineHomeIds: offline };
-  }, [homes, homesLoading, collectionHomeIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- servingVersion is the store's change signal
+  }, [homes, homesLoading, collectionHomeIds, servingVersion]);
 
   // Fetch accessories for only the homes in this collection (uses cache for real-time updates)
   const { data: accessoriesData, loading: accessoriesLoading, error: accessoriesError } = useAccessoriesForHomes(collectionHomeIds);

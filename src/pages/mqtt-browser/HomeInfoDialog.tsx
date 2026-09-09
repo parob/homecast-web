@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { effectiveServing } from '@/server/home-serving';
 
 type Home = {
   id: string;
@@ -18,9 +19,8 @@ export function HomeInfoDialog({ open, onOpenChange, home, slug, topicCount, roo
   roomCount: number;
 }) {
   if (!home) return null;
-  const relay = home.relayConnected === undefined
-    ? 'unknown'
-    : home.relayConnected ? 'online' : 'offline';
+  const serving = effectiveServing(home.id);
+  const relay = serving === null ? 'unknown' : serving.state === 'served' ? 'online' : 'offline';
   const mqtt = home.mqttEnabled ? 'enabled' : 'off';
   const role = home.role || 'owner';
   return (
