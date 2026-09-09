@@ -247,7 +247,21 @@ export function StatusBadge({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-[280px] p-3 window-no-drag"
+        collisionPadding={8}
+        // The panel has to fit the screen it is opened on, and on a phone it
+        // does not: on the iPhone this was reported from (440×956, header
+        // pushed down by a 59px notch) it rendered 847px tall starting 138px
+        // down, so it ended 985px into a 956px viewport and its last lines were
+        // simply gone — `PopoverContent` sets no height and no overflow, so
+        // there was nothing to scroll either (homecast-cloud#103).
+        //
+        // Radix was already measuring the answer and publishing it as
+        // `--radix-popover-content-available-height` (834px in that repro);
+        // nothing consumed it. Consuming it caps the panel at what is actually
+        // on screen and lets the remainder scroll, which is what keeps this
+        // correct for the states that are longer still — a relay Mac adds a
+        // whole Relay section under these.
+        className="w-[280px] p-3 window-no-drag max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain"
         onPointerDownOutside={(e) => {
           // Radix closes on pointerdown, which on touch fires before the tap
           // that opened it has finished — without this the popover flickers
@@ -256,7 +270,7 @@ export function StatusBadge({
           if (Date.now() - openTimeRef.current < 300) e.preventDefault();
         }}
       >
-        <div className="space-y-3">
+        <div data-testid="status-panel" className="space-y-3">
           {/* Sections in the same order the badge itself ranks them, so the
               headline you tapped is the first thing you read. */}
           {/* Community used to be gated out of here entirely, on the grounds

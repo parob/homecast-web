@@ -20,8 +20,16 @@ const REASON_TEXT: Record<LocalModeReason, string> = {
   'socket-down': "This device can't reach Homecast's servers.",
 };
 
-const WORKS = ['Lights, switches and plugs', 'Sensors and thermostats', 'Locks and blinds', 'Scenes and rooms'];
-const DOESNT = ['Automations', 'Notifications', 'History recording', 'Sharing with other people'];
+/**
+ * What Local Mode can and cannot do.
+ *
+ * These were eight rows with an icon each — 185px of a 449px section, in a
+ * panel that did not fit the phone it was opened on (homecast-cloud#103). Two
+ * sentences carry the same eight facts in about 70px, and a list you read once
+ * to find out what is missing reads at least as well as prose.
+ */
+const WORKS = 'lights, switches, plugs, sensors, thermostats, locks, blinds, scenes and rooms';
+const DOESNT = 'automations, notifications, history recording and sharing with other people';
 
 interface LocalModeSectionProps {
   /** Opens Settings → Local Mode. Absent unless Developer Mode is on. */
@@ -46,24 +54,24 @@ export function LocalModeSection({ onOpenSettings }: LocalModeSectionProps) {
         </span>
       </div>
 
+      {/* Only the reason. "This device is talking to your Apple Home directly"
+          is the connection chain's own sentence twenty pixels above this one —
+          `buildChain` leads with it in every state where this section renders —
+          so saying it again was the panel repeating itself at the top of its
+          longest section. */}
       <p className="text-xs text-muted-foreground">
-        This {deviceWord} is talking to your Apple Home directly.
-        {reason ? ` ${REASON_TEXT[reason]}` : ''}
+        {reason ? REASON_TEXT[reason] : `This ${deviceWord} is talking to your Apple Home directly.`}
       </p>
 
-      <div className="space-y-1.5">
-        {WORKS.map((w) => (
-          <div key={w} className="flex items-center gap-1.5 text-[11px]">
-            <Check className="h-3 w-3 text-green-600 shrink-0" />
-            <span>{w}</span>
-          </div>
-        ))}
-        {DOESNT.map((d) => (
-          <div key={d} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <X className="h-3 w-3 shrink-0" />
-            <span>{d}</span>
-          </div>
-        ))}
+      <div className="space-y-1.5 text-[11px]">
+        <div className="flex gap-1.5">
+          <Check className="mt-px h-3 w-3 text-green-600 shrink-0" />
+          <span className="leading-snug">Works: {WORKS}.</span>
+        </div>
+        <div className="flex gap-1.5 text-muted-foreground">
+          <X className="mt-px h-3 w-3 shrink-0" />
+          <span className="leading-snug">Paused: {DOESNT}.</span>
+        </div>
       </div>
 
       {/* Only worth saying when it is not the whole story. */}
@@ -79,10 +87,14 @@ export function LocalModeSection({ onOpenSettings }: LocalModeSectionProps) {
         </p>
       )}
 
-      <p className="text-[11px] text-muted-foreground border-t pt-2">
-        Automations keep running on your relay when it comes back.
-        {isPhone ? ' This works while the app is open.' : ''}
-      </p>
+      {/* "Automations keep running on your relay when it comes back" went with
+          the checklist: "Paused" already says they resume. What nothing else
+          on the panel says is that on a phone this stops when the app does. */}
+      {isPhone && (
+        <p className="text-[11px] text-muted-foreground border-t pt-2">
+          Local Mode works while the app is open.
+        </p>
+      )}
 
       {onOpenSettings && (
         <button

@@ -210,6 +210,9 @@ function resolveGraphQL(
     case 'DeleteHcAutomation':
       return { deleteHcAutomation: true };
 
+    case 'GetHomeUptime':
+      return { homeUptime: homeUptime() };
+
     // Mutations that may fire on load
     case 'SyncEntities':
       return { syncEntities: { success: true, syncedCount: 0 } };
@@ -220,6 +223,46 @@ function resolveGraphQL(
     default:
       return undefined;
   }
+}
+
+/**
+ * A home whose relay went down an hour ago, which is the state the status
+ * popover has the most to say about — and the one homecast-cloud#103 was filed
+ * from. Built relative to now so the "went offline 1 hour ago" line and the
+ * 7-day strip render the same way on any day this runs.
+ */
+function homeUptime() {
+  const HOUR = 3600_000;
+  const now = Date.now();
+  const since = new Date(now - 71 * 60_000).toISOString();
+  const timeline = Array.from({ length: 168 }, (_, i) => {
+    const start = now - (167 - i) * HOUR;
+    const bad = i > 150 && i < 160;
+    return {
+      bucketStart: new Date(start - (start % HOUR)).toISOString(),
+      verified: bad ? 0 : 12,
+      connected: 0,
+      degraded: bad ? 4 : 0,
+      offline: i >= 166 ? 12 : 0,
+      total: 12,
+      __typename: 'UptimeBucket',
+    };
+  });
+  return {
+    currentStatus: 'offline',
+    uptimePercent24h: 94.2,
+    uptimePercent7d: 99.1,
+    uptimePercent30d: 99.6,
+    verifiedRatio7d: 0.97,
+    avgLatencyMs: 480,
+    statusSince: since,
+    lastProbe: null,
+    timeline,
+    outages: [
+      { startedAt: since, endedAt: null, durationSeconds: 71 * 60, severity: 'offline', __typename: 'UptimeOutage' },
+    ],
+    __typename: 'UptimeSummary',
+  };
 }
 
 // ── WebSocket ────────────────────────────────────────────────────────────────
