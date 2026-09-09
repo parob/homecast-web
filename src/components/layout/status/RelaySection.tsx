@@ -1,6 +1,12 @@
 /**
  * What the status popover says about this Mac's relay duty.
  *
+ * Which duty that is comes from the one serving fact per home, folded by
+ * `lib/relay-section-state.ts` — not from the socket's `relayStatus` boolean
+ * and the `homeRoles` map, which were two more private readings of "who
+ * serves this home" (homecast-cloud#99). `waiting`, the takeover grace, gets a
+ * countdown here rather than reading as "Standby".
+ *
  * Lifted from the old `RelayStatusBadge` popover, with one behavioural change
  * worth knowing about: **the 1-second poll now runs only while the popover is
  * open.** It used to run for the entire life of the app, every second, on a
@@ -21,46 +27,41 @@ import { isCommunity } from '@/lib/config';
 import type { HomeKitStats } from '@/native/homekit-bridge';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { formatLastOnline } from '@/lib/relay-last-seen';
-import { cloudStandbyState, homesServedInsteadOfCloud, type RelayHomeRoles } from '@/lib/relay-roles';
-
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-type EffectiveState =
-  | 'connected_active'
-  | 'connected_standby'
-  | 'connected_cloud_standby'
-  | 'connected_cloud_serving'
-  | 'connecting'
-  | 'reconnecting'
-  | 'disconnected';
+import { relaySectionState, type RelayConnectionState, type RelaySectionState } from '@/lib/relay-section-state';
+import { effectiveServing, getThisDevice, subscribeHomeServing } from '@/server/home-serving';
 
 // Standing by for the cloud relay is the healthy shape of a cloud-plan Mac,
 // so it is green; the standby having been ACTIVATED means the cloud relay is
-// offline, which is what the amber is for.
-const dotColorMap: Record<EffectiveState, string> = {
+// offline, which is what the amber is for — and so is the grace before it.
+const dotColorMap: Record<RelaySectionState, string> = {
   connected_active: 'bg-green-500',
   connected_standby: 'bg-amber-500',
   connected_cloud_standby: 'bg-green-500',
+  connected_cloud_waiting: 'bg-amber-500 animate-pulse',
   connected_cloud_serving: 'bg-amber-500',
+  connected_cloud_offline: 'bg-amber-500',
   connecting: 'bg-amber-500 animate-pulse',
   reconnecting: 'bg-amber-500 animate-pulse',
   disconnected: 'bg-red-500',
 };
 
-const statusLabelMap: Record<EffectiveState, string> = {
+const statusLabelMap: Record<RelaySectionState, string> = {
   connected_active: 'Active Relay',
   connected_standby: 'Standby',
   connected_cloud_standby: 'Standby',
+  connected_cloud_waiting: 'Taking over',
   connected_cloud_serving: 'Standby active',
+  connected_cloud_offline: 'Standby',
   connecting: 'Connecting...',
   reconnecting: 'Reconnecting...',
   disconnected: 'Disconnected',
 };
 
-function getEffectiveState(connectionState: ConnectionState, relayStatus: boolean | null): EffectiveState {
-  if (connectionState === 'connected') {
-    return relayStatus === false ? 'connected_standby' : 'connected_active';
-  }
-  return connectionState;
+/** "George Street" / "George Street and County Hall" / "your homes". */
+function listHomes(names: string[]): string {
+  if (names.length === 0) return 'your homes';
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 function formatUptime(connectedAt: number | null): string {
@@ -107,9 +108,7 @@ interface RelaySectionProps {
 }
 
 export function RelaySection({ accountType, accessoryLimit, includedAccessoryCount }: RelaySectionProps) {
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
-  const [relayStatus, setRelayStatus] = useState<boolean | null>(null);
-  const [relayRoles, setRelayRoles] = useState<RelayHomeRoles | null>(null);
+  const [connectionState, setConnectionState] = useState<RelayConnectionState>('disconnected');
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [lastConnectedAt, setLastConnectedAt] = useState<number | null>(null);
   const [subscriberStatus, setSubscriberStatus] = useState<ReturnType<typeof serverConnection.getSubscriberStatus> | null>(null);
@@ -129,8 +128,6 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
     const update = () => {
       const state = serverConnection.getState();
       setConnectionState(state.connectionState);
-      setRelayStatus(state.relayStatus);
-      setRelayRoles(state.relayRoles);
       const at = serverConnection.getConnectedAt();
       setConnectedAt(at);
       setLastConnectedAt(serverConnection.getLastConnectedAt());
@@ -149,24 +146,20 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
     HomeKit.getStats().then(setStats).catch(() => {});
   }, []);
 
-  // Community mode on the relay Mac: always active — direct HomeKit access,
-  // and no server WebSocket whose state could say otherwise.
-  const baseState = (isCommunity && isRelayCapable())
-    ? 'connected_active' as EffectiveState
-    : getEffectiveState(connectionState, relayStatus);
-  // Standing by for the cloud relay: this Mac IS the account's active relay,
-  // but every cloud-managed home is served by Homecast Cloud and the server
-  // has said so (an older server never does, and then nothing here changes).
-  const cloudStandby = cloudStandbyState({ relayRoles, homes: homes ?? [] });
-  const effectiveState: EffectiveState =
-    baseState !== 'connected_active' ? baseState
-    : cloudStandby === 'standby' ? 'connected_cloud_standby'
-    : cloudStandby === 'serving' ? 'connected_cloud_serving'
-    : baseState;
+  // The facts change under us on a push; the 1s tick above re-renders for
+  // the countdown, this re-renders for a transition.
+  const [, bumpServing] = useState(0);
+  useEffect(() => subscribeHomeServing(() => bumpServing(n => n + 1)), []);
+
+  const verdict = relaySectionState({
+    connectionState,
+    community: isCommunity && isRelayCapable(),
+    homes: homes ?? [],
+    serving: effectiveServing,
+    thisDevice: getThisDevice(),
+  });
+  const effectiveState = verdict.state;
   const isStandby = effectiveState === 'connected_standby';
-  const servingInsteadOfCloud = effectiveState === 'connected_cloud_serving'
-    ? homesServedInsteadOfCloud({ relayRoles, homes: homes ?? [] }).map(h => h.name).filter(Boolean)
-    : [];
   const allHomesCloudManaged = effectiveState === 'connected_active'
     && homes != null && homes.length > 0 && selfHostedHomeCount === 0;
 
@@ -210,6 +203,14 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
         <p className="text-xs text-muted-foreground">
           Your homes are served by Homecast Cloud. This Mac will take over if the cloud relay goes offline.
         </p>
+      ) : effectiveState === 'connected_cloud_waiting' ? (
+        <p className="text-xs text-amber-600">
+          The cloud relay for {listHomes(verdict.homeNames)} is offline. This Mac takes over {verdict.takeover}.
+        </p>
+      ) : effectiveState === 'connected_cloud_offline' ? (
+        <p className="text-xs text-amber-600">
+          The cloud relay for {listHomes(verdict.homeNames)} is offline. This Mac isn't standing in for it.
+        </p>
       ) : allHomesCloudManaged ? (
         <p className="text-xs text-muted-foreground">
           All your homes are cloud-managed. You can switch off the relay in Settings.
@@ -218,7 +219,7 @@ export function RelaySection({ accountType, accessoryLimit, includedAccessoryCou
         <>
           {effectiveState === 'connected_cloud_serving' && (
             <p className="text-xs text-amber-600">
-              The cloud relay is offline. This Mac is serving {servingInsteadOfCloud.join(', ') || 'your homes'} until it is back.
+              The cloud relay is offline. This Mac is serving {listHomes(verdict.homeNames)} until it is back.
             </p>
           )}
           <div className="space-y-2 text-xs">
