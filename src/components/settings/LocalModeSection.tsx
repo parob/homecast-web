@@ -66,8 +66,9 @@ export function LocalModeSection() {
         <h3 className="text-sm font-medium mb-1">Local Mode</h3>
         <p className="text-xs text-muted-foreground">
           When your relay can't be reached, this device can control your Apple Home
-          directly — as long as it has access to the home. Automations, notifications
-          and history stay with the relay.
+          directly — as long as it has access to the home. Lights, sensors, locks,
+          blinds, scenes and rooms all work. Automations, notifications, history
+          recording and sharing with other people stay with the relay.
         </p>
       </div>
 

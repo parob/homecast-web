@@ -82,6 +82,8 @@ class LocalModeController implements LocalModeRouter {
   private lastWarmAttempt = 0;
   private lastProbe = 0;
   private status: HomeKitStatus | null = null;
+  /** Whether native has confirmed it is observing this device's HomeKit. */
+  private observing = false;
   /** When Local Mode last engaged, ISO-8601, for the composed fact's `since`. */
   private activeSince: string | null = null;
 
@@ -309,6 +311,7 @@ class LocalModeController implements LocalModeRouter {
     // Only stop observation if this device is not also the relay. Stopping the
     // relay's own observation would silence every client it serves.
     if (!isRelayCapable()) void HomeKit.stopObserving().catch(() => {});
+    this.observing = false;
     this.memo = EMPTY_MEMO;
   }
 
@@ -347,18 +350,49 @@ class LocalModeController implements LocalModeRouter {
   }
 
   private async startObservation(): Promise<void> {
-    try {
-      await HomeKit.startObserving();
-    } catch (err) {
-      console.error('[LocalMode] Could not start HomeKit observation:', err);
-    }
+    this.observing = await this.armObservation();
     if (this.keepAlive) clearInterval(this.keepAlive);
     // Native observation self-stops after 90s without a reset. In cloud mode
     // the relay's heartbeat does this; nothing does it for us.
-    this.keepAlive = setInterval(() => {
-      withCallReason('local mode keepalive: native observation self-stops after 90s',
-        () => HomeKit.resetObservationTimeout()).catch(() => {});
-    }, KEEPALIVE_MS);
+    this.keepAlive = setInterval(() => { void this.keepObservationAlive(); }, KEEPALIVE_MS);
+  }
+
+  /** Ask native to observe. Answers whether it took. */
+  private async armObservation(): Promise<boolean> {
+    try {
+      await withCallReason('local mode: observe this device\'s own HomeKit',
+        () => HomeKit.startObserving());
+      return true;
+    } catch (err) {
+      console.error('[LocalMode] Could not start HomeKit observation:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Keep observation running — and start it if it never did.
+   *
+   * A failed `observe.start` does not heal itself: native's `observe.reset` is
+   * a no-op unless it is *already* observing, so this timer was resetting a
+   * timeout that had never been armed. One rejected call therefore silenced
+   * the device for the rest of the session, which reads as Local Mode
+   * controlling the home perfectly and never reporting a change back
+   * (homecast-cloud#107) — and that call fails at exactly the wrong moment,
+   * since Local Mode engages while the app is retrying everything at once.
+   */
+  private async keepObservationAlive(): Promise<void> {
+    if (!this.observing) {
+      this.observing = await this.armObservation();
+      return;
+    }
+    try {
+      await withCallReason('local mode keepalive: native observation self-stops after 90s',
+        () => HomeKit.resetObservationTimeout());
+    } catch {
+      // The bridge did not answer, so we no longer know that native is
+      // observing. Re-arm on the next tick rather than assume.
+      this.observing = false;
+    }
   }
 
   /** Re-report the topology now, ignoring the once-a-day throttle. */

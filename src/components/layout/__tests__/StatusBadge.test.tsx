@@ -240,15 +240,16 @@ describe('the popover in Local Mode (#103)', () => {
   it('keeps what only it can say', () => {
     reported();
     expect(screen.getByText(/728 of 751 accessories/)).toBeTruthy();
-    expect(screen.getByText(/Automations keep running on your relay/)).toBeTruthy();
   });
 
-  it('keeps the capability list one tap away rather than eight rows tall', () => {
+  // #107: still far too long. The capability list and the automations line
+  // both describe the mode rather than report on it, and both are on the
+  // mode's own Settings page — which this section links to.
+  it('leaves the reference material to Settings (#107)', () => {
     reported();
+    expect(screen.queryByRole('button', { name: /What works in Local Mode/ })).toBeNull();
     expect(screen.queryByText('Lights, switches and plugs')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /What works in Local Mode/ }));
-    expect(screen.getByText('Lights, switches and plugs')).toBeTruthy();
-    expect(screen.getByText('Sharing with other people')).toBeTruthy();
+    expect(screen.queryByText(/Automations keep running on your relay/)).toBeNull();
   });
 
   it('still gives the reason when the chain has not', () => {
