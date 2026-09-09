@@ -43,7 +43,6 @@
   "src/components/shared/SharedRoomView.tsx|error TS2339|Property 'iconStyle' does not exist on type 'RoomLayoutData'.": 2,
   "src/components/webhooks/__tests__/WebhookDialog.test.tsx|error TS2322|Type '{ children: Element; mocks: ({ request: { query: DocumentNode; variables?: undefined; }; result: { data: { homes: { __typename: string; id: string; name: string; isPrimary: boolean; roomCount: number; accessoryCount: number; role: string; isAdmin: boolean; }[]; rooms?: undefined; accessories?: undefined; }; }; maxUs...' is not assignable to type 'IntrinsicAttributes & IntrinsicClassAttributes<MockedProvider> & Readonly<MockedProviderProps>'.": 1,
   "src/components/widgets/AccessoryWidget.tsx|error TS2322|Type 'string' is not assignable to type 'ServiceType'.": 1,
-  "src/contexts/WebSocketContext.tsx|error TS2367|This comparison appears to be unintentional because the types '\"subscription_invalidated\" | \"relay_status_update\" | \"settings_updated\" | \"enrollment_cancelled\"' and '\"auth_required\"' have no overlap.": 1,
   "src/hooks/useSharedWebSocket.ts|error TS2367|This comparison appears to be unintentional because the types '\"ping\" | \"pong\"' and '\"auth_required\"' have no overlap.": 1,
   "src/lib/cloud.ts|error TS2307|Cannot find module '@homecast/cloud' or its corresponding type declarations.": 2,
   "src/lib/fuzzySearch.ts|error TS2702|'Fuse' only refers to a type, but is being used as a namespace here.": 1,

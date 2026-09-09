@@ -126,6 +126,17 @@ export interface RelayStatusUpdate {
   connected: boolean;
 }
 
+/**
+ * The one fact about who may serve a home, on every transition. Read by
+ * `server/home-serving.ts` and nothing else. `relay_status_update` above is
+ * still sent alongside it, derived, for apps that predate this message.
+ */
+export interface HomeServingUpdate {
+  type: 'home_serving';
+  homeId: string;
+  serving: unknown;
+}
+
 export interface SettingsUpdated {
   type: 'settings_updated';
 }
@@ -133,6 +144,11 @@ export interface SettingsUpdated {
 export interface EnrollmentCancelled {
   type: 'enrollment_cancelled';
   homeName: string;
+}
+
+/** A Community relay turned authentication on; guest sessions are sent to login. */
+export interface AuthRequired {
+  type: 'auth_required';
 }
 
 /** One line of a relay's live activity stream. See relay-write / handler.py. */
@@ -175,8 +191,10 @@ export type BroadcastMessage =
   | ServiceGroupUpdate
   | SubscriptionInvalidated
   | RelayStatusUpdate
+  | HomeServingUpdate
   | SettingsUpdated
-  | EnrollmentCancelled;
+  | EnrollmentCancelled
+  | AuthRequired;
 
 interface ServerWebSocketCallbacks {
   /**
@@ -1459,6 +1477,7 @@ export class ServerWebSocket {
                  message.type === 'reachability_update' ||
                  message.type === 'service_group_update' ||
                  message.type === 'relay_status_update' ||
+                 message.type === 'home_serving' ||
                  message.type === 'settings_updated' ||
                  message.type === 'enrollment_cancelled' ||
                  message.type === 'auth_required') {

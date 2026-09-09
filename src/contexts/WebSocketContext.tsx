@@ -6,6 +6,7 @@ import { type ConnectionQuality, isDegraded } from '../server/connection-quality
 import { setPendingWriteUrgency } from '../lib/pending-writes';
 import { invalidateHomeKitCache, invalidateHomeCaches, revalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
+import { ingestHomeServingPush } from '@/server/home-serving';
 import { useLocalMode } from '../hooks/useLocalMode';
 import { localIdentity } from '../server/local-identity';
 import { toast } from 'sonner';
@@ -187,6 +188,10 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       // Relay enabled authentication — kick guest sessions to login
       localStorage.removeItem('homecast-token');
       window.location.href = '/login';
+    } else if (message.type === 'home_serving') {
+      // The one fact, on every transition. The store notifies its own
+      // subscribers; nothing here re-derives anything from it.
+      ingestHomeServingPush(message);
     } else if (message.type === 'relay_status_update') {
       // Relay came online/offline for ONE home — refresh that home's data and
       // the homes list (which carries the relay-status field). Scoped: the old
