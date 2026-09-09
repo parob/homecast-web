@@ -57,6 +57,12 @@ interface ReliabilitySectionViewProps {
 export function ReliabilitySectionView({ summary: s, homeName, onOpenDetails }: ReliabilitySectionViewProps) {
   const status = describeStatus(s.currentStatus);
   const last = s.outages[0] ?? null;
+  // The status row already names an outage that is still running — "Offline ·
+  // went offline 1 hour ago" — so `lastOutageLine` would print the same event
+  // immediately beneath it as "Relay offline now, 1h 11m so far". One event,
+  // two adjacent lines. The row wins because it carries the dot; the line
+  // stays for every other state, where it is the only history on the panel.
+  const outageLineRestatesStatus = s.currentStatus === 'offline' && !!s.statusSince && !!last && !last.endedAt;
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -87,7 +93,9 @@ export function ReliabilitySectionView({ summary: s, homeName, onOpenDetails }: 
         )}
       </div>
       <CompactTimelineStrip buckets={s.timeline} />
-      <p className="text-[11px] text-muted-foreground leading-snug">{lastOutageLine(last)}</p>
+      {!outageLineRestatesStatus && (
+        <p className="text-[11px] text-muted-foreground leading-snug">{lastOutageLine(last)}</p>
+      )}
     </div>
   );
 }

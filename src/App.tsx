@@ -123,10 +123,14 @@ const BgDemo = import.meta.env.DEV ? lazy(() => import("./pages/BgDemo")) : null
 // Same for the Reliability section fed a fixture week, so its hover links can
 // be looked at without signing in or waiting for an outage.
 const ReliabilityPreview = import.meta.env.DEV ? lazy(() => import("./pages/dev/ReliabilityPreview")) : null;
-const devRoutes = BgDemo && ReliabilityPreview ? (
+// And the whole status popover at the viewport it was reported from, so its
+// length is something a person can look at without a phone and an outage.
+const StatusPanelPreview = import.meta.env.DEV ? lazy(() => import("./pages/dev/StatusPanelPreview")) : null;
+const devRoutes = BgDemo && ReliabilityPreview && StatusPanelPreview ? (
   <>
     <Route path="/bgdemo" element={<BgDemo />} />
     <Route path="/dev/reliability" element={<ReliabilityPreview />} />
+    <Route path="/dev/status-panel" element={<StatusPanelPreview />} />
   </>
 ) : null;
 
