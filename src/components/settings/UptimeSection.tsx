@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
-import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle, X, ChevronDown } from 'lucide-react';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { describeProbeReason, describeStatus } from '@/lib/uptime-copy';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -90,6 +90,7 @@ function statusBadge(status: string): { label: string; tooltip: string; icon: JS
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const WINDOW_HOURS = 7 * 24;
 
 // This section lives inside the settings dialog, which sits at 10050 (see
 // ui/dialog.tsx). The tooltip's default layer, 10005, is for the dashboard; in
@@ -107,6 +108,10 @@ function fmtDay(d: Date): string {
 
 function fmtDayTime(d: Date): string {
   return `${fmtDay(d)}, ${fmtHour(d)}`;
+}
+
+function sameDay(a: number, b: number): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
 /** An outage is the relay's or the home's, and each means something different
@@ -136,56 +141,177 @@ function outageTouchesHour(o: UptimeOutage, hourStart: number): boolean {
   return start < hourStart + HOUR_MS && end > hourStart;
 }
 
+/** True if the outage overlaps any hour of the run — the day-group form of
+ *  `outageTouchesHour`, which the selected-day panel and the row highlight
+ *  both need. */
+function outageTouchesHours(o: UptimeOutage, hours: number[]): boolean {
+  if (hours.length === 0) return false;
+  const [start, end] = outageSpan(o);
+  return start < hours[hours.length - 1] + HOUR_MS && end > hours[0];
+}
+
+/** An outage's clock window, read against the day the reader is looking at:
+ *  bare times while it stays inside one day, day and time once it crosses one.
+ *  "07:18 PM → 09:30 AM" on its own does not say that fourteen hours passed. */
+function outageClock(o: UptimeOutage, refTs: number): string {
+  const [start, end] = outageSpan(o);
+  const startText = sameDay(start, refTs) ? fmtHour(new Date(start)) : fmtDayTime(new Date(start));
+  const endText = !o.endedAt ? 'now' : sameDay(end, start) ? fmtHour(new Date(end)) : fmtDayTime(new Date(end));
+  return `${startText} → ${endText}`;
+}
+
 interface HourLine {
   swatch?: string;
   text: string;
 }
 
+/** "about 45 min" / "about 3h 20m" — a span said the way the reader asks it. */
+function approxSpan(minutes: number): string {
+  if (minutes < 60) return `about ${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `about ${h}h ${m}m` : `about ${h}h`;
+}
+
+interface WindowStats {
+  verified: number;
+  reachable: number;
+  degraded: number;
+  offline: number;
+  reachableMin: number;
+  degradedMin: number;
+  offlineMin: number;
+  /** At least one hour of the run recorded something. */
+  sampled: boolean;
+}
+
+/** Minutes of each state over a run of hours. Each hour is converted on its
+ *  own before being added up: the buckets do not all carry the same number of
+ *  samples, so pooling them first would weight a busy hour above a quiet one. */
+export function windowStats(byHour: Map<number, UptimeBucket>, hours: number[]): WindowStats {
+  const s: WindowStats = {
+    verified: 0, reachable: 0, degraded: 0, offline: 0,
+    reachableMin: 0, degradedMin: 0, offlineMin: 0, sampled: false,
+  };
+  for (const ts of hours) {
+    const b = byHour.get(ts);
+    if (!b || b.total === 0) continue;
+    s.sampled = true;
+    s.verified += b.verified;
+    s.reachable += b.verified + b.connected;
+    s.degraded += b.degraded;
+    s.offline += b.offline;
+    s.reachableMin += ((b.verified + b.connected) / b.total) * 60;
+    s.degradedMin += (b.degraded / b.total) * 60;
+    s.offlineMin += (b.offline / b.total) * 60;
+  }
+  return s;
+}
+
+/** The split of a window, as lines. A state that was sampled at all gets a
+ *  line, floored at one minute — "about 0 min" is not an answer. */
+function stateLines(s: WindowStats): HourLine[] {
+  const lines: HourLine[] = [];
+  const mins = (raw: number) => Math.max(1, Math.round(raw));
+  if (s.reachable > 0) lines.push({ swatch: 'bg-green-500', text: `Reachable ${approxSpan(mins(s.reachableMin))}` });
+  if (s.degraded > 0) lines.push({ swatch: 'bg-orange-500', text: `Home not responding ${approxSpan(mins(s.degradedMin))}` });
+  if (s.offline > 0) lines.push({ swatch: 'bg-red-500', text: `Relay offline ${approxSpan(mins(s.offlineMin))}` });
+  lines.push({ text: s.verified > 0 ? `${s.verified} verified read${s.verified === 1 ? '' : 's'}` : 'No verified reads' });
+  return lines;
+}
+
 /** What the hover on one hour of the strip says: the split of the hour, the
  *  verified reads in it, and any outage that overlapped it with its real
- *  start and end, not just this hour's slice. Sample counts are turned into
- *  minutes of the hour, which is what the reader is actually asking. */
+ *  start and end, not just this hour's slice. */
 function describeHour(
-  b: UptimeBucket | undefined,
-  hourStart: Date,
+  byHour: Map<number, UptimeBucket>,
+  hourStart: number,
   outages: UptimeOutage[],
 ): { title: string; lines: HourLine[] } {
-  const hourEnd = new Date(hourStart.getTime() + HOUR_MS);
-  const title = `${fmtDay(hourStart)}, ${fmtHour(hourStart)}–${fmtHour(hourEnd)}`;
-  const total = b?.total ?? 0;
-  if (!b || total === 0) return { title, lines: [{ text: 'Nothing recorded for this hour.' }] };
-  const minutes = (n: number) => Math.round((n / total) * 60);
-  const lines: HourLine[] = [];
-  const up = minutes(b.verified + b.connected);
-  if (up > 0) lines.push({ swatch: 'bg-green-500', text: `Reachable about ${up} min` });
-  if (b.degraded > 0) lines.push({ swatch: 'bg-orange-500', text: `Home not responding about ${minutes(b.degraded)} min` });
-  if (b.offline > 0) lines.push({ swatch: 'bg-red-500', text: `Relay offline about ${minutes(b.offline)} min` });
-  lines.push({ text: b.verified > 0 ? `${b.verified} verified read${b.verified === 1 ? '' : 's'}` : 'No verified reads' });
+  const title = `${fmtDay(new Date(hourStart))}, ${fmtHour(new Date(hourStart))}–${fmtHour(new Date(hourStart + HOUR_MS))}`;
+  const s = windowStats(byHour, [hourStart]);
+  if (!s.sampled) return { title, lines: [{ text: 'Nothing recorded for this hour.' }] };
+  const lines = stateLines(s);
   for (const o of outages) {
-    if (!outageTouchesHour(o, hourStart.getTime())) continue;
-    const [start, end] = outageSpan(o);
-    const endText = o.endedAt ? fmtHour(new Date(end)) : 'now';
+    if (!outageTouchesHour(o, hourStart)) continue;
     lines.push({
       swatch: OUTAGE_SWATCH[o.severity],
-      text: `${OUTAGE_LABEL[o.severity]} ${fmtHour(new Date(start))} → ${endText}, ${formatDuration(o.durationSeconds)}`,
+      text: `${OUTAGE_LABEL[o.severity]} ${outageClock(o, hourStart)}, ${formatDuration(o.durationSeconds)}`,
     });
   }
   return { title, lines };
 }
 
-/** The strip at popover size: the same 168 hours and colours, eight pixels
- *  tall, no hover. A glance, not a reading; the reading is on the settings page. */
-export function CompactTimelineStrip({ buckets }: { buckets: UptimeBucket[] }) {
-  const now = new Date();
-  const startHour = new Date(now.getTime() - 7 * 24 * HOUR_MS);
-  startHour.setMinutes(0, 0, 0);
+/** The same reading for a whole day of the strip. This is the one a finger can
+ *  actually ask for: at the width this section gets on a phone an hour is under
+ *  two pixels wide, so an hour-sized target is not a target. */
+export function describeDay(
+  byHour: Map<number, UptimeBucket>,
+  hours: number[],
+  outages: UptimeOutage[],
+): { title: string; lines: HourLine[] } {
+  const title = fmtDay(new Date(hours[0]));
+  const s = windowStats(byHour, hours);
+  const lines: HourLine[] = s.sampled ? stateLines(s) : [{ text: 'Nothing recorded for this day.' }];
+  for (const o of outages) {
+    if (!outageTouchesHours(o, hours)) continue;
+    lines.push({
+      swatch: OUTAGE_SWATCH[o.severity],
+      text: `${OUTAGE_LABEL[o.severity]} ${outageClock(o, hours[0])}, ${formatDuration(o.durationSeconds)}`,
+    });
+  }
+  // The oldest and newest days of the window are partial, and a day that reads
+  // "Reachable about 9h" without saying so looks like nine hours of outage.
+  if (hours.length < 24) {
+    lines.push({ text: `Only ${hours.length}h of this day is inside the 7-day window.` });
+  }
+  return { title, lines };
+}
+
+export interface DayGroup {
+  /** Local midnight of the day, and the key selection is held by. */
+  dayStart: number;
+  /** The hours of that day that fall inside the 7-day window. */
+  hours: number[];
+}
+
+/** The window's 168 hours, cut at local midnight. The window is hour-aligned
+ *  rather than day-aligned, so the first and last groups are part-days and the
+ *  groups are unequal — which is exactly why each one carries its own hours
+ *  rather than a count the caller has to trust. */
+export function buildDayGroups(now: number): DayGroup[] {
+  const start = new Date(now - WINDOW_HOURS * HOUR_MS);
+  start.setMinutes(0, 0, 0);
+  const groups: DayGroup[] = [];
+  for (let i = 0; i < WINDOW_HOURS; i++) {
+    const ts = start.getTime() + i * HOUR_MS;
+    const midnight = new Date(ts);
+    midnight.setHours(0, 0, 0, 0);
+    const key = midnight.getTime();
+    const last = groups[groups.length - 1];
+    if (last && last.dayStart === key) last.hours.push(ts);
+    else groups.push({ dayStart: key, hours: [ts] });
+  }
+  return groups;
+}
+
+function bucketsByHour(buckets: UptimeBucket[]): Map<number, UptimeBucket> {
   const byHour = new Map<number, UptimeBucket>();
   for (const b of buckets) {
     const t = new Date(b.bucketStart).getTime();
     byHour.set(t - (t % HOUR_MS), b);
   }
+  return byHour;
+}
+
+/** The strip at popover size: the same 168 hours and colours, eight pixels
+ *  tall, no hover. A glance, not a reading; the reading is on the settings page. */
+export function CompactTimelineStrip({ buckets }: { buckets: UptimeBucket[] }) {
+  const startHour = new Date(Date.now() - WINDOW_HOURS * HOUR_MS);
+  startHour.setMinutes(0, 0, 0);
+  const byHour = bucketsByHour(buckets);
   const cells: JSX.Element[] = [];
-  for (let i = 0; i < 168; i++) {
+  for (let i = 0; i < WINDOW_HOURS; i++) {
     const b = byHour.get(startHour.getTime() + i * HOUR_MS);
     const total = b?.total ?? 0;
     if (!b || total === 0) {
@@ -201,31 +327,22 @@ export function CompactTimelineStrip({ buckets }: { buckets: UptimeBucket[] }) {
 }
 
 interface TimelineStripProps {
-  buckets: UptimeBucket[];
+  byHour: Map<number, UptimeBucket>;
+  days: DayGroup[];
   outages: UptimeOutage[];
-  /** The outage whose row is under the pointer: its hours light up, the rest fade. */
+  /** The outage whose row is under the pointer or open: its hours light up, the rest fade. */
   highlight: UptimeOutage | null;
+  /** The day whose detail panel is open, drawn with a frame around it. */
+  selectedDay: number | null;
+  onSelectDay: (dayStart: number | null) => void;
   onHoverHour: (hourStart: number | null) => void;
 }
 
-function TimelineStrip({ buckets, outages, highlight, onHoverHour }: TimelineStripProps) {
-  // Render exactly 7 × 24 = 168 cells, filling missing hours with neutral grey.
-  const now = new Date();
-  const startHour = new Date(now.getTime() - 7 * 24 * HOUR_MS);
-  startHour.setMinutes(0, 0, 0);
-
-  const byHour = new Map<number, UptimeBucket>();
-  for (const b of buckets) {
-    const t = new Date(b.bucketStart).getTime();
-    byHour.set(t - (t % HOUR_MS), b);
-  }
-
-  const cells: JSX.Element[] = [];
-  for (let i = 0; i < 168; i++) {
-    const hourTs = startHour.getTime() + i * HOUR_MS;
+function TimelineStrip({ byHour, days, outages, highlight, selectedDay, onSelectDay, onHoverHour }: TimelineStripProps) {
+  const hourCell = (hourTs: number) => {
     const b = byHour.get(hourTs);
     const total = b?.total ?? 0;
-    const { title, lines } = describeHour(b, new Date(hourTs), outages);
+    const { title, lines } = describeHour(byHour, hourTs, outages);
     const lit = highlight !== null && outageTouchesHour(highlight, hourTs);
     const dimmed = highlight !== null && !lit;
     const frame = `flex-1 h-6 rounded-sm transition-opacity ${dimmed ? 'opacity-30' : ''} ${lit ? 'ring-1 ring-foreground' : ''}`;
@@ -250,8 +367,8 @@ function TimelineStrip({ buckets, outages, highlight, onHoverHour }: TimelineStr
         </div>
       );
     }
-    cells.push(
-      <Tooltip key={i}>
+    return (
+      <Tooltip key={hourTs}>
         <TooltipTrigger asChild>{bar}</TooltipTrigger>
         <TooltipContent side="top" className={`${TOOLTIP_Z} max-w-[300px] text-xs`}>
           <div className="font-medium">{title}</div>
@@ -262,55 +379,125 @@ function TimelineStrip({ buckets, outages, highlight, onHoverHour }: TimelineStr
             </div>
           ))}
         </TooltipContent>
-      </Tooltip>,
+      </Tooltip>
     );
-  }
-  return <div className="flex gap-[1px] w-full">{cells}</div>;
+  };
+
+  // The tap target is the day, not the hour. Each group grows in proportion to
+  // the hours it holds, so the part-days at either end of the window stay in
+  // scale with the full ones between them.
+  return (
+    <div className="flex gap-[3px] w-full">
+      {days.map((day) => {
+        const open = selectedDay === day.dayStart;
+        return (
+          <div
+            key={day.dayStart}
+            role="button"
+            tabIndex={0}
+            aria-pressed={open}
+            aria-label={`${fmtDay(new Date(day.dayStart))} — reliability detail`}
+            // cursor-pointer is load-bearing on iOS Safari, which only
+            // dispatches a click from a tap to elements it considers
+            // clickable. React delegates its listeners to the root, so the
+            // handler alone does not make this one of them.
+            className={`flex gap-[1px] cursor-pointer rounded-sm ${open ? 'ring-1 ring-foreground' : ''}`}
+            style={{ flexGrow: day.hours.length, flexBasis: 0 }}
+            onClick={() => onSelectDay(open ? null : day.dayStart)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectDay(open ? null : day.dayStart);
+              }
+            }}
+          >
+            {day.hours.map(hourCell)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The lines the outage detail shows, wherever it is shown — the hover tooltip
+ *  on a desktop and the row's own expansion on a phone are the same facts. */
+function outageDetailLines(o: UptimeOutage): string[] {
+  const [start, end] = outageSpan(o);
+  const ongoing = !o.endedAt;
+  return [
+    `Started ${fmtDayTime(new Date(start))}`,
+    ongoing ? 'Still going' : `Ended ${fmtDayTime(new Date(end))}`,
+    `Lasted ${formatDuration(o.durationSeconds)}${ongoing ? ' so far' : ''}`,
+  ];
 }
 
 interface OutageRowProps {
   outage: UptimeOutage;
-  /** The pointer is on an hour of the strip this outage covers. */
+  /** The pointer is on an hour of the strip this outage covers, or its day is open. */
   lit: boolean;
+  /** This row's own detail is open. */
+  open: boolean;
+  onToggle: () => void;
   onHover: (outage: UptimeOutage | null) => void;
 }
 
-function OutageRow({ outage: o, lit, onHover }: OutageRowProps) {
+function OutageRow({ outage: o, lit, open, onToggle, onHover }: OutageRowProps) {
   const ongoing = !o.endedAt;
-  const [start, end] = outageSpan(o);
+  const [start] = outageSpan(o);
   const label = OUTAGE_LABEL[o.severity];
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div
-          className={`flex items-center justify-between rounded border bg-background/60 px-2 py-1 cursor-default transition-colors ${lit ? 'ring-1 ring-foreground' : ''}`}
+        <button
+          type="button"
+          aria-expanded={open}
+          className={`w-full text-left block rounded border bg-background/60 px-2 py-1 transition-colors cursor-pointer ${lit ? 'ring-1 ring-foreground' : ''}`}
+          onClick={onToggle}
           onMouseEnter={() => onHover(o)}
           onMouseLeave={() => onHover(null)}
         >
-          <span className={`inline-flex items-center gap-1.5 ${o.severity === 'offline' ? 'text-red-600' : 'text-orange-600'}`}>
-            <span className={`inline-block w-2 h-2 rounded-sm ${OUTAGE_SWATCH[o.severity]}`} />
-            {/* An offline outage is the relay's, and it shows on every home
-                that relay serves; say so, or a power cut at one house reads
-                as three houses going down. */}
-            {ongoing ? `${label} since ${formatRelativeAgo(o.startedAt)}` : `${label} ${formatRelativeAgo(o.startedAt)}`}
+          <span className="flex items-center justify-between gap-2">
+            <span className={`inline-flex items-center gap-1.5 min-w-0 ${o.severity === 'offline' ? 'text-red-600' : 'text-orange-600'}`}>
+              <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${OUTAGE_SWATCH[o.severity]}`} />
+              {/* An offline outage is the relay's, and it shows on every home
+                  that relay serves; say so, or a power cut at one house reads
+                  as three houses going down. */}
+              <span className="truncate">
+                {ongoing ? `${label} since ${formatRelativeAgo(o.startedAt)}` : `${label} ${formatRelativeAgo(o.startedAt)}`}
+              </span>
+            </span>
+            <span className="inline-flex items-center gap-1 shrink-0 text-muted-foreground">
+              {ongoing ? `${formatDuration(o.durationSeconds)} so far` : formatDuration(o.durationSeconds)}
+              <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </span>
           </span>
-          <span className="text-muted-foreground">
-            {ongoing ? `${formatDuration(o.durationSeconds)} so far` : formatDuration(o.durationSeconds)}
-          </span>
-        </div>
+          {/* The clock window, on the row itself. Four rows all reading "Relay
+              offline 1 day ago" are one row as far as a reader is concerned. */}
+          <span className="block text-[10px] text-muted-foreground mt-0.5">{outageClock(o, start)}</span>
+          {open && (
+            <span className="block mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+              {outageDetailLines(o).map((line) => (
+                <span key={line} className="block">{line}</span>
+              ))}
+              <span className="block pt-0.5">{OUTAGE_EXPLANATION[o.severity]}</span>
+            </span>
+          )}
+        </button>
       </TooltipTrigger>
       {/* Below the row, not above it: above would sit on the strip, hiding
           the hours this row has just lit up. */}
       <TooltipContent side="bottom" align="start" className={`${TOOLTIP_Z} max-w-[300px] text-xs`}>
         <div className="font-medium">{label}</div>
-        <div className="opacity-80">Started {fmtDayTime(new Date(start))}</div>
-        <div className="opacity-80">{ongoing ? 'Still going' : `Ended ${fmtDayTime(new Date(end))}`}</div>
-        <div className="opacity-80">Lasted {formatDuration(o.durationSeconds)}{ongoing ? ' so far' : ''}</div>
+        {outageDetailLines(o).map((line) => (
+          <div key={line} className="opacity-80">{line}</div>
+        ))}
         <div className="opacity-80 mt-1">{OUTAGE_EXPLANATION[o.severity]}</div>
       </TooltipContent>
     </Tooltip>
   );
 }
+
+const OUTAGE_ROWS = 5;
 
 /** The section, given its data. The query wrapper below is what the settings
  *  page mounts; this is what the dev preview mounts with a fixture. */
@@ -322,6 +509,21 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
   // the outages that ran through it.
   const [hoverOutage, setHoverOutage] = useState<UptimeOutage | null>(null);
   const [hoverHour, setHoverHour] = useState<number | null>(null);
+  // ...and a tap does the same, because none of the above happens on a
+  // touchscreen: `mouseenter` never fires and a Radix tooltip deliberately
+  // never opens from a tap, so every reading in here used to be unreachable
+  // from a phone. A selected day and an open row are the touch route to the
+  // same two readings, and they work under a mouse too.
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [openOutage, setOpenOutage] = useState<number | null>(null);
+
+  const byHour = bucketsByHour(s.timeline);
+  const days = buildDayGroups(Date.now());
+  const openDay = selectedDay === null ? null : days.find((d) => d.dayStart === selectedDay) ?? null;
+  const dayDetail = openDay ? describeDay(byHour, openDay.hours, s.outages) : null;
+
+  const rows = s.outages.slice(0, OUTAGE_ROWS);
+  const openRow = openOutage === null ? null : rows[openOutage] ?? null;
 
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={400}>
@@ -391,24 +593,70 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
               <span>7 days ago</span>
               <span>Now</span>
             </div>
-            <TimelineStrip buckets={s.timeline} outages={s.outages} highlight={hoverOutage} onHoverHour={setHoverHour} />
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5">
-              <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-green-500" /> Verified</span>
-              <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-green-300 dark:bg-green-700" /> Connected only</span>
-              <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-orange-500" /> Home not responding</span>
-              <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-red-500" /> Relay offline</span>
+            <TimelineStrip
+              byHour={byHour}
+              days={days}
+              outages={s.outages}
+              highlight={hoverOutage ?? openRow}
+              selectedDay={selectedDay}
+              onSelectDay={setSelectedDay}
+              onHoverHour={setHoverHour}
+            />
+            {/* The reading a finger can ask for. It says which day it is
+                describing, because the strip has no axis labels — there is no
+                room for seven of them at this width. */}
+            {dayDetail && (
+              <div className="rounded border bg-background/60 p-2 text-[11px] space-y-0.5">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium">{dayDetail.title}</span>
+                  <button
+                    type="button"
+                    aria-label="Close day detail"
+                    className="shrink-0 -mr-0.5 -mt-0.5 rounded p-0.5 text-muted-foreground hover:bg-muted cursor-pointer"
+                    onClick={() => setSelectedDay(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                {dayDetail.lines.map((line, j) => (
+                  <div key={j} className="flex items-center gap-1.5 text-muted-foreground">
+                    {line.swatch && <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${line.swatch}`} />}
+                    <span>{line.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Wrapping between the items, not through them. Without the wrap
+                and the nowrap the four items were squeezed into one rigid row
+                and each label broke inside itself — two ragged lines with the
+                swatches no longer beside their words. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground pt-0.5">
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm bg-green-500" /> Verified</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm bg-green-300 dark:bg-green-700" /> Connected only</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm bg-orange-500" /> Home not responding</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm bg-red-500" /> Relay offline</span>
             </div>
           </div>
 
           {/* Recent outages */}
           {s.outages.length > 0 && (
             <div className="space-y-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent outages</div>
-              {s.outages.slice(0, 5).map((o, idx) => (
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent outages</div>
+                {s.outages.length > rows.length && (
+                  <div className="text-[10px] text-muted-foreground">{rows.length} of {s.outages.length}</div>
+                )}
+              </div>
+              {rows.map((o, idx) => (
                 <OutageRow
                   key={`${o.startedAt}-${idx}`}
                   outage={o}
-                  lit={hoverHour !== null && outageTouchesHour(o, hoverHour)}
+                  lit={
+                    (hoverHour !== null && outageTouchesHour(o, hoverHour))
+                    || (openDay !== null && outageTouchesHours(o, openDay.hours))
+                  }
+                  open={openOutage === idx}
+                  onToggle={() => setOpenOutage((cur) => (cur === idx ? null : idx))}
                   onHover={setHoverOutage}
                 />
               ))}
