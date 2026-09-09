@@ -21,6 +21,7 @@ import {
   type LocalModeRouter,
 } from './connection';
 import { setRelayWritePublisher, getRelayWritePublisher } from '../relay/relay-write';
+import { HomeKitServiceGroupResolver } from '../automation/service-group-resolver';
 import { localIdentity } from './local-identity';
 
 const OVERRIDE_KEY = 'homecast-local-mode';
@@ -84,6 +85,16 @@ class LocalModeController implements LocalModeRouter {
   private status: HomeKitStatus | null = null;
   /** Whether native has confirmed it is observing this device's HomeKit. */
   private observing = false;
+  /**
+   * Which accessories are in which group, from this device's own HomeKit.
+   *
+   * The relay Mac gets this from the automation engine's resolver. Local Mode
+   * never starts the engine, so it runs the same resolver on its own — the
+   * index is what lets a group write reach every member tile, not only the
+   * group's (homecast-web#95). Live ids in, live ids out; the publisher
+   * translates on the way to the UI, as it does for everything else.
+   */
+  private groups: HomeKitServiceGroupResolver | null = null;
   /** When Local Mode last engaged, ISO-8601, for the composed fact's `since`. */
   private activeSince: string | null = null;
 
@@ -297,6 +308,10 @@ class LocalModeController implements LocalModeRouter {
   private engage(): void {
     console.log('[LocalMode] Engaging — serving HomeKit from this device');
     clearCommunityCache();
+    if (!this.groups) {
+      this.groups = new HomeKitServiceGroupResolver();
+      this.groups.start();
+    }
     this.installPublisher();
     void this.startObservation();
     void this.refreshLiveHomes();
@@ -307,6 +322,8 @@ class LocalModeController implements LocalModeRouter {
     console.log('[LocalMode] Disengaging — the relay is serving again');
     clearCommunityCache();
     setRelayWritePublisher(null);
+    this.groups?.stop();
+    this.groups = null;
     if (this.keepAlive) { clearInterval(this.keepAlive); this.keepAlive = null; }
     // Only stop observation if this device is not also the relay. Stopping the
     // relay's own observation would silence every client it serves.
@@ -346,6 +363,9 @@ class LocalModeController implements LocalModeRouter {
           affectedCount,
         });
       },
+      // relay-write fans a group write out to its members with this; without
+      // it, it asks the engine, which is not running here.
+      groupMembers: (groupId) => this.groups?.getMembers(groupId) ?? [],
     });
   }
 

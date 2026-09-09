@@ -54,6 +54,18 @@ export interface RelayWriteChange {
 export interface RelayWritePublisher {
   characteristic(change: RelayWriteChange): void;
   serviceGroup(groupId: string, characteristicType: string, value: unknown, homeId?: string, affectedCount?: number): void;
+  /**
+   * A group's members, for the per-member fan-out in `announceRelayGroupWrite`.
+   *
+   * The automation engine normally answers this, and a publisher that leaves
+   * it out gets the engine's answer. Local Mode never starts the engine —
+   * deliberately, two engines fire every automation twice — so its publisher
+   * has to bring its own, or a group write there announces the group and
+   * silently nothing else (homecast-web#95). On the publisher rather than a
+   * second registration so it cannot be installed without it, and is torn
+   * down with it.
+   */
+  groupMembers?(groupId: string): string[];
 }
 
 let publisher: RelayWritePublisher | null = null;
@@ -128,7 +140,11 @@ export function announceRelayGroupWrite(
   //
   // Deliberately after the group event, and never instead of it: the group
   // tile ignores per-member updates, so this cannot replace it.
-  for (const accessoryId of getServiceGroupMembers(groupId)) {
+  //
+  // The publisher's own answer first, the engine's otherwise — see
+  // RelayWritePublisher.groupMembers for why a publisher would have one.
+  const members = publisher?.groupMembers?.(groupId) ?? getServiceGroupMembers(groupId);
+  for (const accessoryId of members) {
     try {
       publisher?.characteristic({ accessoryId, characteristicType, value, homeId });
     } catch (e) {
