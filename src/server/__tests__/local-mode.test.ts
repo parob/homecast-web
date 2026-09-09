@@ -6,6 +6,7 @@
 // few seconds from turning the badge into a strobe.
 
 import { describe, it, expect } from 'vitest';
+import type { HomeServing } from '../home-serving';
 import {
   decideLocalMode,
   localModeCanServe,
@@ -23,14 +24,23 @@ import {
 const LIVE = '3C4399F4-B7E7-5697-9866-D15A8C7CCFE5';
 const HC = 'd08cb174-3548-4753-9abe-3d4a13d3326b';
 
+/** The server's fact for County Hall, by state. */
+const fact = (state: HomeServing['state'], graceEndsAt: string | null = null): HomeServing =>
+  ({ state, by: state === 'served' ? 'mac_8ca2d5a2' : null, kind: state === 'served' ? 'self_hosted' : null, since: null, graceEndsAt });
+/** Inputs where County Hall's fact is `state`; `homes`/`serving` in one go. */
+const home = (state: HomeServing['state'] | null, extra: Partial<{ isCloudManaged: boolean }> = {}) => ({
+  homes: [{ id: LIVE, ...extra }],
+  serving: (id: string) => (id.toUpperCase() === LIVE && state ? fact(state) : null),
+});
+
 function inputs(over: Partial<LocalModeInputs> = {}): LocalModeInputs {
   return {
     bridgeReady: true,
-    isThisDeviceTheRelay: false,
+    servesAnyHome: false,
     relayCapable: false,
     override: 'auto',
     socketState: 'connected',
-    homes: [{ id: LIVE, relayState: 'offline' }],
+    ...home('offline'),
     anyRelayKnown: true,
     homesLoaded: true,
     now: 0,
@@ -54,7 +64,7 @@ describe('decideLocalMode — hard guards', () => {
     // client; a private second path would double its writes and fight
     // startRelayDuties for the same global publisher slot.
     const d = decideLocalMode(
-      inputs({ isThisDeviceTheRelay: true, now: 10 * 60_000 }),
+      inputs({ servesAnyHome: true, now: 10 * 60_000 }),
       { active: true, pendingSince: null },
     );
     expect(d.active).toBe(false);
@@ -71,7 +81,7 @@ describe('decideLocalMode — hard guards', () => {
 
   it('respects an explicit on immediately, with no engage delay', () => {
     const d = decideLocalMode(
-      inputs({ override: 'on', homes: [{ id: LIVE, relayState: 'connected' }] }),
+      inputs({ override: 'on', ...home('served') }),
       EMPTY_MEMO,
     );
     expect(d.active).toBe(true);
@@ -81,7 +91,7 @@ describe('decideLocalMode — hard guards', () => {
   it('off beats on-the-device-that-is-the-relay ordering', () => {
     // Guard order is asserted deliberately: 'off' must win before we even ask
     // what kind of device this is.
-    const d = decideLocalMode(inputs({ override: 'off', isThisDeviceTheRelay: true }), EMPTY_MEMO);
+    const d = decideLocalMode(inputs({ override: 'off', servesAnyHome: true }), EMPTY_MEMO);
     expect(d.active).toBe(false);
   });
 });
@@ -118,7 +128,7 @@ describe('decideLocalMode — engaging', () => {
   it('engages instantly when no relay was ever set up', () => {
     // The "just trying the app" case. There is nothing to wait for, and an
     // eight-second stall on first launch would read as the app being broken.
-    const d = decideLocalMode(inputs({ anyRelayKnown: false, homes: [] }), EMPTY_MEMO);
+    const d = decideLocalMode(inputs({ anyRelayKnown: false, homes: [], serving: () => null }), EMPTY_MEMO);
     expect(d.active).toBe(true);
     expect(d.reason).toBe('no-relay-ever');
   });
@@ -131,27 +141,50 @@ describe('decideLocalMode — engaging', () => {
 
   it('reports socket-down when the cloud itself is unreachable', () => {
     const r = run([
-      { now: 0, socketState: 'disconnected', homes: [{ id: LIVE, relayState: 'connected' }] },
-      { now: ENGAGE_AFTER_MS, socketState: 'disconnected', homes: [{ id: LIVE, relayState: 'connected' }] },
+      { now: 0, socketState: 'disconnected', ...home('served') },
+      { now: ENGAGE_AFTER_MS, socketState: 'disconnected', ...home('served') },
     ]);
     expect(r[1].active).toBe(true);
     expect(r[1].reason).toBe('socket-down');
   });
 
-  it('treats a reconnecting relay as still serving, and does not engage', () => {
-    // The server already applied its own grace to reach 'reconnecting'.
-    // Second-guessing it here would engage on every routine blip.
+  it('engages, after the delay, for a relay the server expects back', () => {
+    // `reconnecting` is the server saying "not routable, probably briefly".
+    // Not routable is not routable: every write to the home is refused for
+    // as long as it lasts, and the engage delay is the only debounce a
+    // policy reading the fact needs. It used to read as "still serving".
     const r = run([
-      { now: 0, homes: [{ id: LIVE, relayState: 'reconnecting' }] },
-      { now: 10 * 60_000, homes: [{ id: LIVE, relayState: 'reconnecting' }] },
+      { now: 0, ...home('reconnecting') },
+      { now: ENGAGE_AFTER_MS - 1, ...home('reconnecting') },
+      { now: ENGAGE_AFTER_MS, ...home('reconnecting') },
     ]);
-    expect(r.every((d) => !d.active)).toBe(true);
+    expect(r.map((d) => d.active)).toEqual([false, false, true]);
+  });
+
+  it('engages during the takeover grace, which is the state #99 was filed from', () => {
+    // Nothing serves the home for five minutes while the server waits for
+    // the standby. A phone with its own Home access should not wait with it.
+    const r = run([
+      { now: 0, ...home('waiting') },
+      { now: ENGAGE_AFTER_MS, ...home('waiting') },
+    ]);
+    expect(r[1].active).toBe(true);
+    expect(r[1].reason).toBe('relay-offline');
   });
 
   it('leaves a healthy cloud-managed home to its own infrastructure', () => {
     const r = run([
-      { now: 0, homes: [{ id: LIVE, relayState: 'connected', isCloudManaged: true }] },
-      { now: 10 * 60_000, homes: [{ id: LIVE, relayState: 'connected', isCloudManaged: true }] },
+      { now: 0, ...home('served', { isCloudManaged: true }) },
+      { now: 10 * 60_000, ...home('served', { isCloudManaged: true }) },
+    ]);
+    expect(r.every((d) => !d.active)).toBe(true);
+  });
+
+  it('leaves a home it has heard nothing about alone', () => {
+    // No fact is not a fault. The cached list may predate the store.
+    const r = run([
+      { now: 0, ...home(null) },
+      { now: 10 * 60_000, ...home(null) },
     ]);
     expect(r.every((d) => !d.active)).toBe(true);
   });
@@ -160,7 +193,7 @@ describe('decideLocalMode — engaging', () => {
 describe('decideLocalMode — disengaging', () => {
   it('holds on for the disengage delay after the relay returns', () => {
     const active: LocalModeMemo = { active: true, pendingSince: null };
-    const up = { homes: [{ id: LIVE, relayState: 'connected' }] };
+    const up = home('served');
     const r = run([{ ...up, now: 0 }, { ...up, now: DISENGAGE_AFTER_MS - 1 }, { ...up, now: DISENGAGE_AFTER_MS }], active);
     expect(r.map((d) => d.active)).toEqual([true, true, false]);
   });
@@ -171,10 +204,7 @@ describe('decideLocalMode — disengaging', () => {
     // resets it — the badge stays put instead of strobing.
     const seq: Array<Partial<LocalModeInputs>> = [];
     for (let t = 0; t <= 120_000; t += 5_000) {
-      seq.push({
-        now: t,
-        homes: [{ id: LIVE, relayState: (t / 5_000) % 2 === 0 ? 'connected' : 'offline' }],
-      });
+      seq.push({ now: t, ...home((t / 5_000) % 2 === 0 ? 'served' : 'offline') });
     }
     const r = run(seq, { active: true, pendingSince: null });
     expect(r.every((d) => d.active)).toBe(true);
@@ -249,7 +279,7 @@ describe('not having looked yet is not evidence', () => {
     // up", which engages with *no* delay — so a first cloud login flipped into
     // Local Mode instantly and blamed the user for not having a relay.
     const d = decideLocalMode(
-      inputs({ homesLoaded: false, homes: [], anyRelayKnown: false }),
+      inputs({ homesLoaded: false, ...home(null), homes: [], anyRelayKnown: false }),
       EMPTY_MEMO,
     );
     expect(d.active).toBe(false);
@@ -289,12 +319,7 @@ describe('standing down when the premise turns out to be wrong', () => {
     // One tick later the homes arrive with a healthy relay. A relay appearing
     // where we thought there was none is the answer arriving, not a flap.
     const after = decideLocalMode(
-      inputs({
-        homesLoaded: true,
-        homes: [{ id: LIVE, relayState: 'connected' }],
-        anyRelayKnown: true,
-        now: 1000,
-      }),
+      inputs({ homesLoaded: true, ...home('served'), anyRelayKnown: true, now: 1000 }),
       engaged.memo,
     );
     expect(after.active).toBe(false);
@@ -310,7 +335,7 @@ describe('standing down when the premise turns out to be wrong', () => {
     expect(engaged.reason).toBe('relay-offline');
 
     const soonAfter = decideLocalMode(
-      inputs({ homes: [{ id: LIVE, relayState: 'connected' }], now: ENGAGE_AFTER_MS + 1000 }),
+      inputs({ ...home('served'), now: ENGAGE_AFTER_MS + 1000 }),
       engaged.memo,
     );
     expect(soonAfter.active).toBe(true);
@@ -318,10 +343,7 @@ describe('standing down when the premise turns out to be wrong', () => {
     // The disengage clock starts when `wants` goes false — at soonAfter — not
     // when it engaged.
     const wellAfter = decideLocalMode(
-      inputs({
-        homes: [{ id: LIVE, relayState: 'connected' }],
-        now: ENGAGE_AFTER_MS + 1000 + DISENGAGE_AFTER_MS + 1,
-      }),
+      inputs({ ...home('served'), now: ENGAGE_AFTER_MS + 1000 + DISENGAGE_AFTER_MS + 1 }),
       soonAfter.memo,
     );
     expect(wellAfter.active).toBe(false);
@@ -338,12 +360,12 @@ describe('standing down when the premise turns out to be wrong', () => {
 // `relayState: 'connected'` the server last reported. The one case Local Mode
 // exists for was gated on a field only the cloud can update.
 describe('a socket that is retrying counts as the cloud being down', () => {
-  const HEALTHY = [{ id: LIVE, relayState: 'connected' }];
+  const HEALTHY = home('served');
 
   it('engages while reconnecting, even though every home still reads connected', () => {
     const seq = run([
-      { socketState: 'reconnecting', homes: HEALTHY, now: 0 },
-      { socketState: 'reconnecting', homes: HEALTHY, now: ENGAGE_AFTER_MS },
+      { socketState: 'reconnecting', ...HEALTHY, now: 0 },
+      { socketState: 'reconnecting', ...HEALTHY, now: ENGAGE_AFTER_MS },
     ]);
     expect(seq[0].active).toBe(false);
     expect(seq[1].active).toBe(true);
@@ -355,9 +377,9 @@ describe('a socket that is retrying counts as the cloud being down', () => {
     // launch. `wants` going false again returns off(), which clears
     // pendingSince — so the engage delay is the debounce and nothing fires.
     const seq = run([
-      { socketState: 'reconnecting', homes: HEALTHY, now: 0 },
-      { socketState: 'connected', homes: HEALTHY, now: 300 },
-      { socketState: 'connected', homes: HEALTHY, now: ENGAGE_AFTER_MS * 2 },
+      { socketState: 'reconnecting', ...HEALTHY, now: 0 },
+      { socketState: 'connected', ...HEALTHY, now: 300 },
+      { socketState: 'connected', ...HEALTHY, now: ENGAGE_AFTER_MS * 2 },
     ]);
     expect(seq.every((d) => !d.active)).toBe(true);
   });
@@ -366,9 +388,9 @@ describe('a socket that is retrying counts as the cloud being down', () => {
     // It may be promoted to active relay, which serves everyone rather than
     // just this machine. Give the better outcome time to happen.
     const seq = run([
-      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: 0 },
-      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS },
-      { socketState: 'reconnecting', homes: HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS_RELAY_CAPABLE },
+      { socketState: 'reconnecting', ...HEALTHY, relayCapable: true, now: 0 },
+      { socketState: 'reconnecting', ...HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS },
+      { socketState: 'reconnecting', ...HEALTHY, relayCapable: true, now: ENGAGE_AFTER_MS_RELAY_CAPABLE },
     ]);
     expect(seq[1].active).toBe(false);
     expect(seq[2].active).toBe(true);
@@ -376,8 +398,8 @@ describe('a socket that is retrying counts as the cloud being down', () => {
 
   it('never engages on the relay itself, however the socket looks', () => {
     const seq = run([
-      { socketState: 'reconnecting', homes: HEALTHY, isThisDeviceTheRelay: true, now: 0 },
-      { socketState: 'reconnecting', homes: HEALTHY, isThisDeviceTheRelay: true, now: ENGAGE_AFTER_MS * 4 },
+      { socketState: 'reconnecting', ...HEALTHY, servesAnyHome: true, now: 0 },
+      { socketState: 'reconnecting', ...HEALTHY, servesAnyHome: true, now: ENGAGE_AFTER_MS * 4 },
     ]);
     expect(seq.every((d) => !d.active)).toBe(true);
   });

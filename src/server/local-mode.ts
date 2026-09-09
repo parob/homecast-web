@@ -10,6 +10,15 @@
 // Pure by design, like relay-routing.ts: no `window`, no timers, no imports
 // from anything stateful. All the clock-watching is expressed as inputs and a
 // carried-forward memo, so every rule here is testable without faking a browser.
+//
+// Whether a home's relay is serving it is not decided here. It is the server's
+// fact — `HomeServing`, one per home, from `server/home-serving.ts` — and this
+// policy reads it. The three private derivations that used to live here (a
+// cached `relayState`, a `NO_DEVICE` refusal, and a rule for which of the two
+// was fresher) were three answers to a question the server now answers once,
+// and their disagreements were homecast-cloud#99.
+
+import type { HomeServing } from './home-serving';
 
 /** What the user asked for in Settings. `auto` is the default. */
 export type LocalModeOverride = 'auto' | 'on' | 'off';
@@ -23,21 +32,33 @@ export type LocalModeReason =
 
 export interface LocalModeHome {
   id: string;
-  relayState?: string;
-  relayConnected?: boolean;
   isCloudManaged?: boolean;
 }
 
 export interface LocalModeInputs {
   /** Native HomeKit present, permission granted, and at least one home. */
   bridgeReady: boolean;
-  /** This device is currently the active relay. Never serve locally if so. */
-  isThisDeviceTheRelay: boolean;
+  /**
+   * The server says this device is serving at least one home — it IS a relay
+   * right now. Never serve locally if so: the relay already answers for every
+   * client, and a second, private path would fight `startRelayDuties` for the
+   * same write-publisher slot. Read from the server's fact (`by === me`), not
+   * from the per-account `isActiveRelay` boolean, which is true of a cloud-plan
+   * Mac standing by for a home it is not serving.
+   */
+  servesAnyHome: boolean;
   /** This device *could* be promoted to relay — affects how long we wait. */
   relayCapable: boolean;
   override: LocalModeOverride;
   socketState: 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
   homes: ReadonlyArray<LocalModeHome>;
+  /**
+   * The server's fact for a home, as last heard — `getHomeServing`, NOT the
+   * composed `effectiveServing`: the composition includes this device's own
+   * Local Mode, and a policy that read its own output would never disengage.
+   * `null` when nothing has been heard, which is not evidence of anything.
+   */
+  serving: (homeId: string) => HomeServing | null;
   /** Whether the account has any relay at all. False = never set one up. */
   anyRelayKnown: boolean;
   /**
@@ -49,27 +70,6 @@ export interface LocalModeInputs {
    * the truth was only that the homes had not arrived yet.
    */
   homesLoaded: boolean;
-  /**
-   * Homes the cloud has just refused with `NO_DEVICE`, uppercased.
-   *
-   * First-hand evidence, and the only kind this device gathers for itself —
-   * see relay-reachability.ts. Optional, so every existing caller and test
-   * keeps the behaviour it had.
-   */
-  unreachableHomeIds?: ReadonlySet<string>;
-  /**
-   * The same homes, with the moment each was refused — see
-   * relay-reachability.ts. Takes precedence over `unreachableHomeIds` when
-   * both are given; the set alone is kept for callers that have no clock.
-   */
-  refusedHomes?: ReadonlyMap<string, number>;
-  /**
-   * When the cached homes list was last fetched, or null if never.
-   *
-   * This is what lets a refusal and a `relayState` be compared instead of
-   * ranked: neither is authoritative, the *later* one is.
-   */
-  homesFetchedAt?: number | null;
   now: number;
 }
 
@@ -89,9 +89,6 @@ export interface LocalModeDecision {
 }
 
 export const EMPTY_MEMO: LocalModeMemo = { active: false, pendingSince: null };
-
-/** No home has been refused. Shared so the default costs no allocation. */
-const EMPTY_UNREACHABLE: ReadonlySet<string> = new Set();
 
 /** How much of this device's HomeKit lines up with the account's own layout. */
 export type IdentityState = 'mapped' | 'partial' | 'unmapped';
@@ -148,56 +145,33 @@ export const ENGAGE_AFTER_MS_RELAY_CAPABLE = 30_000;
  */
 export const DISENGAGE_AFTER_MS = 20_000;
 
-/** A home is served by its relay if that relay is actually answering. */
-function relayServesHome(
-  home: LocalModeHome,
-  refused: ReadonlyMap<string, number>,
-  homesFetchedAt: number | null,
-): boolean {
-  const refusedAt = refused.get(home.id.toUpperCase());
-
-  // Nothing has been refused: the cached fields are all we have, and the
-  // server's grace applies as it always did.
-  if (refusedAt === undefined) {
-    if (home.relayState) return home.relayState === 'connected' || home.relayState === 'reconnecting';
-    return home.relayConnected !== false;
-  }
-
-  // A refusal and a cached `relayState` are two observations of one fact, and
-  // the honest tie-break is *which was made later* — not which sounds more
-  // definite. Ranking them was the mistake in #85: a definite 'connected' was
-  // given the last word, and the state where that is most wrong is precisely
-  // the one the user hits.
-  //
-  // During the five-minute takeover grace the standby Mac holds a session for
-  // the home, so `get_connected_home_ids` counts it and `homes.list` reports
-  // a flat `relayState: 'connected'` — while `_get_device_for_home` returns
-  // None and every request comes back NO_DEVICE. "A relay has a session for
-  // this home" and "a relay may serve this home" are different questions, and
-  // only the second one is about whether anything works.
-  //
-  // So a cached 'connected' overrules a refusal only when the answer carrying
-  // it was fetched *after* the refusal. Otherwise the refusal stands, because
-  // nothing since has contradicted it.
-  const answeredAfterRefusal = homesFetchedAt !== null && homesFetchedAt > refusedAt;
-  if (answeredAfterRefusal && home.relayState === 'connected') return true;
-  return false;
-}
-
 /**
  * Is there a home this device should be serving itself?
  *
- * Cloud-managed homes are excluded unless their own relay is reported down:
- * they are served by separate infrastructure that is usually fine, and taking
- * them over locally would be a downgrade rather than a rescue.
+ * A home whose fact is anything but `served` — `offline`, `reconnecting`, or
+ * `waiting` — is one the cloud will refuse every request for. The server's
+ * invariant is `served ⟺ routable`, so this is exactly the set of homes that
+ * do not work, with no grace of our own layered on top: `reconnecting` is the
+ * server saying "expected back", and that is what the engage delay below is
+ * for. `waiting` is the five-minute takeover grace, during which nothing
+ * serves the home — the case homecast-cloud#99 was filed from — and a phone
+ * with its own Home access serves it in the meantime (decision 3 of the
+ * design). A home nothing has been heard about is left alone: no fact is not
+ * a fault.
+ *
+ * Cloud-managed homes get no special treatment any more. They used to be
+ * excluded "unless their own relay is reported down", and that is now simply
+ * what the fact says.
  */
 function anyHomeNeedsLocal(
   homes: ReadonlyArray<LocalModeHome>,
-  refused: ReadonlyMap<string, number>,
-  homesFetchedAt: number | null,
+  serving: (homeId: string) => HomeServing | null,
 ): boolean {
   if (homes.length === 0) return true;
-  return homes.some((h) => !relayServesHome(h, refused, homesFetchedAt));
+  return homes.some((h) => {
+    const s = serving(h.id);
+    return s !== null && s.state !== 'served';
+  });
 }
 
 /**
@@ -225,7 +199,7 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
 
   // 3. The relay never serves itself locally. This device already answers for
   //    every client; a second, private path would only duplicate its writes.
-  if (i.isThisDeviceTheRelay) return off();
+  if (i.servesAnyHome) return off();
 
   // 4. An explicit "on" skips the waiting.
   if (i.override === 'on') {
@@ -252,12 +226,9 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
   // returns `off()`, which clears `pendingSince`, so the 8s/30s engage delay
   // below is the debounce. Nothing engages on a blip.
   const cloudDown = i.socketState === 'disconnected' || i.socketState === 'reconnecting';
-  // A caller with no clock may pass only the set; treat those refusals as
-  // having happened now, which keeps them unanswerable by an older fetch.
-  const refused = i.refusedHomes
-    ?? new Map([...(i.unreachableHomeIds ?? EMPTY_UNREACHABLE)].map((id) => [id, i.now]));
-  const wants = !i.anyRelayKnown || cloudDown
-    || anyHomeNeedsLocal(i.homes, refused, i.homesFetchedAt ?? null);
+  // Both facts, side by side: the link (this device's) and the home (the
+  // server's). Either one failing is a home this device should serve.
+  const wants = !i.anyRelayKnown || cloudDown || anyHomeNeedsLocal(i.homes, i.serving);
 
   const reason: LocalModeReason | null = !wants
     ? null

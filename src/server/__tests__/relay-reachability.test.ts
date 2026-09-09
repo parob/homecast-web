@@ -12,7 +12,6 @@ import { describe, it, expect } from 'vitest';
 import {
   EMPTY_REACHABILITY, noteRefused, noteServed, unreachableHomeIds,
 } from '../relay-reachability';
-import { decideLocalMode, EMPTY_MEMO, ENGAGE_AFTER_MS, DISENGAGE_AFTER_MS } from '../local-mode';
 
 describe('relay reachability', () => {
   it('marks a home the cloud has refused', () => {
@@ -47,143 +46,8 @@ describe('relay reachability', () => {
   });
 });
 
-// The state the report shows, verbatim: the socket to the cloud is connected
-// throughout, and homes.list was answered once — inside the server's 120s
-// "reconnecting" grace — and never asked again.
-const REPORTED = {
-  bridgeReady: true,
-  isThisDeviceTheRelay: false,
-  relayCapable: false,          // an iPhone
-  override: 'auto' as const,
-  socketState: 'connected' as const,
-  homes: [{ id: 'D08CB174', relayState: 'reconnecting', isCloudManaged: true }],
-  anyRelayKnown: true,
-  homesLoaded: true,
-};
-
-describe('Local Mode, given a refused home', () => {
-  it('stays off on the cached homes alone — the bug', () => {
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, now: 0 }, memo).memo;
-    const d = decideLocalMode({ ...REPORTED, now: 90_000 }, memo);
-    expect(d.active).toBe(false);
-  });
-
-  it('engages once the cloud has refused that home', () => {
-    const unreachableHomeIds = new Set(['D08CB174']);
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, unreachableHomeIds, now: 0 }, memo).memo;
-    const d = decideLocalMode(
-      { ...REPORTED, unreachableHomeIds, now: ENGAGE_AFTER_MS }, memo,
-    );
-    expect(d.active).toBe(true);
-    expect(d.reason).toBe('relay-offline');
-  });
-
-  it('still waits out the engage delay, so a blip cannot flip it', () => {
-    const unreachableHomeIds = new Set(['D08CB174']);
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, unreachableHomeIds, now: 0 }, memo).memo;
-    const d = decideLocalMode(
-      { ...REPORTED, unreachableHomeIds, now: ENGAGE_AFTER_MS - 1 }, memo,
-    );
-    expect(d.active).toBe(false);
-  });
-
-  it('matches home ids case-insensitively', () => {
-    const unreachableHomeIds = new Set(['D08CB174']);
-    const homes = [{ id: 'd08cb174', relayState: 'reconnecting' }];
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, homes, unreachableHomeIds, now: 0 }, memo).memo;
-    expect(decideLocalMode(
-      { ...REPORTED, homes, unreachableHomeIds, now: ENGAGE_AFTER_MS }, memo,
-    ).active).toBe(true);
-  });
-
-  it('ignores a "connected" that was fetched BEFORE the refusal', () => {
-    // The takeover grace: the standby Mac holds a session for the home, so
-    // homes.list reports a flat `connected` while every request is refused.
-    // Ranking `connected` above the refusal — the mistake in #85 — leaves
-    // Local Mode asleep for the whole five minutes.
-    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
-    const refusedHomes = new Map([['D08CB174', 10_000]]);
-    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 5_000 };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
-    expect(decideLocalMode({ ...inputs, now: 10_000 + ENGAGE_AFTER_MS }, memo).active).toBe(true);
-  });
-
-  it('accepts a "connected" fetched AFTER the refusal — the relay is back', () => {
-    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
-    const refusedHomes = new Map([['D08CB174', 10_000]]);
-    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 20_000 };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 20_000 }, memo).memo;
-    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
-  });
-
-  it('a refusal with no homes.list answer at all still counts', () => {
-    const homes = [{ id: 'D08CB174', relayState: 'connected', isCloudManaged: true }];
-    const refusedHomes = new Map([['D08CB174', 10_000]]);
-    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: null };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
-    expect(decideLocalMode({ ...inputs, now: 10_000 + ENGAGE_AFTER_MS }, memo).active).toBe(true);
-  });
-
-  it('leaves an unrefused home entirely alone, grace and all', () => {
-    const homes = [{ id: 'OTHER', relayState: 'reconnecting' }];
-    const refusedHomes = new Map([['D08CB174', 10_000]]);
-    const inputs = { ...REPORTED, homes, refusedHomes, homesFetchedAt: 5_000, anyRelayKnown: true };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 10_000 }, memo).memo;
-    // 'reconnecting' on a home nothing has refused is the server's grace, and
-    // it still means served — that debounce is not ours to override.
-    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
-  });
-
-  it('disengages on the slow timer once the relay is back', () => {
-    const unreachableHomeIds = new Set(['D08CB174']);
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...REPORTED, unreachableHomeIds, now: 0 }, memo).memo;
-    memo = decideLocalMode({ ...REPORTED, unreachableHomeIds, now: ENGAGE_AFTER_MS }, memo).memo;
-    expect(memo.active).toBe(true);
-
-    // Relay answers again: the mark is cleared and the home reports connected.
-    // The disengage clock starts on the first tick that no longer wants Local
-    // Mode, not on the moment the relay recovered.
-    const back = { ...REPORTED, homes: [{ id: 'D08CB174', relayState: 'connected' }] };
-    const standDownAt = ENGAGE_AFTER_MS;
-    memo = decideLocalMode({ ...back, now: standDownAt }, memo).memo;
-    expect(memo.active).toBe(true);
-    expect(decideLocalMode(
-      { ...back, now: standDownAt + DISENGAGE_AFTER_MS - 1 }, memo,
-    ).active).toBe(true);
-    expect(decideLocalMode(
-      { ...back, now: standDownAt + DISENGAGE_AFTER_MS }, memo,
-    ).active).toBe(false);
-  });
-
-  it('never engages on the relay Mac itself', () => {
-    const unreachableHomeIds = new Set(['D08CB174']);
-    const inputs = { ...REPORTED, isThisDeviceTheRelay: true, unreachableHomeIds };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 0 }, memo).memo;
-    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
-  });
-
-  it('an explicit "off" still wins', () => {
-    const inputs = {
-      ...REPORTED, override: 'off' as const, unreachableHomeIds: new Set(['D08CB174']),
-    };
-    let memo = EMPTY_MEMO;
-    memo = decideLocalMode({ ...inputs, now: 0 }, memo).memo;
-    expect(decideLocalMode({ ...inputs, now: 90_000 }, memo).active).toBe(false);
-  });
-});
-
-// The status dot and the connection chain used to be tested here against a
-// `homeUnreachable` input fed from this module. That input is gone: both now
-// read the one serving fact (`server/home-serving.ts`), and a refusal is a
-// refetch trigger rather than a belief. Their tests live next to them —
-// lib/__tests__/status-badge.test.ts and connection-chain.test.ts.
+// Local Mode used to be tested here against this module's refusals as an
+// input. It no longer reads them: the policy reads the server's serving fact
+// per home (`server/home-serving.ts`), and a refusal is a refetch trigger
+// rather than a belief. The #99 cases — the takeover grace, a relay the server
+// expects back — are in local-mode.test.ts as facts, which is what they were.

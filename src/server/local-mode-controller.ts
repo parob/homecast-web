@@ -15,9 +15,7 @@ import {
   HomeKit, isLocalCapable, isRelayCapable, withCallReason, type HomeKitStatus,
 } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
-import { getCacheTimestamp } from '../hooks/useHomeKitData';
-import { getRefusedHomes } from './relay-reachability';
-import { setDeviceServing } from './home-serving';
+import { getHomeServing, getThisDevice, servedByThisDevice, setDeviceServing } from './home-serving';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
   type LocalModeRouter,
@@ -189,21 +187,19 @@ class LocalModeController implements LocalModeRouter {
     const cachedHomes = readCachedHomes();
     const homes = cachedHomes ?? [];
 
+    // The server's fact per home, uncomposed. `effectiveServing` would fold
+    // this controller's own answer back into its input.
+    const thisDevice = getThisDevice();
     const inputs: LocalModeInputs = {
       bridgeReady: this.bridgeReady,
-      isThisDeviceTheRelay: conn.relayStatus === true,
+      servesAnyHome: homes.some((h) => servedByThisDevice(getHomeServing(h.id), thisDevice)),
       relayCapable: isRelayCapable(),
       override: getLocalModeOverride(),
       socketState: conn.connectionState,
       homes,
+      serving: getHomeServing,
       anyRelayKnown: homes.length > 0,
       homesLoaded: cachedHomes !== null,
-      // What this device has learned by asking, rather than by being told,
-      // and when. Weighed against how fresh the cached homes list is, because
-      // a refusal and a cached relayState are two observations of one fact and
-      // the later one wins — see relayServesHome.
-      refusedHomes: getRefusedHomes(),
-      homesFetchedAt: getCacheTimestamp('homes'),
       now: Date.now(),
     };
 
@@ -270,7 +266,7 @@ class LocalModeController implements LocalModeRouter {
    */
   private describeBlocker(i: LocalModeInputs): LocalModeState['blocked'] {
     if (i.override === 'off') return 'off';
-    if (i.isThisDeviceTheRelay) return 'is-relay';
+    if (i.servesAnyHome) return 'is-relay';
     if (!this.bridgeReady) {
       const s = this.status;
       if (!s) return 'loading';
@@ -420,7 +416,7 @@ class LocalModeController implements LocalModeRouter {
  * fresh login indistinguishable from an account with no homes, and the policy
  * reads the latter as "no relay has ever been set up".
  */
-function readCachedHomes(): Array<{ id: string; relayState?: string; relayConnected?: boolean; isCloudManaged?: boolean }> | null {
+function readCachedHomes(): Array<{ id: string; isCloudManaged?: boolean }> | null {
   try {
     const raw = localStorage.getItem('homecast-homekit-cache');
     if (!raw) return null;

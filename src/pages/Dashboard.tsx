@@ -269,6 +269,7 @@ import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialo
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { StatusBadge } from '@/components/layout/StatusBadge';
+import { useHomeServing } from '@/hooks/useHomeServing';
 import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
@@ -3995,34 +3996,35 @@ const Dashboard = () => {
     return homes.find(h => h.id === homeId)?.role === 'view';
   }, [homes, isViewOnly]);
 
-  // Check if selected home's relay is offline (owner or shared).
+  // Whether the selected home is unreachable, from the one serving fact.
+  //
   // Routing through SetupState pre-empts the accessoriesError path so the user
-  // sees the dedicated "Your relay is offline" card instead of NO_DEVICE.
+  // sees the dedicated "Your relay is offline" card instead of NO_DEVICE. The
+  // fact is the composed one, so a home this device is serving itself never
+  // reads as offline here: the relay being down is true but no longer the
+  // user's problem, and telling them their home is unreachable while they are
+  // using it would be simply wrong. Before the fact existed this read a cached
+  // `relayConnected` and an explicit Local Mode check (homecast-cloud#99).
+  const selectedHomeServing = useHomeServing(selectedHomeId);
   const selectedHomeRelayOffline = useMemo(() => {
-    if (!selectedHomeId) return false;
+    if (!selectedHomeId || !selectedHomeServing) return false;
     const home = homes.find(h => h.id === selectedHomeId);
     if (!home) return false;
-    // On the Mac relay itself, the server's relayConnected flag is transient
-    // during startup/reconnect — accessories come from the local bridge. Don't
-    // flash "Your relay is offline" inside the relay app. Cloud-managed
-    // homes are served by a different relay, so the flag is still meaningful.
+    // On the Mac relay itself, accessories come from the local bridge, so a
+    // transient answer about its own relay during startup must not flash
+    // "Your relay is offline" inside the relay app. Cloud-managed homes are
+    // served by a different relay, so the fact is still meaningful there.
     if (isRelayCapable() && isRelayEnabled() && !home.isCloudManaged) return false;
-    // Same reasoning one step further out: if this device is serving the home
-    // from its own HomeKit, the relay being down is true but no longer the
-    // user's problem, and telling them their home is unreachable while they
-    // are actively using it would be simply wrong. The recovery poll below
-    // keeps running, so we still notice the relay coming back.
-    if (localModeActive) return false;
-    return home.relayConnected === false;
-  }, [selectedHomeId, homes, localModeActive]);
+    return selectedHomeServing.state !== 'served';
+  }, [selectedHomeId, homes, selectedHomeServing]);
 
-  // A flapping relay (e.g. a cloud-managed Mac on a flaky link) can drop for up
-  // to ~60s every few minutes. Without a grace period the whole dashboard flashes
-  // the "Setting up… / Waiting for relay to accept" onboarding on every blip.
-  // Treat the relay as genuinely offline only after it's stayed down past the
-  // grace window; until then a drop on an already-loaded home is "reconnecting",
-  // and we keep the last-known dashboard with a calm banner instead of the flash.
-  const RELAY_OFFLINE_GRACE_MS = 120000;
+  // `reconnecting` is the server saying "expected back" — its own 120s grace —
+  // so the 120s client-side grace that used to sit on top of it is gone. What
+  // remains is short, and exists for one reason: Local Mode engages 8s into an
+  // outage on a device that can serve the home itself, and it should get there
+  // before the offline card does. A device with no Local Mode sees the card
+  // after 12s instead of 120s.
+  const RELAY_OFFLINE_GRACE_MS = 12000;
   const [relayOfflineConfirmed, setRelayOfflineConfirmed] = useState(false);
   useEffect(() => {
     if (!selectedHomeRelayOffline) {
@@ -4033,31 +4035,11 @@ const Dashboard = () => {
     return () => clearTimeout(timer);
   }, [selectedHomeRelayOffline, selectedHomeId]);
 
-  // With no cached accessories (fresh page load, never-loaded home) the old
-  // behavior showed the offline banner from a single homes.list snapshot — if
-  // that snapshot landed in a relay reconnect window, the user saw a false
-  // "relay offline" until they refreshed. Hold a short grace with one quick
-  // homes re-poll before believing it; genuinely offline relays still surface
-  // within ~12s on a fresh load.
-  const RELAY_OFFLINE_INITIAL_GRACE_MS = 12000;
-  const hasAccessoriesData = !!accessoriesData;
-  const [relayOfflineInitialConfirmed, setRelayOfflineInitialConfirmed] = useState(false);
-  useEffect(() => {
-    if (!selectedHomeRelayOffline || hasAccessoriesData) {
-      setRelayOfflineInitialConfirmed(false);
-      return;
-    }
-    const refetchTimer = setTimeout(() => { refetchHomes(); }, 5000);
-    const confirmTimer = setTimeout(() => setRelayOfflineInitialConfirmed(true), RELAY_OFFLINE_INITIAL_GRACE_MS);
-    return () => { clearTimeout(refetchTimer); clearTimeout(confirmTimer); };
-  }, [selectedHomeRelayOffline, hasAccessoriesData, selectedHomeId, refetchHomes]);
-
-  // Show the full offline/setup screen only when the relay is conclusively
-  // offline (grace elapsed) OR there's no cached data to keep showing and the
-  // short initial grace has passed. A brief drop on an already-loaded home
-  // reads as "reconnecting", not "needs setup".
-  const showRelayOfflineSetup = selectedHomeRelayOffline && (relayOfflineConfirmed || (!accessoriesData && relayOfflineInitialConfirmed));
-  // No cached data and not yet confirmed — render a spinner, not the banner.
+  // A relay the server expects back is "reconnecting", never the setup card:
+  // the last-known dashboard stays up with a calm banner (or a spinner when
+  // there is nothing cached to show).
+  const relayExpectedBack = selectedHomeServing?.state === 'reconnecting';
+  const showRelayOfflineSetup = selectedHomeRelayOffline && relayOfflineConfirmed && !relayExpectedBack;
   const relayOfflinePendingConfirm = selectedHomeRelayOffline && !accessoriesData && !showRelayOfflineSetup;
   const relayReconnecting = selectedHomeRelayOffline && !!accessoriesData && !showRelayOfflineSetup;
 
@@ -4069,13 +4051,13 @@ const Dashboard = () => {
   useEffect(() => {
     if (showRelayOfflineSetup && !prevShowOfflineRef.current) {
       logRelayOfflineBanner(buildRelayOfflineSnapshot({
-        trigger: relayOfflineConfirmed ? 'grace-elapsed' : 'no-accessories-data',
+        trigger: selectedHomeServing?.state === 'waiting' ? 'serving-waiting' : 'serving-offline',
         homes,
         homeId: selectedHomeId,
       }));
     }
     prevShowOfflineRef.current = showRelayOfflineSetup;
-  }, [showRelayOfflineSetup, relayOfflineConfirmed, homes, selectedHomeId]);
+  }, [showRelayOfflineSetup, selectedHomeServing, homes, selectedHomeId]);
 
   const prevReconnectingRef = useRef(false);
   useEffect(() => {
