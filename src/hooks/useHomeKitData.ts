@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { isRelayCapable } from '@/native/homekit-bridge';
 import { isCommunity } from '@/lib/config';
 import { ingestHomesList, setRefetch } from '@/server/home-serving';
-import { serverConnection } from '../server/connection';
+import { serverConnection, getDeviceId } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
 import { sameAccessoryId, resolveAccessoriesCacheKey } from './accessoryCacheKeys';
@@ -645,8 +645,11 @@ export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataRes
     const homes = result?.homes ?? [];
     // Every homes.list answer is one of the two things that may write the
     // serving store. Community mode has no cloud and no relay but this Mac,
-    // so the fact is seeded here as a constant.
-    ingestHomesList(homes, { community: isCommunity && isRelayCapable() });
+    // so the fact is seeded here as a constant — `by` this device, whose id
+    // is registered with the store as a side effect of reading it.
+    const community = isCommunity && isRelayCapable();
+    if (community) getDeviceId();
+    ingestHomesList(homes, { community });
     return homes;
   }, []);
 

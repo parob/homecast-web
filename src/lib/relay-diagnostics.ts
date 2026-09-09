@@ -87,8 +87,10 @@ export function buildDiagnosticsBundle(extra?: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 
 export type RelayOfflineTrigger =
-  | 'grace-elapsed'        // offline persisted past the 120s dashboard grace
-  | 'no-accessories-data'  // fresh load / never-loaded home — banner shown immediately
+  | 'grace-elapsed'        // offline persisted past the 120s dashboard grace (older builds)
+  | 'no-accessories-data'  // fresh load / never-loaded home — banner shown immediately (older builds)
+  | 'serving-offline'      // the serving fact says `offline` and the short grace elapsed
+  | 'serving-waiting'      // the serving fact says `waiting` (takeover grace) and the short grace elapsed
   | 'setup-state-render';  // RelayOfflineState mounted (non-dashboard path)
 
 export interface RelayOfflineSnapshot {
