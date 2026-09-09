@@ -68,7 +68,7 @@
  */
 
 import type { ConnectionQuality } from '@/server/connection-quality';
-import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
+import { servedByThisDevice, type HomeServing, type ServingKind } from '@/server/home-serving';
 
 /**
  * How a node or a hop is doing.
@@ -163,9 +163,27 @@ export function homeNodeName(homeName: string | null | undefined): string {
   return homeName?.trim() || 'Home';
 }
 
-/** What the third node is called. Rule 3. */
-export function relayNodeName(input: { managed: boolean; selfRelay: boolean; community: boolean }): string {
-  if (input.managed) return 'Cloud relay';
+/**
+ * What the third node is called. Rule 3.
+ *
+ * `kind` is the server's word for the relay actually serving the home —
+ * `cloud` or `self_hosted` — and when it is known it wins over `managed`. A
+ * cloud-plan account is not the same thing as a cloud relay being the one
+ * answering: switch the cloud relay off and a self-hosted Mac in the same
+ * Apple Home takes the home over, and the server says so (`served, by: that
+ * Mac, kind: self_hosted`). Naming that node "Cloud relay" was homecast-cloud#107's
+ * second report — "it still thinks it's going via the cloud relay". `managed`
+ * remains the answer when nothing is serving, which is when there is no
+ * `kind` and the account is the only thing to go on.
+ */
+export function relayNodeName(input: {
+  managed: boolean;
+  selfRelay: boolean;
+  community: boolean;
+  kind?: ServingKind | null;
+}): string {
+  if (input.kind === 'self_hosted') return input.selfRelay ? 'This Mac' : 'Your relay';
+  if (input.kind === 'cloud' || input.managed) return 'Cloud relay';
   if (input.community) return 'This Mac';
   if (input.selfRelay) return 'This Mac';
   return 'Your relay';
@@ -237,6 +255,7 @@ export function buildChain(input: ChainInput): ChainModel {
     managed,
     community,
     selfRelay: servedByThisDevice(relayServing, input.thisDevice),
+    kind: relayServing?.state === 'served' ? relayServing.kind : null,
   });
   const homeName = homeNodeName(input.homeName);
 

@@ -54,6 +54,41 @@ describe('relay node naming', () => {
     // for that home, whatever the socket happens to say.
     expect(relayNodeName({ managed: true, selfRelay: true, community: false })).toBe('Cloud relay');
   });
+
+  // parob/homecast-cloud#107, second report: "the cloud relay isn't working
+  // (I turned it off to test this) but the client doesn't reflect this at all —
+  // it still thinks it's going via the cloud relay". The server had said who
+  // was serving — the customer's own Mac, kind self_hosted — and the name was
+  // taken from the plan instead.
+  it('names the relay the server says is serving, over the plan', () => {
+    expect(relayNodeName({ managed: true, selfRelay: false, community: false, kind: 'self_hosted' })).toBe('Your relay');
+    expect(relayNodeName({ managed: true, selfRelay: true, community: false, kind: 'self_hosted' })).toBe('This Mac');
+    expect(relayNodeName({ managed: false, selfRelay: false, community: false, kind: 'cloud' })).toBe('Cloud relay');
+  });
+
+  it('falls back to the plan when nothing is serving, because then there is no kind', () => {
+    expect(relayNodeName({ managed: true, selfRelay: false, community: false, kind: null })).toBe('Cloud relay');
+    expect(relayNodeName({ managed: false, selfRelay: false, community: false, kind: null })).toBe('Your relay');
+  });
+});
+
+describe('a cloud plan whose own Mac has taken the home over (#107)', () => {
+  it('draws the Mac as the relay, not the cloud relay it replaced', () => {
+    expect(relay({ managed: true, serving: servedBy(MINI, 'self_hosted'), relayServing: servedBy(MINI, 'self_hosted') }).name)
+      .toBe('Your relay');
+    expect(relay({ managed: true, serving: servedBy(ME, 'self_hosted'), relayServing: servedBy(ME, 'self_hosted') }).name)
+      .toBe('This Mac');
+  });
+
+  it('still draws the cloud relay while it is the one serving', () => {
+    expect(relay({ managed: true, serving: servedBy(MINI, 'cloud'), relayServing: servedBy(MINI, 'cloud') }).name)
+      .toBe('Cloud relay');
+  });
+
+  it('still calls a dead relay the cloud relay, since nothing else is known', () => {
+    expect(relay({ managed: true, serving: notServed('offline'), relayServing: notServed('offline') }).name)
+      .toBe('Cloud relay');
+  });
 });
 
 describe('home node naming', () => {
