@@ -17,7 +17,6 @@ import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
 import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
-import { recordRelayRefusal, recordRelayServed } from './relay-reachability';
 import { noteRefused as noteHomeServingRefused, setThisDevice } from './home-serving';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -270,19 +269,14 @@ function noteRelayOutcome(
   if (transport !== 'ws') return;
   const homeId = payload.homeId;
   if (typeof homeId !== 'string' || !homeId) return;
-  if (err === null) {
-    recordRelayServed(homeId);
-    return;
-  }
+  if (err === null) return;
   // NO_DEVICE is the cloud saying, in as many words, "No relay device
   // connected for this home". Every other failure — a timeout, a dropped
   // socket, a rejected write — is about this connection or this request, and
-  // must not be read as a statement about the relay.
-  if ((err as { code?: string })?.code === 'NO_DEVICE') {
-    recordRelayRefusal(homeId);
-    // The serving store: a trigger, not a belief. See home-serving.ts.
-    noteHomeServingRefused(homeId);
-  }
+  // must not be read as a statement about the relay. And even this one is a
+  // trigger, not a belief: the store asks the server again, once, and changes
+  // nothing until it answers. See home-serving.ts.
+  if ((err as { code?: string })?.code === 'NO_DEVICE') noteHomeServingRefused(homeId);
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {

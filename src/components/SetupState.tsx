@@ -15,6 +15,8 @@ import { serverConnection } from '@/server/connection';
 import { formatLastOnline } from '@/lib/relay-last-seen';
 import { buildDiagnosticsBundle, buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
 import { CLOUD_SIGNUPS_PAUSED, CLOUD_RELAY_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
+import { isHomeUnserved } from '@/server/home-serving';
+import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 // The relay-offline sentences render from two places each (the GetStarted inset
 // and the RelayOfflineState card), and drifted apart before. One copy only.
@@ -545,6 +547,7 @@ export function SetupState({
   pendingEnrollmentId,
   cloudSignupsAvailable = true,
 }: SetupStateProps) {
+  useHomeServingVersion();
   // Cloud customers: show enrollment tracker only if there's an in-progress enrollment
   // Once enrollment is active, HomeMember is created → homes.length > 0 → normal view takes over
   if (accountType === 'cloud' && !homes.length) {
@@ -556,8 +559,10 @@ export function SetupState({
     );
   }
 
-  // Shared homes with offline relay: user can't change relay type, show offline state
-  if (homes.length > 0 && homes.some(h => h.relayConnected === false)) {
+  // A home whose relay is not serving it: the user can't change the relay
+  // type, so show the offline state. Read from the serving fact, composed —
+  // a home this device serves itself is not offline.
+  if (homes.length > 0 && homes.some(h => isHomeUnserved(h.id))) {
     return <RelayOfflineState homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
   }
 
@@ -634,6 +639,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
   accountType?: string;
   cloudSignupsAvailable?: boolean;
 }) {
+  useHomeServingVersion();
   const pricing = usePricing();
 
   // Diagnostics: this card appearing means the user was told their relay is
@@ -648,7 +654,7 @@ function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupClo
     // Log once per mount — the offline set at first render is what matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const offlineHomes = homes.filter(h => h.relayConnected === false);
+  const offlineHomes = homes.filter(h => isHomeUnserved(h.id));
   const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
   const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
   const sharedHomes = homes.filter(h => h.role && h.role !== 'owner');

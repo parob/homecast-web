@@ -269,7 +269,8 @@ import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialo
 import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { StatusBadge } from '@/components/layout/StatusBadge';
-import { useHomeServing } from '@/hooks/useHomeServing';
+import { useHomeServing, useHomeServingVersion } from '@/hooks/useHomeServing';
+import { isHomeServed, isHomeUnserved } from '@/server/home-serving';
 import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
@@ -3544,8 +3545,9 @@ const Dashboard = () => {
   const { data: relayHomesData, loading: relayHomesLoading, refetch: relayRefetchHomes } = useHomes({ skip: !relayDataReady });
   // Don't fetch relay data until we know a relay device is available — prevents premature
   // requests that fail because the server can't route to the relay yet.
-  // Also check homes data (relayConnected) as a faster signal than GET_SESSIONS polling.
-  const anyHomeRelayConnected = (relayHomesData || []).some(h => h.relayConnected === true);
+  // Also check the serving fact as a faster signal than GET_SESSIONS polling.
+  const servingVersion = useHomeServingVersion();
+  const anyHomeRelayConnected = (relayHomesData || []).some(h => isHomeServed(h.id));
   const skipRelayData = !relayDataReady || (!hasDeviceAccess && !anyHomeRelayConnected && !localModeActive);
   const { data: relayRoomsData, loading: relayRoomsLoading, refetch: relayRefetchRooms } = useRooms(selectedHomeId, { skip: skipRelayData });
   const { data: relayAccessoriesData, loading: relayAccessoriesLoading, error: relayAccessoriesError, refetch: relayRefetchAccessories } = useAccessories(selectedHomeId, { skip: skipRelayData });
@@ -3609,7 +3611,7 @@ const Dashboard = () => {
   // hitting a let/const TDZ at render time.
   const homes = tutorialDemoActive ? DEMO_HOMES : (homesData?.homes || []);
   const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
-  const anyRelayConnected = homes.some(h => h.relayConnected === true);
+  const anyRelayConnected = homes.some(h => isHomeServed(h.id));
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
   // Swipe in from the left edge to open the navigation drawer, and back out of
@@ -4108,8 +4110,9 @@ const Dashboard = () => {
   //    also picks up the reconnecting→offline transition when the server-side
   //    grace expires.
   const anyRelayNotConnected = useMemo(
-    () => homes.some(h => (h.relayState ? h.relayState !== 'connected' : h.relayConnected === false)),
-    [homes]
+    () => homes.some(h => isHomeUnserved(h.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- servingVersion is the store's change signal
+    [homes, servingVersion]
   );
   useEffect(() => {
     const hasNoData = homes.length === 0 && accessories.length === 0;
@@ -4226,10 +4229,11 @@ const Dashboard = () => {
       // Always hide owned homes superseded by a pending cloud enrollment
       if (h.role === 'owner' && pendingEnrollmentNames.has(h.name.toLowerCase())) return false;
       // Hide stale owned homes that are superseded by a shared/cloud-managed home (only when relay disconnected)
-      if (h.role === 'owner' && !h.relayConnected && sharedHomeNames.has(h.name.toLowerCase())) return false;
+      if (h.role === 'owner' && !isHomeServed(h.id) && sharedHomeNames.has(h.name.toLowerCase())) return false;
       return true;
     });
-  }, [sortedHomes, visibility.ui.hiddenHomes, showHiddenItems, filteredAccessoryCountByHome, pendingEnrollments, tutorialDemoActive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- servingVersion is the store's change signal
+  }, [sortedHomes, visibility.ui.hiddenHomes, showHiddenItems, filteredAccessoryCountByHome, pendingEnrollments, tutorialDemoActive, servingVersion]);
 
   // Calculate hidden counts for edit mode badges (including cascading hidden devices, avoiding double-counting)
   const hiddenCounts = useMemo(() => {
@@ -7513,7 +7517,7 @@ const Dashboard = () => {
                                     onCreateHelper={() => { openHelperEditor(); setSidebarOpen(false); }}
                                     onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'home', id: home.id, name: home.name }); setBackgroundSettingsOpen(true); setSidebarOpen(false); }}
                                     onCloudRelay={!isInMacApp && !isInMobileApp ? () => { setCloudRelayPrefilledHome(home.name); openSettingsTo('homes'); setSidebarOpen(false); } : undefined}
-                                    onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
+                                    onDismiss={home.role === 'owner' && !isHomeServed(home.id) ? async () => {
                                       try {
                                         await dismissHomeMutation({ variables: { homeId: home.id } });
                                         invalidateHomeKitCache('all');
@@ -8105,7 +8109,7 @@ const Dashboard = () => {
                               onCreateHelper={() => openHelperEditor()}
                               onBackgroundSettings={() => { setBackgroundSettingsTarget({ type: 'home', id: home.id, name: home.name }); setBackgroundSettingsOpen(true); }}
                               onCloudRelay={!isInMacApp && !isInMobileApp ? () => { setCloudRelayPrefilledHome(home.name); openSettingsTo('homes'); } : undefined}
-                              onDismiss={home.role === 'owner' && !home.relayConnected ? async () => {
+                              onDismiss={home.role === 'owner' && !isHomeServed(home.id) ? async () => {
                                 try {
                                   await dismissHomeMutation({ variables: { homeId: home.id } });
                                   invalidateHomeKitCache('all');

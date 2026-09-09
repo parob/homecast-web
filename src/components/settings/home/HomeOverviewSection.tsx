@@ -22,6 +22,8 @@ import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { toast } from 'sonner';
+import { isHomeServed } from '@/server/home-serving';
+import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 /**
  * The home's landing page — who and what it is, and the one destructive action
@@ -40,6 +42,7 @@ export function HomeOverviewSection({
   /** The sub-section list, on layouts that have no sidebar to show it. */
   children?: React.ReactNode;
 }) {
+  useHomeServingVersion();
   // Dismissed for good, by id *and* name — a home's id varies in case between
   // sources and can be re-minted, and the old one-key-per-id scheme let the
   // notice come back when it did. See lib/notice-dismissal.ts.
@@ -97,7 +100,7 @@ export function HomeOverviewSection({
        : home.role === 'control' ? 'Control'
        : 'Shared')
     : null;
-  const relayOnline = home.relayConnected === true;
+  const relayOnline = isHomeServed(home.id);
 
   return (
     <div className="space-y-4">

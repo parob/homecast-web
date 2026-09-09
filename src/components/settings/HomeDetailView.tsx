@@ -15,6 +15,8 @@ import { HomeOverviewSection } from './home/HomeOverviewSection';
 import { HomeNotificationsSection } from './home/HomeNotificationsSection';
 import { HomeMQTTSection } from './home/HomeMQTTSection';
 import { HomeSectionList } from './home/HomeSectionList';
+import { isHomeServed } from '@/server/home-serving';
+import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 /**
  * One home's settings.
@@ -52,6 +54,7 @@ export function HomeDetailView({
   showSectionList,
   onCloudRelayRemoved,
 }: HomeDetailViewProps) {
+  useHomeServingVersion();
   // Keep the detail view fresh so relayLastSeenAt / relayConnected reflect the
   // live server state instead of a frozen snapshot taken at settings-open time.
   const { data: liveHomes, refetch: refetchHomes } = useHomes();
@@ -92,7 +95,7 @@ export function HomeDetailView({
           <HomeMQTTSection
             home={home}
             isAdmin={isAdmin}
-            relayOnline={home.relayConnected === true}
+            relayOnline={isHomeServed(home.id)}
           />
         );
       default:

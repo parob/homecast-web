@@ -155,8 +155,12 @@ function set(homeId: string, serving: HomeServing): void {
 }
 
 /** Every `homes.list` answer passes through here. */
+/** The fields a homes answer needs to carry to feed the store. */
+export type ServingSourceHome =
+  Pick<HomeKitHome, 'id' | 'relayState' | 'relayConnected' | 'relayId' | 'isCloudManaged'> & { serving?: unknown };
+
 export function ingestHomesList(
-  homes: ReadonlyArray<HomeKitHome & { serving?: unknown }>,
+  homes: ReadonlyArray<ServingSourceHome>,
   opts: { community?: boolean } = {},
 ): void {
   for (const home of homes) {
@@ -193,6 +197,20 @@ export function getHomeServing(homeId: string): HomeServing | null {
 /** What this device should believe about a home: its own serving, else the server's. */
 export function effectiveServing(homeId: string): HomeServing | null {
   return composeServing(getHomeServing(homeId), deviceServing(homeId), thisDevice);
+}
+
+/**
+ * The two questions a list of homes asks, as the composition answers them.
+ * `isHomeUnserved` is false for a home nothing has been heard about — no fact
+ * is not a fault — which is what every reader of `relayConnected === false`
+ * meant by testing for `false` rather than for "not true".
+ */
+export function isHomeServed(homeId: string): boolean {
+  return effectiveServing(homeId)?.state === 'served';
+}
+export function isHomeUnserved(homeId: string): boolean {
+  const s = effectiveServing(homeId);
+  return s !== null && s.state !== 'served';
 }
 
 /**
