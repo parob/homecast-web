@@ -91,6 +91,14 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'import.meta.env.VITE_COMMIT_SHA': JSON.stringify(commitSha),
+    // The same value versionPlugin writes into /version.json, baked into the
+    // bundle so a running tab can name the build it is *itself* running.
+    //
+    // Reading the served version.json at boot would not do: the whole case
+    // worth catching is a service worker answering from a shell one build
+    // behind, where the served version.json is already the newer one. See
+    // lib/update-check.ts.
+    'import.meta.env.VITE_DEPLOY_TIME': JSON.stringify(deployTime),
   },
   plugins: [
     react(),

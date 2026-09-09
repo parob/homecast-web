@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { GET_VERSION } from '@/lib/graphql/queries';
+import { appVersionLabel } from '@/lib/app-version';
 import { isMarketingPath } from '@/lib/marketing-routes';
 
 interface VersionEntry {
@@ -90,8 +91,7 @@ function useStagingVersionInfo(): StagingVersionInfo | undefined {
   const stagingServer = versionData?.version && versionData.version !== 'dev' ? versionData.version : undefined;
   const stagingServerDeployedAt = versionData?.deployedAt || undefined;
   const webVer = config.version !== 'dev' ? config.version : undefined;
-  const appVer = window.homecastAppVersion;
-  const appHash = window.homecastAppBuild && window.homecastAppBuild !== 'unknown' ? window.homecastAppBuild : null;
+  const appVer = appVersionLabel(window);
 
   const entries: VersionEntry[] = [];
   let allSynced = true;
@@ -121,10 +121,7 @@ function useStagingVersionInfo(): StagingVersionInfo | undefined {
   }
 
   if (appVer) {
-    entries.push({
-      label: 'app',
-      staging: `${appVer}${appHash ? ` (${appHash})` : ''}`,
-    });
+    entries.push({ label: 'app', staging: appVer });
   }
 
   if (entries.length === 0) return undefined;

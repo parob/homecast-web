@@ -109,6 +109,13 @@ if (!config.isCommunity) {
 import { initServiceWorker } from "./lib/service-worker";
 initServiceWorker();
 
+// Notice a deploy that lands under a running session and reload onto it, so
+// a fix reaches an open tab without waiting for it to trip over a renamed
+// chunk. Bails on its own in dev, in Community mode and on the relay Mac. See
+// lib/update-check.ts for what it compares and why it reloads the way it does.
+import { initUpdateCheck } from "./lib/update-check-controller";
+initUpdateCheck();
+
 // Touch press feedback — JS-based because CSS :active is unreliable in iOS WKWebView
 // (isTextInteractionEnabled=false suppresses :active, Tailwind preflight kills tap-highlight)
 const PRESSABLE = 'button, a[href], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="option"], [role="switch"]';

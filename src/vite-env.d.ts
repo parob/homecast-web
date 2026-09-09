@@ -50,6 +50,10 @@ declare global {
     homecastAppVersion?: string;
     // Native app git commit hash (e.g. "abc1234") — injected by Mac/iOS app
     homecastAppBuild?: string;
+    // Native app build number — CFBundleVersion (e.g. "57"), the number App
+    // Store Connect numbers builds by. Injected by Mac/iOS app; absent on any
+    // app installed before it started injecting it, hence always optional.
+    homecastAppBuildNumber?: string;
     // Debug: use localhost:3000 for WebSocket connection
     homecastUseLocalhost?: boolean;
     // HomeKit bridge API (injected by the Mac and iOS apps)

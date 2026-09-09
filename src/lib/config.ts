@@ -280,5 +280,10 @@ export const config = {
   isStaging: window.location.hostname.includes('staging'),
   isCommunity,
   version: import.meta.env.VITE_COMMIT_SHA || 'dev',
+  // When this bundle was built — the same stamp /version.json carries, and the
+  // only token that changes on every web deploy. `version` above is
+  // homecast-cloud's commit, because that is the repo the deploy workflow runs
+  // in, so a web-only change leaves it untouched. Empty in dev.
+  deployedAt: import.meta.env.VITE_DEPLOY_TIME || '',
   appStoreUrl: 'https://apps.apple.com/us/app/homecast-app/id6759559232?platform=mac',
 };
