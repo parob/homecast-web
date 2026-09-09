@@ -3,25 +3,21 @@
  *
  * Lifted from the old `LocalModeBadge` popover. Local Mode is a genuinely
  * different mode of operation — automations are not running, history is not
- * being recorded, and nobody else can see what this device can — so that
- * detail has to be reachable. It does not have to be *open*: it is eight
- * static rows that never vary, so after the first read it is the largest
- * block of already-known text on a panel that overran the phone it was
- * reported from. It is a disclosure now, and the same sentence lives one tap
- * away in Settings → Local Mode.
+ * being recorded, and nobody else can see what this device can — so the detail
+ * is worth saying. It is not worth 185px of icon rows: that was the largest
+ * single block on a panel that did not fit the phone it was reported from
+ * (homecast-cloud#103), and two sentences carry the same eight facts in about
+ * 70px with nothing hidden behind a tap.
  *
  * What it is no longer worth is a second pill: Local Mode engages *because*
  * the connection is down, so it and the connection state are two halves of
  * one story and now share one bubble.
  *
  * Split into a view and a container the same way `ReliabilitySection` is, so
- * the panel can be rendered at a real viewport without a relay — which is how
- * the before/after for #103 was measured.
+ * the section can be exercised without a relay or a browser.
  */
 
-import { Check, ChevronRight, X } from 'lucide-react';
-import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { Check, X } from 'lucide-react';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import type { IdentityState, LocalModeReason } from '@/server/local-mode';
 
@@ -32,8 +28,15 @@ const REASON_TEXT: Record<LocalModeReason, string> = {
   'socket-down': "This device can't reach Homecast's servers.",
 };
 
-const WORKS = ['Lights, switches and plugs', 'Sensors and thermostats', 'Locks and blinds', 'Scenes and rooms'];
-const DOESNT = ['Automations', 'Notifications', 'History recording', 'Sharing with other people'];
+/**
+ * What Local Mode can and cannot do.
+ *
+ * These were eight rows with an icon each — 185px of a 449px section. Two
+ * sentences carry the same eight facts in about 70px, and a list you read once
+ * to find out what is missing reads at least as well as prose.
+ */
+const WORKS = 'lights, switches, plugs, sensors, thermostats, locks, blinds, scenes and rooms';
+const DOESNT = 'automations, notifications, history recording and sharing with other people';
 
 export interface LocalModeSectionViewProps {
   reason: LocalModeReason | null;
@@ -44,8 +47,6 @@ export interface LocalModeSectionViewProps {
   isPhone: boolean;
   /** Opens Settings → Local Mode. Absent unless Developer Mode is on. */
   onOpenSettings?: () => void;
-  /** Start with the capability list open. Preview and tests only. */
-  defaultDetailOpen?: boolean;
 }
 
 export function LocalModeSectionView({
@@ -55,55 +56,38 @@ export function LocalModeSectionView({
   reported,
   isPhone,
   onOpenSettings,
-  defaultDetailOpen = false,
 }: LocalModeSectionViewProps) {
-  const [detailOpen, setDetailOpen] = useState(defaultDetailOpen);
   const deviceWord = isPhone ? 'device' : 'Mac';
   const unmapped = identityState === 'unmapped';
 
   return (
     <div className="space-y-2">
       {/*
-        No header row and no "Active" pill. You cannot reach this section
+        No header row and no "Active" pill: you cannot reach this section
         without having tapped a green-dotted pill that already reads
-        "Local Mode", and the sentence above it in ConnectionSection has
-        already said the device is talking to the home directly. What is
-        left to say is the part the chain cannot draw: *why*.
+        "Local Mode".
+
+        And only the reason. "This device is talking to your Apple Home
+        directly" is the connection chain's own sentence twenty pixels above
+        this one — `buildChain` leads with it in every state where this section
+        renders — so saying it again was the panel repeating itself at the top
+        of its longest section. It stays as the fallback for the case where
+        there is no reason to give, because then nothing else has said it.
       */}
-      {reason && (
-        <p className="text-xs text-muted-foreground">{REASON_TEXT[reason]}</p>
-      )}
+      <p className="text-xs text-muted-foreground">
+        {reason ? REASON_TEXT[reason] : `This ${deviceWord} is talking to your Apple Home directly.`}
+      </p>
 
-      <button
-        type="button"
-        onClick={() => setDetailOpen((o) => !o)}
-        aria-expanded={detailOpen}
-        className="flex w-full items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-      >
-        <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', detailOpen && 'rotate-90')} />
-        What works in Local Mode
-      </button>
-
-      {detailOpen && (
-        <div className="space-y-1.5">
-          {WORKS.map((w) => (
-            <div key={w} className="flex items-center gap-1.5 text-[11px]">
-              <Check className="h-3 w-3 text-green-600 shrink-0" />
-              <span>{w}</span>
-            </div>
-          ))}
-          {DOESNT.map((d) => (
-            <div key={d} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <X className="h-3 w-3 shrink-0" />
-              <span>{d}</span>
-            </div>
-          ))}
-          <p className="pt-1 text-[11px] text-muted-foreground">
-            Automations keep running on your relay when it comes back.
-            {isPhone ? ' This works while the app is open.' : ''}
-          </p>
+      <div className="space-y-1.5 text-[11px]">
+        <div className="flex gap-1.5">
+          <Check className="mt-px h-3 w-3 text-green-600 shrink-0" />
+          <span className="leading-snug">Works: {WORKS}.</span>
         </div>
-      )}
+        <div className="flex gap-1.5 text-muted-foreground">
+          <X className="mt-px h-3 w-3 shrink-0" />
+          <span className="leading-snug">Paused: {DOESNT}.</span>
+        </div>
+      </div>
 
       {/* Only worth saying when it is not the whole story. */}
       {identityState === 'partial' && (
@@ -115,6 +99,15 @@ export function LocalModeSectionView({
       {unmapped && (
         <p className="text-[11px] text-amber-600">
           Your custom names and layout will come back when this {deviceWord} is next online.
+        </p>
+      )}
+
+      {/* "Automations keep running on your relay when it comes back" went with
+          the checklist: "Paused" already says they resume. What nothing else
+          on the panel says is that on a phone this stops when the app does. */}
+      {isPhone && (
+        <p className="text-[11px] text-muted-foreground border-t pt-2">
+          Local Mode works while the app is open.
         </p>
       )}
 
