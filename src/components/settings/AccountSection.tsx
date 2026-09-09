@@ -19,6 +19,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LogOut, Trash2, Plus, UserIcon, X, Shield, Key, Loader2, BookOpen } from 'lucide-react';
 import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config';
+import { appVersionLabel } from '@/lib/app-version';
 import { toast } from 'sonner';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
 
@@ -551,9 +552,7 @@ export function AccountSection({
         <div className="text-xs text-muted-foreground space-y-0.5">
           {config.version !== 'dev' && <div>Web: {config.version}</div>}
           {serverVersion && serverVersion !== 'dev' && <div>Server: {serverVersion}</div>}
-          {(window as any).homecastAppVersion && (
-            <div>App: {(window as any).homecastAppVersion}{(window as any).homecastAppBuild && (window as any).homecastAppBuild !== 'unknown' ? ` (${(window as any).homecastAppBuild})` : ''}</div>
-          )}
+          {appVersionLabel(window) && <div>App: {appVersionLabel(window)}</div>}
         </div>
       </div>
     </div>

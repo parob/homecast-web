@@ -138,6 +138,7 @@ import { MAX_PINNED_TABS, pinKey, type PinTarget } from '@/lib/pinned-tabs';
 import { PinnedTabsProvider, type PinnedTabsActions } from '@/contexts/PinnedTabsContext';
 import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
+import { appVersionLabel } from '@/lib/app-version';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
@@ -7289,8 +7290,7 @@ const Dashboard = () => {
           </>
         )}
         {hasStagingAccess && (() => {
-          const appVer = window.homecastAppVersion;
-          const appHash = window.homecastAppBuild && window.homecastAppBuild !== 'unknown' ? window.homecastAppBuild : null;
+          const appVer = appVersionLabel(window);
           const webVer = config.version !== 'dev' ? config.version : null;
           const srvVer = serverVersion && serverVersion !== 'dev' ? serverVersion : null;
           const lines: string[] = [];
@@ -7302,7 +7302,7 @@ const Dashboard = () => {
             const status = !prodFetched ? '' : prodVersions.web ? (webVer === prodVersions.web ? 'in sync' : `ahead (staging:${webVer} prod:${prodVersions.web})`) : `unknown (staging:${webVer})`;
             lines.push(`web: ${status || webVer}`);
           }
-          if (appVer) lines.push(`app: ${appVer}${appHash ? ` (${appHash})` : ''}`);
+          if (appVer) lines.push(`app: ${appVer}`);
           if (lines.length === 0) return null;
           return (
             <>
