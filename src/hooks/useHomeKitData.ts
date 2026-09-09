@@ -6,6 +6,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { isRelayCapable } from '@/native/homekit-bridge';
+import { isCommunity } from '@/lib/config';
+import { ingestHomesList, setRefetch } from '@/server/home-serving';
 import { serverConnection } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
@@ -639,7 +642,12 @@ function useCachedData<T>(
 export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
   const fetcher = useCallback(async () => {
     const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
-    return result?.homes ?? [];
+    const homes = result?.homes ?? [];
+    // Every homes.list answer is one of the two things that may write the
+    // serving store. Community mode has no cloud and no relay but this Mac,
+    // so the fact is seeded here as a constant.
+    ingestHomesList(homes, { community: isCommunity && isRelayCapable() });
+    return homes;
   }, []);
 
   return useCachedData<HomeKitHome[]>('homes', fetcher, options.skip ?? false);
@@ -1132,6 +1140,10 @@ export function invalidateAccessoriesForHome(homeId: string): void {
  * the homes list itself. Tolerates UUID case differences between the id in a
  * server message and the id the cache was keyed under.
  */
+// A NO_DEVICE for a home the serving store believes is served means the store
+// is stale. It asks for exactly this, once — see home-serving.ts noteRefused.
+setRefetch((homeId) => invalidateHomeCaches(homeId));
+
 export function invalidateHomeCaches(homeId: string): void {
   cache.invalidateByPrefix('homes');
   for (const id of new Set([homeId, homeId.toUpperCase(), homeId.toLowerCase()])) {

@@ -17,6 +17,7 @@ import {
 import { executeHomeKitAction } from '../relay/local-handler';
 import { getCacheTimestamp } from '../hooks/useHomeKitData';
 import { getRefusedHomes } from './relay-reachability';
+import { setDeviceServing } from './home-serving';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
   type LocalModeRouter,
@@ -83,6 +84,8 @@ class LocalModeController implements LocalModeRouter {
   private lastWarmAttempt = 0;
   private lastProbe = 0;
   private status: HomeKitStatus | null = null;
+  /** When Local Mode last engaged, ISO-8601, for the composed fact's `since`. */
+  private activeSince: string | null = null;
 
   start(): void {
     if (this.started) return;
@@ -97,6 +100,15 @@ class LocalModeController implements LocalModeRouter {
     localIdentity.loadLast();
 
     setLocalModeRouter(this);
+    // This device's half of the serving fact: is it serving `homeId` from
+    // its own HomeKit right now? The store composes it over the server's
+    // fact, and every display surface reads the composition. Registered
+    // here rather than imported there so the dependency keeps pointing one
+    // way — the controller knows about the store, never the reverse.
+    setDeviceServing((homeId) => ({
+      active: this.state.active && this.canServe('accessories.list', { homeId }),
+      since: this.activeSince,
+    }));
     void this.probeBridge();
     this.tick = setInterval(() => this.evaluate(), TICK_MS);
 
@@ -197,6 +209,8 @@ class LocalModeController implements LocalModeRouter {
 
     const d = decideLocalMode(inputs, this.memo);
     this.memo = d.memo;
+    if (d.active && !this.state.active) this.activeSince = new Date().toISOString();
+    if (!d.active) this.activeSince = null;
 
     // Warm the identity map while the cloud is still reachable, rather than
     // discovering we need it at the moment the relay dies. `sync()` throttles

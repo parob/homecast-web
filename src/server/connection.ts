@@ -18,6 +18,7 @@ import { browserLogger } from '../lib/browser-logger';
 import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
 import { recordRelayRefusal, recordRelayServed } from './relay-reachability';
+import { noteRefused as noteHomeServingRefused, setThisDevice } from './home-serving';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -107,6 +108,7 @@ export function getDeviceId(): string {
     if (import.meta.env.DEV) console.log(`[ServerConnection] Using existing device ID: ${deviceId} (isRelayCapable: ${isMacApp})`);
   }
 
+  setThisDevice(deviceId);
   return deviceId;
 }
 
@@ -276,7 +278,11 @@ function noteRelayOutcome(
   // connected for this home". Every other failure — a timeout, a dropped
   // socket, a rejected write — is about this connection or this request, and
   // must not be read as a statement about the relay.
-  if ((err as { code?: string })?.code === 'NO_DEVICE') recordRelayRefusal(homeId);
+  if ((err as { code?: string })?.code === 'NO_DEVICE') {
+    recordRelayRefusal(homeId);
+    // The serving store: a trigger, not a belief. See home-serving.ts.
+    noteHomeServingRefused(homeId);
+  }
 }
 
 export async function communityRequest<T>(action: string, payload: Record<string, unknown>): Promise<T> {
