@@ -136,7 +136,6 @@ const SortableCollectionItem: React.FC<SortableCollectionItemProps> = ({
         visible={!!(editMode && pinTab)}
         action={null}
         tab={pinTab}
-        onPrimary={!isDarkBackground && isSelected && !hasSelectedChild}
       />
     </div>
   );

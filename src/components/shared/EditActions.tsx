@@ -30,43 +30,18 @@ interface ActionButtonProps {
   disabled?: boolean;
   /** `tile` sits over a widget; `row` is the smaller one for a sidebar line. */
   /**
-   * `pill` is the summary row's, and renders **exactly** the tile's badge — same
-   * padding, same text, same box. A person reading the screen sees one control
-   * that means one thing, whether it is on a tile or on a pill.
+   * `pill` is the summary row's: the tile's badge, one step shorter, floating
+   * inside the pill rather than filling it. See `PILL_BADGE`.
    *
-   * What differs is only what it contributes to *layout*: `-my-1` cancels the
-   * padding by which it overflows the pill's line box, so it hangs into the pill
-   * rather than stretching it. That matters because this row sits above the
-   * accessory grid and swaps in mid-drag — Edit Layout is entered by a long
-   * press that is already dragging — so a taller row pushes what the finger is
-   * holding down the page.
-   *
-   * The badge's padding is now the pill's own, so the two cancel exactly and the
-   * badge fills the pill's height rather than floating inside it. That is the
-   * ceiling on how tall this can grow while the row stays the height it is; the
-   * rest of the target is `HIT_SLOP`, which costs no layout at all.
-   *
-   * Shrinking the button was the first attempt and was wrong twice over: it made
-   * the two badges different sizes for no reason a user could see, and the
-   * height was never the expensive part anyway — the width is, because it is
-   * what rewraps the row.
+   * What it must never do is change what the row contributes to *layout*:
+   * `-my-0.5` cancels the padding by which it overflows the pill's line box, so
+   * it hangs into the pill rather than stretching it. That matters because this
+   * row sits above the accessory grid and swaps in mid-drag — Edit Layout is
+   * entered by a long press that is already dragging — so a taller row pushes
+   * what the finger is holding down the page. The negative margin has to track
+   * the badge's own `py-`, whatever that is.
    */
   size?: 'tile' | 'row' | 'pill';
-  /**
-   * The badge is sitting on the primary fill itself — a selected sidebar row.
-   *
-   * `bg-primary` on `bg-primary` leaves no edge at all: the pill vanishes into
-   * the row and only its label survives, which reads as part of the row's own
-   * text rather than as a button you can press. Everywhere else these sit on a
-   * wallpaper or a tile, where the fill is the whole affordance.
-   *
-   * A white ring rather than a different fill, so it is still recognisably the
-   * same control as the ones on the rows above and below it — only outlined.
-   * `ring` and not `border`: the caller reserves a measured 5rem for this
-   * cluster (see RowEditActions), and a border would grow each pill by 2px and
-   * push the pair into the name's truncation.
-   */
-  onPrimary?: boolean;
 }
 
 /**
@@ -82,7 +57,7 @@ interface ActionButtonProps {
  * because a compact tile is about 160px wide and has to hold two of them beside
  * the accessory's icon; the full phrasing survives as the accessible name.
  */
-/** The badge on an accessory tile. `pill` reuses it verbatim — see below. */
+/** The badge on an accessory tile, and on a sidebar row. `pill` is 5px shorter. */
 /*
  * `leading-4` is what makes the badge one size everywhere.
  *
@@ -98,11 +73,35 @@ interface ActionButtonProps {
  *
  * `py-1` and not `py-0.5`: a badge was one line box plus 4px, which measured
  * 25px tall on the phone this was reported from — Edit Layout is a touch mode
- * whose only two controls were half the 44px a fingertip needs. `py-1` fills the
- * summary pill exactly (its own padding is the same 5px), so the badge grows
- * without the row it hangs in growing; see the `pill` size below.
+ * whose only two controls were half the 44px a fingertip needs.
+ *
+ * The summary pill does *not* take this size, and that is deliberate: `py-1` is
+ * exactly the pill's own padding, so a badge wearing it fills the pill outright.
+ * See `PILL_BADGE`.
  */
 const TILE_BADGE = 'px-2 py-1 text-[10px] leading-4';
+
+/**
+ * The summary row's badge: the tile's, one step shorter.
+ *
+ * `py-0.5` and `-my-0.5` — 25px inside a 30px pill, so it floats with 2.5px
+ * clear above and below it, and `pr-0.5` on the shell (SummarySectionEditPills)
+ * keeps the same clearance at the rim. The row's own height is unchanged either
+ * way, because the negative margin cancels whatever padding the badge carries.
+ *
+ * This used to be `TILE_BADGE` verbatim, on the argument that one control should
+ * be one size wherever it appears — at which point the badge exactly filled the
+ * pill and, being `rounded-full` at the same height, capped its trailing edge as
+ * well. Reported as homecast-cloud#112: "the status pill/top bubble hide buttons
+ * look worse now we made them the height/edge of the pill".
+ *
+ * So the two sizes are deliberate now, and only the *pill* is the short one. A
+ * tile's badge and a sidebar row's stay at `py-1` — the 44px-fingertip fix from
+ * #78 — because nothing was wrong with those; what looked wrong was a chip
+ * swallowing the pill it sits in. The `HIT_SLOP` below is unchanged, so this
+ * still answers a press 40px tall.
+ */
+const PILL_BADGE = 'px-2 py-0.5 text-[10px] leading-4 -my-0.5';
 
 /**
  * The part of the badge you can hit but cannot see.
@@ -121,7 +120,7 @@ const TILE_BADGE = 'px-2 py-1 text-[10px] leading-4';
  */
 const HIT_SLOP = "relative before:absolute before:-inset-x-1 before:-inset-y-1.5 before:content-['']";
 
-export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile', onPrimary }: ActionButtonProps) {
+export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
   return (
     <button
@@ -134,29 +133,26 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
       onTouchStart={swallow}
       onClick={(e) => { swallow(e); if (!disabled) onClick(); }}
       className={cn(
-        // The same blue as Done, which is the only other control Edit Layout
-        // puts on screen. These were a translucent dark chip, on the reasoning
-        // that a badge sitting on top of the thing it acts on should be quiet —
-        // but quiet is what made them read as chrome rather than as the controls
-        // of a mode you are in, and it left the two kinds of button in that mode
-        // looking unrelated. `bg-primary` is Done's own class, so they cannot
-        // drift apart again.
+        // A translucent dark chip, which is what these were before they were
+        // given Done's blue. The blue was reasoned as "these are the controls of
+        // a mode, so they should look like the mode's other control" — but a
+        // badge sits *on top of* the thing it acts on, and there is one on every
+        // tile, every room heading, every sidebar row and every summary pill at
+        // once. Twenty of them in Done's colour is the loudest thing on the
+        // screen, and reported as such: homecast-cloud#112, "the blue hide
+        // buttons are too much let's go back to dark grey".
         //
-        // Opaque, so no `backdrop-blur`: the blur existed to give 10px text
-        // something to sit on over a photographic wallpaper, and a solid fill
-        // does that outright. The weight stays semibold for the same reason.
-        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground shadow-sm',
+        // Not all the way transparent: 10px text over a photographic wallpaper
+        // needs something behind it, which is what the blur is for. The weight
+        // stays semibold for the same reason.
+        'pointer-events-auto flex shrink-0 items-center justify-center rounded-full bg-zinc-900/70 backdrop-blur-sm font-semibold text-white shadow-sm',
         HIT_SLOP,
-        'transition-colors duration-fast hover:bg-primary/85 active:bg-primary/80',
-        'disabled:opacity-50 disabled:hover:bg-primary',
-        // See `onPrimary` on ActionButtonProps. Inset, so the ring lands on the
-        // pill's own edge instead of outside it — an outset ring would eat into
-        // the gap between Hide and Pin and read as one blurred blob.
-        onPrimary && 'ring-1 ring-inset ring-primary-foreground',
+        'transition-colors duration-fast hover:bg-zinc-900/85 active:bg-zinc-900/85',
+        'disabled:opacity-50 disabled:hover:bg-zinc-900/70',
         size === 'tile' ? TILE_BADGE
-          // Literally the tile's badge, tucked into the line box around it —
-          // see the `pill` doc on ActionButtonProps.
-          : size === 'pill' ? `${TILE_BADGE} -my-1`
+          // The tile's badge, one step shorter and tucked into the line box
+          // around it — see the `pill` doc on ActionButtonProps.
+          : size === 'pill' ? PILL_BADGE
           // Identical to a tile's. It used to be narrower, which made the
           // sidebar's badges visibly smaller than the ones on the tiles right
           // beside them — the same control, three sizes. The name is kept
@@ -185,11 +181,11 @@ export type PrimaryEditAction =
   | { kind: 'remove'; label: string; onRemove: () => void }
   | null;
 
-function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row', onPrimary?: boolean) {
+function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row') {
   if (!action) return null;
   if (action.kind === 'remove') {
     return (
-      <EditActionButton label="Remove" ariaLabel={action.label} onClick={action.onRemove} size={size} onPrimary={onPrimary} />
+      <EditActionButton label="Remove" ariaLabel={action.label} onClick={action.onRemove} size={size} />
     );
   }
   const verb = action.isHidden ? 'Unhide' : 'Hide';
@@ -199,16 +195,14 @@ function primaryButton(action: PrimaryEditAction, size: 'tile' | 'row', onPrimar
       ariaLabel={`${verb} ${action.name}`}
       onClick={action.onToggle}
       size={size}
-      onPrimary={onPrimary}
     />
   );
 }
 
-function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row', onPrimary?: boolean) {
+function pinButton(pin: ReturnType<typeof usePinAction>, size: 'tile' | 'row') {
   if (!pin) return null;
   return (
     <EditActionButton
-      onPrimary={onPrimary}
       // Still "Pin" when the bar is full — greyed out, not relabelled. "Full"
       // named the tab bar's problem on a button about this tile, so it read as
       // a state of the accessory. Disabled says the same thing without the
@@ -300,14 +294,22 @@ export function TileEditActions({ action, tab, visible = true }: {
  * a phone the same cluster measures 87px against a desktop's 70. The reserve was
  * a flat `81px`, which covered the desktop and was ~11px short in the mobile
  * drawer — the case the badges are actually pressed in.
+ *
+ * There was an `onPrimary` here, which outlined the badges on the *selected* row
+ * (homecast-cloud#86). It existed only because the badge's own fill was
+ * `bg-primary` at the time and the selected row is filled the same way, so the
+ * two left no edge between them. The badge is a dark chip again — see
+ * EditActionButton — so it has an edge on that row like it does on every other,
+ * and an outline on one row would now be the odd one out rather than the fix.
+ * The invariant that replaces the prop is asserted in
+ * `__tests__/edit-badge-on-primary.test.tsx`: the badge must not take the
+ * selected row's own fill.
  */
-export function RowEditActions({ action, tab, visible = true, onPrimary }: {
+export function RowEditActions({ action, tab, visible = true }: {
   action: PrimaryEditAction;
   tab?: PinnedTab | null;
   /** False while Edit Layout is ending — see TileEditActions. */
   visible?: boolean;
-  /** This row is the selected one, so the badges sit on `bg-primary`. */
-  onPrimary?: boolean;
 }) {
   const { rendered, exiting } = useBadgePresence(visible);
   const held = useRef({ action, tab });
@@ -315,8 +317,8 @@ export function RowEditActions({ action, tab, visible = true, onPrimary }: {
   const shown = visible ? { action, tab } : held.current;
 
   const pin = usePinAction(shown.tab);
-  const primary = primaryButton(shown.action, 'row', onPrimary);
-  const pinned = pinButton(pin, 'row', onPrimary);
+  const primary = primaryButton(shown.action, 'row');
+  const pinned = pinButton(pin, 'row');
   if (!rendered || (!primary && !pinned)) return null;
   return (
     // Two elements, and it has to stay that way: this one centres itself with

@@ -517,9 +517,6 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
           ? { kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility, name: room.name }
           : null}
         tab={pinTab}
-        // Mirrors the row's own fill above: selected is `bg-primary` on either
-        // background, so the badges need the outline to stay visible.
-        onPrimary={isSelected}
       />
     </div>
   );
@@ -912,9 +909,6 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           ? { kind: 'hide', isHidden: !!isHiddenUi, onToggle: onToggleVisibility, name: home.name }
           : null}
         tab={pinTab}
-        // Mirrors the row's own fill above, `hasSelectedChild` included: a home
-        // with a selected room inside it is muted, not filled.
-        onPrimary={isSelected && !hasSelectedChild}
       />
     </div>
   );
@@ -1086,7 +1080,7 @@ const SortableGroupItem: React.FC<SortableGroupItemProps> = ({ group, isSelected
       </button>
       </div>
       {/* A collection group can't be hidden, so pin is the only action here. */}
-      <RowEditActions visible={!!(editMode && pinTab)} action={null} tab={pinTab} onPrimary={isSelected} />
+      <RowEditActions visible={!!(editMode && pinTab)} action={null} tab={pinTab} />
     </div>
   );
 

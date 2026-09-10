@@ -145,16 +145,20 @@ test.describe('the Edit Layout badges', () => {
   });
 
   /**
-   * The badge is the pill's end cap, not a chip sitting near its edge.
+   * The badge is a chip sitting inside the pill, not the pill's end cap.
    *
-   * Both are `rounded-full`, so their corner radius is half their height — at
-   * the same height the two arcs are the same arc, and flush against the right
-   * edge they coincide exactly. A hair of padding on either side of that and
-   * the badge's curve sits inside the pill's, which reads as a chip that nearly
-   * fits. Two numbers, and only a browser has them: the shell's padding and the
-   * badge's height are written in different files.
+   * It was the end cap: both are `rounded-full`, so their corner radius is half
+   * their height, and at the same height, flush against the right edge, the two
+   * arcs coincide exactly. Reported as homecast-cloud#112 — "the status
+   * pill/top bubble hide buttons look worse now we made them the height/edge of
+   * the pill" — so the badge is one step shorter than the shell again and sits
+   * a hair inside it, with the same clearance on all four sides.
+   *
+   * Two numbers, and only a browser has them: the shell's padding and the
+   * badge's height are written in different files, and the shape in the report
+   * is what you get by changing one without the other.
    */
-  test('the badge caps the pill it sits in', async ({ page }, testInfo) => {
+  test('the badge sits inside the pill rather than capping it', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
 
     await setupMocks(page);
@@ -174,9 +178,11 @@ test.describe('the Edit Layout badges', () => {
       };
     });
 
-    console.log('end cap:', JSON.stringify(cap));
-    expect(cap.rightGap, `the badge sits ${cap.rightGap}px inside the pill's right edge`).toBe(0);
-    expect(cap.heightGap, `the badge is ${cap.heightGap}px shorter than the pill`).toBe(0);
+    console.log('inset:', JSON.stringify(cap));
+    // 2.5px of shell padding on the right, and 5px of height split evenly above
+    // and below — so the gap is the same 2.5px whichever edge you measure from.
+    expect(cap.rightGap, `the badge sits ${cap.rightGap}px inside the pill's right edge`).toBe(2.5);
+    expect(cap.heightGap, `the badge is ${cap.heightGap}px shorter than the pill`).toBe(5);
   });
 
   test('capture', async ({ page }, testInfo) => {

@@ -3,15 +3,23 @@
  * The badge has to survive sitting on the selected row.
  *
  * Edit Layout puts Hide/Pin on every sidebar row, and the selected row is filled
- * with `bg-primary` — the badge's own fill. On that one row the pill had no edge
- * at all: only its label survived, reading as part of the row's text rather than
- * as something you can press. Every other row's badge sits on the wallpaper,
- * where the fill is the whole affordance.
+ * with `bg-primary`. Reported as homecast-cloud#86: at the time the badge's own
+ * fill was `bg-primary` too, so on that one row the pill had no edge at all —
+ * only its label survived, reading as part of the row's text rather than as
+ * something you can press. Every other row's badge sits on a wallpaper, where
+ * the fill is the whole affordance.
  *
- * Reported as homecast-cloud#86, on the selected home. It was never only the
- * home: a selected room, collection group and collection fill the same way, so
- * the outline is keyed on `onPrimary` and each row passes its own fill
- * condition.
+ * It was fixed then by outlining the badge on that row (an `onPrimary` prop). It
+ * is fixed now by the badge not taking that fill in the first place: it is a
+ * dark chip again (homecast-cloud#112), which has an edge on the selected row
+ * like it does everywhere else, so the outline went with the blue — one row's
+ * badges outlined and every other row's not would be the odd one out rather than
+ * the fix.
+ *
+ * So what is asserted here is the invariant, not the mechanism: whatever colour
+ * these end up, the badge must not wear the *selected row's own* fill. That is
+ * the thing that took the button's edge away, and it is re-introduced by a
+ * one-word change to a class string.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -22,57 +30,48 @@ afterEach(cleanup);
 
 const PINS = { enabled: true, isPinned: () => false, isFull: false, toggle: vi.fn() };
 
-const row = (onPrimary: boolean) => (
+const row = () => (
   <PinnedTabsProvider value={PINS as never}>
     <RowEditActions
-      onPrimary={onPrimary}
       action={{ kind: 'hide', isHidden: false, onToggle: vi.fn(), name: 'George Street' }}
       tab={{ type: 'home', id: 'h', name: 'George Street', homeId: 'h' }}
     />
   </PinnedTabsProvider>
 );
 
-/** Every class that draws the badge's edge. */
-const ring = (el: HTMLElement) =>
-  el.className.split(/\s+/).filter(c => c.startsWith('ring')).sort().join(' ');
+/** Every class that fills the badge's box. */
+const fill = (el: HTMLElement) =>
+  el.className.split(/\s+/).filter(c => /^(bg-|hover:bg-|active:bg-)/.test(c)).sort();
 
 describe('the edit badge on a selected row', () => {
-  it('outlines both buttons when it sits on the primary fill', () => {
-    render(row(true));
+  it('never wears the selected row’s own fill', () => {
+    render(row());
     for (const name of ['Hide George Street', 'Pin to Tab Bar']) {
-      // Without this the pill is bg-primary on bg-primary and has no edge.
-      expect(ring(screen.getByRole('button', { name }))).toBe('ring-1 ring-inset ring-primary-foreground');
+      const classes = fill(screen.getByRole('button', { name }));
+      // `bg-primary` here is `bg-primary` on `bg-primary`, and the button loses
+      // its edge on the one row it is hardest to find.
+      expect(classes.filter(c => /(^|:)bg-primary\b/.test(c)), name).toEqual([]);
+      expect(classes.some(c => c.startsWith('bg-')), `${name} has a fill at all`).toBe(true);
     }
   });
 
-  it('leaves the unselected rows alone', () => {
-    render(row(false));
-    for (const name of ['Hide George Street', 'Pin to Tab Bar']) {
-      expect(ring(screen.getByRole('button', { name }))).toBe('');
-    }
-  });
-
-  it('draws the outline in the badge’s own text colour, not a hardcoded white', () => {
-    // primary-foreground is white in the light theme and near-black in the dark
-    // one. Hardcoding white would put a white ring around dark text in dark mode.
-    render(row(true));
-    const cls = screen.getByRole('button', { name: 'Hide George Street' }).className;
-    expect(cls).toContain('ring-primary-foreground');
-    expect(cls).toContain('text-primary-foreground');
-  });
-
-  it('outlines without changing the badge’s size', () => {
-    // The sidebar row reserves a measured 5rem for the Hide+Pin cluster, so a
-    // border (which grows the box) would push the name into truncation. `ring`
-    // is drawn as a shadow and takes no layout.
-    const sizing = (el: HTMLElement) =>
-      el.className.split(/\s+/).filter(c => /^(px-|py-|text-\[|leading-|border)/.test(c)).sort().join(' ');
-
-    render(row(true));
-    const outlined = sizing(screen.getByRole('button', { name: 'Hide George Street' }));
+  it('carries the same fill on every row, selected or not', () => {
+    // The selected row used to be the one with outlined badges. A row that
+    // styles its badges differently from the row above it reads as a different
+    // control, which is what the outline cost — worth paying while the fill was
+    // invisible there, not worth paying now it isn't.
+    render(row());
+    const first = fill(screen.getByRole('button', { name: 'Hide George Street' }));
     cleanup();
+    render(row());
+    expect(fill(screen.getByRole('button', { name: 'Hide George Street' }))).toEqual(first);
+  });
 
-    render(row(false));
-    expect(outlined).toBe(sizing(screen.getByRole('button', { name: 'Hide George Street' })));
+  it('draws no outline, since there is nothing left to rescue', () => {
+    render(row());
+    for (const name of ['Hide George Street', 'Pin to Tab Bar']) {
+      const cls = screen.getByRole('button', { name }).className;
+      expect(cls.split(/\s+/).filter(c => c.startsWith('ring')), name).toEqual([]);
+    }
   });
 });
