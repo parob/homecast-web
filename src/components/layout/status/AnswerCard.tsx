@@ -52,16 +52,25 @@ export function AnswerCardView({ card, evidence, onReconnect }: AnswerCardViewPr
   return (
     <div className="space-y-3">
       <div>
-        <div className="flex items-start gap-2">
+        {/*
+          The dot is inline in the sentence rather than a flex sibling of it.
+          As a flex row it indented the verdict by the dot plus the gap, while
+          `because`, `evidence` and `via` — siblings of the *row*, not of the
+          sentence — fell back to the card's content edge. The headline was the
+          only thing in the card on its own left edge, which is the ragged edge
+          in parob/homecast-cloud#113. Inline, every line of the card starts in
+          the same column, a wrapped verdict included.
+        */}
+        <p className="text-[15px] font-semibold leading-snug tracking-[-0.005em]">
           <span
             className={cn(
-              'mt-[5px] h-2 w-2 shrink-0 rounded-full',
+              'mr-2 inline-block h-2 w-2 rounded-full align-middle',
               DOT[card.tone],
               card.pulse && 'motion-safe:animate-pulse',
             )}
           />
-          <p className="text-[15px] font-semibold leading-snug tracking-[-0.005em]">{card.verdict}</p>
-        </div>
+          {card.verdict}
+        </p>
         {card.because && (
           <p className="mt-1.5 text-[12.5px] leading-snug text-foreground/75">{card.because}</p>
         )}
@@ -125,7 +134,14 @@ export function StatusRow({ label, value, tone, pulse, onOpen }: RowProps) {
           <span className={cn('h-1.5 w-1.5 rounded-full', DOT[tone], pulse && 'motion-safe:animate-pulse')} />
         )}
         {value}
-        {onOpen && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+        {/*
+          `-mr-1` is optical, not spacing. Lucide's chevron-right draws at
+          x=9..15 of a 24 viewBox, so a 12px icon sitting flush leaves 4.5px of
+          empty box past the ink and the row stops visibly short of the rule
+          above it. Pulling the box out by 4 puts the glyph on the same edge as
+          everything else.
+        */}
+        {onOpen && <ChevronRight className="-mr-1 h-3 w-3 text-muted-foreground" />}
       </span>
     </>
   );

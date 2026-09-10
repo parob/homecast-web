@@ -269,7 +269,14 @@ export function StatusBadge({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-[280px] p-3 window-no-drag"
+        // The last row's `py-1.5` stacks on the card's own padding, so with the
+        // rows present there was 5px more air under the bottom row than above
+        // the first line and the card read as bottom-heavy. The row keeps its
+        // padding — it is a tap target — and the card stops counting it twice.
+        // Done here rather than as a `-mb-1` on the rows container, which
+        // `space-y-3` overrides: it sets `margin-bottom` on every child after
+        // the first, at a higher specificity.
+        className={cn('w-[280px] p-3 window-no-drag', (showReliabilityRow || showRelayRow) && 'pb-2')}
         onPointerDownOutside={(e) => {
           // Radix closes on pointerdown, which on touch fires before the tap
           // that opened it has finished — without this the popover flickers

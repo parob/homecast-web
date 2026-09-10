@@ -84,6 +84,29 @@ describe('AnswerCardView', () => {
     expect(screen.queryByRole('button', { name: /reconnect/i })).toBeNull();
   });
 
+  // parob/homecast-cloud#113. The dot used to be a flex sibling of the verdict,
+  // which indented the verdict by the dot plus the gap while `because`,
+  // `evidence` and `via` — siblings of the *row*, not of the sentence — stayed
+  // on the card's content edge. Measured in Chromium at 280px: the verdict sat
+  // at 13px, everything else at 29px. jsdom has no layout, so the guard is the
+  // structure that produced it: every line of the card is a direct child of the
+  // same block, and the dot rides inside the sentence rather than beside it.
+  it('keeps every line of the answer in one column, with the dot inside the sentence', () => {
+    const { container } = render(
+      <AnswerCardView card={card()} evidence="A request has been waiting 6s." onReconnect={vi.fn()} />,
+    );
+    const verdict = screen.getByText('George Street is working');
+    const dot = container.querySelector('.bg-emerald-500');
+    expect(dot).toBeTruthy();
+    expect(verdict.contains(dot!)).toBe(true);
+
+    // ...and nothing indents the sentence away from the lines that explain it.
+    const route = screen.getByText('via Cloud relay · 34ms');
+    const evidence = screen.getByText('A request has been waiting 6s.');
+    expect(route.parentElement).toBe(verdict.parentElement);
+    expect(evidence.parentElement).toBe(verdict.parentElement);
+  });
+
   it('shows the unmapped caveat as its own line', () => {
     const gone = fact({ state: 'offline', by: null, kind: null });
     const serving: HomeServing = { state: 'served', by: ME, kind: 'local', since: null, graceEndsAt: null };

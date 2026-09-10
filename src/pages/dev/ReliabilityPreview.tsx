@@ -142,7 +142,7 @@ function PopoverMock({ title, input, week }: { title: string; input: Partial<Ans
   return (
     <div className="space-y-2">
       <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
-      <div className="w-[280px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-md">
+      <div className="w-[280px] rounded-xl border bg-popover p-3 pb-2 text-popover-foreground shadow-md">
         <div className="space-y-3">
           <AnswerCardView card={card} onReconnect={() => {}} />
           <div className="divide-y border-t pt-1">
