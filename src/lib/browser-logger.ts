@@ -271,8 +271,13 @@ class BrowserLogger {
   }
 
   /** Log a connection state transition — always shipped so disconnects
-   *  appear in Cloud Logging alongside server-side relay lifecycle events. */
-  logConnection(state: string, details?: string) {
+   *  appear in Cloud Logging alongside server-side relay lifecycle events.
+   *
+   *  `metadata` carries the same facts as queryable fields. `details` is what a
+   *  human reads in the buffer; the fields are what you group by when the
+   *  question is "which close code is doing this, and to how many people".
+   *  See lib/connection-log.ts. */
+  logConnection(state: string, details?: string, metadata?: Record<string, unknown>) {
     this.add({
       type: 'WS',
       severity: state === 'disconnected' ? 'warn' : 'info',
@@ -280,6 +285,10 @@ class BrowserLogger {
       details,
       ship: true,
     });
+    const last = this.pending[this.pending.length - 1];
+    if (last && metadata) {
+      last.metadata = { ...(last.metadata || {}), ...metadata };
+    }
     this.kickFlush();
   }
 

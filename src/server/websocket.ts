@@ -14,6 +14,7 @@ import { preferredWsUrl, rememberAffinityTarget, forgetAffinityTarget } from './
 import type { RequestTrace, TraceStep } from '../lib/types/trace';
 import { config as appConfig } from '../lib/config';
 import { browserLogger } from '../lib/browser-logger';
+import { environmentFacts, type TransitionFacts, type TransitionReason } from '../lib/connection-log';
 import { traceRelayRequest } from '../lib/activity-spans';
 import { initAutomationEngine, teardownAutomationEngine, getAutomationEngine, HomeKitServiceGroupResolver, NOTIFY_DELIVERY_UNKNOWN } from '../automation';
 import type { NotifyDelivery } from '../automation';
@@ -201,8 +202,17 @@ interface ServerWebSocketCallbacks {
    * `silent` marks a transition the user should not be told about — currently
    * the affinity-redirect handoff, which is a deliberate sub-second pod move
    * rather than a connection problem.
+   *
+   * The rest is evidence, not presentation: why the state changed, how long
+   * the previous one lasted, and whatever the call site knew that bears on it.
+   * Nothing renders it — `connection.ts` writes it to the log, which is the
+   * only place a flaky connection can be reconstructed from afterwards. See
+   * lib/connection-log.ts.
    */
-  onStateChange?: (state: ConnectionState, opts?: { silent?: boolean }) => void;
+  onStateChange?: (
+    state: ConnectionState,
+    opts?: { silent?: boolean } & Omit<TransitionFacts, 'prev'>,
+  ) => void;
   onError?: (error: Error) => void;
   onBroadcast?: (message: BroadcastMessage) => void;
   onConnected?: () => void;
@@ -320,6 +330,13 @@ export class ServerWebSocket {
    */
   private stateSince = Date.now();
   private reconnectDelay = INITIAL_RECONNECT_DELAY;
+  /**
+   * How many reconnects have been scheduled since the last time this socket was
+   * usable. Evidence only — nothing branches on it. A connection that drops once
+   * an hour and one that is climbing a backoff ladder produce the same sequence
+   * of states in the log, and this is what tells them apart. Reset on `connected`.
+   */
+  private reconnectAttempts = 0;
   /** Set while an affinity-redirect handoff is in flight — see redirectTo(). */
   private handingOff = false;
   /**
@@ -580,7 +597,7 @@ export class ServerWebSocket {
     }
 
     this.isManualDisconnect = false;
-    this.setState('connecting');
+    this.setState('connecting', 'connect');
     this.establishConnection();
   }
 
@@ -590,7 +607,7 @@ export class ServerWebSocket {
   disconnect(): void {
     this.isManualDisconnect = true;
     this.cleanup();
-    this.setState('disconnected');
+    this.setState('disconnected', 'manual');
   }
 
   /**
@@ -629,7 +646,7 @@ export class ServerWebSocket {
     // and is back in well under a second, so telling the user their connection
     // dropped would describe a fault that did not happen.
     this.handingOff = true;
-    this.setState('reconnecting');
+    this.setState('reconnecting', 'relay-address-changed', { target: wsUrl });
     this.establishConnection();
   }
 
@@ -637,7 +654,7 @@ export class ServerWebSocket {
    * Redirect to a specific server endpoint (GKE pod affinity).
    * Overrides the WebSocket URL and reconnects immediately.
    */
-  private redirectTo(target: string): void {
+  private redirectTo(target: string, serverReason?: string): void {
     // Clean up current connection
     this.cleanup();
 
@@ -668,7 +685,7 @@ export class ServerWebSocket {
     this.handingOff = true;
 
     // Reconnect immediately to the new target
-    this.setState('reconnecting');
+    this.setState('reconnecting', 'pod-redirect', { target, server_reason: serverReason });
     this.establishConnection();
   }
 
@@ -705,7 +722,7 @@ export class ServerWebSocket {
     if (this.readyTimer) clearTimeout(this.readyTimer);
     this.readyTimer = setTimeout(() => {
       console.log('[ServerWS] No greeting from the server — assuming usable');
-      this.announceReady();
+      this.announceReady('ready-fallback');
     }, READY_FALLBACK_MS);
   }
 
@@ -721,7 +738,7 @@ export class ServerWebSocket {
    * Cheap at this scale: the requests it gates take 200ms–5s on this path, and
    * the connection it waits on took over a second to establish.
    */
-  private announceReady(): void {
+  private announceReady(reason: TransitionReason = 'server-ready'): void {
     if (this.readyAnnounced || this.readyGraceTimer) return;
     this.readyGraceTimer = setTimeout(() => {
       this.readyGraceTimer = null;
@@ -730,7 +747,11 @@ export class ServerWebSocket {
         clearTimeout(this.readyTimer);
         this.readyTimer = null;
       }
-      this.setState('connected');
+      this.setState('connected', reason, {
+        // How long the app spent unusable before this: the whole connecting or
+        // reconnecting stretch, which is the number a slow launch shows up in.
+        connect_ms: this.connectionOpenedAt ? Date.now() - this.connectionOpenedAt : null,
+      });
     }, READY_GRACE_MS);
   }
 
@@ -751,7 +772,7 @@ export class ServerWebSocket {
     this.reconnectDelay = INITIAL_RECONNECT_DELAY;
 
     // Reconnect immediately
-    this.setState('reconnecting');
+    this.setState('reconnecting', 'server-requested');
     this.establishConnection();
   }
 
@@ -936,13 +957,27 @@ export class ServerWebSocket {
     return promise;
   }
 
-  private setState(newState: ConnectionState): void {
+  /**
+   * @param reason   why this is happening, named by the call site. Every call
+   *                 site names one: an unexplained transition in the log is
+   *                 exactly what made a flaky connection undiagnosable.
+   * @param evidence what the call site knows that bears on the reason — a close
+   *                 code's cleanliness, a redirect target, a backoff delay.
+   */
+  private setState(
+    newState: ConnectionState,
+    reason?: TransitionReason,
+    evidence?: TransitionFacts['evidence'],
+  ): void {
     if (this.state !== newState) {
-      console.log(`[ServerWS] State: ${this.state} -> ${newState}`);
+      console.log(`[ServerWS] State: ${this.state} -> ${newState}${reason ? ` (${reason})` : ''}`);
+      // Read before the reassignment below, or every transition reports zero.
+      const prevMs = Date.now() - this.stateSince;
       this.state = newState;
       this.stateSince = Date.now();
       if (newState === 'connected') {
         this.connectedAt = Date.now();
+        this.reconnectAttempts = 0;
       } else if (newState === 'disconnected') {
         this.connectedAt = null;
       }
@@ -951,7 +986,14 @@ export class ServerWebSocket {
       // that would follow it. Cleared once we are back up.
       const silent = this.handingOff;
       if (newState === 'connected') this.handingOff = false;
-      this.callbacks.onStateChange?.(newState, { silent });
+      this.callbacks.onStateChange?.(newState, {
+        silent,
+        reason,
+        prevMs,
+        // Sampled here rather than at each call site so no transition can
+        // forget them, and so they describe the moment of the change.
+        evidence: { ...environmentFacts(), ...(evidence ?? {}) },
+      });
 
       // A new socket has measured nothing yet, and the old socket's samples
       // describe a connection that no longer exists. Starting from `unknown`
@@ -1530,7 +1572,7 @@ export class ServerWebSocket {
         // socket down under whatever the app has already sent. In the log it is
         // the thing that explains a whole round of DISCONNECTED requests.
         logEvent('server', `redirect (${reason})`);
-        this.redirectTo(target);
+        this.redirectTo(target, reason);
       } else if (message.type === 'reconnect') {
         // Server requesting graceful reconnect (Cloud Run timeout approaching)
         console.log('[ServerWS] Server requested reconnect, refreshing connection...');
@@ -1815,14 +1857,26 @@ export class ServerWebSocket {
 
     this.cleanup();
 
+    // The close carries the only evidence there is about why a socket ended:
+    // the server can observe THAT one went, never why. It rides the transition
+    // itself rather than only the separate `ws_close` entry above, so one line
+    // in the log stands on its own.
+    const closeEvidence = {
+      code: event.code,
+      clean: event.wasClean,
+      close_reason: (event.reason || '').slice(0, 80) || undefined,
+      session_ms: this.lastConnectionDuration ?? undefined,
+      heard_from_server: this.heardFromServer,
+    };
+
     if (this.isManualDisconnect) {
-      this.setState('disconnected');
+      this.setState('disconnected', 'manual', closeEvidence);
       return;
     }
 
     // 4001: Auth failed — attempt token refresh before giving up
     if (event.code === 4001) {
-      this.attemptTokenRefresh();
+      this.attemptTokenRefresh(closeEvidence);
       return;
     }
 
@@ -1834,7 +1888,7 @@ export class ServerWebSocket {
       if (event.code === 4002) {
         console.log('[ServerWS] Connection replaced - not reconnecting');
       }
-      this.setState('disconnected');
+      this.setState('disconnected', event.code === 4002 ? 'replaced' : 'session-expired', closeEvidence);
     } else {
       // A pod going away closes with 1012/1001. That is the unsolicited twin
       // of the server's `reconnect` message, which already resets backoff —
@@ -1843,7 +1897,14 @@ export class ServerWebSocket {
       if (resetsBackoff(event.code)) {
         this.reconnectDelay = INITIAL_RECONNECT_DELAY;
       }
-      this.setState('reconnecting');
+      this.setState('reconnecting', `close:${event.code}`, {
+        ...closeEvidence,
+        // The ladder, as the log will show it climbing: which attempt this is
+        // and how long it waits. A backoff that is stuck at the ceiling and one
+        // that keeps resetting look identical without these.
+        attempt: this.reconnectAttempts + 1,
+        delay_ms: Math.round(this.reconnectDelay),
+      });
       this.scheduleReconnect();
     }
   }
@@ -1853,9 +1914,9 @@ export class ServerWebSocket {
    * If successful, updates the stored token and reconnects.
    * If failed, transitions to disconnected state.
    */
-  private async attemptTokenRefresh(): Promise<void> {
+  private async attemptTokenRefresh(closeEvidence?: TransitionFacts['evidence']): Promise<void> {
     console.log('[ServerWS] Token expired, attempting refresh...');
-    this.setState('reconnecting');
+    this.setState('reconnecting', 'auth-expired', closeEvidence);
 
     try {
       const response = await fetch(`${appConfig.apiUrl}/auth/refresh`, {
@@ -1866,14 +1927,14 @@ export class ServerWebSocket {
 
       if (!response.ok) {
         console.log('[ServerWS] Token refresh failed, auth required');
-        this.setState('disconnected');
+        this.setState('disconnected', 'refresh-failed', { status: response.status });
         return;
       }
 
       const data = await response.json();
       if (!data.token) {
         console.log('[ServerWS] Token refresh returned no token');
-        this.setState('disconnected');
+        this.setState('disconnected', 'refresh-failed', { status: response.status, no_token: true });
         return;
       }
 
@@ -2234,7 +2295,8 @@ export class ServerWebSocket {
     if (this.isManualDisconnect) return;
 
     const delay = jitter(this.reconnectDelay);
-    console.log(`[ServerWS] Reconnecting in ${Math.round(delay)}ms...`);
+    this.reconnectAttempts += 1;
+    console.log(`[ServerWS] Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts})...`);
     this.reconnectTimeout = setTimeout(() => {
       this.establishConnection();
       // The relay's ceiling is far lower than a browser's: every second asleep

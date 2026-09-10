@@ -15,6 +15,12 @@ import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
+import {
+  describeTransition,
+  installEnvironmentBreadcrumbs,
+  transitionMetadata,
+  type TransitionFacts,
+} from '../lib/connection-log';
 import { describeError } from '../lib/describe-error';
 import { traceClientRequest } from '../lib/activity-spans';
 import { noteRefused as noteHomeServingRefused, setThisDevice } from './home-serving';
@@ -716,6 +722,13 @@ class ServerConnection {
 
     if (import.meta.env.DEV) console.log(`[ServerConnection] Activating... (${wsUrl()})`);
 
+    // Installed here, not in the socket: a suspend or a network flip matters
+    // whether or not a socket is up at the time, and the socket is torn down
+    // and rebuilt on every reconnect. Idempotent.
+    installEnvironmentBreadcrumbs((summary, metadata) => {
+      try { browserLogger.logInfo(summary, metadata); } catch { /* noop */ }
+    });
+
     try {
       const deviceId = getDeviceId();
       const deviceName = getDeviceName();
@@ -758,10 +771,21 @@ class ServerConnection {
             // needing to be told about it.
             const prev = this.state.connectionState;
             if (prev !== connectionState) {
+              // One self-sufficient line. It used to be `prev=connected` and
+              // nothing else, which is the same eleven characters whether the
+              // pod redirected us, the relay moved, the token expired or a
+              // proxy cut an idle socket — see lib/connection-log.ts.
+              const facts: TransitionFacts = {
+                prev,
+                prevMs: opts?.prevMs,
+                reason: opts?.reason,
+                evidence: { ...(opts?.evidence ?? {}), handoff: opts?.silent || undefined },
+              };
               try {
                 browserLogger.logConnection(
                   connectionState,
-                  opts?.silent ? `prev=${prev} handoff` : `prev=${prev}`,
+                  describeTransition(facts),
+                  transitionMetadata(connectionState, facts),
                 );
               } catch { /* noop */ }
             }
