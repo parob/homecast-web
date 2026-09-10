@@ -40,19 +40,22 @@ import type { HomeLayoutData } from '@/hooks/useEntityLayout';
  * inside — that is what made the hidden one 8px taller, and a row that jumps
  * under your thumb as you use it is the wrong thing to have built.
  */
-// `pr-0` on the trailing edge, against `pl-2.5` on the leading one. The badge is
-// a filled chip with an edge of its own, so the padding that correctly frames
-// text only left it looking inset from the pill's own rim; the label keeps the
-// full 2.5. Narrower is also fewer pixels of row, which is what wraps it.
+// `pr-0.5` on the trailing edge, against `pl-2.5` on the leading one. The badge
+// is a filled chip with an edge of its own, so the padding that correctly frames
+// text would leave it marooned mid-pill; the label keeps the full 2.5. Narrower
+// is also fewer pixels of row, which is what wraps it.
 //
-// Zero and not a hair of padding, because the badge is now exactly as tall as
-// this shell and both are `rounded-full`: at the same height their corner radii
-// are the same number, so sitting the badge flush makes the two curves coincide
-// and the badge becomes the pill's end cap. Any padding at all and its arc sits
-// inside the shell's, which reads as a chip that nearly fits rather than one
-// that does. Nudging either height without the other breaks that — see the
-// `pill` size in EditActions.
-const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-0 text-xs font-medium transition-colors';
+// A hair, and not zero. It was `pr-0` while the badge was exactly as tall as
+// this shell: both are `rounded-full`, so at equal heights their corner radii
+// are the same number, and flush against the edge the two arcs coincide — the
+// badge becomes the pill's end cap. That is the shape reported as wrong in
+// homecast-cloud#112, "the status pill/top bubble hide buttons look worse now we
+// made them the height/edge of the pill". The badge is 5px shorter than the
+// shell again (`PILL_BADGE` in EditActions), so 2.5px here gives it the same
+// clearance at the rim as it has above and below: a chip sitting inside a pill
+// rather than one capping it. The two numbers travel together — changing this
+// without the height is what produced the shape in the report.
+const SHELL = 'inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-0.5 text-xs font-medium transition-colors';
 
 export function SummarySectionEditPills({
   layout, isDarkBackground, openSection, onToggleOpen, onToggleHidden,

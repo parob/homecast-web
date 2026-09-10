@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 /**
- * One badge, one size, wherever it is rendered.
+ * One badge, drawn the same way wherever it is rendered.
  *
- * Hide/Unhide and Pin appear both in an accessory tile's corner and in the
- * summary row's pills, and those two are on screen together — so a difference
- * between them reads as two different controls rather than one.
+ * Hide/Unhide and Pin appear in an accessory tile's corner, on a sidebar row and
+ * in the summary row's pills, and those are on screen together — so a difference
+ * between them reads as two different controls rather than one. The tile's and
+ * the row's are identical; the pill's is one step shorter on purpose, because it
+ * sits inside its pill rather than on top of something (homecast-cloud#112), and
+ * everything else about it still matches.
  *
  * The trap is that `text-[10px]` is an arbitrary font size, so Tailwind sets no
  * line-height with it and the button silently inherits whatever surrounds it:
@@ -26,7 +29,19 @@ const sizing = (el: HTMLElement) =>
   el.className.split(/\s+/).filter(c => /^(px-|py-|text-\[|leading-)/.test(c)).sort().join(' ');
 
 describe('the edit badge', () => {
-  it('is the same size on a tile and in a summary pill', () => {
+  it('is one step shorter in a summary pill than on a tile', () => {
+    // These were the same size, so that one control read as one control. At
+    // that size the badge exactly filled the pill — `py-1` *is* the pill's own
+    // padding — and, both being `rounded-full` at equal heights, capped its
+    // trailing edge as well. Reported as homecast-cloud#112: "the status
+    // pill/top bubble hide buttons look worse now we made them the
+    // height/edge of the pill".
+    //
+    // So the pill's is deliberately the short one now, and only the pill's: it
+    // has to sit *inside* something, where a tile's and a row's sit on top of
+    // one. Everything but the height still matches, which is what this pins —
+    // a pill badge that also shrank its text or its padding would be a
+    // different control again.
     render(
       <PinnedTabsProvider value={PINS as never}>
         <TileEditActions
@@ -35,7 +50,7 @@ describe('the edit badge', () => {
         />
       </PinnedTabsProvider>,
     );
-    const tile = sizing(screen.getByRole('button', { name: 'Hide Lamp' }));
+    const tile = screen.getByRole('button', { name: 'Hide Lamp' }).className;
     cleanup();
 
     render(
@@ -44,10 +59,18 @@ describe('the edit badge', () => {
         onToggleOpen={vi.fn()} onToggleHidden={vi.fn()}
       />,
     );
-    const pill = sizing(screen.getByRole('button', { name: 'Hide Scenes' }));
+    const pill = screen.getByRole('button', { name: 'Hide Scenes' }).className;
 
-    // The pill adds -my-0.5 to hang into its row; the *sizing* must match.
-    expect(pill).toBe(tile);
+    const without = (cls: string, drop: RegExp) =>
+      cls.split(/\s+/).filter(c => /^(px-|py-|text-\[|leading-)/.test(c) && !drop.test(c)).sort().join(' ');
+
+    expect(tile).toContain('py-1');
+    expect(pill).toContain('py-0.5');
+    // ...and the negative margin that keeps the row the height it was, tracking
+    // the padding the badge actually carries.
+    expect(pill).toContain('-my-0.5');
+    // Same padding across, same text, same line box.
+    expect(without(pill, /^py-/)).toBe(without(tile, /^py-/));
   });
 
   it('pins its own line box rather than inheriting the context', () => {

@@ -103,18 +103,22 @@ describe('the edit-mode summary row', () => {
 });
 
 describe('a pill is the same size whichever state it is in', () => {
-  it('wears the tile badge, and hangs into the pill rather than stretching it', () => {
-    // Two claims in one, and both matter.
+  it('wears the tile badge’s width and text, one step shorter, and hangs into the pill', () => {
+    // Three claims, and all of them matter.
     //
-    // Same badge as an accessory tile: one control that means one thing, on a
-    // pill or on a tile. Measured at 39px wide either way.
+    // The tile badge's padding across and its text: one control that means one
+    // thing, on a pill or on a tile. Measured at 39px wide either way.
     //
-    // And `-my-1`, which cancels the padding by which it overflows the pill's
+    // `py-0.5` and not `py-1`, which is what a tile's carries. `py-1` is exactly
+    // this pill's own padding, so a badge wearing it fills the pill outright —
+    // reported as wrong in homecast-cloud#112. Short by one step, the badge
+    // floats inside the pill with 2.5px clear above and below.
+    //
+    // And `-my-0.5`, which cancels the padding by which it overflows the pill's
     // line box — so the pill stays the height of the live one beside it. This
     // row swaps in while a tile is being dragged, and it sits above that grid,
     // so a taller row pushes what the finger is holding down the page. The
-    // negative margin has to track the badge's own `py-`: growing the badge for
-    // a fingertip without growing this is exactly how the row gets taller.
+    // negative margin has to track the badge's own `py-`, whichever that is.
     //
     // Asserted as classes because jsdom has no layout to measure — the real
     // height is measured in screenshots/edit-badge-hit-target.spec.ts.
@@ -122,21 +126,22 @@ describe('a pill is the same size whichever state it is in', () => {
     const badge = screen.getByRole('button', { name: 'Hide Scenes' }).className;
     expect(badge).toContain('px-2');        // the tile's padding, not a shrunk one
     expect(badge).toContain('text-[10px]'); // ...and its text
-    expect(badge).toContain('py-1');        // ...its height
-    expect(badge).toContain('-my-1');       // ...tucked into the line box
+    expect(badge).toContain('py-0.5');      // ...one step shorter than a tile's
+    expect(badge).toContain('-my-0.5');     // ...tucked into the line box
+    expect(badge).not.toContain('py-1 ');   // ...not the tile height that filled it
   });
 
-  it('sits the badge flush with the pill’s trailing edge', () => {
-    // Both are `rounded-full` and the same height, so their radii are the same
-    // number: flush, the two arcs coincide and the badge caps the pill. Any
-    // right padding and its curve sits inside the pill's — a chip that nearly
-    // fits. The rendered geometry is asserted in
-    // screenshots/edit-badge-hit-target.spec.ts; this guards the class that
-    // produces it, since a `pr-*` here is the easy thing to add back.
+  it('leaves the badge clear of the pill’s trailing edge', () => {
+    // It was `pr-0` while the badge was exactly as tall as the shell: both are
+    // `rounded-full`, so at equal heights their radii are the same number and a
+    // flush badge caps the pill instead of sitting in it — homecast-cloud#112.
+    // `pr-0.5` matches the 2.5px the shorter badge already has above and below
+    // it, so the clearance is the same on all four sides. The rendered geometry
+    // is asserted in screenshots/edit-badge-hit-target.spec.ts; this guards the
+    // class that produces it, since `pr-0` is the easy thing to put back.
     setup(null);
     const shell = screen.getByRole('button', { name: 'Hide Scenes' }).parentElement!.className;
-    expect(shell).toContain('pr-0');
-    expect(shell.split(/\s+/).filter(c => /^pr-/.test(c))).toEqual(['pr-0']);
+    expect(shell.split(/\s+/).filter(c => /^pr-/.test(c))).toEqual(['pr-0.5']);
   });
 
   it('builds both states from the same shell', () => {
