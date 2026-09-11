@@ -4,8 +4,8 @@
  * of two and a half hours, and a short stretch of the home not responding.
  *
  * Mounted at /dev/reliability by App.tsx in development builds only, so the
- * hover links between the strip and the outage list can be looked at without
- * signing in, and without waiting for a real outage. The status popover is
+ * strip and its day panel can be looked at without signing in, and without
+ * waiting for a real outage. The status popover is
  * drawn at its real width above it, in the states that matter, from the pure
  * model — no socket needed.
  */
@@ -164,7 +164,7 @@ export default function ReliabilityPreview() {
         <div>
           <h1 className="text-sm font-semibold">Reliability section, preview</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Development only. A week shaped like the real one: a fourteen-hour relay outage, a two-and-a-half-hour power cut at the house, a short blip, and three cached-only hours before the cut. Hover the strip, and hover the outages.
+            Development only. A week shaped like the real one: a fourteen-hour relay outage, a two-and-a-half-hour power cut at the house, a short blip, and three cached-only hours before the cut. Hover an hour of the strip, or tap a day, to read what happened in it.
           </p>
         </div>
         <section className="space-y-2">
