@@ -7,6 +7,9 @@
  * controls sit over. That is a calculation, so it is testable.
  */
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   whiteInkWins,
   headerHaloNeedsReinforcing,
@@ -122,6 +125,43 @@ describe('header control classes', () => {
   it('reinforcing never changes the ink', () => {
     expect(headerControlClass(true, true)).toContain('text-white');
     expect(headerControlClass(false, true)).toContain('text-foreground');
+  });
+
+  /**
+   * The bug this file exists to prevent, and the only one here that is about
+   * the build rather than the design.
+   *
+   * Tailwind emits CSS for class names it can read *verbatim* in the source. It
+   * scans text; it does not evaluate. A class assembled from a template literal
+   * compiles, type-checks and passes every other test in this file while
+   * shipping no rule at all — the element gets a class name nothing matches, and
+   * the halo silently disappears in dev and production alike. That is exactly
+   * what happened between parob/homecast-web#106's last push and its merge, and
+   * nothing caught it: not tsc, not eslint, not the screenshots, which were
+   * taken against the same broken CSS.
+   *
+   * So this asserts the scanner's own rule directly, against the real file.
+   */
+  it('every class it can return is a literal in its own source', () => {
+    const source = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../header-chrome.ts'),
+      'utf8',
+    );
+    for (const cls of all) {
+      for (const token of cls.split(' ')) {
+        expect(source, `"${token}" is not spelled out in header-chrome.ts, so Tailwind will not emit CSS for it`)
+          .toContain(token);
+      }
+    }
+  });
+
+  it('builds no class name by interpolation', () => {
+    // The same rule stated the other way round, so a future refactor that
+    // reintroduces a template literal fails here even if it happens to produce
+    // strings that exist elsewhere in the file.
+    for (const cls of all) {
+      expect(cls).not.toContain('${');
+    }
   });
 
   it('stays a halo — no opaque plate creeps in', () => {
