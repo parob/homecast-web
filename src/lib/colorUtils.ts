@@ -143,6 +143,59 @@ export function analyzeLoadedImage(img: HTMLImageElement): number {
 }
 
 /**
+ * The fraction of a background image the app header sits over.
+ *
+ * The header is 80px tall on a phone (plus the safe-area inset) against a
+ * viewport around 850–950px, so a sixth is generous rather than tight — it
+ * wants to describe what is *behind and just under* the controls, not only the
+ * pixels they cover.
+ */
+export const HEADER_BAND_FRACTION = 0.16;
+
+/**
+ * Average luminance of the TOP BAND of a loaded image, rather than of all of it.
+ *
+ * The whole-image average answers "is this wallpaper dark", which is the right
+ * question for body text and tiles and the wrong one for the header: a photo of
+ * trees under a bright sky averages dark while the strip the controls sit on is
+ * nearly white. That mismatch was invisible while each control carried its own
+ * filled disc, and became the one bad case the moment the discs came off
+ * (parob/homecast-cloud#118).
+ *
+ * Approximate in one known way: the background is painted with `object-fit:
+ * cover`, so on a viewport whose aspect ratio differs from the image's, the
+ * visible top band is not exactly the image's top band. It is still far closer
+ * than the whole-image mean, and the cost is one more 50×50 canvas read beside
+ * the one already being taken.
+ */
+export function analyzeLoadedImageBand(img: HTMLImageElement, fraction = HEADER_BAND_FRACTION): number {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 0.5;
+
+    const sampleSize = 50;
+    canvas.width = sampleSize;
+    canvas.height = sampleSize;
+
+    const bandHeight = Math.max(1, Math.round(img.naturalHeight * fraction));
+    // Source rect is the band; destination is the whole sample canvas, so every
+    // sampled pixel comes from the band.
+    ctx.drawImage(img, 0, 0, img.naturalWidth, bandHeight, 0, 0, sampleSize, sampleSize);
+
+    const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+    let totalLuminance = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      totalLuminance += getLuminance(data[i], data[i + 1], data[i + 2]);
+    }
+    return totalLuminance / (data.length / 4);
+  } catch {
+    // CORS or other error — image loaded but can't read pixels
+    return 0.5;
+  }
+}
+
+/**
  * Analyze an image URL and return its average luminance
  * Returns a Promise that resolves to a value between 0 (dark) and 1 (light)
  */

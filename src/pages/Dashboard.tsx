@@ -6193,6 +6193,9 @@ const Dashboard = () => {
   const [savedBackgroundOverride, setSavedBackgroundOverride] = useState<BackgroundSettings | null>(null);
   // Image luminance reported by BackgroundImage (synchronized with visual crossfade)
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
+  // The strip the header sits on. On a photo this is routinely the opposite
+  // verdict to the image as a whole — see `analyzeLoadedImageBand`.
+  const [bgHeaderLuminance, setBgHeaderLuminance] = useState<number | null>(null);
   // Average top-row color from image backgrounds (for iOS 26 Liquid Glass tinting)
   const [bgImageTopColor, setBgImageTopColor] = useState<string | null>(null);
 
@@ -6309,6 +6312,10 @@ const Dashboard = () => {
 
   // Determine if there's an active background and if it's dark enough for light text
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
+  // Same hook, same settings, a different reading of the image. Solids and
+  // gradients ignore the argument, so those answer identically to the above and
+  // need no special case.
+  const { isDarkBackground: isDarkHeaderBand } = useBackgroundDarkness(displayedBackground, bgHeaderLuminance ?? bgImageLuminance);
 
   // Memoised because a context read bypasses React.memo: an inline object here
   // is a new identity every Dashboard render, so every widget that reads the
@@ -6990,13 +6997,13 @@ const Dashboard = () => {
   const headerRightMenu = (
     <>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkBackground)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkBackground)}`}>
+        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`}>
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
@@ -7361,6 +7368,7 @@ const Dashboard = () => {
             entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
             autoBackgroundsEnabled={autoBackgrounds}
             onLuminanceChange={setBgImageLuminance}
+            onHeaderLuminanceChange={setBgHeaderLuminance}
             onTopColorChange={setBgImageTopColor}
           />
 
@@ -7408,13 +7416,13 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkBackground} /><StatusBadge isDarkBackground={isDarkBackground} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkHeaderBand} /><StatusBadge isDarkBackground={isDarkHeaderBand} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(isDarkBackground)}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
