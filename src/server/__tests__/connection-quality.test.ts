@@ -26,6 +26,7 @@ import {
   RECOVERY_HOLD_MS,
   OFFLINE_AFTER_MS,
   CONNECTING_AFTER_MS,
+  HANDOFF_GRACE_MS,
   isTransitional,
   type QualityInputs,
 } from '../connection-quality';
@@ -40,6 +41,7 @@ function inputs(over: Partial<QualityInputs> = {}): QualityInputs {
     lastRttAt: NOW - 1_000,
     oldestInFlightSentAt: null,
     consecutiveFailures: 0,
+    handoffSince: null,
     ...over,
   };
 }
@@ -103,6 +105,69 @@ describe('classifyQuality', () => {
     expect(dropped(CONNECTING_AFTER_MS)).toBe('connecting');
     expect(dropped(OFFLINE_AFTER_MS - 1)).toBe('connecting');
     expect(dropped(OFFLINE_AFTER_MS)).toBe('offline');
+  });
+
+  // ── the deliberate pod move that read as a fault ─────────────────────────
+  //
+  // The dwell above assumes a handoff is back in ~280ms. Production says
+  // otherwise: of 11 completed handoffs measured on 2026-09-11, five ran past
+  // CONNECTING_AFTER_MS — 1908, 3939, 9790, 17520 and 20322ms. `setState`
+  // already knows the move is deliberate (it passes `silent` to
+  // `onStateChange`); the classifier was never told, so it painted
+  // "Connecting…" for a drop that did not happen.
+  it('stays quiet through a handoff that outruns the ordinary dwell', () => {
+    const handoff = (ms: number) =>
+      classifyQuality(
+        inputs({
+          socketState: 'reconnecting',
+          socketStateSince: NOW - ms,
+          handoffSince: NOW - ms,
+        }),
+        NOW,
+      );
+    // The median handoff (756ms) was always invisible; these are the ones that
+    // were not, and the whole complaint on the issue is that they show.
+    expect(handoff(1_908)).toBe('unknown');
+    expect(handoff(3_939)).toBe('unknown');
+  });
+
+  it('surfaces a handoff that has outlived its grace, rather than hiding it', () => {
+    // The suppression has to be bounded. `handingOff` is cleared only on
+    // `connected`, so a handoff whose target never accepts stays flagged across
+    // every retry — and an unbounded exemption would mean a genuinely dead
+    // connection never says so. Past the grace it rejoins the ordinary ladder,
+    // clocked from the moment the grace ran out so it still climbs
+    // quiet → connecting → offline instead of jumping straight to red.
+    const stuck = (ms: number) =>
+      classifyQuality(
+        inputs({
+          socketState: 'reconnecting',
+          socketStateSince: NOW - ms,
+          handoffSince: NOW - ms,
+        }),
+        NOW,
+      );
+    expect(stuck(HANDOFF_GRACE_MS - 1)).toBe('unknown');
+    expect(stuck(HANDOFF_GRACE_MS)).toBe('unknown');
+    expect(stuck(HANDOFF_GRACE_MS + CONNECTING_AFTER_MS)).toBe('connecting');
+    expect(stuck(HANDOFF_GRACE_MS + OFFLINE_AFTER_MS)).toBe('offline');
+    // The worst handoff actually measured in production is well past both.
+    expect(stuck(20_322)).toBe('offline');
+  });
+
+  it('leaves an ordinary drop alone — no handoff, no exemption', () => {
+    // The guard must key on the handoff, not merely on being disconnected,
+    // or it would silence every real outage too.
+    expect(
+      classifyQuality(
+        inputs({
+          socketState: 'reconnecting',
+          socketStateSince: NOW - 3_000,
+          handoffSince: null,
+        }),
+        NOW,
+      ),
+    ).toBe('connecting');
   });
 
   it('does not call a socket that is still coming up "offline"', () => {

@@ -116,6 +116,9 @@ export function useSharedWebSocket(
       // so the in-flight signal simply does not apply here.
       oldestInFlightSentAt: null,
       consecutiveFailures: 0,
+      // A share view is never redirected for pod affinity — it has no home to
+      // key one off — so there is no deliberate move to excuse.
+      handoffSince: null,
     }, now);
     const next = applyHysteresis(qualityStateRef.current, raw, now);
     if (next.shown !== qualityStateRef.current.shown) setQuality(next.shown);
