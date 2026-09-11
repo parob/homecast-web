@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
+import { headerControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
@@ -6989,13 +6990,13 @@ const Dashboard = () => {
   const headerRightMenu = (
     <>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkBackground)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
+        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkBackground)}`}>
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
@@ -7413,7 +7414,7 @@ const Dashboard = () => {
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${isDarkBackground ? '!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50' : '!bg-transparent hover:!bg-black/10'}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(isDarkBackground)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>

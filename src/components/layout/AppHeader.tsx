@@ -97,26 +97,17 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       <div ref={rowRef} className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
         isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
         !isInMacApp && !fullWidth && "max-w-7xl")}>
-        {/* Left content with bubble background on mobile */}
+        {/* Left content. The slab that used to sit behind it over a light
+            background is gone with the buttons' own circles — see
+            `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
+            now, which costs the header no box at all. */}
         <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
-          {/* Same rule as the right-hand cluster: over a dark background the
-              buttons carry their own fill, so a bubble as well made the burger
-              a 56px slab beside two 40px circles. Over a light one the bubble
-              is what makes them legible. */}
-          <div className={cn(
-            "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300 md:hidden",
-            isDarkBackground ? "" : "material-regular"
-          )} />
           {children}
         </div>
 
         {/* User login state bubble */}
         {!isInMacApp && (
           <div className="relative flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
-            <div className={cn(
-              "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
-              isDarkBackground ? "" : "material-regular"
-            )} />
             {leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(
@@ -139,10 +130,6 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
         // padding plus half a 56px row puts that line at 61px, and this is
         // positioned against the header's padding box, so it starts at 33.
         <div className="absolute top-[33px] right-[23px] flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
-          <div className={cn(
-            "absolute inset-0 rounded-2xl -z-10 transition-colors duration-300",
-            isDarkBackground ? "" : "material-regular"
-          )} />
           {leftBadge}
           {!isAuthenticated && !isLoading && (
             <span className={cn(

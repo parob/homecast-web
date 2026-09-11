@@ -53,6 +53,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { buildAnswerCard } from '@/lib/answer-card';
+import { headerDotClass } from '@/lib/header-chrome';
 import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
@@ -248,9 +249,7 @@ export function StatusBadge({
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
             p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
-            isDarkBackground
-              ? 'bg-black/40 backdrop-blur-xl hover:bg-black/50 text-white'
-              : 'bg-transparent hover:bg-black/10 text-foreground',
+            headerDotClass(isDarkBackground),
           )}
         >
           <span
