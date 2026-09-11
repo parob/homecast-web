@@ -1,59 +1,87 @@
 /**
- * Which ink the header's bare glyphs are drawn in.
+ * How the header's bare glyphs stay legible.
  *
- * The rule is a contrast calculation, not a taste call, so it is testable: at
- * any given background luminance, exactly one of white and black has the better
- * WCAG ratio, and the threshold is where they cross.
+ * The ink is not chosen here — it is the page's, so the row reads as one thing.
+ * What is chosen here is whether the halo has to work harder, which is exactly
+ * when the page's ink is the one that loses on contrast against the strip the
+ * controls sit over. That is a calculation, so it is testable.
  */
 import { describe, it, expect } from 'vitest';
-import { headerInkIsLight, headerControlClass, headerDotClass, INK_CONTRAST_CROSSOVER } from '../header-chrome';
+import {
+  whiteInkWins,
+  headerHaloNeedsReinforcing,
+  headerControlClass,
+  headerDotClass,
+  INK_CONTRAST_CROSSOVER,
+} from '../header-chrome';
 
 /** WCAG relative-contrast ratio against white and against black. */
 const vsWhite = (L: number) => 1.05 / (L + 0.05);
 const vsBlack = (L: number) => (L + 0.05) / 0.05;
 
-describe('headerInkIsLight', () => {
-  it('picks whichever ink actually has more contrast', () => {
+describe('whiteInkWins', () => {
+  it('agrees with the contrast ratios at every luminance', () => {
     for (const L of [0, 0.02, 0.05, 0.1, 0.15, 0.25, 0.4, 0.6, 0.8, 0.95, 1]) {
-      const whiteWins = vsWhite(L) > vsBlack(L);
-      expect(headerInkIsLight(L), `at luminance ${L}`).toBe(whiteWins);
+      expect(whiteInkWins(L), `at luminance ${L}`).toBe(vsWhite(L) > vsBlack(L));
     }
   });
 
   it('crosses over where the two ratios are equal', () => {
     // (L + 0.05)² = 1.05 × 0.05, solved for L.
-    const exact = Math.sqrt(1.05 * 0.05) - 0.05;
-    expect(INK_CONTRAST_CROSSOVER).toBeCloseTo(exact, 3);
-    expect(headerInkIsLight(INK_CONTRAST_CROSSOVER - 0.01)).toBe(true);
-    expect(headerInkIsLight(INK_CONTRAST_CROSSOVER + 0.01)).toBe(false);
+    expect(INK_CONTRAST_CROSSOVER).toBeCloseTo(Math.sqrt(1.05 * 0.05) - 0.05, 3);
+    expect(whiteInkWins(INK_CONTRAST_CROSSOVER - 0.01)).toBe(true);
+    expect(whiteInkWins(INK_CONTRAST_CROSSOVER + 0.01)).toBe(false);
   });
 
-  it('falls back to the theme ink when there is nothing measured', () => {
-    // Not merely a default: `text-foreground` is correct in both themes, which
-    // is the only answer that cannot be wrong while the answer is unknown.
-    expect(headerInkIsLight(null)).toBe(false);
-    expect(headerInkIsLight(undefined)).toBe(false);
+  it('claims nothing when nothing has been measured', () => {
+    expect(whiteInkWins(null)).toBe(false);
+    expect(whiteInkWins(undefined)).toBe(false);
   });
+});
 
+describe('headerHaloNeedsReinforcing', () => {
   /**
-   * The regression this whole rule exists for. These are the measured effective
-   * luminances of the header band on real preset wallpapers (see the probe in
-   * parob/homecast-web#106). Under `isDarkLuminance`'s 0.8 threshold every one
-   * of them counted as dark and got white icons — including the two well above
-   * 0.5, which is a contrast ratio near 1.3:1.
+   * The measured effective luminance of the header band on the real preset
+   * wallpapers, against the ink the page uses over each (the `isDarkBackground`
+   * verdict — white on all five, since its threshold is 0.8).
+   *
+   * The first four are the regression: a white glyph over a band measuring 0.24
+   * to 0.82 is between about 1.3:1 and 3.6:1, which is what the filled discs
+   * used to hide. Only `beach` is a background where white ink is also the
+   * high-contrast choice, and only there is the ordinary halo enough.
    */
   it.each([
-    ['countryside @78', 0.670, false],
-    ['clouds @85', 0.821, false],
-    ['mountains @60', 0.492, false],
-    ['cliffs @35', 0.237, false],
-    ['beach @30', 0.057, true],
-  ])('%s → light ink: %s', (_name, luminance, expected) => {
-    expect(headerInkIsLight(luminance as number)).toBe(expected);
+    ['countryside @78', 0.670, true],
+    ['clouds @85', 0.821, true],
+    ['mountains @60', 0.492, true],
+    ['cliffs @35', 0.237, true],
+    ['beach @30', 0.057, false],
+  ])('%s with white ink → reinforced: %s', (_name, luminance, expected) => {
+    expect(headerHaloNeedsReinforcing(true, luminance as number)).toBe(expected);
+  });
+
+  it('reinforces dark ink over a genuinely dark strip too', () => {
+    // The mirror case, so this is not secretly "reinforce whenever white".
+    expect(headerHaloNeedsReinforcing(false, 0.03)).toBe(true);
+    expect(headerHaloNeedsReinforcing(false, 0.9)).toBe(false);
+  });
+
+  it('does not reinforce on no evidence', () => {
+    // A permanently heavy halo is a worse default than a light one, and an
+    // unmeasured background is not a reason to assume the worst.
+    expect(headerHaloNeedsReinforcing(true, null)).toBe(false);
+    expect(headerHaloNeedsReinforcing(false, undefined)).toBe(false);
   });
 });
 
 describe('header control classes', () => {
+  const all = [
+    headerControlClass(true), headerControlClass(false),
+    headerControlClass(true, true), headerControlClass(false, true),
+    headerDotClass(true), headerDotClass(false),
+    headerDotClass(true, true), headerDotClass(false, true),
+  ];
+
   it('never paints a resting background — a disc means "being pressed"', () => {
     for (const cls of [headerControlClass(true), headerControlClass(false)]) {
       expect(cls).toContain('!bg-transparent');
@@ -67,15 +95,41 @@ describe('header control classes', () => {
   it('haloes in the opposite colour to the ink', () => {
     expect(headerControlClass(true)).toContain('text-white');
     expect(headerControlClass(true)).toContain('rgba(0,0,0,');
+    expect(headerControlClass(true)).not.toContain('rgba(255,255,255,');
     expect(headerControlClass(false)).toContain('text-foreground');
     expect(headerControlClass(false)).toContain('rgba(255,255,255,');
+    expect(headerControlClass(false)).not.toContain('rgba(0,0,0,');
   });
 
-  it('carries both halo layers — a tight core and a wide spread', () => {
+  it('always carries at least a tight core and a wide spread', () => {
     // One tight shadow vanishes into mid-tone clutter; one wide one reads as a
     // smudge. Losing either is the failure mode, so count them.
-    for (const cls of [headerControlClass(true), headerControlClass(false), headerDotClass(true), headerDotClass(false)]) {
-      expect(cls.match(/drop-shadow\(/g) ?? []).toHaveLength(2);
+    for (const cls of all) {
+      expect((cls.match(/drop-shadow\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('reinforcing adds a layer rather than swapping one in', () => {
+    for (const [plain, strong] of [
+      [headerControlClass(true), headerControlClass(true, true)],
+      [headerDotClass(false), headerDotClass(false, true)],
+    ]) {
+      expect((strong.match(/drop-shadow\(/g) ?? []).length)
+        .toBeGreaterThan((plain.match(/drop-shadow\(/g) ?? []).length);
+    }
+  });
+
+  it('reinforcing never changes the ink', () => {
+    expect(headerControlClass(true, true)).toContain('text-white');
+    expect(headerControlClass(false, true)).toContain('text-foreground');
+  });
+
+  it('stays a halo — no opaque plate creeps in', () => {
+    // Every shadow layer must stay translucent; a 1.0 alpha would be a shape.
+    for (const cls of all) {
+      for (const [, alpha] of cls.matchAll(/rgba\([\d,]+,([\d.]+)\)/g)) {
+        expect(Number(alpha)).toBeLessThan(1);
+      }
     }
   });
 });

@@ -11,9 +11,13 @@ request whose whole substance is "does this look better" has to show the picture
 | File | What it shows |
 |---|---|
 | `dark.jpg`, `bright.jpg`, `light.jpg` | The original before/after pairs — discs vs. bare icons |
-| `sheet-1.jpg` | countryside, clouds — the two bright cases, three options each |
-| `sheet-2.jpg` | mountains, cliffs — the mid-tones |
-| `sheet-3.jpg` | beach, gradient, plain light — the cases that already worked |
+| `sheet-1/2/3.jpg` | The three options as first proposed: discs, ink-by-contrast, scrim |
+| `matched-1/2/3.jpg` | Where it landed: discs, ink-by-contrast (rejected), ink matching the title |
+| `halo.jpg` | The reinforced halo against the ordinary one, same ink |
+
+Ink-by-contrast was rejected on review: it put a black ⋮ beside a white "My Home"
+on the same row, which reads as a bug however well each half contrasts on its
+own. The glyphs now take the page's ink and the halo carries the contrast.
 
 ## Regenerating
 
