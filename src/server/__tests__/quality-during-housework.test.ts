@@ -40,6 +40,8 @@ function healthy(pending: InFlightRequest[]) {
     lastRttAt: NOW - 1_000,
     oldestInFlightSentAt: oldestCountedInFlight(pending),
     consecutiveFailures: 0,
+    // Housework is not a handoff; nothing here is being moved on purpose.
+    handoffSince: null,
   };
 }
 

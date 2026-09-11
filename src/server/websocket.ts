@@ -340,6 +340,15 @@ export class ServerWebSocket {
   /** Set while an affinity-redirect handoff is in flight — see redirectTo(). */
   private handingOff = false;
   /**
+   * When that handoff began, or null when none is in flight.
+   *
+   * Separate from `stateSince` because that resets on every transition: a
+   * handoff that fails and retries would restart the grace on each attempt and
+   * so never age out of it. This is what bounds the classifier's exemption —
+   * see `HANDOFF_GRACE_MS`.
+   */
+  private handingOffSince: number | null = null;
+  /**
    * When anything last arrived on the socket. The only evidence that the
    * connection is still real — `readyState` reports a half-open socket as OPEN
    * indefinitely.
@@ -646,6 +655,10 @@ export class ServerWebSocket {
     // and is back in well under a second, so telling the user their connection
     // dropped would describe a fault that did not happen.
     this.handingOff = true;
+    // `??=`, not `=`: a second move before the first has landed is still one
+    // unbroken stretch without a connection, and restarting the clock would
+    // hand it a fresh grace every time.
+    this.handingOffSince ??= Date.now();
     this.setState('reconnecting', 'relay-address-changed', { target: wsUrl });
     this.establishConnection();
   }
@@ -683,6 +696,8 @@ export class ServerWebSocket {
     // that did not happen. Every session takes one of these, so without this
     // the banner greets people on an ordinary page load.
     this.handingOff = true;
+    // See switchEndpoint: one unbroken stretch, one clock.
+    this.handingOffSince ??= Date.now();
 
     // Reconnect immediately to the new target
     this.setState('reconnecting', 'pod-redirect', { target, server_reason: serverReason });
@@ -985,7 +1000,10 @@ export class ServerWebSocket {
       // silent: the drop never happened, so neither should the "recovered"
       // that would follow it. Cleared once we are back up.
       const silent = this.handingOff;
-      if (newState === 'connected') this.handingOff = false;
+      if (newState === 'connected') {
+        this.handingOff = false;
+        this.handingOffSince = null;
+      }
       this.callbacks.onStateChange?.(newState, {
         silent,
         reason,
@@ -1040,6 +1058,9 @@ export class ServerWebSocket {
       lastRttAt: this.lastRttAt,
       oldestInFlightSentAt,
       consecutiveFailures: this.consecutiveFailures,
+      // The fact `onStateChange` has always been given, now given to the
+      // classifier too — which is the whole of homecast-cloud#101.
+      handoffSince: this.handingOffSince,
     }, now);
 
     const before = this.qualityState.shown;
