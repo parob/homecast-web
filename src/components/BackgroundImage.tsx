@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, getImageTopColor } from '@/lib/colorUtils';
+import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, analyzeLoadedImageBand, getImageTopColor } from '@/lib/colorUtils';
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
 import { config } from '@/lib/config';
@@ -50,6 +50,12 @@ interface BackgroundImageProps {
   onReady?: () => void;
   /** Reports image luminance when the visible background changes. null for solid/gradient/none (handled synchronously by useBackgroundDarkness). */
   onLuminanceChange?: (luminance: number | null) => void;
+  /**
+   * Reports the luminance of just the band the app header sits over, which can
+   * differ sharply from the whole-image figure — see `analyzeLoadedImageBand`.
+   * null for non-image backgrounds, where the two cannot differ.
+   */
+  onHeaderLuminanceChange?: (luminance: number | null) => void;
   /** Reports average color of the top row of the loaded image (hex string). null for non-image backgrounds. */
   onTopColorChange?: (color: string | null) => void;
 }
@@ -68,7 +74,7 @@ function getBackgroundKey(settings?: BackgroundSettings | null): string {
  * Brightness: 50 = no change, <50 = darker, >50 = brighter
  * Uses crossfade technique to smoothly transition between backgrounds.
  */
-export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onTopColorChange }: BackgroundImageProps) {
+export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange }: BackgroundImageProps) {
   // Compute effective settings: explicit > auto > none
   // solid-white is special: it means "no background" and overrides auto-backgrounds
   const effectiveSettings = useMemo((): BackgroundSettings | null => {
@@ -105,6 +111,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
 
   // Track luminance and top color from the current image layer
   const pendingLuminanceRef = useRef<number | null>(null);
+  const pendingHeaderLuminanceRef = useRef<number | null>(null);
   const pendingTopColorRef = useRef<string | null>(null);
 
   // Helper to call onReady only once per background change
@@ -122,6 +129,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     if (!effectiveSettings || effectiveSettings.type === 'none' || isSolid || isGradient) {
       callOnReady();
       onLuminanceChange?.(null);
+      onHeaderLuminanceChange?.(null);
       onTopColorChange?.(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,6 +148,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       // Reset onReady flag for new background
       onReadyCalledRef.current = false;
       pendingLuminanceRef.current = null;
+      pendingHeaderLuminanceRef.current = null;
       pendingTopColorRef.current = null;
 
       // Settings changed - start crossfade
@@ -157,6 +166,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
         callOnReady();
         // Report null — solids/gradients are computed synchronously by useBackgroundDarkness / getDominantColor
         onLuminanceChange?.(null);
+        onHeaderLuminanceChange?.(null);
         onTopColorChange?.(null);
 
         // Clear previous after transition
@@ -177,6 +187,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           callOnReady();
           // Report whatever we have (may be null if image never loaded)
           onLuminanceChange?.(pendingLuminanceRef.current);
+          onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
           onTopColorChange?.(pendingTopColorRef.current);
           transitionTimeoutRef.current = setTimeout(() => {
             setPrevBg(null);
@@ -197,6 +208,10 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     pendingLuminanceRef.current = luminance;
   };
 
+  const handleImageHeaderLuminance = (luminance: number) => {
+    pendingHeaderLuminanceRef.current = luminance;
+  };
+
   const handleImageTopColor = (color: string) => {
     pendingTopColorRef.current = color;
   };
@@ -209,6 +224,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     callOnReady();
     // Report luminance and top color now that the image is visible
     onLuminanceChange?.(pendingLuminanceRef.current);
+    onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
     onTopColorChange?.(pendingTopColorRef.current);
     transitionTimeoutRef.current = setTimeout(() => {
       setPrevBg(null);
@@ -260,6 +276,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           instant={instant}
           onImageLoad={handleNewBgReady}
           onImageLuminance={handleImageLuminance}
+          onImageHeaderLuminance={handleImageHeaderLuminance}
           onImageTopColor={handleImageTopColor}
         />
       )}
@@ -276,10 +293,11 @@ interface BackgroundLayerProps {
   instant?: boolean;
   onImageLoad?: () => void;
   onImageLuminance?: (luminance: number) => void;
+  onImageHeaderLuminance?: (luminance: number) => void;
   onImageTopColor?: (color: string) => void;
 }
 
-function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageTopColor }: BackgroundLayerProps) {
+function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor }: BackgroundLayerProps) {
   const isSolid = settings.type === 'preset' && settings.presetId?.startsWith('solid-');
   const isGradient = settings.type === 'preset' && settings.presetId?.startsWith('gradient-');
 
@@ -308,6 +326,7 @@ function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImage
           instant={instant}
           onLoad={onImageLoad}
           onLuminanceReady={onImageLuminance}
+          onHeaderLuminanceReady={onImageHeaderLuminance}
           onTopColorReady={onImageTopColor}
         />
       )}
@@ -380,6 +399,7 @@ interface ImageBackgroundProps {
   instant?: boolean;
   onLoad?: () => void;
   onLuminanceReady?: (luminance: number) => void;
+  onHeaderLuminanceReady?: (luminance: number) => void;
   onTopColorReady?: (color: string) => void;
 }
 
@@ -391,6 +411,7 @@ function ImageBackground({
   instant,
   onLoad,
   onLuminanceReady,
+  onHeaderLuminanceReady,
   onTopColorReady,
 }: ImageBackgroundProps) {
   // Determine the image URL (ensure custom URLs are absolute)
@@ -419,6 +440,7 @@ function ImageBackground({
         const cachedImg = imageCache.get(imageUrl);
         if (cachedImg) {
           onLuminanceReady?.(analyzeLoadedImage(cachedImg));
+          onHeaderLuminanceReady?.(analyzeLoadedImageBand(cachedImg));
           onTopColorReady?.(getImageTopColor(cachedImg));
         }
         onLoad?.();
@@ -438,6 +460,7 @@ function ImageBackground({
       }
       setIsLoaded(true);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
+      onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
       onTopColorReady?.(getImageTopColor(imgRef.current));
       onLoad?.();
     }
@@ -473,6 +496,7 @@ function ImageBackground({
     // Analyze luminance and top color from the loaded image element
     if (imgRef.current) {
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
+      onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
       onTopColorReady?.(getImageTopColor(imgRef.current));
     }
     onLoad?.();

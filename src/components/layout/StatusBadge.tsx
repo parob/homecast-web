@@ -53,6 +53,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { buildAnswerCard } from '@/lib/answer-card';
+import { headerDotClass } from '@/lib/header-chrome';
 import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
@@ -65,7 +66,19 @@ import { warnsUser, RECONNECTED_VISIBLE_MS, rttForDisplay } from '@/lib/connecti
 import { AnswerCardView, RelayRow, ReliabilityRow } from './status/AnswerCard';
 
 interface StatusBadgeProps {
-  isDarkBackground?: boolean;
+  /**
+   * Whether this badge's dot should be drawn in light ink. It is the page's own
+   * ink — the same `isDarkBackground` the home title follows — so that the row
+   * reads as one thing; see `lib/header-chrome.ts`, which is also what draws
+   * the burger, search and ⋮ beside it.
+   */
+  inkIsLight?: boolean;
+  /**
+   * Whether that ink loses on contrast against the strip behind it, in which
+   * case the halo works harder. Decided by the header, which is what holds the
+   * band measurement.
+   */
+  haloStrong?: boolean;
   accountType?: string;
   /**
    * The home the card's verdict and the chain's last node are named for.
@@ -108,7 +121,8 @@ function linkEvidence(): string | null {
 }
 
 export function StatusBadge({
-  isDarkBackground,
+  inkIsLight,
+  haloStrong,
   accountType,
   homeName,
   homeId,
@@ -248,9 +262,7 @@ export function StatusBadge({
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
             p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
-            isDarkBackground
-              ? 'bg-black/40 backdrop-blur-xl hover:bg-black/50 text-white'
-              : 'bg-transparent hover:bg-black/10 text-foreground',
+            headerDotClass(!!inkIsLight, !!haloStrong),
           )}
         >
           <span

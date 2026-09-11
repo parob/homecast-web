@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
+import { headerControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import { useCanvasTint } from '@/hooks/useCanvasTint';
@@ -52,6 +53,9 @@ export function MainLayout({
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
+  // The strip the header sits on, which on a photo can be the opposite verdict
+  // to the image as a whole — see `analyzeLoadedImageBand`.
+  const [bgHeaderLuminance, setBgHeaderLuminance] = useState<number | null>(null);
 
   // Determine if there's an active background and if it's dark enough for light text.
   //
@@ -66,6 +70,14 @@ export function MainLayout({
   // painted over bg-background yet. Gating on top of that could only ever be a
   // no-op or a regression.
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(background, bgImageLuminance);
+  // Same hook, same settings, a different reading of the image. Solids and
+  // gradients ignore the argument entirely, so those answer identically and no
+  // special case is needed for them. The header's glyphs take the page's ink so
+  // the row reads as one thing; this reading only decides whether that ink
+  // needs a heavier halo — see `lib/header-chrome.ts`.
+  const { effectiveLuminance: headerBandLuminance } = useBackgroundDarkness(background, bgHeaderLuminance ?? bgImageLuminance);
+  const headerInkLight = isDarkBackground;
+  const headerHaloStrong = headerHaloNeedsReinforcing(headerInkLight, headerBandLuminance);
 
   // Memoised for the same reason as Dashboard's: a new object identity here
   // re-renders every background-reading widget, memo or not.
@@ -126,7 +138,7 @@ export function MainLayout({
           itself must stay at inset-0 so content keeps clear of the notch. */}
       <div aria-hidden className={cn("fixed-full-screen pointer-events-none -z-10", hasBackground && isDarkBackground ? "bg-black" : "bg-background")} />
       {/* Background image layer */}
-      <BackgroundImage settings={background} onLuminanceChange={setBgImageLuminance} />
+      <BackgroundImage settings={background} onLuminanceChange={setBgImageLuminance} onHeaderLuminanceChange={setBgHeaderLuminance} />
 
       <AppHeader
         isInMacApp={isInMacApp}
@@ -140,7 +152,7 @@ export function MainLayout({
           {sidebar && isMobile && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 !bg-transparent hover:!bg-black/10 active:!bg-black/20 transition-colors duration-300", isDarkBackground && "!bg-black/40 backdrop-blur-xl text-white hover:!bg-black/50 active:!bg-black/60")}>
+                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300", headerControlClass(headerInkLight, headerHaloStrong))}>
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
