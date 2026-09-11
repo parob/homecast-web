@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
-import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle, X, ChevronDown } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, WifiOff, AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { describeProbeReason, describeStatus } from '@/lib/uptime-copy';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -73,19 +73,24 @@ export function formatDuration(seconds: number): string {
   return `${Math.round(seconds / 86400)}d`;
 }
 
-function statusBadge(status: string): { label: string; tooltip: string; icon: JSX.Element; classes: string } {
-  const { label, explanation: tooltip } = describeStatus(status);
+// The badge is the status, and only the status. `describeStatus` also carries
+// an `explanation` for each one — a paragraph of prose the section used to
+// print under the badge; homecast-cloud#115 took the prose off this screen, so
+// it is read no longer. The copy itself is left in `uptime-copy.ts`, with its
+// tests, because the popover may yet want it.
+function statusBadge(status: string): { label: string; icon: JSX.Element; classes: string } {
+  const { label } = describeStatus(status);
   switch (status) {
     case 'verified':
-      return { label, tooltip, icon: <ShieldCheck className="h-3.5 w-3.5" />, classes: 'bg-green-500/10 text-green-700 dark:text-green-400' };
+      return { label, icon: <ShieldCheck className="h-3.5 w-3.5" />, classes: 'bg-green-500/10 text-green-700 dark:text-green-400' };
     case 'connected':
-      return { label, tooltip, icon: <ShieldAlert className="h-3.5 w-3.5" />, classes: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' };
+      return { label, icon: <ShieldAlert className="h-3.5 w-3.5" />, classes: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' };
     case 'degraded':
-      return { label, tooltip, icon: <AlertTriangle className="h-3.5 w-3.5" />, classes: 'bg-orange-500/10 text-orange-700 dark:text-orange-400' };
+      return { label, icon: <AlertTriangle className="h-3.5 w-3.5" />, classes: 'bg-orange-500/10 text-orange-700 dark:text-orange-400' };
     case 'offline':
-      return { label, tooltip, icon: <WifiOff className="h-3.5 w-3.5" />, classes: 'bg-red-500/10 text-red-700 dark:text-red-400' };
+      return { label, icon: <WifiOff className="h-3.5 w-3.5" />, classes: 'bg-red-500/10 text-red-700 dark:text-red-400' };
     default:
-      return { label, tooltip, icon: <HelpCircle className="h-3.5 w-3.5" />, classes: 'bg-muted text-muted-foreground' };
+      return { label, icon: <HelpCircle className="h-3.5 w-3.5" />, classes: 'bg-muted text-muted-foreground' };
   }
 }
 
@@ -119,10 +124,6 @@ function sameDay(a: number, b: number): boolean {
 const OUTAGE_LABEL: Record<UptimeOutage['severity'], string> = {
   offline: 'Relay offline',
   degraded: 'Home not responding',
-};
-const OUTAGE_EXPLANATION: Record<UptimeOutage['severity'], string> = {
-  offline: 'The relay lost its connection to the cloud. Every home on it was out of reach from outside, and nothing could be checked.',
-  degraded: "The relay was connected, but this home's accessories did not answer its checks. The house, not the relay.",
 };
 const OUTAGE_SWATCH: Record<UptimeOutage['severity'], string> = {
   offline: 'bg-red-500',
@@ -330,36 +331,27 @@ interface TimelineStripProps {
   byHour: Map<number, UptimeBucket>;
   days: DayGroup[];
   outages: UptimeOutage[];
-  /** The outage whose row is under the pointer or open: its hours light up, the rest fade. */
-  highlight: UptimeOutage | null;
   /** The day whose detail panel is open, drawn with a frame around it. */
   selectedDay: number | null;
   onSelectDay: (dayStart: number | null) => void;
-  onHoverHour: (hourStart: number | null) => void;
 }
 
-function TimelineStrip({ byHour, days, outages, highlight, selectedDay, onSelectDay, onHoverHour }: TimelineStripProps) {
+function TimelineStrip({ byHour, days, outages, selectedDay, onSelectDay }: TimelineStripProps) {
   const hourCell = (hourTs: number) => {
     const b = byHour.get(hourTs);
     const total = b?.total ?? 0;
     const { title, lines } = describeHour(byHour, hourTs, outages);
-    const lit = highlight !== null && outageTouchesHour(highlight, hourTs);
-    const dimmed = highlight !== null && !lit;
-    const frame = `flex-1 h-6 rounded-sm transition-opacity ${dimmed ? 'opacity-30' : ''} ${lit ? 'ring-1 ring-foreground' : ''}`;
-    const hover = {
-      onMouseEnter: () => onHoverHour(hourTs),
-      onMouseLeave: () => onHoverHour(null),
-    };
+    const frame = 'flex-1 h-6 rounded-sm';
     let bar: JSX.Element;
     if (!b || total === 0) {
-      bar = <div className={`${frame} bg-muted/40`} {...hover} />;
+      bar = <div className={`${frame} bg-muted/40`} />;
     } else {
       const v = (b.verified / total) * 100;
       const c = (b.connected / total) * 100;
       const d = (b.degraded / total) * 100;
       const o = (b.offline / total) * 100;
       bar = (
-        <div className={`${frame} overflow-hidden flex flex-col`} {...hover}>
+        <div className={`${frame} overflow-hidden flex flex-col`}>
           {v > 0 && <div className="bg-green-500" style={{ height: `${v}%` }} />}
           {c > 0 && <div className="bg-green-300 dark:bg-green-700" style={{ height: `${c}%` }} />}
           {d > 0 && <div className="bg-orange-500" style={{ height: `${d}%` }} />}
@@ -419,111 +411,21 @@ function TimelineStrip({ byHour, days, outages, highlight, selectedDay, onSelect
   );
 }
 
-/** The lines the outage detail shows, wherever it is shown — the hover tooltip
- *  on a desktop and the row's own expansion on a phone are the same facts. */
-function outageDetailLines(o: UptimeOutage): string[] {
-  const [start, end] = outageSpan(o);
-  const ongoing = !o.endedAt;
-  return [
-    `Started ${fmtDayTime(new Date(start))}`,
-    ongoing ? 'Still going' : `Ended ${fmtDayTime(new Date(end))}`,
-    `Lasted ${formatDuration(o.durationSeconds)}${ongoing ? ' so far' : ''}`,
-  ];
-}
-
-interface OutageRowProps {
-  outage: UptimeOutage;
-  /** The pointer is on an hour of the strip this outage covers, or its day is open. */
-  lit: boolean;
-  /** This row's own detail is open. */
-  open: boolean;
-  onToggle: () => void;
-  onHover: (outage: UptimeOutage | null) => void;
-}
-
-function OutageRow({ outage: o, lit, open, onToggle, onHover }: OutageRowProps) {
-  const ongoing = !o.endedAt;
-  const [start] = outageSpan(o);
-  const label = OUTAGE_LABEL[o.severity];
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-expanded={open}
-          className={`w-full text-left block rounded border bg-background/60 px-2 py-1 transition-colors cursor-pointer ${lit ? 'ring-1 ring-foreground' : ''}`}
-          onClick={onToggle}
-          onMouseEnter={() => onHover(o)}
-          onMouseLeave={() => onHover(null)}
-        >
-          <span className="flex items-center justify-between gap-2">
-            <span className={`inline-flex items-center gap-1.5 min-w-0 ${o.severity === 'offline' ? 'text-red-600' : 'text-orange-600'}`}>
-              <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${OUTAGE_SWATCH[o.severity]}`} />
-              {/* An offline outage is the relay's, and it shows on every home
-                  that relay serves; say so, or a power cut at one house reads
-                  as three houses going down. */}
-              <span className="truncate">
-                {ongoing ? `${label} since ${formatRelativeAgo(o.startedAt)}` : `${label} ${formatRelativeAgo(o.startedAt)}`}
-              </span>
-            </span>
-            <span className="inline-flex items-center gap-1 shrink-0 text-muted-foreground">
-              {ongoing ? `${formatDuration(o.durationSeconds)} so far` : formatDuration(o.durationSeconds)}
-              <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </span>
-          </span>
-          {/* The clock window, on the row itself. Four rows all reading "Relay
-              offline 1 day ago" are one row as far as a reader is concerned. */}
-          <span className="block text-[10px] text-muted-foreground mt-0.5">{outageClock(o, start)}</span>
-          {open && (
-            <span className="block mt-1 space-y-0.5 text-[10px] text-muted-foreground">
-              {outageDetailLines(o).map((line) => (
-                <span key={line} className="block">{line}</span>
-              ))}
-              <span className="block pt-0.5">{OUTAGE_EXPLANATION[o.severity]}</span>
-            </span>
-          )}
-        </button>
-      </TooltipTrigger>
-      {/* Below the row, not above it: above would sit on the strip, hiding
-          the hours this row has just lit up. */}
-      <TooltipContent side="bottom" align="start" className={`${TOOLTIP_Z} max-w-[300px] text-xs`}>
-        <div className="font-medium">{label}</div>
-        {outageDetailLines(o).map((line) => (
-          <div key={line} className="opacity-80">{line}</div>
-        ))}
-        <div className="opacity-80 mt-1">{OUTAGE_EXPLANATION[o.severity]}</div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-const OUTAGE_ROWS = 5;
-
 /** The section, given its data. The query wrapper below is what the settings
  *  page mounts; this is what the dev preview mounts with a fixture. */
 export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
   const badge = statusBadge(s.currentStatus);
   const lastProbe = s.lastProbe;
-  // Hover links the two views of the same week: an outage row lights the
-  // hours it covers on the strip, and an hour on the strip lights the rows of
-  // the outages that ran through it.
-  const [hoverOutage, setHoverOutage] = useState<UptimeOutage | null>(null);
-  const [hoverHour, setHoverHour] = useState<number | null>(null);
-  // ...and a tap does the same, because none of the above happens on a
-  // touchscreen: `mouseenter` never fires and a Radix tooltip deliberately
-  // never opens from a tap, so every reading in here used to be unreachable
-  // from a phone. A selected day and an open row are the touch route to the
-  // same two readings, and they work under a mouse too.
+  // A day of the strip opens its own panel, naming every outage that ran
+  // through it. That is the only reading of an outage the section offers, and
+  // it is deliberately a tap rather than a hover: a Radix tooltip never opens
+  // from a tap, so a hover-only reading is no reading at all on a phone.
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [openOutage, setOpenOutage] = useState<number | null>(null);
 
   const byHour = bucketsByHour(s.timeline);
   const days = buildDayGroups(Date.now());
   const openDay = selectedDay === null ? null : days.find((d) => d.dayStart === selectedDay) ?? null;
   const dayDetail = openDay ? describeDay(byHour, openDay.hours, s.outages) : null;
-
-  const rows = s.outages.slice(0, OUTAGE_ROWS);
-  const openRow = openOutage === null ? null : rows[openOutage] ?? null;
 
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={400}>
@@ -541,7 +443,6 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
               <span className="text-muted-foreground">went offline {formatRelativeAgo(s.statusSince)}</span>
             )}
           </div>
-          <p className="text-muted-foreground text-[11px] leading-snug">{badge.tooltip}</p>
 
           {/* Last probe detail — not while offline, when the last check is
               older than the outage and says nothing the badge doesn't. */}
@@ -576,9 +477,6 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              Reachable is your relay's connection to the cloud, so every home on the same relay shares it. Verified and Home not responding are this home's own checks.
-            </p>
           </div>
           {s.uptimePercent7d > 0 && (
             <p className="text-[10px] text-muted-foreground">
@@ -597,10 +495,8 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
               byHour={byHour}
               days={days}
               outages={s.outages}
-              highlight={hoverOutage ?? openRow}
               selectedDay={selectedDay}
               onSelectDay={setSelectedDay}
-              onHoverHour={setHoverHour}
             />
             {/* The reading a finger can ask for. It says which day it is
                 describing, because the strip has no axis labels — there is no
@@ -637,31 +533,6 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
               <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-sm bg-red-500" /> Relay offline</span>
             </div>
           </div>
-
-          {/* Recent outages */}
-          {s.outages.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent outages</div>
-                {s.outages.length > rows.length && (
-                  <div className="text-[10px] text-muted-foreground">{rows.length} of {s.outages.length}</div>
-                )}
-              </div>
-              {rows.map((o, idx) => (
-                <OutageRow
-                  key={`${o.startedAt}-${idx}`}
-                  outage={o}
-                  lit={
-                    (hoverHour !== null && outageTouchesHour(o, hoverHour))
-                    || (openDay !== null && outageTouchesHours(o, openDay.hours))
-                  }
-                  open={openOutage === idx}
-                  onToggle={() => setOpenOutage((cur) => (cur === idx ? null : idx))}
-                  onHover={setHoverOutage}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </TooltipProvider>

@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 //
-// The Reliability section's two readings — an hour of the strip and one outage
-// — used to live only in Radix tooltips, which never open from a tap. On a
-// phone that made the strip and the outage list decorative: homecast-cloud#111.
+// The Reliability section's readings used to live only in Radix tooltips,
+// which never open from a tap. On a phone that made the strip decorative:
+// homecast-cloud#111. So what is pinned here is the touch route, and the fact
+// that it is a route a mouse can take too — a day of the strip opens its own
+// panel, naming every outage that ran through it.
 //
-// So what is pinned here is the touch route to both, and the fact that it is a
-// route a mouse can take too: a day of the strip opens its own panel, an
-// outage row opens its own detail, and each lights the other's half of the
-// week. The legend's wrapping is pinned as classes, because jsdom has no
-// layout — the measurement of it is in the pull request.
+// The flat "Recent outages" list that used to sit below the strip is gone
+// (homecast-cloud#115). Its removal is pinned too, because the day panel is
+// now the only reading of an outage the section offers: if the panel ever
+// stops naming them, the facts are not anywhere else.
+//
+// The legend's wrapping is pinned as classes, because jsdom has no layout —
+// the measurement of it is in the pull request.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
@@ -159,39 +163,55 @@ describe('UptimeSectionView — the touch route', () => {
     expect(screen.queryByLabelText('Close day detail')).toBeNull();
   });
 
-  it('opens an outage row on click, showing what the tooltip used to hold', () => {
-    render(<UptimeSectionView summary={summary(Date.now())} />);
-    const row = screen.getAllByRole('button', { name: /^Relay offline/ })[0];
-    expect(row.getAttribute('aria-expanded')).toBe('false');
-    // The explanation is what only a hover could reach before.
-    expect(screen.queryByText(/lost its connection to the cloud/)).toBeNull();
-
-    fireEvent.click(row);
-    expect(row.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByText(/lost its connection to the cloud/)).toBeTruthy();
-    expect(screen.getByText(/^Started /)).toBeTruthy();
-    expect(screen.getByText(/^Ended /)).toBeTruthy();
-    expect(screen.getByText(/^Lasted /)).toBeTruthy();
-  });
-
-  it('carries the outage clock window on the row itself, unopened', () => {
-    render(<UptimeSectionView summary={summary(Date.now())} />);
-    const row = screen.getAllByRole('button', { name: /^Relay offline/ })[0];
-    // Two rows reading "Relay offline 1 day ago" are one row to a reader; the
-    // clock window is what tells them apart at a glance.
-    expect(row.textContent).toMatch(/→/);
-  });
-
-  it('lights the outage row whose hours the open day covers', () => {
+  it('names the outage in the day panel, with its real clock window', () => {
     const now = Date.now();
     render(<UptimeSectionView summary={summary(now)} />);
-    const row = screen.getAllByRole('button', { name: /^Relay offline/ })[0];
-    expect(row.className).not.toContain('ring-foreground');
-
     const outageDay = new Date(now - 19 * HOUR);
     const label = outageDay.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
     fireEvent.click(screen.getByRole('button', { name: `${label} — reliability detail` }));
-    expect(row.className).toContain('ring-foreground');
+
+    // Severity, span and duration, the way the removed row carried them —
+    // "Relay offline 02:48 AM → 05:00 PM, 2h". This panel is now the only
+    // place an outage is readable, so it has to say all three.
+    const line = screen.getByText(/^Relay offline .+ → .+, /);
+    expect(line).toBeTruthy();
+  });
+});
+
+describe('UptimeSectionView — the outage list is gone', () => {
+  it('renders no Recent outages section', () => {
+    render(<UptimeSectionView summary={summary(Date.now())} />);
+    expect(screen.queryByText('Recent outages')).toBeNull();
+    // The rows themselves, and the "5 of 13" counter that headed them.
+    expect(screen.queryAllByRole('button', { name: /^Relay offline/ })).toHaveLength(0);
+    expect(screen.queryByText(/^\d+ of \d+$/)).toBeNull();
+  });
+
+  it('keeps the strip and its day panel, which is what replaced it', () => {
+    render(<UptimeSectionView summary={summary(Date.now())} />);
+    expect(screen.getAllByRole('button', { name: /reliability detail$/ }).length).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe('UptimeSectionView — the prose is gone', () => {
+  it('prints no explanatory paragraphs, only readings', () => {
+    render(<UptimeSectionView summary={summary(Date.now())} />);
+    // The status explanation that sat under the badge...
+    expect(screen.queryByText(/just read a live value from one of your accessories/)).toBeNull();
+    // ...and the paragraph under the KPI tiles.
+    expect(screen.queryByText(/every home on the same relay shares it/)).toBeNull();
+  });
+
+  it('keeps every reading that carries a number', () => {
+    render(<UptimeSectionView summary={summary(Date.now())} />);
+    // "Verified" is the badge, the legend swatch and the last-probe line.
+    expect(screen.getAllByText('Verified').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/live accessory read/)).toBeTruthy();
+    expect(screen.getByText('91.6%')).toBeTruthy();             // 24h reachable
+    expect(screen.getByText(/^Verified 71% of checks over 7 days/)).toBeTruthy();
+    // The legend stays: it is the chart's key, not prose, and without it the
+    // colours of the strip mean nothing.
+    expect(screen.getByText('Home not responding')).toBeTruthy();
   });
 });
 
