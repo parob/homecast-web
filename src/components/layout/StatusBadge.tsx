@@ -66,7 +66,13 @@ import { warnsUser, RECONNECTED_VISIBLE_MS, rttForDisplay } from '@/lib/connecti
 import { AnswerCardView, RelayRow, ReliabilityRow } from './status/AnswerCard';
 
 interface StatusBadgeProps {
-  isDarkBackground?: boolean;
+  /**
+   * Whether this badge's dot should be drawn in light ink. Decided by contrast
+   * against the strip the header sits on, not by the wallpaper's mood — see
+   * `lib/header-chrome.ts`, which is also what picks the ink for the burger,
+   * search and ⋮ beside it.
+   */
+  inkIsLight?: boolean;
   accountType?: string;
   /**
    * The home the card's verdict and the chain's last node are named for.
@@ -109,7 +115,7 @@ function linkEvidence(): string | null {
 }
 
 export function StatusBadge({
-  isDarkBackground,
+  inkIsLight,
   accountType,
   homeName,
   homeId,
@@ -249,7 +255,7 @@ export function StatusBadge({
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
             p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
-            headerDotClass(isDarkBackground),
+            headerDotClass(!!inkIsLight),
           )}
         >
           <span

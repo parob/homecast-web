@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
-import { headerControlClass } from '@/lib/header-chrome';
+import { headerControlClass, headerInkIsLight } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
@@ -6315,7 +6315,11 @@ const Dashboard = () => {
   // Same hook, same settings, a different reading of the image. Solids and
   // gradients ignore the argument, so those answer identically to the above and
   // need no special case.
-  const { isDarkBackground: isDarkHeaderBand } = useBackgroundDarkness(displayedBackground, bgHeaderLuminance ?? bgImageLuminance);
+  // The header's ink is picked by contrast against the strip it sits on, not
+  // by the wallpaper's mood — `headerInkIsLight` says why those are different
+  // questions with different thresholds.
+  const { effectiveLuminance: headerBandLuminance } = useBackgroundDarkness(displayedBackground, bgHeaderLuminance ?? bgImageLuminance);
+  const headerInkLight = headerInkIsLight(headerBandLuminance);
 
   // Memoised because a context read bypasses React.memo: an inline object here
   // is a new identity every Dashboard render, so every widget that reads the
@@ -6997,13 +7001,13 @@ const Dashboard = () => {
   const headerRightMenu = (
     <>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`}>
+        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight)}`}>
           <MoreVertical className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
@@ -7416,13 +7420,13 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={isDarkHeaderBand} /><StatusBadge isDarkBackground={isDarkHeaderBand} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(isDarkHeaderBand)}`}>
+                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(headerInkLight)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>

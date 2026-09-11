@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
-import { headerControlClass } from '@/lib/header-chrome';
+import { headerControlClass, headerInkIsLight } from '@/lib/header-chrome';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import { useCanvasTint } from '@/hooks/useCanvasTint';
@@ -72,8 +72,11 @@ export function MainLayout({
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(background, bgImageLuminance);
   // Same hook, same settings, a different reading of the image. Solids and
   // gradients ignore the argument entirely, so those answer identically and no
-  // special case is needed for them.
-  const { isDarkBackground: isDarkHeaderBand } = useBackgroundDarkness(background, bgHeaderLuminance ?? bgImageLuminance);
+  // special case is needed for them. The header's ink is picked by contrast
+  // against that strip rather than by the wallpaper's mood — see
+  // `headerInkIsLight`.
+  const { effectiveLuminance: headerBandLuminance } = useBackgroundDarkness(background, bgHeaderLuminance ?? bgImageLuminance);
+  const headerInkLight = headerInkIsLight(headerBandLuminance);
 
   // Memoised for the same reason as Dashboard's: a new object identity here
   // re-renders every background-reading widget, memo or not.
@@ -148,7 +151,7 @@ export function MainLayout({
           {sidebar && isMobile && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300", headerControlClass(isDarkHeaderBand))}>
+                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300", headerControlClass(headerInkLight))}>
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
