@@ -43,6 +43,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { publishHeaderState, statusDotHex } from '@/native/native-header';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { SLOW_IN_FLIGHT_MS, SLOW_RTT_MS } from '@/server/connection-quality';
@@ -210,6 +211,19 @@ export function StatusBadge({
     community: communityRelayMac,
   });
 
+  // The iOS native header draws its own dot and cannot read a Tailwind class,
+  // so publish the colour down. A partial merge, so this never disturbs the
+  // title `AppHeader` publishes; a no-op on every other platform and on any
+  // build without the preview.
+  //
+  // Above the early return below, because hooks must not sit under one — and
+  // the return is exactly the case that has to reach the bar as `null`, since
+  // a hidden web badge should not leave a stale dot drawn natively.
+  const nativeDotHidden = communityRelayMac && !showRelay;
+  useEffect(() => {
+    publishHeaderState({ statusColor: nativeDotHidden ? null : statusDotHex(p.dotClass) });
+  }, [nativeDotHidden, p.dotClass]);
+
   if (communityRelayMac && !showRelay) return null;
 
   // Keyed on `accountType`, never on a home's `isCloudManaged` — that flag
@@ -253,6 +267,9 @@ export function StatusBadge({
     }}>
       <PopoverTrigger asChild>
         <button
+          // What a tap on the iOS native bar's dot clicks, so the same popover
+          // opens from the same trigger — see `native/native-header.ts`.
+          data-native-header="status"
           aria-label={p.srLabel}
           className={cn(
             'flex items-center justify-center rounded-full text-[13px] font-medium',
