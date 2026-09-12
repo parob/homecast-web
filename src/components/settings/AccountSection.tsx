@@ -22,6 +22,7 @@ import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config
 import { appVersionLabel } from '@/lib/app-version';
 import { toast } from 'sonner';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
+import { isNativeHeaderAvailable, isNativeHeaderEnabled, setNativeHeaderPreview } from '@/native/native-header';
 
 interface CommunityUser {
   id: string;
@@ -106,6 +107,10 @@ export function AccountSection({
   // starts fetching, and account settings arrive long after that — so it lives
   // in localStorage and is read synchronously at boot. See request-log.ts.
   const [requestLogOpen, setRequestLogOpen] = useState(() => isRequestPanelEnabled());
+  // The native header preview (iOS only). Seeded from the flag native injected
+  // at document start, so re-opening Settings shows its real position rather
+  // than defaulting to off.
+  const [nativeHeaderPreview, setNativeHeaderPreviewState] = useState(() => isNativeHeaderEnabled());
   // Community auth management (relay Mac only)
   const showAuthManagement = isCommunity && isRelayCapable();
   const [authEnabled, setAuthEnabled] = useState(false);
@@ -444,6 +449,34 @@ export function AccountSection({
             />
           </div>
         </div>
+        {/* Native top chrome (parob/homecast-cloud#120).
+            Gated on BOTH Developer Mode and the build actually being able to
+            draw it: on anything else this switch would be a control that
+            silently does nothing, which is worse than its absence. */}
+        {developerMode && isNativeHeaderAvailable() && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Native header (preview)</p>
+              <p className="text-xs text-muted-foreground">
+                Draw the top row with real iOS controls and a system blur instead
+                of the web header. A preview — it takes effect immediately, and
+                turning it off puts the web header straight back.
+              </p>
+            </div>
+            <div className="relative flex items-center">
+              <Switch
+                checked={nativeHeaderPreview}
+                onCheckedChange={(checked) => {
+                  // Native owns the flag; this is optimistic so the switch does
+                  // not sit at its old position waiting for a round trip that
+                  // reports nothing back.
+                  setNativeHeaderPreview(checked);
+                  setNativeHeaderPreviewState(checked);
+                }}
+              />
+            </div>
+          </div>
+        )}
         {/* Only meaningful with the developer tools on, and hidden otherwise so
             it can't be switched on by someone who has no use for it. */}
         {developerMode && (

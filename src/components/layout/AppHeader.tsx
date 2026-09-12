@@ -1,6 +1,8 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNativeHeader } from '@/hooks/useNativeHeader';
+import { NATIVE_HEADER_HIDDEN_CLASS } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -17,10 +19,37 @@ interface AppHeaderProps {
   isDarkBackground?: boolean;
   /** Expand to full browser width (browser-only setting) */
   fullWidth?: boolean;
+  /**
+   * What the native top chrome should show as its title, when the iOS preview
+   * is on (parob/homecast-cloud#120). Ignored everywhere else.
+   */
+  nativeTitle?: string;
+  /** The connection dot's colour for that bar, as CSS hex. `null` hides it. */
+  nativeStatusColor?: string | null;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // The native top chrome, on iOS, behind a preview flag that is off by
+  // default — so on every other platform and every build without it, this is
+  // `false` and nothing below changes.
+  //
+  // Memoised because the hook publishes on identity change, and an object
+  // literal is a new identity every render — which would post to the bridge on
+  // every keystroke anywhere in the app.
+  //
+  // The connection dot is NOT published here. `StatusBadge` owns that state and
+  // publishes it itself; `header.setState` merges, so the two never overwrite
+  // each other. `nativeStatusColor` stays as a prop for a caller that renders
+  // no `StatusBadge` and still wants a dot.
+  const nativeState = useMemo(
+    () => (nativeStatusColor === undefined
+      ? { title: nativeTitle ?? '' }
+      : { title: nativeTitle ?? '', statusColor: nativeStatusColor }),
+    [nativeTitle, nativeStatusColor],
+  );
+  const nativeHeaderActive = useNativeHeader(nativeState);
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView
   // creation and is therefore available at the first React render — whereas
@@ -94,9 +123,16 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       {/* In the Mac app the 33px above this row already clears the traffic
           lights, so a full 80px row on top of it pushed the whole page down.
           56px is exactly the bubble's height — nothing to spare, nothing wasted. */}
+      {/* Hidden, not unmounted, while the native bar has the screen. The four
+          triggers stay in the DOM and keep their layout box so a native tap can
+          click the real one and Radix can anchor to it — see
+          `NATIVE_HEADER_HIDDEN_CLASS`. It also keeps `--top-row-center` (below)
+          resolving to the line the native bar is drawn on, which is where the
+          toaster wants to sit anyway. */}
       <div ref={rowRef} className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
         isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
-        !isInMacApp && !fullWidth && "max-w-7xl")}>
+        !isInMacApp && !fullWidth && "max-w-7xl",
+        nativeHeaderActive && NATIVE_HEADER_HIDDEN_CLASS)}>
         {/* Left content. The slab that used to sit behind it over a light
             background is gone with the buttons' own circles — see
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
