@@ -414,8 +414,19 @@ export function installNativeHeaderBridge(handlers: {
   };
 }
 
-/** What counts as covering the page: any open Radix dialog, sheet or popover. */
+/**
+ * What counts as covering the page: an open Radix dialog or sheet. A popover
+ * also carries `role="dialog"`, but it hangs off a control rather than
+ * covering the page — and the connection popover is opened *from* the bar,
+ * which must not vanish under it.
+ */
 export const NATIVE_HEADER_COVER_SELECTOR = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
+const POPPER_WRAPPER = '[data-radix-popper-content-wrapper]';
+
+export function isPageCovered(root: HTMLElement | Document = document): boolean {
+  return Array.from(root.querySelectorAll<HTMLElement>(NATIVE_HEADER_COVER_SELECTOR))
+    .some((el) => !el.closest(POPPER_WRAPPER));
+}
 
 /**
  * Publish `covered` whenever a web overlay opens or closes.
@@ -429,7 +440,7 @@ export function watchNativeHeaderCover(root: HTMLElement = document.body): () =>
   if (!isNativeHeaderAvailable()) return () => {};
   let last: boolean | null = null;
   const check = () => {
-    const covered = root.querySelector(NATIVE_HEADER_COVER_SELECTOR) !== null;
+    const covered = isPageCovered(root);
     if (covered !== last) {
       last = covered;
       publishHeaderState({ covered });

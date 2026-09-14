@@ -44,6 +44,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { publishHeaderState, statusDotHex } from '@/native/native-header';
+import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { SLOW_IN_FLIGHT_MS, SLOW_RTT_MS } from '@/server/connection-quality';
@@ -220,6 +221,12 @@ export function StatusBadge({
   // the return is exactly the case that has to reach the bar as `null`, since
   // a hidden web badge should not leave a stale dot drawn natively.
   const nativeDotHidden = communityRelayMac && !showRelay;
+  // Under the iOS native bar this button is hidden with the rest of the web
+  // header row, but it is still what the native dot "clicks" and what the
+  // popover anchors to. Park it, invisibly, where the native dot is drawn —
+  // left of the search/⋯ capsule — so the popover opens under that dot
+  // rather than at the top-left corner of a zero-height row.
+  const nativeHeaderActive = useNativeHeaderActive();
   // The line under the native large title says something only when there is
   // something to say — the Home app shows "Updating…" or "No Response" there
   // and nothing at all when the home is simply reachable.
@@ -278,6 +285,16 @@ export function StatusBadge({
           // opens from the same trigger — see `native/native-header.ts`.
           data-native-header="status"
           aria-label={p.srLabel}
+          style={nativeHeaderActive ? {
+            position: 'fixed',
+            top: 'calc(var(--safe-area-top, 0px) + 6px)',
+            right: '118px',
+            width: 32,
+            height: 40,
+            opacity: 0,
+            pointerEvents: 'none',
+            visibility: 'visible',
+          } : undefined}
           className={cn(
             'flex items-center justify-center text-[13px] font-medium',
             // Width changes when a label appears. Eased rather than snapped:
@@ -285,16 +302,20 @@ export function StatusBadge({
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
-            // On its own glass plate, the size of the controls beside it —
-            // the iOS native bar's shape language (parob/homecast-cloud#120).
-            p.label ? 'h-[max(2.5rem,40px)] gap-1.5 px-3' : 'h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] p-0',
-            headerGlassClass(!!inkIsLight),
-            headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, ''),
+            // A bare dot, larger, with the full tap target and no plate; only
+            // once it has words to carry does it get the glass pill the other
+            // controls sit on. Same spot as the iOS native bar's dot
+            // (parob/homecast-cloud#120): left of the search/⋯ capsule.
+            p.label
+              ? `h-[max(2.5rem,40px)] gap-1.5 px-3 ${headerGlassClass(!!inkIsLight)} ${headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, '')}`
+              : 'h-[max(2.5rem,40px)] w-8 p-0 rounded-full bg-transparent',
           )}
         >
           <span
             className={cn(
-              'h-2 w-2 rounded-full shrink-0',
+              'rounded-full shrink-0',
+              // Bigger on its own; the pill's dot stays small beside its text.
+              p.label ? 'h-2 w-2' : 'h-3 w-3 shadow-[0_1px_2px_rgba(0,0,0,0.35)]',
               p.dotClass,
               // `motion-safe:` so a viewer who has asked for less movement gets
               // the colour and the label without the animation.
