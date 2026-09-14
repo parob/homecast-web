@@ -16,17 +16,25 @@ const DropdownMenu = DropdownMenuPrimitive.Root;
  */
 const DropdownMenuTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger> & {
+    /**
+     * Skip the lit open state. It was drawn for the round glass buttons — a
+     * ⋮ going solid white reads as pressed — but on a text trigger, a page
+     * heading with a chevron, the same rule paints a white slab behind the
+     * words. Such a trigger shows its own open state (the chevron's fill).
+     */
+    plain?: boolean;
+  }
+>(({ className, plain, ...props }, ref) => (
   <DropdownMenuPrimitive.Trigger
     ref={ref}
     className={cn(
       "transition-colors duration-fast",
-      "data-[state=open]:!bg-white data-[state=open]:!text-black",
+      !plain && "data-[state=open]:!bg-white data-[state=open]:!text-black",
       // No z-index here on purpose. Lifting the trigger over the scrim cannot
       // work — see MenuScrim — so the scrim is cut open around it instead, and
       // the button stays exactly where its call site put it.
-      "data-[state=open]:shadow-sm",
+      !plain && "data-[state=open]:shadow-sm",
       className,
     )}
     {...props}
@@ -199,7 +207,10 @@ const DropdownMenuContent = React.forwardRef<
       // separate object arriving.
       style={scrim ? { transformOrigin: "var(--radix-dropdown-menu-content-transform-origin)" } : undefined}
       className={cn(
-        "z-[10060] min-w-[8rem] overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        // Never taller than the room Radix measured beneath (or above) the
+        // trigger: a long menu — every room of a big home — scrolls inside
+        // its own box rather than running off the bottom of a phone.
+        "z-[10060] min-w-[8rem] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         scrim && [
           "border-0 shadow-2xl duration-base",
           // Overrides the 95% above — a menu that grows from 75% at the
