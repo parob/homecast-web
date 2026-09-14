@@ -4107,6 +4107,27 @@ const Dashboard = () => {
   // The iOS native header has the screen (parob/homecast-cloud#120): the web
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
+  // The phone's web header: once the big heading has scrolled under the bar,
+  // the bar shows the page's name with the switcher — what the native bar
+  // does with its large title. Watched, not computed from scroll offsets:
+  // the heading's own box says when it is gone.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [headingHidden, setHeadingHidden] = useState(false);
+  useEffect(() => {
+    const el = headingRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    // The heading counts as gone once it is under the header row, not at
+    // the screen's edge. The row's centre line is published by AppHeader
+    // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
+    // the cut is the row's bottom plus a little.
+    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeadingHidden(!entry.isIntersecting),
+      { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId]);
   // The request-log dock stops squashing the app while the native header is
   // on (see `DebugDock`) and overlays the bottom instead, so the page clears
   // it itself. Zero whenever the dock is closed.
@@ -7333,7 +7354,6 @@ const Dashboard = () => {
   // name is then a line break, not a slash.
   const largeHeading = isMobile && !nativeHeaderActive;
   const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
-  const crumbSeparatorClass = largeHeading ? 'hidden' : 'mx-2 opacity-40';
   const crumbNameClass = largeHeading ? 'block truncate' : '';
   const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
     const Icon = item.icon;
@@ -7396,9 +7416,68 @@ const Dashboard = () => {
       <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
     </span>
   );
+  // Between crumbs: a slash on the desktop line, a small chevron on the
+  // phone's path line ("George Street › Bedrooms"). Nothing after the last
+  // crumb on a phone — the page's own name is on the line below.
+  const crumbSeparator = (last: boolean): React.ReactNode => {
+    if (largeHeading) return last ? null : <ChevronRight className="inline h-3.5 w-3.5 mx-1 opacity-50 align-[-2px]" />;
+    return <span className="mx-2 opacity-40">/</span>;
+  };
+  // The switcher's rows — homes, then this home's rooms, groups and
+  // collections — shared by the home name, the room name and the bar's
+  // collapsed title on a phone, so all three open the same thing.
+  const renderSwitcherItems = (): React.ReactNode => (
+    <>
+      {nativeHomes.length > 1 && (
+        <>
+          {nativeHomes.map((home) => (
+            <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
+              <House className="h-4 w-4 mr-2" />
+              <span className="truncate">{home.name}</span>
+              {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+        </>
+      )}
+      {nativeNavigation.map((section, i) => (
+        <React.Fragment key={section.id}>
+          {i > 0 && <DropdownMenuSeparator />}
+          {section.title && <DropdownMenuLabel className="text-xs text-muted-foreground">{section.title}</DropdownMenuLabel>}
+          {renderNavItems(section.items)}
+        </React.Fragment>
+      ))}
+    </>
+  );
+  // The disc chevron the heading and the native bar draw after a name.
+  const discChevron = (
+    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full transition-colors ${isDarkBackground ? 'bg-white/20 group-data-[state=open]/title:bg-white/35' : 'bg-black/10 group-data-[state=open]/title:bg-black/20'}`}>
+      <ChevronDown className="h-3 w-3" strokeWidth={3} />
+    </span>
+  );
+  // The bar's collapsed title on a phone: the page's name and the switcher,
+  // shown once the big heading has scrolled under the bar.
+  const compactPageName = statusAreaName || (selectedCollectionId ? (selectedCollection?.name ?? '') : (statusHomeName ?? ''));
+  const compactTitle = largeHeading && hasContentAccess && compactPageName ? (
+    <div className={`transition-opacity duration-base ${headingHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden={!headingHidden}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild plain>
+          <button type="button" className={`group/title inline-flex items-center gap-2 rounded-full px-3 h-[max(2.5rem,40px)] max-w-[60vw] text-[15px] font-semibold ${headerGlassClass(headerInkLight)}`}>
+            <span className="truncate">{compactPageName}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent scrim align="center" className="min-w-[220px]">
+          {renderSwitcherItems()}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ) : null;
   const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
     const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
-    if (!showWebHomeMenu) {
+    // On a phone a crumb is a plain link back: the switcher lives on the
+    // page's own name below, not on both.
+    if (!showWebHomeMenu || (className && largeHeading)) {
       if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
     }
@@ -7416,11 +7495,7 @@ const Dashboard = () => {
               negative margins keep the text where it was. */}
           <button type="button" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
             <span className="truncate">{name}</span>
-            {asHeading ? (
-              <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full transition-colors ${isDarkBackground ? 'bg-white/20 group-data-[state=open]/title:bg-white/35' : 'bg-black/10 group-data-[state=open]/title:bg-black/20'}`}>
-                <ChevronDown className="h-3 w-3" strokeWidth={3} />
-              </span>
-            ) : (
+            {asHeading ? discChevron : (
               <ChevronDown className="h-4 w-4 shrink-0" />
             )}
           </button>
@@ -7428,25 +7503,7 @@ const Dashboard = () => {
         {/* The pill's negative margin pulls the trigger's box past the text;
             the menu lines up with the words, not the box. */}
         <DropdownMenuContent scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
-          {nativeHomes.length > 1 && (
-            <>
-              {nativeHomes.map((home) => (
-                <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
-                  <House className="h-4 w-4 mr-2" />
-                  <span className="truncate">{home.name}</span>
-                  {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-            </>
-          )}
-          {nativeNavigation.map((section, i) => (
-            <React.Fragment key={section.id}>
-              {i > 0 && <DropdownMenuSeparator />}
-              {section.title && <DropdownMenuLabel className="text-xs text-muted-foreground">{section.title}</DropdownMenuLabel>}
-              {renderNavItems(section.items)}
-            </React.Fragment>
-          ))}
+          {renderSwitcherItems()}
         </DropdownMenuContent>
       </DropdownMenu>{isHeading && headingStatusDot}</>
     );
@@ -7674,7 +7731,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -8928,7 +8985,7 @@ const Dashboard = () => {
                     bold — the same size the native bar draws, so the two
                     builds read alike. A room or group page keeps its path,
                     small, on a line above the big name. */}
-                <h2 className={`font-bold mb-4 ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 ref={headingRef} className={`font-bold mb-4 ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
@@ -8942,7 +8999,7 @@ const Dashboard = () => {
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
-                          <span className={parentGroup ? 'mx-2 opacity-40' : crumbSeparatorClass}>/</span>
+                          {crumbSeparator(!parentGroup)}
                           {parentGroup && (
                             <>
                               <button
@@ -8952,15 +9009,31 @@ const Dashboard = () => {
                               >
                                 {parentGroup.name}
                               </button>
-                              <span className={crumbSeparatorClass}>/</span>
+                              {crumbSeparator(true)}
                             </>
                           )}
                           </span>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild plain>
-                              <span className={`cursor-pointer ${crumbNameClass}`}>{roomName}</span>
+                              {largeHeading ? (
+                                <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                                  <span className="truncate">{roomName}</span>
+                                  {discChevron}
+                                </button>
+                              ) : (
+                                <span className={`cursor-pointer ${crumbNameClass}`}>{roomName}</span>
+                              )}
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
+                            <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                              {/* On a phone the room's name is the switcher, like the
+                                  home's; the room's own actions follow under its name. */}
+                              {largeHeading && (
+                                <>
+                                  {renderSwitcherItems()}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuLabel className="text-xs text-muted-foreground">{roomName}</DropdownMenuLabel>
+                                </>
+                              )}
                               {selectedHomeId && canShare && (
                                 <DropdownMenuItem onClick={() => {
                                   if (currentRoom) setSidebarShareRoom({ room: currentRoom, homeId: selectedHomeId });
@@ -9025,13 +9098,27 @@ const Dashboard = () => {
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
-                      <span className={crumbSeparatorClass}>/</span>
+                      {crumbSeparator(true)}
                       </span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild plain>
-                          <span className={`cursor-pointer ${crumbNameClass}`}>{selectedRoomGroup.name}</span>
+                          {largeHeading ? (
+                            <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                              <span className="truncate">{selectedRoomGroup.name}</span>
+                              {discChevron}
+                            </button>
+                          ) : (
+                            <span className={`cursor-pointer ${crumbNameClass}`}>{selectedRoomGroup.name}</span>
+                          )}
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                          {largeHeading && (
+                            <>
+                              {renderSwitcherItems()}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-xs text-muted-foreground">{selectedRoomGroup.name}</DropdownMenuLabel>
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => {
                             setEditingRoomGroup({
                               groupId: selectedRoomGroup.entityId,
