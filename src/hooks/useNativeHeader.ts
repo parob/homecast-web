@@ -9,6 +9,7 @@ import {
   NATIVE_HEADER_EVENT,
   nativeHeaderInsets,
   type NativeHeaderState,
+  type NativeHeaderRefreshKind,
 } from '@/native/native-header';
 
 /**
@@ -38,6 +39,7 @@ export function useNativeHeader(
     onSelectHome?: (homeId: string) => void;
     onMenuAction?: (itemId: string) => void;
     onNavigate?: (itemId: string) => void;
+    onRefresh?: (kind: NativeHeaderRefreshKind) => void;
   } = {},
 ): boolean {
   const [active, setActive] = useState(() => isNativeHeaderEnabled());
@@ -68,6 +70,9 @@ export function useNativeHeader(
       },
       onNavigate: (itemId) => {
         handlersRef.current.onNavigate?.(itemId);
+      },
+      onRefresh: (kind) => {
+        handlersRef.current.onRefresh?.(kind);
       },
     });
   }, []);

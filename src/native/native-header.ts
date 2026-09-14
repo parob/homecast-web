@@ -169,6 +169,25 @@ export function nativeHeaderInsets(): { bar: number; status: number } {
 }
 
 /**
+ * The large-title band's height, in points — the same number as the native
+ * side's `WebHostingLayout.largeTitleHeight`. The bar inset it reports is the
+ * compact bar plus this, so this is what recovers the compact bar's bottom.
+ */
+export const NATIVE_HEADER_LARGE_TITLE_HEIGHT = 52;
+
+/**
+ * The line the native bar's controls are centred on, in viewport px — where
+ * a toast should sit while the bar is up, since the web header row it would
+ * otherwise measure is collapsed. In the sidebar layout the bar reports no
+ * band (bar == status) and is just its buttons on a standard-height row.
+ */
+export function nativeHeaderRowCenter(): number {
+  const { bar, status } = nativeHeaderInsets();
+  const compactBottom = bar > status ? bar - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
+  return status + (compactBottom - status) / 2;
+}
+
+/**
  * The native dot's fill for a Tailwind `dotClass` from `connection-presentation`.
  *
  * A translation table rather than a shared constant, because the two sides
@@ -202,6 +221,7 @@ interface NativeHeaderWindow extends Window {
     selectHome?: (homeId: string) => void;
     menuAction?: (itemId: string) => void;
     navigate?: (itemId: string) => void;
+    refresh?: (kind: string) => void;
   };
   /** The bar's full height (large title shown) and the status bar alone, pt. */
   homecastNativeHeaderInsets?: { bar: number; status: number };
@@ -361,6 +381,13 @@ export function activateHeaderControl(
  * `onEnabledChange` fires when native flips the bar on or off, so the web row
  * can hide or come back without a reload.
  */
+export type NativeHeaderRefreshKind = 'soft' | 'hard';
+
+/** The page has done what the native pull-to-refresh asked; stop the spinner. */
+export function publishRefreshDone(): boolean {
+  return post({ action: 'header.refreshDone' });
+}
+
 export function installNativeHeaderBridge(handlers: {
   onTap: (control: NativeHeaderControl) => void;
   onEnabledChange?: (enabled: boolean) => void;
@@ -370,6 +397,12 @@ export function installNativeHeaderBridge(handlers: {
   onMenuAction?: (itemId: string) => void;
   /** The native ☰ menu picked a room, group or collection, by id. */
   onNavigate?: (itemId: string) => void;
+  /**
+   * The native pull-to-refresh fired. `soft` is the ordinary refresh; `hard`
+   * is the deep pull that used to mean the web's hard-reload countdown. The
+   * page answers with `publishRefreshDone()` so the spinner can stop.
+   */
+  onRefresh?: (kind: NativeHeaderRefreshKind) => void;
 }): () => void {
   const w = win();
   if (!w) return () => {};
@@ -400,6 +433,9 @@ export function installNativeHeaderBridge(handlers: {
     },
     navigate: (itemId: string) => {
       if (typeof itemId === 'string' && itemId) handlers.onNavigate?.(itemId);
+    },
+    refresh: (kind: string) => {
+      handlers.onRefresh?.(kind === 'hard' ? 'hard' : 'soft');
     },
   };
 
