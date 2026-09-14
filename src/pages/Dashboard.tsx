@@ -551,7 +551,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            Create Virtual Accessory
+            Add Virtual Accessory
           </ContextMenuItem>
         )}
         {/* Not on touch: the row carries a hide badge in Edit Layout, and
@@ -950,13 +950,13 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateRoomGroup && (
             <ContextMenuItem onClick={onCreateRoomGroup}>
               <Layers className="h-4 w-4 mr-2" />
-              Create Room Group
+              Add Room Group
             </ContextMenuItem>
           )}
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
+              Add Virtual Accessory
             </ContextMenuItem>
           )}
             {/* Not on touch - see SortableRoomItem. */}
