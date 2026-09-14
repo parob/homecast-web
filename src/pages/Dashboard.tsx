@@ -7326,7 +7326,7 @@ const Dashboard = () => {
     </span>
   );
   const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
-    const isHeading = !className && !onPlainClick;
+    const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
     if (!showWebHomeMenu) {
       if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
@@ -8814,7 +8814,13 @@ const Dashboard = () => {
                    widget state. */
                 <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`}>
                 {/* Header with title. Under the iOS native header the bar's
-                    large title IS this heading, so it is not drawn twice. */}
+                    large title IS this heading, so it is not drawn twice — but
+                    the connection badge inside it is still what the native dot
+                    clicks and what its popover anchors to, and an anchor inside
+                    a display:none heading measures 0×0 and drops the popover at
+                    the screen's origin (measured). So it is mounted out here
+                    instead, parked by its own fixed position. */}
+                {nativeHeaderActive && isMobile && headingStatusDot}
                 <h2 className={`text-base font-bold truncate mb-4 ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
