@@ -52,9 +52,15 @@ interface AppHeaderProps {
   onNativeNavigate?: (itemId: string) => void;
   /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
   onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
+  /**
+   * Centred in the row, between the left cluster and the controls: the
+   * phone's collapsed page title, shown once the big heading has scrolled
+   * under the bar. Sized by its content; the caller keeps it narrow.
+   */
+  centerTitle?: React.ReactNode;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh, centerTitle }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -189,6 +195,11 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
           {badgeLeads && leftBadge}
           {children}
         </div>
+        {centerTitle && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+            {centerTitle}
+          </div>
+        )}
 
         {/* User login state bubble */}
         {!isInMacApp && (
