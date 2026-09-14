@@ -7185,12 +7185,6 @@ const Dashboard = () => {
   if (isAdmin && !isCommunity) {
     generalItems.push({ id: 'admin', label: 'Admin', icon: Server, symbol: 'server.rack', onSelect: () => navigate('/portal/admin') });
   }
-  // The native bar has no ☰ (like the Home app), so on the phone layout the
-  // drawer is reached from here for what a menu cannot do: reorder, hide,
-  // create. The web header keeps its own ☰ and does not need this.
-  if (nativeHeaderActive && isMobile && hasContentAccess) {
-    generalItems.push({ id: 'drawer', label: 'Full Menu', icon: Menu, symbol: 'sidebar.left', onSelect: () => activateHeaderControl('menu') });
-  }
   overflowSections.push({ id: 'general', separator: overflowSections[0]?.id === 'refresh', items: generalItems });
   if (!isCommunity || !isRelayCapable()) {
     overflowSections.push({ id: 'session', separator: true, items: [
