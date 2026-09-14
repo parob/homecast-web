@@ -220,9 +220,16 @@ export function StatusBadge({
   // the return is exactly the case that has to reach the bar as `null`, since
   // a hidden web badge should not leave a stale dot drawn natively.
   const nativeDotHidden = communityRelayMac && !showRelay;
+  // The line under the native large title says something only when there is
+  // something to say — the Home app shows "Updating…" or "No Response" there
+  // and nothing at all when the home is simply reachable.
+  const nativeSubtitle = nativeDotHidden || statusDotHex(p.dotClass) === '#10b981' ? '' : p.label;
   useEffect(() => {
-    publishHeaderState({ statusColor: nativeDotHidden ? null : statusDotHex(p.dotClass) });
-  }, [nativeDotHidden, p.dotClass]);
+    publishHeaderState({
+      statusColor: nativeDotHidden ? null : statusDotHex(p.dotClass),
+      subtitle: nativeSubtitle,
+    });
+  }, [nativeDotHidden, p.dotClass, nativeSubtitle]);
 
   if (communityRelayMac && !showRelay) return null;
 

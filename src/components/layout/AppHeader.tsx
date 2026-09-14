@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNativeHeader } from '@/hooks/useNativeHeader';
-import { NATIVE_HEADER_HIDDEN_CLASS } from '@/native/native-header';
+import { NATIVE_HEADER_HIDDEN_CLASS, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderState } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -26,9 +26,21 @@ interface AppHeaderProps {
   nativeTitle?: string;
   /** The connection dot's colour for that bar, as CSS hex. `null` hides it. */
   nativeStatusColor?: string | null;
+  /** The homes the native title menu lists, in the page's order. */
+  nativeHomes?: NativeHeaderHome[];
+  /** Which of them is current. */
+  nativeCurrentHomeId?: string | null;
+  /** The native title menu picked a home. */
+  onNativeSelectHome?: (homeId: string) => void;
+  /** The ⋯ menu as data, for the native bar to present natively. */
+  nativeMenu?: NativeHeaderMenuSection[];
+  /** The native ⋯ menu picked an item. */
+  onNativeMenuAction?: (itemId: string) => void;
+  /** Whether the page is drawing light-on-dark, so the bar can match. */
+  nativeAppearance?: 'dark' | 'light';
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -43,13 +55,19 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // publishes it itself; `header.setState` merges, so the two never overwrite
   // each other. `nativeStatusColor` stays as a prop for a caller that renders
   // no `StatusBadge` and still wants a dot.
-  const nativeState = useMemo(
-    () => (nativeStatusColor === undefined
-      ? { title: nativeTitle ?? '' }
-      : { title: nativeTitle ?? '', statusColor: nativeStatusColor }),
-    [nativeTitle, nativeStatusColor],
-  );
-  const nativeHeaderActive = useNativeHeader(nativeState);
+  // The menu is rebuilt by `Dashboard` on every render (it cannot memoise —
+  // it sits below an early return), so it is keyed on its content here.
+  const nativeMenuKey = nativeMenu === undefined ? undefined : JSON.stringify(nativeMenu);
+  const nativeState = useMemo(() => {
+    const state: NativeHeaderState = { title: nativeTitle ?? '' };
+    if (nativeStatusColor !== undefined) state.statusColor = nativeStatusColor;
+    if (nativeHomes !== undefined) state.homes = nativeHomes;
+    if (nativeCurrentHomeId !== undefined) state.currentHomeId = nativeCurrentHomeId;
+    if (nativeMenuKey !== undefined) state.menu = JSON.parse(nativeMenuKey) as NativeHeaderMenuSection[];
+    if (nativeAppearance !== undefined) state.appearance = nativeAppearance;
+    return state;
+  }, [nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance]);
+  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction });
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView
   // creation and is therefore available at the first React render — whereas

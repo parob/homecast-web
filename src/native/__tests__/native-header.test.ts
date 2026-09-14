@@ -29,6 +29,8 @@ import {
   findHeaderTarget,
   activateHeaderControl,
   statusDotHex,
+  nativeHeaderInsets,
+  NATIVE_HEADER_EVENT,
   NATIVE_HEADER_TARGET_ATTR,
   type NativeHeaderControl,
 } from '@/native/native-header';
@@ -36,7 +38,12 @@ import {
 interface TestWindow {
   homecastNativeHeaderAvailable?: boolean;
   homecastNativeHeaderEnabled?: boolean;
-  __homecastNativeHeader?: { tap: (c: string) => void; setEnabled: (e: boolean) => void };
+  __homecastNativeHeader?: {
+    tap: (c: string) => void;
+    setEnabled: (e: boolean, bar?: number, status?: number) => void;
+    selectHome?: (id: string) => void;
+  };
+  homecastNativeHeaderInsets?: { bar: number; status: number };
   webkit?: { messageHandlers?: { homecast?: { postMessage: (m: unknown) => void } } };
 }
 
@@ -54,6 +61,7 @@ beforeEach(() => {
   delete w().homecastNativeHeaderAvailable;
   delete w().homecastNativeHeaderEnabled;
   delete w().__homecastNativeHeader;
+  delete w().homecastNativeHeaderInsets;
   delete w().webkit;
   document.body.innerHTML = '';
 });
@@ -231,5 +239,61 @@ describe('a native tap reaching the real web control', () => {
     expect(w().__homecastNativeHeader).toBeDefined();
     teardown();
     expect(w().__homecastNativeHeader).toBeUndefined();
+  });
+});
+
+describe('the Home-app-shaped bar (large title, title menu, native ⋯)', () => {
+  it('publishes homes, the current home, the menu and the appearance', () => {
+    const sent = installNativeBuild();
+    publishHeaderState({
+      homes: [{ id: 'h1', name: 'George Street' }],
+      currentHomeId: 'h1',
+      menu: [{ id: 'home', title: 'George Street', items: [{ id: 'home:share', label: 'Share', symbol: 'square.and.arrow.up' }] }],
+      appearance: 'dark',
+    });
+    expect(sent).toHaveLength(1);
+    const message = sent[0] as Record<string, unknown>;
+    expect(message.action).toBe('header.setState');
+    expect(message.homes).toEqual([{ id: 'h1', name: 'George Street' }]);
+    expect(message.currentHomeId).toBe('h1');
+    expect(message.appearance).toBe('dark');
+    expect(message.menu).toHaveLength(1);
+    // Absent keys stay absent — the native side merges.
+    expect('title' in message).toBe(false);
+  });
+
+  it('routes a native home pick and a native menu pick to the page', () => {
+    installNativeBuild();
+    const homes: string[] = [];
+    const actions: string[] = [];
+    installNativeHeaderBridge({
+      onTap: () => {},
+      onSelectHome: (id) => homes.push(id),
+      onMenuAction: (id) => actions.push(id),
+    });
+    w().__homecastNativeHeader!.selectHome!('h2');
+    (w().__homecastNativeHeader as unknown as { menuAction: (id: string) => void }).menuAction('home:share');
+    expect(homes).toEqual(['h2']);
+    expect(actions).toEqual(['home:share']);
+  });
+
+  it('remembers the insets the shell reports and announces the change', () => {
+    installNativeBuild();
+    installNativeHeaderBridge({ onTap: () => {} });
+    const seen: boolean[] = [];
+    window.addEventListener(NATIVE_HEADER_EVENT, ((e: CustomEvent) => seen.push(e.detail.enabled)) as EventListener);
+    w().__homecastNativeHeader!.setEnabled(true, 168, 62);
+    expect(nativeHeaderInsets()).toEqual({ bar: 168, status: 62 });
+    expect(seen).toEqual([true]);
+    // Off again: the flag flips, the last insets are kept for the next on.
+    w().__homecastNativeHeader!.setEnabled(false);
+    expect(isNativeHeaderEnabled()).toBe(false);
+    expect(nativeHeaderInsets()).toEqual({ bar: 168, status: 62 });
+  });
+
+  it('tells the shell the page is ready once the bridge is installed', () => {
+    const sent = installNativeBuild();
+    installNativeHeaderBridge({ onTap: () => {} });
+    expect(sent).toContainEqual({ action: 'header.ready' });
   });
 });

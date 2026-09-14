@@ -56,6 +56,71 @@ export interface NativeHeaderState {
   showMenu?: boolean;
   showSearch?: boolean;
   showOverflow?: boolean;
+  /**
+   * The connection state in words — what the Home app shows under its title
+   * ("Updating…", "No Response"). The native bar draws it as the subtitle.
+   */
+  subtitle?: string;
+  /**
+   * The homes the native title menu offers, the way the Home app's title
+   * chevron lists them. The page owns the order and the names.
+   */
+  homes?: NativeHeaderHome[];
+  /** Which of `homes` is ticked. `null` when no home is selected. */
+  currentHomeId?: string | null;
+  /**
+   * The ⋯ menu, as data, so the native bar can present it as a `UIMenu`
+   * rather than tapping through to the web dropdown. Sections become inline
+   * groups; `symbol` is an SF Symbol name.
+   */
+  menu?: NativeHeaderMenuSection[];
+  /**
+   * Whether the page is drawing light-on-dark right now (a dark wallpaper, or
+   * the dark theme). The bar follows the page, not the system: a black title
+   * over a black page is what happens otherwise.
+   */
+  appearance?: 'dark' | 'light';
+}
+
+export interface NativeHeaderMenuItem {
+  /** Unique across the whole menu — what comes back from `menuAction`. */
+  id: string;
+  label: string;
+  symbol?: string;
+  destructive?: boolean;
+  disabled?: boolean;
+}
+
+export interface NativeHeaderMenuSection {
+  id: string;
+  title?: string;
+  items: NativeHeaderMenuItem[];
+}
+
+export interface NativeHeaderHome {
+  id: string;
+  name: string;
+}
+
+/**
+ * Fired on `window` whenever native flips the bar on or off, so anything that
+ * needs to know — the dashboard, which switches to document scrolling — can
+ * subscribe without owning the bridge.
+ */
+export const NATIVE_HEADER_EVENT = 'homecast:native-header';
+
+/**
+ * How far the native bar reaches down the screen with its large title shown,
+ * and the status bar's own height, in CSS px. Both come from the shell with
+ * `setEnabled`; zero until it has said.
+ *
+ * The page pads its content by `bar` and pins `--safe-area-top` to `status`:
+ * the content draws under a transparent bar the way the Home app's does, and
+ * because `env(safe-area-inset-top)` shrinks as the large title collapses,
+ * reading it live would move the content under the finger.
+ */
+export function nativeHeaderInsets(): { bar: number; status: number } {
+  return win()?.homecastNativeHeaderInsets ?? { bar: 0, status: 0 };
 }
 
 /**
@@ -88,8 +153,12 @@ interface NativeHeaderWindow extends Window {
   homecastNativeHeaderEnabled?: boolean;
   __homecastNativeHeader?: {
     tap: (control: string) => void;
-    setEnabled: (enabled: boolean) => void;
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => void;
+    selectHome?: (homeId: string) => void;
+    menuAction?: (itemId: string) => void;
   };
+  /** The bar's full height (large title shown) and the status bar alone, pt. */
+  homecastNativeHeaderInsets?: { bar: number; status: number };
   webkit?: {
     messageHandlers?: {
       homecast?: { postMessage: (message: unknown) => void };
@@ -169,6 +238,11 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.showMenu !== undefined) message.showMenu = state.showMenu;
   if (state.showSearch !== undefined) message.showSearch = state.showSearch;
   if (state.showOverflow !== undefined) message.showOverflow = state.showOverflow;
+  if (state.subtitle !== undefined) message.subtitle = state.subtitle;
+  if (state.homes !== undefined) message.homes = state.homes;
+  if (state.currentHomeId !== undefined) message.currentHomeId = state.currentHomeId;
+  if (state.menu !== undefined) message.menu = state.menu;
+  if (state.appearance !== undefined) message.appearance = state.appearance;
 
   return post(message);
 }
@@ -200,7 +274,7 @@ export const NATIVE_HEADER_TARGET_ATTR = 'data-native-header';
  * does nothing. This keeps the row laid out and unreachable — invisible to the
  * eye and to the pointer, still present for `.click()`.
  */
-export const NATIVE_HEADER_HIDDEN_CLASS = 'invisible pointer-events-none';
+export const NATIVE_HEADER_HIDDEN_CLASS = 'invisible pointer-events-none !h-0 overflow-hidden';
 
 /** Find the web control a native tap should reach. */
 export function findHeaderTarget(
@@ -240,6 +314,10 @@ export function activateHeaderControl(
 export function installNativeHeaderBridge(handlers: {
   onTap: (control: NativeHeaderControl) => void;
   onEnabledChange?: (enabled: boolean) => void;
+  /** The native title menu picked a home. */
+  onSelectHome?: (homeId: string) => void;
+  /** The native ⋯ menu picked an item, by the id the page published. */
+  onMenuAction?: (itemId: string) => void;
 }): () => void {
   const w = win();
   if (!w) return () => {};
@@ -254,11 +332,27 @@ export function installNativeHeaderBridge(handlers: {
       // `evaluateJavaScript` nobody is reading the result of.
       if (isControl(control)) handlers.onTap(control);
     },
-    setEnabled: (enabled: boolean) => {
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => {
       w.homecastNativeHeaderEnabled = enabled;
+      if (typeof barInset === 'number' && typeof statusInset === 'number') {
+        w.homecastNativeHeaderInsets = { bar: barInset, status: statusInset };
+      }
       handlers.onEnabledChange?.(enabled);
+      w.dispatchEvent(new CustomEvent(NATIVE_HEADER_EVENT, { detail: { enabled } }));
+    },
+    selectHome: (homeId: string) => {
+      if (typeof homeId === 'string' && homeId) handlers.onSelectHome?.(homeId);
+    },
+    menuAction: (itemId: string) => {
+      if (typeof itemId === 'string' && itemId) handlers.onMenuAction?.(itemId);
     },
   };
+
+  // Tell the shell the page's half is up. Native syncs on every page load,
+  // but that fires when the document lands — before React has mounted this
+  // bridge — so anything it said then (the bar's insets, above all) fell on
+  // the floor. This asks it to say it again now that someone is listening.
+  post({ action: 'header.ready' });
 
   return () => {
     delete w.__homecastNativeHeader;

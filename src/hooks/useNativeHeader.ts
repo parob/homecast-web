@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   installNativeHeaderBridge,
   isNativeHeaderEnabled,
   publishHeaderState,
   activateHeaderControl,
+  NATIVE_HEADER_EVENT,
+  nativeHeaderInsets,
   type NativeHeaderState,
 } from '@/native/native-header';
 
@@ -29,8 +31,16 @@ import {
  * lifting four Radix surfaces into controlled state through a 7,000-line file,
  * for a preview that may not survive review.
  */
-export function useNativeHeader(state: NativeHeaderState): boolean {
+export function useNativeHeader(
+  state: NativeHeaderState,
+  handlers: { onSelectHome?: (homeId: string) => void; onMenuAction?: (itemId: string) => void } = {},
+): boolean {
   const [active, setActive] = useState(() => isNativeHeaderEnabled());
+
+  // Read through a ref so the bridge is installed once and still calls the
+  // newest handler; `Dashboard` recreates its callbacks as its state changes.
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
 
   useEffect(() => {
     // Seed from the globals as well as subscribing: on a build that launched
@@ -42,8 +52,39 @@ export function useNativeHeader(state: NativeHeaderState): boolean {
         activateHeaderControl(control);
       },
       onEnabledChange: setActive,
+      onSelectHome: (homeId) => {
+        handlersRef.current.onSelectHome?.(homeId);
+      },
+      onMenuAction: (itemId) => {
+        handlersRef.current.onMenuAction?.(itemId);
+      },
     });
   }, []);
+
+  // While the bar is on, the page draws under it and pads itself by the bar's
+  // height (`--native-header-inset`), and `--safe-area-top` is pinned to the
+  // status bar alone: `env(safe-area-inset-top)` shrinks as the large title
+  // collapses, and content padded by it would move under the finger. Inline
+  // styles outrank the stylesheet's `env()` value and are removed again the
+  // moment the bar goes. Re-applied on every enable, because the shell
+  // reports fresh insets with each page load.
+  const [insetsVersion, setInsetsVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setInsetsVersion((v) => v + 1);
+    window.addEventListener(NATIVE_HEADER_EVENT, bump);
+    return () => window.removeEventListener(NATIVE_HEADER_EVENT, bump);
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    const { bar, status } = nativeHeaderInsets();
+    root.style.setProperty('--safe-area-top', `${status}px`);
+    root.style.setProperty('--native-header-inset', `${bar}px`);
+    return () => {
+      root.style.removeProperty('--safe-area-top');
+      root.style.removeProperty('--native-header-inset');
+    };
+  }, [active, insetsVersion]);
 
   // Published on every change, and deliberately whether or not the bar is on
   // screen: flipping the preview must not produce a bar with a blank title for
@@ -56,5 +97,22 @@ export function useNativeHeader(state: NativeHeaderState): boolean {
     publishHeaderState(state);
   }, [state]);
 
+  return active;
+}
+
+/**
+ * Whether the native bar has the screen, for a component that does not own
+ * the bridge. `Dashboard` reads this to scroll the document instead of an
+ * inner container — UIKit collapses the large title from the web view's own
+ * scroll view and nothing else.
+ */
+export function useNativeHeaderActive(): boolean {
+  const [active, setActive] = useState(() => isNativeHeaderEnabled());
+  useEffect(() => {
+    setActive(isNativeHeaderEnabled());
+    const onChange = () => setActive(isNativeHeaderEnabled());
+    window.addEventListener(NATIVE_HEADER_EVENT, onChange);
+    return () => window.removeEventListener(NATIVE_HEADER_EVENT, onChange);
+  }, []);
   return active;
 }
