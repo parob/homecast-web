@@ -7260,7 +7260,7 @@ const Dashboard = () => {
         symbol: 'square.3.layers.3d',
         icon: Layers,
         children: [
-          { id: `roomgroup:${group.entityId}`, label: `All of ${group.name}`, symbol: 'square.3.layers.3d', icon: Layers, selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
+          { id: `roomgroup:${group.entityId}`, label: 'All', symbol: 'square.3.layers.3d', icon: Layers, selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
           ...members.map(roomItem),
         ],
       });
@@ -7284,7 +7284,7 @@ const Dashboard = () => {
           symbol: 'folder',
           icon: Folder,
           children: [
-            { id: `collection:${collection.id}`, label: `All of ${collection.name}`, symbol: 'folder', icon: Folder, selected: selectedHere && !selectedCollectionGroupId },
+            { id: `collection:${collection.id}`, label: 'All', symbol: 'folder', icon: Folder, selected: selectedHere && !selectedCollectionGroupId },
             ...groups.map((group) => ({
               id: `collectiongroup:${collection.id}/${group.id}`,
               label: group.name,
