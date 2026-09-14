@@ -7312,6 +7312,38 @@ const Dashboard = () => {
   const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
     const Icon = item.icon;
     if (item.children && item.children.length > 0) {
+      // A submenu opens beside its parent, and on a phone there is no room
+      // beside a 300px menu on either side: it landed off the screen. So a
+      // group is flattened into the list there — the group itself as a row
+      // (its first child is "All of <group>", the same target), then its
+      // members indented beneath it. What iOS does with a submenu, in effect:
+      // shows it in place.
+      if (isMobile) {
+        // `children` is typed through the wire shape's intersection, which
+        // loses `icon`; every child here was built as a NavItem.
+        const children = item.children as NavItem[];
+        const self = children.find((c) => c.id === item.id) ?? children[0];
+        const members = children.filter((c) => c !== self);
+        return (
+          <React.Fragment key={item.id}>
+            <DropdownMenuItem onClick={() => handleNativeNavigate(self.id)}>
+              {Icon && <Icon className="h-4 w-4 mr-2" />}
+              <span className="truncate">{item.label}</span>
+              {self.selected && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+            {members.map((member) => {
+              const MemberIcon = member.icon;
+              return (
+                <DropdownMenuItem key={member.id} className="pl-8" onClick={() => handleNativeNavigate(member.id)}>
+                  {MemberIcon && <MemberIcon className="h-4 w-4 mr-2 opacity-70" />}
+                  <span className="truncate">{member.label}</span>
+                  {member.selected && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </React.Fragment>
+        );
+      }
       return (
         <DropdownMenuSub key={item.id}>
           <DropdownMenuSubTrigger>
