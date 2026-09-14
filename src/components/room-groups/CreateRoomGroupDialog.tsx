@@ -194,10 +194,14 @@ export function CreateRoomGroupDialog({
                           onCheckedChange={() => handleRoomToggle(room.id)}
                           disabled={isCreating}
                         />
-                        <RoomIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1">{room.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {room.accessoryCount} accessor{room.accessoryCount !== 1 ? 'ies' : 'y'}
+                        <RoomIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        {/* Name over count, not side by side: on a phone the two
+                            fought for one line and "Bedroom 3" wrapped. */}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{room.name}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {room.accessoryCount} accessor{room.accessoryCount !== 1 ? 'ies' : 'y'}
+                          </span>
                         </span>
                       </label>
                     );
