@@ -8550,7 +8550,7 @@ const Dashboard = () => {
               // 52pt band, so its baseline is well clear, and the Home app
               // runs its first row about 12pt under the title.
               paddingTop: nativeHeaderActive
-                ? 'calc(var(--native-header-inset, 0px) - 4px)'
+                ? 'calc(var(--native-header-inset, 0px) + 2px)'
                 : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
               paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
               // A phone on its side: keep the grid clear of the Dynamic
