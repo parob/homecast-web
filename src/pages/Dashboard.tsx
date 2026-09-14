@@ -7301,6 +7301,14 @@ const Dashboard = () => {
   // heading carries the same menu the native title does — homes first, then
   // this home's rooms and groups, then the collections.
   const showWebHomeMenu = isMobile && !nativeHeaderActive && hasContentAccess;
+  // The phone's web heading is drawn at the native bar's large-title size.
+  // On a room or group page the path (home, group) goes small on the line
+  // above and only the page's own name is large; the separator before that
+  // name is then a line break, not a slash.
+  const largeHeading = isMobile && !nativeHeaderActive;
+  const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
+  const crumbSeparatorClass = largeHeading ? 'hidden' : 'mx-2 opacity-40';
+  const crumbNameClass = largeHeading ? 'block truncate' : '';
   const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
     const Icon = item.icon;
     if (item.children && item.children.length > 0) {
@@ -7336,15 +7344,32 @@ const Dashboard = () => {
       if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
     }
+    // As a heading the chevron is the native bar's: a small filled disc after
+    // the name, brighter while the menu is up. In a breadcrumb it is just a
+    // glyph. `plain` keeps the shared trigger from painting a white slab
+    // behind the words when the menu opens.
+    const asHeading = !className;
     return (
       <><DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button type="button" className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
+        <DropdownMenuTrigger asChild plain>
+          {/* As a heading, a pill: the menu's scrim is cut out around its
+              trigger in the trigger's own shape, and a square box around
+              the words left a hard-edged rectangle of undimmed page. The
+              negative margins keep the text where it was. */}
+          <button type="button" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
             <span className="truncate">{name}</span>
-            <ChevronDown className="h-4 w-4 shrink-0" />
+            {asHeading ? (
+              <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full transition-colors ${isDarkBackground ? 'bg-white/20 group-data-[state=open]/title:bg-white/35' : 'bg-black/10 group-data-[state=open]/title:bg-black/20'}`}>
+                <ChevronDown className="h-3 w-3" strokeWidth={3} />
+              </span>
+            ) : (
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent scrim align="start" className="min-w-[220px]">
+        {/* The pill's negative margin pulls the trigger's box past the text;
+            the menu lines up with the words, not the box. */}
+        <DropdownMenuContent scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
           {nativeHomes.length > 1 && (
             <>
               {nativeHomes.map((home) => (
@@ -8838,7 +8863,11 @@ const Dashboard = () => {
                     box above the pills — a block of no height holds it without
                     one. */}
                 {nativeHeaderActive && isMobile && <div className="h-0">{headingStatusDot}</div>}
-                <h2 className={`text-base font-bold truncate mb-4 ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                {/* On a phone the heading is the iOS bar's large title, 34pt
+                    bold — the same size the native bar draws, so the two
+                    builds read alike. A room or group page keeps its path,
+                    small, on a line above the big name. */}
+                <h2 className={`font-bold mb-4 ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
@@ -8846,12 +8875,13 @@ const Dashboard = () => {
                       const roomName = currentRoom?.name || 'Room';
                       return (
                         <>
+                          <span className={crumbsClass}>
                           {selectedHomeId ? (
                             renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
-                          <span className="mx-2 opacity-40">/</span>
+                          <span className={parentGroup ? 'mx-2 opacity-40' : crumbSeparatorClass}>/</span>
                           {parentGroup && (
                             <>
                               <button
@@ -8861,12 +8891,13 @@ const Dashboard = () => {
                               >
                                 {parentGroup.name}
                               </button>
-                              <span className="mx-2 opacity-40">/</span>
+                              <span className={crumbSeparatorClass}>/</span>
                             </>
                           )}
+                          </span>
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <span className="cursor-pointer">{roomName}</span>
+                            <DropdownMenuTrigger asChild plain>
+                              <span className={`cursor-pointer ${crumbNameClass}`}>{roomName}</span>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               {selectedHomeId && canShare && (
@@ -8927,15 +8958,17 @@ const Dashboard = () => {
                     })()
                   ) : selectedRoomGroup ? (
                     <>
+                      <span className={crumbsClass}>
                       {selectedHomeId ? (
                         renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
-                      <span className="mx-2 opacity-40">/</span>
+                      <span className={crumbSeparatorClass}>/</span>
+                      </span>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <span className="cursor-pointer">{selectedRoomGroup.name}</span>
+                        <DropdownMenuTrigger asChild plain>
+                          <span className={`cursor-pointer ${crumbNameClass}`}>{selectedRoomGroup.name}</span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
                           <DropdownMenuItem onClick={() => {
