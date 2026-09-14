@@ -53,9 +53,9 @@ interface AppHeaderProps {
   /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
   onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
   /**
-   * Centred in the row: the phone's collapsed page title, shown once the big
-   * heading has scrolled under the bar. Held to the width between the
-   * controls' capsule and its mirror so it cannot reach either.
+   * The phone's collapsed page title, shown once the big heading has
+   * scrolled under the bar; centred in the gap between the left cluster and
+   * the controls, so it cannot reach the capsule.
    */
   centerTitle?: React.ReactNode;
 }
@@ -195,11 +195,13 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
           {badgeLeads && leftBadge}
           {children}
         </div>
-        {/* Centred on the row like a native compact title, and held to the
-            width between the controls' capsule and its mirror on the left so
-            it can never reach either. */}
+        {/* Centred in the space between the left cluster and the controls,
+            the way a bar title sits next to bar items: it can never reach the
+            capsule, and it only truncates when the name is wider than that
+            whole gap — strict centring on the row capped it at ~140px on a
+            phone and cut "Clitheroe Road" short. */}
         {centerTitle && (
-          <div className="absolute left-1/2 top-1/2 max-w-[calc(100%-260px)] -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+          <div className="flex min-w-0 flex-1 items-center justify-center px-2 pointer-events-auto">
             {centerTitle}
           </div>
         )}
