@@ -7648,9 +7648,11 @@ const Dashboard = () => {
         onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={backgroundContextValue}>
         {/* Main container */}
-        {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
+        {/* Main container — at least the dynamic viewport tall, so the wallpaper
+             extends behind iOS 26 Safari's bottom Liquid Glass bar. It was 120vh,
+             which let a short page scroll a fifth of a screen into nothing.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        {/* No bg-background under a wallpaper. This box is 120vh of opaque
+        {/* No bg-background under a wallpaper. This box is a viewport of opaque
             white spanning the whole document, so it is the surface a gap
             actually exposes when Safari moves the viewport — the backdrop and
             the wallpaper behind it already paint everything that should show.
@@ -8364,7 +8366,7 @@ const Dashboard = () => {
         collectionItemIds={searchCollectionItemIds}
       />
 
-      <div className={`${isInMobileApp || isInMacApp ? (nativeHeaderActive ? 'relative' : 'absolute inset-0') : 'relative min-h-[120vh]'} flex justify-center`}>
+      <div className={`${isInMobileApp || isInMacApp ? (nativeHeaderActive ? 'relative' : 'absolute inset-0') : 'relative min-h-[100dvh]'} flex justify-center`}>
         <div className={`flex w-full ${isInMacApp || fullWidth ? '' : 'max-w-7xl'}`}>
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
