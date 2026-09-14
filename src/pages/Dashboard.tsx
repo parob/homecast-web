@@ -3610,7 +3610,8 @@ const Dashboard = () => {
 
   // Swipe in from the left edge to go back, the way an iOS navigation stack
   // does: a room, room group or collection returns to the whole home, and the
-  // whole home steps to the previous home in the title menu's order. It used
+  // whole home steps to the previous home in the title menu's order, round and
+  // round through all of them. It used
   // to open the navigation drawer; the home name's own menu now covers what
   // the drawer offered, and the drawer's own swipe-to-close still lives in
   // SheetContent. Gated the same way the menu button was: on md and up the
@@ -4121,7 +4122,8 @@ const Dashboard = () => {
 
   // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
   // room, group or collection to the whole home; from the whole home to the
-  // previous home in the menu's order; nothing at the first home.
+  // previous home in the menu's order, wrapping from the first to the last so
+  // the gesture cycles through every home.
   useEffect(() => {
     edgeSwipeBackRef.current = () => {
       if (!selectedHomeId) return;
@@ -4130,7 +4132,8 @@ const Dashboard = () => {
         return;
       }
       const index = nativeHomes.findIndex((home) => home.id === selectedHomeId);
-      if (index > 0) handleSelectHome(nativeHomes[index - 1].id);
+      if (index < 0 || nativeHomes.length < 2) return;
+      handleSelectHome(nativeHomes[(index - 1 + nativeHomes.length) % nativeHomes.length].id);
     };
   });
 
