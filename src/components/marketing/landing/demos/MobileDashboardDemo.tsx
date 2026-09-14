@@ -4,8 +4,9 @@
  * capture is cropped just under the status bar; here the bar and island are
  * drawn, so the content sits where it does on a phone.
  */
-import { Menu, Search, MoreVertical, Signal, Wifi, BatteryFull, Thermometer, Activity, Lock, ChevronRight, Lightbulb, Fan, Blinds, Power, Video, Droplets, Plug, Percent } from 'lucide-react';
+import { Search, MoreHorizontal, ChevronDown, Signal, Wifi, BatteryFull, Thermometer, Activity, Lock, ChevronRight, Lightbulb, Fan, Blinds, Power, Video, Droplets, Plug, Percent } from 'lucide-react';
 import { ScaledFrame, Wallpaper, Toggle } from './scaled';
+import { headerGlassClass } from '@/lib/header-chrome';
 import { cx } from './util';
 import type { Home } from './home-state';
 
@@ -16,9 +17,8 @@ const TONE = {
   dark: 'bg-zinc-900/45 text-white',
 } as const;
 
-const circle = 'flex h-11 w-11 items-center justify-center rounded-full bg-zinc-900/75 text-white';
 const pill = 'inline-flex h-[26px] items-center gap-1.5 rounded-full bg-black/45 px-3 text-[11px] font-medium text-white';
-const label = 'mb-2 mt-4 text-[12px] font-medium text-white/85 drop-shadow';
+const label = 'mb-2 mt-3 text-[12px] font-medium text-white/85 drop-shadow';
 
 function Tile({ tone, icon: Icon, iconClass, name, sub, right, onClick }: {
   tone: keyof typeof TONE; icon: typeof Lightbulb; iconClass: string; name: string; sub: string; right?: React.ReactNode; onClick?: () => void;
@@ -51,18 +51,33 @@ export function MobileDashboardDemo({ home, className }: { home: Home; className
         <span className="absolute left-1/2 top-[11px] h-[30px] w-[108px] -translate-x-1/2 rounded-full bg-black" />
         <span className="flex items-center gap-1.5"><Signal className="h-3.5 w-3.5" /><Wifi className="h-3.5 w-3.5" /><BatteryFull className="h-4 w-4" /></span>
       </div>
-      <div className="absolute inset-0 px-4 pt-[62px]">
-        <div className="flex items-center justify-between">
-          <span className={circle}><Menu className="h-4 w-4" /></span>
-          <span className="flex gap-2"><span className={circle}><Search className="h-4 w-4" /></span><span className={circle}><MoreVertical className="h-4 w-4" /></span></span>
+      <div className="absolute inset-0 px-4 pt-[58px]">
+        {/* No ☰ on a phone any more: the home name is the menu. Search and ⋯
+            share the header's glass capsule (`headerGlassClass`, the plate the
+            real header and the iOS native bar draw). */}
+        <div className="flex justify-end">
+          <span className={cx('flex items-center p-[2px]', headerGlassClass(true))}>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full"><Search className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full"><MoreHorizontal className="h-5 w-5" /></span>
+          </span>
         </div>
-        <div className="mt-[22px] text-[17px] font-bold text-white drop-shadow">My Home</div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {/* The large title the app draws on a phone: 34px, a filled-disc
+            chevron (it is the home/room switcher) and the connection dot. */}
+        <div className="mt-[18px] flex items-center gap-2.5 text-[34px] font-bold leading-[41px] tracking-tight text-white drop-shadow">
+          My Home
+          <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-white/20"><ChevronDown className="h-3 w-3" strokeWidth={3} /></span>
+          <span aria-hidden className="h-3 w-3 rounded-full bg-emerald-500 shadow-sm" />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span className={pill}>Scenes <ChevronRight className="h-3.5 w-3.5" /></span>
+          <span className={pill}>Automations <ChevronRight className="h-3.5 w-3.5" /></span>
+          <span className={pill}>Status <ChevronRight className="h-3.5 w-3.5" /></span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
           <span className={pill}><Thermometer className="h-3.5 w-3.5" /> 20.5°C – 22.3°C</span>
           <span className={cx(pill, s.motion && 'text-emerald-300')}><Activity className="h-3.5 w-3.5" /> {s.motion ? 'Motion' : 'No motion'}</span>
           <span className={cx(pill, s.locked ? 'text-emerald-300' : 'text-amber-300')}><Lock className="h-3.5 w-3.5" /> {s.locked ? 'Locked' : 'Unlocked'}</span>
         </div>
-        <div className="mt-3 flex items-center gap-1 text-[12px] font-medium text-white/85 drop-shadow">Automations <ChevronRight className="h-3.5 w-3.5" /></div>
 
         <div className={label}>Bedroom</div>
         <div className="grid grid-cols-2 gap-[7px]">
