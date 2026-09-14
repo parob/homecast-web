@@ -7081,7 +7081,7 @@ const Dashboard = () => {
           if (collection) setSidebarShareCollection(collection);
         } },
         { id: 'collection-select', label: 'Select Accessories', icon: Plus, symbol: 'plus', onSelect: () => setCollectionAddItemsOpen(true) },
-        { id: 'collection-group', label: 'Create Group', icon: FolderPlus, symbol: 'folder.badge.plus', onSelect: () => setCollectionAddingGroup(true) },
+        { id: 'collection-group', label: 'Add Group', icon: FolderPlus, symbol: 'folder.badge.plus', onSelect: () => setCollectionAddingGroup(true) },
         { id: 'collection-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
           setBackgroundSettingsTarget({ type: 'collection', id: selectedCollectionId, name: selectedCollection?.name || 'Collection' });
           setBackgroundSettingsOpen(true);
@@ -7120,7 +7120,7 @@ const Dashboard = () => {
         // The room header has its own menu branch, and creating was only in
         // the home one — so viewing a room offered no way to add anything
         // to it. Pre-selects this room, since that is where you asked.
-        { id: 'room-virtual', label: 'Create Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'room-virtual', label: 'Add Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
       ],
     });
   } else if (selectedHomeId && hasContentAccess) {
@@ -7133,11 +7133,11 @@ const Dashboard = () => {
           if (home) setSidebarShareHome(home);
         } },
         { id: 'home-analytics', label: 'Analytics', icon: LineChart, symbol: 'chart.xyaxis.line', onSelect: () => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined }) },
-        { id: 'home-room-group', label: 'Create Room Group', icon: Layers, symbol: 'square.3.layers.3d', onSelect: () => {
+        { id: 'home-room-group', label: 'Add Room Group', icon: Layers, symbol: 'square.3.layers.3d', onSelect: () => {
           const home = homes.find(h => h.id === selectedHomeId);
           if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
         } },
-        { id: 'home-virtual', label: 'Create Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'home-virtual', label: 'Add Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
         { id: 'home-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
           const home = homes.find(h => h.id === selectedHomeId);
           setBackgroundSettingsTarget({ type: 'home', id: selectedHomeId!, name: home?.name || 'Home' });
