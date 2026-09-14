@@ -289,10 +289,10 @@ export function StatusBadge({
           aria-label={p.srLabel}
           style={nativeHeaderActive ? {
             position: 'fixed',
-            top: 'calc(var(--native-header-inset, 0px) - 44px)',
+            top: 'calc(var(--native-header-inset, 0px) - 12px)',
             left: '16px',
             width: 32,
-            height: 40,
+            height: 12,
             opacity: 0,
             pointerEvents: 'none',
             visibility: 'visible',
@@ -331,7 +331,11 @@ export function StatusBadge({
       </PopoverTrigger>
 
       <PopoverContent
-        align="end"
+        // Under the native bar the anchor is parked on the title line; the
+        // card must open below it and never flip above, where the bar is.
+        align={nativeHeaderActive ? 'start' : 'end'}
+        side="bottom"
+        avoidCollisions={!nativeHeaderActive}
         sideOffset={8}
         // The last row's `py-1.5` stacks on the card's own padding, so with the
         // rows present there was 5px more air under the bottom row than above
