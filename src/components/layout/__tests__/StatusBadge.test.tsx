@@ -151,17 +151,17 @@ describe('shape', () => {
     // makes it round, so the unlabelled state must be square.
     render(<StatusBadge />);
     const cls = screen.getByRole('button').className;
-    expect(cls).toContain('h-6');
-    expect(cls).toContain('w-6');
-    expect(cls).not.toContain('px-2');
+    expect(cls).toContain('h-[max(2.5rem,40px)]');
+    expect(cls).toContain('w-[max(2.5rem,40px)]');
+    expect(cls).not.toContain('px-3');
   });
 
   it('becomes a pill only once it has something to say', () => {
     mockQuality = 'slow';
     render(<StatusBadge />);
     const cls = screen.getByRole('button').className;
-    expect(cls).toContain('px-2');
-    expect(cls).not.toContain('w-6');
+    expect(cls).toContain('px-3');
+    expect(cls).not.toContain('w-[max(2.5rem,40px)]');
   });
 });
 
