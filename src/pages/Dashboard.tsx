@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
-import { headerControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
+import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
@@ -247,7 +247,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7329,17 +7329,20 @@ const Dashboard = () => {
     </DropdownMenuItem>
   );
 
+  // Search and ⋯ share one glass capsule, as they do in the iOS native bar
+  // (parob/homecast-cloud#120): the same two controls, the same shape, on
+  // every platform.
   const headerRightMenu = (
-    <>
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
     {hasContentAccess && (
-    <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-native-header="overflow" data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
-          <MoreVertical className="h-5 w-5" />
+        <Button data-native-header="overflow" data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}>
+          <MoreHorizontal className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent scrim align="end" className="min-w-[200px]">
@@ -7389,7 +7392,7 @@ const Dashboard = () => {
         })()}
       </DropdownMenuContent>
     </DropdownMenu>
-    </>
+    </div>
   );
 
   return (
@@ -7504,7 +7507,7 @@ const Dashboard = () => {
                       clicks — see `native/native-header.ts`. Keeping the route
                       through the real trigger is what lets that preview exist
                       without lifting this Sheet into controlled state. */}
-                  <Button data-native-header="menu" data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
+                  <Button data-native-header="menu" data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>

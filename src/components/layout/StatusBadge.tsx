@@ -54,7 +54,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { buildAnswerCard } from '@/lib/answer-card';
-import { headerDotClass } from '@/lib/header-chrome';
+import { headerDotClass, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
@@ -279,14 +279,17 @@ export function StatusBadge({
           data-native-header="status"
           aria-label={p.srLabel}
           className={cn(
-            'flex items-center justify-center rounded-full text-[13px] font-medium',
+            'flex items-center justify-center text-[13px] font-medium',
             // Width changes when a label appears. Eased rather than snapped:
             // the badge sits in a right-anchored cluster, so it grows leftward
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
-            p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
-            headerDotClass(!!inkIsLight, !!haloStrong),
+            // On its own glass plate, the size of the controls beside it —
+            // the iOS native bar's shape language (parob/homecast-cloud#120).
+            p.label ? 'h-[max(2.5rem,40px)] gap-1.5 px-3' : 'h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] p-0',
+            headerGlassClass(!!inkIsLight),
+            headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, ''),
           )}
         >
           <span
