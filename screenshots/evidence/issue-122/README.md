@@ -8,13 +8,19 @@ Committed, unlike the captures in the gitignored `output/`, because the whole
 substance of the change is what the bottom of the screen looks like, and only
 images served from a GitHub host embed in a pull request.
 
-| File | What it shows |
-|---|---|
-| `minimised.jpg` | Before (left) and after (right), minimised, at 440×956 |
-| `expanded.jpg` | The expanded panel, unchanged — it still docks and still squashes the app |
-
 Both halves have the log switched on, five pins in the tab bar, and 19 recorded
 requests, so the bar is at the widest the change has to cope with.
+
+## Minimised — before (left), after (right)
+
+![minimised, before and after](minimised.jpg)
+
+## Expanded — unchanged
+
+It still docks, still squashes the app, still resizes. Only the collapsed state
+moved.
+
+![the expanded panel](expanded.jpg)
 
 ## The numbers under the picture
 
