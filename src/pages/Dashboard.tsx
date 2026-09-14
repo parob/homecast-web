@@ -551,7 +551,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            Add Virtual Accessory
+            Add Accessory
           </ContextMenuItem>
         )}
         {/* Not on touch: the row carries a hide badge in Edit Layout, and
@@ -956,7 +956,7 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              Add Virtual Accessory
+              Add Accessory
             </ContextMenuItem>
           )}
             {/* Not on touch - see SortableRoomItem. */}
@@ -7120,7 +7120,7 @@ const Dashboard = () => {
         // The room header has its own menu branch, and creating was only in
         // the home one — so viewing a room offered no way to add anything
         // to it. Pre-selects this room, since that is where you asked.
-        { id: 'room-virtual', label: 'Add Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'room-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
       ],
     });
   } else if (selectedHomeId && hasContentAccess) {
@@ -7137,7 +7137,7 @@ const Dashboard = () => {
           const home = homes.find(h => h.id === selectedHomeId);
           if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
         } },
-        { id: 'home-virtual', label: 'Add Virtual Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'home-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
         { id: 'home-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
           const home = homes.find(h => h.id === selectedHomeId);
           setBackgroundSettingsTarget({ type: 'home', id: selectedHomeId!, name: home?.name || 'Home' });
