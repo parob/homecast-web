@@ -33,7 +33,7 @@ import { tabIconComponent } from './tabIconComponents';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import type { HomeActionId } from '@/lib/summary-sections';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
-import { useDebugDockHeight } from '@/lib/debug-dock';
+import { useDebugDockHeight, useDebugDockRail } from '@/lib/debug-dock';
 
 export { MAX_PINNED_TABS };
 
@@ -237,6 +237,17 @@ export function MobileTabBar({
    * the log on.
    */
   const dockHeight = useDebugDockHeight();
+  /**
+   * And how much of the bottom-right corner the log's minimised button has
+   * taken, once it is down there rather than docked. Zero the rest of the time.
+   *
+   * The pill is centred, so it grows in both directions at once — which is why
+   * this comes off its ceiling twice rather than being padding on one side. A
+   * one-sided inset would slide a narrow bar off centre for no reason, and the
+   * bar moving because a developer tool was minimised is the thing being
+   * avoided here.
+   */
+  const dockRail = useDebugDockRail();
   const scrollerRef = useRef<HTMLDivElement>(null);
   /** The last glyph each accessory pin actually resolved to. */
   const iconMemoRef = useRef(new Map<string, LucideIcon>());
@@ -898,6 +909,7 @@ export function MobileTabBar({
       // one tab and ends on another crosses the gaps between them, and a
       // handler per button would lose the gesture in those gaps.
       onPointerDown={editMode ? undefined : beginGesture}
+      data-testid="tab-pill"
       className={cn(
         // `min-w-0` on the bar itself as well as on the tab that gives: a flex
         // item's automatic minimum size is its content, and that beats
@@ -912,7 +924,7 @@ export function MobileTabBar({
           : 'items-center rounded-full p-1.5',
         isDarkBackground ? 'material-regular-dark' : 'material-regular',
       )}
-      style={{ maxWidth: 'calc(100% - 32px)' }}
+      style={{ maxWidth: `calc(100% - ${32 + dockRail * 2}px)` }}
     >
       {row}
     </div>
