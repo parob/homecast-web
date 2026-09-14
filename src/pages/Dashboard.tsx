@@ -7715,8 +7715,11 @@ const Dashboard = () => {
               deliberately no longer the scroller's padding expressions — see
               the note where they are declared for what each one trades. */}
           {/* The iOS native header draws its own scroll-edge effect, so the
-              page's top scrim would double it (parob/homecast-cloud#120). */}
-          {isInMobileApp && !nativeHeaderActive && (
+              page's top scrim would double it (parob/homecast-cloud#120).
+              A phone browser gets the strips too: there the content runs
+              edge to edge under Safari's own bars and was cut off hard at
+              both; the strips fade it into the bars' colour first. */}
+          {(isInMobileApp || isMobile) && !nativeHeaderActive && (
             <>
               <div
                 aria-hidden
@@ -7726,7 +7729,7 @@ const Dashboard = () => {
               <div
                 aria-hidden
                 className="scroll-scrim scroll-scrim-bottom z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
+                style={{ '--scroll-scrim-size': `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 40)}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
               />
             </>
           )}

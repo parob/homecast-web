@@ -683,14 +683,21 @@ html.ios-app .selectable {
 
 /* Full strength for the first fifth, then out. Ramping from the very edge reads
    as a smudge on the glass; holding it briefly reads as depth. */
+/* Besides the blur, a wash of the canvas tint (`--canvas-tint`, set by
+   useCanvasTint from the painted root colour) — so under a browser's own bars
+   the content fades into the bars' colour instead of stopping at their edge.
+   Absent the variable (a native shell) the wash is transparent and only the
+   blur remains, as before. */
 .scroll-scrim-top {
   top: 0;
+  background: linear-gradient(to bottom, var(--canvas-tint, transparent) 0%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
 }
 
 .scroll-scrim-bottom {
   bottom: 0;
+  background: linear-gradient(to top, var(--canvas-tint, transparent) 0%, transparent 100%);
   -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 100%);
   mask-image: linear-gradient(to top, #000 20%, transparent 100%);
 }
