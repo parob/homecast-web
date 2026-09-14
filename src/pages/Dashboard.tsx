@@ -3901,7 +3901,7 @@ const Dashboard = () => {
   // Hold the document still while the connecting overlay is up. The overlay is
   // hand-rolled rather than a Radix dialog, so it gets none of react-remove-scroll's
   // behaviour; in the browser the document itself is the scroller (the container
-  // below sets minHeight: 120vh), so a wheel or drag over the blur moved the page.
+  // below sets minHeight: 100dvh), so a wheel or drag over the blur moved the page.
   // The previous inline value is restored rather than cleared so a Radix dialog
   // that locked scroll first keeps its own lock afterwards.
   useEffect(() => {
@@ -7671,7 +7671,7 @@ const Dashboard = () => {
               ? 'fixed inset-0'
               : hasBackground ? 'relative' : 'relative bg-background'
           }
-          style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}
+          style={isInMobileApp || isInMacApp ? undefined : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
@@ -8727,7 +8727,7 @@ const Dashboard = () => {
             {/* The hold-anywhere target. This wrapper already fills the
                 viewport, so the empty space below the last tile is covered,
                 and the sidebar and header are outside <main> entirely. */}
-            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
+            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-full">
               {/* Pending Invitations Modal */}
               <Dialog open={pendingInvitationsOpen} onOpenChange={setPendingInvitationsOpen}>
                 <DialogContent className="sm:max-w-lg" style={{ zIndex: 10010 }}>
