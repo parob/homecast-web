@@ -6340,7 +6340,11 @@ const Dashboard = () => {
     if (hasNavigated) {
       setSavedBackgroundOverride(null);
       setBgImageLuminance(null);
-      setBgImageTopColor(null);
+      // The sampled top colour is NOT cleared here. BackgroundImage reports a
+      // fresh one whenever the image actually changes, and says nothing when
+      // a room shares its home's wallpaper — so clearing on every navigation
+      // left the canvas tint (and Safari's bars, which follow it) on the grey
+      // "pending" colour for as long as you stayed in that room.
     }
     prevNavRef.current = { selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId };
   }, [selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId]);
