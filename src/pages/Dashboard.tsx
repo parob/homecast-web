@@ -8545,9 +8545,12 @@ const Dashboard = () => {
             className={`${(isInMobileApp || isInMacApp) && !nativeHeaderActive ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
-              // and starts below its large-title height instead.
+              // and starts below its large-title height instead. A little
+              // above the band's bottom edge: the name sits centred in a
+              // 52pt band, so its baseline is well clear, and the Home app
+              // runs its first row about 12pt under the title.
               paddingTop: nativeHeaderActive
-                ? 'calc(var(--native-header-inset, 0px) + 4px)'
+                ? 'calc(var(--native-header-inset, 0px) - 10px)'
                 : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
               paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
               // A phone on its side: keep the grid clear of the Dynamic
