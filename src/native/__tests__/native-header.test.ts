@@ -31,6 +31,7 @@ import {
   statusDotHex,
   nativeHeaderInsets,
   watchNativeHeaderCover,
+  NATIVE_HEADER_COVER_ATTR,
   NATIVE_HEADER_EVENT,
   NATIVE_HEADER_TARGET_ATTR,
   type NativeHeaderControl,
@@ -316,6 +317,25 @@ describe('stepping aside for web overlays', () => {
     expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
 
     sheet.setAttribute('data-state', 'closed');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
+
+    stop();
+  });
+
+  it('reports covered while a web bar declares itself one — Edit Layout\'s toolbar', async () => {
+    const sent = installNativeBuild();
+    const bar = document.createElement('div');
+    bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'false');
+    document.body.appendChild(bar);
+    const stop = watchNativeHeaderCover(document.body);
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
+
+    bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'true');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
+
+    bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'false');
     await Promise.resolve();
     expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
 

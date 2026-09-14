@@ -43,7 +43,7 @@ import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeK
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
-import { activateHeaderControl, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection } from '@/native/native-header';
+import { activateHeaderControl, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
@@ -8074,6 +8074,11 @@ const Dashboard = () => {
           aria-hidden={!editMode}
           {...(editMode ? {} : INERT)}
           data-testid="edit-layout-bar"
+          // Under the iOS native bar this toolbar is drawn beneath it, so the
+          // native ⋯ menu and title selector would sit over Done and stay
+          // live. Declaring the toolbar a cover hides the bar for the duration,
+          // the way an open sheet does — see `NATIVE_HEADER_COVER_SELECTOR`.
+          {...{ [NATIVE_HEADER_COVER_ATTR]: editMode ? 'true' : 'false' }}
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
             <div className="flex items-center justify-between gap-2 h-[80px]">

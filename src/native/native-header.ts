@@ -415,12 +415,18 @@ export function installNativeHeaderBridge(handlers: {
 }
 
 /**
- * What counts as covering the page: an open Radix dialog or sheet. A popover
- * also carries `role="dialog"`, but it hangs off a control rather than
- * covering the page — and the connection popover is opened *from* the bar,
- * which must not vanish under it.
+ * What counts as covering the page: an open Radix dialog or sheet, or a web
+ * bar that has taken the top of the page over and says so with
+ * `data-native-header-cover="true"` — Edit Layout's toolbar, which replaces
+ * the header's controls with Done while it is up. Left showing, the native
+ * ⋯ menu and title selector sat over that toolbar and still worked, which is
+ * exactly what the toolbar covers the web header to prevent. A popover also
+ * carries `role="dialog"`, but it hangs off a control rather than covering
+ * the page — and the connection popover is opened *from* the bar, which must
+ * not vanish under it.
  */
-export const NATIVE_HEADER_COVER_SELECTOR = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
+export const NATIVE_HEADER_COVER_ATTR = 'data-native-header-cover';
+export const NATIVE_HEADER_COVER_SELECTOR = `[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [${NATIVE_HEADER_COVER_ATTR}="true"]`;
 const POPPER_WRAPPER = '[data-radix-popper-content-wrapper]';
 
 export function isPageCovered(root: HTMLElement | Document = document): boolean {
@@ -447,7 +453,7 @@ export function watchNativeHeaderCover(root: HTMLElement = document.body): () =>
     }
   };
   const observer = new MutationObserver(check);
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state'] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', NATIVE_HEADER_COVER_ATTR] });
   check();
   return () => observer.disconnect();
 }
