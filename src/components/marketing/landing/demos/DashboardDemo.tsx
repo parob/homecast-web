@@ -5,8 +5,9 @@
  * can be pressed here, and the pills follow.
  */
 import type { ReactNode } from 'react';
-import { Search, MoreVertical, Home as HomeIcon, Users, Folder, Plus, ListChecks, Zap, Workflow, Thermometer, Activity, Lock, ChevronRight, ChevronUp, ChevronDown, Minus, Lightbulb, Power, Fan, Blinds, Hash, Video } from 'lucide-react';
+import { Search, MoreHorizontal, Home as HomeIcon, Users, Folder, Plus, ListChecks, Thermometer, Activity, Lock, ChevronRight, ChevronUp, ChevronDown, Minus, Lightbulb, Power, Fan, Blinds, Hash, Video } from 'lucide-react';
 import { HomecastMark } from '@/components/HomecastMark';
+import { headerGlassClass } from '@/lib/header-chrome';
 import { ScaledFrame, Wallpaper, Toggle, Bar } from './scaled';
 import { cx } from './util';
 import type { Home, HomeMode } from './home-state';
@@ -59,18 +60,21 @@ export function DashboardDemo({ home, className }: { home: Home; className?: str
         ))}
       </aside>
 
-      {/* Top right */}
-      <div className="absolute right-5 top-5 flex gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/70 text-white"><Search className="h-3.5 w-3.5" /></span>
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/70 text-white"><MoreVertical className="h-3.5 w-3.5" /></span>
+      {/* Top right: search and ⋯ share one glass capsule, the same plate the
+          real header (and the iOS native bar) draws — `headerGlassClass`, so
+          this cannot drift from it again. Light ink: the wallpaper is dark. */}
+      <div className={cx('absolute right-5 top-5 flex items-center p-[2px]', headerGlassClass(true))}>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full"><Search className="h-3.5 w-3.5" /></span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full"><MoreHorizontal className="h-3.5 w-3.5" /></span>
       </div>
 
       {/* Main */}
       <div className="absolute inset-y-0 left-[178px] right-5 pt-[74px]">
-        <div className="text-[14px] font-bold text-white drop-shadow">My Home</div>
+        <div className="flex items-center gap-2 text-[14px] font-bold text-white drop-shadow">My Home <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-sm" /></div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <span className={pill}><Zap className="h-2.5 w-2.5" /> Scenes <ChevronRight className="h-2.5 w-2.5" /></span>
-          <span className={pill}><Workflow className="h-2.5 w-2.5" /> Automations 3 <ChevronRight className="h-2.5 w-2.5" /></span>
+          <span className={pill}>Scenes <ChevronRight className="h-2.5 w-2.5" /></span>
+          <span className={pill}>Automations <ChevronRight className="h-2.5 w-2.5" /></span>
+          <span className={pill}>Status <ChevronRight className="h-2.5 w-2.5" /></span>
           <span className={pill}><Thermometer className="h-2.5 w-2.5" /> 20.5°C – 22.3°C</span>
           <span className={cx(pill, s.motion && 'text-emerald-300')}><Activity className="h-2.5 w-2.5" /> {s.motion ? 'Motion' : 'No motion'}</span>
           <span className={cx(pill, s.locked ? 'text-emerald-300' : 'text-amber-300')}><Lock className="h-2.5 w-2.5" /> {s.locked ? 'Locked' : 'Unlocked'}</span>
