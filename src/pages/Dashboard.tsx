@@ -8547,7 +8547,7 @@ const Dashboard = () => {
               // Under the iOS native header the content runs beneath the bar
               // and starts below its large-title height instead.
               paddingTop: nativeHeaderActive
-                ? 'calc(var(--native-header-inset, 0px) + 8px)'
+                ? 'calc(var(--native-header-inset, 0px) + 4px)'
                 : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
               paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
               // A phone on its side: keep the grid clear of the Dynamic
@@ -8830,7 +8830,11 @@ const Dashboard = () => {
                     a display:none heading measures 0×0 and drops the popover at
                     the screen's origin (measured). So it is mounted out here
                     instead, parked by its own fixed position. */}
-                {nativeHeaderActive && isMobile && headingStatusDot}
+                {/* Under the native bar the dot's anchor is parked `fixed` (see
+                    StatusBadge), but the inline wrapper still opened a 30px line
+                    box above the pills — a block of no height holds it without
+                    one. */}
+                {nativeHeaderActive && isMobile && <div className="h-0">{headingStatusDot}</div>}
                 <h2 className={`text-base font-bold truncate mb-4 ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
@@ -9000,7 +9004,7 @@ const Dashboard = () => {
                     measured height: a margin would sit outside the animated box
                     and, on a home with every section hidden, `empty:hidden`
                     would collapse the row while leaving its gap behind. */}
-                <div className="flex w-max items-center gap-2 pb-4 empty:hidden">
+                <div className="flex w-max items-center gap-2 pb-3 empty:hidden">
                   {isWholeHomeView && editingSummaryRow ? (
                     /* Editing: a stand-in row that can show a hidden section as
                        well as hide a shown one, and that opens nothing. */
