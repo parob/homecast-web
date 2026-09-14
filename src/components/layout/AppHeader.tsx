@@ -24,6 +24,8 @@ interface AppHeaderProps {
    * is on (parob/homecast-cloud#120). Ignored everywhere else.
    */
   nativeTitle?: string;
+  /** The room, room group or collection being viewed; the home when absent. */
+  nativeHeading?: string;
   /** The connection dot's colour for that bar, as CSS hex. `null` hides it. */
   nativeStatusColor?: string | null;
   /** The homes the native title menu lists, in the page's order. */
@@ -44,7 +46,7 @@ interface AppHeaderProps {
   onNativeNavigate?: (itemId: string) => void;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeHeading, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -64,7 +66,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   const nativeMenuKey = nativeMenu === undefined ? undefined : JSON.stringify(nativeMenu);
   const nativeNavigationKey = nativeNavigation === undefined ? undefined : JSON.stringify(nativeNavigation);
   const nativeState = useMemo(() => {
-    const state: NativeHeaderState = { title: nativeTitle ?? '' };
+    const state: NativeHeaderState = { title: nativeTitle ?? '', heading: nativeHeading ?? '' };
     if (nativeStatusColor !== undefined) state.statusColor = nativeStatusColor;
     if (nativeHomes !== undefined) state.homes = nativeHomes;
     if (nativeCurrentHomeId !== undefined) state.currentHomeId = nativeCurrentHomeId;
@@ -72,7 +74,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     if (nativeAppearance !== undefined) state.appearance = nativeAppearance;
     if (nativeNavigationKey !== undefined) state.navigation = JSON.parse(nativeNavigationKey) as NativeHeaderNavSection[];
     return state;
-  }, [nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance, nativeNavigationKey]);
+  }, [nativeTitle, nativeHeading, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance, nativeNavigationKey]);
   const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction, onNavigate: onNativeNavigate });
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView

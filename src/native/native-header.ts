@@ -43,8 +43,17 @@ export type NativeHeaderControl = 'menu' | 'status' | 'search' | 'overflow';
  * An omitted key therefore means "unchanged", and is the normal case.
  */
 export interface NativeHeaderState {
-  /** The current home, room or collection name. */
+  /** The home's name — what the compact bar carries. */
   title?: string;
+  /**
+   * What the large text at the top says, when it is not the home: the room,
+   * room group or collection being viewed. Absent or equal to `title` means
+   * the home view, where the large text is the home name and hands over to
+   * the bar's title as you scroll. A distinct heading is a page heading: the
+   * bar keeps the home name throughout and the heading simply scrolls away
+   * with the content, like the Home app's room pages.
+   */
+  heading?: string;
   /**
    * The connection dot's fill, as CSS hex (`#22c55e`).
    *
@@ -264,6 +273,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   // so a title publish would blank the status dot and vice versa.
   const message: Record<string, unknown> = { action: 'header.setState' };
   if (state.title !== undefined) message.title = state.title;
+  if (state.heading !== undefined) message.heading = state.heading;
   if (state.statusColor !== undefined) message.statusColor = state.statusColor;
   if (state.showMenu !== undefined) message.showMenu = state.showMenu;
   if (state.showSearch !== undefined) message.showSearch = state.showSearch;
