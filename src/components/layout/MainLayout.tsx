@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { AppHeader } from './AppHeader';
-import { headerControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
+import { headerControlClass, headerGlassClass, headerGlassControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import { useCanvasTint } from '@/hooks/useCanvasTint';
@@ -152,7 +152,7 @@ export function MainLayout({
           {sidebar && isMobile && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className={cn("md:hidden focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300", headerControlClass(headerInkLight, headerHaloStrong))}>
+                <Button variant="ghost" size="icon" className={cn("md:hidden h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300", headerGlassClass(headerInkLight), headerGlassControlClass(headerInkLight))}>
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>

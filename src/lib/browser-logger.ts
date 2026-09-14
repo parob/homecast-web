@@ -10,6 +10,10 @@
  * Community mode / shared view is a no-op because there's no cloud API.
  */
 
+// Read-only, and deliberately not `server/connection.ts` — that module imports
+// this one, so the dependency can only run in this direction. See device-id.ts.
+import { readDeviceId } from '@/lib/device-id';
+
 export interface BrowserLogEntry {
   id: number;
   timestamp: number;
@@ -365,10 +369,31 @@ class BrowserLogger {
 
     const batchSize = ship.batchSize ?? 100;
     const batch = this.pending.splice(0, batchSize);
+
+    // Say which device this is (parob/homecast-web#109).
+    //
+    // Without it, app-web inside the Mac relay's WKWebView is indistinguishable
+    // in Cloud Logging from a browser tab on someone's laptop: `source` is the
+    // hardcoded `"web"` on both, and the session id is minted `web-…` on both.
+    // Anything trying to reason about relay behaviour from shipped logs hits
+    // that wall — it cost parob/homecast-cloud#119 an open question it did not
+    // need to have.
+    //
+    // `device_id` is the right channel and needed no new protocol: the ingest
+    // endpoint has **always** had it as a first-class column
+    // (`client_logs.py` → `log_fn(..., device_id=entry.get("device_id"))`),
+    // and this shipper simply never filled it in. The id already encodes the
+    // answer in its prefix — `mac_` when relay-capable, `web_` otherwise.
+    //
+    // Read per flush rather than once at construction: the logger is installed
+    // before `getDeviceId()` has necessarily minted one, so caching `null` here
+    // would mean this never populates for the life of the tab.
+    const deviceId = readDeviceId();
+
     const body = JSON.stringify({
       source: ship.source ?? 'web',
       session_id: this.sessionId,
-      entries: batch,
+      entries: deviceId ? batch.map((e) => ({ ...e, device_id: deviceId })) : batch,
     });
 
     // pagehide / visibilitychange → sendBeacon (fire-and-forget, survives nav).

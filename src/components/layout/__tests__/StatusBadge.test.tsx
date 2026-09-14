@@ -151,8 +151,8 @@ describe('shape', () => {
     // makes it round, so the unlabelled state must be square.
     render(<StatusBadge />);
     const cls = screen.getByRole('button').className;
-    expect(cls).toContain('h-6');
-    expect(cls).toContain('w-6');
+    expect(cls).toContain('w-7');
+    expect(cls).not.toContain('px-2');
     expect(cls).not.toContain('px-2');
   });
 
@@ -161,7 +161,7 @@ describe('shape', () => {
     render(<StatusBadge />);
     const cls = screen.getByRole('button').className;
     expect(cls).toContain('px-2');
-    expect(cls).not.toContain('w-6');
+    expect(cls).not.toContain('w-7');
   });
 });
 

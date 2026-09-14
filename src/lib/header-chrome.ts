@@ -120,3 +120,29 @@ export function headerDotClass(inkIsLight: boolean, reinforce = false): string {
     : 'text-foreground bg-transparent hover:bg-black/10';
   return `${ink} ${halo(inkIsLight, reinforce)}`;
 }
+
+/**
+ * A glass plate for a header control — the look the iOS native bar's buttons
+ * have (parob/homecast-cloud#120), so every other platform's header reads as
+ * the same family: a circle for a lone control, a capsule for a group.
+ *
+ * Keyed on the same ink verdict as everything else in the row. Light ink
+ * gets dark glass, dark ink gets light glass; either way the plate adds the
+ * contrast a bare glyph over a photo could only get from its halo.
+ */
+export function headerGlassClass(inkIsLight: boolean): string {
+  const tint = inkIsLight
+    ? 'bg-black/25 text-white ring-1 ring-inset ring-white/15 shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+    : 'bg-white/60 text-neutral-900 ring-1 ring-inset ring-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.12)]';
+  return `rounded-full backdrop-blur-xl backdrop-saturate-150 ${tint}`;
+}
+
+/**
+ * An icon control that sits on a glass plate: ink and press feedback only,
+ * no halo — the plate is what separates it from the page.
+ */
+export function headerGlassControlClass(inkIsLight: boolean): string {
+  return inkIsLight
+    ? 'text-white !bg-transparent hover:!bg-white/15 active:!bg-white/20'
+    : 'text-neutral-900 !bg-transparent hover:!bg-black/10 active:!bg-black/15';
+}

@@ -159,3 +159,45 @@ export function getRoomIcon(roomName: string): LucideIcon {
   // Default fallback
   return DoorClosed;
 }
+
+/**
+ * The SF Symbol for a room, for the iOS native header's room menu
+ * (parob/homecast-cloud#120). Keyed on the Lucide icon `getRoomIcon` picks,
+ * so the two can never disagree about which room is which kind.
+ */
+const ROOM_SYMBOLS = new Map<LucideIcon, string>([
+  [Sofa, 'sofa'],
+  [Bed, 'bed.double'],
+  [CookingPot, 'frying.pan'],
+  [UtensilsCrossed, 'fork.knife'],
+  [Bath, 'bathtub'],
+  [ShowerHead, 'shower'],
+  [Monitor, 'desktopcomputer'],
+  [BookOpen, 'book'],
+  [WashingMachine, 'washer'],
+  [Shirt, 'tshirt'],
+  [Archive, 'archivebox'],
+  [Car, 'car'],
+  [TreePine, 'tree'],
+  [Sunrise, 'sunrise'],
+  [Waves, 'water.waves'],
+  [Leaf, 'leaf'],
+  [DoorOpen, 'door.left.hand.open'],
+  [DoorClosed, 'door.left.hand.closed'],
+  [House, 'house'],
+  [Baby, 'figure.and.child.holdinghands'],
+  [Dumbbell, 'dumbbell'],
+  [Droplet, 'drop'],
+  [User, 'person'],
+  [Film, 'film'],
+  [Gamepad2, 'gamecontroller'],
+  [Wine, 'wineglass'],
+  [Palette, 'paintpalette'],
+  [PawPrint, 'pawprint'],
+  [Server, 'server.rack'],
+  [ArrowUpFromLine, 'stairs'],
+]);
+
+export function getRoomSymbol(roomName: string): string {
+  return ROOM_SYMBOLS.get(getRoomIcon(roomName)) ?? 'door.left.hand.closed';
+}
