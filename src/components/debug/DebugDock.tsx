@@ -13,6 +13,7 @@
 
 import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
 import { isRequestPanelEnabled, subscribeRequestPanelEnabled } from '@/lib/request-log';
+import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 
 // Lazy so the panel's markup never lands in the entry chunk for the people who
 // will never open it.
@@ -23,7 +24,16 @@ export function DebugDock({ children }: { children: ReactNode }) {
 
   useEffect(() => subscribeRequestPanelEnabled(() => setOpen(isRequestPanelEnabled())), []);
 
-  if (!open) return <>{children}</>;
+  // Under the iOS native header the DOCUMENT scrolls — UIKit reads the web
+  // view's own scroll offset to collapse the large title, and an inner scroller
+  // is invisible to it. The squash below puts the whole app inside a fixed,
+  // overflow-hidden box, which left the document with nothing to scroll: a
+  // phone with the request log switched on could not scroll the dashboard at
+  // all (2026-09-14). So there the log simply overlays the bottom, and the
+  // page pads itself by the dock's height instead (`useDebugDockHeight`).
+  const nativeHeader = useNativeHeaderActive();
+
+  if (!open || nativeHeader) return <>{children}</>;
 
   return (
     <div className="fixed inset-0 flex flex-col">
