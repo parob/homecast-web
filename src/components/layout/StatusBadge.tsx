@@ -288,7 +288,18 @@ export function StatusBadge({
         // Done here rather than as a `-mb-1` on the rows container, which
         // `space-y-3` overrides: it sets `margin-bottom` on every child after
         // the first, at a higher specificity.
-        className={cn('w-[280px] p-3 window-no-drag', (showReliabilityRow || showRelayRow) && 'pb-2')}
+        // Radix measures the room it has and publishes it as
+        // `--radix-popover-content-available-height`; without a cap the card
+        // simply runs off the bottom of a short viewport with nothing to
+        // scroll, so the last thing it says is unreachable. A landscape phone
+        // is the case that bites — iOS declares both landscape orientations,
+        // and at 375pt tall six of the eleven states this card can be in are
+        // taller than the room below the header.
+        className={cn(
+          'w-[280px] p-3 window-no-drag',
+          'max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain',
+          (showReliabilityRow || showRelayRow) && 'pb-2',
+        )}
         onPointerDownOutside={(e) => {
           // Radix closes on pointerdown, which on touch fires before the tap
           // that opened it has finished — without this the popover flickers
