@@ -8139,12 +8139,11 @@ const Dashboard = () => {
           style={{
             width: sidebarWidth,
             ...(isInMobileApp ? {
-              paddingTop: nativeHeaderActive ? 'calc(17px + var(--native-header-inset, 0px))' : 'calc(17px + var(--safe-area-top, 0px))',
-              // A phone on its side has a safe area on the left too; without
-              // this the sidebar hugged the screen edge while the content and
-              // the bar's buttons kept their distance on the right. A margin,
-              // not padding: the width is fixed and padding squeezed the rows.
-              marginLeft: 'var(--safe-area-left, 0px)',
+              // The same gap above as beside: the panel's left inset is
+              // 0.75rem + 5px, and the top used to be a flat 17px.
+              paddingTop: nativeHeaderActive
+                ? 'calc(0.75rem + 5px + var(--native-header-inset, 0px))'
+                : 'calc(0.75rem + 5px + var(--safe-area-top, 0px))',
             } : undefined),
           }}
         >
