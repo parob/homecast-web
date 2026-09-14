@@ -7403,6 +7403,9 @@ const Dashboard = () => {
   // every platform.
   const headerRightMenu = (
     <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
+    {/* The connection dot leads the capsule — one control group, the same
+        on every platform including the iOS native bar. */}
+    <StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
     {hasContentAccess && (
     <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
@@ -7566,7 +7569,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader badgeLeads={isMobile} nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

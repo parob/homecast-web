@@ -55,7 +55,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { buildAnswerCard } from '@/lib/answer-card';
-import { headerDotClass, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
+import { headerDotClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
@@ -224,7 +224,7 @@ export function StatusBadge({
   // Under the iOS native bar this button is hidden with the rest of the web
   // header row, but it is still what the native dot "clicks" and what the
   // popover anchors to. Park it, invisibly, where the native dot is drawn —
-  // the leading edge of the bar — so the popover opens under that dot.
+  // the leading segment of the capsule — so the popover opens under it.
   const nativeHeaderActive = useNativeHeaderActive();
   // The line under the native large title says something only when there is
   // something to say — the Home app shows "Updating…" or "No Response" there
@@ -287,7 +287,7 @@ export function StatusBadge({
           style={nativeHeaderActive ? {
             position: 'fixed',
             top: 'calc(var(--safe-area-top, 0px) + 6px)',
-            left: '12px',
+            right: '96px',
             width: 32,
             height: 40,
             opacity: 0,
@@ -301,13 +301,12 @@ export function StatusBadge({
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
-            // A bare dot, larger, with the full tap target and no plate; only
-            // once it has words to carry does it get the glass pill the other
-            // controls sit on. Same spot as the iOS native bar's dot
-            // (parob/homecast-cloud#120): left of the search/⋯ capsule.
-            p.label
-              ? `h-[max(2.5rem,40px)] gap-1.5 px-3 ${headerGlassClass(!!inkIsLight)} ${headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, '')}`
-              : 'h-[max(2.5rem,40px)] w-8 p-0 rounded-full bg-transparent',
+            // A segment of the header's glass capsule, leading it — the same
+            // place the iOS native bar puts its dot (parob/homecast-cloud#120).
+            // No plate of its own; the capsule is the plate.
+            'rounded-full h-[max(2.25rem,36px)]',
+            p.label ? 'gap-1.5 px-2' : 'w-9 p-0',
+            headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, 'bg-transparent'),
           )}
         >
           <span
