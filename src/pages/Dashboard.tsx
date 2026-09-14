@@ -8104,9 +8104,8 @@ const Dashboard = () => {
       {/* Edit Layout's toolbar. A solid full-width bar that covers the app header
           rather than floating over it: while editing, none of the header's normal
           controls apply, and leaving them visible but inert invited taps that did
-          nothing. The burger stays, because the sidebar is half of what you came
-          here to arrange — homes and rooms live in it. The Sheet it opens is
-          z-[10015], above this bar, so it still works.
+          nothing. There is no burger either: homes and rooms are in the home
+          name's own menu now, and the drawer is still an edge swipe away.
 
           There is no Show hidden control: editing always reveals hidden things,
           sorted to the end of the grid. You cannot bring back what you cannot
@@ -8144,21 +8143,13 @@ const Dashboard = () => {
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
             <div className="flex items-center justify-between gap-2 h-[80px]">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu"
-                // Redundant once the sidebar is on screen in its own right —
-                // which is what happens when you turn a phone sideways.
-                //
-                // The inset mirrors AppHeader's left cluster (`px-[max(0.5rem,8px)]`
-                // inside the same `px-4` container) rather than pulling the other
-                // way. This bar covers the header, so the burger is the one control
-                // drawn in both — a different inset here and it jumps 20px left the
-                // moment Edit Layout comes on, which is what it used to do.
-                className={`md:hidden flex items-center justify-center h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] ml-[max(0.5rem,8px)] rounded-full ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+              {/* No burger. The sidebar used to be half of what you came here
+                  to arrange, but the home name's own menu now covers homes
+                  and rooms and the drawer is still an edge swipe away — and
+                  on a phone the ☰ was the one control drawn in both this bar
+                  and the header. An invisible twin of Done keeps the title
+                  centred between the two edges. */}
+              <span className="px-3 py-1.5 text-sm font-semibold invisible" aria-hidden>Done</span>
               {/* The gesture is not discoverable on its own — nothing on screen
                   says a hold does anything — so the bar that appears when you
                   find it explains what you can do next. `min-w-0` and wrapping
