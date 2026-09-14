@@ -8136,7 +8136,17 @@ const Dashboard = () => {
           // floating rather than tucked into the corner. Written as calc so the
           // rem stays the rem the rest of the padding uses.
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
-          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: nativeHeaderActive ? 'calc(17px + var(--native-header-inset, 0px))' : 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
+          style={{
+            width: sidebarWidth,
+            ...(isInMobileApp ? {
+              paddingTop: nativeHeaderActive ? 'calc(17px + var(--native-header-inset, 0px))' : 'calc(17px + var(--safe-area-top, 0px))',
+              // A phone on its side has a safe area on the left too; without
+              // this the sidebar hugged the screen edge while the content and
+              // the bar's buttons kept their distance on the right. A margin,
+              // not padding: the width is fixed and padding squeezed the rows.
+              marginLeft: 'var(--safe-area-left, 0px)',
+            } : undefined),
+          }}
         >
           <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
             <div
@@ -8453,7 +8463,11 @@ const Dashboard = () => {
               paddingTop: nativeHeaderActive
                 ? 'calc(var(--native-header-inset, 0px) + 8px)'
                 : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
-              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`
+              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
+              // A phone on its side: keep the grid clear of the Dynamic
+              // Island and the rounded corner on the right, as the sidebar
+              // now is on the left.
+              paddingRight: 'var(--safe-area-right, 0px)'
             } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
