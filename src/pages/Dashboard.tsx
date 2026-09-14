@@ -3608,15 +3608,23 @@ const Dashboard = () => {
   const anyRelayConnected = homes.some(h => isHomeServed(h.id));
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
-  // Swipe in from the left edge to open the navigation drawer, and back out of
-  // the open drawer to close it (that half lives in SheetContent). Gated the
-  // same way the menu button is: on md and up the sidebar is a permanent
-  // column, and during onboarding the drawer has nothing in it. The gesture
-  // stands down whenever a dialog is over the page — including the admin panel,
-  // which runs its own scoped swipe below.
+  // Swipe in from the left edge to go back, the way an iOS navigation stack
+  // does: a room, room group or collection returns to the whole home, and the
+  // whole home steps to the previous home in the title menu's order. It used
+  // to open the navigation drawer; the home name's own menu now covers what
+  // the drawer offered, and the drawer's own swipe-to-close still lives in
+  // SheetContent. Gated the same way the menu button was: on md and up the
+  // sidebar is a permanent column, and during onboarding there is nothing to
+  // go back to. The gesture stands down whenever a dialog is over the page —
+  // including the admin panel, which runs its own scoped swipe below.
+  //
+  // Through a ref because what "back" means depends on selections and the
+  // homes list that are computed further down this component, and the
+  // gesture only fires long after render.
+  const edgeSwipeBackRef = useRef<() => void>(() => {});
   useEdgeSwipeOpen({
     enabled: isMobile && hasContentAccess && !sidebarOpen,
-    onOpen: () => setSidebarOpen(true),
+    onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
     enabled: isMobile && isAdminRoute && !!_cloud && !adminSidebarOpen,
@@ -4110,6 +4118,21 @@ const Dashboard = () => {
     () => [...homeNameMap.entries()].map(([id, name]) => ({ id, name })),
     [homeNameMap],
   );
+
+  // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
+  // room, group or collection to the whole home; from the whole home to the
+  // previous home in the menu's order; nothing at the first home.
+  useEffect(() => {
+    edgeSwipeBackRef.current = () => {
+      if (!selectedHomeId) return;
+      if (selectedRoomId || selectedRoomGroupId || selectedCollectionId) {
+        handleSelectHome(selectedHomeId);
+        return;
+      }
+      const index = nativeHomes.findIndex((home) => home.id === selectedHomeId);
+      if (index > 0) handleSelectHome(nativeHomes[index - 1].id);
+    };
+  });
 
   // Auto-refresh while the page is visible:
   //  - every 5s when there's no data at all (first load / empty account)
