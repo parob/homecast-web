@@ -81,6 +81,8 @@ interface StatusBadgeProps {
    * band measurement.
    */
   haloStrong?: boolean;
+  /** Beside the heading text rather than in the header's control cluster. */
+  variant?: 'control' | 'inline';
   accountType?: string;
   /**
    * The home the card's verdict and the chain's last node are named for.
@@ -125,6 +127,7 @@ function linkEvidence(): string | null {
 export function StatusBadge({
   inkIsLight,
   haloStrong,
+  variant = 'control',
   accountType,
   homeName,
   homeId,
@@ -223,8 +226,8 @@ export function StatusBadge({
   const nativeDotHidden = communityRelayMac && !showRelay;
   // Under the iOS native bar this button is hidden with the rest of the web
   // header row, but it is still what the native dot "clicks" and what the
-  // popover anchors to. Park it, invisibly, where the native dot is drawn —
-  // the leading segment of the capsule — so the popover opens under it.
+  // popover anchors to. Park it, invisibly, on the native bar's large-title
+  // line, so the popover opens under the title where the native dot is.
   const nativeHeaderActive = useNativeHeaderActive();
   // The line under the native large title says something only when there is
   // something to say — the Home app shows "Updating…" or "No Response" there
@@ -286,8 +289,8 @@ export function StatusBadge({
           aria-label={p.srLabel}
           style={nativeHeaderActive ? {
             position: 'fixed',
-            top: 'calc(var(--safe-area-top, 0px) + 6px)',
-            right: '96px',
+            top: 'calc(var(--native-header-inset, 0px) - 44px)',
+            left: '16px',
             width: 32,
             height: 40,
             opacity: 0,
@@ -301,12 +304,15 @@ export function StatusBadge({
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
-            // A segment of the header's glass capsule, leading it — the same
-            // place the iOS native bar puts its dot (parob/homecast-cloud#120).
-            // No plate of its own; the capsule is the plate.
-            'rounded-full h-[max(2.25rem,36px)]',
-            p.label ? 'gap-1.5 px-2' : 'w-9 p-0',
-            headerGlassControlClass(!!inkIsLight).replace(/!bg-transparent/, 'bg-transparent'),
+            // Beside the home name: a bare dot with a modest tap target, and
+            // a small pill only once it has words. The same spot the iOS
+            // native bar draws its dot (parob/homecast-cloud#120).
+            'rounded-full',
+            p.label ? 'h-7 gap-1.5 px-2 text-[12px]' : 'h-7 w-7 p-0',
+            inkIsLight
+              ? 'text-white bg-transparent hover:bg-white/15'
+              : 'text-foreground bg-transparent hover:bg-black/10',
+            p.label && (inkIsLight ? 'bg-white/15' : 'bg-black/10'),
           )}
         >
           <span

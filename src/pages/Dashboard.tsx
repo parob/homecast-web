@@ -7317,14 +7317,22 @@ const Dashboard = () => {
       </DropdownMenuItem>
     );
   });
+  // The connection dot sits beside the home name in the heading, after the
+  // chevron — the same spot the iOS native bar draws its own. Only on the
+  // whole-home heading; a breadcrumb has enough in it already.
+  const headingStatusDot = (
+    <span className="ml-2 inline-flex items-center align-middle">
+      <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
+    </span>
+  );
   const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
+    const isHeading = !className && !onPlainClick;
     if (!showWebHomeMenu) {
-      return onPlainClick
-        ? <button type="button" className={className} onClick={onPlainClick}>{name}</button>
-        : name;
+      if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
+      return <>{name}{isHeading && headingStatusDot}</>;
     }
     return (
-      <DropdownMenu>
+      <><DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button type="button" className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
             <span className="truncate">{name}</span>
@@ -7352,7 +7360,7 @@ const Dashboard = () => {
             </React.Fragment>
           ))}
         </DropdownMenuContent>
-      </DropdownMenu>
+      </DropdownMenu>{isHeading && headingStatusDot}</>
     );
   };
 
@@ -7403,9 +7411,6 @@ const Dashboard = () => {
   // every platform.
   const headerRightMenu = (
     <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
-    {/* The connection dot leads the capsule — one control group, the same
-        on every platform including the iOS native bar. */}
-    <StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
     {hasContentAccess && (
     <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
