@@ -169,13 +169,13 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
             background is gone with the buttons' own circles — see
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
             now, which costs the header no box at all. */}
-        <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
+        <div className="relative flex items-center h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
           {children}
         </div>
 
         {/* User login state bubble */}
         {!isInMacApp && (
-          <div className="relative flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
+          <div className="relative flex items-center gap-2 pl-0 pr-0 md:pl-[max(1.25rem,20px)] md:pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
             {leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(

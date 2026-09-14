@@ -241,20 +241,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
-  Home, House, RefreshCw, Lightbulb,
+  Home, House, Folder, RefreshCw, Lightbulb,
   Thermometer, Loader2, Power, Sun, Moon, Lock,
   Wind, Droplets, AlertCircle, DoorOpen, DoorClosed, Camera,
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
   Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -7232,16 +7226,21 @@ const Dashboard = () => {
   // everything it does that a menu cannot (reorder, hide, create).
   const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
   const onWholeHome = !selectedRoomId && !selectedRoomGroupId && !selectedCollectionId;
-  const roomItem = (room: { id: string; name: string }): NativeHeaderNavItem => ({
+  // `icon` is for the web rendering of the same menu (mobile web has no
+  // native bar); it is a function, so JSON drops it on the way to native.
+  type NavItem = NativeHeaderNavItem & { icon?: React.ComponentType<{ className?: string }>; children?: NavItem[] };
+  type NavSection = { id: string; title?: string; items: NavItem[] };
+  const roomItem = (room: { id: string; name: string }): NavItem => ({
     id: `room:${room.id}`,
     label: room.name,
     symbol: getRoomSymbol(room.name),
+    icon: getRoomIcon(room.name),
     selected: !selectedCollectionId && selectedRoomId === room.id,
   });
-  const nativeNavigation: NativeHeaderNavSection[] = [];
+  const nativeNavigation: NavSection[] = [];
   if (selectedHomeId && hasContentAccess) {
-    const roomItems: NativeHeaderNavItem[] = [
-      { id: 'home', label: 'All Rooms', symbol: 'house', selected: onWholeHome },
+    const roomItems: NavItem[] = [
+      { id: 'home', label: 'All Rooms', symbol: 'house', icon: House, selected: onWholeHome },
     ];
     for (const group of roomGroups) {
       const members = group.roomIds
@@ -7251,8 +7250,9 @@ const Dashboard = () => {
         id: `roomgroup:${group.entityId}`,
         label: group.name,
         symbol: 'square.3.layers.3d',
+        icon: Layers,
         children: [
-          { id: `roomgroup:${group.entityId}`, label: `All of ${group.name}`, symbol: 'square.3.layers.3d', selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
+          { id: `roomgroup:${group.entityId}`, label: `All of ${group.name}`, symbol: 'square.3.layers.3d', icon: Layers, selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
           ...members.map(roomItem),
         ],
       });
@@ -7268,18 +7268,20 @@ const Dashboard = () => {
         const groups = parseCollectionPayload(collection.payload).groups;
         const selectedHere = selectedCollectionId === collection.id;
         if (groups.length === 0) {
-          return { id: `collection:${collection.id}`, label: collection.name, symbol: 'folder', selected: selectedHere };
+          return { id: `collection:${collection.id}`, label: collection.name, symbol: 'folder', icon: Folder, selected: selectedHere };
         }
         return {
           id: `collection:${collection.id}`,
           label: collection.name,
           symbol: 'folder',
+          icon: Folder,
           children: [
-            { id: `collection:${collection.id}`, label: `All of ${collection.name}`, symbol: 'folder', selected: selectedHere && !selectedCollectionGroupId },
+            { id: `collection:${collection.id}`, label: `All of ${collection.name}`, symbol: 'folder', icon: Folder, selected: selectedHere && !selectedCollectionGroupId },
             ...groups.map((group) => ({
               id: `collectiongroup:${collection.id}/${group.id}`,
               label: group.name,
               symbol: 'rectangle.3.group',
+              icon: Layers,
               selected: selectedHere && selectedCollectionGroupId === group.id,
             })),
           ],
@@ -7287,6 +7289,70 @@ const Dashboard = () => {
       }),
     });
   }
+  // Mobile web has no native bar and, now, no ☰: the home name in the page
+  // heading carries the same menu the native title does — homes first, then
+  // this home's rooms and groups, then the collections.
+  const showWebHomeMenu = isMobile && !nativeHeaderActive && hasContentAccess;
+  const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
+    const Icon = item.icon;
+    if (item.children && item.children.length > 0) {
+      return (
+        <DropdownMenuSub key={item.id}>
+          <DropdownMenuSubTrigger>
+            {Icon && <Icon className="h-4 w-4 mr-2" />}
+            {item.label}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>{renderNavItems(item.children)}</DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+    return (
+      <DropdownMenuItem key={item.id} onClick={() => handleNativeNavigate(item.id)}>
+        {Icon && <Icon className="h-4 w-4 mr-2" />}
+        <span className="truncate">{item.label}</span>
+        {item.selected && <Check className="ml-auto h-4 w-4" />}
+      </DropdownMenuItem>
+    );
+  });
+  const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
+    if (!showWebHomeMenu) {
+      return onPlainClick
+        ? <button type="button" className={className} onClick={onPlainClick}>{name}</button>
+        : name;
+    }
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
+            <span className="truncate">{name}</span>
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent scrim align="start" className="min-w-[220px]">
+          {nativeHomes.length > 1 && (
+            <>
+              {nativeHomes.map((home) => (
+                <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
+                  <House className="h-4 w-4 mr-2" />
+                  <span className="truncate">{home.name}</span>
+                  {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          )}
+          {nativeNavigation.map((section, i) => (
+            <React.Fragment key={section.id}>
+              {i > 0 && <DropdownMenuSeparator />}
+              {section.title && <DropdownMenuLabel className="text-xs text-muted-foreground">{section.title}</DropdownMenuLabel>}
+              {renderNavItems(section.items)}
+            </React.Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
   const handleNativeNavigate = (itemId: string) => {
     const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
     switch (kind) {
@@ -7502,7 +7568,10 @@ const Dashboard = () => {
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-                <SheetTrigger asChild>
+                {/* No ☰ once the home name carries the menu; the drawer is
+                    still there behind the edge swipe for what a menu cannot
+                    do (reorder, hide, create). */}
+                {!showWebHomeMenu && <SheetTrigger asChild>
                   {/* `data-native-header` is what a tap on the iOS native bar
                       clicks — see `native/native-header.ts`. Keeping the route
                       through the real trigger is what lets that preview exist
@@ -7510,7 +7579,7 @@ const Dashboard = () => {
                   <Button data-native-header="menu" data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
-                </SheetTrigger>
+                </SheetTrigger>}
                 {/* The Mac app hides its title bar but the traffic lights still
                     sit there, so the drawer's contents have to clear the same
                     33px the header reserves. Inset the padding rather than the
@@ -8744,13 +8813,7 @@ const Dashboard = () => {
                       return (
                         <>
                           {selectedHomeId ? (
-                            <button
-                              type="button"
-                              className={BREADCRUMB_LINK_CLASS}
-                              onClick={() => handleSelectHome(selectedHomeId)}
-                            >
-                              {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                            </button>
+                            renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
@@ -8831,13 +8894,7 @@ const Dashboard = () => {
                   ) : selectedRoomGroup ? (
                     <>
                       {selectedHomeId ? (
-                        <button
-                          type="button"
-                          className={BREADCRUMB_LINK_CLASS}
-                          onClick={() => handleSelectHome(selectedHomeId)}
-                        >
-                          {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                        </button>
+                        renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
@@ -8881,7 +8938,7 @@ const Dashboard = () => {
                       </DropdownMenu>
                     </>
                   ) : (
-                    homes.find(h => h.id === selectedHomeId)?.name || 'Home'
+                    renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home')
                   )}
                 </h2>
                 {/* Summary row: scenes/automations/status pills, or — on a room
