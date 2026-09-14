@@ -32,6 +32,8 @@ import {
   nativeHeaderInsets,
   watchNativeHeaderCover,
   NATIVE_HEADER_COVER_ATTR,
+  publishRefreshDone,
+  nativeHeaderRowCenter,
   NATIVE_HEADER_EVENT,
   NATIVE_HEADER_TARGET_ATTR,
   type NativeHeaderControl,
@@ -44,6 +46,7 @@ interface TestWindow {
     tap: (c: string) => void;
     setEnabled: (e: boolean, bar?: number, status?: number) => void;
     selectHome?: (id: string) => void;
+    refresh?: (kind: string) => void;
   };
   homecastNativeHeaderInsets?: { bar: number; status: number };
   webkit?: { messageHandlers?: { homecast?: { postMessage: (m: unknown) => void } } };
@@ -297,6 +300,32 @@ describe('the Home-app-shaped bar (large title, title menu, native ⋯)', () => 
     const sent = installNativeBuild();
     installNativeHeaderBridge({ onTap: () => {} });
     expect(sent).toContainEqual({ action: 'header.ready' });
+  });
+});
+
+describe('the native pull-to-refresh', () => {
+  it('routes a refresh to the page and lets the page report done', () => {
+    const sent = installNativeBuild();
+    const kinds: string[] = [];
+    installNativeHeaderBridge({ onTap: () => {}, onRefresh: (kind) => kinds.push(kind) });
+    w().__homecastNativeHeader!.refresh!('soft');
+    w().__homecastNativeHeader!.refresh!('hard');
+    w().__homecastNativeHeader!.refresh!('sideways');
+    expect(kinds).toEqual(['soft', 'hard', 'soft']);
+    expect(publishRefreshDone()).toBe(true);
+    expect(sent.at(-1)).toEqual({ action: 'header.refreshDone' });
+  });
+});
+
+describe("where the bar's controls sit", () => {
+  it('derives the bar row centre from the reported insets', () => {
+    installNativeBuild();
+    w().homecastNativeHeaderInsets = { bar: 165, status: 59 };
+    // compact bar 59..113, centred at 86
+    expect(nativeHeaderRowCenter()).toBe(86);
+    // sidebar layout: no band, a standard 54pt row of buttons
+    w().homecastNativeHeaderInsets = { bar: 59, status: 59 };
+    expect(nativeHeaderRowCenter()).toBe(86);
   });
 });
 

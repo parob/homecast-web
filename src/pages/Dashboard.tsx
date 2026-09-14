@@ -44,7 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
-import { activateHeaderControl, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
@@ -7452,6 +7452,18 @@ const Dashboard = () => {
     );
   };
 
+  // The native pull-to-refresh (parob/homecast-cloud#120). The web's own
+  // pull is off under the bar — the document scrolls there, not its inner
+  // container — so UIKit's refresh control on the web view's scroll view
+  // takes over, and a deep pull means what a 500px pull meant here: the
+  // hard-reload countdown. Done is reported at once either way; `refreshAll`
+  // shows its own loading state and the countdown is its own screen.
+  const handleNativeRefresh = (kind: NativeHeaderRefreshKind) => {
+    if (kind === 'hard') startHardReloadCountdown();
+    else refreshAll();
+    publishRefreshDone();
+  };
+
   const handleNativeNavigate = (itemId: string) => {
     const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
     switch (kind) {
@@ -7662,7 +7674,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

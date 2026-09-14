@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNativeHeader } from '@/hooks/useNativeHeader';
-import { NATIVE_HEADER_HIDDEN_CLASS, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
+import { NATIVE_HEADER_EVENT, NATIVE_HEADER_HIDDEN_CLASS, isNativeHeaderEnabled, nativeHeaderRowCenter, type NativeHeaderRefreshKind, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -50,9 +50,11 @@ interface AppHeaderProps {
   nativeNavigation?: NativeHeaderNavSection[];
   /** The native ☰ menu picked an item. */
   onNativeNavigate?: (itemId: string) => void;
+  /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
+  onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -83,7 +85,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     if (nativeNavigationKey !== undefined) state.navigation = JSON.parse(nativeNavigationKey) as NativeHeaderNavSection[];
     return state;
   }, [nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance, nativeNavigationKey]);
-  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction, onNavigate: onNativeNavigate });
+  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction, onNavigate: onNativeNavigate, onRefresh: onNativeRefresh });
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView
   // creation and is therefore available at the first React render — whereas
@@ -107,10 +109,21 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     const header = headerRef.current;
     if (!row || !header) return;
     const publish = () => {
+      // While the native bar has the screen this row is collapsed to nothing
+      // (`NATIVE_HEADER_HIDDEN_CLASS`), so measuring it put the toast on the
+      // header's top padding — under the status bar, or under the bar's own
+      // controls. The bar reports its insets; the line its buttons sit on
+      // follows from those.
+      if (isNativeHeaderEnabled()) {
+        document.documentElement.style.setProperty('--top-row-center', `${nativeHeaderRowCenter()}px`);
+        return;
+      }
       const box = row.getBoundingClientRect();
       document.documentElement.style.setProperty('--top-row-center', `${box.top + box.height / 2}px`);
     };
     publish();
+    // The bar coming or going, or reporting new insets after a rotation.
+    window.addEventListener(NATIVE_HEADER_EVENT, publish);
     // The header is `fixed`, so the row moves only when the header's own box
     // changes — and that is NOT the same as the row resizing, which is all this
     // used to watch. The row is 80px tall whether or not it has been pushed down
@@ -137,6 +150,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     observer.observe(header, { box: 'border-box' });
     return () => {
       observer.disconnect();
+      window.removeEventListener(NATIVE_HEADER_EVENT, publish);
       // Back to the stylesheet's default, which is what a page with no header
       // — login, a share link — is positioned against.
       document.documentElement.style.removeProperty('--top-row-center');
