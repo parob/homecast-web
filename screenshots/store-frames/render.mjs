@@ -13,11 +13,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const [rawRoot, outRoot] = process.argv.slice(2).map((p) => resolve(p));
 const captions = JSON.parse(readFileSync(resolve(here, 'captions.json'), 'utf8'));
 
+// Big-app conventions: a clean light (or dark) ground, a huge left-aligned
+// headline with one phrase in the brand colour, and the device drawn large
+// and slightly tilted so it runs off the frame. `theme`/`tilt` per caption.
 const targets = {
-  mac:     { w: 2560, h: 1600, raw: '.',      names: captions.mac,    q: { landscape: '1', h1: '92px', p: '38px', 'device-top': '29%', 'device-w': '86%' } },
-  iphone:  { w: 1284, h: 2778, raw: 'iphone', names: captions.iphone, q: { h1: '104px', p: '44px', 'device-top': '23%', 'device-w': '86%', radius: '116px', bezel: '22px' } },
-  ipad:    { w: 2048, h: 2732, raw: 'ipad',   names: captions.ipad,   q: { h1: '120px', p: '50px', 'device-top': '21%', 'device-w': '84%', radius: '72px', bezel: '34px' } },
-  android: { w: 1440, h: 2560, raw: 'iphone', names: captions.iphone, q: { h1: '110px', p: '46px', 'device-top': '23%', 'device-w': '84%', radius: '96px', bezel: '20px' } },
+  mac:     { w: 2560, h: 1600, raw: '.',      names: captions.mac,    q: { landscape: '1', h1: '96px', p: '36px', 'device-top': '31%', 'device-w': '90%', 'shift-x': '4%' } },
+  iphone:  { w: 1284, h: 2778, raw: 'iphone', names: captions.iphone, q: { h1: '124px', p: '42px', 'device-top': '27%', 'device-w': '96%', radius: '132px', bezel: '24px' } },
+  ipad:    { w: 2048, h: 2732, raw: 'ipad',   names: captions.ipad,   q: { h1: '140px', p: '50px', 'device-top': '25%', 'device-w': '96%', radius: '78px', bezel: '36px', island: '0' } },
+  android: { w: 1440, h: 2560, raw: 'iphone', names: captions.iphone, q: { h1: '128px', p: '44px', 'device-top': '27%', 'device-w': '96%', radius: '110px', bezel: '22px', island: '0' } },
 };
 
 const browser = await chromium.launch();
@@ -27,7 +30,7 @@ for (const [name, t] of Object.entries(targets)) {
   await page.setViewportSize({ width: t.w, height: t.h });
   for (const c of t.names) {
     const img = pathToFileURL(resolve(rawRoot, t.raw, c.file)).href;
-    const q = new URLSearchParams({ w: `${t.w}px`, h: `${t.h}px`, title: c.title, sub: c.sub, accent: c.accent, accent2: c.accent2, img, ...t.q });
+    const q = new URLSearchParams({ w: `${t.w}px`, h: `${t.h}px`, title: c.title, sub: c.sub, img, tilt: c.tilt || '0deg', theme: c.theme || 'light', ...t.q });
     await page.goto(pathToFileURL(resolve(here, 'frame.html')).href + '?' + q.toString());
     await page.waitForFunction(() => { const i = document.getElementById('shot'); return i && i.complete && i.naturalWidth > 0; });
     await page.evaluate(() => document.fonts.ready);
