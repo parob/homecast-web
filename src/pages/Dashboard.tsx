@@ -7457,14 +7457,20 @@ const Dashboard = () => {
   );
   // The bar's collapsed title on a phone: the page's name and the switcher,
   // shown once the big heading has scrolled under the bar.
+  // The same pair the native bar carries: the page's name with the chevron,
+  // and on a room, group or collection page the home's name small beneath.
   const compactPageName = statusAreaName || (selectedCollectionId ? (selectedCollection?.name ?? '') : (statusHomeName ?? ''));
+  const compactHomeName = compactPageName && statusHomeName && compactPageName !== statusHomeName ? statusHomeName : null;
   const compactTitle = largeHeading && hasContentAccess && compactPageName ? (
     <div className={`transition-opacity duration-base ${headingHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden={!headingHidden}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild plain>
-          <button type="button" className={`group/title inline-flex items-center gap-2 rounded-full px-3 h-[max(2.5rem,40px)] max-w-[60vw] text-[15px] font-semibold ${headerGlassClass(headerInkLight)}`}>
-            <span className="truncate">{compactPageName}</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+          <button type="button" className={`group/title flex max-w-full flex-col items-center justify-center rounded-full px-3.5 ${compactHomeName ? 'py-1' : 'h-[max(2.5rem,40px)]'} leading-tight ${headerGlassClass(headerInkLight)}`}>
+            <span className="flex max-w-full items-center gap-1.5 text-[15px] font-semibold">
+              <span className="truncate">{compactPageName}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+            </span>
+            {compactHomeName && <span className="block max-w-full truncate text-[11px] font-medium opacity-70">{compactHomeName}</span>}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent scrim align="center" className="min-w-[220px]">

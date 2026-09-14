@@ -53,9 +53,9 @@ interface AppHeaderProps {
   /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
   onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
   /**
-   * In the row's left cluster: the phone's collapsed page title, shown once
-   * the big heading has scrolled under the bar. Sized by its content; the
-   * caller keeps it narrow enough to clear the controls on the right.
+   * Centred in the row: the phone's collapsed page title, shown once the big
+   * heading has scrolled under the bar. Held to the width between the
+   * controls' capsule and its mirror so it cannot reach either.
    */
   centerTitle?: React.ReactNode;
 }
@@ -192,14 +192,17 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
             now, which costs the header no box at all. */}
         <div className="relative flex items-center gap-2 h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
-          {/* Leading, not centred: on a phone a centred pill collides with
-              the controls' capsule, and the left cluster is empty there now
-              that the ☰ has gone. First in the row, because the page's own
-              (empty on a phone) wrappers follow and each costs a gap. */}
-          {centerTitle}
           {badgeLeads && leftBadge}
           {children}
         </div>
+        {/* Centred on the row like a native compact title, and held to the
+            width between the controls' capsule and its mirror on the left so
+            it can never reach either. */}
+        {centerTitle && (
+          <div className="absolute left-1/2 top-1/2 max-w-[calc(100%-260px)] -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+            {centerTitle}
+          </div>
+        )}
 
         {/* User login state bubble */}
         {!isInMacApp && (
