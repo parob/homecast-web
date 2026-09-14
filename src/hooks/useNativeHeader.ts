@@ -34,7 +34,11 @@ import {
  */
 export function useNativeHeader(
   state: NativeHeaderState,
-  handlers: { onSelectHome?: (homeId: string) => void; onMenuAction?: (itemId: string) => void } = {},
+  handlers: {
+    onSelectHome?: (homeId: string) => void;
+    onMenuAction?: (itemId: string) => void;
+    onNavigate?: (itemId: string) => void;
+  } = {},
 ): boolean {
   const [active, setActive] = useState(() => isNativeHeaderEnabled());
 
@@ -61,6 +65,9 @@ export function useNativeHeader(
       },
       onMenuAction: (itemId) => {
         handlersRef.current.onMenuAction?.(itemId);
+      },
+      onNavigate: (itemId) => {
+        handlersRef.current.onNavigate?.(itemId);
       },
     });
   }, []);

@@ -43,7 +43,8 @@ import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeK
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
-import type { NativeHeaderMenuSection } from '@/native/native-header';
+import { activateHeaderControl, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection } from '@/native/native-header';
+import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
@@ -7218,6 +7219,106 @@ const Dashboard = () => {
   // What the native bar should look like: light-on-dark whenever the page is.
   const nativeAppearance: 'dark' | 'light' = isDarkBackground ? 'dark' : 'light';
 
+  // What the native ☰ menu offers (parob/homecast-cloud#120). Homes are not
+  // here — the title menu has them — so this is the current home's rooms and
+  // room groups, then the collections. The web drawer stays one item away for
+  // everything it does that a menu cannot (reorder, hide, create).
+  const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
+  const onWholeHome = !selectedRoomId && !selectedRoomGroupId && !selectedCollectionId;
+  const roomItem = (room: { id: string; name: string }): NativeHeaderNavItem => ({
+    id: `room:${room.id}`,
+    label: room.name,
+    symbol: getRoomSymbol(room.name),
+    selected: !selectedCollectionId && selectedRoomId === room.id,
+  });
+  const nativeNavigation: NativeHeaderNavSection[] = [];
+  if (selectedHomeId && hasContentAccess) {
+    const roomItems: NativeHeaderNavItem[] = [
+      { id: 'home', label: 'All Rooms', symbol: 'house', selected: onWholeHome },
+    ];
+    for (const group of roomGroups) {
+      const members = group.roomIds
+        .map((rid) => rooms.find((r) => normalizeRoomId(r.id) === normalizeRoomId(rid)))
+        .filter((r): r is NonNullable<typeof r> => !!r);
+      roomItems.push({
+        id: `roomgroup:${group.entityId}`,
+        label: group.name,
+        symbol: 'square.3.layers.3d',
+        children: [
+          { id: `roomgroup:${group.entityId}`, label: `All of ${group.name}`, symbol: 'square.3.layers.3d', selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
+          ...members.map(roomItem),
+        ],
+      });
+    }
+    roomItems.push(...visibleRooms.map(roomItem));
+    nativeNavigation.push({ id: 'rooms', items: roomItems });
+  }
+  if (hasContentAccess && allCollections.length > 0) {
+    nativeNavigation.push({
+      id: 'collections',
+      title: 'Collections',
+      items: allCollections.map((collection) => {
+        const groups = parseCollectionPayload(collection.payload).groups;
+        const selectedHere = selectedCollectionId === collection.id;
+        if (groups.length === 0) {
+          return { id: `collection:${collection.id}`, label: collection.name, symbol: 'folder', selected: selectedHere };
+        }
+        return {
+          id: `collection:${collection.id}`,
+          label: collection.name,
+          symbol: 'folder',
+          children: [
+            { id: `collection:${collection.id}`, label: `All of ${collection.name}`, symbol: 'folder', selected: selectedHere && !selectedCollectionGroupId },
+            ...groups.map((group) => ({
+              id: `collectiongroup:${collection.id}/${group.id}`,
+              label: group.name,
+              symbol: 'rectangle.3.group',
+              selected: selectedHere && selectedCollectionGroupId === group.id,
+            })),
+          ],
+        };
+      }),
+    });
+  }
+  nativeNavigation.push({
+    id: 'more',
+    items: [{ id: 'menu', label: 'Full Menu', symbol: 'sidebar.left' }],
+  });
+  const handleNativeNavigate = (itemId: string) => {
+    const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
+    switch (kind) {
+      case 'home':
+        if (selectedHomeId) handleSelectHome(selectedHomeId);
+        break;
+      case 'room':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoom(rest);
+        break;
+      case 'roomgroup':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoomGroup(rest);
+        break;
+      case 'collection': {
+        const collection = allCollections.find((c) => c.id === rest);
+        if (collection) handleSelectCollection(collection);
+        break;
+      }
+      case 'collectiongroup': {
+        const [collectionId, groupId] = rest.split('/');
+        const collection = allCollections.find((c) => c.id === collectionId);
+        if (collection) {
+          handleSelectCollection(collection);
+          handleSelectCollectionGroup(groupId);
+        }
+        break;
+      }
+      case 'menu':
+        // Everything the drawer does that a menu cannot: the real web drawer.
+        activateHeaderControl('menu');
+        break;
+    }
+  };
+
   const renderOverflowItem = (item: OverflowItem) => (
     <DropdownMenuItem key={item.id} data-tour={item.tour} onClick={item.onSelect} disabled={item.disabled} className={item.destructive ? 'text-destructive focus:text-destructive' : undefined}>
       <item.icon className={`h-4 w-4 mr-2 ${item.spin ? 'animate-spin' : ''}`} />
@@ -7390,7 +7491,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

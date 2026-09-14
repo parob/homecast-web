@@ -86,6 +86,29 @@ export interface NativeHeaderState {
    * while one is open, the way a presented sheet covers the Home app's bar.
    */
   covered?: boolean;
+  /**
+   * What the ☰ button offers natively: the current home's rooms and room
+   * groups, the collections and their groups. Homes are not here — they
+   * moved to the title menu. An item with `children` is a submenu.
+   */
+  navigation?: NativeHeaderNavSection[];
+}
+
+export interface NativeHeaderNavItem {
+  /** Unique across the whole menu — what comes back from `navigate`. */
+  id: string;
+  label: string;
+  symbol?: string;
+  /** Ticked. */
+  selected?: boolean;
+  /** Presented as a submenu instead of an action. */
+  children?: NativeHeaderNavItem[];
+}
+
+export interface NativeHeaderNavSection {
+  id: string;
+  title?: string;
+  items: NativeHeaderNavItem[];
 }
 
 export interface NativeHeaderMenuItem {
@@ -162,6 +185,7 @@ interface NativeHeaderWindow extends Window {
     setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => void;
     selectHome?: (homeId: string) => void;
     menuAction?: (itemId: string) => void;
+    navigate?: (itemId: string) => void;
   };
   /** The bar's full height (large title shown) and the status bar alone, pt. */
   homecastNativeHeaderInsets?: { bar: number; status: number };
@@ -250,6 +274,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.menu !== undefined) message.menu = state.menu;
   if (state.appearance !== undefined) message.appearance = state.appearance;
   if (state.covered !== undefined) message.covered = state.covered;
+  if (state.navigation !== undefined) message.navigation = state.navigation;
 
   return post(message);
 }
@@ -325,6 +350,8 @@ export function installNativeHeaderBridge(handlers: {
   onSelectHome?: (homeId: string) => void;
   /** The native ⋯ menu picked an item, by the id the page published. */
   onMenuAction?: (itemId: string) => void;
+  /** The native ☰ menu picked a room, group or collection, by id. */
+  onNavigate?: (itemId: string) => void;
 }): () => void {
   const w = win();
   if (!w) return () => {};
@@ -352,6 +379,9 @@ export function installNativeHeaderBridge(handlers: {
     },
     menuAction: (itemId: string) => {
       if (typeof itemId === 'string' && itemId) handlers.onMenuAction?.(itemId);
+    },
+    navigate: (itemId: string) => {
+      if (typeof itemId === 'string' && itemId) handlers.onNavigate?.(itemId);
     },
   };
 

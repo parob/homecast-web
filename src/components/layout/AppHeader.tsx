@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNativeHeader } from '@/hooks/useNativeHeader';
-import { NATIVE_HEADER_HIDDEN_CLASS, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderState } from '@/native/native-header';
+import { NATIVE_HEADER_HIDDEN_CLASS, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -38,9 +38,13 @@ interface AppHeaderProps {
   onNativeMenuAction?: (itemId: string) => void;
   /** Whether the page is drawing light-on-dark, so the bar can match. */
   nativeAppearance?: 'dark' | 'light';
+  /** What the native ☰ menu offers: rooms, room groups, collections. */
+  nativeNavigation?: NativeHeaderNavSection[];
+  /** The native ☰ menu picked an item. */
+  onNativeNavigate?: (itemId: string) => void;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -58,6 +62,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // The menu is rebuilt by `Dashboard` on every render (it cannot memoise —
   // it sits below an early return), so it is keyed on its content here.
   const nativeMenuKey = nativeMenu === undefined ? undefined : JSON.stringify(nativeMenu);
+  const nativeNavigationKey = nativeNavigation === undefined ? undefined : JSON.stringify(nativeNavigation);
   const nativeState = useMemo(() => {
     const state: NativeHeaderState = { title: nativeTitle ?? '' };
     if (nativeStatusColor !== undefined) state.statusColor = nativeStatusColor;
@@ -65,9 +70,10 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     if (nativeCurrentHomeId !== undefined) state.currentHomeId = nativeCurrentHomeId;
     if (nativeMenuKey !== undefined) state.menu = JSON.parse(nativeMenuKey) as NativeHeaderMenuSection[];
     if (nativeAppearance !== undefined) state.appearance = nativeAppearance;
+    if (nativeNavigationKey !== undefined) state.navigation = JSON.parse(nativeNavigationKey) as NativeHeaderNavSection[];
     return state;
-  }, [nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance]);
-  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction });
+  }, [nativeTitle, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance, nativeNavigationKey]);
+  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction, onNavigate: onNativeNavigate });
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView
   // creation and is therefore available at the first React render — whereas
