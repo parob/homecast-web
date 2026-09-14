@@ -7185,6 +7185,12 @@ const Dashboard = () => {
   if (isAdmin && !isCommunity) {
     generalItems.push({ id: 'admin', label: 'Admin', icon: Server, symbol: 'server.rack', onSelect: () => navigate('/portal/admin') });
   }
+  // The native bar has no ☰ (like the Home app), so on the phone layout the
+  // drawer is reached from here for what a menu cannot do: reorder, hide,
+  // create. The web header keeps its own ☰ and does not need this.
+  if (nativeHeaderActive && isMobile && hasContentAccess) {
+    generalItems.push({ id: 'drawer', label: 'Full Menu', icon: Menu, symbol: 'sidebar.left', onSelect: () => activateHeaderControl('menu') });
+  }
   overflowSections.push({ id: 'general', separator: overflowSections[0]?.id === 'refresh', items: generalItems });
   if (!isCommunity || !isRelayCapable()) {
     overflowSections.push({ id: 'session', separator: true, items: [
@@ -7287,10 +7293,6 @@ const Dashboard = () => {
       }),
     });
   }
-  nativeNavigation.push({
-    id: 'more',
-    items: [{ id: 'menu', label: 'Full Menu', symbol: 'sidebar.left' }],
-  });
   const handleNativeNavigate = (itemId: string) => {
     const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
     switch (kind) {
@@ -7498,7 +7500,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -8134,7 +8136,7 @@ const Dashboard = () => {
           // floating rather than tucked into the corner. Written as calc so the
           // rem stays the rem the rest of the padding uses.
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
-          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
+          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: nativeHeaderActive ? 'calc(17px + var(--native-header-inset, 0px))' : 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
         >
           <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
             <div
@@ -8723,7 +8725,7 @@ const Dashboard = () => {
                 <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`}>
                 {/* Header with title. Under the iOS native header the bar's
                     large title IS this heading, so it is not drawn twice. */}
-                <h2 className={`text-base font-bold truncate mb-4 ${nativeHeaderActive ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 className={`text-base font-bold truncate mb-4 ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));

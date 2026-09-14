@@ -66,6 +66,13 @@ export interface NativeHeaderState {
   showSearch?: boolean;
   showOverflow?: boolean;
   /**
+   * Whether the bar should draw the large title band at all. False in the
+   * layout that has a permanent sidebar (a phone in landscape, an iPad): the
+   * page draws its own heading beside the sidebar there, and the bar is just
+   * the compact row.
+   */
+  largeTitle?: boolean;
+  /**
    * The connection state in words — what the Home app shows under its title
    * ("Updating…", "No Response"). The native bar draws it as the subtitle.
    */
@@ -278,6 +285,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.showMenu !== undefined) message.showMenu = state.showMenu;
   if (state.showSearch !== undefined) message.showSearch = state.showSearch;
   if (state.showOverflow !== undefined) message.showOverflow = state.showOverflow;
+  if (state.largeTitle !== undefined) message.largeTitle = state.largeTitle;
   if (state.subtitle !== undefined) message.subtitle = state.subtitle;
   if (state.homes !== undefined) message.homes = state.homes;
   if (state.currentHomeId !== undefined) message.currentHomeId = state.currentHomeId;
