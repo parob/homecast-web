@@ -43,6 +43,7 @@ import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeK
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
+import { useDebugDockHeight } from '@/lib/debug-dock';
 import { activateHeaderControl, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
@@ -4097,6 +4098,10 @@ const Dashboard = () => {
   // The iOS native header has the screen (parob/homecast-cloud#120): the web
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
+  // The request-log dock stops squashing the app while the native header is
+  // on (see `DebugDock`) and overlays the bottom instead, so the page clears
+  // it itself. Zero whenever the dock is closed.
+  const debugDockHeight = useDebugDockHeight();
 
   // What the iOS native title menu lists (parob/homecast-cloud#120) — the
   // Home app's chevron menu of homes. Memoised: the header publishes on
@@ -6117,7 +6122,7 @@ const Dashboard = () => {
    * flush with the screen edge. On top of the safe-area inset, like the strips
    * below.
    */
-  const bottomBandHeight = isPhone && pinnedTabs.length > 0 ? 72 : 16;
+  const bottomBandHeight = (isPhone && pinnedTabs.length > 0 ? 72 : 16) + (nativeHeaderActive ? debugDockHeight : 0);
 
   /**
    * …and the heights of the two blur strips that float over those bands.
