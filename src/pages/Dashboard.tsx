@@ -7176,7 +7176,10 @@ const Dashboard = () => {
       }
     } });
   }
-  if (isAdmin && !isCommunity) {
+  // Only where the admin panel actually exists: it ships in the cloud
+  // package, and a build without that (the community build, a dev checkout
+  // without `src/cloud/`) rendered a null component and crashed the page.
+  if (isAdmin && !isCommunity && AdminDashboard) {
     generalItems.push({ id: 'admin', label: 'Admin', icon: Server, symbol: 'server.rack', onSelect: () => navigate('/portal/admin') });
   }
   overflowSections.push({ id: 'general', separator: overflowSections[0]?.id === 'refresh', items: generalItems });
@@ -7325,7 +7328,7 @@ const Dashboard = () => {
         <DropdownMenuTrigger asChild>
           <button type="button" className={`inline-flex items-center gap-1.5 ${className ?? ''}`}>
             <span className="truncate">{name}</span>
-            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+            <ChevronDown className="h-4 w-4 shrink-0" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent scrim align="start" className="min-w-[220px]">
@@ -7563,7 +7566,7 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader badgeLeads={isMobile} nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (

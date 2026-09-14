@@ -26,6 +26,8 @@ interface AppHeaderProps {
   nativeTitle?: string;
   /** The room, room group or collection being viewed; the home when absent. */
   nativeHeading?: string;
+  /** Put `leftBadge` at the start of the row rather than with the right cluster. */
+  badgeLeads?: boolean;
   /** Phone layout: the bar draws the large title and offers the menu button. */
   nativeLargeTitle?: boolean;
   /** Whether the page has a drawer for the bar's ☰ to open. */
@@ -50,7 +52,7 @@ interface AppHeaderProps {
   onNativeNavigate?: (itemId: string) => void;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -169,14 +171,15 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
             background is gone with the buttons' own circles — see
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
             now, which costs the header no box at all. */}
-        <div className="relative flex items-center h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
+        <div className="relative flex items-center gap-2 h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
+          {badgeLeads && leftBadge}
           {children}
         </div>
 
         {/* User login state bubble */}
         {!isInMacApp && (
           <div className="relative flex items-center gap-2 pl-0 pr-0 md:pl-[max(1.25rem,20px)] md:pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
-            {leftBadge}
+            {!badgeLeads && leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(
                 "flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors duration-300 no-drag",

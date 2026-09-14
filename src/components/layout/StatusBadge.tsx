@@ -224,8 +224,7 @@ export function StatusBadge({
   // Under the iOS native bar this button is hidden with the rest of the web
   // header row, but it is still what the native dot "clicks" and what the
   // popover anchors to. Park it, invisibly, where the native dot is drawn —
-  // left of the search/⋯ capsule — so the popover opens under that dot
-  // rather than at the top-left corner of a zero-height row.
+  // the leading edge of the bar — so the popover opens under that dot.
   const nativeHeaderActive = useNativeHeaderActive();
   // The line under the native large title says something only when there is
   // something to say — the Home app shows "Updating…" or "No Response" there
@@ -288,7 +287,7 @@ export function StatusBadge({
           style={nativeHeaderActive ? {
             position: 'fixed',
             top: 'calc(var(--safe-area-top, 0px) + 6px)',
-            right: '118px',
+            left: '12px',
             width: 32,
             height: 40,
             opacity: 0,
