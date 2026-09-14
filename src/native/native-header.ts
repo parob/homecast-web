@@ -80,6 +80,12 @@ export interface NativeHeaderState {
    * over a black page is what happens otherwise.
    */
   appearance?: 'dark' | 'light';
+  /**
+   * Something web is drawn over the whole page right now — the drawer, a
+   * dialog, a popover. The bar sits above every web layer, so it steps aside
+   * while one is open, the way a presented sheet covers the Home app's bar.
+   */
+  covered?: boolean;
 }
 
 export interface NativeHeaderMenuItem {
@@ -243,6 +249,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.currentHomeId !== undefined) message.currentHomeId = state.currentHomeId;
   if (state.menu !== undefined) message.menu = state.menu;
   if (state.appearance !== undefined) message.appearance = state.appearance;
+  if (state.covered !== undefined) message.covered = state.covered;
 
   return post(message);
 }
@@ -357,4 +364,31 @@ export function installNativeHeaderBridge(handlers: {
   return () => {
     delete w.__homecastNativeHeader;
   };
+}
+
+/** What counts as covering the page: any open Radix dialog, sheet or popover. */
+export const NATIVE_HEADER_COVER_SELECTOR = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]';
+
+/**
+ * Publish `covered` whenever a web overlay opens or closes.
+ *
+ * Watched on the DOM rather than lifted from state on purpose: the dashboard
+ * owns dozens of dialogs and sheets, each with its own flag, and every future
+ * one would have to remember to report itself. Radix stamps them all the same
+ * way, so one observer covers them all. Returns a teardown.
+ */
+export function watchNativeHeaderCover(root: HTMLElement = document.body): () => void {
+  if (!isNativeHeaderAvailable()) return () => {};
+  let last: boolean | null = null;
+  const check = () => {
+    const covered = root.querySelector(NATIVE_HEADER_COVER_SELECTOR) !== null;
+    if (covered !== last) {
+      last = covered;
+      publishHeaderState({ covered });
+    }
+  };
+  const observer = new MutationObserver(check);
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state'] });
+  check();
+  return () => observer.disconnect();
 }

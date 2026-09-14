@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   installNativeHeaderBridge,
   isNativeHeaderEnabled,
+  watchNativeHeaderCover,
   publishHeaderState,
   activateHeaderControl,
   NATIVE_HEADER_EVENT,
@@ -41,6 +42,9 @@ export function useNativeHeader(
   // newest handler; `Dashboard` recreates its callbacks as its state changes.
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+
+  // Hide the bar under any web overlay, for as long as the bar exists.
+  useEffect(() => watchNativeHeaderCover(), []);
 
   useEffect(() => {
     // Seed from the globals as well as subscribing: on a build that launched

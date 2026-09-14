@@ -30,6 +30,7 @@ import {
   activateHeaderControl,
   statusDotHex,
   nativeHeaderInsets,
+  watchNativeHeaderCover,
   NATIVE_HEADER_EVENT,
   NATIVE_HEADER_TARGET_ATTR,
   type NativeHeaderControl,
@@ -295,5 +296,38 @@ describe('the Home-app-shaped bar (large title, title menu, native ⋯)', () => 
     const sent = installNativeBuild();
     installNativeHeaderBridge({ onTap: () => {} });
     expect(sent).toContainEqual({ action: 'header.ready' });
+  });
+});
+
+describe('stepping aside for web overlays', () => {
+  it('reports covered while a Radix dialog or sheet is open, and once per change', async () => {
+    const sent = installNativeBuild();
+    const stop = watchNativeHeaderCover(document.body);
+    // The initial check publishes the resting state exactly once.
+    expect(sent.filter((m) => (m as { covered?: boolean }).covered !== undefined)).toEqual([
+      { action: 'header.setState', covered: false },
+    ]);
+
+    const sheet = document.createElement('div');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('data-state', 'open');
+    document.body.appendChild(sheet);
+    await Promise.resolve(); // MutationObserver delivers as a microtask
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
+
+    sheet.setAttribute('data-state', 'closed');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
+
+    stop();
+  });
+
+  it('does nothing at all on a build without the bar', () => {
+    const stop = watchNativeHeaderCover(document.body);
+    const sheet = document.createElement('div');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('data-state', 'open');
+    document.body.appendChild(sheet);
+    expect(() => stop()).not.toThrow();
   });
 });
