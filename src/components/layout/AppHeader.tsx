@@ -192,12 +192,13 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
             now, which costs the header no box at all. */}
         <div className="relative flex items-center gap-2 h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
-          {badgeLeads && leftBadge}
-          {children}
           {/* Leading, not centred: on a phone a centred pill collides with
               the controls' capsule, and the left cluster is empty there now
-              that the ☰ has gone. */}
+              that the ☰ has gone. First in the row, because the page's own
+              (empty on a phone) wrappers follow and each costs a gap. */}
           {centerTitle}
+          {badgeLeads && leftBadge}
+          {children}
         </div>
 
         {/* User login state bubble */}
