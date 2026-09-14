@@ -92,54 +92,59 @@ async function clipAroundElement(page: Page, locator: ReturnType<Page['locator']
 async function gotoMyHome(page: Page, roomName?: string) {
   await page.goto(`/portal?home=${HOME_ID}`);
   await page.waitForTimeout(3000);
-  // If "My Home" isn't visible in the sidebar, open the mobile sidebar first.
+  // Two navigations, one per layout. Desktop (and the iPad) keeps the
+  // sidebar. A phone no longer has a ☰: the home name in the heading is the
+  // menu — homes first, then this home's rooms, with room groups flattened
+  // into the list — so the same helper opens that instead.
   const findMyHomeBtn = () => page.getByRole('button', { name: 'My Home', exact: true }).first();
-  if (!(await findMyHomeBtn().isVisible())) {
-    const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
-    if (await menuBtn.isVisible()) {
-      await menuBtn.click({ force: true });
-      await page.waitForTimeout(800);
+  const titleMenu = () => page.locator('h2 button').first();
+  const pickFromTitleMenu = async (label: string) => {
+    if (!(await titleMenu().isVisible())) return false;
+    await titleMenu().dispatchEvent('pointerdown', { button: 0, pointerType: 'mouse', isPrimary: true, bubbles: true });
+    await page.waitForTimeout(500);
+    const item = page.getByRole('menuitem', { name: label, exact: true }).first();
+    if (!(await item.isVisible())) {
+      await page.keyboard.press('Escape');
+      return false;
     }
-  }
+    await item.click();
+    await page.waitForTimeout(1500);
+    return true;
+  };
   // Force-select My Home in case auto-selection landed on a different home
   // (Dashboard sorts alphabetically until homeOrder arrives from GetSettings).
   if (await findMyHomeBtn().isVisible()) {
     await findMyHomeBtn().click({ force: true });
     await page.waitForTimeout(1500);
+  } else {
+    await pickFromTitleMenu('My Home');
   }
   if (roomName) {
-    // Re-open the mobile sidebar if it closed after the My Home click.
     const roomBtn = page.getByRole('button', { name: roomName, exact: true }).first();
-    if (!(await roomBtn.isVisible())) {
-      const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
-      if (await menuBtn.isVisible()) {
-        await menuBtn.click({ force: true });
-        await page.waitForTimeout(800);
-      }
-    }
     if (await roomBtn.isVisible()) {
       await roomBtn.click({ force: true });
       await page.waitForTimeout(1500);
+    } else {
+      await pickFromTitleMenu(roomName);
     }
   }
-  // On mobile, close sidebar if it's still open.
-  const closeBtn = page.locator('button:has(svg.lucide-x)').first();
-  if (await closeBtn.isVisible()) {
-    await closeBtn.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(500);
-  }
-  // And make sure it actually went. The sheet's scrim is a fixed inset-0 layer
-  // that swallows every press behind it, so a sidebar left open doesn't fail
-  // here — it fails later, in whichever shot next tries to touch the header,
-  // which is how 03-menu.png became a picture of no menu. The X above is only
-  // one way to close it; Escape is the one Radix always honours, and waiting on
-  // the scrim is the only proof the press landed.
-  const scrim = page.locator('div[data-aria-hidden="true"][data-state="open"]').first();
-  if (await scrim.count()) {
+  // Nothing should be left open over the page. The sheet's scrim is a fixed
+  // inset-0 layer that swallows every press behind it, and a menu left open
+  // fails the next shot that touches the header. Escape is the one dismissal
+  // Radix always honours; waiting on the scrim is the only proof it landed.
+  // The home menu counts too: picking the home that is already selected
+  // does not close it, and the next shot then found it open (or its own
+  // press closed it and shot a bare page with a focus ring).
+  const openLayer = () => page.locator('[role="menu"], div[data-aria-hidden="true"][data-state="open"], [role="dialog"][data-state="open"]').first();
+  for (let i = 0; i < 3 && (await openLayer().count()); i++) {
     await page.keyboard.press('Escape');
-    await scrim.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    await openLayer().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(300);
   }
+  // Drop focus: a trigger opened by a synthetic press and closed with Escape
+  // keeps keyboard focus, and the heading pill drew its focus ring in the
+  // shot.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
   // Reset scroll position so the header is visible in the screenshot.
   await page.evaluate(() => {
     window.scrollTo(0, 0);
@@ -998,19 +1003,19 @@ test.describe('iPhone App Store screenshots', () => {
     await page.screenshot({ path: iphoneImg('04-sharing.png') });
   });
 
-  // 5 — Mobile sidebar navigation
-  test('iphone 05 — Sidebar navigation', async ({ page }) => {
+  // 5 — The home menu: homes, then rooms and groups, from the heading.
+  // This was the ☰ sidebar; a phone has no burger now — the home name is
+  // the menu.
+  test('iphone 05 — Home menu', async ({ page }) => {
     overrideSettings(COMPACT_SETTINGS);
     overrideEntityLayouts({
       [`home:${HOME_ID}`]: { background: { type: 'preset', presetId: 'gradient-ocean', blur: 20, brightness: 35 } },
     });
     await setupMocks(page);
     await gotoMyHome(page);
-    const menuBtn = page.locator('button:has(svg.lucide-menu)').first();
-    if (await menuBtn.isVisible()) {
-      await menuBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-    }
+    const titleMenu = page.locator('h2 button').first();
+    await titleMenu.dispatchEvent('pointerdown', { button: 0, pointerType: 'mouse', isPrimary: true, bubbles: true });
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: iphoneImg('05-sidebar.png') });
   });
 });
