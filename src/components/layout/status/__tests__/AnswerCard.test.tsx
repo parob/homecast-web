@@ -27,6 +27,7 @@ let mockUptime: { uptimePercent7d: number } | undefined;
 vi.mock('@/hooks/useHomeKitData', () => ({ useHomes: () => ({ data: mockHomes }) }));
 vi.mock('@/server/connection', () => ({
   serverConnection: {
+    subscribe: () => () => {},
     getState: () => ({ connectionState: mockConnectionState, relayStatus: null, relayRoles: null }),
   },
 }));
