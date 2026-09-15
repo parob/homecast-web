@@ -38,7 +38,7 @@ const badge = (page: Page) => page.getByRole('button', { name: 'Connection is no
  * gates on: on `main` the mocked dashboard comes up in Edit Layout, which
  * replaces the header's control cluster, so that element never appears and the
  * wait times out. Reproduced identically on unmodified `origin/main`, so it is
- * not this branch's doing — parob/homecast-web#112. The status badge is
+ * not this branch's doing — parob/homecast-web#133. The status badge is
  * present either way, and it is what this test actually needs.
  */
 const ready = (page: Page) =>
