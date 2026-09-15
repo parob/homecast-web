@@ -30,19 +30,6 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
     [background, sampledTopColor, isDark],
   );
 
-  // Safari and Android Chrome paint their own bars — the status bar band and
-  // the toolbar — in the page's `theme-color`. index.html ships a neutral
-  // grey so the first paint is not white, and left there it drew two flat
-  // grey bars above and below the wallpaper. Once the tint is known the bars
-  // take it, and the page reads as one surface edge to edge.
-  useEffect(() => {
-    if (isNativeShell) return;
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (!meta) return;
-    const previous = meta.content;
-    meta.content = tint;
-    return () => { meta.content = previous; };
-  }, [tint, isNativeShell]);
 
   useEffect(() => {
     if (isNativeShell) {
@@ -72,6 +59,33 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
     return () => {
       document.documentElement.style.removeProperty('background-color');
       document.body.style.removeProperty('background-color');
+    };
+  }, [tint, isNativeShell]);
+
+  // Safari and Android Chrome paint their own bars — the status bar band and
+  // the toolbar — in the page's `theme-color`. index.html ships a neutral
+  // grey so the first paint is not white, and left there it drew two flat
+  // grey bars above and below the wallpaper. Once the tint is known the bars
+  // take it, and the page reads as one surface edge to edge.
+  //
+  // The PAINTED colour, not `tint` itself: with no wallpaper the tint is
+  // `hsl(var(--background))`, a CSS expression the meta tag cannot carry, and
+  // Safari silently kept the grey. Reading it back off the root after the
+  // effect below has applied it gives a plain rgb() every time.
+  useEffect(() => {
+    if (isNativeShell) return;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) return;
+    const previous = meta.content;
+    const painted = getComputedStyle(document.documentElement).backgroundColor;
+    const colour = painted && painted !== 'rgba(0, 0, 0, 0)' ? painted : tint;
+    meta.content = colour;
+    // The same colour for the edge strips (`.scroll-scrim` in index.css),
+    // so content fades into the bars' colour rather than being cut by them.
+    document.documentElement.style.setProperty('--canvas-tint', colour);
+    return () => {
+      meta.content = previous;
+      document.documentElement.style.removeProperty('--canvas-tint');
     };
   }, [tint, isNativeShell]);
 

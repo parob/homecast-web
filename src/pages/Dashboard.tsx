@@ -3901,7 +3901,7 @@ const Dashboard = () => {
   // Hold the document still while the connecting overlay is up. The overlay is
   // hand-rolled rather than a Radix dialog, so it gets none of react-remove-scroll's
   // behaviour; in the browser the document itself is the scroller (the container
-  // below sets minHeight: 120vh), so a wheel or drag over the blur moved the page.
+  // below sets minHeight: 100dvh), so a wheel or drag over the blur moved the page.
   // The previous inline value is restored rather than cleared so a Radix dialog
   // that locked scroll first keeps its own lock afterwards.
   useEffect(() => {
@@ -4107,27 +4107,70 @@ const Dashboard = () => {
   // The iOS native header has the screen (parob/homecast-cloud#120): the web
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
+  // Whether the shell scrolls inside a viewport-sized box rather than the
+  // document: the two app shells do (the Mac app's title bar and the phone
+  // app's status bar are the page's to paint under). A phone BROWSER scrolls
+  // the document, plainly. Two other models were built and measured against
+  // iOS 26 Safari on the simulator (parob/homecast-web#132) and both lost:
+  // an inner scroller keeps content out of the bands under Safari's bars but
+  // Safari minimises those bars only for a document scroll, so the full-height
+  // tab bar stays for good; and a clipped "window" moved by scroll-driven
+  // animations (which alone lets Safari paint the WALLPAPER into its bands)
+  // falls hundreds of pixels out of step with the scroll whenever the main
+  // thread stalls, which on a real dashboard it does. Sticky, fixed and
+  // in-flow content are positioned by the scrolling thread and never lag.
+  //
+  // What keeps the bands clean here is the fixed blur strips (`.scroll-scrim`)
+  // and the solid slivers under them: with a fixed backdrop-filter layer at
+  // the viewport's edge Safari stops painting the document into its bands and
+  // fills them with one colour sampled from the page's edge — the slivers make
+  // that colour the canvas tint, so the bars take the wallpaper's colour and
+  // the tiles end at the viewport, blurred.
+  const shellScrolls = (isInMobileApp || isInMacApp) && !nativeHeaderActive;
   // The phone's web header: once the big heading has scrolled under the bar,
   // the bar shows the page's name with the switcher — what the native bar
   // does with its large title. Watched, not computed from scroll offsets:
   // the heading's own box says when it is gone.
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [headingHidden, setHeadingHidden] = useState(false);
+  const phoneBrowser = isMobile && !isInMobileApp && !isInMacApp;
   useEffect(() => {
-    const el = headingRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
     // The heading counts as gone once it is under the header row, not at
     // the screen's edge. The row's centre line is published by AppHeader
     // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
     // the cut is the row's bottom plus a little.
     const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
+    if (phoneBrowser) {
+      // The document scrolls here, so read the heading's box on each scroll
+      // rather than observe it: iOS Safari's viewport moves as its bars come
+      // and go, and an observer cut from the viewport's edge went quiet on
+      // the simulator where this plain comparison did not. The heading is
+      // looked up per check, as it can mount after this runs.
+      let raf = 0;
+      const check = () => {
+        raf = 0;
+        const h = headingRef.current;
+        setHeadingHidden(!!h && h.getBoundingClientRect().bottom < centre + 28);
+      };
+      const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
+      check();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      return () => {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    }
+    const el = headingRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
       ([entry]) => setHeadingHidden(!entry.isIntersecting),
       { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId]);
+  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId, phoneBrowser]);
   // The request-log dock stops squashing the app while the native header is
   // on (see `DebugDock`) and overlays the bottom instead, so the page clears
   // it itself. Zero whenever the dock is closed.
@@ -6340,7 +6383,11 @@ const Dashboard = () => {
     if (hasNavigated) {
       setSavedBackgroundOverride(null);
       setBgImageLuminance(null);
-      setBgImageTopColor(null);
+      // The sampled top colour is NOT cleared here. BackgroundImage reports a
+      // fresh one whenever the image actually changes, and says nothing when
+      // a room shares its home's wallpaper — so clearing on every navigation
+      // left the canvas tint (and Safari's bars, which follow it) on the grey
+      // "pending" colour for as long as you stayed in that room.
     }
     prevNavRef.current = { selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId };
   }, [selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId]);
@@ -7648,9 +7695,11 @@ const Dashboard = () => {
         onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={backgroundContextValue}>
         {/* Main container */}
-        {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
+        {/* Main container — at least the dynamic viewport tall, so the wallpaper
+             extends behind iOS 26 Safari's bottom Liquid Glass bar. It was 120vh,
+             which let a short page scroll a fifth of a screen into nothing.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        {/* No bg-background under a wallpaper. This box is 120vh of opaque
+        {/* No bg-background under a wallpaper. This box is a viewport of opaque
             white spanning the whole document, so it is the surface a gap
             actually exposes when Safari moves the viewport — the backdrop and
             the wallpaper behind it already paint everything that should show.
@@ -7661,11 +7710,11 @@ const Dashboard = () => {
             // parob/homecast-cloud#120), so the shell must be in flow: a fixed
             // box pins the document at viewport height and UIKit never sees
             // a scroll.
-            (isInMobileApp || isInMacApp) && !nativeHeaderActive
-              ? 'fixed inset-0'
+            shellScrolls
+              ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
               : hasBackground ? 'relative' : 'relative bg-background'
           }
-          style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}
+          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
@@ -7709,21 +7758,40 @@ const Dashboard = () => {
               deliberately no longer the scroller's padding expressions — see
               the note where they are declared for what each one trades. */}
           {/* The iOS native header draws its own scroll-edge effect, so the
-              page's top scrim would double it (parob/homecast-cloud#120). */}
-          {isInMobileApp && !nativeHeaderActive && (
-            <>
-              <div
-                aria-hidden
-                className="scroll-scrim scroll-scrim-top z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
-              />
-              <div
-                aria-hidden
-                className="scroll-scrim scroll-scrim-bottom z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
-              />
-            </>
-          )}
+              page's top scrim would double it (parob/homecast-cloud#120).
+              A phone browser gets the strips too: there the content runs
+              edge to edge under Safari's own bars and was cut off hard at
+              both; the strips fade it into the bars' colour first, and the
+              plain wash layer is what Safari samples to colour those bars
+              (see .scroll-scrim-wash). */}
+          {(isInMobileApp || isMobile) && !nativeHeaderActive && (() => {
+            const topSize = `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`;
+            const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 80)}px + var(--safe-area-bottom, 0px))`;
+            // In a browser the band under the bars themselves (the safe-area
+            // inset) is painted solid; in the app shells the status bar and
+            // home indicator are the page's own to fade under.
+            const topStyle = { '--scroll-scrim-size': topSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-top, 0px)' } as React.CSSProperties;
+            const bottomStyle = { '--scroll-scrim-size': bottomSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-bottom, 0px)' } as React.CSSProperties;
+            return (
+              <>
+                <div aria-hidden className="scroll-scrim scroll-scrim-top z-[10000]" style={topStyle} />
+                <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />
+                {/* The tint wash, on its own plain layer — see .scroll-scrim-wash
+                    for why it is not part of the blur strip. */}
+                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-top z-[10000]" style={topStyle} />
+                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />
+                {/* Browser only: the sliver Safari samples for its bar colour,
+                    above the header (which is what it would otherwise find
+                    there, and read as nothing) — see .scroll-scrim-edge. */}
+                {!isInMobileApp && (
+                  <>
+                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-top" style={topStyle} />
+                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-bottom" style={bottomStyle} />
+                  </>
+                )}
+              </>
+            );
+          })()}
 
 
       {/* One status bubble, in leftBadge.
@@ -8364,7 +8432,7 @@ const Dashboard = () => {
         collectionItemIds={searchCollectionItemIds}
       />
 
-      <div className={`${isInMobileApp || isInMacApp ? (nativeHeaderActive ? 'relative' : 'absolute inset-0') : 'relative min-h-[120vh]'} flex justify-center`}>
+      <div className={`${shellScrolls ? 'absolute inset-0' : isInMobileApp || isInMacApp ? 'relative' : 'relative min-h-[100dvh]'} flex justify-center`}>
         <div className={`flex w-full ${isInMacApp || fullWidth ? '' : 'max-w-7xl'}`}>
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
@@ -8685,13 +8753,13 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Content */}
-        <main className={`relative flex-1 min-w-0 ${(isInMobileApp || isInMacApp) && !nativeHeaderActive ? 'overflow-hidden' : ''}`}>
+        <main className={`relative flex-1 min-w-0 ${shellScrolls ? 'overflow-hidden' : ''}`}>
           {/* While the iOS native header is on, the DOCUMENT scrolls, not this
               container: UIKit collapses the large title and draws the
               scroll-edge effect from the web view's own scroll view, and an
               inner scroller is invisible to it. */}
           <div
-            className={`${(isInMobileApp || isInMacApp) && !nativeHeaderActive ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
+            className={`${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
               // and starts below its large-title height instead. A little
@@ -8721,7 +8789,7 @@ const Dashboard = () => {
             {/* The hold-anywhere target. This wrapper already fills the
                 viewport, so the empty space below the last tile is covered,
                 and the sidebar and header are outside <main> entirely. */}
-            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
+            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-full">
               {/* Pending Invitations Modal */}
               <Dialog open={pendingInvitationsOpen} onOpenChange={setPendingInvitationsOpen}>
                 <DialogContent className="sm:max-w-lg" style={{ zIndex: 10010 }}>
@@ -10693,8 +10761,13 @@ const Dashboard = () => {
         // touch-none + overscroll-contain stop a drag over the blur from chaining
         // to the scroller behind it. This div is a sibling of the app's scroll
         // container, not a child, so without them the page scrolls underneath.
-        "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-opacity duration-300 touch-none overscroll-contain",
-        isConnectingOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+        // Also `invisible` once faded, not just transparent: iOS 26 Safari
+        // colours its bars by sampling the topmost paint at the page's edges,
+        // and a transparent full-screen box at z 99999 is what it found —
+        // read as black. `visibility` transitions discretely, so the fade
+        // out still plays in full and the box only leaves at the end of it.
+        "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-[opacity,visibility] duration-300 touch-none overscroll-contain",
+        isConnectingOverlay ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
       )}>
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-white" />

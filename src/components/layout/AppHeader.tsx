@@ -53,9 +53,9 @@ interface AppHeaderProps {
   /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
   onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
   /**
-   * Centred in the row: the phone's collapsed page title, shown once the big
-   * heading has scrolled under the bar. Held to the width between the
-   * controls' capsule and its mirror so it cannot reach either.
+   * The phone's collapsed page title, shown once the big heading has
+   * scrolled under the bar; centred in the gap between the left cluster and
+   * the controls, so it cannot reach the capsule.
    */
   centerTitle?: React.ReactNode;
 }
@@ -110,6 +110,36 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // anything else that moves the row.
   const rowRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+
+  // Place the collapsed title: centred on the row, unless that would run
+  // into the controls' capsule, in which case it slides left by exactly the
+  // overlap — UIKit's rule for a bar title next to bar items. Measured on
+  // every size change of the row or the title, and whenever the title's
+  // content changes.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const title = titleRef.current;
+    if (!row || !title) return;
+    const place = () => {
+      const rowRect = row.getBoundingClientRect();
+      const width = title.offsetWidth;
+      const gutter = 16;
+      const gap = 8;
+      const capsuleLeft = rightRef.current ? rightRef.current.getBoundingClientRect().left - rowRect.left : rowRect.width - gutter;
+      const centred = rowRect.width / 2 - width / 2;
+      const rightmost = capsuleLeft - gap - width;
+      title.style.left = `${Math.max(gutter, Math.min(centred, rightmost))}px`;
+      title.style.maxWidth = `${Math.max(80, capsuleLeft - gap - gutter)}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(row);
+    observer.observe(title);
+    if (rightRef.current) observer.observe(rightRef.current);
+    return () => observer.disconnect();
+  }, [centerTitle]);
   useLayoutEffect(() => {
     const row = rowRef.current;
     const header = headerRef.current;
@@ -195,18 +225,20 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
           {badgeLeads && leftBadge}
           {children}
         </div>
-        {/* Centred on the row like a native compact title, and held to the
-            width between the controls' capsule and its mirror on the left so
-            it can never reach either. */}
+        {/* Centred on the ROW, like a UIKit bar title — and, like one, slid
+            left by just enough when a long name would otherwise touch the
+            controls' capsule (see the layout effect above). Centring it in
+            the gap beside the capsule put it visibly left of the middle;
+            strict centring capped it at ~140px and cut "Clitheroe Road". */}
         {centerTitle && (
-          <div className="absolute left-1/2 top-1/2 max-w-[calc(100%-260px)] -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+          <div ref={titleRef} className="absolute top-1/2 -translate-y-1/2 pointer-events-auto" style={{ left: 16 }}>
             {centerTitle}
           </div>
         )}
 
         {/* User login state bubble */}
         {!isInMacApp && (
-          <div className="relative flex items-center gap-2 pl-0 pr-0 md:pl-[max(1.25rem,20px)] md:pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
+          <div ref={rightRef} className="relative flex items-center gap-2 pl-0 pr-0 md:pl-[max(1.25rem,20px)] md:pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
             {!badgeLeads && leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(

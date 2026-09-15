@@ -681,16 +681,116 @@ html.ios-app .selectable {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Full strength for the first fifth, then out. Ramping from the very edge reads
-   as a smudge on the glass; holding it briefly reads as depth. */
+/* An eased fade, not a straight ramp: seen from the content it starts
+   almost imperceptibly and gathers towards the edge, where it is full — the
+   stops trace an ease-in so there is no visible line where the fade begins.
+   A straight ramp read as a step; a longer strip read as too much fade. */
 .scroll-scrim-top {
   top: 0;
-  -webkit-mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
 }
 
 .scroll-scrim-bottom {
   bottom: 0;
-  -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to top, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+}
+
+/* Besides the blur, a wash of the canvas tint (`--canvas-tint`, set by
+   useCanvasTint from the painted root colour) — so under a browser's own bars
+   the content fades into the bars' colour instead of stopping at their edge.
+   Absent the variable (a native shell) the wash is transparent and only the
+   blur remains.
+
+   A separate element, deliberately, and a plain one: no backdrop-filter, no
+   mask. iOS 26 Safari colours its status-bar band and its tab bar by
+   sampling the top and bottom few pixels of the page, and its sampler skips
+   anything composited — a backdrop-filter strip, a filtered wallpaper — and
+   reads whatever plain paint lies beneath, which here would be the bare root.
+   Painted as a plain gradient the wash is what it samples, so the bars take
+   the tint. (Measured: an 8px plain strip is picked up, a 2px one is not; a
+   gradient is read at its edge value.)
+
+   `--scroll-scrim-solid` is the band the browser's own bars overlay where
+   the page does run beneath them (the safe-area inset, set inline by the
+   page). It is painted solid: a wash still half-transparent where the clock
+   sits would show the heading through the status bar. */
+.scroll-scrim-wash {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: var(--scroll-scrim-size, 0px);
+  pointer-events: none;
+}
+
+/* The wash traces the same S as the blur's mask. Stops are colour-mixed
+   from the tint rather than masked, so the layer stays plain paint. Where
+   color-mix is missing the first rule's straight ramp stands. */
+.scroll-scrim-wash-top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
+    transparent 100%
+  );
+}
+
+.scroll-scrim-wash-bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to top,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
+    transparent 100%
+  );
+}
+
+/* The few pixels at each edge that iOS 26 Safari samples to colour its bars,
+   painted solid tint and stacked ABOVE the header (z 10001). The header is a
+   transparent fixed box spanning the top of the page; as the topmost thing at
+   the edge it is what the sampler finds, and a transparent hit makes Safari
+   fall back to its own grey. This sliver sits inside the band the wash already
+   holds at full strength, so it changes nothing visible; it only gives the
+   sampler an opaque answer. Browser only — the app shells paint their own
+   backdrop and have no bars to colour. */
+.scroll-scrim-edge {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: calc(var(--scroll-scrim-solid, 0px) + 12px);
+  background: var(--canvas-tint, transparent);
+  pointer-events: none;
+  z-index: 10002;
+}
+
+.scroll-scrim-edge-top {
+  top: 0;
+}
+
+.scroll-scrim-edge-bottom {
+  bottom: 0;
 }
