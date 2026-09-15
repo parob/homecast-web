@@ -421,6 +421,7 @@ function ImageBackground({
   const isCached = imageUrl ? isImageCached(imageUrl) : false;
   const [isLoaded, setIsLoaded] = useState(isCached);
   const [hasError, setHasError] = useState(false);
+  const [samplePixels, setSamplePixels] = useState(true);
   const imgRef = useRef<HTMLImageElement>(null);
   const onLoadCalledRef = useRef(false);
 
@@ -428,6 +429,7 @@ function ImageBackground({
   const urlKey = imageUrl || '';
   useEffect(() => {
     onLoadCalledRef.current = false;
+    setSamplePixels(true);
     if (imageUrl) {
       const cached = isImageCached(imageUrl);
       setIsLoaded(cached);
@@ -479,6 +481,7 @@ function ImageBackground({
     if (!hasError) return;
     const retry = () => {
       onLoadCalledRef.current = false;
+      setSamplePixels(true);
       setHasError(false);
     };
     window.addEventListener('online', retry);
@@ -522,13 +525,22 @@ function ImageBackground({
         }}
       >
         <img
+          key={`${imageUrl}:${samplePixels}`}
           ref={imgRef}
           src={imageUrl}
           alt=""
-          crossOrigin="anonymous"
+          crossOrigin={samplePixels ? 'anonymous' : undefined}
           className="w-full h-full object-cover"
           onLoad={handleLoad}
-          onError={() => setHasError(true)}
+          onError={() => {
+            // Cross-origin pixel sampling needs the host's CORS permission;
+            // displaying a public image does not. A custom host (or the dev
+            // origin) may refuse sampling while the wallpaper itself works.
+            // The colour helpers already use neutral defaults for tainted
+            // canvases. Retry once without sampling before giving up.
+            if (samplePixels) setSamplePixels(false);
+            else setHasError(true);
+          }}
         />
       </div>
       {/* Brightness overlay - darken when <50, brighten when >50 */}
