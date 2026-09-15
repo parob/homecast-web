@@ -855,6 +855,22 @@ export class ServerWebSocket {
           // Deliberately neither returns nor rethrows: falling out of the block
           // hands the request to the outbound path below, which is the one that
           // owns timeouts, correlation and the homes.list cache.
+        } else if (errorCode(error) === 'ACCESSORY_NOT_FOUND') {
+          // Same fault one level down: the accessory id is a stable hc_id the
+          // dashboard got from a cloud-served list (a handover, a cached
+          // page), not this relay's live UUID. Only the home id is mapped
+          // here; accessory ids are not. The cloud translates the payload
+          // into the target relay's own UUIDs before routing, and the target
+          // is this relay — so the hop is a round trip to the resolver, not a
+          // change of relay. Every other local action dodged this because
+          // its accessory ids came from this relay's own lists.
+          //
+          // Not remembered per id: the next list refresh hands the page live
+          // ids and the local path serves again.
+          console.warn(
+            `[ServerWS] HomeKit does not know accessory ${String((payload as { accessoryId?: unknown }).accessoryId ?? '?')} — ` +
+            `routing ${action} via the server (stable id vs live HomeKit UUID)`,
+          );
         } else {
           console.error(`[ServerWS] Local request failed: ${action}`, error);
           throw error;
