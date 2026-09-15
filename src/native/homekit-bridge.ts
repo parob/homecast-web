@@ -73,6 +73,8 @@ export interface HomeKitAccessory {
   category: string;
   isReachable: boolean;
   services: HomeKitService[];
+  /** `{snapshot, stream}` when the accessory has a camera profile. */
+  camera?: { snapshot: boolean; stream: boolean };
 }
 
 /** One entry's outcome in a bulk characteristic write. */
@@ -187,7 +189,7 @@ export interface HomeKitError {
 }
 
 export interface HomeKitEvent {
-  type: 'characteristic.updated' | 'accessory.reachability' | 'homes.updated';
+  type: 'characteristic.updated' | 'accessory.reachability' | 'homes.updated' | 'camera_frame' | 'camera_live_state';
   accessoryId: string;
   // Context fields provided by native bridge for event routing
   homeId?: string;
@@ -197,6 +199,46 @@ export interface HomeKitEvent {
   characteristicType?: string;
   value?: unknown;
   isReachable?: boolean;
+  // camera_frame: one live JPEG (base64) from the relay's capture loop
+  seq?: number;
+  jpeg?: string;
+  width?: number;
+  height?: number;
+  capturedAt?: string;
+  // camera_live_state
+  state?: 'streaming' | 'stopped';
+  reason?: string;
+}
+
+/** What the relay can do for cameras right now. */
+export interface CameraCapabilities {
+  supported: boolean;
+  engineWindow: boolean;
+  screenRecording: 'granted' | 'denied';
+  maxStreamsPerHome: number;
+  activeStreams: number;
+  fps: number;
+}
+
+export interface CameraSnapshot {
+  accessoryId: string;
+  mimeType: string;
+  /** base64 JPEG */
+  jpeg: string;
+  capturedAt: string;
+  width: number;
+  height: number;
+  cached: boolean;
+}
+
+export interface CameraLiveStatus {
+  accessoryId: string;
+  state: 'streaming' | 'stopped';
+  started?: boolean;
+  fps?: number;
+  width?: number;
+  height?: number;
+  activeStreams?: number;
 }
 
 // Type for the native bridge injected by the Mac app
@@ -373,6 +415,14 @@ const BRIDGE_BULK_WRITE_TIMEOUT_MS = 15_000;
 const BRIDGE_BULK_WRITE_METHODS = new Set(['characteristics.set']);
 
 /**
+ * Camera captures wait on a camera, not on this Mac: a battery camera can take
+ * several seconds to wake and answer, and Swift bounds each at 20s. Above that,
+ * still under the relay watchdog's 45s.
+ */
+const BRIDGE_CAMERA_TIMEOUT_MS = 25_000;
+const BRIDGE_CAMERA_METHODS = new Set(['camera.snapshot', 'camera.live.start']);
+
+/**
  * Methods that change something, and so are bounded by Swift's own write
  * ceiling rather than by ours. Everything not listed is treated as a read —
  * the stricter default, so a newly added method is bounded tightly by omission
@@ -406,6 +456,7 @@ const UNBOUNDED_BRIDGE_METHODS = new Set(['notification.requestPermission']);
 
 /** The ceiling that applies to `method`, in milliseconds. */
 function bridgeTimeoutFor(method: string): number {
+  if (BRIDGE_CAMERA_METHODS.has(method)) return BRIDGE_CAMERA_TIMEOUT_MS;
   if (BRIDGE_BULK_WRITE_METHODS.has(method)) return BRIDGE_BULK_WRITE_TIMEOUT_MS;
   return BRIDGE_WRITE_METHODS.has(method) ? BRIDGE_WRITE_TIMEOUT_MS : BRIDGE_READ_TIMEOUT_MS;
 }
@@ -834,7 +885,51 @@ export const HomeKit = {
     return bridge.onEvent(handler);
   },
 
+  // MARK: Cameras (cloud relay only — see CameraCaptureService.swift)
+
+  /** What the relay can do for cameras: engine window, Screen Recording, limits. */
+  async cameraCapabilities(): Promise<CameraCapabilities> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<CameraCapabilities>('camera.capabilities');
+  },
+
+  /** Ask macOS for Screen Recording; prompts once, then reports the state. */
+  async cameraRequestScreenRecording(): Promise<{ screenRecording: 'granted' | 'denied' }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('camera.requestScreenRecording');
+  },
+
+  /** A still, served from the relay's cache when younger than `maxAgeSec`. */
+  async cameraSnapshot(accessoryId: string, options: { maxWidth?: number; maxAgeSec?: number } = {}): Promise<CameraSnapshot> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<CameraSnapshot>('camera.snapshot', { accessoryId, ...options });
+  },
+
+  /** Start (or touch) a live session; frames arrive as `camera_frame` events. */
+  async cameraLiveStart(accessoryId: string, options: { fps?: number; maxWidth?: number; quality?: number } = {}): Promise<CameraLiveStatus> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<CameraLiveStatus>('camera.live.start', { accessoryId, ...options });
+  },
+
+  async cameraLiveKeepalive(accessoryId: string): Promise<CameraLiveStatus> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call<CameraLiveStatus>('camera.live.keepalive', { accessoryId });
+  },
+
+  /** Stop one session, or every session when no id is given. */
+  async cameraLiveStop(accessoryId?: string): Promise<{ activeStreams: number }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('camera.live.stop', accessoryId ? { accessoryId } : {});
+  },
+
   // Debug methods
+
   /**
    * Get relay logs from the native bridge
    */

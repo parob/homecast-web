@@ -303,8 +303,13 @@ function getRelayTelemetry(): Record<string, string | undefined> {
     homecastHostName?: string;
     homecastPlatform?: string;
     isHomecastMacApp?: boolean;
+    homecastCameraEngine?: boolean;
   };
   return {
+    // "1" when this build has the camera engine window; whether it may
+    // actually capture (Screen Recording) is a live question, asked with
+    // camera.capabilities.
+    cameras: win.homecastCameraEngine ? '1' : undefined,
     app_version: win.homecastAppVersion,
     app_build: win.homecastAppBuild,
     os_version: win.homecastOSVersion,
@@ -2131,6 +2136,20 @@ export class ServerWebSocket {
 
       // Don't send events for accessories not in the user's plan
       if (event.accessoryId && !isAccessoryAllowed(event.accessoryId)) {
+        return;
+      }
+
+      // Live camera frames and session state. Not characteristic updates:
+      // they go to the cloud as their own events, and the cloud fans frames
+      // out to the viewers that asked for them (nobody else wants 4 JPEGs a
+      // second). A frame is ~100 KB base64, well inside the socket's limits.
+      if (event.type === 'camera_frame' || event.type === 'camera_live_state') {
+        this.sendEvent({
+          id: `evt_${Date.now()}_cam`,
+          type: 'event',
+          action: event.type === 'camera_frame' ? 'camera.frame' : 'camera.live_state',
+          payload: event as unknown as Record<string, unknown>,
+        });
         return;
       }
 

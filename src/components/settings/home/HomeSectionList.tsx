@@ -1,4 +1,4 @@
-import { ChevronRight, LayoutGrid, Bell, ShieldCheck, LineChart, Radio } from 'lucide-react';
+import { ChevronRight, LayoutGrid, Bell, ShieldCheck, LineChart, Radio, Camera } from 'lucide-react';
 import {
   HOME_SETTINGS_SECTION_META,
   type HomeSettingsSectionId,
@@ -17,6 +17,7 @@ const SECTION_ICONS: Record<HomeSettingsSectionId, typeof LayoutGrid> = {
   notifications: Bell,
   reliability: ShieldCheck,
   analytics: LineChart,
+  cameras: Camera,
   mqtt: Radio,
 };
 

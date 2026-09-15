@@ -986,6 +986,12 @@ export const GET_NOTIFICATION_MUTES = gql`
   }
 `;
 
+export const GET_HOME_CAMERAS_ENABLED = gql`
+  query GetHomeCamerasEnabled($homeId: String!) {
+    homeCamerasEnabled(homeId: $homeId)
+  }
+`;
+
 export const GET_HOME_MQTT_ENABLED = gql`
   query GetHomeMqttEnabled($homeId: String!) {
     homeMqttEnabled(homeId: $homeId)

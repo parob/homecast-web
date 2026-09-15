@@ -48,3 +48,19 @@ export function thisDeviceNoun(): 'iPhone' | 'iPad' | 'Mac' | 'device' {
 
 export const isInNativeAppShell = (): boolean =>
   typeof window !== 'undefined' && !!window.isHomecastApp;
+
+/**
+ * A page open in a browser on an iPhone or iPad — Safari, or any other iOS
+ * browser, all of which are WebKit under a bottom toolbar. Not the iOS app
+ * (its WKWebView has no browser chrome) and not a desktop browser narrowed
+ * to a phone's width, which has no bottom chrome at all. iPadOS Safari
+ * presents a Macintosh user agent, so touch points settle it, as above.
+ */
+export function isIOSBrowser(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  if (isInNativeAppShell()) return false;
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  return /Macintosh/i.test(ua) && (navigator.maxTouchPoints ?? 0) > 1;
+}
+

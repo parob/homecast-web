@@ -264,6 +264,12 @@ export interface HomeKitAccessory {
   category?: string;
   isReachable: boolean;
   services: HomeKitService[];
+  /**
+   * Present when the accessory has a HomeKit camera profile — the relay's own
+   * reading, not the category, which some cameras leave empty. Absent from
+   * relays that predate camera support, so absent means "no stills".
+   */
+  camera?: { snapshot: boolean; stream: boolean };
 }
 
 export interface HomeKitScene {

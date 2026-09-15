@@ -18,6 +18,7 @@ export type HomeSettingsSectionId =
   | 'notifications'
   | 'reliability'
   | 'analytics'
+  | 'cameras'
   | 'mqtt';
 
 /** Render order, top to bottom. Display preferences first, plumbing last. */
@@ -26,6 +27,7 @@ export const HOME_SETTINGS_SECTION_ORDER: HomeSettingsSectionId[] = [
   'notifications',
   'reliability',
   'analytics',
+  'cameras',
   'mqtt',
 ];
 
@@ -45,6 +47,10 @@ export const HOME_SETTINGS_SECTION_META: Record<HomeSettingsSectionId, { label: 
   analytics: {
     label: 'Analytics',
     description: 'Record accessory history for charts and exports',
+  },
+  cameras: {
+    label: 'Cameras',
+    description: 'Stills and live view from the cloud relay Mac',
   },
   mqtt: {
     label: 'MQTT',
@@ -78,6 +84,9 @@ export function visibleHomeSettingsSections(flags: HomeSettingsSectionFlags): Ho
         return !isCommunity;
       case 'reliability':
         // Uptime samples are recorded server-side, and CE has no server.
+        return !isCommunity;
+      case 'cameras':
+        // Captured by the cloud relay's engine window; CE has no such relay.
         return !isCommunity;
       case 'mqtt':
         return developerMode && (!isCommunity || mqttBridgeAvailable);

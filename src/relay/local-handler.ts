@@ -36,6 +36,12 @@ export const ErrorCode = {
   PERMISSION_DENIED: 'PERMISSION_DENIED',
 } as const;
 
+// Camera failures (CAMERA_NOT_SUPPORTED, CAMERA_UNAVAILABLE, CAMERA_BUSY,
+// SCREEN_RECORDING_DENIED, SNAPSHOT_*, STREAM_*) are minted by the Swift
+// relay's CameraError and passed through untouched; the web policy that reads
+// them is lib/camera-snapshot.ts. They are deliberately not in ErrorCode,
+// which is pinned to the Cloud Edition's shared set.
+
 // Accessory limit enforcement state
 let allowedAccessoryIds: Set<string> | null = null;
 let accessoryLimit: number | null = null;
@@ -928,6 +934,39 @@ async function executeHomeKitActionInner(
     case 'relay.probe': {
       const { homeId } = payload as { homeId: string };
       return await runRelayProbe(homeId);
+    }
+
+    // Cameras. Reads only — nothing here changes HomeKit state, so none of
+    // it goes through the relay-write fan-out. Errors carry the Swift codes
+    // (CAMERA_BUSY, SCREEN_RECORDING_DENIED, …) straight through.
+    case 'camera.capabilities':
+      return await HomeKit.cameraCapabilities();
+
+    case 'camera.requestScreenRecording':
+      return await HomeKit.cameraRequestScreenRecording();
+
+    case 'camera.snapshot': {
+      const { accessoryId, maxWidth, maxAgeSec } = payload as { accessoryId: string; maxWidth?: number; maxAgeSec?: number };
+      if (!accessoryId) throw Object.assign(new Error('accessoryId required'), { code: ErrorCode.INVALID_REQUEST });
+      if (!isAccessoryAllowed(accessoryId)) throw Object.assign(new Error('Accessory not in plan'), { code: ErrorCode.PERMISSION_DENIED });
+      return await HomeKit.cameraSnapshot(accessoryId, { maxWidth, maxAgeSec });
+    }
+
+    case 'camera.live.start': {
+      const { accessoryId, fps, maxWidth, quality } = payload as { accessoryId: string; fps?: number; maxWidth?: number; quality?: number };
+      if (!accessoryId) throw Object.assign(new Error('accessoryId required'), { code: ErrorCode.INVALID_REQUEST });
+      if (!isAccessoryAllowed(accessoryId)) throw Object.assign(new Error('Accessory not in plan'), { code: ErrorCode.PERMISSION_DENIED });
+      return await HomeKit.cameraLiveStart(accessoryId, { fps, maxWidth, quality });
+    }
+
+    case 'camera.live.keepalive': {
+      const { accessoryId } = payload as { accessoryId: string };
+      return await HomeKit.cameraLiveKeepalive(accessoryId);
+    }
+
+    case 'camera.live.stop': {
+      const { accessoryId } = payload as { accessoryId?: string };
+      return await HomeKit.cameraLiveStop(accessoryId);
     }
 
     default:
