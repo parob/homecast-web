@@ -58,9 +58,12 @@ interface AppHeaderProps {
    * the controls, so it cannot reach the capsule.
    */
   centerTitle?: React.ReactNode;
+  /** `fixed` (default), or `window`: positioned inside the phone browser's
+   *  scrolling window, which rides with the viewport (Dashboard `windowScroll`). */
+  frame?: 'fixed' | 'window';
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh, centerTitle }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh, centerTitle, frame = 'fixed' }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
   // The native top chrome, on iOS, behind a preview flag that is off by
@@ -197,7 +200,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     <header
       ref={headerRef}
       className={cn(
-        "fixed top-0 left-0 right-0 z-[10001]",
+        frame === 'window' ? "absolute top-0 left-0 right-0 z-[10001]" : "fixed top-0 left-0 right-0 z-[10001]",
         "overscroll-none pointer-events-none",
         inMobileApp && "safe-area-top safe-area-x",
         isInMacApp && "window-drag"

@@ -4113,58 +4113,91 @@ const Dashboard = () => {
   // third case, below.
   const shellScrolls = (isInMobileApp || isInMacApp) && !nativeHeaderActive;
   // A phone browser: the document scrolls, but the dashboard is drawn in a
-  // sticky, clipped, viewport-sized window and translated by the scroll
-  // offset (`.scroll-window-content`, a CSS scroll-driven animation).
+  // clipped, viewport-sized window that rides along with the viewport, and
+  // the content inside it rides the other way — so it scrolls normally, the
+  // window clips it at the viewport's edge, and the wallpaper, an
+  // overhanging piece of document content that rides with the window, runs
+  // on under Safari's bars. All three are CSS scroll-driven animations over
+  // `--scroll-range` (the document's scroll range, measured below).
   //
-  // Why not simply let the document scroll, as a desktop does: iOS Safari
-  // keeps its status-bar band and its tab bar outside the page's viewport —
-  // `env(safe-area-inset-*)` reads 0, `innerHeight` stops short of both —
-  // and paints whatever the document has scrolled past into those bands
-  // itself, unblurred behind the clock. No fixed strip inside the page can
-  // reach there. And why not an inner scroller, as the app shells use:
-  // Safari minimises its bars only for a document scroll, so an inner
-  // scroller keeps the full-height tab bar on screen for good.
-  //
-  // With the window, the document really scrolls (the bars minimise), yet
-  // nothing exists above or below the window for Safari to paint into its
-  // bands — they show the canvas tint — and the window clips the content at
-  // the viewport's edge, where the edge strips fade it out. The document's
-  // scroll range is the content height less the viewport, which is what the
-  // animation maps onto `translateY(100dvh - 100%)`; the spacer below gives
-  // the document that height. Compared side by side with the two other
-  // models on a simulator in parob/homecast-web#132.
+  // Why. iOS Safari keeps its status-bar band and its tab bar outside the
+  // page's viewport — `env(safe-area-inset-*)` reads 0, `innerHeight` stops
+  // short of both — and it paints the DOCUMENT into those bands itself:
+  // whatever in-flow content lies at those coordinates shows behind the
+  // clock and under the toolbar's glass. Fixed elements are clipped to the
+  // viewport and cannot reach there, and a `position: sticky` anywhere in
+  // the chain makes Safari give the extension up and fill the bands with a
+  // flat sampled colour instead (measured, parob/homecast-web#132). So:
+  // no fixed strips, no sticky — the window and the wallpaper are plain
+  // absolutely-positioned document content moved by the scroll offset.
+  // Letting the document scroll plainly instead would put the TILES in the
+  // bands (how it was); an inner scroller would keep them out but Safari
+  // minimises its bars only for a document scroll.
   const windowScroll = isMobile && !isInMobileApp && !isInMacApp;
-  const scrollWindowContentRef = useRef<HTMLDivElement | null>(null);
+  // Callback refs into state, not plain refs: the window mounts only once
+  // the dashboard has something to show, well after the first effects have
+  // run, and an observer attached to nothing would never fire.
+  const [scrollWindowBox, setScrollWindowBox] = useState<HTMLDivElement | null>(null);
+  const [scrollWindowContent, setScrollWindowContent] = useState<HTMLDivElement | null>(null);
   const [scrollWindowHeight, setScrollWindowHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (!windowScroll) { setScrollWindowHeight(undefined); return; }
-    const el = scrollWindowContentRef.current;
+  // The document's full height, so `--scroll-range` can be written as
+  // `calc(<height>px - 100dvh)` and stay exact as Safari's bars come and
+  // go (the viewport height changes; the document's does not).
+  const [scrollDocHeight, setScrollDocHeight] = useState<number | undefined>(undefined);
+  // A layout effect, so the spacer has its height before the first paint:
+  // Safari decides at first paint whether the document scrolls, and a page
+  // that did not is never painted into the bands under its bars later.
+  useLayoutEffect(() => {
+    if (!windowScroll) { setScrollWindowHeight(undefined); setScrollDocHeight(undefined); return; }
+    const el = scrollWindowContent;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const measure = () => setScrollWindowHeight(el.offsetHeight);
+    let raf = 0;
+    const measureDoc = () => {
+      raf = 0;
+      setScrollDocHeight(document.documentElement.scrollHeight);
+    };
+    const measure = () => {
+      setScrollWindowHeight(el.offsetHeight);
+      // The spacer takes the new height on the next layout; read the
+      // document after it.
+      if (!raf) raf = requestAnimationFrame(measureDoc);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [windowScroll]);
+    ro.observe(document.body);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [windowScroll, scrollWindowContent]);
   // Browsers without scroll-driven animations (Firefox, older Chrome) get
-  // the same translation from a scroll listener — a frame behind the finger,
-  // but correct.
+  // the same translations from a scroll listener — a frame behind the
+  // finger, but correct. The wallpaper's is applied by BackgroundImage.
   useEffect(() => {
     if (!windowScroll) return;
     if (typeof CSS !== 'undefined' && CSS.supports?.('animation-timeline: scroll()')) return;
-    const el = scrollWindowContentRef.current;
-    if (!el) return;
+    const box = scrollWindowBox;
+    const content = scrollWindowContent;
+    if (!box || !content) return;
     let raf = 0;
-    const apply = () => { raf = 0; el.style.transform = `translateY(${-window.scrollY}px)`; };
+    const apply = () => {
+      raf = 0;
+      box.style.transform = `translateY(${window.scrollY}px)`;
+      content.style.transform = `translateY(${-window.scrollY}px)`;
+    };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
     apply();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', onScroll);
       if (raf) cancelAnimationFrame(raf);
-      el.style.transform = '';
+      box.style.transform = '';
+      content.style.transform = '';
     };
-  }, [windowScroll]);
+  }, [windowScroll, scrollWindowBox, scrollWindowContent]);
   // The phone's web header: once the big heading has scrolled under the bar,
   // the bar shows the page's name with the switcher — what the native bar
   // does with its large title. Watched, not computed from scroll offsets:
@@ -6270,6 +6303,26 @@ const Dashboard = () => {
    */
   const scrimTopHeight = editBarHeight + 24;
   const scrimBottomHeight = isPhone && pinnedTabs.length > 0 ? 56 : 16;
+  // The blur strips at the top and bottom of the screen. Fixed in the app
+  // shells; on a phone browser they live INSIDE the scrolling window (which
+  // rides with the viewport, so they sit in the same place): a fixed
+  // backdrop-filter layer at the viewport's edge is one of the things that
+  // makes iOS Safari stop painting the document into the bands under its
+  // bars, and the wallpaper is meant to run on there (see `windowScroll`).
+  const edgeScrims = (isInMobileApp || isMobile) && !nativeHeaderActive ? (
+    <>
+      <div
+        aria-hidden
+        className={`scroll-scrim scroll-scrim-top z-[10000] ${windowScroll ? 'scroll-scrim--in-window' : ''}`}
+        style={{ '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
+      />
+      <div
+        aria-hidden
+        className={`scroll-scrim scroll-scrim-bottom z-[10000] ${windowScroll ? 'scroll-scrim--in-window' : ''}`}
+        style={{ '--scroll-scrim-size': `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 64)}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
+      />
+    </>
+  ) : null;
 
   /** `inert` for the edit bar while it is parked off-screen. See its use. */
   const INERT = { inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>;
@@ -7713,130 +7766,12 @@ const Dashboard = () => {
     </div>
   );
 
-  return (
-    <LayoutEditProvider value={layoutEditState}>
-    <PinnedTabsProvider value={pinnedTabsActions}>
-    <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
-    <DealsProvider
-      enabled={dealsEffectivelyEnabled}
-      accessories={allAccessoriesData || []}
-      onOpenPriceHistory={setPriceHistoryTarget}
-    >
-    <HistoryProvider
-        onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
-    <BackgroundContext.Provider value={backgroundContextValue}>
-        {/* Main container */}
-        {/* Main container — at least the dynamic viewport tall, so the wallpaper
-             extends behind iOS 26 Safari's bottom Liquid Glass bar. It was 120vh,
-             which let a short page scroll a fifth of a screen into nothing.
-             Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        {/* No bg-background under a wallpaper. This box is a viewport of opaque
-            white spanning the whole document, so it is the surface a gap
-            actually exposes when Safari moves the viewport — the backdrop and
-            the wallpaper behind it already paint everything that should show.
-            Without a wallpaper it still needs the theme colour. */}
-        <div
-          className={
-            // Under the iOS native header the document itself scrolls (see
-            // parob/homecast-cloud#120), so the shell must be in flow: a fixed
-            // box pins the document at viewport height and UIKit never sees
-            // a scroll.
-            shellScrolls
-              ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
-              : hasBackground ? 'relative' : 'relative bg-background'
-          }
-          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : { minHeight: '100dvh' }}
-        >
-          {/* The backdrop colour paints past the safe areas — a plain inset-0
-              stops at them, leaving bars in landscape — while the container
-              itself stays put so content clears the notch. Rendered in the
-              browser too: Safari's app banner and its dynamic toolbars move the
-              viewport just as much as a notch does, and a missing backdrop
-              there is what showed as white above and below the wallpaper.
-              Matches MainLayout: over a dark wallpaper the backdrop has to be
-              black, not the theme's white. */}
-          <div
-            aria-hidden
-            className={cn(
-              "fixed-full-screen pointer-events-none -z-10",
-              hasBackground && isDarkBackground ? "bg-black" : "bg-background",
-            )}
-          />
-          <BackgroundImage
-            settings={activeBackground}
-            entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
-            autoBackgroundsEnabled={autoBackgrounds}
-            onLuminanceChange={setBgImageLuminance}
-            onHeaderLuminanceChange={setBgHeaderLuminance}
-            onTopColorChange={setBgImageTopColor}
-          />
-
-          {/* Tiles used to be sliced flat at both physical screen edges, with
-              the floating header buttons landing on top of whatever tile text
-              happened to be under them. These two strips blur the band the
-              chrome floats over, so content goes out of focus on its way off
-              screen instead.
-
-              Native mobile shell only. That is the one place the page runs
-              edge-to-edge under the status bar and the home indicator — in a
-              browser Safari's own chrome occupies those bands, and on a desktop
-              there is no bottom chrome at all, so a bottom strip would be
-              blurring content for no reason. The Mac app is arguably the same
-              argument as the top strip here; it is left out because nobody has
-              asked for it, not because it would be wrong.
-
-              Heights are `scrimTopHeight` / `scrimBottomHeight`, which are
-              deliberately no longer the scroller's padding expressions — see
-              the note where they are declared for what each one trades. */}
-          {/* The iOS native header draws its own scroll-edge effect, so the
-              page's top scrim would double it (parob/homecast-cloud#120).
-              A phone browser gets the strips too: there the content runs
-              edge to edge under Safari's own bars and was cut off hard at
-              both; the strips fade it into the bars' colour first, and the
-              plain wash layer is what Safari samples to colour those bars
-              (see .scroll-scrim-wash). */}
-          {(isInMobileApp || isMobile) && !nativeHeaderActive && (() => {
-            const topSize = `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`;
-            const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 64)}px + var(--safe-area-bottom, 0px))`;
-            // In a browser the band under the bars themselves (the safe-area
-            // inset) is painted solid; in the app shells the status bar and
-            // home indicator are the page's own to fade under.
-            const topStyle = { '--scroll-scrim-size': topSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-top, 0px)' } as React.CSSProperties;
-            const bottomStyle = { '--scroll-scrim-size': bottomSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-bottom, 0px)' } as React.CSSProperties;
-            return (
-              <>
-                <div aria-hidden className="scroll-scrim scroll-scrim-top z-[10000]" style={topStyle} />
-                <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />
-                {/* The tint wash, on its own plain layer — see .scroll-scrim-wash
-                    for why it is not part of the blur strip. */}
-                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-top z-[10000]" style={topStyle} />
-                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />
-                {/* Browser only: the sliver Safari samples for its bar colour,
-                    above the header (which is what it would otherwise find
-                    there, and read as nothing) — see .scroll-scrim-edge. */}
-                {!isInMobileApp && (
-                  <>
-                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-top" style={topStyle} />
-                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-bottom" style={bottomStyle} />
-                  </>
-                )}
-              </>
-            );
-          })()}
-
-
-      {/* One status bubble, in leftBadge.
-          Local Mode used to live in rightMenu, immediately left of the search
-          icon, because the "Guest" pill sits between the two slots and only
-          that position was adjacent to search in every auth state. That was
-          right for a lone badge and is moot for a merged one: this is now the
-          single place the app speaks about reaching your home, so it belongs
-          with the other status pills rather than beside an unrelated control.
-          The constraint that rationale was really protecting still holds —
-          Local Mode has to survive the states where search does not, and
-          leftBadge is passed unconditionally, outside the hasContentAccess
-          guard that gates the search button. */}
-      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
+  // The header. Fixed, except on a phone browser, where it lives inside the
+  // scrolling window (see `windowScroll`): a fixed glass layer at the top
+  // edge is one of the things that stops iOS Safari painting the wallpaper
+  // into the band under its status bar. Rendered in whichever place applies.
+  const appHeader = (
+      <AppHeader frame={windowScroll ? 'window' : 'fixed'} nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
@@ -8300,6 +8235,106 @@ const Dashboard = () => {
             />
           </div>
       </AppHeader>
+  );
+
+  return (
+    <LayoutEditProvider value={layoutEditState}>
+    <PinnedTabsProvider value={pinnedTabsActions}>
+    <VirtualAccessoryEditProvider value={virtualAccessoryActions}>
+    <DealsProvider
+      enabled={dealsEffectivelyEnabled}
+      accessories={allAccessoriesData || []}
+      onOpenPriceHistory={setPriceHistoryTarget}
+    >
+    <HistoryProvider
+        onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
+    <BackgroundContext.Provider value={backgroundContextValue}>
+        {/* Main container */}
+        {/* Main container — at least the dynamic viewport tall, so the wallpaper
+             extends behind iOS 26 Safari's bottom Liquid Glass bar. It was 120vh,
+             which let a short page scroll a fifth of a screen into nothing.
+             Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
+        {/* No bg-background under a wallpaper. This box is a viewport of opaque
+            white spanning the whole document, so it is the surface a gap
+            actually exposes when Safari moves the viewport — the backdrop and
+            the wallpaper behind it already paint everything that should show.
+            Without a wallpaper it still needs the theme colour. */}
+        <div
+          className={
+            // Under the iOS native header the document itself scrolls (see
+            // parob/homecast-cloud#120), so the shell must be in flow: a fixed
+            // box pins the document at viewport height and UIKit never sees
+            // a scroll.
+            shellScrolls
+              ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
+              : hasBackground ? 'relative' : 'relative bg-background'
+          }
+          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : {
+            minHeight: '100dvh',
+            ...(windowScroll ? { '--scroll-range': `calc(${scrollDocHeight ?? 0}px - 100dvh)` } as React.CSSProperties : {}),
+          }}
+        >
+          {/* The backdrop colour paints past the safe areas — a plain inset-0
+              stops at them, leaving bars in landscape — while the container
+              itself stays put so content clears the notch. Rendered in the
+              browser too: Safari's app banner and its dynamic toolbars move the
+              viewport just as much as a notch does, and a missing backdrop
+              there is what showed as white above and below the wallpaper.
+              Matches MainLayout: over a dark wallpaper the backdrop has to be
+              black, not the theme's white. */}
+          <div
+            aria-hidden
+            className={cn(
+              "fixed-full-screen pointer-events-none -z-10",
+              hasBackground && isDarkBackground ? "bg-black" : "bg-background",
+            )}
+          />
+          <BackgroundImage
+            settings={activeBackground}
+            entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
+            autoBackgroundsEnabled={autoBackgrounds}
+            onLuminanceChange={setBgImageLuminance}
+            onHeaderLuminanceChange={setBgHeaderLuminance}
+            onTopColorChange={setBgImageTopColor}
+            frame={windowScroll ? 'window' : 'fixed'}
+          />
+
+          {/* Tiles used to be sliced flat at both physical screen edges, with
+              the floating header buttons landing on top of whatever tile text
+              happened to be under them. These two strips blur the band the
+              chrome floats over, so content goes out of focus on its way off
+              screen instead.
+
+              Native mobile shell only. That is the one place the page runs
+              edge-to-edge under the status bar and the home indicator — in a
+              browser Safari's own chrome occupies those bands, and on a desktop
+              there is no bottom chrome at all, so a bottom strip would be
+              blurring content for no reason. The Mac app is arguably the same
+              argument as the top strip here; it is left out because nobody has
+              asked for it, not because it would be wrong.
+
+              Heights are `scrimTopHeight` / `scrimBottomHeight`, which are
+              deliberately no longer the scroller's padding expressions — see
+              the note where they are declared for what each one trades. */}
+          {/* The iOS native header draws its own scroll-edge effect, so the
+              page's top scrim would double it (parob/homecast-cloud#120).
+              A phone browser gets the strips too, but INSIDE its scrolling
+              window (see `edgeScrims`), not fixed here. */}
+          {!windowScroll && edgeScrims}
+
+
+      {/* One status bubble, in leftBadge.
+          Local Mode used to live in rightMenu, immediately left of the search
+          icon, because the "Guest" pill sits between the two slots and only
+          that position was adjacent to search in every auth state. That was
+          right for a lone badge and is moot for a merged one: this is now the
+          single place the app speaks about reaching your home, so it belongs
+          with the other status pills rather than beside an unrelated control.
+          The constraint that rationale was really protecting still holds —
+          Local Mode has to survive the states where search does not, and
+          leftBadge is passed unconditionally, outside the hasContentAccess
+          guard that gates the search button. */}
+      {!windowScroll && appHeader}
 
       {/* Edit Layout's toolbar. A solid full-width bar that covers the app header
           rather than floating over it: while editing, none of the header's normal
@@ -8323,8 +8358,13 @@ const Dashboard = () => {
           // The same glass the tab bar and the header bubbles use, rather than a
           // flat panel — it sits directly over the widgets and looked like a
           // different kind of surface pasted on top of them.
-          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
-            editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+          // Also `invisible` once slid away, with `visibility` in the
+          // transition so the slide still plays: parked above the viewport it
+          // sits exactly in the band under iOS Safari's status bar, and a
+          // fixed glass layer there is one of the things that stops Safari
+          // painting the wallpaper into that band (see `windowScroll`).
+          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity,visibility] duration-base ease-standard ${
+            editMode ? 'translate-y-0 opacity-100 visible' : '-translate-y-full opacity-0 invisible pointer-events-none'
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
           // pointer or keyboard — it is off-screen but still rendered, and an
@@ -8789,14 +8829,15 @@ const Dashboard = () => {
               container: UIKit collapses the large title and draws the
               scroll-edge effect from the web view's own scroll view, and an
               inner scroller is invisible to it. */}
-          <div style={windowScroll ? { height: scrollWindowHeight } : undefined} className={windowScroll ? undefined : 'contents'}>
-          {/* `overflow: clip`, not hidden: a hidden box is still scrollable
-              programmatically (scrollIntoView, focusing an input under the
-              keyboard) and would drift from the document; a clipped one has
-              no scroll offset at all. */}
-          <div className={windowScroll ? 'sticky top-0 h-[100dvh] overflow-hidden [overflow:clip]' : 'contents'}>
+          <div style={windowScroll ? { height: scrollWindowHeight } : undefined} className={windowScroll ? 'relative' : 'contents'}>
+          {/* The window: not sticky (see `windowScroll`), an absolute box that
+              rides with the viewport. `overflow: clip`, not hidden: a hidden
+              box is still scrollable programmatically (scrollIntoView,
+              focusing an input under the keyboard) and would drift from the
+              document; a clipped one has no scroll offset at all. */}
+          <div ref={setScrollWindowBox} className={windowScroll ? 'scroll-window-box absolute inset-x-0 top-0 h-[100dvh] overflow-hidden [overflow:clip]' : 'contents'}>
           <div
-            ref={scrollWindowContentRef}
+            ref={setScrollWindowContent}
             className={`${windowScroll ? 'scroll-window-content ' : ''}${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
@@ -9877,6 +9918,8 @@ const Dashboard = () => {
             </div>
             </PullToRefresh>
           </div>
+          {windowScroll && edgeScrims}
+          {windowScroll && appHeader}
           </div>
           </div>
         </main>

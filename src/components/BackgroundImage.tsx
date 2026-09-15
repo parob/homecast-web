@@ -58,6 +58,13 @@ interface BackgroundImageProps {
   onHeaderLuminanceChange?: (luminance: number | null) => void;
   /** Reports average color of the top row of the loaded image (hex string). null for non-image backgrounds. */
   onTopColorChange?: (color: string | null) => void;
+  /** How the wallpaper is pinned to the screen. `fixed` (default) is a fixed
+   *  full-screen layer. `window` is for the phone browser's scrolling window
+   *  (Dashboard `windowScroll`): an absolutely positioned piece of DOCUMENT
+   *  content, overhanging the viewport at both ends, that rides with the
+   *  viewport by a scroll-driven animation — iOS Safari paints the document,
+   *  and only the document, into the bands under its own bars. */
+  frame?: 'fixed' | 'window';
 }
 
 // Get a unique key for background image/gradient (excludes brightness/blur since those don't need crossfade)
@@ -74,7 +81,10 @@ function getBackgroundKey(settings?: BackgroundSettings | null): string {
  * Brightness: 50 = no change, <50 = darker, >50 = brighter
  * Uses crossfade technique to smoothly transition between backgrounds.
  */
-export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange }: BackgroundImageProps) {
+/** How far the phone browser's wallpaper overhangs the viewport at each end. */
+const WALLPAPER_OVERHANG = 160;
+
+export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange, frame = 'fixed' }: BackgroundImageProps) {
   // Compute effective settings: explicit > auto > none
   // solid-white is special: it means "no background" and overrides auto-backgrounds
   const effectiveSettings = useMemo((): BackgroundSettings | null => {
@@ -245,15 +255,42 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
   // it land together.
   const instant = prevBg === null;
 
+  const windowRef = useRef<HTMLDivElement>(null);
+  // Browsers without scroll-driven animations: ride with the viewport from a
+  // scroll listener instead (the Dashboard does the same for its window).
+  useEffect(() => {
+    if (frame !== 'window') return;
+    if (typeof CSS !== 'undefined' && CSS.supports?.('animation-timeline: scroll()')) return;
+    const el = windowRef.current;
+    if (!el) return;
+    let raf = 0;
+    const apply = () => { raf = 0; el.style.transform = `translateY(${window.scrollY}px)`; };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      el.style.transform = '';
+    };
+  }, [frame]);
+
   return (
     <div
+      ref={windowRef}
       className={cn(
-        // fixed-full-screen (not inset-0): fixed elements stop at the safe
-        // area boundaries on iOS, which left unpainted strips beside the
-        // wallpaper in landscape. Negative insets extend it to the true edges.
-        'fixed-full-screen overflow-hidden pointer-events-none',
+        frame === 'window'
+          // Overhanging the viewport by WALLPAPER_OVERHANG at each end — more
+          // than Safari's bands — and sized to the largest viewport so it does
+          // not rescale as the bars minimise. `lvh` needs Safari 15.4.
+          ? 'scroll-window-follow absolute left-0 right-0 overflow-hidden pointer-events-none'
+          // fixed-full-screen (not inset-0): fixed elements stop at the safe
+          // area boundaries on iOS, which left unpainted strips beside the
+          // wallpaper in landscape. Negative insets extend it to the true edges.
+          : 'fixed-full-screen overflow-hidden pointer-events-none',
         className
       )}
+      style={frame === 'window' ? { top: -WALLPAPER_OVERHANG, height: `calc(100lvh + ${2 * WALLPAPER_OVERHANG}px)` } : undefined}
       aria-hidden="true"
     >
       {/* Previous background (fades out) */}
