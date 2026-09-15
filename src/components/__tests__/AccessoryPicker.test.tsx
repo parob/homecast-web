@@ -18,7 +18,8 @@ vi.mock('@/lib/config', () => ({
   config: { isCommunity: false, apiBase: 'https://api.test', graphqlUrl: 'https://api.test/', wsUrl: 'wss://api.test/ws' },
 }));
 
-import { AccessoryPicker } from '../AccessoryPicker';
+import { AccessoryPicker, ROW_HEIGHT_REM } from '../AccessoryPicker';
+import { TEXT_SCALE_BASE_PX } from '@/lib/text-scale';
 import type { HomeKitAccessory, HomeKitHome, HomeKitServiceGroup } from '@/lib/graphql/types';
 
 const HOME_A = 'HOME-A';
@@ -201,5 +202,50 @@ describe('AccessoryPicker home filter', () => {
     });
 
     expect(await screen.findByText('All Homes')).toBeTruthy();
+  });
+});
+
+describe('AccessoryPicker row geometry', () => {
+  // parob/homecast-cloud#121: the list is virtualized, so a row taller than the
+  // slot it is positioned into paints over the row below it. ROW_HEIGHT_REM is
+  // the row's own box written out; these assertions are what keeps the two from
+  // drifting apart again, by pinning the classes each term stands for. Change a
+  // class here and the term in AccessoryPicker.tsx has to change with it.
+  it('positions rows by the height the row actually draws', async () => {
+    renderPicker();
+    const row = (await screen.findByText('Kitchen Lights')).closest('button')!;
+
+    // py-1.5 — the ROW_PADDING_Y_REM term, counted twice
+    expect(row.className).toContain('py-1.5');
+    // text-sm on the row — the title's line box, ROW_TITLE_LINE_REM
+    expect(row.className).toContain('text-sm');
+
+    const subtitle = row.querySelector('.text-xs');
+    // text-xs on the subtitle — ROW_SUBTITLE_LINE_REM
+    expect(subtitle).toBeTruthy();
+    expect(subtitle!.textContent).toContain('Group of 2');
+
+    expect(ROW_HEIGHT_REM).toBe(0.375 * 2 + 1.25 + 1);
+  });
+
+  it('gives every row a slot exactly as tall as the row', async () => {
+    renderPicker();
+    await screen.findByText('Kitchen Lights');
+
+    const slots = document.querySelectorAll<HTMLElement>('div[style*="translateY"]');
+    expect(slots.length).toBeGreaterThan(1);
+
+    const expected = `${ROW_HEIGHT_REM * TEXT_SCALE_BASE_PX}px`;
+    for (const slot of slots) {
+      expect(slot.style.height).toBe(expected);
+    }
+
+    // ...and consecutive slots are spaced by exactly that, so none overlaps.
+    const tops = [...slots]
+      .map((s) => Number(/translateY\((-?[\d.]+)px\)/.exec(s.style.transform)?.[1]))
+      .sort((a, b) => a - b);
+    for (let i = 1; i < tops.length; i++) {
+      expect(tops[i] - tops[i - 1]).toBe(ROW_HEIGHT_REM * TEXT_SCALE_BASE_PX);
+    }
   });
 });

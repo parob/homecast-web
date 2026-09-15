@@ -15,6 +15,7 @@ import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
+import { DEVICE_ID_STORAGE_KEY } from '../lib/device-id';
 import {
   describeTransition,
   installEnvironmentBreadcrumbs,
@@ -96,7 +97,11 @@ type BroadcastListener = (message: BroadcastMessage) => void;
 // Mac apps use 'mac_' prefix, browsers use 'web_' prefix
 // This identifies the browser/device across all tabs
 export function getDeviceId(): string {
-  const STORAGE_KEY = 'homecast-device-id';
+  // The key is shared with `lib/device-id.ts` rather than spelled out twice.
+  // This function still owns *minting* — the prefix choice and the migration
+  // below — and remains the only thing that writes. parob/homecast-web#109 was
+  // filed about exactly this kind of near-duplicate drifting apart unnoticed.
+  const STORAGE_KEY = DEVICE_ID_STORAGE_KEY;
   const isMacApp = isRelayCapable();
   const expectedPrefix = isMacApp ? 'mac_' : 'web_';
 

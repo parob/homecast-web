@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
-import { headerControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
+import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
@@ -42,6 +42,10 @@ import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_G
 import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
+import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
+import { useDebugDockHeight } from '@/lib/debug-dock';
+import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
@@ -238,20 +242,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
-  Home, House, RefreshCw, Lightbulb,
+  Home, House, Folder, RefreshCw, Lightbulb,
   Thermometer, Loader2, Power, Sun, Moon, Lock,
   Wind, Droplets, AlertCircle, DoorOpen, DoorClosed, Camera,
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+  Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -548,7 +546,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            Create Virtual Accessory
+            Add Accessory
           </ContextMenuItem>
         )}
         {/* Not on touch: the row carries a hide badge in Edit Layout, and
@@ -947,13 +945,13 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateRoomGroup && (
             <ContextMenuItem onClick={onCreateRoomGroup}>
               <Layers className="h-4 w-4 mr-2" />
-              Create Room Group
+              Add Room Group
             </ContextMenuItem>
           )}
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
+              Add Accessory
             </ContextMenuItem>
           )}
             {/* Not on touch - see SortableRoomItem. */}
@@ -3610,15 +3608,24 @@ const Dashboard = () => {
   const anyRelayConnected = homes.some(h => isHomeServed(h.id));
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
-  // Swipe in from the left edge to open the navigation drawer, and back out of
-  // the open drawer to close it (that half lives in SheetContent). Gated the
-  // same way the menu button is: on md and up the sidebar is a permanent
-  // column, and during onboarding the drawer has nothing in it. The gesture
-  // stands down whenever a dialog is over the page — including the admin panel,
-  // which runs its own scoped swipe below.
+  // Swipe in from the left edge to go back, the way an iOS navigation stack
+  // does: a room, room group or collection returns to the whole home, and the
+  // whole home steps to the previous home in the title menu's order, round and
+  // round through all of them. It used
+  // to open the navigation drawer; the home name's own menu now covers what
+  // the drawer offered, and the drawer's own swipe-to-close still lives in
+  // SheetContent. Gated the same way the menu button was: on md and up the
+  // sidebar is a permanent column, and during onboarding there is nothing to
+  // go back to. The gesture stands down whenever a dialog is over the page —
+  // including the admin panel, which runs its own scoped swipe below.
+  //
+  // Through a ref because what "back" means depends on selections and the
+  // homes list that are computed further down this component, and the
+  // gesture only fires long after render.
+  const edgeSwipeBackRef = useRef<() => void>(() => {});
   useEdgeSwipeOpen({
     enabled: isMobile && hasContentAccess && !sidebarOpen,
-    onOpen: () => setSidebarOpen(true),
+    onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
     enabled: isMobile && isAdminRoute && !!_cloud && !adminSidebarOpen,
@@ -4096,6 +4103,60 @@ const Dashboard = () => {
     if (selectedHomeId) return selectedHomeId;
     return homeNameMap.size === 1 ? [...homeNameMap.keys()][0] : null;
   }, [homeNameMap, selectedHomeId]);
+
+  // The iOS native header has the screen (parob/homecast-cloud#120): the web
+  // header row is hidden and the document, not an inner container, scrolls.
+  const nativeHeaderActive = useNativeHeaderActive();
+  // The phone's web header: once the big heading has scrolled under the bar,
+  // the bar shows the page's name with the switcher — what the native bar
+  // does with its large title. Watched, not computed from scroll offsets:
+  // the heading's own box says when it is gone.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [headingHidden, setHeadingHidden] = useState(false);
+  useEffect(() => {
+    const el = headingRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    // The heading counts as gone once it is under the header row, not at
+    // the screen's edge. The row's centre line is published by AppHeader
+    // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
+    // the cut is the row's bottom plus a little.
+    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeadingHidden(!entry.isIntersecting),
+      { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId]);
+  // The request-log dock stops squashing the app while the native header is
+  // on (see `DebugDock`) and overlays the bottom instead, so the page clears
+  // it itself. Zero whenever the dock is closed.
+  const debugDockHeight = useDebugDockHeight();
+
+  // What the iOS native title menu lists (parob/homecast-cloud#120) — the
+  // Home app's chevron menu of homes. Memoised: the header publishes on
+  // identity change.
+  const nativeHomes = useMemo(
+    () => [...homeNameMap.entries()].map(([id, name]) => ({ id, name })),
+    [homeNameMap],
+  );
+
+  // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
+  // room, group or collection to the whole home; from the whole home to the
+  // previous home in the menu's order, wrapping from the first to the last so
+  // the gesture cycles through every home.
+  useEffect(() => {
+    edgeSwipeBackRef.current = () => {
+      if (!selectedHomeId) return;
+      if (selectedRoomId || selectedRoomGroupId || selectedCollectionId) {
+        handleSelectHome(selectedHomeId);
+        return;
+      }
+      const index = nativeHomes.findIndex((home) => home.id === selectedHomeId);
+      if (index < 0 || nativeHomes.length < 2) return;
+      handleSelectHome(nativeHomes[(index - 1 + nativeHomes.length) % nativeHomes.length].id);
+    };
+  });
 
   // Auto-refresh while the page is visible:
   //  - every 5s when there's no data at all (first load / empty account)
@@ -6108,7 +6169,7 @@ const Dashboard = () => {
    * flush with the screen edge. On top of the safe-area inset, like the strips
    * below.
    */
-  const bottomBandHeight = isPhone && pinnedTabs.length > 0 ? 72 : 16;
+  const bottomBandHeight = (isPhone && pinnedTabs.length > 0 ? 72 : 16) + (nativeHeaderActive ? debugDockHeight : 0);
 
   /**
    * …and the heights of the two blur strips that float over those bands.
@@ -7000,303 +7061,551 @@ const Dashboard = () => {
 
 
   // Right menu for header (three dots menu)
-  const headerRightMenu = (
+  /**
+   * The ⋯ menu, as data.
+   *
+   * One list drives two renderers: the web `DropdownMenu` below and, on iOS
+   * with the native header preview on (parob/homecast-cloud#120), a `UIMenu`
+   * on the bar's own ⋯ button. Item ids are what the native side hands back;
+   * `symbol` is the SF Symbol the native side draws.
+   */
+  type OverflowItem = {
+    id: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    symbol: string;
+    onSelect: () => void;
+    destructive?: boolean;
+    disabled?: boolean;
+    spin?: boolean;
+    tour?: string;
+  };
+  type OverflowSection = {
+    id: string;
+    /** Drawn as the rounded context card with a title and a refresh control. */
+    title?: string;
+    /** A plain section that wants a separator above it. */
+    separator?: boolean;
+    items: OverflowItem[];
+  };
+
+  const refreshing = accessoriesLoading || collectionsLoading;
+  const refreshItem: OverflowItem = { id: 'refresh', label: 'Refresh', icon: RefreshCw, symbol: 'arrow.clockwise', onSelect: refreshAll, disabled: refreshing, spin: refreshing };
+  const overflowSections: OverflowSection[] = [];
+
+  if (selectedCollectionId && selectedCollectionGroupId && hasContentAccess) {
+    overflowSections.push({
+      id: 'group',
+      title: collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name || 'Group',
+      items: [
+        { id: 'group-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          const collectionPayloadForGroup = collection ? parseCollectionPayload(collection.payload) : { groups: [], items: [] };
+          const group = collectionPayloadForGroup.groups.find(g => g.id === selectedCollectionGroupId);
+          if (group) setSidebarShareGroup({ collectionId: selectedCollectionId, groupId: selectedCollectionGroupId, groupName: group.name });
+        } },
+        { id: 'group-select', label: 'Select Accessories', icon: Plus, symbol: 'plus', onSelect: () => setCollectionAddItemsOpen(true) },
+        { id: 'group-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
+          setBackgroundSettingsTarget({ type: 'collectionGroup', id: selectedCollectionGroupId!, name: group?.name || 'Group', parentId: selectedCollectionId });
+          setBackgroundSettingsOpen(true);
+        } },
+        { id: 'group-rename', label: 'Rename', icon: Pencil, symbol: 'pencil', onSelect: () => {
+          const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
+          if (group) setSidebarRenamingGroup({ id: group.id, name: group.name });
+        } },
+        { id: 'group-delete', label: 'Delete', icon: Trash2, symbol: 'trash', destructive: true, onSelect: () => setSidebarDeletingGroupId(selectedCollectionGroupId!) },
+      ],
+    });
+  } else if (selectedCollectionId && hasContentAccess) {
+    overflowSections.push({
+      id: 'collection',
+      title: selectedCollection?.name || 'Collection',
+      items: [
+        { id: 'collection-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarShareCollection(collection);
+        } },
+        { id: 'collection-select', label: 'Select Accessories', icon: Plus, symbol: 'plus', onSelect: () => setCollectionAddItemsOpen(true) },
+        { id: 'collection-group', label: 'Add Group', icon: FolderPlus, symbol: 'folder.badge.plus', onSelect: () => setCollectionAddingGroup(true) },
+        { id: 'collection-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          setBackgroundSettingsTarget({ type: 'collection', id: selectedCollectionId, name: selectedCollection?.name || 'Collection' });
+          setBackgroundSettingsOpen(true);
+        } },
+        { id: 'collection-rename', label: 'Rename', icon: Pencil, symbol: 'pencil', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarRenamingCollection(collection);
+        } },
+        { id: 'collection-delete', label: 'Delete', icon: Trash2, symbol: 'trash', destructive: true, onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarDeletingCollection(collection);
+        } },
+      ],
+    });
+  } else if (selectedRoomId && selectedHomeId && hasContentAccess) {
+    overflowSections.push({
+      id: 'room',
+      title: rooms.find(r => r.id === selectedRoomId)?.name || 'Room',
+      items: [
+        { id: 'room-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          if (room) setSidebarShareRoom({ room, homeId: selectedHomeId! });
+        } },
+        { id: 'room-analytics', label: 'Analytics', icon: LineChart, symbol: 'chart.xyaxis.line', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
+        } },
+        { id: 'room-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          setBackgroundSettingsTarget({ type: 'room', id: selectedRoomId!, name: room?.name || 'Room' });
+          setBackgroundSettingsOpen(true);
+        } },
+        // Hide Room used to sit here. Hiding the room you are standing in
+        // sent you somewhere else to prove it worked; it now lives on the
+        // room's own sidebar row, next to every other room you might hide.
+        // The room header has its own menu branch, and creating was only in
+        // the home one — so viewing a room offered no way to add anything
+        // to it. Pre-selects this room, since that is where you asked.
+        { id: 'room-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+      ],
+    });
+  } else if (selectedHomeId && hasContentAccess) {
+    overflowSections.push({
+      id: 'home',
+      title: homes.find(h => h.id === selectedHomeId)?.name || 'Home',
+      items: [
+        { id: 'home-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          if (home) setSidebarShareHome(home);
+        } },
+        { id: 'home-analytics', label: 'Analytics', icon: LineChart, symbol: 'chart.xyaxis.line', onSelect: () => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined }) },
+        { id: 'home-room-group', label: 'Add Room Group', icon: Layers, symbol: 'square.3.layers.3d', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
+        } },
+        { id: 'home-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'home-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          setBackgroundSettingsTarget({ type: 'home', id: selectedHomeId!, name: home?.name || 'Home' });
+          setBackgroundSettingsOpen(true);
+        } },
+        // Hide Home moved to the home's sidebar row, for the same reason as
+        // Hide Room above.
+      ],
+    });
+  } else if (hasContentAccess) {
+    overflowSections.push({ id: 'refresh', items: [refreshItem] });
+  }
+
+  const generalItems: OverflowItem[] = [];
+  // Touch reveals hidden things by entering Edit Layout, which shows them
+  // automatically. The Mac has no edit mode, so without this the only way
+  // to find something you had hidden is to already know it is there and
+  // right-click the tile next to it.
+  if (!isTouchDevice && hasContentAccess) {
+    generalItems.push(showHiddenItems
+      ? { id: 'hidden-hide', label: 'Hide Hidden Items', icon: EyeOff, symbol: 'eye.slash', onSelect: handleToggleShowHidden }
+      : { id: 'hidden-show', label: 'Show Hidden Items', icon: Eye, symbol: 'eye', onSelect: handleToggleShowHidden });
+  }
+  if (isTouchDevice && hasContentAccess) {
+    generalItems.push({ id: 'edit-layout', label: editMode ? 'Done Editing' : 'Edit Layout', icon: Pencil, symbol: 'pencil', onSelect: () => setEditModeAndTidy(!editMode) });
+  }
+  generalItems.push({ id: 'settings', label: 'Settings', icon: Settings, symbol: 'gearshape', onSelect: () => setSettingsOpen(true) });
+  if (hasStagingAccess) {
+    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: () => {
+      const targetEnv = config.isStaging ? 'production' : 'staging';
+      const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
+      const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
+      if (w.homekit?.call) {
+        // Native iOS/Mac app: switch WebView URL via bridge
+        w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
+      } else {
+        // Browser/Tauri: persist preference via cookie (shared across subdomains
+        // unlike localStorage which is per-origin) and navigate directly
+        document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
+        localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
+        window.location.href = targetUrl;
+      }
+    } });
+  }
+  // Only where the admin panel actually exists: it ships in the cloud
+  // package, and a build without that (the community build, a dev checkout
+  // without `src/cloud/`) rendered a null component and crashed the page.
+  if (isAdmin && !isCommunity && AdminDashboard) {
+    generalItems.push({ id: 'admin', label: 'Admin', icon: Server, symbol: 'server.rack', onSelect: () => navigate('/portal/admin') });
+  }
+  overflowSections.push({ id: 'general', separator: overflowSections[0]?.id === 'refresh', items: generalItems });
+  if (!isCommunity || !isRelayCapable()) {
+    overflowSections.push({ id: 'session', separator: true, items: [
+      { id: 'sign-out', label: 'Sign Out', icon: LogOut, symbol: 'rectangle.portrait.and.arrow.right', onSelect: isCommunity ? resetAndUninstall : logout },
+    ] });
+  }
+
+  // The same list, in the shape the native bar reads. A context card's
+  // refresh control becomes a plain item there. Rebuilt every render, like the
+  // JSX it mirrors — `AppHeader` publishes it only when its content changes.
+  // No hooks here: this sits below an early return.
+  const nativeMenu: NativeHeaderMenuSection[] = overflowSections.map(section => ({
+    id: section.id,
+    ...(section.title ? { title: section.title } : {}),
+    items: [...section.items, ...(section.title ? [refreshItem] : [])].map(item => ({
+      id: `${section.id}:${item.id}`,
+      label: item.label,
+      symbol: item.symbol,
+      ...(item.destructive ? { destructive: true } : {}),
+      ...(item.disabled ? { disabled: true } : {}),
+    })),
+  }));
+  // A fresh closure each render is fine: the header keeps the latest one in a
+  // ref, so a native pick always runs against this render's sections.
+  const handleNativeMenuAction = (itemId: string) => {
+    const [sectionId, id] = itemId.split(':');
+    const section = overflowSections.find(s => s.id === sectionId);
+    if (!section) return;
+    const item = id === 'refresh' && section.title ? refreshItem : section.items.find(i => i.id === id);
+    item?.onSelect();
+  };
+  // The big text at the top of the native header: the room, room group or
+  // collection being viewed. Empty on the home view, where the home name is
+  // the large text and hands over to the bar's title on scroll.
+  const nativeHeading = selectedCollectionId
+    ? ((selectedCollectionGroupId && collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name) || selectedCollection?.name || '')
+    : (selectedRoomId || selectedRoomGroupId) ? (statusAreaName ?? '') : '';
+
+  // What the native bar should look like: light-on-dark whenever the page is.
+  const nativeAppearance: 'dark' | 'light' = isDarkBackground ? 'dark' : 'light';
+
+  // What the native ☰ menu offers (parob/homecast-cloud#120). Homes are not
+  // here — the title menu has them — so this is the current home's rooms and
+  // room groups, then the collections. The web drawer stays one item away for
+  // everything it does that a menu cannot (reorder, hide, create).
+  const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
+  const onWholeHome = !selectedRoomId && !selectedRoomGroupId && !selectedCollectionId;
+  // `icon` is for the web rendering of the same menu (mobile web has no
+  // native bar); it is a function, so JSON drops it on the way to native.
+  type NavItem = NativeHeaderNavItem & { icon?: React.ComponentType<{ className?: string }>; children?: NavItem[] };
+  type NavSection = { id: string; title?: string; items: NavItem[] };
+  const roomItem = (room: { id: string; name: string }): NavItem => ({
+    id: `room:${room.id}`,
+    label: room.name,
+    symbol: getRoomSymbol(room.name),
+    icon: getRoomIcon(room.name),
+    selected: !selectedCollectionId && selectedRoomId === room.id,
+  });
+  const nativeNavigation: NavSection[] = [];
+  if (selectedHomeId && hasContentAccess) {
+    const roomItems: NavItem[] = [
+      { id: 'home', label: 'All Rooms', symbol: 'house', icon: House, selected: onWholeHome },
+    ];
+    for (const group of roomGroups) {
+      const members = group.roomIds
+        .map((rid) => rooms.find((r) => normalizeRoomId(r.id) === normalizeRoomId(rid)))
+        .filter((r): r is NonNullable<typeof r> => !!r);
+      roomItems.push({
+        id: `roomgroup:${group.entityId}`,
+        label: group.name,
+        symbol: 'square.3.layers.3d',
+        icon: Layers,
+        children: [
+          { id: `roomgroup:${group.entityId}`, label: 'All', symbol: 'square.3.layers.3d', icon: Layers, selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
+          ...members.map(roomItem),
+        ],
+      });
+    }
+    roomItems.push(...visibleRooms.map(roomItem));
+    nativeNavigation.push({ id: 'rooms', items: roomItems });
+  }
+  if (hasContentAccess && allCollections.length > 0) {
+    nativeNavigation.push({
+      id: 'collections',
+      title: 'Collections',
+      items: allCollections.map((collection) => {
+        const groups = parseCollectionPayload(collection.payload).groups;
+        const selectedHere = selectedCollectionId === collection.id;
+        if (groups.length === 0) {
+          return { id: `collection:${collection.id}`, label: collection.name, symbol: 'folder', icon: Folder, selected: selectedHere };
+        }
+        return {
+          id: `collection:${collection.id}`,
+          label: collection.name,
+          symbol: 'folder',
+          icon: Folder,
+          children: [
+            { id: `collection:${collection.id}`, label: 'All', symbol: 'folder', icon: Folder, selected: selectedHere && !selectedCollectionGroupId },
+            ...groups.map((group) => ({
+              id: `collectiongroup:${collection.id}/${group.id}`,
+              label: group.name,
+              symbol: 'rectangle.3.group',
+              icon: Layers,
+              selected: selectedHere && selectedCollectionGroupId === group.id,
+            })),
+          ],
+        };
+      }),
+    });
+  }
+  // Mobile web has no native bar and, now, no ☰: the home name in the page
+  // heading carries the same menu the native title does — homes first, then
+  // this home's rooms and groups, then the collections.
+  const showWebHomeMenu = isMobile && !nativeHeaderActive && hasContentAccess;
+  // The phone's web heading is drawn at the native bar's large-title size.
+  // On a room or group page the path (home, group) goes small on the line
+  // above and only the page's own name is large; the separator before that
+  // name is then a line break, not a slash.
+  const largeHeading = isMobile && !nativeHeaderActive;
+  const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
+  const crumbNameClass = largeHeading ? 'block truncate' : '';
+  const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
+    const Icon = item.icon;
+    if (item.children && item.children.length > 0) {
+      // A submenu opens beside its parent, and on a phone there is no room
+      // beside a 300px menu on either side: it landed off the screen. So a
+      // group is flattened into the list there — the group itself as a row
+      // (its first child is "All of <group>", the same target), then its
+      // members indented beneath it. What iOS does with a submenu, in effect:
+      // shows it in place.
+      if (isMobile) {
+        // `children` is typed through the wire shape's intersection, which
+        // loses `icon`; every child here was built as a NavItem.
+        const children = item.children as NavItem[];
+        const self = children.find((c) => c.id === item.id) ?? children[0];
+        const members = children.filter((c) => c !== self);
+        return (
+          <React.Fragment key={item.id}>
+            <DropdownMenuItem onClick={() => handleNativeNavigate(self.id)}>
+              {Icon && <Icon className="h-4 w-4 mr-2" />}
+              <span className="truncate">{item.label}</span>
+              {self.selected && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+            {members.map((member) => {
+              const MemberIcon = member.icon;
+              return (
+                <DropdownMenuItem key={member.id} className="pl-8" onClick={() => handleNativeNavigate(member.id)}>
+                  {MemberIcon && <MemberIcon className="h-4 w-4 mr-2 opacity-70" />}
+                  <span className="truncate">{member.label}</span>
+                  {member.selected && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </React.Fragment>
+        );
+      }
+      return (
+        <DropdownMenuSub key={item.id}>
+          <DropdownMenuSubTrigger>
+            {Icon && <Icon className="h-4 w-4 mr-2" />}
+            {item.label}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>{renderNavItems(item.children)}</DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+    return (
+      <DropdownMenuItem key={item.id} onClick={() => handleNativeNavigate(item.id)}>
+        {Icon && <Icon className="h-4 w-4 mr-2" />}
+        <span className="truncate">{item.label}</span>
+        {item.selected && <Check className="ml-auto h-4 w-4" />}
+      </DropdownMenuItem>
+    );
+  });
+  // The connection dot sits beside the home name in the heading, after the
+  // chevron — the same spot the iOS native bar draws its own. Only on the
+  // whole-home heading; a breadcrumb has enough in it already.
+  const headingStatusDot = (
+    <span className="ml-2 inline-flex items-center align-middle">
+      <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
+    </span>
+  );
+  // Between crumbs: a slash on the desktop line, a small chevron on the
+  // phone's path line ("George Street › Bedrooms"). Nothing after the last
+  // crumb on a phone — the page's own name is on the line below.
+  const crumbSeparator = (last: boolean): React.ReactNode => {
+    if (largeHeading) return last ? null : <ChevronRight className="inline h-3.5 w-3.5 mx-1 opacity-50 align-[-2px]" />;
+    return <span className="mx-2 opacity-40">/</span>;
+  };
+  // The switcher's rows — homes, then this home's rooms, groups and
+  // collections — shared by the home name, the room name and the bar's
+  // collapsed title on a phone, so all three open the same thing.
+  const renderSwitcherItems = (): React.ReactNode => (
     <>
+      {nativeHomes.length > 1 && (
+        <>
+          {nativeHomes.map((home) => (
+            <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
+              <House className="h-4 w-4 mr-2" />
+              <span className="truncate">{home.name}</span>
+              {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+        </>
+      )}
+      {nativeNavigation.map((section, i) => (
+        <React.Fragment key={section.id}>
+          {i > 0 && <DropdownMenuSeparator />}
+          {section.title && <DropdownMenuLabel className="text-xs text-muted-foreground">{section.title}</DropdownMenuLabel>}
+          {renderNavItems(section.items)}
+        </React.Fragment>
+      ))}
+    </>
+  );
+  // The disc chevron the heading and the native bar draw after a name.
+  const discChevron = (
+    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full transition-colors ${isDarkBackground ? 'bg-white/20 group-data-[state=open]/title:bg-white/35' : 'bg-black/10 group-data-[state=open]/title:bg-black/20'}`}>
+      <ChevronDown className="h-3 w-3" strokeWidth={3} />
+    </span>
+  );
+  // The bar's collapsed title on a phone: the page's name and the switcher,
+  // shown once the big heading has scrolled under the bar.
+  // The same pair the native bar carries: the page's name with the chevron,
+  // and on a room, group or collection page the home's name small beneath.
+  const compactPageName = statusAreaName || (selectedCollectionId ? (selectedCollection?.name ?? '') : (statusHomeName ?? ''));
+  const compactHomeName = compactPageName && statusHomeName && compactPageName !== statusHomeName ? statusHomeName : null;
+  const compactTitle = largeHeading && hasContentAccess && compactPageName ? (
+    <div className={`transition-opacity duration-base ${headingHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden={!headingHidden}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild plain>
+          <button type="button" className={`group/title flex max-w-full flex-col items-center justify-center rounded-full px-3.5 ${compactHomeName ? 'py-1' : 'h-[max(2.5rem,40px)]'} leading-tight ${headerGlassClass(headerInkLight)}`}>
+            <span className="flex max-w-full items-center gap-1.5 text-[15px] font-semibold">
+              <span className="truncate">{compactPageName}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+            </span>
+            {compactHomeName && <span className="block max-w-full truncate text-[11px] font-medium opacity-70">{compactHomeName}</span>}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent scrim align="center" className="min-w-[220px]">
+          {renderSwitcherItems()}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ) : null;
+  const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
+    const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
+    // On a phone a crumb is a plain link back: the switcher lives on the
+    // page's own name below, not on both.
+    if (!showWebHomeMenu || (className && largeHeading)) {
+      if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
+      return <>{name}{isHeading && headingStatusDot}</>;
+    }
+    // As a heading the chevron is the native bar's: a small filled disc after
+    // the name, brighter while the menu is up. In a breadcrumb it is just a
+    // glyph. `plain` keeps the shared trigger from painting a white slab
+    // behind the words when the menu opens.
+    const asHeading = !className;
+    return (
+      <><DropdownMenu>
+        <DropdownMenuTrigger asChild plain>
+          {/* As a heading, a pill: the menu's scrim is cut out around its
+              trigger in the trigger's own shape, and a square box around
+              the words left a hard-edged rectangle of undimmed page. The
+              negative margins keep the text where it was. */}
+          <button type="button" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
+            <span className="truncate">{name}</span>
+            {asHeading ? discChevron : (
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            )}
+          </button>
+        </DropdownMenuTrigger>
+        {/* The pill's negative margin pulls the trigger's box past the text;
+            the menu lines up with the words, not the box. */}
+        <DropdownMenuContent scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
+          {renderSwitcherItems()}
+        </DropdownMenuContent>
+      </DropdownMenu>{isHeading && headingStatusDot}</>
+    );
+  };
+
+  // The native pull-to-refresh (parob/homecast-cloud#120). The web's own
+  // pull is off under the bar — the document scrolls there, not its inner
+  // container — so UIKit's refresh control on the web view's scroll view
+  // takes over, and a deep pull means what a 500px pull meant here: the
+  // hard-reload countdown. Done is reported at once either way; `refreshAll`
+  // shows its own loading state and the countdown is its own screen.
+  const handleNativeRefresh = (kind: NativeHeaderRefreshKind) => {
+    if (kind === 'hard') startHardReloadCountdown();
+    else refreshAll();
+    publishRefreshDone();
+  };
+
+  const handleNativeNavigate = (itemId: string) => {
+    const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
+    switch (kind) {
+      case 'home':
+        if (selectedHomeId) handleSelectHome(selectedHomeId);
+        break;
+      case 'room':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoom(rest);
+        break;
+      case 'roomgroup':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoomGroup(rest);
+        break;
+      case 'collection': {
+        const collection = allCollections.find((c) => c.id === rest);
+        if (collection) handleSelectCollection(collection);
+        break;
+      }
+      case 'collectiongroup': {
+        const [collectionId, groupId] = rest.split('/');
+        const collection = allCollections.find((c) => c.id === collectionId);
+        if (collection) {
+          handleSelectCollection(collection);
+          handleSelectCollectionGroup(groupId);
+        }
+        break;
+      }
+      case 'menu':
+        // Everything the drawer does that a menu cannot: the real web drawer.
+        activateHeaderControl('menu');
+        break;
+    }
+  };
+
+  const renderOverflowItem = (item: OverflowItem) => (
+    <DropdownMenuItem key={item.id} data-tour={item.tour} onClick={item.onSelect} disabled={item.disabled} className={item.destructive ? 'text-destructive focus:text-destructive' : undefined}>
+      <item.icon className={`h-4 w-4 mr-2 ${item.spin ? 'animate-spin' : ''}`} />
+      {item.label}
+    </DropdownMenuItem>
+  );
+
+  // Search and ⋯ share one glass capsule, as they do in the iOS native bar
+  // (parob/homecast-cloud#120): the same two controls, the same shape, on
+  // every platform.
+  const headerRightMenu = (
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
-          <MoreVertical className="h-5 w-5" />
+        <Button data-native-header="overflow" data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}>
+          <MoreHorizontal className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent scrim align="end" className="min-w-[200px]">
-        {selectedCollectionId && selectedCollectionGroupId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
+        {overflowSections.map(section => section.title ? (
+          <div key={section.id} className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name || 'Group'}
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">{section.title}</span>
               <button
                 onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
+                disabled={refreshing}
                 className="p-1 rounded hover:bg-muted disabled:opacity-50"
               >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              const collectionPayloadForGroup = collection ? parseCollectionPayload(collection.payload) : { groups: [], items: [] };
-              const group = collectionPayloadForGroup.groups.find(g => g.id === selectedCollectionGroupId);
-              if (group) setSidebarShareGroup({ collectionId: selectedCollectionId, groupId: selectedCollectionGroupId, groupName: group.name });
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Select Accessories
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
-              setBackgroundSettingsTarget({
-                type: 'collectionGroup',
-                id: selectedCollectionGroupId!,
-                name: group?.name || 'Group',
-                parentId: selectedCollectionId,
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
-              if (group) setSidebarRenamingGroup({ id: group.id, name: group.name });
-            }}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSidebarDeletingGroupId(selectedCollectionGroupId!)} className="text-destructive focus:text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {section.items.map(renderOverflowItem)}
           </div>
-        ) : selectedCollectionId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {selectedCollection?.name || 'Collection'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarShareCollection(collection);
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Select Accessories
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddingGroup(true)}>
-              <FolderPlus className="h-4 w-4 mr-2" />
-              Create Group
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              setBackgroundSettingsTarget({
-                type: 'collection',
-                id: selectedCollectionId,
-                name: selectedCollection?.name || 'Collection',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarRenamingCollection(collection);
-            }}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarDeletingCollection(collection);
-            }} className="text-destructive focus:text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </div>
-        ) : selectedRoomId && selectedHomeId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {rooms.find(r => r.id === selectedRoomId)?.name || 'Room'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              if (room) setSidebarShareRoom({ room, homeId: selectedHomeId! });
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
-            }}>
-              <LineChart className="h-4 w-4 mr-2" />
-              Analytics
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              setBackgroundSettingsTarget({
-                type: 'room',
-                id: selectedRoomId!,
-                name: room?.name || 'Room',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            {/* Hide Room used to sit here. Hiding the room you are standing in
-                sent you somewhere else to prove it worked; it now lives on the
-                room's own sidebar row, next to every other room you might hide. */}
-            {/* The room header has its own menu branch, and creating was only in
-                the home one — so viewing a room offered no way to add anything
-                to it. Pre-selects this room, since that is where you asked. */}
-            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
-              <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
-            </DropdownMenuItem>
-
-          </div>
-        ) : selectedHomeId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              if (home) setSidebarShareHome(home);
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined })}>
-              <LineChart className="h-4 w-4 mr-2" />
-              Analytics
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
-            }}>
-              <Layers className="h-4 w-4 mr-2" />
-              Create Room Group
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
-              <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              setBackgroundSettingsTarget({
-                type: 'home',
-                id: selectedHomeId!,
-                name: home?.name || 'Home',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            {/* Hide Home moved to the home's sidebar row, for the same reason as
-                Hide Room above. */}
-          </div>
-        ) : hasContentAccess ? (
-          <>
-            <DropdownMenuItem onClick={refreshAll} disabled={accessoriesLoading || collectionsLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-        {/* Touch reveals hidden things by entering Edit Layout, which shows them
-            automatically. The Mac has no edit mode, so without this the only way
-            to find something you had hidden is to already know it is there and
-            right-click the tile next to it. */}
-        {!isTouchDevice && hasContentAccess && (
-          <DropdownMenuItem onClick={handleToggleShowHidden}>
-            {showHiddenItems ? (
-              <>
-                <EyeOff className="h-4 w-4 mr-2" />
-                Hide Hidden Items
-              </>
-            ) : (
-              <>
-                <Eye className="h-4 w-4 mr-2" />
-                Show Hidden Items
-              </>
-            )}
-          </DropdownMenuItem>
-        )}
-        {isTouchDevice && hasContentAccess && (
-          <DropdownMenuItem onClick={() => setEditModeAndTidy(!editMode)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            {editMode ? 'Done Editing' : 'Edit Layout'}
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </DropdownMenuItem>
-        {hasStagingAccess && (
-          <DropdownMenuItem onClick={() => {
-            const targetEnv = config.isStaging ? 'production' : 'staging';
-            const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
-            const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
-            if (w.homekit?.call) {
-              // Native iOS/Mac app: switch WebView URL via bridge
-              w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
-            } else {
-              // Browser/Tauri: persist preference via cookie (shared across subdomains
-              // unlike localStorage which is per-origin) and navigate directly
-              document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
-              localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
-              window.location.href = targetUrl;
-            }
-          }}>
-            <FlaskConical className="h-4 w-4 mr-2" />
-            {config.isStaging ? 'Switch to Production' : 'Switch to Staging'}
-          </DropdownMenuItem>
-        )}
-        {isAdmin && !isCommunity && (
-          <DropdownMenuItem onClick={() => navigate('/portal/admin')}>
-            <Server className="h-4 w-4 mr-2" />
-            Admin
-          </DropdownMenuItem>
-        )}
-        {(!isCommunity || !isRelayCapable()) && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={isCommunity ? resetAndUninstall : logout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </DropdownMenuItem>
-          </>
-        )}
+        ) : (
+          <React.Fragment key={section.id}>
+            {section.separator && <DropdownMenuSeparator />}
+            {section.items.map(renderOverflowItem)}
+          </React.Fragment>
+        ))}
         {hasStagingAccess && (() => {
           const appVer = appVersionLabel(window);
           const webVer = config.version !== 'dev' ? config.version : null;
@@ -7323,7 +7632,7 @@ const Dashboard = () => {
         })()}
       </DropdownMenuContent>
     </DropdownMenu>
-    </>
+    </div>
   );
 
   return (
@@ -7348,7 +7657,11 @@ const Dashboard = () => {
             Without a wallpaper it still needs the theme colour. */}
         <div
           className={
-            isInMobileApp || isInMacApp
+            // Under the iOS native header the document itself scrolls (see
+            // parob/homecast-cloud#120), so the shell must be in flow: a fixed
+            // box pins the document at viewport height and UIKit never sees
+            // a scroll.
+            (isInMobileApp || isInMacApp) && !nativeHeaderActive
               ? 'fixed inset-0'
               : hasBackground ? 'relative' : 'relative bg-background'
           }
@@ -7395,7 +7708,9 @@ const Dashboard = () => {
               Heights are `scrimTopHeight` / `scrimBottomHeight`, which are
               deliberately no longer the scroller's padding expressions — see
               the note where they are declared for what each one trades. */}
-          {isInMobileApp && (
+          {/* The iOS native header draws its own scroll-edge effect, so the
+              page's top scrim would double it (parob/homecast-cloud#120). */}
+          {isInMobileApp && !nativeHeaderActive && (
             <>
               <div
                 aria-hidden
@@ -7422,16 +7737,23 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-                <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
+                {/* No ☰ once the home name carries the menu; the drawer is
+                    still there behind the edge swipe for what a menu cannot
+                    do (reorder, hide, create). */}
+                {!showWebHomeMenu && <SheetTrigger asChild>
+                  {/* `data-native-header` is what a tap on the iOS native bar
+                      clicks — see `native/native-header.ts`. Keeping the route
+                      through the real trigger is what lets that preview exist
+                      without lifting this Sheet into controlled state. */}
+                  <Button data-native-header="menu" data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
-                </SheetTrigger>
+                </SheetTrigger>}
                 {/* The Mac app hides its title bar but the traffic lights still
                     sit there, so the drawer's contents have to clear the same
                     33px the header reserves. Inset the padding rather than the
@@ -7883,9 +8205,8 @@ const Dashboard = () => {
       {/* Edit Layout's toolbar. A solid full-width bar that covers the app header
           rather than floating over it: while editing, none of the header's normal
           controls apply, and leaving them visible but inert invited taps that did
-          nothing. The burger stays, because the sidebar is half of what you came
-          here to arrange — homes and rooms live in it. The Sheet it opens is
-          z-[10015], above this bar, so it still works.
+          nothing. There is no burger either: homes and rooms are in the home
+          name's own menu now, and the drawer is still an edge swipe away.
 
           There is no Show hidden control: editing always reveals hidden things,
           sorted to the end of the grid. You cannot bring back what you cannot
@@ -7915,24 +8236,21 @@ const Dashboard = () => {
           aria-hidden={!editMode}
           {...(editMode ? {} : INERT)}
           data-testid="edit-layout-bar"
+          // Under the iOS native bar this toolbar is drawn beneath it, so the
+          // native ⋯ menu and title selector would sit over Done and stay
+          // live. Declaring the toolbar a cover hides the bar for the duration,
+          // the way an open sheet does — see `NATIVE_HEADER_COVER_SELECTOR`.
+          {...{ [NATIVE_HEADER_COVER_ATTR]: editMode ? 'true' : 'false' }}
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
             <div className="flex items-center justify-between gap-2 h-[80px]">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu"
-                // Redundant once the sidebar is on screen in its own right —
-                // which is what happens when you turn a phone sideways.
-                //
-                // The inset mirrors AppHeader's left cluster (`px-[max(0.5rem,8px)]`
-                // inside the same `px-4` container) rather than pulling the other
-                // way. This bar covers the header, so the burger is the one control
-                // drawn in both — a different inset here and it jumps 20px left the
-                // moment Edit Layout comes on, which is what it used to do.
-                className={`md:hidden flex items-center justify-center h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] ml-[max(0.5rem,8px)] rounded-full ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+              {/* No burger. The sidebar used to be half of what you came here
+                  to arrange, but the home name's own menu now covers homes
+                  and rooms and the drawer is still an edge swipe away — and
+                  on a phone the ☰ was the one control drawn in both this bar
+                  and the header. An invisible twin of Done keeps the title
+                  centred between the two edges. */}
+              <span className="px-3 py-1.5 text-sm font-semibold invisible" aria-hidden>Done</span>
               {/* The gesture is not discoverable on its own — nothing on screen
                   says a hold does anything — so the bar that appears when you
                   find it explains what you can do next. `min-w-0` and wrapping
@@ -8046,7 +8364,7 @@ const Dashboard = () => {
         collectionItemIds={searchCollectionItemIds}
       />
 
-      <div className={`${isInMobileApp || isInMacApp ? 'absolute inset-0' : 'relative min-h-[120vh]'} flex justify-center`}>
+      <div className={`${isInMobileApp || isInMacApp ? (nativeHeaderActive ? 'relative' : 'absolute inset-0') : 'relative min-h-[120vh]'} flex justify-center`}>
         <div className={`flex w-full ${isInMacApp || fullWidth ? '' : 'max-w-7xl'}`}>
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
@@ -8054,7 +8372,16 @@ const Dashboard = () => {
           // floating rather than tucked into the corner. Written as calc so the
           // rem stays the rem the rest of the padding uses.
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
-          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
+          style={{
+            width: sidebarWidth,
+            ...(isInMobileApp ? {
+              // The same gap above as beside: the panel's left inset is
+              // 0.75rem + 5px, and the top used to be a flat 17px.
+              paddingTop: nativeHeaderActive
+                ? 'calc(0.75rem + 5px + var(--native-header-inset, 0px))'
+                : 'calc(0.75rem + 5px + var(--safe-area-top, 0px))',
+            } : undefined),
+          }}
         >
           <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
             <div
@@ -8358,16 +8685,31 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Content */}
-        <main className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
+        <main className={`relative flex-1 min-w-0 ${(isInMobileApp || isInMacApp) && !nativeHeaderActive ? 'overflow-hidden' : ''}`}>
+          {/* While the iOS native header is on, the DOCUMENT scrolls, not this
+              container: UIKit collapses the large title and draws the
+              scroll-edge effect from the web view's own scroll view, and an
+              inner scroller is invisible to it. */}
           <div
-            className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
+            className={`${(isInMobileApp || isInMacApp) && !nativeHeaderActive ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
-              paddingTop: `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
-              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`
+              // Under the iOS native header the content runs beneath the bar
+              // and starts below its large-title height instead. A little
+              // above the band's bottom edge: the name sits centred in a
+              // 52pt band, so its baseline is well clear, and the Home app
+              // runs its first row about 12pt under the title.
+              paddingTop: nativeHeaderActive
+                ? 'calc(var(--native-header-inset, 0px) + 4px)'
+                : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
+              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
+              // A phone on its side: keep the grid clear of the Dynamic
+              // Island and the rounded corner on the right, as the sidebar
+              // now is on the left.
+              paddingRight: 'var(--safe-area-right, 0px)'
             } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
-              isPullable={!(isTouchDevice && editMode)}
+              isPullable={!(isTouchDevice && editMode) && !nativeHeaderActive}
               onRefresh={handlePullRefresh}
               pullDownThreshold={67}
               maxPullDownDistance={95}
@@ -8633,8 +8975,23 @@ const Dashboard = () => {
                    stays: remounting on home/group/room change is what resets
                    widget state. */
                 <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`}>
-                {/* Header with title */}
-                <h2 className={`text-base font-bold truncate mb-4 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                {/* Header with title. Under the iOS native header the bar's
+                    large title IS this heading, so it is not drawn twice — but
+                    the connection badge inside it is still what the native dot
+                    clicks and what its popover anchors to, and an anchor inside
+                    a display:none heading measures 0×0 and drops the popover at
+                    the screen's origin (measured). So it is mounted out here
+                    instead, parked by its own fixed position. */}
+                {/* Under the native bar the dot's anchor is parked `fixed` (see
+                    StatusBadge), but the inline wrapper still opened a 30px line
+                    box above the pills — a block of no height holds it without
+                    one. */}
+                {nativeHeaderActive && isMobile && <div className="h-0">{headingStatusDot}</div>}
+                {/* On a phone the heading is the iOS bar's large title, 34pt
+                    bold — the same size the native bar draws, so the two
+                    builds read alike. A room or group page keeps its path,
+                    small, on a line above the big name. */}
+                <h2 ref={headingRef} className={`font-bold mb-4 ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
@@ -8642,18 +8999,13 @@ const Dashboard = () => {
                       const roomName = currentRoom?.name || 'Room';
                       return (
                         <>
+                          <span className={crumbsClass}>
                           {selectedHomeId ? (
-                            <button
-                              type="button"
-                              className={BREADCRUMB_LINK_CLASS}
-                              onClick={() => handleSelectHome(selectedHomeId)}
-                            >
-                              {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                            </button>
+                            renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
-                          <span className="mx-2 opacity-40">/</span>
+                          {crumbSeparator(!parentGroup)}
                           {parentGroup && (
                             <>
                               <button
@@ -8663,14 +9015,31 @@ const Dashboard = () => {
                               >
                                 {parentGroup.name}
                               </button>
-                              <span className="mx-2 opacity-40">/</span>
+                              {crumbSeparator(true)}
                             </>
                           )}
+                          </span>
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <span className="cursor-pointer">{roomName}</span>
+                            <DropdownMenuTrigger asChild plain>
+                              {largeHeading ? (
+                                <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                                  <span className="truncate">{roomName}</span>
+                                  {discChevron}
+                                </button>
+                              ) : (
+                                <span className={`cursor-pointer ${crumbNameClass}`}>{roomName}</span>
+                              )}
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
+                            <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                              {/* On a phone the room's name is the switcher, like the
+                                  home's; the room's own actions follow under its name. */}
+                              {largeHeading && (
+                                <>
+                                  {renderSwitcherItems()}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuLabel className="text-xs text-muted-foreground">{roomName}</DropdownMenuLabel>
+                                </>
+                              )}
                               {selectedHomeId && canShare && (
                                 <DropdownMenuItem onClick={() => {
                                   if (currentRoom) setSidebarShareRoom({ room: currentRoom, homeId: selectedHomeId });
@@ -8729,23 +9098,33 @@ const Dashboard = () => {
                     })()
                   ) : selectedRoomGroup ? (
                     <>
+                      <span className={crumbsClass}>
                       {selectedHomeId ? (
-                        <button
-                          type="button"
-                          className={BREADCRUMB_LINK_CLASS}
-                          onClick={() => handleSelectHome(selectedHomeId)}
-                        >
-                          {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                        </button>
+                        renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
-                      <span className="mx-2 opacity-40">/</span>
+                      {crumbSeparator(true)}
+                      </span>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <span className="cursor-pointer">{selectedRoomGroup.name}</span>
+                        <DropdownMenuTrigger asChild plain>
+                          {largeHeading ? (
+                            <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                              <span className="truncate">{selectedRoomGroup.name}</span>
+                              {discChevron}
+                            </button>
+                          ) : (
+                            <span className={`cursor-pointer ${crumbNameClass}`}>{selectedRoomGroup.name}</span>
+                          )}
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                          {largeHeading && (
+                            <>
+                              {renderSwitcherItems()}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-xs text-muted-foreground">{selectedRoomGroup.name}</DropdownMenuLabel>
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => {
                             setEditingRoomGroup({
                               groupId: selectedRoomGroup.entityId,
@@ -8780,7 +9159,7 @@ const Dashboard = () => {
                       </DropdownMenu>
                     </>
                   ) : (
-                    homes.find(h => h.id === selectedHomeId)?.name || 'Home'
+                    renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home')
                   )}
                 </h2>
                 {/* Summary row: scenes/automations/status pills, or — on a room
@@ -8815,7 +9194,7 @@ const Dashboard = () => {
                     measured height: a margin would sit outside the animated box
                     and, on a home with every section hidden, `empty:hidden`
                     would collapse the row while leaving its gap behind. */}
-                <div className="flex w-max items-center gap-2 pb-4 empty:hidden">
+                <div className="flex w-max items-center gap-2 pb-3 empty:hidden">
                   {isWholeHomeView && editingSummaryRow ? (
                     /* Editing: a stand-in row that can show a hidden section as
                        well as hide a shown one, and that opens nothing. */

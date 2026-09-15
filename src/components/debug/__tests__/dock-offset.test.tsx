@@ -31,9 +31,8 @@ const TABS: PinnedTab[] = [
   { type: 'room', id: 'ROOM-1', name: 'Kitchen', homeId: 'HOME-1' },
 ];
 
-/** The dock's own numbers, from RequestLogPanel. */
+/** The dock's own number, from RequestLogPanel. */
 const DEFAULT_HEIGHT = 260;
-const COLLAPSED_HEIGHT = 52;
 
 function renderApp() {
   return render(
@@ -83,18 +82,41 @@ describe('the tab bar and the request log dock', () => {
     expect(bar().style.paddingBottom).toBe('6px');
   });
 
-  it('drops to the collapsed bar when the log is minimised, and back up again', async () => {
+  it('returns the bottom edge to the app when the log is minimised, and takes it back', async () => {
     setRequestPanelEnabled(true);
     renderApp();
 
     await screen.findByText('Requests');
     fireEvent.click(screen.getByTitle('Minimise'));
-    await waitFor(() => expect(bar().style.bottom).toBe(`${COLLAPSED_HEIGHT}px`));
 
-    // Minimised, the bar's pill was landing on the chevron that reopens the
-    // panel — the only way back in, per RequestLogPanel's own note.
+    // Minimised the log floats in the corner rather than docking, so it
+    // reserves nothing: the bar goes back to the bottom edge, safe-area inset
+    // and all. It used to stop 52px up, on a full-width collapsed bar.
+    await waitFor(() => expect(bar().style.bottom).toBe('0px'));
+    expect(bar().style.paddingBottom).toBe('max(6px, var(--safe-area-bottom, 0px))');
+
+    // …and the floating button is still the way back in.
     fireEvent.click(screen.getByLabelText('Expand request log'));
     await waitFor(() => expect(bar().style.bottom).toBe(`${DEFAULT_HEIGHT}px`));
+  });
+
+  it('holds the pill clear of the floating button while minimised', async () => {
+    setRequestPanelEnabled(true);
+    renderApp();
+
+    await screen.findByText('Requests');
+    const ceiling = () => screen.getByTestId('tab-pill').style.maxWidth;
+    expect(ceiling()).toBe('calc(100% - 32px)');
+
+    fireEvent.click(screen.getByTitle('Minimise'));
+
+    // jsdom lays nothing out, so the button measures 0 wide and only the gap
+    // survives — enough to prove the rail reaches the bar, not what it is
+    // worth. The pixels are in screenshots/request-log-minimised.spec.ts.
+    await waitFor(() => expect(ceiling()).not.toBe('calc(100% - 32px)'));
+
+    fireEvent.click(screen.getByLabelText('Expand request log'));
+    await waitFor(() => expect(ceiling()).toBe('calc(100% - 32px)'));
   });
 
   it('returns to the bottom edge when the log is switched off', async () => {

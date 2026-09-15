@@ -1,0 +1,28 @@
+{
+  "iphone": [
+    {"file": "01-home-overview.png", "title": "Your home. *One screen.*", "sub": "Every room and accessory, live.", "tilt": "0deg"},
+    {"file": "05-sidebar.png", "title": "Switch homes *in a tap*", "sub": "Homes, rooms and collections in one menu.", "tilt": "-6deg"},
+    {"file": "03-menu.png", "title": "Scenes and *automations*", "sub": "Everything from one menu.", "tilt": "5deg", "theme": "dark"},
+    {"file": "04-sharing.png", "title": "Share *with anyone*", "sub": "Family, guests, or a public link.", "tilt": "-5deg"},
+    {"file": "02-beach-house.png", "title": "Every home *you have*", "sub": "Each with its own look.", "tilt": "6deg"}
+  ],
+  "ipad": [
+    {"file": "01-home-overview.png", "title": "Your home. *One screen.*", "sub": "Every room and accessory, live.", "tilt": "0deg"},
+    {"file": "02-automations.png", "title": "Automations *that just run*", "sub": "Schedules, triggers and scenes in one place.", "tilt": "-4deg"},
+    {"file": "03-menu.png", "title": "Everything *from one menu*", "sub": "Scenes, automations, sharing and settings.", "tilt": "4deg", "theme": "dark"},
+    {"file": "04-sharing.png", "title": "Share *with anyone*", "sub": "Family, guests, or a public link.", "tilt": "-4deg"},
+    {"file": "05-expanded-widget.png", "title": "Every detail, *one tap away*", "sub": "Open any accessory for its full controls.", "tilt": "4deg"}
+  ],
+  "mac": [
+    {"file": "01-home-overview.png", "title": "Your home. *One screen.*", "sub": "Every room and accessory, live on your Mac.", "tilt": "0deg"},
+    {"file": "02-living-room.png", "title": "Room *by room*", "sub": "Lights, climate, blinds and more, in one view.", "tilt": "-2deg"},
+    {"file": "03-bedroom.png", "title": "A look *for every room*", "sub": "Pick a wallpaper for each home and room.", "tilt": "2deg", "theme": "dark"},
+    {"file": "04-compact-mode.png", "title": "Compact *when you want it*", "sub": "More accessories on screen, less scrolling.", "tilt": "-2deg"},
+    {"file": "05-beach-house.png", "title": "Every home *you have*", "sub": "Switch between homes in a click.", "tilt": "2deg"},
+    {"file": "06-settings.png", "title": "Yours *to tune*", "sub": "Display, notifications, sharing and plans.", "tilt": "-2deg", "theme": "dark"},
+    {"file": "07-api-access.png", "title": "An API *for your home*", "sub": "REST, MCP and WebSockets with your own tokens.", "tilt": "2deg"},
+    {"file": "08-webhooks.png", "title": "Webhooks *for everything*", "sub": "Push changes to any service the moment they happen.", "tilt": "-2deg"},
+    {"file": "09-sharing.png", "title": "Share *with anyone*", "sub": "Family, guests, or a public link.", "tilt": "2deg", "theme": "dark"},
+    {"file": "10-oauth-consent.png", "title": "Connect *AI assistants*", "sub": "Claude, ChatGPT and more, with OAuth you control.", "tilt": "-2deg"}
+  ]
+}

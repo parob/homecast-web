@@ -30,6 +30,20 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
     [background, sampledTopColor, isDark],
   );
 
+  // Safari and Android Chrome paint their own bars — the status bar band and
+  // the toolbar — in the page's `theme-color`. index.html ships a neutral
+  // grey so the first paint is not white, and left there it drew two flat
+  // grey bars above and below the wallpaper. Once the tint is known the bars
+  // take it, and the page reads as one surface edge to edge.
+  useEffect(() => {
+    if (isNativeShell) return;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) return;
+    const previous = meta.content;
+    meta.content = tint;
+    return () => { meta.content = previous; };
+  }, [tint, isNativeShell]);
+
   useEffect(() => {
     if (isNativeShell) {
       // Native apps: hand the WKWebView the exact backdrop colour so anything
