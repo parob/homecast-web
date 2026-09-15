@@ -30,6 +30,20 @@ import { HOME_ID } from './fixtures';
 const LANDSCAPE = { width: 667, height: 375 };
 
 const badge = (page: Page) => page.getByRole('button', { name: 'Connection is not responding' });
+
+/**
+ * Wait for the dashboard to be up.
+ *
+ * Deliberately NOT `[data-tour="sidebar-menu"]`, which the rest of this suite
+ * gates on: on `main` the mocked dashboard comes up in Edit Layout, which
+ * replaces the header's control cluster, so that element never appears and the
+ * wait times out. Reproduced identically on unmodified `origin/main`, so it is
+ * not this branch's doing — parob/homecast-web#112. The status badge is
+ * present either way, and it is what this test actually needs.
+ */
+const ready = (page: Page) =>
+  page.getByRole('button', { name: /Connection is|Disconnected|Local Mode|Relay/ }).first()
+    .waitFor({ timeout: 20000 });
 const panel = (page: Page) => page.locator('[data-radix-popper-content-wrapper] [class*="w-[280px]"]');
 
 /**
@@ -58,7 +72,7 @@ test.describe('Status popover, on a short screen', () => {
 
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForSelector('[data-tour="sidebar-menu"]', { timeout: 20000 });
+    await ready(page);
 
     await page.setViewportSize(LANDSCAPE);
     await goSilent(page);
