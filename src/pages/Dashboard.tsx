@@ -4108,17 +4108,63 @@ const Dashboard = () => {
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
   // Whether the shell scrolls inside a viewport-sized box rather than the
-  // document. The two app shells always did (the Mac app's title bar and the
-  // phone app's status bar are the page's to paint under). A phone BROWSER
-  // now does too: iOS Safari keeps its own bands at both ends outside the
-  // page's viewport — `env(safe-area-inset-*)` reads 0 and `innerHeight`
-  // stops short of them — and it paints whatever the document has scrolled
-  // past into those bands, under its bars, unblurred behind the clock. No
-  // fixed strip can reach there. An inner scroller clips the content at the
-  // viewport's edge instead, so the bands show only the wallpaper and the
-  // canvas tint, the way the app's do.
-  const shellScrolls = ((isInMobileApp || isInMacApp) && !nativeHeaderActive)
-    || (isMobile && !isInMobileApp && !isInMacApp);
+  // document: the two app shells do (the Mac app's title bar and the phone
+  // app's status bar are the page's to paint under). A phone BROWSER is the
+  // third case, below.
+  const shellScrolls = (isInMobileApp || isInMacApp) && !nativeHeaderActive;
+  // A phone browser: the document scrolls, but the dashboard is drawn in a
+  // sticky, clipped, viewport-sized window and translated by the scroll
+  // offset (`.scroll-window-content`, a CSS scroll-driven animation).
+  //
+  // Why not simply let the document scroll, as a desktop does: iOS Safari
+  // keeps its status-bar band and its tab bar outside the page's viewport —
+  // `env(safe-area-inset-*)` reads 0, `innerHeight` stops short of both —
+  // and paints whatever the document has scrolled past into those bands
+  // itself, unblurred behind the clock. No fixed strip inside the page can
+  // reach there. And why not an inner scroller, as the app shells use:
+  // Safari minimises its bars only for a document scroll, so an inner
+  // scroller keeps the full-height tab bar on screen for good.
+  //
+  // With the window, the document really scrolls (the bars minimise), yet
+  // nothing exists above or below the window for Safari to paint into its
+  // bands — they show the canvas tint — and the window clips the content at
+  // the viewport's edge, where the edge strips fade it out. The document's
+  // scroll range is the content height less the viewport, which is what the
+  // animation maps onto `translateY(100dvh - 100%)`; the spacer below gives
+  // the document that height. Compared side by side with the two other
+  // models on a simulator in parob/homecast-web#132.
+  const windowScroll = isMobile && !isInMobileApp && !isInMacApp;
+  const scrollWindowContentRef = useRef<HTMLDivElement | null>(null);
+  const [scrollWindowHeight, setScrollWindowHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!windowScroll) { setScrollWindowHeight(undefined); return; }
+    const el = scrollWindowContentRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setScrollWindowHeight(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [windowScroll]);
+  // Browsers without scroll-driven animations (Firefox, older Chrome) get
+  // the same translation from a scroll listener — a frame behind the finger,
+  // but correct.
+  useEffect(() => {
+    if (!windowScroll) return;
+    if (typeof CSS !== 'undefined' && CSS.supports?.('animation-timeline: scroll()')) return;
+    const el = scrollWindowContentRef.current;
+    if (!el) return;
+    let raf = 0;
+    const apply = () => { raf = 0; el.style.transform = `translateY(${-window.scrollY}px)`; };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      el.style.transform = '';
+    };
+  }, [windowScroll]);
   // The phone's web header: once the big heading has scrolled under the bar,
   // the bar shows the page's name with the switcher — what the native bar
   // does with its large title. Watched, not computed from scroll offsets:
@@ -4126,20 +4172,36 @@ const Dashboard = () => {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [headingHidden, setHeadingHidden] = useState(false);
   useEffect(() => {
-    const el = headingRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
     // The heading counts as gone once it is under the header row, not at
     // the screen's edge. The row's centre line is published by AppHeader
     // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
     // the cut is the row's bottom plus a little.
     const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
+    if (windowScroll) {
+      // Under the window model the heading's box is read on each document
+      // scroll. An observer would do (both engines re-evaluate for a
+      // scroll-driven transform), but the cut is a plain comparison here and
+      // the heading is looked up per check, as it can mount after this runs.
+      let raf = 0;
+      const check = () => {
+        raf = 0;
+        const h = headingRef.current;
+        setHeadingHidden(!!h && h.getBoundingClientRect().bottom < centre + 28);
+      };
+      const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
+      check();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
+    }
+    const el = headingRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
       ([entry]) => setHeadingHidden(!entry.isIntersecting),
       { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId]);
+  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId, windowScroll]);
   // The request-log dock stops squashing the app while the native header is
   // on (see `DebugDock`) and overlays the bottom instead, so the page clears
   // it itself. Zero whenever the dock is closed.
@@ -8727,8 +8789,15 @@ const Dashboard = () => {
               container: UIKit collapses the large title and draws the
               scroll-edge effect from the web view's own scroll view, and an
               inner scroller is invisible to it. */}
+          <div style={windowScroll ? { height: scrollWindowHeight } : undefined} className={windowScroll ? undefined : 'contents'}>
+          {/* `overflow: clip`, not hidden: a hidden box is still scrollable
+              programmatically (scrollIntoView, focusing an input under the
+              keyboard) and would drift from the document; a clipped one has
+              no scroll offset at all. */}
+          <div className={windowScroll ? 'sticky top-0 h-[100dvh] overflow-hidden [overflow:clip]' : 'contents'}>
           <div
-            className={`${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
+            ref={scrollWindowContentRef}
+            className={`${windowScroll ? 'scroll-window-content ' : ''}${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
               // and starts below its large-title height instead. A little
@@ -9807,6 +9876,8 @@ const Dashboard = () => {
               )}
             </div>
             </PullToRefresh>
+          </div>
+          </div>
           </div>
         </main>
         {showAdsenseBanner && <AdBanner onUpgrade={handleUpgrade} />}

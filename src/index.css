@@ -767,3 +767,24 @@ html.ios-app .selectable {
 .scroll-scrim-edge-bottom {
   bottom: 0;
 }
+
+
+/* The phone browser's scrolling window (see `windowScroll` in Dashboard).
+   The document scrolls, so Safari still minimises its bars; the dashboard
+   sits in a sticky, clipped, viewport-height box and is translated by
+   exactly the scroll offset. The document's scroll range is the content
+   height less the viewport, which is 100% - 100dvh of the content box
+   itself, so the mapping is exact with no measurement. Browsers without
+   scroll-driven animations get the same translation from a scroll listener
+   in Dashboard. */
+@supports (animation-timeline: scroll()) {
+  .scroll-window-content {
+    animation: scroll-window linear both;
+    animation-timeline: scroll(root block);
+    will-change: transform;
+  }
+  @keyframes scroll-window {
+    from { transform: translateY(0); }
+    to { transform: translateY(calc(100dvh - 100%)); }
+  }
+}
