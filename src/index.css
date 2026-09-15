@@ -681,18 +681,21 @@ html.ios-app .selectable {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Full strength for the first fifth, then out. Ramping from the very edge reads
-   as a smudge on the glass; holding it briefly reads as depth. */
+/* An eased fade, not a straight ramp: full strength at the edge, still
+   nearly full a third of the way in, then away — the stops trace a smooth
+   S so the blur has no visible start line. A straight ramp from the very
+   edge read as a smudge on the glass, and a hard hold-then-ramp read as a
+   step. */
 .scroll-scrim-top {
   top: 0;
-  -webkit-mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
 }
 
 .scroll-scrim-bottom {
   bottom: 0;
-  -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to top, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
 }
 
 /* Besides the blur, a wash of the canvas tint (`--canvas-tint`, set by
@@ -722,12 +725,25 @@ html.ios-app .selectable {
   pointer-events: none;
 }
 
+/* The wash traces the same S as the blur's mask. Stops are colour-mixed
+   from the tint rather than masked, so the layer stays plain paint. Where
+   color-mix is missing the first rule's straight ramp stands. */
 .scroll-scrim-wash-top {
   top: 0;
   background: linear-gradient(
     to bottom,
     var(--canvas-tint, transparent) 0px,
     var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 90%, transparent) 28%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 62%, transparent) 52%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 30%, transparent) 74%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 8%, transparent) 90%,
     transparent 100%
   );
 }
@@ -738,6 +754,16 @@ html.ios-app .selectable {
     to top,
     var(--canvas-tint, transparent) 0px,
     var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to top,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 90%, transparent) 28%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 62%, transparent) 52%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 30%, transparent) 74%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 8%, transparent) 90%,
     transparent 100%
   );
 }

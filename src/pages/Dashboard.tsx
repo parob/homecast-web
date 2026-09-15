@@ -6237,7 +6237,9 @@ const Dashboard = () => {
    * changing where the blur ends must never move content. Nothing but
    * `--scroll-scrim-size` reads these two.
    */
-  const scrimTopHeight = editBarHeight + 24;
+  // A phone browser's strips run longer than the app shells': the fade there
+  // is what ends the content, so it wants room to ease rather than a ramp.
+  const scrimTopHeight = editBarHeight + (isInMobileApp || isInMacApp ? 24 : 64);
   const scrimBottomHeight = isPhone && pinnedTabs.length > 0 ? 56 : 16;
 
   /** `inert` for the edit bar while it is parked off-screen. See its use. */
@@ -7766,7 +7768,7 @@ const Dashboard = () => {
               (see .scroll-scrim-wash). */}
           {(isInMobileApp || isMobile) && !nativeHeaderActive && (() => {
             const topSize = `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`;
-            const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 64)}px + var(--safe-area-bottom, 0px))`;
+            const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 128)}px + var(--safe-area-bottom, 0px))`;
             // In a browser the band under the bars themselves (the safe-area
             // inset) is painted solid; in the app shells the status bar and
             // home indicator are the page's own to fade under.
