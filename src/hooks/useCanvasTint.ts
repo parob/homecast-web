@@ -80,8 +80,12 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
     const painted = getComputedStyle(document.documentElement).backgroundColor;
     const colour = painted && painted !== 'rgba(0, 0, 0, 0)' ? painted : tint;
     meta.content = colour;
+    // The same colour for the edge strips (`.scroll-scrim` in index.css),
+    // so content fades into the bars' colour rather than being cut by them.
+    document.documentElement.style.setProperty('--canvas-tint', colour);
     return () => {
       meta.content = previous;
+      document.documentElement.style.removeProperty('--canvas-tint');
     };
   }, [tint, isNativeShell]);
 
