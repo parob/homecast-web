@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useR
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
-import { checkIsInMacApp } from '@/lib/platform';
+import { checkIsInMacApp, isIOSBrowser } from '@/lib/platform';
 import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
@@ -7765,6 +7765,12 @@ const Dashboard = () => {
               plain wash layer is what Safari samples to colour those bars
               (see .scroll-scrim-wash). */}
           {(isInMobileApp || isMobile) && !nativeHeaderActive && (() => {
+            // The bottom strip exists for a bar at the bottom of the screen:
+            // the app's tab bar and home indicator, or iOS Safari's toolbar.
+            // A desktop browser narrowed to a phone's width has neither, and
+            // Android Chrome keeps its chrome at the top, so in a browser
+            // the strip is for iOS only.
+            const bottomBar = isInMobileApp || isIOSBrowser();
             const topSize = `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`;
             const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 80)}px + var(--safe-area-bottom, 0px))`;
             // In a browser the band under the bars themselves (the safe-area
@@ -7775,18 +7781,18 @@ const Dashboard = () => {
             return (
               <>
                 <div aria-hidden className="scroll-scrim scroll-scrim-top z-[10000]" style={topStyle} />
-                <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />
+                {bottomBar && <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />}
                 {/* The tint wash, on its own plain layer — see .scroll-scrim-wash
                     for why it is not part of the blur strip. */}
                 <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-top z-[10000]" style={topStyle} />
-                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />
+                {bottomBar && <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />}
                 {/* Browser only: the sliver Safari samples for its bar colour,
                     above the header (which is what it would otherwise find
                     there, and read as nothing) — see .scroll-scrim-edge. */}
                 {!isInMobileApp && (
                   <>
                     <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-top" style={topStyle} />
-                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-bottom" style={bottomStyle} />
+                    {bottomBar && <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-bottom" style={bottomStyle} />}
                   </>
                 )}
               </>
