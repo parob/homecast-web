@@ -681,21 +681,20 @@ html.ios-app .selectable {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* An eased fade, not a straight ramp: full strength at the edge, still
-   nearly full a third of the way in, then away — the stops trace a smooth
-   S so the blur has no visible start line. A straight ramp from the very
-   edge read as a smudge on the glass, and a hard hold-then-ramp read as a
-   step. */
+/* An eased fade, not a straight ramp: seen from the content it starts
+   almost imperceptibly and gathers towards the edge, where it is full — the
+   stops trace an ease-in so there is no visible line where the fade begins.
+   A straight ramp read as a step; a longer strip read as too much fade. */
 .scroll-scrim-top {
   top: 0;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
 }
 
 .scroll-scrim-bottom {
   bottom: 0;
-  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
-  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.36) 74%, rgba(0, 0, 0, 0.1) 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
 }
 
 /* Besides the blur, a wash of the canvas tint (`--canvas-tint`, set by
@@ -740,10 +739,11 @@ html.ios-app .selectable {
     to bottom,
     var(--canvas-tint, transparent) 0px,
     var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
-    color-mix(in srgb, var(--canvas-tint, transparent) 90%, transparent) 28%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 62%, transparent) 52%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 30%, transparent) 74%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 8%, transparent) 90%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
     transparent 100%
   );
 }
@@ -760,10 +760,11 @@ html.ios-app .selectable {
     to top,
     var(--canvas-tint, transparent) 0px,
     var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
-    color-mix(in srgb, var(--canvas-tint, transparent) 90%, transparent) 28%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 62%, transparent) 52%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 30%, transparent) 74%,
-    color-mix(in srgb, var(--canvas-tint, transparent) 8%, transparent) 90%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
     transparent 100%
   );
 }
