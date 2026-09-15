@@ -13,7 +13,7 @@
  * measured here with a Range over the text node.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, overrideSettings } from './mocks';
+import { setupMocks, overrideSettings, waitForDashboard } from './mocks';
 import { HOME_ID, MY_HOME_ROOMS } from './fixtures';
 
 /** Deliberately mixed: "Living Room" wraps to two lines, "Bedroom" does not. */
@@ -38,7 +38,7 @@ async function openCompactBar(page: Page) {
   });
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
-  await expect(page.locator('[data-tour="sidebar-menu"]')).toBeVisible({ timeout: 20000 });
+  await waitForDashboard(page);
   await expect(page.locator('[data-testid="tab-bar"] [data-tab-key]').first()).toBeVisible();
   await page.waitForTimeout(600);
 }

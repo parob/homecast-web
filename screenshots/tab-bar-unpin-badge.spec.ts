@@ -16,7 +16,7 @@
  * big its target actually is.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, overrideSettings } from './mocks';
+import { setupMocks, overrideSettings, waitForDashboard } from './mocks';
 import { HOME_ID, MY_HOME_ROOMS } from './fixtures';
 
 /** One pin, and a full bar — the last tab's badge is the one at the corner. */
@@ -44,7 +44,7 @@ async function openBar(page: Page, pinnedTabs: unknown[]) {
   });
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
-  await expect(page.locator('[data-tour="sidebar-menu"]')).toBeVisible({ timeout: 20000 });
+  await waitForDashboard(page);
   await enterEditLayout(page);
   await expect(page.locator('[data-edit-badge="remove"]').last()).toBeVisible();
 }

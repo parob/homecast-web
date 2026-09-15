@@ -441,3 +441,27 @@ export async function setupMocks(page: Page) {
   // NOTE: call injectScreenshotStyles(page) AFTER page.goto() for transparent
   // dialog corners — addStyleTag must run after navigation.
 }
+
+/**
+ * Wait until the mocked dashboard has data and has painted.
+ *
+ * Gate on the ⋮ rather than on the ☰. Six specs used to open on
+ * `[data-tour="sidebar-menu"]`, and at `bc633c8` that element stopped rendering
+ * in **any** browser: on mobile web the home name in the heading carries the
+ * menu now (`showWebHomeMenu` in `Dashboard.tsx`), and on desktop the button is
+ * `isMobile`-gated and never existed. The burger survives only behind the iOS
+ * native-header preview, which no Playwright project turns on — so every one of
+ * those specs timed out at its first line, and because the `test` workflow does
+ * not run this directory, nothing went red. See parob/homecast-web#133.
+ *
+ * ⋮ is the right replacement rather than merely a working one: it sits in the
+ * same header cluster, it is rendered in all three projects, and it is behind
+ * the same `hasContentAccess` gate the ☰ was — so "visible" still means the
+ * home's data arrived, which is what these specs are really waiting for.
+ *
+ * It lives here, in one place, because the last header refactor had to be found
+ * by hand in six files. The next one changes this line.
+ */
+export async function waitForDashboard(page: Page, timeout = 20000) {
+  await page.locator('[data-tour="header-menu"]').first().waitFor({ state: 'visible', timeout });
+}
