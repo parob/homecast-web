@@ -17,7 +17,7 @@ afterEach(cleanup);
 describe('wallpaper when the host refuses pixel sampling', () => {
   it('retries for display and shows the wallpaper after a CORS failure', async () => {
     const onReady = vi.fn();
-    const { container } = render(<BackgroundImage settings={{ type: 'custom', customUrl: 'https://images.example.com/room.jpg' }} onReady={onReady} />);
+    const { container } = render(<BackgroundImage settings={{ type: 'custom', customUrl: 'https://images.example.com/room.jpg', blur: 7, brightness: 51 }} onReady={onReady} />);
     const first = container.querySelector('img')!;
     expect(first.getAttribute('crossorigin')).toBe('anonymous');
     fireEvent.error(first);
@@ -31,7 +31,7 @@ describe('wallpaper when the host refuses pixel sampling', () => {
 
   it('stops retrying if the image also fails without sampling', async () => {
     const onReady = vi.fn();
-    const { container } = render(<BackgroundImage settings={{ type: 'custom', customUrl: 'https://images.example.com/missing.jpg' }} onReady={onReady} />);
+    const { container } = render(<BackgroundImage settings={{ type: 'custom', customUrl: 'https://images.example.com/missing.jpg', blur: 7, brightness: 51 }} onReady={onReady} />);
     fireEvent.error(container.querySelector('img')!);
     fireEvent.error(container.querySelector('img')!);
     expect(container.querySelector('img')).toBeNull();
