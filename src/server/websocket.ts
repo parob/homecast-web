@@ -1072,7 +1072,8 @@ export class ServerWebSocket {
     const before = this.qualityState.shown;
     this.qualityState = applyHysteresis(this.qualityState, raw, now);
     if (this.qualityState.shown !== before) {
-      const oldest = [...this.pendingRequests.values()].find(p => p.sentAt === oldestRequest);
+      const oldest = oldestRequest === null ? undefined
+        : [...this.pendingRequests.values()].find(p => oldestCountedInFlight([p]) === oldestRequest);
       logEvent('quality', `${before} → ${this.qualityState.shown}; ` +
         `pending=${oldest?.action ?? 'none'}; age=${oldestRequest === null ? 0 : now - oldestRequest}ms; ` +
         `ping=${this.lastPingSentAt === null ? 'none' : `${now - this.lastPingSentAt}ms`}; failures=${this.consecutiveFailures}`);

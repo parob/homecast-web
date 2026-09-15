@@ -81,11 +81,10 @@ export const FAILURES_FOR_STALLED = 2;
  * No threshold fixes that, which is why this is a list and not a bigger number:
  * a large enough home outgrows any value you pick.
  *
- * These are excused from the **in-flight clock only**. Every other signal still
- * applies to them — the socket state, the 30s `REQUEST_TIMEOUT`, and the failure
- * that timeout books. And ordinary requests keep feeding the in-flight clock
- * while housework runs, so the half-open socket this signal exists for stays
- * detectable mid-write rather than going blind for the length of a batch.
+ * These are excused from the in-flight clock. Their request timeouts still
+ * reach the caller. Heartbeats and unscoped requests keep measuring the link
+ * while housework runs; a timeout with continuing inbound traffic describes
+ * the request, not a connection failure.
  *
  * Progress on the work itself is not this indicator's job and never was: the
  * action's own pending ring and progress count report that, next to the control
@@ -220,7 +219,7 @@ export interface QualityInputs {
    * map: housework does not belong in this number. See `isHousework`.
    */
   oldestInFlightSentAt: number | null;
-  /** Requests that have failed in a row, reset by any success. */
+  /** Silent transport failures in a row, reset by any response. */
   consecutiveFailures: number;
 }
 
