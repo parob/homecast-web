@@ -189,6 +189,35 @@ export const OFFLINE_AFTER_MS = 4_000;
  */
 export const CONNECTING_AFTER_MS = 1_500;
 
+/**
+ * How long a deliberate pod handoff may take before we stop calling it
+ * deliberate.
+ *
+ * The dwell above was set on the belief that a handoff is back in ~280ms, so
+ * anything slower than `CONNECTING_AFTER_MS` painted "Connecting…" for a drop
+ * that never happened. Production disagrees with the belief. Of 11 completed
+ * handoffs on 2026-09-11, five ran past that dwell:
+ *
+ *     382  401  401  413  449  756  1908  3939  9790  17520  20322   (ms)
+ *
+ * `setState` has always known the move was deliberate — it passes `silent` to
+ * `onStateChange` — but the classifier was never told, which is the whole of
+ * this bug.
+ *
+ * Bounded, and the bound is load-bearing rather than tidy: `handingOff` is
+ * cleared only on `connected`, so a handoff whose target never accepts stays
+ * flagged across every subsequent retry. An unbounded exemption would mean a
+ * genuinely dead connection never says so — the half-open failure mode this
+ * whole module exists to catch, reintroduced through the back door.
+ *
+ * 4s because that is what `OFFLINE_AFTER_MS` already allows an *accidental*
+ * reconnect: a move made on purpose gets no less room than one that was not.
+ * It covers 8 of the 11 above. Past it the ladder resumes, clocked from the
+ * moment the grace expired so a wedged handoff still climbs
+ * quiet → connecting → offline rather than jumping to red.
+ */
+export const HANDOFF_GRACE_MS = 4_000;
+
 export type SocketState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
 
 export interface QualityInputs {
@@ -217,6 +246,15 @@ export interface QualityInputs {
   oldestInFlightSentAt: number | null;
   /** Requests that have failed in a row, reset by any success. */
   consecutiveFailures: number;
+  /**
+   * When the current deliberate handoff began, or null when the socket is not
+   * being moved on purpose.
+   *
+   * Its own clock rather than `socketStateSince`, which resets on every
+   * transition: a handoff that fails and retries would otherwise restart the
+   * grace on each attempt and never age out of it.
+   */
+  handoffSince: number | null;
 }
 
 /** Median, which ignores the one unlucky sample a mean would not. */
@@ -244,7 +282,16 @@ export function pushRtt(samples: readonly number[], rtt: number): number[] {
  */
 export function classifyQuality(input: QualityInputs, now: number): ConnectionQuality {
   if (input.socketState !== 'connected') {
-    const inStateMs = Math.max(0, now - input.socketStateSince);
+    // A deliberate pod move is not a connection problem, so it is clocked
+    // against its own budget before the ordinary ladder gets a say. Past that
+    // budget the ladder resumes from where the grace ended — the move has
+    // stopped looking deliberate, but it has not become an instant outage.
+    const handoffMs =
+      input.handoffSince === null ? null : Math.max(0, now - input.handoffSince);
+    const inStateMs =
+      handoffMs === null
+        ? Math.max(0, now - input.socketStateSince)
+        : handoffMs - HANDOFF_GRACE_MS;
     // Long enough to be an outage rather than a handshake.
     if (inStateMs >= OFFLINE_AFTER_MS) return 'offline';
     // Long enough to be worth mentioning, but not yet a failure.
