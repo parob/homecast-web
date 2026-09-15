@@ -31,7 +31,13 @@ describe('visibleHomeSettingsSections', () => {
       'notifications',
       'reliability',
       'analytics',
+      'cameras',
     ]);
+  });
+
+  it('hides Cameras in Community mode — stills come from the cloud relay engine window', () => {
+    expect(visibleHomeSettingsSections(flags())).toContain('cameras');
+    expect(visibleHomeSettingsSections(flags({ isCommunity: true }))).not.toContain('cameras');
   });
 
   it('hides Notifications and Reliability in Community mode — neither has a backend', () => {

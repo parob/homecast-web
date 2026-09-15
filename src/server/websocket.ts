@@ -303,8 +303,13 @@ function getRelayTelemetry(): Record<string, string | undefined> {
     homecastHostName?: string;
     homecastPlatform?: string;
     isHomecastMacApp?: boolean;
+    homecastCameraEngine?: boolean;
   };
   return {
+    // "1" when this build has the camera engine window; whether it may
+    // actually capture (Screen Recording) is a live question, asked with
+    // camera.capabilities.
+    cameras: win.homecastCameraEngine ? '1' : undefined,
     app_version: win.homecastAppVersion,
     app_build: win.homecastAppBuild,
     os_version: win.homecastOSVersion,
@@ -850,6 +855,22 @@ export class ServerWebSocket {
           // Deliberately neither returns nor rethrows: falling out of the block
           // hands the request to the outbound path below, which is the one that
           // owns timeouts, correlation and the homes.list cache.
+        } else if (errorCode(error) === 'ACCESSORY_NOT_FOUND') {
+          // Same fault one level down: the accessory id is a stable hc_id the
+          // dashboard got from a cloud-served list (a handover, a cached
+          // page), not this relay's live UUID. Only the home id is mapped
+          // here; accessory ids are not. The cloud translates the payload
+          // into the target relay's own UUIDs before routing, and the target
+          // is this relay — so the hop is a round trip to the resolver, not a
+          // change of relay. Every other local action dodged this because
+          // its accessory ids came from this relay's own lists.
+          //
+          // Not remembered per id: the next list refresh hands the page live
+          // ids and the local path serves again.
+          console.warn(
+            `[ServerWS] HomeKit does not know accessory ${String((payload as { accessoryId?: unknown }).accessoryId ?? '?')} — ` +
+            `routing ${action} via the server (stable id vs live HomeKit UUID)`,
+          );
         } else {
           console.error(`[ServerWS] Local request failed: ${action}`, error);
           throw error;
@@ -2131,6 +2152,20 @@ export class ServerWebSocket {
 
       // Don't send events for accessories not in the user's plan
       if (event.accessoryId && !isAccessoryAllowed(event.accessoryId)) {
+        return;
+      }
+
+      // Live camera frames and session state. Not characteristic updates:
+      // they go to the cloud as their own events, and the cloud fans frames
+      // out to the viewers that asked for them (nobody else wants 4 JPEGs a
+      // second). A frame is ~100 KB base64, well inside the socket's limits.
+      if (event.type === 'camera_frame' || event.type === 'camera_live_state') {
+        this.sendEvent({
+          id: `evt_${Date.now()}_cam`,
+          type: 'event',
+          action: event.type === 'camera_frame' ? 'camera.frame' : 'camera.live_state',
+          payload: event as unknown as Record<string, unknown>,
+        });
         return;
       }
 

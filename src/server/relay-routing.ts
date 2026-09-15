@@ -23,6 +23,11 @@ const SERVER_ONLY_ACTIONS = new Set([
   'subscribe',
   'unsubscribe',
   'subscriptions.list',
+  // The cloud checks the home's opt-in and the caller's access before the
+  // relay captures anything, even when the viewer is on the relay Mac.
+  'camera.snapshot',
+  'camera.capabilities',
+  'camera.requestScreenRecording',
 ]);
 
 export interface RelayRoutingState {

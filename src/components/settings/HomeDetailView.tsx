@@ -14,6 +14,7 @@ import { UptimeSection } from './UptimeSection';
 import { HomeOverviewSection } from './home/HomeOverviewSection';
 import { HomeNotificationsSection } from './home/HomeNotificationsSection';
 import { HomeMQTTSection } from './home/HomeMQTTSection';
+import { HomeCamerasSection } from './home/HomeCamerasSection';
 import { HomeSectionList } from './home/HomeSectionList';
 import { isHomeServed } from '@/server/home-serving';
 import { useHomeServingVersion } from '@/hooks/useHomeServing';
@@ -90,6 +91,8 @@ export function HomeDetailView({
         return isCommunity ? null : <UptimeSection homeId={home.id} />;
       case 'analytics':
         return <HomeHistorySettings home={home} isAdmin={isAdmin} />;
+      case 'cameras':
+        return <HomeCamerasSection home={home} relayOnline={home.relayConnected === true} isAdmin={isAdmin} />;
       case 'mqtt':
         return (
           <HomeMQTTSection
