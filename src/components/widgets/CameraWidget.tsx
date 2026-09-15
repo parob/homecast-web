@@ -24,7 +24,7 @@ const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: bool
   return (
     <div className="relative w-full max-w-[560px] overflow-hidden rounded-xl bg-black/80 aspect-video">
       {image ? (
-        <img src={image} alt={`${accessory.name} snapshot`} className="h-full w-full object-cover" draggable={false} />
+        <img src={image} alt={`${accessory.name} snapshot`} className="h-full w-full object-contain" draggable={false} />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-white/60">
           {status.kind === 'loading' || status.kind === 'idle' ? (
@@ -35,7 +35,7 @@ const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: bool
         </div>
       )}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-xs text-white/90">
-        <span className="truncate">
+        <span className={status.kind === 'error' ? 'min-w-0' : 'truncate'}>
           {status.kind === 'error'
             ? describeCameraFailure(status.failure)
             : capturedAt
