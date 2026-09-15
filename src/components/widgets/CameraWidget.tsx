@@ -106,7 +106,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   // Simple status text
   const getStatusText = () => {
     if (motionDetected) return 'Motion detected';
-    if (isActive) return 'Streaming';
+    if (isActive) return 'On';
     return 'Off';
   };
 

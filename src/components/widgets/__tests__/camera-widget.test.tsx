@@ -45,7 +45,7 @@ vi.mock('../VirtualAccessoryEditContext', () => ({
 }));
 
 const camera = (extra: Partial<HomeKitAccessory> = {}): HomeKitAccessory => ({
-  id: 'CAM-1', name: 'Kitchen Camera', roomName: 'Kitchen', isReachable: true, category: 'IP Camera',
+  id: 'CAM-1', homeId: 'HOME-1', name: 'Kitchen Camera', roomName: 'Kitchen', isReachable: true, category: 'IP Camera',
   services: [{
     id: 's', name: 'Camera', serviceType: 'camera_operating_mode',
     characteristics: [{ id: 'c', characteristicType: 'homekit_camera_active', value: true, isReadable: true, isWritable: false }],
@@ -73,7 +73,7 @@ describe('CameraWidget hero', () => {
       width: 1280, height: 720, cached: false,
     });
     render(<CameraWidget {...baseProps} accessory={camera()} expanded />);
-    await waitFor(() => expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1' })));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1', homeId: 'HOME-1' })));
     const img = await screen.findByAltText('Kitchen Camera snapshot');
     expect(img.getAttribute('src')).toBe('data:image/jpeg;base64,QUJD');
     expect(screen.getByText(/Captured just now/)).toBeTruthy();

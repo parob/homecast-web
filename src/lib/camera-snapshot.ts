@@ -76,6 +76,7 @@ export function nextSnapshotDelayMs(consecutiveFailures: number): number {
 export function isPermanentCameraFailure(code: string): boolean {
   return (
     code === 'CAMERA_NOT_SUPPORTED' ||
+    code === 'CAMERAS_DISABLED' ||
     code === 'CAMERA_UNAVAILABLE' ||
     code === 'SCREEN_RECORDING_DENIED' ||
     code === 'UNKNOWN_ACTION' ||
@@ -86,6 +87,8 @@ export function isPermanentCameraFailure(code: string): boolean {
 /** One line a person can act on, for each way a still can fail. */
 export function describeCameraFailure(failure: CameraFailure): string {
   switch (failure.code) {
+    case 'CAMERAS_DISABLED':
+      return 'Camera images are turned off for this home.';
     case 'SCREEN_RECORDING_DENIED':
       return 'Grant Screen Recording to Homecast on the relay Mac to see camera images.';
     case 'CAMERA_UNAVAILABLE':
@@ -93,6 +96,7 @@ export function describeCameraFailure(failure: CameraFailure): string {
     case 'CAMERA_NOT_SUPPORTED':
       return 'This camera does not offer snapshots to HomeKit.';
     case 'UNKNOWN_ACTION':
+      return 'Camera images are not available on this Homecast server yet.';
     case 'UNKNOWN_METHOD':
       return 'Camera images need a newer Homecast relay.';
     case 'CAMERA_BUSY':

@@ -85,12 +85,11 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
         <Camera className="mt-0.5 h-5 w-5 text-muted-foreground" />
         <div className="space-y-1">
           <p className="text-sm">
-            Camera images are captured by this home's cloud relay Mac. HomeKit renders a camera only into a native
-            view, so the relay keeps an invisible engine window and photographs it through the window server.
+            View snapshots from your HomeKit cameras. Your relay Mac needs to stay on and connected.
           </p>
           <p className="text-sm text-muted-foreground">
             That needs Screen Recording permission for Homecast on the relay Mac, granted once in System Settings →
-            Privacy &amp; Security. HomeKit allows two live streams per home at a time.
+            Privacy &amp; Security.
           </p>
         </div>
       </div>
@@ -109,12 +108,12 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
 
       <div className="rounded-lg border p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium">Relay camera engine</div>
+          <div className="text-sm font-medium">Camera access</div>
           <div className="flex items-center gap-2">
             {!relayOnline ? (
               <Badge variant="secondary">Relay offline</Badge>
             ) : error ? (
-              <Badge variant="destructive">{error.code === 'UNKNOWN_ACTION' || error.code === 'UNKNOWN_METHOD' ? 'Relay too old' : error.code}</Badge>
+              <Badge variant="destructive">{error.code === 'UNKNOWN_ACTION' ? 'Server update needed' : error.code === 'UNKNOWN_METHOD' ? 'Relay update needed' : error.code}</Badge>
             ) : caps ? (
               granted ? (
                 <Badge className="gap-1"><ShieldCheck className="h-3 w-3" /> Ready</Badge>
@@ -132,12 +131,10 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
 
         {caps && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">Engine window</dt>
+            <dt className="text-muted-foreground">Camera capture</dt>
             <dd>{caps.engineWindow ? 'Running' : 'Not running'}</dd>
             <dt className="text-muted-foreground">Screen Recording</dt>
             <dd>{granted ? 'Granted' : 'Not granted'}</dd>
-            <dt className="text-muted-foreground">Live streams</dt>
-            <dd>{caps.activeStreams} of {caps.maxStreamsPerHome} per home, {caps.fps} fps</dd>
           </dl>
         )}
 

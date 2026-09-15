@@ -65,6 +65,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       try {
         const result = await serverConnection.request<CameraSnapshotResult>('camera.snapshot', {
           accessoryId: accessory.id,
+          homeId: accessory.homeId,
           maxAgeSec: SNAPSHOT_MAX_AGE_SEC,
         });
         if (cancelled) return;
@@ -93,7 +94,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accessory.id, supported, expanded, pageVisible, refreshToken]);
+  }, [accessory.id, accessory.homeId, supported, expanded, pageVisible, refreshToken]);
 
   return {
     status,
