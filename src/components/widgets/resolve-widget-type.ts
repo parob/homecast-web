@@ -93,15 +93,22 @@ export interface ResolveWidgetTypeResult {
  * Determine the widget type for an accessory based on its category and service types.
  *
  * This is the single source of truth used by both the web dashboard and the Mac menu bar.
- * It only needs category + serviceTypes (not full characteristics data) since widget TYPE
- * selection depends only on service types and category. Widget CONFIGURATION (e.g., whether
+ * It needs category, serviceTypes and the relay's camera profile (not characteristics).
+ * HomeKit cameras often have no camera category or service. Widget CONFIGURATION (e.g., whether
  * a light has RGB/brightness) is handled separately by each consumer.
  */
 export function resolveWidgetType(input: {
   category?: string;
   serviceTypes: string[];
+  camera?: { snapshot: boolean; stream: boolean };
 }): ResolveWidgetTypeResult {
   const { category, serviceTypes } = input;
+
+  // HMCameraProfile is authoritative. Camera services may expose only motion,
+  // a microphone, or a floodlight; none of those should hide the camera tile.
+  if (input.camera?.snapshot || input.camera?.stream) {
+    return { widgetType: serviceTypes.some(st => normalizeServiceType(st) === 'doorbell') ? 'doorbell' : 'camera' };
+  }
 
   // Build a minimal fake accessory shape for getPrimaryServiceType
   const fakeAccessory = {

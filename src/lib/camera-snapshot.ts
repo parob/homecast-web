@@ -6,7 +6,7 @@
  * and refuses to wake a battery camera more than once every few seconds, so
  * the client's job is to pace politely and to say something useful when the
  * answer is "no": the relay has no engine window (Community mode, iOS), the
- * Mac was never granted Screen Recording, or the cloud in front of it predates
+ * relay cannot capture its own camera window, or the cloud in front of it predates
  * the feature.
  */
 
@@ -71,7 +71,7 @@ export function nextSnapshotDelayMs(consecutiveFailures: number): number {
 
 /**
  * Failures the tile should stop retrying on its own: nothing changes until a
- * person acts (grants a permission, updates the cloud) so polling is noise.
+ * person acts (restarts the relay, updates the cloud) so polling is noise.
  */
 export function isPermanentCameraFailure(code: string): boolean {
   return (
@@ -79,6 +79,7 @@ export function isPermanentCameraFailure(code: string): boolean {
     code === 'CAMERAS_DISABLED' ||
     code === 'CAMERA_UNAVAILABLE' ||
     code === 'SCREEN_RECORDING_DENIED' ||
+    code === 'CAMERA_CAPTURE_UNAVAILABLE' ||
     code === 'UNKNOWN_ACTION' ||
     code === 'UNKNOWN_METHOD'
   );
@@ -90,7 +91,10 @@ export function describeCameraFailure(failure: CameraFailure): string {
     case 'CAMERAS_DISABLED':
       return 'Camera images are turned off for this home.';
     case 'SCREEN_RECORDING_DENIED':
-      return 'Grant Screen Recording to Homecast on the relay Mac to see camera images.';
+    case 'CAMERA_CAPTURE_UNAVAILABLE':
+      // Build 70 used SCREEN_RECORDING_DENIED for a failed own-window capture.
+      // Neither error proves that macOS permission is missing.
+      return 'Camera capture is unavailable. Restart Homecast on the relay Mac, then try again.';
     case 'CAMERA_UNAVAILABLE':
       return 'Camera images need the Homecast cloud relay running on a Mac.';
     case 'CAMERA_NOT_SUPPORTED':

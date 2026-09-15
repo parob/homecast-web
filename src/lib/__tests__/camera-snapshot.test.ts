@@ -36,7 +36,7 @@ describe('nextSnapshotDelayMs', () => {
 
 describe('isPermanentCameraFailure', () => {
   it('stops polling when only a person can change the answer', () => {
-    for (const code of ['SCREEN_RECORDING_DENIED', 'CAMERA_UNAVAILABLE', 'CAMERA_NOT_SUPPORTED', 'UNKNOWN_ACTION', 'UNKNOWN_METHOD']) {
+    for (const code of ['SCREEN_RECORDING_DENIED', 'CAMERA_CAPTURE_UNAVAILABLE', 'CAMERA_UNAVAILABLE', 'CAMERA_NOT_SUPPORTED', 'UNKNOWN_ACTION', 'UNKNOWN_METHOD']) {
       expect(isPermanentCameraFailure(code)).toBe(true);
     }
   });
@@ -49,8 +49,11 @@ describe('isPermanentCameraFailure', () => {
 });
 
 describe('describeCameraFailure', () => {
-  it('names the action for the permission case', () => {
-    expect(describeCameraFailure({ code: 'SCREEN_RECORDING_DENIED', message: 'x' })).toMatch(/Screen Recording/);
+  it('does not mistake a failed own-window capture for missing macOS permission', () => {
+    for (const code of ['SCREEN_RECORDING_DENIED', 'CAMERA_CAPTURE_UNAVAILABLE']) {
+      expect(describeCameraFailure({ code, message: 'x' })).toMatch(/Restart Homecast/);
+      expect(describeCameraFailure({ code, message: 'x' })).not.toMatch(/permission|Screen Recording/);
+    }
   });
 
   it('falls back to the relay message for unknown codes', () => {
