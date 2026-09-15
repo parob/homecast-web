@@ -16,7 +16,7 @@ import type { HomeKitAccessory } from '@/lib/graphql/types';
  * which Community mode and iOS do not have. A camera that arrives without the
  * `camera` capability (an older relay) simply has no hero.
  */
-const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean }> = ({ accessory, expanded }) => {
+export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean }> = ({ accessory, expanded }) => {
   const { status, refresh } = useCameraSnapshot(accessory, expanded);
   const image = status.kind === 'ready' || status.kind === 'error' ? status.dataUrl : undefined;
   const capturedAt = status.kind === 'ready' || status.kind === 'error' ? status.capturedAt : undefined;
@@ -82,20 +82,22 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   onShare,
   locationSubtitle,
 }) => {
-  // HomeKit Camera Active (preferred) or fallback to generic active
-  // 00000225 = HomeKit Camera Active characteristic
-  const homekitCameraActiveChar = getCharacteristic(accessory, 'homekit_camera_active')
-    || getCharacteristic(accessory, '00000225-0000-1000-8000-0026BB765291');
-  const activeChar = homekitCameraActiveChar || getCharacteristic(accessory, 'active');
-  const charType = homekitCameraActiveChar ? (homekitCameraActiveChar.type || 'homekit_camera_active') : 'active';
-  const rawActive = activeChar ? getEffectiveValue(accessory.id, charType, activeChar.value) : activeChar?.value;
+  // Only HomeKit Camera Active controls camera availability. Generic `active`
+  // belongs to recording management, and 0x225 controls periodic snapshots.
+  // Neither is a camera power switch. HomeKit may omit the active value too:
+  // unknown must never be presented as Off or used to offer a blind toggle.
+  const activeChar = getCharacteristic(accessory, 'homekit_camera_active')
+    || getCharacteristic(accessory, '0000021D-0000-1000-8000-0026BB765291');
+  const charType = activeChar?.type || 'homekit_camera_active';
+  const rawActive = activeChar ? getEffectiveValue(accessory.id, charType, activeChar.value) : undefined;
   const isActive = rawActive === true || rawActive === 'true' || rawActive === 1 || rawActive === '1';
+  const isInactive = rawActive === false || rawActive === 'false' || rawActive === 0 || rawActive === '0';
 
   // Motion sensor
   const motionChar = getCharacteristic(accessory, 'motion_detected');
   const motionDetected = motionChar?.value === true || motionChar?.value === 'true';
 
-  const hasControls = activeChar?.isWritable;
+  const hasControls = activeChar?.isWritable && (isActive || isInactive);
 
   // Stills come from the cloud relay's engine window; nothing else can
   // capture them. Three gates: cloud mode, the relay reports the capability
@@ -107,7 +109,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   const getStatusText = () => {
     if (motionDetected) return 'Motion detected';
     if (isActive) return 'On';
-    return 'Off';
+    return isInactive ? 'Off' : 'Camera';
   };
 
   return (
@@ -148,7 +150,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
         hasControls ? (
           <ColoredSwitch
             checked={isActive}
-            onCheckedChange={() => onToggle(accessory.id, 'active', !isActive)}
+            onCheckedChange={() => onToggle(accessory.id, charType, isActive)}
             disabled={!accessory.isReachable}
           />
         ) : undefined

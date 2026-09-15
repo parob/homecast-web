@@ -2,10 +2,14 @@ import React, { memo } from 'react';
 import { Bell, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
+import { CameraSnapshotHero } from './CameraWidget';
+import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
+import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   accessory,
   compact,
+  expanded,
   onExpandToggle,
   onDebug,
   
@@ -27,6 +31,8 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   onShare,
   locationSubtitle,
 }) => {
+  const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
+  const showHero = !compact && !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
   // Battery info
   const batteryLevelChar = getCharacteristic(accessory, 'battery_level');
   const lowBatteryChar = getCharacteristic(accessory, 'status_low_battery');
@@ -63,6 +69,10 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
+      expanded={expanded}
+      heroShape="block"
+      heroStack
+      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={expanded === true} /> : undefined}
       onExpandToggle={onExpandToggle}
       onDebug={onDebug}
       

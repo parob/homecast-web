@@ -5369,6 +5369,7 @@ const Dashboard = () => {
     const category = accessory.category?.toLowerCase() || '';
     const serviceTypes = (accessory.services || []).map(s => s.serviceType.toLowerCase());
 
+    if (accessory.camera?.snapshot || accessory.camera?.stream) return 'Cameras';
     if (category === 'bridge' || category === 'range extender') return 'Bridges & Hubs';
     if (serviceTypes.some(s => s.includes('sensor') || s.includes('contact'))) return 'Sensors';
     if (serviceTypes.some(s => s.includes('lock') || s.includes('security'))) return 'Security';
@@ -5726,6 +5727,7 @@ const Dashboard = () => {
 
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
+    if (accessory.camera?.snapshot || accessory.camera?.stream) return false;
     const category = accessory.category?.toLowerCase() || '';
     const hiddenCategories = ['bridge', 'range extender', 'rangeextender'];
     if (hiddenCategories.includes(category)) return true;
