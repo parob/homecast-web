@@ -93,6 +93,7 @@ const AccessoryWidgetInner: React.FC<AccessoryWidgetProps> = (props) => {
 
   const { widgetType, sensorType, deviceType } = resolveWidgetType({
     category: accessory.category,
+    camera: accessory.camera,
     serviceTypes: (accessory.services || []).map(s => s.serviceType),
   });
 

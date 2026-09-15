@@ -125,6 +125,7 @@ export default function AnalyticsContent({
           name: getAccessoryDisplayName(acc),
           widgetType: resolveWidgetType({
             category: acc.category ?? undefined,
+            camera: acc.camera,
             serviceTypes: (acc.services ?? []).map(svc => svc.serviceType),
           }).widgetType,
           // Default Room is a bucket, not a place — analytics treats it as

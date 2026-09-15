@@ -214,6 +214,11 @@ export interface HomeKitEvent {
 export interface CameraCapabilities {
   supported: boolean;
   engineWindow: boolean;
+  /** Capture readiness. Absent on build 70, which used the legacy field below. */
+  captureAvailable?: boolean;
+  /** Actual macOS authorization; not required to capture our own window. */
+  screenRecordingAuthorization?: 'granted' | 'denied';
+  /** @deprecated Capture readiness, NOT macOS permission, despite its name. */
   screenRecording: 'granted' | 'denied';
   maxStreamsPerHome: number;
   activeStreams: number;

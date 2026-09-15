@@ -173,6 +173,7 @@ export interface MenuBarControlAPI {
     id: string;
     category?: string;
     serviceTypes: string[];
+    camera?: { snapshot: boolean; stream: boolean };
   }>) => Record<string, ResolveWidgetTypeResult>;
   // Relay connection status (for menu bar icon badge)
   getRelayConnectionStatus: () => {
@@ -485,6 +486,7 @@ export function setupMenuBarBridge(): void {
       for (const acc of accessories) {
         result[acc.id] = resolveWidgetType({
           category: acc.category,
+          camera: acc.camera,
           serviceTypes: acc.serviceTypes,
         });
       }

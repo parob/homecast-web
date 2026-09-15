@@ -31,8 +31,8 @@ function toFailure(err: unknown): CameraFailure {
 /**
  * Stills for one camera while its tile is expanded.
  *
- * Requests go through `serverConnection`, so on the relay Mac they are served
- * locally and everywhere else they cross the cloud to the relay. Pacing and
+ * Requests go through `serverConnection` and the cloud's camera authorization
+ * even on a relay Mac, so the home's selected relay captures the image. Pacing and
  * back-off are the pure policy in `lib/camera-snapshot.ts`; this hook only
  * owns the timer and the page-visibility gate.
  */
