@@ -4117,8 +4117,8 @@ const Dashboard = () => {
   // the content inside it rides the other way — so it scrolls normally, the
   // window clips it at the viewport's edge, and the wallpaper, an
   // overhanging piece of document content that rides with the window, runs
-  // on under Safari's bars. All three are CSS scroll-driven animations over
-  // `--scroll-range` (the document's scroll range, measured below).
+  // on under Safari's bars. All three are CSS scroll-driven animations pinned
+  // to a fixed pixel range, so the transform is the scroll offset exactly.
   //
   // Why. iOS Safari keeps its status-bar band and its tab bar outside the
   // page's viewport — `env(safe-area-inset-*)` reads 0, `innerHeight` stops
@@ -4140,38 +4140,18 @@ const Dashboard = () => {
   const [scrollWindowBox, setScrollWindowBox] = useState<HTMLDivElement | null>(null);
   const [scrollWindowContent, setScrollWindowContent] = useState<HTMLDivElement | null>(null);
   const [scrollWindowHeight, setScrollWindowHeight] = useState<number | undefined>(undefined);
-  // The document's full height, so `--scroll-range` can be written as
-  // `calc(<height>px - 100dvh)` and stay exact as Safari's bars come and
-  // go (the viewport height changes; the document's does not).
-  const [scrollDocHeight, setScrollDocHeight] = useState<number | undefined>(undefined);
-  // A layout effect, so the spacer has its height before the first paint:
-  // Safari decides at first paint whether the document scrolls, and a page
-  // that did not is never painted into the bands under its bars later.
+  // The spacer takes the content's height, so the document scrolls exactly
+  // as far as the content is tall. A layout effect, so it has that height
+  // before the first paint.
   useLayoutEffect(() => {
-    if (!windowScroll) { setScrollWindowHeight(undefined); setScrollDocHeight(undefined); return; }
+    if (!windowScroll) { setScrollWindowHeight(undefined); return; }
     const el = scrollWindowContent;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    let raf = 0;
-    const measureDoc = () => {
-      raf = 0;
-      setScrollDocHeight(document.documentElement.scrollHeight);
-    };
-    const measure = () => {
-      setScrollWindowHeight(el.offsetHeight);
-      // The spacer takes the new height on the next layout; read the
-      // document after it.
-      if (!raf) raf = requestAnimationFrame(measureDoc);
-    };
+    const measure = () => setScrollWindowHeight(el.offsetHeight);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    ro.observe(document.body);
-    window.addEventListener('resize', measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', measure);
-      if (raf) cancelAnimationFrame(raf);
-    };
+    return () => ro.disconnect();
   }, [windowScroll, scrollWindowContent]);
   // Browsers without scroll-driven animations (Firefox, older Chrome) get
   // the same translations from a scroll listener — a frame behind the
@@ -8269,10 +8249,7 @@ const Dashboard = () => {
               ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
               : hasBackground ? 'relative' : 'relative bg-background'
           }
-          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : {
-            minHeight: '100dvh',
-            ...(windowScroll ? { '--scroll-range': `calc(${scrollDocHeight ?? 0}px - 100dvh)` } as React.CSSProperties : {}),
-          }}
+          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
@@ -8838,7 +8815,7 @@ const Dashboard = () => {
           <div ref={setScrollWindowBox} className={windowScroll ? 'scroll-window-box absolute inset-x-0 top-0 h-[100dvh] overflow-hidden [overflow:clip]' : 'contents'}>
           <div
             ref={setScrollWindowContent}
-            className={`${windowScroll ? 'scroll-window-content ' : ''}${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
+            className={`${windowScroll ? 'scroll-window-content ' : ''}${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} ${windowScroll ? '' : 'overflow-x-hidden'} ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
               // and starts below its large-title height instead. A little

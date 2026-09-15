@@ -710,32 +710,41 @@ html.ios-app .selectable {
 
 /* The phone browser's scrolling window (see `windowScroll` in Dashboard).
    The document scrolls, so Safari still minimises its bars. Three things ride
-   the scroll offset by scroll-driven animation over `--scroll-range`, the
-   document's scroll range (`calc(<document height>px - 100dvh)`, set inline):
+   the scroll offset by scroll-driven animation:
    - the clip box (`.scroll-window-box`) rides +offset, staying on the viewport;
    - the content inside rides -offset, so it scrolls at finger speed and is
      clipped at the viewport's edge;
    - the wallpaper (`.scroll-window-follow`, on BackgroundImage) rides +offset,
      and overhangs the viewport, so Safari paints it into the bands under its
      bars — which it does for document content, never for fixed or sticky
-     boxes. Browsers without scroll-driven animations get the same from a
-     scroll listener in the components. */
+     boxes.
+   The offset is read exactly, with nothing measured: `animation-range` pins
+   the timeline to a fixed 100000px of scroll, and the keyframes travel the
+   same 100000px, so the transform IS the scroll offset at every frame. (A
+   range written as "document height - 100dvh" was exact at rest and a frame
+   behind while Safari's bars animated the viewport height, which wobbled the
+   window.) Browsers without scroll-driven animations get the same from a
+   scroll listener in the components. */
 @supports (animation-timeline: scroll()) {
   .scroll-window-box,
   .scroll-window-follow {
     animation: scroll-window-follow linear both;
     animation-timeline: scroll(root block);
+    animation-range: 0px 100000px;
+    will-change: transform;
   }
   .scroll-window-content {
     animation: scroll-window-content linear both;
     animation-timeline: scroll(root block);
+    animation-range: 0px 100000px;
+    will-change: transform;
   }
   @keyframes scroll-window-follow {
     from { transform: translateY(0); }
-    to { transform: translateY(var(--scroll-range, 0px)); }
+    to { transform: translateY(100000px); }
   }
   @keyframes scroll-window-content {
     from { transform: translateY(0); }
-    to { transform: translateY(calc(-1 * var(--scroll-range, 0px))); }
+    to { transform: translateY(-100000px); }
   }
 }
