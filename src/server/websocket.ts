@@ -1077,6 +1077,11 @@ export class ServerWebSocket {
       logEvent('quality', `${before} → ${this.qualityState.shown}; ` +
         `pending=${oldest?.action ?? 'none'}; age=${oldestRequest === null ? 0 : now - oldestRequest}ms; ` +
         `ping=${this.lastPingSentAt === null ? 'none' : `${now - this.lastPingSentAt}ms`}; failures=${this.consecutiveFailures}`);
+      browserLogger.logInfo('connection_quality', { statusVersion: 1, previous: before, quality: this.qualityState.shown,
+        socketState: this.state, pendingAction: oldest?.action ?? null,
+        pendingAgeMs: oldestRequest === null ? null : now - oldestRequest,
+        pingAgeMs: this.lastPingSentAt === null ? null : now - this.lastPingSentAt,
+        consecutiveFailures: this.consecutiveFailures, ...environmentFacts() });
       this.callbacks.onQualityChange?.(this.qualityState.shown);
     }
 

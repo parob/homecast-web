@@ -20,6 +20,7 @@
  */
 
 import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
+import type { CardTone } from './answer-card';
 import { takeoverIn } from './connection-chain';
 
 export type RelayConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -53,7 +54,7 @@ export interface RelaySectionInput {
   /** Community mode on the relay Mac: always active, no socket to consult. */
   community: boolean;
   homes: ReadonlyArray<RelaySectionHome>;
-  /** `effectiveServing(id)` — on a relay Mac the composition is the server's fact. */
+  /** `getHomeServing(id)` — relay duty requires the server’s routing fact, not Local Mode. */
   serving: (homeId: string) => HomeServing | null;
   thisDevice: string | null;
   now?: number;
@@ -79,7 +80,7 @@ export function relaySectionState(i: RelaySectionInput): RelaySectionVerdict {
   const cloud = i.homes.filter((h) => h.isCloudManaged);
   const own = i.homes.filter((h) => !h.isCloudManaged);
   const factOf = (h: RelaySectionHome) => i.serving(h.id);
-  const mine = (h: RelaySectionHome) => servedByThisDevice(factOf(h), i.thisDevice);
+  const mine = (h: RelaySectionHome) => factOf(h)?.kind !== 'local' && servedByThisDevice(factOf(h), i.thisDevice);
   const is = (state: HomeServing['state']) => (h: RelaySectionHome) => factOf(h)?.state === state;
 
   // ── Cloud-managed homes: the standby story ───────────────────────────────
@@ -87,10 +88,13 @@ export function relaySectionState(i: RelaySectionInput): RelaySectionVerdict {
   // Ordered by how much the user needs to know: this Mac has taken over,
   // then it is about to, then the cloud relay is fine, then it is gone and
   // this Mac is not going to help.
-  const cloudMine = cloud.filter(mine);
+  const cloudMine = cloud.filter(h => mine(h) && factOf(h)?.kind === 'self_hosted');
   if (cloudMine.length > 0) {
     return { state: 'connected_cloud_serving', homeNames: names(cloudMine), takeover: null };
   }
+  const primary = i.homes.filter(mine);
+  if (primary.length > 0) return { state: 'connected_active', homeNames: names(primary), takeover: null };
+
   const waiting = cloud.filter(is('waiting'));
   if (waiting.length > 0) {
     // The earliest grace to end is the one worth counting down.
@@ -104,12 +108,11 @@ export function relaySectionState(i: RelaySectionInput): RelaySectionVerdict {
   // should be serving its own homes and is not has something to say, whatever
   // the cloud relay is doing for the others.
   const ownServedByAnother = own.filter((h) => factOf(h)?.state === 'served' && !mine(h));
-  const ownMine = own.filter(mine);
-  if (ownServedByAnother.length > 0 && ownMine.length === 0) {
+  if (ownServedByAnother.length > 0) {
     return { state: 'connected_standby', homeNames: names(ownServedByAnother), takeover: null };
   }
 
-  if (cloud.length > 0 && ownMine.length === 0) {
+  if (cloud.length > 0) {
     const cloudServed = cloud.filter((h) => factOf(h)?.state === 'served');
     if (cloudServed.length > 0) return none('connected_cloud_standby');
     const gone = cloud.filter((h) => { const s = factOf(h)?.state; return s === 'offline' || s === 'reconnecting'; });
@@ -118,5 +121,18 @@ export function relaySectionState(i: RelaySectionInput): RelaySectionVerdict {
     return none('connected_checking');
   }
 
-  return none(ownMine.length ? 'connected_active' : 'connected_checking');
+  return none('connected_checking');
 }
+
+export const RELAY_DUTY: Record<RelaySectionState, { value: string; tone: CardTone; pulse?: boolean }> = {
+  connected_active: { value: 'Active relay', tone: 'ok' },
+  connected_checking: { value: 'Checking relay role', tone: 'idle' },
+  connected_standby: { value: 'Standing by', tone: 'ok' },
+  connected_cloud_standby: { value: 'Standing by', tone: 'ok' },
+  connected_cloud_waiting: { value: 'Taking over…', tone: 'warn', pulse: true },
+  connected_cloud_serving: { value: 'Standing in', tone: 'warn' },
+  connected_cloud_offline: { value: 'Standing by', tone: 'idle' },
+  connecting: { value: 'Connecting…', tone: 'idle', pulse: true },
+  reconnecting: { value: 'Reconnecting…', tone: 'idle', pulse: true },
+  disconnected: { value: 'Disconnected', tone: 'bad' },
+};

@@ -40,6 +40,7 @@
  * state is the only one that becomes a pill.)
  */
 
+import { useStatusLog } from '@/hooks/useStatusLog';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -241,7 +242,6 @@ export function StatusBadge({
     });
   }, [nativeDotHidden, p.dotClass, nativeSubtitle]);
 
-  if (communityRelayMac && !showRelay) return null;
 
   // Keyed on `accountType`, never on a home's `isCloudManaged` — that flag
   // rides the WebSocket `homes.list` payload and the locally-answered one does
@@ -270,6 +270,12 @@ export function StatusBadge({
     homeName: homeName ?? null,
     deviceNoun: thisDeviceNoun(),
   });
+
+  useStatusLog('home_badge', { homeId: homeId ?? null, quality: effectiveQuality,
+    serving, relayServing, localReason: localMode.reason, label: p.label, colour: statusDotHex(p.dotClass),
+    verdict: card.verdict, because: card.because, nativeSubtitle, hidden: nativeDotHidden });
+
+  if (communityRelayMac && !showRelay) return null;
 
   // The rows need the server: neither is worth a stale figure under a card
   // that has just said this device cannot reach Homecast.

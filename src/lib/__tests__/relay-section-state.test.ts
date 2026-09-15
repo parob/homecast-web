@@ -57,7 +57,7 @@ describe('relaySectionState', () => {
     expect(at({ homes: [GEORGE], facts: { A1: served(CLOUD, 'cloud') } }).state).toBe('connected_cloud_standby');
   });
 
-  it('is cloud standby on an older server that has no fact to give', () => {
+  it('checks the role on an older server that has no fact to give', () => {
     expect(at({ homes: [GEORGE] }).state).toBe('connected_checking');
   });
 
@@ -116,4 +116,13 @@ describe('one cloud-managed home, by server state (invariant 4)', () => {
   it.each(rows)('%s → %s', (_name, fact, state) => {
     expect(at({ homes: [GEORGE], facts: { A1: fact } }).state).toBe(state);
   });
+});
+
+it('uses the same primary rule for the managed operator and a self-hosted relay', () => {
+  expect(at({ homes: [GEORGE, COUNTY], facts: { A1: served(ME, 'cloud'), B2: served(CLOUD, 'cloud') } }))
+    .toMatchObject({ state: 'connected_active', homeNames: ['George Street'] });
+});
+
+it('does not mistake Local Mode for permission to relay a home', () => {
+  expect(at({ homes: [COTTAGE], facts: { C3: served(ME, 'local') } }).state).not.toBe('connected_active');
 });
