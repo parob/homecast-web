@@ -240,6 +240,7 @@ interface PendingRequest {
    * See `isHousework` in ./connection-quality.ts.
    */
   action: string;
+  homeId?: string;
 }
 
 // Reconnection settings
@@ -916,7 +917,8 @@ export class ServerWebSocket {
           this.gracefulReconnect();
         }
 
-        this.consecutiveFailures++;
+        // A home/device timeout with continuing server traffic is not a link failure.
+        if (this.lastInboundAt <= sentAt) this.consecutiveFailures++;
         this.evaluateQuality();
         reject(new HomecastError('TIMEOUT', `Request timed out: ${action}`));
       }, REQUEST_TIMEOUT);
@@ -928,6 +930,7 @@ export class ServerWebSocket {
         timeout,
         sentAt,
         action,
+        homeId,
       });
       // A request going out is itself news: it starts the clock the quality
       // classifier reads, and arms the ticker that watches it age.
@@ -1048,11 +1051,14 @@ export class ServerWebSocket {
     // the house is big, not because the connection is bad, and counting it here
     // is what made "All lights" report "Your home is not responding" every time.
     // See `oldestCountedInFlight`.
-    const oldestInFlightSentAt = oldestCountedInFlight(this.pendingRequests.values());
+    const oldestRequest = oldestCountedInFlight(this.pendingRequests.values());
+    // A heartbeat measures this link, independently of work at any home.
+    const oldestInFlightSentAt = oldestRequest === null ? this.lastPingSentAt
+      : this.lastPingSentAt === null ? oldestRequest : Math.min(oldestRequest, this.lastPingSentAt);
     // The ticker still watches every request, housework included: one has to
     // stop the classifier idling while a batch runs, and the ordinary requests
     // alongside it are exactly what the in-flight signal is reading.
-    const hasInFlight = this.pendingRequests.size > 0;
+    const hasInFlight = this.pendingRequests.size > 0 || this.lastPingSentAt !== null;
 
     const raw = classifyQuality({
       socketState: this.state,
@@ -1066,7 +1072,10 @@ export class ServerWebSocket {
     const before = this.qualityState.shown;
     this.qualityState = applyHysteresis(this.qualityState, raw, now);
     if (this.qualityState.shown !== before) {
-      logEvent('quality', `${before} → ${this.qualityState.shown}`);
+      const oldest = [...this.pendingRequests.values()].find(p => p.sentAt === oldestRequest);
+      logEvent('quality', `${before} → ${this.qualityState.shown}; ` +
+        `pending=${oldest?.action ?? 'none'}; age=${oldestRequest === null ? 0 : now - oldestRequest}ms; ` +
+        `ping=${this.lastPingSentAt === null ? 'none' : `${now - this.lastPingSentAt}ms`}; failures=${this.consecutiveFailures}`);
       this.callbacks.onQualityChange?.(this.qualityState.shown);
     }
 
@@ -1181,10 +1190,6 @@ export class ServerWebSocket {
    * Record one unit of WebSocket activity in the current minute bucket.
    */
   private recordActivity(): void {
-    // Liveness, separate from the per-minute counters below: any inbound frame
-    // is proof the peer is still there, which readyState cannot give us.
-    this.lastInboundAt = Date.now();
-
     const now = Math.floor(Date.now() / 60000); // current Unix minute
     if (this.activityBucketMinute === -1) {
       // First activity ever — initialise
@@ -1500,6 +1505,7 @@ export class ServerWebSocket {
   }
 
   private handleMessage(event: MessageEvent): void {
+    this.lastInboundAt = Date.now();
     this.recordActivity();
     try {
       const message = JSON.parse(event.data);
@@ -1816,11 +1822,10 @@ export class ServerWebSocket {
       } else {
         console.error(`[ServerWS] Request failed: ${message.action}`, message.error);
       }
-      // NO_DEVICE is a statement about the relay, not about this connection —
-      // the server answered us perfectly well to say so. Counting it as a
-      // connection failure would paint every tile refresh on an offline home
-      // as a bad network.
-      if (message.error.code !== 'NO_DEVICE') this.consecutiveFailures++;
+      // An error response still proves the server answered. Permissions,
+      // unsupported actions and relay failures belong to the request/home,
+      // never to this client's link to every home.
+      this.consecutiveFailures = 0;
       pending.reject(new HomecastError(message.error.code, message.error.message, message._trace));
     } else {
       if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, message.payload);
@@ -2288,6 +2293,7 @@ export class ServerWebSocket {
     if (!isRelayCapable()) {
       this.heartbeatVisibilityHandler = () => {
         if (document.visibilityState === 'hidden') {
+          this.lastPingSentAt = null;
           if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;

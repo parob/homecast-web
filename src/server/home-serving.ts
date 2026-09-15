@@ -124,6 +124,11 @@ export function servedByThisDevice(serving: HomeServing | null, thisDevice: stri
   return !!serving && serving.state === 'served' && !!thisDevice && serving.by === thisDevice;
 }
 
+/** A cloud-plan home currently routed through a customer's relay. */
+export function isBackupServing(serving: HomeServing | null, managed: boolean): boolean {
+  return managed && serving?.state === 'served' && serving.kind === 'self_hosted';
+}
+
 // ---------------------------------------------------------------------------
 // The store.
 // ---------------------------------------------------------------------------
@@ -131,6 +136,23 @@ export function servedByThisDevice(serving: HomeServing | null, thisDevice: stri
 type Listener = (homeId: string, serving: HomeServing | null) => void;
 
 const facts = new Map<string, HomeServing>();
+let revision = 0;
+let invalidatedAt = 0;
+const changedAt = new Map<string, number>();
+
+/** Capture before asking for a list; a push received during it must win. */
+export function beginHomesList(): number { return revision; }
+export function isHomesListCurrent(startedAt: number): boolean { return startedAt >= invalidatedAt; }
+
+/** Reconnect/resume/logout: old facts and in-flight lists no longer prove availability. */
+export function invalidateHomeServing(): void {
+  invalidatedAt = ++revision;
+  const ids = [...facts.keys()];
+  facts.clear();
+  changedAt.clear();
+  staleAsked.clear();
+  for (const id of ids) for (const fn of listeners) fn(id, null);
+}
 const listeners = new Set<Listener>();
 let thisDevice: string | null = null;
 let deviceServing: (homeId: string) => { active: boolean; since?: string | null } = () => ({ active: false });
@@ -150,6 +172,7 @@ function set(homeId: string, serving: HomeServing): void {
   const k = key(homeId);
   const prev = facts.get(k) ?? null;
   facts.set(k, serving);
+  changedAt.set(k, ++revision);
   staleAsked.delete(k);
   if (!same(prev, serving)) for (const fn of listeners) fn(k, serving);
 }
@@ -161,10 +184,12 @@ export type ServingSourceHome =
 
 export function ingestHomesList(
   homes: ReadonlyArray<ServingSourceHome>,
-  opts: { community?: boolean } = {},
+  opts: { community?: boolean; startedAt?: number } = {},
 ): void {
   for (const home of homes) {
     if (!home?.id) continue;
+    if (opts.startedAt !== undefined && (opts.startedAt < invalidatedAt
+      || (changedAt.get(key(home.id)) ?? 0) > opts.startedAt)) continue;
     if (opts.community) {
       // No cloud, no relay but this Mac: the fact is a constant and this is
       // the only place it is ever written. The same path that copes with an
@@ -249,6 +274,9 @@ export function setRefetch(fn: typeof refetch): void { refetch = fn; }
 /** Test seam. */
 export function resetHomeServing(): void {
   facts.clear();
+  changedAt.clear();
+  revision = 0;
+  invalidatedAt = 0;
   listeners.clear();
   staleAsked.clear();
   thisDevice = null;

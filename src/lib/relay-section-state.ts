@@ -25,8 +25,9 @@ import { takeoverIn } from './connection-chain';
 export type RelayConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
 export type RelaySectionState =
-  /** This Mac serves at least one of its self-hosted homes, or nothing says otherwise. */
+  /** This Mac is confirmed to serve at least one of its self-hosted homes. */
   | 'connected_active'
+  | 'connected_checking'
   /** Another of the user's Macs serves the self-hosted homes; offer the takeover. */
   | 'connected_standby'
   /** The cloud relay serves every cloud-managed home; this Mac waits. Healthy. */
@@ -113,10 +114,9 @@ export function relaySectionState(i: RelaySectionInput): RelaySectionVerdict {
     if (cloudServed.length > 0) return none('connected_cloud_standby');
     const gone = cloud.filter((h) => { const s = factOf(h)?.state; return s === 'offline' || s === 'reconnecting'; });
     if (gone.length > 0) return { state: 'connected_cloud_offline', homeNames: names(gone), takeover: null };
-    // No fact yet for any cloud home: the older-server shape. Standby was
-    // always the answer there, and still is.
-    return none('connected_cloud_standby');
+    // No fact yet: neither active duty nor standby has been established.
+    return none('connected_checking');
   }
 
-  return none('connected_active');
+  return none(ownMine.length ? 'connected_active' : 'connected_checking');
 }

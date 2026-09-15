@@ -10,6 +10,7 @@
 import { ServerWebSocket, BroadcastMessage, SubscriptionInvalidated, HomecastError } from './websocket';
 import type { RelayHomeRoles } from '@/lib/relay-roles';
 import type { ConnectionQuality } from './connection-quality';
+import { invalidateHomeServing } from './home-serving';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
 import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
@@ -72,7 +73,7 @@ export interface ServerConnectionState {
   isActive: boolean;
   connectionState: ConnectionState;
   error: Error | null;
-  relayStatus: boolean | null; // null = not relay-capable, true = active relay, false = standby
+  relayStatus: boolean | null; // null = unknown or not relay-capable, true = active account relay, false = standby
   /**
    * Per home, whether this relay serves it or stands by for the cloud relay.
    * Null until the server has said (an older server never does), which keeps
@@ -754,6 +755,7 @@ class ServerConnection {
             // Clear local subscription tracking on disconnect - server has already cleared them
             if (connectionState === 'disconnected' || connectionState === 'reconnecting') {
               // Reset relay status — will be reassigned by server on reconnect
+              if (!isCommunity) invalidateHomeServing();
               updates.relayStatus = null;
               updates.relayRoles = null;
               this.activeSubscriptions.clear();
@@ -849,6 +851,7 @@ class ServerConnection {
    * Deactivate the server connection
    */
   deactivate(): void {
+    invalidateHomeServing();
     if (!this.state.isActive) {
       return;
     }

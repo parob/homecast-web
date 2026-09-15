@@ -52,7 +52,7 @@
 
 import type { ConnectionQuality } from '@/server/connection-quality';
 import type { LocalModeReason } from '@/server/local-mode';
-import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
+import { isBackupServing, type HomeServing } from '@/server/home-serving';
 import { localModeStandingIn } from './answer-card';
 import {
   connectionPresentation,
@@ -62,6 +62,8 @@ import {
 
 export interface StatusInputs {
   quality: ConnectionQuality;
+  /** False when the badge describes only this client, with no home selected. */
+  homeSelected?: boolean;
   /** The transient recovery confirmation is currently showing. */
   reconnected: boolean;
   /**
@@ -151,11 +153,11 @@ export const HOME_UNREACHABLE_PRESENTATION: ConnectionPresentation = {
  * itself — the headline says what happens next.
  */
 export const HOME_WAITING_PRESENTATION: ConnectionPresentation = {
-  label: 'Relay offline',
+  label: 'Waiting for backup',
   dotClass: 'bg-amber-500',
   pulse: true,
-  srLabel: "Relay offline. This home's relay is not answering; a standby is about to take over",
-  headline: "This home's relay isn't answering — a standby takes over shortly",
+  srLabel: 'Waiting for backup. Home control is unavailable until a backup relay takes over',
+  headline: 'A backup relay is connected and waiting to take over',
 };
 
 /**
@@ -209,20 +211,16 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
     return HOME_UNREACHABLE_PRESENTATION;
   }
 
-  // 4. The transient "it's back", once there is nothing louder to say.
-  if (i.reconnected) return RECONNECTED_PRESENTATION;
 
-  // 5. A cloud-plan Mac that the server says is serving the home is the
-  //    activated standby: the cloud relay is gone and this Mac took over. Amber,
-  //    about the cloud relay. The server naming this device is evidence enough
-  //    that its relay is on — `relayEnabled` is not consulted, so the card
-  //    (which has no such input) reaches the same answer. Every other shape of
-  //    relay duty — this Mac is the relay, another Mac is, the cloud relay is —
-  //    is the home working the normal way, and says nothing here; the popover's
-  //    "This Mac" row does.
-  if (s && !i.community && i.managed && servedByThisDevice(s, i.thisDevice)) {
+  // A backup route matters on every client, including phones and browsers.
+  // The relay kind proves it; being the device named by `by` is not required.
+  if (!i.community && isBackupServing(s, i.managed)) {
     return STANDING_IN_PRESENTATION;
   }
+
+  // A link recovery does not replace the continuing backup route.
+  if (i.reconnected && (s?.state === 'served' || i.homeSelected === false)) return RECONNECTED_PRESENTATION;
+  if (!s && i.homeSelected !== false) return connectionPresentation('unknown');
 
   // 6. Nothing to report: a quiet dot, emerald for good, muted for unknown.
   return connectionPresentation(i.quality);

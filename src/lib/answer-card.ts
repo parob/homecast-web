@@ -42,7 +42,7 @@
  */
 
 import type { LocalModeReason } from '@/server/local-mode';
-import { servedByThisDevice, type HomeServing } from '@/server/home-serving';
+import { isBackupServing, servedByThisDevice, type HomeServing } from '@/server/home-serving';
 import {
   buildChain,
   chainHasFault,
@@ -88,7 +88,7 @@ export interface AnswerCardInput extends ChainInput {
   now?: number;
 }
 
-const NOTIFIED = 'Nothing to do here — Homecast has been notified and is on it.';
+const AUTO_RECONNECT = 'Homecast will reconnect automatically.';
 
 /** "County Hall" as the subject of a sentence, or the generic when there is no name. */
 export function homeSubject(homeName: string | null | undefined): string {
@@ -218,25 +218,19 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
         // said about a 28ms connection, because the slowness was further along.
         return card({
           tone: 'warn',
-          verdict: `${H} is working, slowly`,
-          because: `Reaching Homecast is slow right now. ${relayCap} is answering normally behind it.`,
+          verdict: 'The connection to Homecast is slow',
+          because: `Requests from this ${dev} may take longer. This does not tell us whether ${H}'s relay is working.`,
           reconnect: true,
           showChain: true,
         });
       case 'stalled':
-        // The flagship contrast: identical red hop, opposite advice. A dead
-        // cloud relay leaves the socket to Homecast perfectly healthy, so
-        // "Reconnect now" would rebuild something that was never broken — and
-        // the user owns no hardware to go and restart.
+        // A stalled link does not identify a failed home or relay.
         return card({
           tone: 'warn',
           pulse: true,
-          verdict: `${H} isn't responding`,
-          because: managed
-            ? `The cloud relay for this home isn't answering. Your ${dev} and your internet are both fine.`
-            : `Homecast can't get an answer from your relay. Your ${dev} and your internet are both fine.`,
-          note: managed ? NOTIFIED : null,
-          reconnect: !managed,
+          verdict: 'The connection to Homecast is not responding',
+          because: `This ${dev} is waiting for Homecast to answer. ${H} may still be available from other devices.`,
+          reconnect: true,
           showChain: true,
         });
     }
@@ -244,8 +238,8 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
 
   // ── The cloud is answering, and its answer is "nothing may serve this home" ─
   //
-  // The same fault `stalled` infers from a timeout, stated outright by the
-  // server as the fact for the home. Nothing here offers Reconnect: the link is
+  // The server names the affected home and its unavailable route.
+  // Nothing here offers Reconnect: the link is
   // fine, and a fresh socket would reach the same answer.
   if (serving && serving.state !== 'served') {
     switch (serving.state) {
@@ -280,7 +274,7 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
           because: managed
             ? `The cloud relay isn't answering. Your ${dev} and your internet are both fine.`
             : `Homecast can't get an answer from your relay. Your ${dev} and your internet are both fine — check that the relay is on and online.`,
-          note: managed ? NOTIFIED : null,
+          note: managed ? AUTO_RECONNECT : null,
           showChain: true,
         });
     }
@@ -293,11 +287,13 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
   // hidden and the sentence carries the fact worth knowing, in amber. Ranked
   // above the expired-link case below: a home fact outranks a reading that has
   // merely gone stale, as it does on the dot.
-  if (serving && managed && servedByThisDevice(serving, input.thisDevice)) {
+  if (isBackupServing(serving, managed)) {
     return card({
       tone: 'warn',
       verdict: `${H} is working`,
-      because: "The cloud relay is offline, so this Mac is standing in — for you, and for everyone else at home — until it's back.",
+      because: servedByThisDevice(serving, input.thisDevice)
+        ? 'This Mac is serving your home as a backup until the cloud relay returns.'
+        : 'Your backup relay is serving this home until the cloud relay returns.',
       via: quality === 'unknown' ? null : via,
       showChain: false,
     });
@@ -314,8 +310,8 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
     // Onboarding, or several homes and none selected: there is a link to
     // report on and no home to make a claim about.
     return card({
-      tone: 'ok',
-      verdict: 'Connected to Homecast',
+      tone: input.homeName ? 'idle' : 'ok',
+      verdict: input.homeName ? `Checking the route to ${H}…` : 'Connected to Homecast',
       via: input.rtt ? `Round trip ${input.rtt}` : null,
       showChain: false,
     });

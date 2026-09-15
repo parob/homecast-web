@@ -100,14 +100,17 @@ const HOUSEWORK_ACTIONS: ReadonlySet<string> = new Set([
   'serviceGroup.set',
   /** HomeKit runs the scene; how long that takes is the scene's business. */
   'scene.execute',
+  // Native capture may take 20 seconds; the camera owns its loading state.
+  'camera.snapshot',
+  'camera.requestScreenRecording',
 ]);
 
 /**
  * Is this request housework — work whose duration says nothing about the link?
  *
- * Deliberately **not** extended to the single-accessory `characteristic.set`.
- * One write that takes eight seconds is genuinely worth reporting: it is a
- * device that is not answering, which is a fault and not a workload.
+ * Home-scoped requests are excluded separately by `oldestCountedInFlight`: a
+ * device taking time belongs on that control, not on every home’s connection
+ * indicator. Heartbeats still detect a silent socket while these requests run.
  */
 export function isHousework(action: string): boolean {
   return HOUSEWORK_ACTIONS.has(action);
@@ -117,6 +120,8 @@ export function isHousework(action: string): boolean {
 export interface InFlightRequest {
   action: string;
   sentAt: number;
+  /** A request for one home cannot diagnose this client’s connection to every home. */
+  homeId?: string;
 }
 
 /**
@@ -129,7 +134,7 @@ export interface InFlightRequest {
 export function oldestCountedInFlight(pending: Iterable<InFlightRequest>): number | null {
   let oldest: number | null = null;
   for (const request of pending) {
-    if (isHousework(request.action)) continue;
+    if (request.homeId || isHousework(request.action)) continue;
     if (oldest === null || request.sentAt < oldest) oldest = request.sentAt;
   }
   return oldest;

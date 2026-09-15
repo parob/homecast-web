@@ -192,3 +192,41 @@ describe('a refusal refetches, once, and changes nothing — invariant 5', () =>
     expect(refetch).not.toHaveBeenCalled();
   });
 });
+
+describe('facts after missed broadcasts and overlapping requests', () => {
+  it('rechecks after a disconnect and rejects the previous connection’s list', async () => {
+    const { beginHomesList, invalidateHomeServing } = await import('../home-serving');
+    ingestHomesList([{ id: 'A', serving: served() }]);
+    const startedAt = beginHomesList();
+    const listener = vi.fn();
+    subscribeHomeServing(listener);
+    invalidateHomeServing();
+    expect(listener).toHaveBeenCalledWith('A', null);
+    ingestHomesList([{ id: 'A', serving: served() }], { startedAt });
+    expect(getHomeServing('A')).toBeNull();
+    ingestHomesList([{ id: 'A', serving: waiting() }], { startedAt: beginHomesList() });
+    expect(getHomeServing('A')?.state).toBe('waiting');
+  });
+
+  it('preserves the wiring and Local Mode while cloud facts are being rechecked', async () => {
+    const { invalidateHomeServing } = await import('../home-serving');
+    const refetch = vi.fn();
+    setRefetch(refetch);
+    setThisDevice(ME);
+    setDeviceServing(id => ({ active: id === 'A' }));
+    invalidateHomeServing();
+    expect(effectiveServing('A')).toMatchObject({ kind: 'local', by: ME });
+    ingestHomesList([{ id: 'B', serving: served() }]);
+    noteRefused('B');
+    expect(refetch).toHaveBeenCalledWith('B');
+  });
+
+  it('accepts other homes from a list when one home received a newer push', async () => {
+    const { beginHomesList } = await import('../home-serving');
+    const startedAt = beginHomesList();
+    ingestHomeServingPush({ homeId: 'a', serving: waiting() });
+    ingestHomesList([{ id: 'A', serving: served() }, { id: 'B', serving: served() }], { startedAt });
+    expect(getHomeServing('A')?.state).toBe('waiting');
+    expect(getHomeServing('B')?.state).toBe('served');
+  });
+});

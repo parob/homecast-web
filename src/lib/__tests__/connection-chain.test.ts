@@ -181,10 +181,10 @@ describe('which hop is broken', () => {
     expect(c.nodes[3].tone).toBe('idle');
   });
 
-  it('puts a stall on the far hop', () => {
+  it('puts a stalled connection on the measured client link', () => {
     const c = at({ quality: 'stalled' });
-    expect(c.hops[0].tone).toBe('ok');
-    expect(c.hops[1].tone).toBe('bad');
+    expect(c.hops[0].tone).toBe('bad');
+    expect(c.hops[1].tone).toBe('idle');
   });
 
   it('marks a slow link amber on the near hop, with the number', () => {

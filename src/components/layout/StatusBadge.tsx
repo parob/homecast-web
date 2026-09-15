@@ -203,6 +203,7 @@ export function StatusBadge({
 
   const managed = accountType === 'cloud';
   const p = statusPresentation({
+    homeSelected: !!homeId,
     quality: effectiveQuality,
     reconnected,
     serving,

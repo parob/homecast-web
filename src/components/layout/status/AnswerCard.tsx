@@ -188,6 +188,7 @@ export function ReliabilityRow({ homeId, onOpen }: ReliabilityRowProps) {
 
 const DUTY: Record<RelaySectionState, { value: string; tone: CardTone; pulse?: boolean }> = {
   connected_active: { value: 'Active relay', tone: 'ok' },
+  connected_checking: { value: 'Checking relay role', tone: 'idle' },
   connected_standby: { value: 'Standing by', tone: 'ok' },
   connected_cloud_standby: { value: 'Standing by', tone: 'ok' },
   connected_cloud_waiting: { value: 'Taking over…', tone: 'warn', pulse: true },
