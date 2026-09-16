@@ -3,7 +3,9 @@ import { Wifi, Globe, Router, Lock, LockOpen, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getRelayAddress, isCommunity } from '@/lib/config';
 import { probeRelay, describeRoute, ROUTE_LABELS, type RelayHealth, type RelayRoute } from '@/lib/relay-probe';
-import { serverConnection } from '@/server/connection';
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import { connectionPresentation } from '@/lib/connection-presentation';
+import { useStatusLog } from '@/hooks/useStatusLog';
 
 /**
  * What this device is connected to, and how.
@@ -19,15 +21,6 @@ const ROUTE_ICON: Record<RelayRoute, typeof Wifi> = {
   lan: Wifi,
   mesh: Router,
   remote: Globe,
-};
-
-type ConnState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
-
-const STATE_TONE: Record<ConnState, { dot: string; label: string }> = {
-  connected: { dot: 'bg-green-500', label: 'Connected' },
-  connecting: { dot: 'bg-sky-500 animate-pulse', label: 'Connecting' },
-  reconnecting: { dot: 'bg-amber-500 animate-pulse', label: 'Reconnecting' },
-  disconnected: { dot: 'bg-muted-foreground/40', label: 'Not connected' },
 };
 
 /**
@@ -50,16 +43,10 @@ export function RelayInfoCard() {
   const [origin, setOrigin] = useState<string | null>(activeRelayOrigin());
   const [health, setHealth] = useState<RelayHealth | null>(null);
   const [checking, setChecking] = useState(false);
-  const [state, setState] = useState<ConnState>('disconnected');
-
-  // The socket's own view of things, which is the honest answer to "am I
-  // connected" — /health only says the relay is up, not that we are talking.
-  useEffect(() => {
-    const tick = () => setState(serverConnection.getState().connectionState as ConnState);
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
+  const { quality } = useWebSocket();
+  const presentation = connectionPresentation(quality);
+  const label = quality === 'good' ? 'Connected' : presentation.label ?? presentation.headline;
+  useStatusLog('community_relay', { quality, label, colour: presentation.dotClass });
 
   const refresh = async (target = activeRelayOrigin()) => {
     setOrigin(target);
@@ -83,7 +70,6 @@ export function RelayInfoCard() {
 
   const route = describeRoute(origin);
   const RouteIcon = ROUTE_ICON[route];
-  const tone = STATE_TONE[state] ?? STATE_TONE.disconnected;
 
   // Everything the relay knows about itself, plus the one we are on — which
   // will not be in its list when it is a tunnel the relay cannot see.
@@ -110,8 +96,8 @@ export function RelayInfoCard() {
           </p>
         </div>
         <span className="flex items-center gap-1.5 text-[10px] font-medium shrink-0 pt-0.5">
-          <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} />
-          {tone.label}
+          <span className={cn('h-1.5 w-1.5 rounded-full', presentation.dotClass, presentation.pulse && 'animate-pulse')} />
+          {label}
         </span>
       </div>
 
@@ -136,7 +122,7 @@ export function RelayInfoCard() {
           return (
             <div key={addr} className="flex items-center gap-2 text-xs">
               <span
-                className={cn('h-1.5 w-1.5 rounded-full shrink-0', inUse ? 'bg-green-500' : 'bg-muted-foreground/30')}
+                className={cn('h-1.5 w-1.5 rounded-full shrink-0', inUse ? presentation.dotClass : 'bg-muted-foreground/30')}
               />
               <span className={cn('font-mono truncate', inUse ? 'text-foreground' : 'text-muted-foreground')}>
                 {addr}
@@ -148,10 +134,9 @@ export function RelayInfoCard() {
           );
         })}
         {!health && !checking && (
-          // A relay that does not answer is worth saying out loud: the app may
-          // still look fine from cache while nothing is actually getting through.
+          // This HTTP metadata probe is separate from the control socket.
           <p className="text-xs text-amber-600 dark:text-amber-400 pt-1">
-            Not answering at this address right now.
+            Could not refresh relay details at this address.
           </p>
         )}
       </div>
